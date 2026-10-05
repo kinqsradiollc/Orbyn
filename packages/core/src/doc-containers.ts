@@ -7,9 +7,14 @@ import {
   CALLOUT_LABELS,
   footnoteNumbers,
   docReferenceLinks,
+  docReferenceDefinition,
 } from "./docs.js";
-import { docContent } from "./schemas.js";
-import { blocksHtml, type HtmlOptions } from "./export.js";
+import {
+  parseDocContentLeaves,
+  DOC_PROJECTED_TOTAL_MAX,
+  type DocContentValidationOptions,
+} from "./doc-content-leaves.js";
+import { blocksHtml, docToText, type HtmlOptions } from "./export.js";
 import { docFragmentIndex, docLinkDestination } from "./doc-navigation.js";
 
 /** A structured Markdown candidate. Leaves keep the existing editor/comment identity. */
@@ -430,11 +435,26 @@ export function visitDocContainers(
 /** Validate tree budgets and global IDs before a recursive consumer touches it. */
 export function validateDocContainers(
   nodes: readonly DocContainerNode[],
+  options: DocContentValidationOptions = {},
 ): void {
   const ids = new Set<string>();
+  let textSize = 0;
   visitDocContainers(nodes, (node) => {
-    if (node.kind === "block" && !docContent.safeParse([node.block]).success)
-      throw new DocContainerError("Invalid typed document leaf.");
+    if (node.kind === "block") {
+      try {
+        parseDocContentLeaves([node.block], options);
+      } catch {
+        throw new DocContainerError("Invalid typed document leaf.");
+      }
+      if ("text" in node.block) textSize += node.block.text.length;
+      if (
+        textSize >
+        (options.projected
+          ? DOC_PROJECTED_TOTAL_MAX
+          : DOC_CONTAINER_LIMITS.source)
+      )
+        throw new DocContainerError("Document text is too large.");
+    }
     if (
       node.kind === "quote" &&
       node.callout &&
@@ -443,7 +463,12 @@ export function validateDocContainers(
     )
       throw new DocContainerError("Invalid callout metadata.");
     const id = node.kind === "block" ? node.block.id : node.id;
-    if (id && (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || ids.has(id)))
+    if (
+      id !== undefined &&
+      (typeof id !== "string" ||
+        !/^[A-Za-z0-9_-]{1,64}$/.test(id) ||
+        ids.has(id))
+    )
       throw new DocContainerError("Invalid or duplicate document block ID.");
     if (id) ids.add(id);
     if (
@@ -464,9 +489,10 @@ export function validateDocContainers(
 /** All typed leaves, in document order, for references, permissions and search. */
 export function docContainerBlocks(
   nodes: readonly DocContainerNode[],
+  options: DocContentValidationOptions = {},
 ): DocBlock[] {
   const blocks: DocBlock[] = [];
-  validateDocContainers(nodes);
+  validateDocContainers(nodes, options);
   visitDocContainers(nodes, (node) => {
     if (node.kind === "block") blocks.push(node.block);
   });
@@ -477,8 +503,9 @@ export function docContainerBlocks(
 export function mapDocContainerBlocks(
   nodes: readonly DocContainerNode[],
   map: (block: DocBlock, index: number) => DocBlock,
+  options: DocContentValidationOptions = {},
 ): DocContainerNode[] {
-  validateDocContainers(nodes);
+  validateDocContainers(nodes, options);
   let index = 0;
   const walk = (current: readonly DocContainerNode[]): DocContainerNode[] =>
     current.map((node) =>
@@ -495,16 +522,16 @@ export function mapDocContainerBlocks(
             },
     );
   const result = walk(nodes);
-  validateDocContainers(result);
+  validateDocContainers(result, options);
   return result;
 }
 
 /** Serialize typed children with their ownership indentation, rather than lifting them to the page. */
 export function serializeDocContainers(
   nodes: readonly DocContainerNode[],
-  options: { anchors?: boolean } = {},
+  options: { anchors?: boolean } & DocContentValidationOptions = {},
 ): string {
-  validateDocContainers(nodes);
+  validateDocContainers(nodes, options);
   const write = (
     current: readonly DocContainerNode[],
     separator = "\n\n",
@@ -580,8 +607,9 @@ export function serializeDocContainers(
 export function projectDocContainers(
   nodes: readonly DocContainerNode[],
   project: (blocks: DocBlock[]) => DocBlock[],
+  options: DocContentValidationOptions = {},
 ): DocContainerNode[] {
-  const blocks = docContainerBlocks(nodes);
+  const blocks = docContainerBlocks(nodes, options);
   const projected = project(blocks);
   if (
     projected.length !== blocks.length ||
@@ -590,15 +618,19 @@ export function projectDocContainers(
     throw new DocContainerError(
       "Document projection changed its structure or identity.",
     );
-  return mapDocContainerBlocks(nodes, (_block, index) => projected[index]);
+  return mapDocContainerBlocks(
+    nodes,
+    (_block, index) => projected[index],
+    options,
+  );
 }
 
 /** Render authorized typed children with shared inline/file/math policies and page-wide references. */
 export function docContainersHtml(
   nodes: readonly DocContainerNode[],
-  options: HtmlOptions = {},
+  options: HtmlOptions & DocContentValidationOptions = {},
 ): string {
-  const blocks = docContainerBlocks(nodes);
+  const blocks = docContainerBlocks(nodes, options);
   const notes = options.notes ?? footnoteNumbers(blocks);
   const references = options.references ?? docReferenceLinks(blocks);
   const positions = new Map<DocContainerNode, number>();
@@ -657,4 +689,55 @@ export function docContainersHtml(
       htmlOptions,
     )
   );
+}
+
+/** Plain text keeps quote/list ownership and resolves page-wide reference labels. */
+export function docContainersText(
+  title: string,
+  nodes: readonly DocContainerNode[],
+  options: DocContentValidationOptions = {},
+): string {
+  const blocks = docContainerBlocks(nodes, options);
+  const references = docReferenceLinks(blocks);
+  const notes = footnoteNumbers(blocks);
+  const leaf = (block: DocBlock): string => {
+    if (block.type === "paragraph" && docReferenceDefinition(block.text))
+      return "";
+    return docToText("", [block], { references, notes }).slice(2, -1);
+  };
+  const prefix = (text: string, first: string, continuation: string) =>
+    text
+      .split("\n")
+      .map((line, index) => (index ? continuation : first) + line)
+      .join("\n");
+  const write = (children: readonly DocContainerNode[]): string =>
+    children
+      .map((node) => {
+        if (node.kind === "block") return leaf(node.block);
+        if (node.kind === "quote")
+          return prefix(
+            (node.callout ? `${CALLOUT_LABELS[node.callout.tone]}:\n` : "") +
+              write(node.children),
+            "> ",
+            "> ",
+          );
+        return node.items
+          .map((item, index) => {
+            const marker =
+              (node.ordered ? `${node.start + index}${node.delimiter}` : "•") +
+              " " +
+              (item.checked === undefined
+                ? ""
+                : `[${item.checked ? "x" : " "}] `);
+            return prefix(
+              write(item.children),
+              marker,
+              " ".repeat(marker.length),
+            );
+          })
+          .join("\n");
+      })
+      .filter(Boolean)
+      .join("\n\n");
+  return `${title}\n\n${write(nodes)}\n`;
 }

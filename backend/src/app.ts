@@ -37,6 +37,7 @@ import { teamRoutes } from "./modules/teams/routes.js";
 import { adminRoutes } from "./modules/admin/routes.js";
 import { statusRoutes } from "./modules/status/routes.js";
 import { organizeRoutes } from "./modules/organize/routes.js";
+import { docContentRoutes } from "./modules/docs/content-routes.js";
 import { docRoutes } from "./modules/docs/routes.js";
 import { docStructureRoutes } from "./modules/docs/structure.js";
 import { docInfoRoutes } from "./modules/docs/info.js";
@@ -145,6 +146,7 @@ export const serviceModules: Record<
     adminRoutes,
     organizeRoutes,
     docRoutes,
+    docContentRoutes,
     mentionRoutes,
     // Sections to embed, line names, moving and merging pages, folds.
     docStructureRoutes,

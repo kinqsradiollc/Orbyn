@@ -1,5 +1,7 @@
 import {
   blockText,
+  docContainerBlocks,
+  type DocContainerNode,
   CALLOUT_LABELS,
   footnoteNumbers,
   docReferenceLinks,
@@ -38,7 +40,10 @@ const esc = (text: string) =>
 const TINT_FILL = { amber: "FBF1DC", green: "E7F0EA", rose: "FBEFEA" };
 
 /** Current-reader target projection; an omitted destination renders as ordinary text. */
-export type DocxOptions = { linkUrl?: (href: string) => string | undefined };
+export type DocxOptions = {
+  linkUrl?: (href: string) => string | undefined;
+  containers?: readonly DocContainerNode[];
+};
 
 type WordContext = {
   notes: Map<string, number>;
@@ -349,12 +354,101 @@ ${numbered
   .join("\n")}
 </w:numbering>`;
 
+/** Render item-owned children in order; continuation blocks retain their own styles. */
+function structuredWordBody(
+  nodes: readonly DocContainerNode[],
+  context: WordContext,
+  numbered: { numId: number; depth: number; start: number }[],
+): string[] {
+  const owned = (xml: string, indent: number, quoted: boolean) =>
+    xml.replace(
+      /<w:pPr>/g,
+      `<w:pPr><w:ind w:left="${indent * 360}"/>${quoted ? '<w:pBdr><w:left w:val="single" w:sz="6" w:space="6" w:color="C9C9C9"/></w:pBdr>' : ""}`,
+    );
+  const walk = (
+    children: readonly DocContainerNode[],
+    indent: number,
+    listDepth: number,
+    quoted: boolean,
+  ): string[] =>
+    children.flatMap((node) => {
+      if (node.kind === "block")
+        return [owned(blockXml(node.block, context), indent, quoted)];
+      if (node.kind === "quote")
+        return [
+          ...(node.callout
+            ? [
+                owned(
+                  para(
+                    "Callout",
+                    run(
+                      {
+                        text: CALLOUT_LABELS[node.callout.tone],
+                        start: 0,
+                        bold: true,
+                      },
+                      context,
+                    ),
+                  ),
+                  indent + 1,
+                  true,
+                ),
+              ]
+            : []),
+          ...walk(node.children, indent + 1, listDepth, true),
+        ];
+      const depth = Math.min(listDepth, 8);
+      const numId = node.ordered ? numbered.length + 3 : 1;
+      if (node.ordered) numbered.push({ numId, depth, start: node.start });
+      return node.items.flatMap((item, index) => {
+        const first = item.children[0];
+        const inline =
+          first?.kind === "block" &&
+          first.block.type === "paragraph" &&
+          !docReferenceDefinition(first.block.text);
+        const text =
+          (item.checked === undefined ? "" : `${item.checked ? "☑" : "☐"} `) +
+          (inline && first?.kind === "block" && first.block.type === "paragraph"
+            ? first.block.text
+            : "");
+        const marker =
+          listDepth > 8
+            ? `${node.ordered ? node.start + index + node.delimiter : "•"} `
+            : "";
+        const paragraph = para(
+          "ListParagraph",
+          runsFor(marker + text, context),
+          listDepth > 8 ? "" : listPr(numId, depth),
+        );
+        return [
+          owned(paragraph, indent + 1, quoted),
+          ...walk(
+            item.children.slice(inline ? 1 : 0),
+            indent + 1,
+            listDepth + 1,
+            quoted,
+          ),
+        ];
+      });
+    });
+  return walk(nodes, 0, 0, false);
+}
+
 export function docToDocx(
   title: string,
   blocks: DocBlock[],
   at = new Date(),
   options: DocxOptions = {},
 ): Buffer {
+  if (
+    options.containers &&
+    JSON.stringify(
+      docContainerBlocks(options.containers, { projected: true }),
+    ) !== JSON.stringify(blocks)
+  )
+    throw new Error(
+      "Structured Word content must match its authorized leaf projection.",
+    );
   const layout = listLayout(blocks);
   const context: WordContext = {
     notes: footnoteNumbers(blocks),
@@ -366,36 +460,38 @@ export function docToDocx(
   const numbered: { numId: number; depth: number; start: number }[] = [];
   let lists: (number | null)[] = [];
   let first = true;
-  const body = blocks.map((block, i) => {
-    const { depth, number } = layout[i];
-    if (
-      block.type !== "bullet" &&
-      block.type !== "numbered" &&
-      block.type !== "todo"
-    ) {
-      lists = [];
-      return blockXml(block, context);
-    }
-    lists = lists.slice(0, depth + 1);
-    while (lists.length < depth + 1) lists.push(null);
-    if (block.type !== "numbered") {
-      lists[depth] = null;
-      return blockXml(block, context, depth);
-    }
-    if (lists[depth] === null) {
-      // The first list counting from 1 uses the numbering as it stands;
-      // every other list is an instance of its own, restarted.
-      const start = number ?? 1;
-      if (first && start === 1 && depth === 0) lists[depth] = 2;
-      else {
-        const numId = numbered.length + 3;
-        numbered.push({ numId, depth, start });
-        lists[depth] = numId;
-      }
-      first = false;
-    }
-    return blockXml(block, context, depth, lists[depth]!);
-  });
+  const body = options.containers
+    ? structuredWordBody(options.containers, context, numbered)
+    : blocks.map((block, i) => {
+        const { depth, number } = layout[i];
+        if (
+          block.type !== "bullet" &&
+          block.type !== "numbered" &&
+          block.type !== "todo"
+        ) {
+          lists = [];
+          return blockXml(block, context);
+        }
+        lists = lists.slice(0, depth + 1);
+        while (lists.length < depth + 1) lists.push(null);
+        if (block.type !== "numbered") {
+          lists[depth] = null;
+          return blockXml(block, context, depth);
+        }
+        if (lists[depth] === null) {
+          // The first list counting from 1 uses the numbering as it stands;
+          // every other list is an instance of its own, restarted.
+          const start = number ?? 1;
+          if (first && start === 1 && depth === 0) lists[depth] = 2;
+          else {
+            const numId = numbered.length + 3;
+            numbered.push({ numId, depth, start });
+            lists[depth] = numId;
+          }
+          first = false;
+        }
+        return blockXml(block, context, depth, lists[depth]!);
+      });
   const document = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
 <w:body>

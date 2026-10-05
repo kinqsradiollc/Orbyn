@@ -3489,3 +3489,34 @@ and full question/choice digest. Encrypted receipts are consumed with current
 owner/conversation/consent/grant/source checks; answer/chat/receipt commit
 atomically. Approval cards retain their full owned Orbyn review. The existing
 raw64KiB limit, strict query and120/min callback rate limit remain in place.
+
+### Versioned Docs content (auth)
+
+`GET /docs/:id/content` returns `{ id, title, version, document }` under current
+visibility from the primary database, with `Cache-Control: no-store`.
+`PUT /docs/:id/content` accepts the strict body `{ version, document }` and requires
+current edit permission and optimistic revision. The response has the next revision.
+
+`document` is `{ format: 1, blocks }` or `{ format: 2, nodes }`; format and revision
+are independent. `X-Orbyn-Doc-Formats: 1,2` explicitly declares support. An absent
+header supports only format1; malformed/unknown declarations return400, unsupported
+page/request formats return409. No automatic flattening or downgrade is permitted
+for nested ownership. Legacy content/CRDT writes to format2 pages return409.
+
+Structured writes preserve complete ownership in history and maintain an exact flat
+projection for existing ACL/search/Study behavior. Private link labels may expand
+in a read projection; saves restore hidden labels before checking storage limits.
+Oversized new text is refused atomically. The authenticated request ceiling is32MB;
+stored content retains its smaller leaf/tree limits. Shared client methods
+`getDocContent` and `updateDocContent` validate identity, revision and capabilities.
+Normal editor/CRDT/import/export adoption is pending; this API does not establish
+visual or complete structured editor acceptance.
+
+Structured format2 exports preserve container ownership in Markdown and HTML/PDF.
+The `/markdown` alias uses the same complete-page link authorization. Exported
+private references become safe labels without private destination/definition IDs.
+Word and plain-text exports of format2 pages render typed ownership, including
+quote boundaries, ordered starts, task checks and item-owned continuation blocks.
+Word validates the authorized tree against its exact flat projection. Format1
+exports retain their existing formats. HTML/PDF continue to recheck current visibility/revision after
+rendering and revalidate image access before returning a file.

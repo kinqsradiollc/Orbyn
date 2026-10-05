@@ -1,4 +1,9 @@
 import {
+  versionedDocRead,
+  versionedDocSave,
+  type VersionedDocContent,
+} from "@orbyn/core";
+import {
   teamsInstallationId,
   teamsChannelStatus,
   teamsChannelPermission,
@@ -2624,6 +2629,46 @@ export class OrbynClient {
   }
 
   // Documents
+  /** Read full structured ownership with explicit format capability and fresh revision/visibility. */
+  async getDocContent(id: string, options: { signal?: AbortSignal } = {}) {
+    id = versionedDocRead.shape.id.parse(id).toLowerCase();
+    const result = versionedDocRead.parse(
+      await this.request(`/docs/${id}/content`, {
+        fresh: true,
+        signal: options.signal,
+        headers: { "x-orbyn-doc-formats": "1,2" },
+      }),
+    );
+    if (result.id.toLowerCase() !== id)
+      throw new Error("Unexpected document identity.");
+    return result;
+  }
+  /** Save the complete content tree once; unsupported structure must not fall back to flat writes. */
+  async updateDocContent(
+    id: string,
+    version: number,
+    document: VersionedDocContent,
+    options: { signal?: AbortSignal; ticksFrom?: number } = {},
+  ) {
+    id = versionedDocRead.shape.id.parse(id).toLowerCase();
+    const body = versionedDocSave.parse({ version, document });
+    const result = versionedDocRead.parse(
+      await this.request(`/docs/${id}/content`, {
+        method: "PUT",
+        body,
+        signal: options.signal,
+        headers: {
+          "x-orbyn-doc-formats": "1,2",
+          ...(options.ticksFrom !== undefined
+            ? { "x-orbyn-ticks-from": String(options.ticksFrom) }
+            : {}),
+        },
+      }),
+    );
+    if (result.id.toLowerCase() !== id || result.version !== version + 1)
+      throw new Error("Unexpected saved document revision.");
+    return result;
+  }
   /** Every page you can see, newest edit first, optionally narrowed. */
   listDocs(
     filter: {

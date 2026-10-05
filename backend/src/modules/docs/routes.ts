@@ -9,6 +9,13 @@ import {
   docPreview,
   docSuggestionInput,
   docToHtml,
+  docHtmlPage,
+  docContainersHtml,
+  docContainersText,
+  parseVersionedDocContent,
+  projectDocContainers,
+  serializeDocContainers,
+  type DocContainerNode,
   docToMarkdown,
   docToText,
   docUpdate,
@@ -41,7 +48,7 @@ import {
   type DocVersion,
   type DocVersionChanges,
   type Item,
-  blocksWithWebLinks,
+  blocksWithExportLinks,
   keepLinkLabels,
   refFromUrl,
   parseObjectHref,
@@ -314,8 +321,10 @@ export async function docRoutes(app: FastifyInstance) {
         title: string;
         content: DocBlock[];
         version: number;
+        content_format: 1 | 2;
+        content_nodes: unknown;
       }>(
-        `SELECT d.title, d.content, d.version FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+        `SELECT d.title, d.content, d.version, d.content_format, d.content_nodes FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
     ).rows[0];
@@ -323,11 +332,25 @@ export async function docRoutes(app: FastifyInstance) {
     if (expectedVersion !== undefined && doc.version !== expectedVersion)
       fail(409, "This page changed. Refresh it before exporting.");
     const title = doc.title || "Untitled";
+    const structure =
+      doc.content_format === 2
+        ? parseVersionedDocContent({ format: 2, nodes: doc.content_nodes })
+        : null;
     // Ticks as the tasks stand, the same as the page reads, and links to
     // pages, tasks and projects as web links anyone with access can open.
     const stateBlocks = await withTaskState(pool, id, doc.content ?? []);
     const privacy = await linkPrivacy(pool, u.id, stateBlocks);
-    const blocks = blocksWithWebLinks(privacy.value(stateBlocks), env.APP_URL);
+    const blocks = blocksWithExportLinks(
+      stateBlocks,
+      env.APP_URL,
+      privacy.hidden,
+    );
+    const nodes: DocContainerNode[] | null =
+      structure?.format === 2
+        ? projectDocContainers(structure.nodes, () => blocks, {
+            projected: true,
+          })
+        : null;
     const imageFormat = format === "pdf" || format === "html";
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -351,18 +374,29 @@ export async function docRoutes(app: FastifyInstance) {
             },
           })
         : undefined;
+      const htmlOptions = {
+        math: createMathHtml(),
+        diagramSources: true,
+        fileUrl: images?.fileUrl,
+      };
       const html = imageFormat
-        ? docToHtml(title, blocks, {
-            math: createMathHtml(),
-            diagramSources: true,
-            fileUrl: images?.fileUrl,
-          })
+        ? nodes
+          ? docHtmlPage(
+              title,
+              docContainersHtml(nodes, {
+                ...htmlOptions,
+                projected: true,
+                anchors: true,
+              }),
+            )
+          : docToHtml(title, blocks, htmlOptions)
         : undefined;
       if (html && Buffer.byteLength(html) > 20 * 1024 * 1024)
         fail(413, "This document is too large to export.");
       const body =
         format === "docx"
           ? docToDocx(title, blocks, undefined, {
+              ...(nodes ? { containers: nodes } : {}),
               linkUrl: (href) => {
                 const ref = refFromUrl(href);
                 if (ref && ref.kind !== "date" && privacy.hidden(ref))
@@ -383,8 +417,12 @@ export async function docRoutes(app: FastifyInstance) {
             : format === "html"
               ? await exportRenderedHtml(html!, r, reply)
               : format === "txt"
-                ? docToText(title, blocks)
-                : docToMarkdown(title, blocks);
+                ? nodes
+                  ? docContainersText(title, nodes, { projected: true })
+                  : docToText(title, blocks)
+                : nodes
+                  ? `# ${title}\n\n${serializeDocContainers(nodes, { projected: true })}\n`
+                  : docToMarkdown(title, blocks);
       if (imageFormat) {
         const current = (
           await pool.query<{ version: number }>(
@@ -422,23 +460,36 @@ export async function docRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const id = idParam(r);
     const doc = (
-      await pool.query<{ title: string; content: DocBlock[] }>(
-        `SELECT d.title, d.content FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
+      await pool.query<{
+        title: string;
+        content: DocBlock[];
+        content_format: 1 | 2;
+        content_nodes: unknown;
+      }>(
+        `SELECT d.title, d.content, d.content_format, d.content_nodes FROM docs d WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
-    const blocks = blocksWithWebLinks(
-      await readableLinks(
-        pool,
-        u.id,
-        await withTaskState(pool, id, doc.content ?? []),
-      ),
-      env.APP_URL,
-    );
+    const state = await withTaskState(pool, id, doc.content ?? []);
+    const privacy = await linkPrivacy(pool, u.id, state);
+    const blocks = blocksWithExportLinks(state, env.APP_URL, privacy.hidden);
+    const stored =
+      doc.content_format === 2
+        ? parseVersionedDocContent({ format: 2, nodes: doc.content_nodes })
+        : null;
+    const source =
+      stored?.format === 2
+        ? serializeDocContainers(
+            projectDocContainers(stored.nodes, () => blocks, {
+              projected: true,
+            }),
+            { projected: true },
+          )
+        : serializeDoc(blocks);
     return reply
       .type("text/markdown; charset=utf-8")
-      .send(`# ${doc.title}\n\n${serializeDoc(blocks)}`);
+      .send(`# ${doc.title}\n\n${source}`);
   });
 
   // Let go of the listening connection when the server stops.
@@ -501,7 +552,12 @@ export async function docRoutes(app: FastifyInstance) {
     // The write check happens under the transaction, against the row: a
     // page moved to Trash (or a share withdrawn) mid-batch is refused.
     await transaction(async (db) => {
-      await requireDoc(db, id, u, "items:write");
+      const owned = await requireDoc(db, id, u, "items:write");
+      if (owned.content_format === 2)
+        fail(
+          409,
+          "This page requires a collaboration client that supports nested content.",
+        );
       for (const encoded of batch.updates)
         await db.query(
           `INSERT INTO doc_updates (doc_id, editor_id, update)

@@ -3,7 +3,10 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { retryMigrationTransaction } from "../src/db/migration-retry.js";
-import { lockMigrationJobTable } from "../src/db/migration-locks.js";
+import {
+  lockMigrationJobTable,
+  lockMigrationDocumentTables,
+} from "../src/db/migration-locks.js";
 const { pool, transaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const schema = `migration_retry_${randomUUID().replaceAll("-", "_")}`;
@@ -122,4 +125,68 @@ test("real PostgreSQL deadlock rolls back DDL and reruns the whole bounded trans
     ).rows[0].n,
     2,
   );
+});
+
+test("document prelock lets an existing save finish before locking docs and history", async () => {
+  const worker = await pool.connect(),
+    migration = await pool.connect();
+  let pending: Promise<void> | undefined;
+  try {
+    await worker.query("BEGIN");
+    await migration.query("BEGIN");
+    await worker.query("SELECT id FROM docs WHERE false FOR UPDATE");
+    const workerPid = (await worker.query("SELECT pg_backend_pid() AS pid"))
+      .rows[0].pid;
+    const migrationPid = (
+      await migration.query("SELECT pg_backend_pid() AS pid")
+    ).rows[0].pid;
+    pending = lockMigrationDocumentTables(migration, [
+      "ALTER TABLE docs ADD COLUMN fixture int",
+    ]);
+    void pending.catch(() => undefined);
+    let blocked = false;
+    const deadline = Date.now() + 2000;
+    do {
+      const row = (
+        await pool.query(
+          "SELECT $2::int=ANY(pg_blocking_pids(pid)) AS blocked FROM pg_stat_activity WHERE pid=$1",
+          [migrationPid, workerPid],
+        )
+      ).rows[0];
+      if (row?.blocked) {
+        blocked = true;
+        break;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } while (Date.now() < deadline);
+    assert.equal(blocked, true);
+    await worker.query(
+      "INSERT INTO doc_versions(doc_id,version,title,content) SELECT id,version,title,content FROM docs WHERE false",
+    );
+    await worker.query("UPDATE docs SET updated_at=now() WHERE false");
+    await worker.query("COMMIT");
+    await pending;
+    const locks = (
+      await migration.query(
+        "SELECT relation::regclass::text AS name,mode FROM pg_locks WHERE pid=pg_backend_pid() AND relation IN ('docs'::regclass,'doc_versions'::regclass) AND granted",
+      )
+    ).rows;
+    assert.ok(
+      locks.some(
+        (row) => row.name === "docs" && row.mode === "AccessExclusiveLock",
+      ),
+    );
+    assert.ok(
+      locks.some(
+        (row) =>
+          row.name === "doc_versions" && row.mode === "AccessExclusiveLock",
+      ),
+    );
+  } finally {
+    await worker.query("ROLLBACK").catch(() => undefined);
+    await pending?.catch(() => undefined);
+    await migration.query("ROLLBACK").catch(() => undefined);
+    worker.release();
+    migration.release();
+  }
 });

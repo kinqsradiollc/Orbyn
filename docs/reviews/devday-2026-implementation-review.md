@@ -1,3 +1,173 @@
+## Combined Docs full-regression repair — 6 October 2026
+
+Frozen5511d215 full DB53 terminated1:3563 passes,2 failures,1 existing skip,
+744869ms. Neither failure showed a new runtime exception: link-privacy's older
+export assertion required a clickable private link, while the new exported safe
+label deliberately omits its destination; mcp-catalog expected the old287 excluded
+routes instead of289 after the new editor-protocol endpoints.
+
+The privacy regression retains title redaction and authorized-owner assertions,
+adds private page/task ID absence and preserves visible destinations. The generated
+MCP catalog/docs are refreshed by npm run mcp:catalog; its equality test is unchanged.
+64 fresh DB54 privacy/content/export/inventory/catalog cases pass,0 failures,
+terminal0,23956ms. Original full failure logs are retained.
+
+Current main07a61716 documentation is integrated with both histories preserved.
+Application source is unchanged from5511d215 across backend/src, packages, desktop/
+mobile source. A corrected frozen full regression and CI are next; no main
+application promotion/deployment is claimed. Separate editor candidatebc619297
+has75 pure cases/all types/web build/format and paired renderers/source contracts;
+normal loading/selection/saving/task/CRDT integration and visual acceptance remain
+open. All C1-C6/M1/D1/U1 and original scope stay required.
+
+## Combined structured Docs qualification — 6 October 2026
+
+| Requirement                                 | Current evidence                                                                         | Remaining gate                                |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Storage/API/history/private-label saves     | 117 fresh DB52 mounted cases pass,0 fail, terminal0,26059ms                              | Frozen combined full regression               |
+| Markdown/HTML/PDF/Word/plain-text ownership | 72 pure cases; mounted Markdown/Word/text routes; existing renderer exports pass         | Full structured render/visual/import matrices |
+| Restore and capability inventory            | Current/past structured restore409; explicit editor transport exclusion passes inventory | Typed agent/CRDT/editor adoption              |
+| Types/build/format                          | All workspace types, packages/backend/web builds and formatting pass                     | Final frozen head full/CI                     |
+
+Earlier API357b58cd full DB51 terminated1:3554 passes,1 failure,1 existing skip.
+The sole failure was unlisted GET/PUT /docs/:id/content in the capability inventory.
+These interactive, negotiated editor-protocol routes are now excluded explicitly
+as editor_sync; agents keep typed capability calls. The inventory assertions remain
+unchanged and pass in the117-case DB52 cohort. This classification does not claim
+structured agent-tool support, which remains part of adoption.
+
+Main application stayse7232e11; main documentation516db089 is integrated into this
+candidate, with both documentation histories preserved and no application conflict.
+No application promotion/deployment, visual/native completion or whole ADR completion
+is claimed. Both editors, task-item identities/status, CRDT, complete import/source/
+render matrices, ChatGPT real acceptance and remaining C1-C6/M1/D1/U1 remain required.
+
+## Plain-text and Word container exporters — 6 October 2026
+
+The candidate now renders typed containers in plain text and Word, replacing the
+previous temporary409 boundary. Quotes, callout headings, ordered starts, checked
+items, continuation paragraphs and child code stay in content order. Word list
+instances keep separate numbering; depths beyond Word's nine numbering levels
+retain explicit text markers. The Word adapter checks exact authorized leaf/tree
+projection equality before rendering, and uses the existing page-wide references,
+footnotes and hyperlink authorization. Plain text resolves references once, keeps
+escaped literal styling and uses global footnote numbers.
+
+72 pure cases pass, including actual Word archive XML/numbering and real HTML/PDF
+route inputs with stubbed renderers. All workspace types and backend/web builds
+pass. The first backend typecheck caught lost narrowing of a paragraph leaf; an
+explicit type guard repaired it. A mistaken pure cohort included export.test.ts;
+its setup refused before DB access because TEST_DATABASE_URL was absent. It is
+queued for the serial mounted cohort, and is not passing evidence.
+
+Mounted DB52/full combined qualification, actual rendered/native visual checks,
+Word import round-trip, complete editor/CRDT/source/import/export matrices and all
+remaining C1-C6/M1/D1/U1 stay open. No application promotion or deployment yet.
+
+## Structured export integration candidate — 6 October 2026
+
+The legacy restore guard is committeddd2a06af. Markdown and HTML/PDF route adapters
+now redistribute authorized leaves into their full container ownership. Exported
+private references lose their destination and definition identifiers; code/math
+literals retain authored source.56 pure route/parser/client/export cases pass;
+backend types pass. The first VM route cohort failed because its injected scope
+omitted the newly used export helper; binding the real helper retained the existing
+primary/revision/visibility assertions and repaired the cohort.
+
+Actual mounted Markdown/restore regressions await fresh serial DB52 after the
+frozen API full DB51 run terminates. HTML/PDF route evidence uses real container
+HTML passed to stubbed renderer boundaries, not a visual or real-render acceptance.
+Word/plain-text nested exporters still require implementation; current409 refusal
+is a temporary data-preservation boundary, not their final ADR state. Full source/
+editor/collaboration/import/export/native/whole-app requirements remain open.
+
+## 6 October — structured content API follow-up
+
+Storage candidate4f45e904 completed fresh full DB49:3548 passes, zero failures,
+one existing skip, terminal0,729911ms. CI37372176301 passed Docker; backend/web,
+mobile and mail were cancelled. This is not an all-green CI result.
+
+The API follow-up adds authenticated capability-negotiated content GET/PUT and
+shared client identity/revision checks. Read projections have separately bounded
+text limits; hidden labels are restored before exact stored limits are enforced.
+Expanded private references now read/save without relaxing new-text storage limits.
+88 fresh DB50 mounted cases and46 pure cases pass. All workspace types, packages,
+backend/web builds and full formatting pass. Earlier pure fixture failures are
+retained: leaf errors preserve the existing format-error contract; cancellation is
+verified by propagated abort/reason rather than signal object identity.
+
+Both editor/CRDT/task-item integrations, imports and export adoption remain open.
+Projected HTML/source helpers are not proof of full editor source round-trip:
+source switching still rejects trees that exceed stored/source bounds. No web or
+native visual acceptance, production deployment, real-account ChatGPT inference,
+whole-account quota verification or cleanup is claimed. Full ADR goal remains active.
+
+# DevDay 2026 → Orbyn: researched implementation proposal
+
+## Current delivery state — 6 October 2026
+
+Main application checkpoint is `8e792ecb` (PR215), pushed. The combined
+quote/footnote candidate `5f5a1833` completed fresh full DB39:3498 passes,
+zero failures and one existing skip, terminal0,733948ms. Its application source
+matches merged main.131 parser/source/HTML/Word/export/layout cases and29 mounted
+import/privacy cases pass; packages, all workspace types, backend/web builds and
+full formatting pass. Evidence: `/tmp/orbyn-channel-doc-footnote-main-full.log`,
+`/tmp/orbyn-doc-footnote-main-focused.log` and
+`/tmp/orbyn-channel-doc-footnote-main-mounted.log`.
+
+Word/reference privacy PR213 is merged `bb9c10f5`, repaired full3460/0/1.
+CI37364955550 passed backend/web and Docker; cancelled mail/mobile jobs had no
+executed steps. Attempt2 is queued. Views/Review available-width and native
+wrapping PR214 merged `773f1441`, with18 focused passes and types/build/format.
+CI37366765411 ended with all jobs cancelled; failed jobs were rerun. PR215
+CI37366986451 passed mail/mobile/Docker; backend/web was cancelled, and was
+rerun. No failing step was reported in these cancellations; no all-green claim.
+PR212 attempt2 and PR211 final CI passed all four jobs.
+
+The pushed, unmerged `codex/docs-structured-containers` candidate `20752130` preserves nested
+quote/list typed children, IDs/source ranges and whole-page reference/footnote
+context.94 focused and11 fresh mounted library-hierarchy cases pass; types and
+backend/web builds and full formatting pass. Fresh immutable full DB41 is running
+(`/tmp/orbyn-channel-container-20752130-full.log`); keep source frozen.
+Storage/API versioning, CRDT and both editors/export
+integration remain required. See [container integration gates](docs-container-audit.md#structured-container-candidate--6-october-2026).
+This source candidate is not a shipped D1 feature.
+
+Versioned content/source contract `04da502e` is pushed separately on
+`codex/docs-container-storage-contract`.108 focused cases, all workspace types,
+backend/web builds and whole formatting pass. It rejects unsupported formats,
+unknown fields, duplicate/cyclic identity and lossy source/downgrade conversion.
+The Docs API, database migration, revisions/history, CRDT and both editors still
+need adoption; no new stored format is enabled. The serial full DB41 remains
+frozen on20752130; this follow-up has no full combined qualification yet.
+A fresh native Simulator selection again timed out -10005. No visual/native
+proof or full-goal completion is claimed.
+
+ChatGPT web handoff, feedback and selected-provider routing are already on main.
+Web creates an opaque same-account request for desktop official authorization;
+it does not launch an unregistered `orbyn://` scheme automatically. Real handoff,
+successful eligible inference and whole-account plan/usage acceptance remain open.
+Prior actual inference was refused for sharing quota exhaustion. No new chargeable
+probe or invented quota was used. Unsupported hard-limit catalogs remain ineligible
+for budgeted scheduling.
+
+Browser5174 remains blocked by the tool's saved permission, and Simulator
+inspection timed out -10005; no new visual/native acceptance is claimed.
+Full C1-C6/M1/D1/U1 remains active and incomplete. Character/user files are
+preserved, Docker is unchanged, user deploys manually, and cleanup remains later.
+
+| Order | Work                        | Confirmed state                                                                            | Next implementation or acceptance                                                     |
+| ----- | --------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| 1     | Docs quote/footnote/privacy | PR213/215 merged; repaired full3460/0/1 and3498/0/1                                        | Inspect rerun CI; actual editor/import/export acceptance                              |
+| 2     | Structured Docs D1          | Experimental parser/source/HTML candidate;94+11 tests pass                                 | Stored/API compatibility, privacy adapters, CRDT and both editors; PDF/Word matrices  |
+| 3     | Whole-app U1                | Responsive Views/Review, native wrapping and earlier settings/assistant checkpoints merged | Every page, narrow/collapsed/panel/large-text states and actual visual/native review  |
+| 4     | Providers/agents C1-C6/M1   | Routing/catalog/plugin/separate runtimes/reflection/channels checkpoints merged            | Governing budget/collaboration/publication audit; real account/tenant/host acceptance |
+| 5     | Production and cleanup      | Main checkpoints pushed; user files/worktrees preserved                                    | User deployment confirmation; final relevant integration and cleanup audit            |
+
+## Main checkpoint notes retained during integration
+
+## Updated main handoff retained during integration
+
 ## Current combined Docs checkpoint — 6 October 2026
 
 | Work                           | Verified state                                                            | Next gate                                                             |

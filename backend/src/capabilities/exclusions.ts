@@ -30,7 +30,7 @@ export const EXCLUSION_REASONS = {
   internal: "Service-to-service routes, never for people or agents.",
   caldav: "CalDAV for calendar apps, signed in with a personal API key.",
   editor_sync:
-    "Binary document synchronization is editor transport; connected agents use typed page capabilities instead.",
+    "Binary synchronization and capability-negotiated document editor transport are interactive client protocols; connected agents use typed page capabilities instead.",
   stream: "Long-lived event streams (subscriptions/listen arrives in phase 6).",
   mcp: "The MCP address itself.",
   device:
@@ -381,6 +381,8 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "GET /docs/:id/content": "editor_sync",
+  "PUT /docs/:id/content": "editor_sync",
   "GET /agent-channels/slack": "credentials",
   "GET /agent-channels/teams": "credentials",
   "PUT /agent-channels/teams/permission": "credentials",

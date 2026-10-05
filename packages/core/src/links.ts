@@ -389,6 +389,50 @@ export const blocksWithWebLinks = (
       : b,
   );
 
+/** Export safe labels without retaining private destination IDs or definition names. */
+export function blocksWithExportLinks(
+  blocks: DocBlock[],
+  origin: string,
+  hidden: (ref: ObjectRef) => boolean,
+): DocBlock[] {
+  const visible = redactDocumentReferences(blocks, hidden);
+  const references = docReferenceLinks(visible);
+  const publicBlocks = visible.map((block) => {
+    if (
+      block.type === "code" ||
+      block.type === "math" ||
+      block.type === "divider"
+    )
+      return block;
+    const definition = docReferenceDefinition(block.text);
+    const destination = definition && refFromUrl(definition.href);
+    if (destination && destination.kind !== "date" && hidden(destination))
+      return { ...block, text: "" };
+    let at = 0;
+    const parts: string[] = [];
+    for (const span of docReferenceSpans(block.text, references)) {
+      const ref = refFromUrl(span.href);
+      if (!ref || ref.kind === "date" || !hidden(ref)) continue;
+      parts.push(
+        block.text.slice(at, span.start),
+        PRIVATE_LINK_LABELS[ref.kind],
+      );
+      at = span.end;
+    }
+    const text = at ? parts.join("") + block.text.slice(at) : block.text;
+    return {
+      ...block,
+      text: replaceObjectLinks(text, (whole, label, href) => {
+        const ref = refFromUrl(href);
+        return ref && ref.kind !== "date" && hidden(ref)
+          ? PRIVATE_LINK_LABELS[ref.kind]
+          : whole;
+      }),
+    };
+  });
+  return blocksWithWebLinks(publicBlocks, origin);
+}
+
 // --------------------------------------------------------------- privacy ---
 
 /**
