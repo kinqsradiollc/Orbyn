@@ -4,10 +4,10 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 6 October 2026
 
-Main application checkpoint is `49a5d844` (PR208), following PR205–207 and
+Main application checkpoint is `14415dcb` (PR209), following PR205–208 and
 Slack PR204. Deployment remains user-run and unverified. Main and exact
-Docs candidate `4c9edf00` have identical file tree
-`b7e56186bf9d5e478800def4b143b808f3da7ccb`.
+link candidate `4c3dffb4` have identical application source; main additionally
+contains the documentation checkpoint `fd055b70`.
 
 | Area                 | Implemented on main                                                                                                                                                                                                                                                                                                  | Remaining acceptance or implementation                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -38,8 +38,8 @@ Approvals remain in Orbyn. Cold pool-one sweep/reply coverage also passes.
 
 Next: D1 and U1 matrices and the remaining governing agent/provider acceptance
 audit. PR208 is merged: exact `4c9edf00`, all four CI37346372738 jobs passed and
-fresh local full suite3383/0/1. Balanced-link PR209 exact `4c3dffb4` is
-under qualification. Paragraph/break behavior, full Markdown matrices and
+fresh local full suite3383/0/1. Balanced-link PR209 exact `4c3dffb4` is merged after
+all four CI37348529721 jobs passed and fresh local full suite3403/0/1, terminal0. Paragraph/break behavior, full Markdown matrices and
 visual/native acceptance remain open; see the [paragraph audit](../reviews/docs-paragraph-break-audit.md).
 Full C1–C6/M1/D1/U1 remains active and incomplete. See the
 [implementation pipeline](../reviews/task.md#authoritative-implementation-pipeline--6-october-2026)

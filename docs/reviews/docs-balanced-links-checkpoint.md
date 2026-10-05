@@ -1,6 +1,11 @@
 # D1 balanced links checkpoint — 6 October 2026
 
-Status: local implementation after the emphasis/editing candidate; unmerged.
+Status: merged as PR209, main `14415dcb`; exact candidate `4c3dffb4`.
+All four CI37348529721 jobs passed; fresh local full suite3403 passes, zero
+failures and one existing skip, terminal exit0 in 718822ms. Main application
+source matches the tested candidate; the intervening change is documentation.
+Logs: `/tmp/orbyn-channel-docs-links-4c3dffb4-full.log` and
+`/tmp/orbyn-docs-links-4c3dffb4-ci.log`.
 
 ## Behavior
 
@@ -39,7 +44,7 @@ Code-format callbacks inside those opaque ranges are not emitted.
   10,000 malformed openers, 5,000 rejected links and 30,000 nested brackets.
 - Existing emphasis corpus and nested editing tests remain unchanged and passing.
 
-Full source qualification and browser/native interaction acceptance remain open.
+Full source qualification passed. Browser/native interaction acceptance remains open.
 Remaining link/image work includes reference-definition titles, supported inline
 image presentation and the full original D1 import/export matrix. Paragraph/break
 behavior and whole-app U1 are separate outstanding requirements.
