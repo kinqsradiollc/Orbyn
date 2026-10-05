@@ -1,3 +1,4 @@
+import { useElementWidth } from "../../hooks/useElementWidth";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays,
@@ -126,6 +127,7 @@ export function ViewsView({
   onSetStatus,
   onChangeItem,
 }: Props) {
+  const { ref: pageRef, width: pageWidth } = useElementWidth();
   const planning = usePlanning();
   const toast = useToast();
   const { ask } = useConfirm();
@@ -560,7 +562,14 @@ export function ViewsView({
   );
 
   return (
-    <div className="views-screen">
+    <div
+      ref={pageRef}
+      className={
+        "views-screen" +
+        (pageWidth < 900 ? " is-compact" : "") +
+        (pageWidth < 640 ? " is-small" : "")
+      }
+    >
       <aside className="views-rail card" aria-label="Your views">
         <button className="primary views-new" onClick={() => setCreating(true)}>
           <Plus size={15} aria-hidden="true" /> New view

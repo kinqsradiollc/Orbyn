@@ -253,7 +253,9 @@ export function ReviewSheet({
                         }}
                       />
                     )}
-                    <Text style={[s.changeTitle, s.flex]}>{c.headline}</Text>
+                    <Text style={[s.changeTitle, s.changeText]}>
+                      {c.headline}
+                    </Text>
                     <Pill label={c.space} />
                   </View>
                   {c.rows.map((r, i) => (
@@ -285,7 +287,7 @@ export function ReviewSheet({
                   secondary
                   disabled={busy}
                   onPress={() => decline(open)}
-                  style={s.flex}
+                  style={s.actionButton}
                 />
                 <Button
                   title={
@@ -296,7 +298,7 @@ export function ReviewSheet({
                   icon="check"
                   disabled={busy || chosen.size === 0 || chosenStale}
                   onPress={() => void approve(open)}
-                  style={s.flex}
+                  style={s.actionButton}
                 />
               </View>
             )}
@@ -316,7 +318,7 @@ export function ReviewSheet({
 
 const s = themed(() =>
   StyleSheet.create({
-    flex: { flex: 1 },
+    flex: { flex: 1, minWidth: 0 },
     list: { gap: 8 },
     heading: { marginTop: 20 },
     center: { textAlign: "center" },
@@ -359,7 +361,13 @@ const s = themed(() =>
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
     },
-    changeHead: { flexDirection: "row", gap: 8, alignItems: "center" },
+    changeHead: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      alignItems: "center",
+    },
+    changeText: { flexGrow: 1, flexBasis: 140, minWidth: 0 },
     changeTitle: {
       fontFamily: fonts.semibold,
       fontSize: 13,
@@ -387,7 +395,8 @@ const s = themed(() =>
       borderRadius: radii.input,
       padding: 8,
     },
-    actions: { flexDirection: "row", gap: 10, marginTop: 16 },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 16 },
+    actionButton: { flexGrow: 1, flexBasis: 140, minWidth: 0 },
     done: {
       fontFamily: fonts.medium,
       fontSize: 13,
