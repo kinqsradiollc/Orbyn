@@ -416,3 +416,12 @@ is required; no claim of all tests passing or full/CI qualification is made yet.
 - Full suite/CI for the combined checkpoint remains pending; canonical d922's
   3064pass result belongs to that earlier immutable source only. No production or
   real workspace/native/visual acceptance is claimed.
+
+## Immutable signed-reply full qualification — 6 October 2026
+
+Committed/pushed3d163bcd finished `/tmp/orbyn-channel-3d163bcd-full.log`:
+3089pass/0fail/1existing Tesseract skip,3090total,719714ms. Terminal session90571
+exit0. Its worktree stayed tracked-clean throughout the run; Teams implementation
+was in another worktree. This documentation-only evidence update changes no
+qualified application, migration or test source. Combined CI and real Slack /
+client-native-visual acceptance still remain; no main promotion is claimed yet.
