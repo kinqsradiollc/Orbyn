@@ -1,3 +1,14 @@
+# Current integration — 5 October 2026
+
+Main62f5e9a0 is integrated into the scheduled Agenda candidate. The only merge
+conflicts were historical ADR/handoff notes; both sets are retained below.
+No application source conflicted. CI37286333130 previously failed three cases:
+legacy internal catalog shape and two cross-runtime fixed-clock fixtures.
+Those repairs retain the original assertions, capacities and lease duration.
+Backend typecheck passes. Exact merged-head qualification remains required.
+Plugin provider candidatePR203 is separate; its own new broker/controls await CI.
+Full ADR remains active; preserve native/visual and real-provider acceptance gaps.
+
 # Agenda CI repair and main integration — 5 October 2026
 
 Main `198e93e4` integrated into the Agenda candidate. Documentation overlaps
@@ -28,6 +39,42 @@ Four focused client/schema tests and all workspace typechecks pass. Added HTTP
 opt-in and malformed query regressions remain to be run in full CI; local test
 PostgreSQL is unavailable and unchanged. Main03c605e2 was integrated without
 conflicts. This is a draft candidate, not scheduled feature delivery.
+
+## Current main and active candidates — 5 October 2026
+
+Main2f4108d7 includes Docs source-dialog focus PR202 (exact7f60b352,
+CI37285248757 all four jobs passed; 2,862 backend pass, zero fail, one existing
+Tesseract skip) and separate plugin launch PR201 (exacte7d629b0,
+CI37285386062 all four jobs passed; 2,868 backend pass, zero fail, one existing
+skip). User deploys main manually. Live browser/native visual acceptance and
+external plugin host launch remain open; these CI results do not prove them.
+
+Scheduled Agenda candidate50a92aa2 is in CI37286333130 after repairing the two
+capability compatibility failures. Mail, Docker and mobile passed; backend
+suite is still live. Do not promote before inspecting the terminal result.
+
+Plugin managed-provider branch07214863 has a transport boundary, owner/provider-
+bound default-off CAS consent, persistent receipt tables, retention and privacy
+text. Four consent/schema/client tests plus ten transport/operation tests pass;
+all workspace typechecks pass. Migration/HTTP tests are added but not run locally
+because test PostgreSQL remains unavailable and user-controlled. Atomic daily
+reservation, deduplication/unknown-outcome recovery worker, private status/results,
+both client permission controls and runtime qualification remain unfinished. No
+inference endpoint is mounted and this feature is not merged to main.
+
+Full C1-C6/M1/D1/U1 remains active. Preserve all user/character files and unmerged
+work; no cleanup or production deployment. Next: qualify current candidates and
+complete the plugin broker and client controls, then continue retained whole-app
+UI/Docs/provider acceptance.
+
+## Docs source dialog focus checkpoint
+
+Source validation no longer closes and reopens the desktop/web source preview
+dialog. Escape reads current validation state, so invalid edits still block
+dismissal; cleanup restores focus only when the dialog unmounts. The captured
+dialog is closed even if React has already cleared its ref. Cross-client source
+and preview checks31/31 and desktop typecheck passed. This is component/source
+evidence, not visual acceptance; full D1/U1 and native/runtime checks remain open.
 
 ## Automatic desktop request watcher checkpoint
 

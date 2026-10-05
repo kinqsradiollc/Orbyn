@@ -62,6 +62,92 @@ after(async () => {
   await pool.end();
 });
 const headers = { authorization: `Bearer ${token}` };
+test("plugin launch retains authentication, validation, scope and rate-limit boundaries", async () => {
+  const service = await buildPluginService();
+  const previousLimit = (
+    await pool.query(
+      "SELECT value FROM system_settings WHERE key='rate_limit_per_minute'",
+    )
+  ).rows[0]?.value;
+  const launch = (payload: unknown, authenticated = true, suffix = "") =>
+    service.inject({
+      method: "POST",
+      url: `/plugin/launch${suffix}`,
+      remoteAddress: "10.85.8.1",
+      ...(authenticated ? { headers } : {}),
+      payload,
+    });
+  try {
+    await pool.query(
+      "DELETE FROM system_settings WHERE key='rate_limit_per_minute'",
+    );
+    invalidateSettings();
+    assert.equal((await launch({ version: 1 }, false)).statusCode, 401);
+    assert.equal(
+      (
+        await disabled.inject({
+          method: "POST",
+          url: "/plugin/launch",
+          headers,
+          payload: { version: 1 },
+        })
+      ).statusCode,
+      404,
+    );
+    for (const payload of [
+      { version: 2 },
+      { version: 1, user_id: randomUUID() },
+      { version: 1, presentation: { access_token: "untrusted" } },
+    ])
+      assert.equal((await launch(payload)).statusCode, 400);
+    assert.equal(
+      (await launch({ version: 1 }, true, "?user_id=other")).statusCode,
+      400,
+    );
+    assert.equal(
+      (await launch({ version: 1, resource_uri: "file:///etc/passwd" }))
+        .statusCode,
+      403,
+    );
+    const result = await launch({
+      version: 1,
+      presentation: { theme: "dark", locale: "en-AU" },
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(result.headers["cache-control"], "no-store");
+    assert.equal(result.json().connection.user_id, userId);
+    assert.equal(result.json().connection.client_id, clientId);
+    assert.equal("access_token" in result.json(), false);
+    await pool.query("UPDATE users SET disabled=true WHERE id=$1", [userId]);
+    assert.equal((await launch({ version: 1 })).statusCode, 403);
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [userId]);
+    await pool.query(
+      "INSERT INTO system_settings(key,value) VALUES ('rate_limit_per_minute','3'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+    );
+    invalidateSettings();
+    const replies = [];
+    for (let n = 0; n < 4; n++) replies.push(await launch({ version: 1 }));
+    assert.ok(
+      replies.some(
+        (response) =>
+          response.statusCode === 429 && response.headers["retry-after"],
+      ),
+    );
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [userId]);
+    if (previousLimit === undefined)
+      await pool.query(
+        "DELETE FROM system_settings WHERE key='rate_limit_per_minute'",
+      );
+    else
+      await pool.query(
+        "INSERT INTO system_settings(key,value) VALUES ('rate_limit_per_minute',$1::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [JSON.stringify(previousLimit)],
+      );
+    invalidateSettings();
+    await service.close();
+  }
+});
 test("plugin discovery is public, configured and isolated from MCP", async () => {
   const path = "/.well-known/oauth-protected-resource/api";
   const response = await app.inject({
