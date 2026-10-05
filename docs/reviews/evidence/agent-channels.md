@@ -425,3 +425,19 @@ exit0. Its worktree stayed tracked-clean throughout the run; Teams implementatio
 was in another worktree. This documentation-only evidence update changes no
 qualified application, migration or test source. Combined CI and real Slack /
 client-native-visual acceptance still remain; no main promotion is claimed yet.
+
+## Teams identity CI recovery fixture repair — 6 October 2026
+
+Identity head087bb584 passed its immutable local full run:3130 passes, zero
+failures and one existing Tesseract skip (3131 total), recorded in
+`/tmp/orbyn-channel-teams-identity-087bb584-full.log`. CI37328563056 failed
+only `stale running jobs and week-old cards fail and free their automations`: the
+separate Background runner swept the synthetic stale job before the explicit
+sweep could return its ID. The runner invokes recovery every second.
+
+The test now stops that separate runner before creating recovery fixtures and
+restarts it in the test cleanup hook. Assertions, recovery behavior, leases and
+deadlines are unchanged. The complete assistant-runs cohort passes41/41 in
+`/tmp/orbyn-channel-teams-ci-recovery-focused.log`. Updated full/CI qualification
+is still required. The original CI failure is retained in
+`/tmp/orbyn-channel-teams-ci-job.log`; other three CI jobs passed.
