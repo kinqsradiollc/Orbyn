@@ -48,7 +48,7 @@ export class DocContainerError extends Error {}
 
 type SourceLine = { text: string; line: number };
 type Span = { start: number; end: number };
-export type DocContainerParseOptions = {
+export type DocContainerParseOptions = DocContentValidationOptions & {
   anchors?: boolean;
   onSourceRange?: (path: number[], start: number, end: number) => void;
 };
@@ -121,7 +121,10 @@ export function parseDocContainers(
   markdown: string,
   options: DocContainerParseOptions = {},
 ): DocContainerNode[] {
-  if (markdown.length > DOC_CONTAINER_LIMITS.source)
+  if (
+    markdown.length >
+    (options.projected ? DOC_PROJECTED_TOTAL_MAX : DOC_CONTAINER_LIMITS.source)
+  )
     throw new DocContainerError("Document source is too large.");
   let count = 0;
   const spans = new WeakMap<DocContainerNode, Span>();
@@ -373,7 +376,7 @@ export function parseDocContainers(
       .map((text, index) => ({ text, line: index + 1 })),
     0,
   );
-  validateDocContainers(nodes);
+  validateDocContainers(nodes, options);
   if (options.onSourceRange)
     visitDocContainers(nodes, (node, path) => {
       const span = spans.get(node)!;

@@ -36,6 +36,8 @@ import { colors, fonts, radii, themed } from "../../theme";
  */
 export function DocBody({
   content,
+  pageContent,
+  pageIndex,
   tasks,
   onToggleTodo,
   editing = null,
@@ -63,6 +65,9 @@ export function DocBody({
   onEditTable,
 }: {
   content: DocBlock[];
+  /** Full structured page context when this body renders one owned child. */
+  pageContent?: DocBlock[];
+  pageIndex?: number;
   /** The checklist lines tied to a task, by id; only these say "task". */
   tasks?: ReadonlySet<string>;
   /** Stretches of each line carrying a remark, to tint the words they name. */
@@ -260,11 +265,14 @@ export function DocBody({
     );
 
   // Numbers count through each list, and nested items step in.
-  const layout = listLayout(content);
+  const layout =
+    pageContent && pageIndex !== undefined
+      ? [listLayout(pageContent)[pageIndex]]
+      : listLayout(content);
   const hidden = folds?.size
     ? foldedLines(content, folds)
     : content.map(() => false);
-  const notes = footnoteNumbers(content);
+  const notes = footnoteNumbers(pageContent ?? content);
   const inset = (index: number) =>
     layout[index].depth ? { marginLeft: layout[index].depth * NEST } : null;
 

@@ -210,24 +210,32 @@ function canonical(value: unknown): string {
 export function parseVersionedDocSource(
   source: string,
   format: DocContentFormat,
+  options: DocContentValidationOptions = {},
 ): VersionedDocContent {
   requireDocContentCapability(format, [1, 2]);
   return parseVersionedDocContent(
     format === 1
       ? { format: 1, blocks: parseDoc(source, { anchors: true }) }
-      : { format: 2, nodes: parseDocContainers(source, { anchors: true }) },
+      : {
+          format: 2,
+          nodes: parseDocContainers(source, { ...options, anchors: true }),
+        },
+    options,
   );
 }
 
 /** Refuse source switching when Markdown cannot preserve the exact stored structure and metadata. */
-export function versionedDocSource(value: unknown): string {
-  const content = parseVersionedDocContent(value);
+export function versionedDocSource(
+  value: unknown,
+  options: DocContentValidationOptions = {},
+): string {
+  const content = parseVersionedDocContent(value, options);
   const source =
     content.format === 1
       ? serializeDoc(content.blocks, { anchors: true })
-      : serializeDocContainers(content.nodes, { anchors: true });
+      : serializeDocContainers(content.nodes, { ...options, anchors: true });
   if (
-    canonical(parseVersionedDocSource(source, content.format)) !==
+    canonical(parseVersionedDocSource(source, content.format, options)) !==
     canonical(content)
   )
     throw new DocContentFormatError(
@@ -261,3 +269,11 @@ export const versionedDocRead = z
   })
   .strict();
 export type VersionedDocRead = z.infer<typeof versionedDocRead>;
+
+/** Exact normalized ownership/metadata identity for editor revision fences. */
+export function versionedDocContentKey(
+  value: unknown,
+  options: DocContentValidationOptions = {},
+): string {
+  return canonical(parseVersionedDocContent(value, options));
+}

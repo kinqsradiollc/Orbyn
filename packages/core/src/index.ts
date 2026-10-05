@@ -133,3 +133,5 @@ export * from "./ai-feature.js";
 
 export * from "./plugin-ai.js";
 export * from "./agenda-permission.js";
+
+export * from "./doc-versioned-source.js";

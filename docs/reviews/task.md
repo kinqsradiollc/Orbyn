@@ -1,3 +1,26 @@
+## Paired structured editor contract candidate — 6 October 2026
+
+A separate codex/docs-structured-editor-contract checkout continues from frozen
+PR2165511d215 without mutating its full-run source. The shared source map retains
+container paths, leaf indexes/IDs and exact CRLF offsets. Mismatched source/preview
+ownership or metadata is refused, and source application fences a later document
+reconciliation. Privacy-expanded source uses separately bounded projected parsing;
+stored validation remains strict. Single-leaf visual edits preserve every parent/
+item and reject missing, ambiguous or replaced identities.
+
+75 pure source/format/container/editor cases pass. New web/desktop and native
+container renderers reuse existing block widgets and complete-page references/
+footnotes, retain legacy leaf numbering, show nested quote/list ownership and allow
+callout folding. They are not wired into normal page loading, selection, saves or
+CRDT yet. Existing legacy editors remain intact. Component compilation/source
+contracts do not establish visual, native, overlap or runtime acceptance.
+
+Next: connect the paired renderers and full-format source contract to revision-aware
+loading/editing, task-item identity/status and collaboration; preserve comments,
+selection and every existing block widget. PR216 full DB53 session98110 and
+CI37376039791 remain independent; no second DB suite while the full run is live.
+All C1-C6/M1/D1/U1 and manual visual/runtime/import acceptance stay required.
+
 ## Combined structured Docs qualification — 6 October 2026
 
 | Requirement                                 | Current evidence                                                                         | Remaining gate                                |
