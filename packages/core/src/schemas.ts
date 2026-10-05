@@ -2,7 +2,12 @@ import { z } from "zod";
 import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
 import { AI_PROVIDER_KINDS } from "./aiProviders.js";
 import { isTimeZone, isValidRrule } from "./time.js";
-import { CALLOUT_KINDS, DOC_KINDS, DOC_PARAGRAPH_MAX } from "./docs.js";
+import {
+  CALLOUT_KINDS,
+  DOC_KINDS,
+  DOC_PARAGRAPH_MAX,
+  DOC_FOOTNOTE_MAX,
+} from "./docs.js";
 import { aliasesInput } from "./links.js";
 import { lookIconInput } from "./covers.js";
 import { PROJECT_STATUSES } from "./projects.js";
@@ -374,7 +379,7 @@ const docBlock = z.discriminatedUnion("type", [
     ...named,
     type: z.literal("footnote"),
     label: z.string().regex(/^[\w-]{1,24}$/),
-    text: z.string().max(4000),
+    text: z.string().max(DOC_FOOTNOTE_MAX),
   }),
 ]);
 

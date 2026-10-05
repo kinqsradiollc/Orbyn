@@ -83,6 +83,9 @@ export const MAX_DEPTH = 3;
 /** Existing stored paragraph limit; continuation grouping cannot create an unsavable block. */
 export const DOC_PARAGRAPH_MAX = 10000;
 
+/** Existing footnote text limit; continuation parsing must remain savable. */
+export const DOC_FOOTNOTE_MAX = 4000;
+
 /** Markdown heading depth, independent of list nesting. */
 export type DocHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -1345,7 +1348,8 @@ const WRITABLE_ID = new RegExp(`^${ANCHOR_ID}$`);
 
 /** Kinds whose anchor goes on a line of its own, under them. */
 const ownLineAnchor = (b: DocBlock) =>
-  (b.type === "paragraph" && b.text.includes("\n")) ||
+  ((b.type === "paragraph" || b.type === "footnote") &&
+    b.text.includes("\n")) ||
   b.type === "code" ||
   b.type === "math" ||
   b.type === "table" ||
@@ -1757,10 +1761,19 @@ export function parseDoc(
     }
 
     // A footnote's words: `[^1]: words`.
-    const note = /^\[\^([\w-]{1,24})\]:\s*(.*)$/.exec(line.trim());
+    const note = /^\[\^([\w-]{1,24})\]:[ \t]*(.*)$/.exec(line.trimStart());
     if (note) {
-      push({ type: "footnote", label: note[1], text: note[2].trim() });
+      const body = [
+        note[2].trim() + (/ {2,}$/.test(note[2]) && note[2].trim() ? "  " : ""),
+      ];
       i++;
+      while (i < lines.length && /^(?: {4}|\t)/.test(lines[i])) {
+        const more = lines[i].replace(/^(?: {4}|\t)/, "");
+        if (body.join("\n").length + more.length + 1 > DOC_FOOTNOTE_MAX) break;
+        body.push(more);
+        i++;
+      }
+      push({ type: "footnote", label: note[1], text: body.join("\n") });
       continue;
     }
 
@@ -1929,7 +1942,16 @@ function blockMarkdown(
     case "file":
       return `[${fileLabel(b.text) || "File"}](${fileHref(b.file)})`;
     case "footnote":
-      return `[^${b.label}]: ${b.text}`;
+      return b.text
+        .split("\n")
+        .map((line, index) => {
+          const words =
+            anchors && b.text.includes("\n") && index === 0
+              ? line.replace(ANCHOR_LIKE, "$1\\$2")
+              : line;
+          return index ? `    ${words}` : `[^${b.label}]: ${words}`;
+        })
+        .join("\n");
   }
 }
 

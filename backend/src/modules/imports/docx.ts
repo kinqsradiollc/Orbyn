@@ -1,6 +1,8 @@
 import { inflateRawSync } from "node:zlib";
 import {
   isDocLinkSafe,
+  serializeBlock,
+  DOC_FOOTNOTE_MAX,
   ommlXmlToLatex,
   rowsToTable,
   type DocHeadingLevel,
@@ -186,6 +188,45 @@ function readNumbering(xml: string): Map<string, boolean> {
   return bullet;
 }
 
+/** Word footnotes match references by their signed 32-bit ID; separators use type, not ID. */
+function footnoteLabel(raw: string | undefined): string | undefined {
+  if (!raw || raw.length > 24 || !/^[+-]?\d+$/.test(raw)) return undefined;
+  const id = Number(raw);
+  return Number.isInteger(id) && id >= -2147483648 && id <= 2147483647
+    ? `word-${id}`
+    : undefined;
+}
+
+/** Resolve only the document's own archive part; never open a remote or filesystem target. */
+function footnotePart(relationships: string): string | undefined {
+  const targets: string[] = [];
+  for (const match of relationships.matchAll(/<Relationship\b([^>]*?)\/?>/g)) {
+    const attrs = match[1];
+    if (
+      xmlAttr(attrs, "Type") !==
+      "http://schemas.openxmlformats.org/officeDocument/2006/relationships/footnotes"
+    )
+      continue;
+    const target = xmlAttr(attrs, "Target");
+    if (
+      !target ||
+      (xmlAttr(attrs, "TargetMode") ?? "Internal") !== "Internal" ||
+      !/^[A-Za-z0-9_./ -]+$/.test(target)
+    )
+      throw new NotAWordFile("Invalid Word footnote part.");
+    const url = new URL(target, "https://word.invalid/word/document.xml");
+    if (url.origin !== "https://word.invalid")
+      throw new NotAWordFile("Invalid Word footnote part.");
+    const path = decodeURIComponent(url.pathname);
+    if (!path.startsWith("/word/") || path.includes("//"))
+      throw new NotAWordFile("Invalid Word footnote part.");
+    targets.push(path.slice(1));
+  }
+  if (targets.length > 1)
+    throw new NotAWordFile("Ambiguous Word footnote part.");
+  return targets[0];
+}
+
 /** A paragraph's text as Markdown, with bold, italic and equations. */
 function runsText(
   p: string,
@@ -220,18 +261,25 @@ function runsText(
     const rPr = /<w:rPr>([\s\S]*?)<\/w:rPr>/.exec(run)?.[1] ?? "";
     let text = "";
     for (const piece of run.matchAll(
-      /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:t\/>|<w:(tab|br|cr)\b[^>]*\/>/g,
-    ))
-      text +=
-        piece[1] !== undefined
-          ? insideLink
-            ? decode(piece[1]).replace(/([\\`*_\[\]{}<>$~!|])/g, "\\$1")
-            : decode(piece[1])
-          : piece[2] === "tab"
-            ? " "
-            : piece[2]
-              ? "\\\n"
-              : "";
+      /<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<w:t\/>|<w:(tab|br|cr)\b[^>]*\/>|<w:footnoteReference\b([^>]*)\/>/g,
+    )) {
+      if (piece[3] !== undefined) {
+        const label = footnoteLabel(xmlAttr(piece[3], "w:id"));
+        if (!label) throw new NotAWordFile("Invalid Word footnote reference.");
+        text += `[^${label}]`;
+      } else {
+        text +=
+          piece[1] !== undefined
+            ? insideLink
+              ? decode(piece[1]).replace(/([\\`*_\[\]{}<>$~!|])/g, "\\$1")
+              : decode(piece[1])
+            : piece[2] === "tab"
+              ? " "
+              : piece[2]
+                ? "\\\n"
+                : "";
+      }
+    }
     if (!text) continue;
     const bold = on(rPr, "b");
     const italic = on(rPr, "i");
@@ -278,9 +326,10 @@ export function docxToMarkdown(buf: Buffer): {
   const document = zip.get("word/document.xml");
   if (!document) throw new NotAWordFile("No word/document.xml");
   const xml = document().toString("utf8");
-  const links = readHyperlinks(
-    zip.get("word/_rels/document.xml.rels")?.().toString("utf8") ?? "",
-  );
+  const relationships =
+    zip.get("word/_rels/document.xml.rels")?.().toString("utf8") ?? "";
+  const links = readHyperlinks(relationships);
+  const notePath = footnotePart(relationships);
   const styles = readStyles(
     zip.get("word/styles.xml")?.().toString("utf8") ?? "",
   );
@@ -365,6 +414,43 @@ export function docxToMarkdown(buf: Buffer): {
     } else lines.push(text, "");
   }
   flushCode();
+  if (notePath) {
+    const entry = zip.get(notePath);
+    if (!entry) throw new NotAWordFile("Missing Word footnote part.");
+    const directory = notePath.slice(0, notePath.lastIndexOf("/") + 1);
+    const filename = notePath.slice(notePath.lastIndexOf("/") + 1);
+    const noteLinks = readHyperlinks(
+      zip.get(`${directory}_rels/${filename}.rels`)?.().toString("utf8") ?? "",
+    );
+    const labels = new Set<string>();
+    for (const match of entry()
+      .toString("utf8")
+      .matchAll(/<w:footnote\b([^>]*?)(?:\/>|>([\s\S]*?)<\/w:footnote>)/g)) {
+      const kind = xmlAttr(match[1], "w:type") ?? "normal";
+      if (kind !== "normal") continue;
+      const label = footnoteLabel(xmlAttr(match[1], "w:id"));
+      if (!label || labels.has(label))
+        throw new NotAWordFile(
+          "Invalid or ambiguous Word footnote identifier.",
+        );
+      if (labels.size >= 2000)
+        throw new NotAWordFile(
+          "The Word document has too many footnotes to import.",
+        );
+      labels.add(label);
+      const paragraphs = [
+        ...(match[2] ?? "").matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/g),
+      ].map((p) => runsText(p[1], noteLinks));
+      const text = paragraphs
+        .map((p) => p.text || (p.figures ? "*Figure (not imported)*" : ""))
+        .join("\n");
+      if (text.length > DOC_FOOTNOTE_MAX)
+        throw new NotAWordFile("The Word footnote is too large to import.");
+      figures += paragraphs.reduce((count, p) => count + p.figures, 0);
+      equations += (text.match(/\$[^$]+\$/g) ?? []).length;
+      lines.push("", serializeBlock({ type: "footnote", label, text }), "");
+    }
+  }
   return {
     markdown: lines
       .join("\n")

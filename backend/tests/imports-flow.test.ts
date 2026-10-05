@@ -703,3 +703,59 @@ test("capabilities and Admin → Storage describe the server; files can be delet
   const sweep = await call(admin.token, "POST", "/admin/storage/sweep", {});
   assert.equal(sweep.status, 200);
 });
+
+test("Word footnotes survive upload, conversion, storage and source export without crossing ownership", async () => {
+  const me = await person();
+  const other = await person();
+  const { parseDoc, plainText } = await import("@orbyn/core");
+  const { docToDocx } = await import("../src/modules/docs/docx.js");
+  const source = parseDoc(
+    'Read[^source].\n\n[^source]: **Source** [guide](https://example.test/guide "Guide hint")  \n    next line',
+  );
+  const id = await upload(
+    me.token,
+    "notes.docx",
+    docToDocx("Notes", source),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  );
+  await convertPending();
+  const job = (await call(me.token, "GET", `/imports/${id}`)).body;
+  assert.equal(job.status, "ready", JSON.stringify(job));
+  const response = await call(me.token, "GET", `/docs/${job.doc_id}`);
+  assert.equal(response.status, 200);
+  const blocks = response.body.content;
+  assert.ok(
+    blocks.some((block: { text?: string }) =>
+      block.text?.includes("Read[^word-1]."),
+    ),
+  );
+  const note = blocks.find(
+    (block: { type: string }) => block.type === "footnote",
+  );
+  assert.equal(note.label, "word-1");
+  assert.equal(plainText(note.text), "Source guide\nnext line");
+  assert.match(note.text, /https:\/\/example.test\/guide/);
+  assert.match(note.text, /Guide hint/);
+  assert.equal(
+    (await call(other.token, "GET", `/docs/${job.doc_id}`)).status,
+    404,
+  );
+  assert.equal((await call(other.token, "GET", `/imports/${id}`)).status, 404);
+  const exported = await app.inject({
+    method: "GET",
+    url: `/docs/${job.doc_id}/export?format=md`,
+    remoteAddress: address(),
+    headers: { authorization: `Bearer ${me.token}` },
+  });
+  assert.equal(exported.statusCode, 200, exported.body);
+  const restored = parseDoc(exported.body);
+  assert.equal(
+    plainText(restored.find((block) => block.type === "footnote")!.text),
+    "Source guide\nnext line",
+  );
+  assert.equal(
+    (await pool.query("SELECT object_id FROM imports WHERE id=$1", [id]))
+      .rows[0].object_id,
+    null,
+  );
+});
