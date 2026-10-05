@@ -5,11 +5,17 @@ import type { Principal } from "../src/capabilities/policy.js";
 import type { ResolvedAi } from "../src/modules/ai/providers/adapters.js";
 import {
   assertPluginManagedProvider,
+  assertNewPluginOperation,
   callPluginManagedProvider,
   pluginInferenceInput,
   type PluginManagedPermission,
 } from "../src/modules/plugin/provider-policy.js";
 
+function operationId(time = Date.now()) {
+  const stamp = time.toString(16).padStart(12, "0");
+  const id = randomUUID();
+  return `${stamp.slice(0, 8)}-${stamp.slice(8)}-7${id.slice(15)}`;
+}
 function fixture() {
   const permission: PluginManagedPermission = {
     user_id: randomUUID(),
@@ -44,7 +50,7 @@ function fixture() {
     permission,
     principal,
     ai,
-    input: { operation_id: randomUUID(), prompt: "Untrusted host text" },
+    input: { operation_id: operationId(), prompt: "Untrusted host text" },
   };
 }
 
@@ -303,4 +309,24 @@ test("an aborted caller does not dispatch a provider call", async () => {
     ),
   );
   assert.equal(calls, 0);
+});
+
+test("retention cannot make an expired operation ID dispatchable again", () => {
+  const now = Date.now();
+  assertNewPluginOperation(operationId(now), now);
+  assert.throws(
+    () => assertNewPluginOperation(operationId(now - 86400001), now),
+    /expired/,
+  );
+  assert.throws(
+    () => assertNewPluginOperation(operationId(now + 60001), now),
+    /ahead/,
+  );
+  assert.equal(
+    pluginInferenceInput.safeParse({
+      operation_id: randomUUID(),
+      prompt: "text",
+    }).success,
+    false,
+  );
 });

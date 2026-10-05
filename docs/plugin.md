@@ -86,3 +86,20 @@ Nine isolated regressions and backend typecheck pass.
 This module is not mounted as an endpoint. Persisted owner consent, atomic daily
 reservation, durable operation deduplication/unknown outcomes, worker recovery,
 HTTP shields and both permission UIs remain required before enabling execution.
+
+#### Consent and durable storage — candidate
+
+Migration240 adds default-off provider-bound permissions and grant/operation-
+unique execution receipts. Owner-only review and CAS update endpoints pin the
+current workspace provider revision/model and invalidate queued work when consent
+changes. Disabled or changed providers make consent inactive. The API client
+validates both the input and sanitized response; plugin grants are identified
+separately in Connected agents metadata. No provider-call endpoint is mounted yet.
+
+New operation IDs must be UUIDv7 with a timestamp no more than one day old or one
+minute ahead. A broker must look up an existing receipt before checking the age of
+a new operation. Receipts expire after thirty days through the hourly sweeper;
+old IDs cannot become dispatchable again after cleanup. The worker, atomic daily
+allowance reservation, response reads, owner controls and runtime qualification
+remain unfinished. HTTP security/CAS/provider-change tests are added but have not
+run locally because test PostgreSQL remains unavailable and user-controlled.

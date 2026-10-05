@@ -383,6 +383,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "plugin_ai_runs",
+    label: "Plugin AI receipts",
+    detail:
+      "Private managed inference text and receipts expire after thirty days; expired UUIDv7 operations cannot be dispatched again.",
+    table: "plugin_ai_runs",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "plugin_import_jobs",
     label: "Plugin import jobs",
     detail:

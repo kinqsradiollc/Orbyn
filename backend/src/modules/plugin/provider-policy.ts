@@ -11,7 +11,9 @@ import {
 /** Host input carries text and a durable operation ID, never provider authority. */
 export const pluginInferenceInput = z
   .object({
-    operation_id: z.uuid(),
+    operation_id: z
+      .uuid()
+      .refine((id) => id[14] === "7", "Use a UUIDv7 operation ID."),
     prompt: z
       .string()
       .min(1)
@@ -19,6 +21,20 @@ export const pluginInferenceInput = z
       .refine((text) => text.trim().length > 0),
   })
   .strict();
+
+/** Reject expired operation IDs before creating a new receipt, even after retention cleanup. */
+export function assertNewPluginOperation(id: string, now = Date.now()) {
+  const parsed = pluginInferenceInput.shape.operation_id.parse(id);
+  const timestamp = Number.parseInt(
+    parsed.slice(0, 8) + parsed.slice(9, 13),
+    16,
+  );
+  if (timestamp > now + 60000 || timestamp < now - 86400000)
+    throw new CapabilityError(
+      "INVALID",
+      "This operation ID expired or is ahead of the server clock. Start a new operation.",
+    );
+}
 
 /** Captured server-owned permission. Never accept this record from a plugin host. */
 export const pluginManagedPermission = z
@@ -87,6 +103,7 @@ export async function callPluginManagedProvider(
   options: { signal?: AbortSignal; send?: typeof complete } = {},
 ) {
   const request = pluginInferenceInput.parse(input);
+  assertNewPluginOperation(request.operation_id);
   const captured = Object.freeze(pluginManagedPermission.parse(permission));
   assertPluginManagedProvider(principal, captured, ai);
   const provider = { ...ai, options: { ...ai.options } };
