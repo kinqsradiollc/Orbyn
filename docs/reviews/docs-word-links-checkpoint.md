@@ -68,3 +68,19 @@ final combined source after the serial layout suite. Word UI/native appearance, 
 bookmark round trips, footnote import, complete math/code/image/container matrices
 and all D1/U1/agent/provider gates remain open. This is not full Markdown or Word
 parity. User deploys manually; preserve character/user files and final cleanup.
+
+## Combined main qualification follow-up
+
+Actual PR212 main is integrated at500ace6c without conflicts. The current combined
+focused DB35 cohort passed65/65; all workspace types, owned packages/backend/web
+builds and formatting passed. Full DB36 ended3453 passes/7 failures/1 existing skip
+in737937ms, terminal1. All seven failures were in the actual-route VM harness:
+the new linkPrivacy dependency was not injected, so its ReferenceError prevented
+existing primary/revision checks from executing. The updated mock records the same
+primary database dependency and retains all original assertions. Its export-primary,
+Word and inline-privacy cohort now passes50/50 (1193ms); application source is
+unchanged. Log: /tmp/orbyn-doc-word-primary-fixture.log.
+
+The failed full log /tmp/orbyn-channel-doc-word-main-full.log is retained. Qualify
+the repaired immutable head in a fresh serial database before promotion; do not
+present the failed run or pending CI as a complete passing result.
