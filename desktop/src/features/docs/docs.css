@@ -4202,3 +4202,9 @@ input.doc-image-caption:focus {
   max-height: 60dvh;
   overflow: auto;
 }
+
+.doc-chat-provider {
+  display: block;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
+}

@@ -48,7 +48,13 @@ async function providerLive(
 /** Current job authority is mandatory before exposing any conversation or accepting output. */
 async function jobLive(db: Db, owner: string, id: string) {
   const job = await db.query(
-    `SELECT j.id FROM ai_jobs j JOIN users u ON u.id=j.user_id WHERE j.id=$2 AND j.user_id=$1 AND NOT u.disabled AND j.state='running' AND j.lease_until>clock_timestamp() AND ${assistantJobSourcesVisible("j", "$1", false)} FOR SHARE OF j`,
+    `SELECT j.id FROM ai_jobs j JOIN users u ON u.id=j.user_id WHERE j.id=$2 AND j.user_id=$1 AND NOT u.disabled AND j.state='running' AND j.lease_until>clock_timestamp() AND ${assistantJobSourcesVisible("j", "$1", false)}
+      AND (coalesce(j.run_state->>'version','')<>'2' OR (
+        jsonb_typeof(j.run_state->'sources')='array'
+        AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(j.run_state->'sources') feature_source
+          LEFT JOIN docs feature_doc ON feature_doc.id::text=feature_source->>'id'
+          WHERE feature_doc.version::text IS DISTINCT FROM feature_source->>'version')
+      )) FOR SHARE OF j`,
     [owner, id],
   );
   if (!job.rowCount) fail(409, "The assistant job or its sources changed.");

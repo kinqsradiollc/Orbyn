@@ -7,6 +7,7 @@ import {
   fail,
   HttpError,
   keepLinkLabels,
+  type AiFeatureProvider,
   type DocAnswer,
   type DocBlock,
 } from "@orbyn/core";
@@ -104,6 +105,7 @@ Reply with the replacement passage and NOTHING else: no preamble, no
 quotation marks around it, no explanation, no Markdown fences. Keep the
 author's voice and any Markdown formatting the passage already uses. If the
 passage should be removed entirely, reply with an empty line.`;
+    let provider: AiFeatureProvider | undefined;
     let answer: string;
     try {
       answer = clean(
@@ -118,7 +120,12 @@ passage should be removed entirely, reply with an empty line.`;
               content: `Document: ${doc.title}\n\nSurrounding text for context only:\n${context}\n\nThe passage to work on:\n${quote}\n\nWhat to do: ${asks}`,
             },
           ],
-          { timeoutMs: 60_000 },
+          {
+            timeoutMs: 60_000,
+            onProvider: (value) => {
+              provider = value;
+            },
+          },
         ),
       );
     } catch (error) {
@@ -167,7 +174,7 @@ passage should be removed entirely, reply with an empty line.`;
     // Places, quoted words and the offered words as this reader is shown
     // them (D3aF): the stored text keeps hidden titles, the reply must not.
     const [shown] = await carryRanges(pool, u.id, id, [made], "shown");
-    return readableLinks(pool, u.id, shown);
+    return { ...(await readableLinks(pool, u.id, shown)), provider };
   });
 
   /**
@@ -191,6 +198,7 @@ object and nothing else: {"answer": string, "sources": [number]}
 - "sources" are the [n] line numbers your answer rests on, at most four.
 - If the document does not say, answer exactly "The page doesn't say." with
   no sources. Never use knowledge from outside the document.`;
+    let provider: AiFeatureProvider | undefined;
     let content: string;
     try {
       content = await completePageFeature(
@@ -204,7 +212,12 @@ object and nothing else: {"answer": string, "sources": [number]}
             content: `Document: ${doc.title}\n\n${numbered}\n\nQuestion: ${question}`,
           },
         ],
-        { timeoutMs: 60_000 },
+        {
+          timeoutMs: 60_000,
+          onProvider: (value) => {
+            provider = value;
+          },
+        },
       );
     } catch (error) {
       if (error instanceof HttpError) throw error;
@@ -219,10 +232,11 @@ object and nothing else: {"answer": string, "sources": [number]}
       );
     } catch {
       // A provider that would not give JSON still said something useful.
-      return { answer: clean(content).slice(0, 4000), sources: [] };
+      return { answer: clean(content).slice(0, 4000), sources: [], provider };
     }
     const lines = Array.isArray(parsed.sources) ? parsed.sources : [];
     return {
+      provider,
       answer: String(parsed.answer ?? "").slice(0, 4000),
       sources: lines.slice(0, 4).flatMap((n) => {
         const block = doc.content[Number(n)];

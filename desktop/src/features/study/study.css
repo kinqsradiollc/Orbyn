@@ -905,3 +905,8 @@
     justify-content: flex-end;
   }
 }
+
+.study-provider-label {
+  display: block;
+  overflow-wrap: anywhere;
+}

@@ -1,3 +1,4 @@
+import type { AiFeatureProvider } from "./ai-feature.js";
 import { docInlineLiterals } from "./doc-inline-literals.js";
 import { parseObjectHref } from "./links.js";
 
@@ -2445,6 +2446,7 @@ export type SuggestionStatus = (typeof SUGGESTION_STATUSES)[number];
  * propose changes to the same sentence without fighting over a version.
  */
 export type DocSuggestion = {
+  provider?: AiFeatureProvider;
   id: string;
   doc_id: string;
   block_id: string;
@@ -2685,6 +2687,7 @@ export const DOC_AI_LABELS: Record<string, { name: string; asks: string }> = {
 
 /** An answer about one page, with the lines it was taken from. */
 export type DocAnswer = {
+  provider?: AiFeatureProvider;
   answer: string;
   /** Lines of the page the answer leans on, so it can be checked. */
   sources: { block_id: string; quote: string }[];

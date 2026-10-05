@@ -104,6 +104,7 @@ import {
   type RevisionPlan,
   type StudyCard,
   type StudyOverview,
+  type AiFeatureProvider,
   type SuggestedCard,
   type LegalDoc,
   type LegalDocument,
@@ -4432,14 +4433,18 @@ export class OrbynClient {
   }
   /** The assistant's suggested cards from a page — a proposal to tick. */
   suggestCards(docId: string, max?: number) {
-    return this.request<{ cards: SuggestedCard[] }>(
-      `/ai/study/pages/${docId}/cards`,
-      { method: "POST", body: max ? { max } : {} },
-    );
+    return this.request<{
+      cards: SuggestedCard[];
+      provider?: AiFeatureProvider;
+    }>(`/ai/study/pages/${docId}/cards`, {
+      method: "POST",
+      body: max ? { max } : {},
+    });
   }
   /** Grade a typed answer against the card and its page. */
   gradeAnswer(cardId: string, answer: string) {
     return this.request<{
+      provider?: AiFeatureProvider;
       verdict: "correct" | "partly" | "wrong";
       feedback: string;
       suggested_rating: Rating;
@@ -4449,10 +4454,11 @@ export class OrbynClient {
     });
   }
   explainCard(cardId: string) {
-    return this.request<{ explanation: string; beyond_notes: boolean }>(
-      `/ai/study/cards/${cardId}/explain`,
-      { method: "POST", body: {} },
-    );
+    return this.request<{
+      explanation: string;
+      beyond_notes: boolean;
+      provider?: AiFeatureProvider;
+    }>(`/ai/study/cards/${cardId}/explain`, { method: "POST", body: {} });
   }
   // ---- importing files into Docs ----
   /**

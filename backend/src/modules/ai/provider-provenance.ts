@@ -17,11 +17,23 @@ export async function recordProviderUse(
     await assertJobAiProviderChoice(db, owner, jobId);
     const row = (
       await db.query(
-        `SELECT j.chat_id,j.turn_id FROM ai_jobs j WHERE j.id=$1 AND j.user_id=$2 AND ${assistantJobSourcesVisible("j", "$2", false)}`,
+        `SELECT j.chat_id,j.turn_id,j.run_state FROM ai_jobs j WHERE j.id=$1 AND j.user_id=$2 AND ${assistantJobSourcesVisible("j", "$2", false)}`,
         [jobId, owner],
       )
     ).rows[0];
-    if (!row?.chat_id || !row.turn_id) return;
+    if (!row?.chat_id || !row.turn_id) {
+      if (row?.run_state?.version === 2 && phase === "completed")
+        await db.query(
+          `UPDATE ai_jobs SET result=coalesce(result,'{}'::jsonb)||jsonb_build_object('feature_provider',$3::jsonb)
+           WHERE id=$1 AND user_id=$2 AND state='running' AND lease_until>clock_timestamp()`,
+          [
+            jobId,
+            owner,
+            JSON.stringify({ source, model: model.slice(0, 200), fallback }),
+          ],
+        );
+      return;
+    }
     const prefix = source === "chatgpt" ? "pc" : fallback ? "pf" : "pd";
     const tool = `${prefix}_${phase === "completed" ? "c" : "s"}${operationId ? `:${operationId}` : ""}`;
     const chat = (

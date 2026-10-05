@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, FileText, Lightbulb, Sparkles } from "lucide-react";
-import { RATINGS, type Rating, type StudyCard } from "@orbyn/core";
+import {
+  aiFeatureProviderLabel,
+  type AiFeatureProvider,
+  RATINGS,
+  type Rating,
+  type StudyCard,
+} from "@orbyn/core";
 import { client } from "../../lib/api";
 import { Inline } from "../docs/DocBlocks";
 import { ImageBlock } from "../docs/RichBlocks";
@@ -14,6 +20,7 @@ const LABEL: Record<Rating, string> = {
 };
 
 type Grade = {
+  provider?: AiFeatureProvider;
   verdict: "correct" | "partly" | "wrong";
   feedback: string;
   suggested_rating: Rating;
@@ -49,6 +56,7 @@ export function ReviewSession({
   const [grade, setGrade] = useState<Grade | null>(null);
   const [grading, setGrading] = useState(false);
   const [explained, setExplained] = useState<{
+    provider?: AiFeatureProvider;
     explanation: string;
     beyond_notes: boolean;
   } | null>(null);
@@ -300,6 +308,12 @@ export function ReviewSession({
                         : "Not quite."}
                   </strong>{" "}
                   {grade.feedback}
+                  {grade.provider && (
+                    <small className="muted study-provider-label">
+                      {" "}
+                      {aiFeatureProviderLabel(grade.provider)}
+                    </small>
+                  )}
                 </p>
               )}
               {explained && (
@@ -307,8 +321,17 @@ export function ReviewSession({
                   <Lightbulb size={14} aria-hidden="true" />
                   <span>
                     {explained.explanation}
+                    {explained.provider && (
+                      <small className="muted study-provider-label">
+                        {" "}
+                        {aiFeatureProviderLabel(explained.provider)}
+                      </small>
+                    )}
                     {explained.beyond_notes && (
-                      <small className="muted"> Goes beyond your notes.</small>
+                      <small className="muted study-provider-label">
+                        {" "}
+                        Goes beyond your notes.
+                      </small>
                     )}
                   </span>
                 </p>

@@ -102,3 +102,27 @@ feature-result provider provenance in both clients, source/session lifecycle
 races, complete full/build/CI checks, and affected client runtime acceptance.
 This checkpoint does not implement the other callers in the inventory or
 maintained-page scheduling/private execution. It is not merged to main.
+
+### Signed-device and provenance follow-up
+
+Actual broker fixture tests now exercise first-party page dispatch, claim,
+Ed25519 signed completion and once-only measured usage without creating a chat.
+A changed page revision is rejected at private result acceptance, before usage
+is recorded. This additionally fences feature revisions inside the broker's
+job-live check; ordinary version 1 assistant behavior remains unchanged.
+
+Completed feature provenance is recorded in the same transaction as accepted
+private output or the managed fallback reply. Managed primary calls also record
+it before terminal settlement. Optional shared response metadata reports the
+actual provider/model/fallback, with compact Docs and Study labels on both
+clients. Long labels wrap instead of widening a desktop panel.
+
+Focused broker/Docs/Study checks pass38/38 without skips in
+`/tmp/orbyn-feature-broker-final-tests.log`; all workspace typechecks pass in
+`/tmp/orbyn-feature-metadata-final-types.log`. This is simulated-device inference,
+not a successful real OpenAI account request or rendered UI acceptance.
+
+Separately the unmodified parent `f8e1d632` finished2749/2749 full local checks,
+no skips, in `/tmp/orbyn-f8e1-full-tests.log`; its production build and CI also
+pass. Those results do not qualify this later feature source. Full combined
+qualification and visual/platform acceptance remain open before main promotion.

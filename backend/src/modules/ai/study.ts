@@ -6,6 +6,7 @@ import {
   HttpError,
   quizGradeInput,
   serializeDoc,
+  type AiFeatureProvider,
   type DocBlock,
   type SuggestedCard,
 } from "@orbyn/core";
@@ -114,6 +115,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
         c.question.trim().toLowerCase(),
       ),
     );
+    let provider: AiFeatureProvider | undefined;
     let content: string;
     try {
       content = await completePageFeature(
@@ -135,6 +137,9 @@ export async function aiStudyRoutes(app: FastifyInstance) {
         ],
         {
           timeoutMs: 60_000,
+          onProvider: (value) => {
+            provider = value;
+          },
           responseFormat: schema("study_cards", {
             type: "object",
             properties: {
@@ -181,6 +186,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
       fail(502, "The AI provider's answer couldn't be read. Please try again.");
     }
     return {
+      provider,
       cards: cards!
         .filter((c) => !existing.has(c.question.trim().toLowerCase()))
         .slice(0, max),
@@ -194,6 +200,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
     const card = await cardById(pool, u.id, d.card_id);
     if (!card) fail(404, "Card not found");
     const page = await pageOf(u.id, card.doc_id);
+    let provider: AiFeatureProvider | undefined;
     try {
       const reply = readJson(
         await completePageFeature(
@@ -209,6 +216,9 @@ export async function aiStudyRoutes(app: FastifyInstance) {
           ],
           {
             timeoutMs: 45_000,
+            onProvider: (value) => {
+              provider = value;
+            },
             responseFormat: schema("study_grade", {
               type: "object",
               properties: {
@@ -231,6 +241,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
         .parse(reply);
       return {
         ...parsed,
+        provider,
         // What to rate it in the review, from how the answer went.
         suggested_rating:
           parsed.verdict === "correct"
@@ -255,6 +266,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
     const card = await cardById(pool, u.id, idParam(r));
     if (!card) fail(404, "Card not found");
     const page = await pageOf(u.id, card.doc_id);
+    let provider: AiFeatureProvider | undefined;
     try {
       const reply = readJson(
         await completePageFeature(
@@ -270,6 +282,9 @@ export async function aiStudyRoutes(app: FastifyInstance) {
           ],
           {
             timeoutMs: 45_000,
+            onProvider: (value) => {
+              provider = value;
+            },
             responseFormat: schema("study_explain", {
               type: "object",
               properties: {
@@ -281,12 +296,15 @@ export async function aiStudyRoutes(app: FastifyInstance) {
           },
         ),
       );
-      return z
-        .object({
-          explanation: z.string().trim().min(1).max(3000),
-          beyond_notes: z.boolean().catch(false),
-        })
-        .parse(reply);
+      return {
+        provider,
+        ...z
+          .object({
+            explanation: z.string().trim().min(1).max(3000),
+            beyond_notes: z.boolean().catch(false),
+          })
+          .parse(reply),
+      };
     } catch (error) {
       if (error instanceof HttpError) throw error;
       fail(

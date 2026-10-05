@@ -125,3 +125,5 @@ export * from "./chatgpt-inference.js";
 
 export * from "./ai-provider-choice.js";
 export * from "./chatgpt-usage.js";
+
+export * from "./ai-feature.js";

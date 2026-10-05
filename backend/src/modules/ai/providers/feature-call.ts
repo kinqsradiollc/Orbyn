@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { fail } from "@orbyn/core";
+import { fail, aiFeatureProvider, type AiFeatureProvider } from "@orbyn/core";
 import { pool, transaction, type Queryable } from "../../../db/pool.js";
 import { recordAssistantSources } from "../../../lib/assistant-job-sources.js";
 import { readableDocs } from "../../../lib/visibility.js";
@@ -40,10 +40,13 @@ export async function completePageFeature(
   kind: PageFeatureKind,
   sources: PageFeatureSource[],
   messages: ChatMessage[],
-  options: Omit<NonNullable<Parameters<typeof complete>[2]>, "signal"> = {},
+  options: Omit<NonNullable<Parameters<typeof complete>[2]>, "signal"> & {
+    onProvider?: (provider: AiFeatureProvider) => void;
+  } = {},
 ): Promise<string> {
   if (!sources.length || sources.length > 16)
     fail(400, "Choose a bounded set of source pages.");
+  const { onProvider, ...completionOptions } = options;
   const timeoutMs = options.timeoutMs ?? 60_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000)
     fail(400, "Choose a supported feature-call deadline.");
@@ -98,7 +101,7 @@ export async function completePageFeature(
       { ...ai, operationId, assertAuthority },
       messages,
       {
-        ...options,
+        ...completionOptions,
         signal: AbortSignal.timeout(timeoutMs),
       },
     );
@@ -106,11 +109,15 @@ export async function completePageFeature(
     await ai.recordCompletion?.();
     const finished = await pool.query(
       `UPDATE ai_jobs SET state='done',lease_until=NULL,claimed_by=NULL,heartbeat_at=now()
-       WHERE id=$1 AND user_id=$2 AND state='running' AND claimed_by=$3 AND lease_until>clock_timestamp() RETURNING id`,
+       WHERE id=$1 AND user_id=$2 AND state='running' AND claimed_by=$3 AND lease_until>clock_timestamp() RETURNING result`,
       [jobId, owner, claimedBy],
     );
     if (!finished.rowCount)
       fail(409, "This feature request expired. Start a fresh request.");
+    const provider = aiFeatureProvider.safeParse(
+      finished.rows[0]?.result?.feature_provider,
+    );
+    if (provider.success) onProvider?.(provider.data);
     return text;
   } catch (error) {
     await pool

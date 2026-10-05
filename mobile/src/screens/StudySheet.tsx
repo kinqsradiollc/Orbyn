@@ -9,6 +9,8 @@ import {
 } from "react-native";
 import { Switch } from "../components/Switch";
 import {
+  aiFeatureProviderLabel,
+  type AiFeatureProvider,
   RATINGS,
   mathToText,
   withCards,
@@ -801,6 +803,7 @@ function Review({
   const [grade, setGrade] = useState<{
     verdict: string;
     feedback: string;
+    provider?: AiFeatureProvider;
     suggested_rating: Rating;
   } | null>(null);
   const [explained, setExplained] = useState("");
@@ -997,6 +1000,12 @@ function Review({
                     : "Not quite. "}
               </Text>
               {grade.feedback}
+              {grade.provider && (
+                <Text style={shared.small}>
+                  {" "}
+                  {aiFeatureProviderLabel(grade.provider)}
+                </Text>
+              )}
             </Text>
           )}
           {!!explained && (
@@ -1036,7 +1045,10 @@ function Review({
                 (r) =>
                   setExplained(
                     r.explanation +
-                      (r.beyond_notes ? " (Goes beyond your notes.)" : ""),
+                      (r.beyond_notes ? " (Goes beyond your notes.)" : "") +
+                      (r.provider
+                        ? `\n${aiFeatureProviderLabel(r.provider)}`
+                        : ""),
                   ),
                 (e: Error) => onError(errorText(e)),
               )
@@ -1067,13 +1079,17 @@ function Suggest({
   onError: (m: string) => void;
   onDone: (added: number) => void;
 }) {
+  const [providerLabel, setProviderLabel] = useState("");
   const [cards, setCards] = useState<
     (SuggestedCard & { keep: boolean })[] | null
   >(null);
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     client.suggestCards(docId, max).then(
-      (r) => setCards(r.cards.map((c) => ({ ...c, keep: true }))),
+      (r) => {
+        setProviderLabel(r.provider ? aiFeatureProviderLabel(r.provider) : "");
+        setCards(r.cards.map((c) => ({ ...c, keep: true })));
+      },
       (e: Error) => {
         onError(errorText(e));
         setCards([]);
@@ -1094,6 +1110,7 @@ function Suggest({
   if (!cards) return <Text style={shared.small}>Reading “{title}”…</Text>;
   return (
     <>
+      {providerLabel && <Text style={shared.small}>{providerLabel}</Text>}
       <Text style={shared.small}>
         Suggested from “{title}” only. Untick any you don't want and fix the
         wording before adding.

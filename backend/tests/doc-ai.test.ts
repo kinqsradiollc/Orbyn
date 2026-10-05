@@ -232,6 +232,11 @@ test("Docs model calls persist an owned operation without creating a chat", asyn
     question: "What changed?",
   });
   assert.equal(response.statusCode, 200);
+  assert.deepEqual(response.json().provider, {
+    source: "default",
+    model: "doc-ai-test",
+    fallback: false,
+  });
   const job = (
     await pool.query(
       "SELECT * FROM ai_jobs WHERE user_id=$1 AND run_state->>'feature'='doc_ask' ORDER BY created_at DESC LIMIT 1",
@@ -322,6 +327,11 @@ test("explicit fallback permits a revoked personal connection to use managed Doc
     });
     assert.equal(response.statusCode, 200, response.body);
     assert.equal(asked.length, before + 1);
+    assert.deepEqual(response.json().provider, {
+      source: "default",
+      model: "doc-ai-test",
+      fallback: true,
+    });
     const operation = (
       await pool.query(
         "SELECT o.state FROM chatgpt_inference_operations o JOIN ai_jobs j ON j.id=o.job_id WHERE j.user_id=$1 ORDER BY j.created_at DESC LIMIT 1",
