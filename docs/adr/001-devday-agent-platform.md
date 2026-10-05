@@ -2,7 +2,28 @@
 
 Date: 30 September 2026. Status: **accepted architectural direction; implementation incomplete**.
 
-### Combined candidate verification — 5 October 2026
+### Authoritative checkpoint — 5 October 2026
+
+Main `9c5bb744` contains PR196 selected-provider routing, PR198 migration deadlock
+recovery and PR200 web ChatGPT handoff correction. The small PR200 merge did not
+wait for CI, as explicitly authorized by the user. PR198's CI37279096979 completed
+successfully in all four jobs, including 2,856 backend passes, zero failures and
+one existing Tesseract skip. Production deployment/recovery remains user-run and
+unverified.
+
+Scheduled private Agenda remains draft PR199 at `a2d30b88`; CI37280711360 is still
+running. Successful source checks do not establish native acceptance or enable
+budgeted scheduling for official SIWC accounts lacking hard-limit support.
+Separate plugin OAuth/UI/import-job implementations are present on main; managed/
+BYO plugin provider execution, launch context and external host acceptance remain
+unfinished. Full C1–C6/M1/D1/U1 remains active. See the current table in
+[implementation handoff](../reviews/task.md) and the refreshed P1 table in
+[implementation review](../reviews/devday-2026-implementation-review.md).
+
+All checkpoint entries below are historical evidence for the named source;
+they do not supersede this current state or prove the full ADR complete.
+
+### Historical combined candidate verification — 5 October 2026
 
 Exact candidate `ae02bd0e` passed 2,765/2,765 local tests with zero failures,
 skips or cancellations, production build, and all four CI jobs in run 37251178079. PR196 remains a draft and is mergeable against main `82576dfa`.

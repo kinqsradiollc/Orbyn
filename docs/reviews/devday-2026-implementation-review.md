@@ -260,14 +260,33 @@ routes, and concurrent requests producing one task with a replayed receipt.
 These checks seed OAuth credentials directly and do not prove an authorization
 flow or host launch. See [plugin boundary evidence](plugin-boundary-review-2026-10-01.md).
 
-P1 remains unfinished: resource-aware OAuth consent/metadata and account-switch
-proof; bounded launch/resource schemas; CSP-protected UI resources; asynchronous
-job/event results and reconnect cursors; provider execution with managed/BYO
-credentials; tenant/host acceptance; deployment wiring. P2 host entry points and
-external approval also remain open. A4 agent rules/ownership/activity/budgets is
-a separate retained ledger row and is not completed by this plugin checkpoint.
-The UI preview remains blocked by a saved Browser Use permission despite user
-authorization; source/control tests are not visual or native interaction proof.
+#### P1 current source audit — 5 October 2026
+
+The October 1 list above is historical. Current main `9c5bb744` contains:
+
+| Contract                                          | Current source and regression coverage                                                                                                                                                                            | Status                                                                                                                                             |
+| ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Independent OAuth recipient and account switching | `modules/plugin/auth.ts`, `modules/oauth/resources.ts`; `oauth.test.ts` exercises plugin consent, wrong-resource exchange/refresh rejection, independent MCP/plugin grants, two-account isolation and revocation. | Implemented; external host authorization acceptance remains open.                                                                                  |
+| Protected-resource metadata and service wiring    | `modules/plugin/discovery.ts`, `services/plugin.ts`; `plugin-service.test.ts` and `plugin-compose.unit.test.ts`. Plugin is a separate process and configured recipient, disabled without `PLUGIN_PUBLIC_URL`.     | Implemented; production configuration and host discovery remain unverified.                                                                        |
+| Bounded protocol and UI resources                 | `modules/plugin/tool-input.ts`, `protocol.ts`, `ui-resources.ts`; matching unit tests and service regressions enforce scopes, UI opt-in, bounded identifiers and CSP declarations.                                | Implemented; host-rendered UI acceptance remains open.                                                                                             |
+| Asynchronous imports and reconnect cursors        | `modules/plugin/import-jobs.ts`, `job-cursor.ts`, `job-resource.ts`, `modules/imports/plugin-producer.ts`; service tests cover replay, grant/account isolation, pagination and invalid/expired cursors.           | Implemented; external host event/reconnect acceptance remains open.                                                                                |
+| Backend provider execution and launch context     | Current plugin dispatch executes the shared domain capability registry; there is no plugin inference/provider dispatch path. Existing tool input is not a complete host launch-context schema.                    | Not complete. Add separately authorized managed/BYO provider calls and bounded launch context; never use first-party sessions or user plan tokens. |
+
+Fresh isolated source checks at integrated candidate `a2d30b88` passed 32/32
+with no skips or failures across principal, tool input, UI resource, protocol,
+job cursor/import and Compose tests (`/tmp/orbyn-plugin-a2-pure-audit.log`). The
+initial main-checkout attempt could not load tsx because its installed esbuild
+binary was for another platform (`/tmp/orbyn-plugin-current-audit-unit.log`).
+The mixed candidate attempt passed 32 cases but its auth test failed during setup
+because no test database was available (`/tmp/orbyn-plugin-a2-current-audit-unit.log`).
+No dependency or database configuration was changed. Authentication integration
+requires the separately marked test database and is not newly qualified here.
+
+Current source inspection is not a new live OAuth, tenant, provider or host test.
+Retain managed/BYO execution, launch-context schemas, external host/tenant
+acceptance and deployment qualification as P1/P2 work. A4 ownership, rules,
+activity and budgets remain separate retained requirements. UI source/control
+tests do not constitute visual or native interaction proof.
 
 ### M1 — Account model catalog and defaults
 

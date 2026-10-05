@@ -1,49 +1,29 @@
-# Production migration deadlock checkpoint — 5 October 2026
-
-Production at `e0a432a5` failed migration231 while an assistant claim attempted
-its read-to-write table-lock upgrade. Server log identifies `ALTER TABLE ai_jobs
-ADD COLUMN provider_choice_snapshot` versus the queued-job CTE/UPDATE. The full
-pending migration batch is transactional. Candidate on
-`codex/migration-deadlock-recovery` prelocks existing ai_jobs before any pending
-batch SQL referencing it, retries only complete rolled-back40P01 transactions
-(maximum3 attempts;250/500ms delays), and attaches the failing migration name.
-No application run/provider operation is retried by this helper.
-
-Local focused PostgreSQL regression:3/3 pass, including worker/prelock ordering,
-real deadlock with DDL rollback/retry, and migration-order preservation:
-`/tmp/orbyn-migration-prelock-db.log`. Pure cases13/13 pass:
-`/tmp/orbyn-migration-prelock-unit.log`. All workspace types pass:
-`/tmp/orbyn-migration-prelock-types.log`. Full local attempt failed because test
-PostgreSQL's1.9GiB tmpfs was full (53100); test container then exited. Retain
-`/tmp/orbyn-migration-prelock-full.log` and aborted retry log. No Docker/database
-settings changed; attempted fixture cleanup could not connect and removed no
-fixture. Build and CI/full clean-database qualification remain pending. User
-requests qualified merge to main, then their normal deploy script alone.
-Production recovery is not yet verified. Broader Agenda/ADR goal remains active;
-its source-fence candidate is not part of this hotfix.
-
----
-
 # Current implementation handoff — 5 October 2026
 
-## Current checkpoint — selected provider features
+## Main checkpoints and remaining work
 
-Authoritative main remains `82576dfa` (PR197). Exact PR196 candidate `ae02bd0e`
-passed 2,765/2,765 local tests with no skips, production build, and all four CI
-37251178079 jobs. Draft PR196 is mergeable, not merged or deployed. Earlier
-chronological entries below are historical, not current qualification.
+Authoritative main is `9c5bb744` (PR200). User deploys main manually with the
+normal deploy script; no production recovery or deployment is claimed here.
+Earlier entries below are historical and do not describe current qualification.
 
-Docs/Study/project/capture are routed through owned selected-provider contexts.
-Actual native wide Docs fixture and contrast correction were inspected; narrow,
-Study and mobile rendering remain open. Personal authorization/catalog verified;
-real inference returned sharing quota exhaustion, so successful real inference
-and whole-account usage visibility are unproven.
+| Scope                             | Current evidence                                                                                                                                                                                                                                                                                                                                                                             | Remaining acceptance                                                                                                                                                                                                                                                |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Production migration deadlock     | PR198 merged as `f816675b`; exact candidate `81ffb44e`. Existing `ai_jobs` is locked before pending batch SQL; only rolled-back 40P01 transactions retry, with at most three attempts. CI37279096979 completed successfully in all four jobs: 2,856 backend passes, zero failures, one existing Tesseract skip. Worker/prelock ordering and real deadlock/DDL rollback regressions executed. | User's production deploy and recovery confirmation. Full local attempt failed when test PostgreSQL's tmpfs filled and its container exited; this is not a local full-suite pass.                                                                                    |
+| Web ChatGPT connection            | PR200 merged as `9c5bb744`; automatic `orbyn://` navigation removed. The signed-in desktop runtime polls pending connection requests and opens official ChatGPT authorization. User explicitly waived test/CI waiting for this small adjustment.                                                                                                                                             | Actual web-to-desktop connection acceptance. Desktop must be running and signed into the same account; this is not browser-only OAuth.                                                                                                                              |
+| Selected-provider feature routing | PR196 merged as `e0a432a5`; exact candidate `47541c63` passed 2,842/2,842 fresh local tests. CI37273639006 passed all four jobs, with 2,841 backend passes and one existing Tesseract skip. Docs/Study/project/capture/recording/interactive Agenda and maintained pages are routed through selected-provider contexts.                                                                      | Successful real Responses inference and whole-account usage/plan evidence; prior actual inference was refused for sharing quota exhaustion.                                                                                                                         |
+| Scheduled private Agenda          | Draft PR199, exact `a2d30b88`, includes source fences, durable scheduled runs, transactional Study link reads and NOWAIT target-page locking. CI37280711360 is live; mail, Docker and mobile jobs passed, backend tests remain running. Current pure page-lock/client/status checks passed 10/10 and workspace types passed.                                                                 | Current concurrent-page-edit regression/full suite, complete source-writer matrix, native controls and runtime acceptance. Official SIWC does not expose the required hard inference limit capability, so budgeted scheduling cannot be enabled for those accounts. |
+| Plugin boundary                   | Current source implements independent recipient-bound OAuth, live connector authority, protected-resource discovery, bounded UI/protocol adapters and private import-job cursors. See refreshed P1 evidence in the implementation review.                                                                                                                                                    | Managed/BYO provider execution, launch-context contract, external host/tenant acceptance and deployment configuration. Plan tokens remain excluded.                                                                                                                 |
+| Docs and whole-app UI             | Retain the complete D1/U1 contract; source and renderer checkpoints do not prove every viewport or interaction. Simulator is running but both name and bundle-ID inspection returned native tool timeout -10005.                                                                                                                                                                             | Full desktop/web/iOS/Android visual and behavior matrix, including narrow layouts, keyboard, overlays, diagrams, editing and exports.                                                                                                                               |
 
-Next local maintained-page change captures explicit provider choice/revision and
-ignores unrelated saved catalog defaults. It does not yet implement private page
-execution. Continue scoped broker integration for maintained pages, agenda and
-recording capabilities, full U1/D1 visuals and workflows, plugin/external host and
-channels acceptance, then audit and cleanup. Preserve user files and characters.
+Full C1–C6/M1/D1/U1 remains active and incomplete. Next implementation priorities:
+qualify scheduled Agenda without weakening tests; complete real provider execution
+and usage acceptance; finish separate plugin managed/BYO execution and host
+contracts; then close Docs and whole-app cross-client acceptance gaps.
+
+Preserve root user files, characters and all unmerged candidates. No Docker
+restart, database tuning, cleanup, production deployment or release is authorized
+by this checkpoint. Docker recovery remains under the user's control. Do not
+bypass the saved local Browser Use denial through another browser, port or CDP.
 
 ## Historical checkpoint — reflection integration
 
