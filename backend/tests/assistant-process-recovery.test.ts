@@ -1152,10 +1152,20 @@ test("disabling Night shift after queueing holds its prepared writes", async () 
 });
 
 test("background and overnight run in separate processes and recover independently", async () => {
-  await pool.query(
-    "UPDATE agent_settings SET night_shift=jsonb_set(night_shift,'{enabled}','true') WHERE user_id=$1",
-    [user.id],
+  // Own the consent fixture: this test must also work without the earlier night tests.
+  const settings = await pool.query(
+    "INSERT INTO agent_settings(user_id,night_shift) VALUES($1,$2::jsonb) ON CONFLICT(user_id) DO UPDATE SET night_shift=excluded.night_shift RETURNING user_id",
+    [
+      user.id,
+      JSON.stringify({
+        ...defaultNightShift(),
+        enabled: true,
+        timezone: "UTC",
+        wait_for_ok: true,
+      }),
+    ],
   );
+  assert.equal(settings.rowCount, 1);
   const nightId = (
     await pool.query(
       "INSERT INTO assistant_nights(user_id,local_day) VALUES($1,'2099-01-10') RETURNING id",
