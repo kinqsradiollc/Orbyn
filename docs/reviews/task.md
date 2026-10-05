@@ -1,3 +1,21 @@
+## Structured suggestion acceptance adapter — 6 October 2026
+
+Suggestion acceptance now writes both the exact flat projection and nested
+ownership in one authorized transaction. Existing leaf edits may not insert,
+remove, reorder or reidentify leaves; those attempts refuse before enabling the
+SQL writer. Complete typed validation precedes the update. The existing permission,
+snapshot, task-state, comment/suggestion follow-up and announcement paths remain
+in place. Ordinary legacy pages retain their flat format.
+
+Four pure adapter cases passed. Fresh DB56 initially passed87/88; the sole failure
+was a history fixture that incorrectly expected a new snapshot within the same
+editing sitting. The repaired test starts a new sitting, retaining the existing
+coalescing policy. Fresh DB57 passed92/92,0 failures/skips,terminal0,11201ms, covering
+real nested suggestion acceptance, complete history/projection, unrelated leaves,
+unauthenticated/foreign-account refusal and existing Docs/editing regressions.
+This does not finish normal editor/CRDT or task-item adoption. The full current
+candidate regression is the next qualification gate before main promotion.
+
 ## Structured editor adoption pipeline — 6 October 2026
 
 | Order | Implementation                                                                                  | Current state                                                          | Completion evidence required                                                        |

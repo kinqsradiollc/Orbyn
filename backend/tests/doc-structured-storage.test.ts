@@ -2,7 +2,12 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import "./setup.js";
-import { parseDocContainers, docContainerBlocks, HttpError } from "@orbyn/core";
+import {
+  parseDocContainers,
+  docContainerBlocks,
+  replaceVersionedDocLeaf,
+  HttpError,
+} from "@orbyn/core";
 import type { UserRow } from "../src/lib/auth.js";
 const { migrate } = await import("../src/db/migrate.js");
 const { pool, transaction } = await import("../src/db/pool.js");
@@ -102,6 +107,90 @@ test("legacy storage reads in format1; structured save preserves order, identiti
   assert.equal(v2.content_format, 2);
   assert.deepEqual(v2.content_nodes, nodes);
   assert.deepEqual(v2.content, stored.content);
+});
+
+test("accepting a suggestion preserves nested ownership, history and unrelated leaves", async () => {
+  const id = await page();
+  const nodes = parseDocContainers(
+    "> - Original words ^words\n>\n>   ```ts\n>   keep();\n>   ```\n^outer",
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  // Begin a new editing sitting so the existing history coalescing policy keeps v2.
+  await pool.query(
+    "UPDATE doc_versions SET created_at=now()-interval '1 day' WHERE doc_id=$1",
+    [id],
+  );
+  const made = await app.inject({
+    method: "POST",
+    url: `/docs/${id}/suggestions`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      changes: [
+        {
+          block_id: "words",
+          kind: "replace",
+          range_start: 0,
+          range_end: 8,
+          quote: "Original",
+          text: "Revised",
+        },
+      ],
+    },
+  });
+  assert.equal(made.statusCode, 201);
+  const sid = made.json()[0].id;
+  const url = `/docs/${id}/suggestions/${sid}`;
+  assert.equal(
+    (await app.inject({ method: "POST", url, payload: { take: true } }))
+      .statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url,
+        headers: { authorization: `Bearer ${strangerToken}` },
+        payload: { take: true },
+      })
+    ).statusCode,
+    404,
+  );
+  const taken = await app.inject({
+    method: "POST",
+    url,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { take: true },
+  });
+  assert.equal(taken.statusCode, 200);
+  const expected = replaceVersionedDocLeaf({ format: 2, nodes }, "words", {
+    type: "paragraph",
+    id: "words",
+    text: "Revised words",
+  });
+  const current = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(current.version, 3);
+  assert.deepEqual(current.document, expected);
+  const stored = (
+    await pool.query("SELECT content,content_nodes FROM docs WHERE id=$1", [id])
+  ).rows[0];
+  assert.deepEqual(stored.content, docContainerBlocks(stored.content_nodes));
+  const past = (
+    await pool.query(
+      "SELECT content_format,content_nodes FROM doc_versions WHERE doc_id=$1 AND version=2",
+      [id],
+    )
+  ).rows[0];
+  assert.equal(past.content_format, 2);
+  assert.deepEqual(past.content_nodes, nodes);
+  assert.equal(
+    (await pool.query("SELECT status FROM doc_suggestions WHERE id=$1", [sid]))
+      .rows[0].status,
+    "accepted",
+  );
 });
 
 test("capability, stale revision and ownership refuse writes before changing page or history", async () => {

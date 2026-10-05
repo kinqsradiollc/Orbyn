@@ -29,6 +29,7 @@ import {
 import { readableLinks } from "../links/privacy.js";
 import { carryRanges } from "./ranges.js";
 import { emitInbox, placeOf } from "../agent-inbox/emit.js";
+import { writeDocLeafEdits } from "./leaf-edits.js";
 
 /**
  * What people say about a page and propose for it: comments (with
@@ -345,11 +346,7 @@ export async function decideSuggestion(
   // or reopened here; the lines tied to tasks are stored as their tasks now
   // stand, as every save stores them.
   const next = await withTaskState(db, id, edited);
-  await db.query(
-    `UPDATE docs SET content = $2::jsonb, version = version + 1,
-       updated_at = now() WHERE id = $1`,
-    [id, JSON.stringify(next)],
-  );
+  await writeDocLeafEdits(db, id, next);
   await db.query(
     `UPDATE doc_suggestions SET status = 'accepted', resolved_by = $2,
        resolved_at = now() WHERE id = $1`,
