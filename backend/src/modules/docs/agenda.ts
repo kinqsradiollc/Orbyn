@@ -182,7 +182,11 @@ async function readDay(
  * modules/ai/agenda-brief.ts). Passed in by the callers that want it, so
  * this module (and agents' create_doc agenda) never loads an AI provider.
  */
-export type BriefWriter = (day: Day, now: Date) => Promise<string | null>;
+export type BriefWriter = (
+  day: Day,
+  now: Date,
+  ownerId: string,
+) => Promise<string | null>;
 
 async function contentFor(
   userId: string,
@@ -192,7 +196,8 @@ async function contentFor(
 ) {
   const day = await readDay(userId, now, other?.past, !other);
   // The assistant's words are about today; another day reads without them.
-  const brief = writeBrief && !other ? await writeBrief(day, now) : null;
+  const brief =
+    writeBrief && !other ? await writeBrief(day, now, userId) : null;
   return {
     tz: day.tz,
     brief,

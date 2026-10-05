@@ -1804,3 +1804,34 @@ build pass with terminal exit0. Evidence: /tmp/orbyn-private-page-final-focused.
 /tmp/orbyn-private-page-checkpoint-build.log. Native/mobile interaction,
 real positive OpenAI inference, full exact-head tests/CI, and remaining ADR
 requirements are still open. This checkpoint does not complete the full goal.
+
+## Agenda owner boundary and private review — 5 October 2026
+
+Agenda BriefWriter now receives the actual page owner from contentFor, covering
+interactive rewrite and scheduled morning creation. Managed briefs check that
+owner and captured provider-choice revision before dispatch and before returning
+output, with a 512-token output cap. A selected ChatGPT plan is never silently
+sent to the managed provider. Private Agenda dispatch is still incomplete: retain
+source identities and revisions across tasks, subscription events, habits, Study
+and computed facts; implement durable owner-bound dispatch and distinguish app
+session from scheduled authorization. Returning an agenda without a generated
+brief is a temporary guard, not completion of that feature.
+
+Actual managed fixture tests prove bounded default requests, zero calls for a
+selected ChatGPT plan, no calls for missing/disabled owners, and discarded output
+when consent changes in flight. The agenda pipeline verifies the owner passed to
+the writer. Direct private page approval now proves stale/foreign waiting cards
+are rejected and the saved patch applies with the device offline without another
+model call. Combined Agenda/direct private review checks40/40 pass, no skips,
+in /tmp/orbyn-agenda-choice-review-final.log. All workspace types pass with
+terminal exit0 in /tmp/orbyn-agenda-owner-current-types.log.
+
+Candidate82f5f20e CI37257405383 passed all jobs. Local full qualification ended
+2770/2776 pass, six failures, zero skips, during PostgreSQL recovery. Database
+logs confirm checkpointer PID20590 was killed by signal9 at03:01:47UTC and
+connections were ready again03:01:53UTC. No assertions, timeout, database/JIT or
+Docker settings were weakened. The terminal failed run is retained. Fresh marked
+orbyn_82f5f20e_qualification_test full qualification is running alone in
+/tmp/orbyn-82f5f20e-fresh-full-tests.log, session81660. Do not restart it for an
+observation timeout. Main82576dfa remains unchanged, and whole ADR acceptance,
+real inference, visual/native checks and eventual cleanup remain open.

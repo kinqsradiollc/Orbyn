@@ -546,3 +546,61 @@ test("private Overnight page charges only the parent budget and resumes its own 
     "overnight",
   );
 });
+
+test("private page approval remains bound to its waiting card and applies offline without another model call", async () => {
+  const f = await fixture();
+  const { decideMaintainedPageRun } =
+    await import("../src/modules/docs/maintenance-runs.js");
+  await pool.query(
+    "UPDATE agent_grants SET trust='ask' WHERE user_id=$1 AND kind='assistant'",
+    [f.owner],
+  );
+  const work = start(f);
+  const a = await assignment(f);
+  await finishChatgptInference(
+    { userId: f.owner, sessionId: f.session },
+    publication(f, a),
+  );
+  assert.equal((await work).state, "waiting");
+  const run = (
+    await pool.query("SELECT waiting_id FROM assistant_page_runs WHERE id=$1", [
+      f.run.id,
+    ])
+  ).rows[0];
+  assert.ok(run.waiting_id);
+  await pool.query(
+    "UPDATE chatgpt_executor_leases SET expires_at=now()-interval '1 second' WHERE executor_id=$1",
+    [f.executor],
+  );
+  await assert.rejects(
+    transaction((db) =>
+      decideMaintainedPageRun(db, f.owner, f.run.id, randomUUID(), true),
+    ),
+    (error: any) => error.statusCode === 409,
+  );
+  await assert.rejects(
+    transaction((db) =>
+      decideMaintainedPageRun(db, randomUUID(), f.run.id, run.waiting_id, true),
+    ),
+    (error: any) => error.statusCode === 404,
+  );
+  const result = await transaction((db) =>
+    decideMaintainedPageRun(db, f.owner, f.run.id, run.waiting_id, true),
+  );
+  assert.equal(result.state, "done");
+  await assert.rejects(
+    transaction((db) =>
+      decideMaintainedPageRun(db, f.owner, f.run.id, run.waiting_id, true),
+    ),
+    (error: any) => error.statusCode === 409,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM chatgpt_inference_requests WHERE job_id=(SELECT id FROM ai_jobs WHERE maintenance_run_id=$1)",
+        [f.run.id],
+      )
+    ).rows[0].n,
+    1,
+  );
+});

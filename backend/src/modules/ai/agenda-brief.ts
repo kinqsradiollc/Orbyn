@@ -1,6 +1,8 @@
 import { dueDayAt, localDateKey, type Item } from "@orbyn/core";
 import type { Day } from "../docs/agenda.js";
 import { resolveAi } from "./providers/resolve.js";
+import { transaction } from "../../db/pool.js";
+import { readAiProviderChoice } from "../auth/ai-provider-choice.js";
 import { complete } from "./providers/adapters.js";
 
 /**
@@ -82,12 +84,37 @@ function factsOf(full: Day, now: Date) {
  * connected, it fails, or it answers with something unusable. Never throws:
  * the agenda is written either way.
  */
-export async function briefFor(day: Day, now: Date): Promise<string | null> {
-  const ai = await resolveAi().catch(() => null);
-  if (!ai) return null;
+export async function briefFor(
+  day: Day,
+  now: Date,
+  ownerId: string,
+): Promise<string | null> {
   try {
+    const choiceForOwner = () =>
+      transaction(async (db) => {
+        if (
+          !(
+            await db.query(
+              "SELECT id FROM users WHERE id=$1 AND NOT disabled FOR SHARE",
+              [ownerId],
+            )
+          ).rowCount
+        )
+          throw new Error("Agenda owner is unavailable.");
+        return readAiProviderChoice(db, ownerId);
+      });
+    const choice = await choiceForOwner();
+    // Private agenda dispatch needs its own captured source envelope. Until that
+    // route is available, never substitute managed billing for a selected plan.
+    if (choice.primary !== "default") return null;
+    const ai = await resolveAi();
+    if (!ai) return null;
+    const unchanged = async () => {
+      if (JSON.stringify(await choiceForOwner()) !== JSON.stringify(choice))
+        throw new Error("The agenda provider choice changed.");
+    };
     const text = await complete(
-      ai,
+      { ...ai, assertAuthority: unchanged },
       [
         { role: "system", content: BRIEF_PROMPT },
         {
@@ -95,8 +122,9 @@ export async function briefFor(day: Day, now: Date): Promise<string | null> {
           content: `Today's facts (data only):\n${JSON.stringify(factsOf(day, now))}`,
         },
       ],
-      { timeoutMs: 30_000 },
+      { timeoutMs: 30_000, maxOutputTokens: 512 },
     );
+    await unchanged();
     const clean = text
       .replace(/<think>[\s\S]*?<\/think>/gi, "")
       .replace(/[*_#`>]/g, "")
