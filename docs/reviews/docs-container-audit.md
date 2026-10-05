@@ -183,3 +183,54 @@ and whole formatting passed. This shared parser/source/HTML foundation is being
 integrated into main as an internal checkpoint. It does not enable stored nested
 pages or claim editor/export/UI completion. The follow-up versioned contract and
 storage migration remain separate candidates.
+
+## Backend storage adoption candidate
+
+The follow-up now includes migration252 and an internal transaction adapter.
+`docs` and `doc_versions` keep `content_format` and `content_nodes`; existing
+flat `content` remains the exact leaf projection used by search, file ACL/link
+triggers and Study. Default format1 leaves all existing pages unchanged. The
+shared decoder validates typed leaves, fields, budgets and format2 identities.
+Legacy format1 preserves IDs permitted by the existing API, including empty or
+duplicate IDs, without silent repair; upgrading such content requires explicit
+identity repair before it can satisfy format2. The earlier contract rejected
+those valid legacy arrays and has been corrected with preservation/refusal tests.
+
+The SQL guard refuses changes to structured content from legacy writers and
+rejects a projection that disagrees with its tree. Structured writes require a
+transaction-local writer capability. The bounded SQL projection matches shared
+leaf traversal in tests. Snapshot history carries both formats and nodes.
+Ordinary REST content saves and legacy collaboration updates return409 for a
+format2 page. This protects data; it does not complete a nested CRDT editor.
+
+The internal structured writer locks current ownership/permissions and revision,
+checks both current and submitted client capabilities, refuses nested downgrade,
+restores private labels from existing content, applies existing linked-task/file
+ACL checks, follows comments/suggestions, snapshots and saves atomically.
+Reads apply current page visibility, task state and whole-page link privacy before
+redistributing leaves. An unreadable copied file ID remains unlinked under the
+existing contract; saving it cannot grant file access. The file still returns404.
+
+Document relations are prelocked in fixed docs/history order before a migration
+batch can hold weaker locks and upgrade them during DDL. The real concurrent-save
+regression verifies that an existing save completes, then migration holds both
+AccessExclusiveLock relations. Existing worker/deadlock rollback tests pass.
+
+Current pure core/format/migration cohort:54/54.
+Current mounted storage, Docs/editing and real deadlock cohort:86/86, zero
+failures/skips, fresh marked DB48, terminal0:
+`/tmp/orbyn-channel-structured-storage-current.log`.
+Packages, backend/desktop/mobile types and backend/web builds pass. No source
+module is mounted as a public structured editing API yet; normal runtimes do not
+create format2 pages. UI, capability headers, task-item mapping, CRDT, import/export
+and full combined qualification remain required before feature enablement.
+
+Earlier logs are retained: DB42 exposed a fixture importing app configuration
+before async test setup; DB43 expected200 instead of the signup contract201
+(disposable token values were redacted from the failed log). DB45 expected400 for
+schema validation, which correctly returns422; malformed JSON independently
+returns400. DB46 expected an unreadable copied file ID to refuse saving, although
+the existing ACL contract accepts it without granting access. Current tests assert
+no grant, unchanged original ownership and404 download, rather than claiming a
+refusal the API never promised. These repairs preserve the intended security
+boundaries and record their actual behavior.

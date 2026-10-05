@@ -1,62 +1,61 @@
 # Authoritative implementation pipeline — 6 October 2026
 
-Main application checkpoint is `8e792ecb` (PR215), pushed. The combined
-quote/footnote candidate `5f5a1833` completed fresh full DB39:3498 passes,
-zero failures and one existing skip, terminal0,733948ms. Its application source
-matches merged main.131 parser/source/HTML/Word/export/layout cases and29 mounted
-import/privacy cases pass; packages, all workspace types, backend/web builds and
-full formatting pass. Evidence: `/tmp/orbyn-channel-doc-footnote-main-full.log`,
-`/tmp/orbyn-doc-footnote-main-focused.log` and
-`/tmp/orbyn-channel-doc-footnote-main-mounted.log`.
+Main application checkpoint is `e7232e11`, pushed: the shared structured
+container parser/source/HTML foundation passed frozen fresh full DB41:3521 passes,
+zero failures and one existing skip, terminal0,736272ms. Its application source
+matches tested20752130.94 focused and11 mounted existing library-hierarchy cases,
+all workspace types, packages/backend/web builds and whole formatting pass.
+This is an internal foundation checkpoint; nested storage/editing is not enabled.
 
-Word/reference privacy PR213 is merged `bb9c10f5`, repaired full3460/0/1.
-CI37364955550 passed backend/web and Docker; cancelled mail/mobile jobs had no
-executed steps. Attempt2 is queued. Views/Review available-width and native
-wrapping PR214 merged `773f1441`, with18 focused passes and types/build/format.
-CI37366765411 ended with all jobs cancelled; failed jobs were rerun. PR215
-CI37366986451 passed mail/mobile/Docker; backend/web was cancelled, and was
-rerun. No failing step was reported in these cancellations; no all-green claim.
-PR212 attempt2 and PR211 final CI passed all four jobs.
+PR215 quote/footnotes remains merged8e792ecb, full3498/0/1. Its final CI
+37366986451 attempt2 passed all four jobs. PR213 Word/privacy full3460/0/1 is
+merged; CI37364955550 attempt2 passed backend/web and Docker, but mail/mobile were
+cancelled without failing steps. PR214 Views/Review wrapping is merged; attempt2
+CI37366765411 passed Docker, while other jobs were cancelled without failing steps.
+These cancellations are retained, rather than reported as all-green qualification.
 
-The pushed, unmerged `codex/docs-structured-containers` candidate `20752130` preserves nested
-quote/list typed children, IDs/source ranges and whole-page reference/footnote
-context.94 focused and11 fresh mounted library-hierarchy cases pass; types and
-backend/web builds and full formatting pass. Fresh immutable full DB41 is running
-(`/tmp/orbyn-channel-container-20752130-full.log`); keep source frozen.
-Storage/API versioning, CRDT and both editors/export
-integration remain required. See [container integration gates](docs-container-audit.md#structured-container-candidate--6-october-2026).
-This source candidate is not a shipped D1 feature.
+Storage follow-up [draft PR216](https://github.com/kinqsradiollc/Orbyn/pull/216)
+is frozen4f45e904 oncodex/docs-container-storage-contract, pushed with current
+main application integrated.54 pure and86 mounted storage/Docs/editing/deadlock
+cases pass; packages, all workspace types, backend/web builds and formatting pass.
+Fresh immutable full DB49 is live:
+`/tmp/orbyn-channel-structured-storage-4f45e904-full.log`; CI37372176301 is queued.
+Do not mutate this candidate during qualification. Main integration needed only
+documentation conflict resolution; application source did not conflict.
 
-Versioned content/source contract `04da502e` is pushed separately on
-`codex/docs-container-storage-contract`.108 focused cases, all workspace types,
-backend/web builds and whole formatting pass. It rejects unsupported formats,
-unknown fields, duplicate/cyclic identity and lossy source/downgrade conversion.
-The Docs API, database migration, revisions/history, CRDT and both editors still
-need adoption; no new stored format is enabled. The serial full DB41 remains
-frozen on20752130; this follow-up has no full combined qualification yet.
-A fresh native Simulator selection again timed out -10005. No visual/native
-proof or full-goal completion is claimed.
+The candidate stores ownership separately from the exact flat ACL/search/Study
+projection, preserves structured history and blocks legacy content/collaboration
+writes on format2 pages. Its internal atomic writer checks current ownership,
+permissions, revision, capabilities, private labels, linked-task state and file
+ACLs. Real concurrent migration/save locking and401/403/400/422/429 boundaries are
+covered. Legacy format1 IDs retain the current contract; format2 requires valid,
+unique IDs. Copied unreadable files stay unlinked and return404, matching the
+existing ACL contract. Earlier fixture failures remain recorded.
 
-ChatGPT web handoff, feedback and selected-provider routing are already on main.
-Web creates an opaque same-account request for desktop official authorization;
-it does not launch an unregistered `orbyn://` scheme automatically. Real handoff,
-successful eligible inference and whole-account plan/usage acceptance remain open.
-Prior actual inference was refused for sharing quota exhaustion. No new chargeable
-probe or invented quota was used. Unsupported hard-limit catalogs remain ineligible
-for budgeted scheduling.
+No public structured editing API or normal format2 creation is enabled. Capability
+headers, both editors, task-item mapping, CRDT, imports and HTML/PDF/Word export
+adoption remain required. See [container storage gates](docs-container-audit.md#backend-storage-adoption-candidate).
+All D1/U1 and governing provider/agent/page requirements remain in scope.
 
-Browser5174 remains blocked by the tool's saved permission, and Simulator
-inspection timed out -10005; no new visual/native acceptance is claimed.
-Full C1-C6/M1/D1/U1 remains active and incomplete. Character/user files are
-preserved, Docker is unchanged, user deploys manually, and cleanup remains later.
+ChatGPT handoff/routing/catalog/defaults are already on main. Real web-to-desktop
+authorization, successful eligible inference and whole-account plan/usage evidence
+remain open; previous inference was refused for sharing quota exhaustion. No new
+chargeable probe or invented quota was used. Unsupported hard-limit catalogs remain
+ineligible for budgeted private schedules. Plugin/MCP and plan credentials stay separate.
 
-| Order | Work                        | Confirmed state                                                                            | Next implementation or acceptance                                                     |
-| ----- | --------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| 1     | Docs quote/footnote/privacy | PR213/215 merged; repaired full3460/0/1 and3498/0/1                                        | Inspect rerun CI; actual editor/import/export acceptance                              |
-| 2     | Structured Docs D1          | Experimental parser/source/HTML candidate;94+11 tests pass                                 | Stored/API compatibility, privacy adapters, CRDT and both editors; PDF/Word matrices  |
-| 3     | Whole-app U1                | Responsive Views/Review, native wrapping and earlier settings/assistant checkpoints merged | Every page, narrow/collapsed/panel/large-text states and actual visual/native review  |
-| 4     | Providers/agents C1-C6/M1   | Routing/catalog/plugin/separate runtimes/reflection/channels checkpoints merged            | Governing budget/collaboration/publication audit; real account/tenant/host acceptance |
-| 5     | Production and cleanup      | Main checkpoints pushed; user files/worktrees preserved                                    | User deployment confirmation; final relevant integration and cleanup audit            |
+Browser5174 remains blocked by the tool's saved permission; a fresh Simulator
+selection again timed out -10005. No visual/native proof or whole-app completion
+is claimed. Full C1-C6/M1/D1/U1 remains active and incomplete. Character/user files
+are preserved, Docker is unchanged, user deploys manually, cleanup remains later.
+
+| Order | Work                      | Confirmed state                                                                 | Next implementation or acceptance                                                       |
+| ----- | ------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| 1     | Structured Docs backend   | Foundation on main; PR21654 pure+86 mounted pass; full/CI live                  | Inspect terminal qualification and integrate ready source                               |
+| 2     | Structured Docs clients   | Versioned storage/source contract and internal writer candidate                 | Public capability API, CRDT and both editors; task-item mapping and all imports/exports |
+| 3     | Remaining Docs D1         | Markdown/Mermaid/privacy/Word/footnotes checkpoints merged                      | Media/bookmarks/endnotes and complete render/edit/import/export family matrices         |
+| 4     | Whole-app U1              | Settings/assistant and responsive Views/Review checkpoints merged               | Every page, narrow/collapsed/panel/large-text states and actual visual/native review    |
+| 5     | Providers/agents C1-C6/M1 | Routing/catalog/plugin/separate runtimes/reflection/channels checkpoints merged | Governing budget/collaboration/publication audit; real account/tenant/host acceptance   |
+| 6     | Production and cleanup    | Qualified main checkpoints pushed; user work preserved                          | User deployment confirmation; final integration and relevant cleanup audit              |
 
 # Historical implementation pipeline — earlier 6 October 2026
 
