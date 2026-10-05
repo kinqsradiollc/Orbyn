@@ -1,3 +1,4 @@
+import { inlineEmphasis } from "./inline-emphasis.js";
 import type { AiFeatureProvider } from "./ai-feature.js";
 import { docInlineLiterals } from "./doc-inline-literals.js";
 import { parseObjectHref } from "./links.js";
@@ -758,6 +759,15 @@ export type DocInline = {
   source?: boolean;
 };
 
+/** Exact source delimiters used by editing commands; rendered runs keep their existing shape. */
+export type DocStyleRange = {
+  kind: "bold" | "italic" | "highlight" | "strike" | "code";
+  openStart: number;
+  openEnd: number;
+  closeStart: number;
+  closeEnd: number;
+};
+
 /** Whether a run carries any style: it can't take another one on top. */
 export const isStyledRun = (run: DocInline): boolean =>
   !!(
@@ -778,7 +788,7 @@ export const isStyledRun = (run: DocInline): boolean =>
 // "a == b" in a note about code stays text. A source marker (`[src: …]`)
 // is tried after links, so `[src: x](https://…)` stays a link.
 const INLINE_RE =
-  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]|\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?|\*\*\*([^*\n]+)\*\*\*/g;
+  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]|\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?|<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>|<([A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)>|(<!--[\s\S]*?-->|<\/?[A-Za-z][^<>\n]*>)/g;
 
 /** Only supported document and external protocols can become actionable links. */
 export function isDocLinkSafe(href: string): boolean {
@@ -880,8 +890,20 @@ export function docReferenceSpans(
 export function parseDocInline(
   text: string,
   references?: ReadonlyMap<string, string>,
+  onStyleRange?: (range: DocStyleRange) => void,
 ): DocInline[] {
   const literals = docInlineLiterals(text);
+  for (const literal of literals) {
+    if (!literal.run.code) continue;
+    const width = /^`+/.exec(text.slice(literal.start))![0].length;
+    onStyleRange?.({
+      kind: "code",
+      openStart: literal.start,
+      openEnd: literal.start + width,
+      closeStart: literal.end - width,
+      closeEnd: literal.end,
+    });
+  }
   if (literals.length) {
     const masked: string[] = [];
     let at = 0;
@@ -895,7 +917,14 @@ export function parseDocInline(
     masked.push(text.slice(at));
     const out: DocInline[] = [];
     let index = 0;
-    for (const run of parseFormattedInline(masked.join(""), text, references)) {
+    for (const run of parseFormattedInline(
+      masked.join(""),
+      text,
+      references,
+      0,
+      0,
+      onStyleRange,
+    )) {
       let cursor = run.start;
       const end = run.start + run.text.length;
       while (index < literals.length && literals[index].end <= cursor) index++;
@@ -915,7 +944,7 @@ export function parseDocInline(
     }
     return out;
   }
-  return parseFormattedInline(text, text, references);
+  return parseFormattedInline(text, text, references, 0, 0, onStyleRange);
 }
 
 function parseFormattedInline(
@@ -923,6 +952,8 @@ function parseFormattedInline(
   source = text,
   references?: ReadonlyMap<string, string>,
   depth = 0,
+  sourceOffset = 0,
+  onStyleRange?: (range: DocStyleRange) => void,
 ): DocInline[] {
   const out: DocInline[] = [];
   let at = 0;
@@ -938,11 +969,26 @@ function parseFormattedInline(
       offset: number,
       style: Partial<DocInline>,
     ) => {
+      if (style.highlight || style.strike)
+        onStyleRange?.({
+          kind: style.highlight ? "highlight" : "strike",
+          openStart: sourceOffset + start,
+          openEnd: sourceOffset + start + offset,
+          closeStart: sourceOffset + start + offset + m[group].length,
+          closeEnd: sourceOffset + start + m[0].length,
+        });
       const inner = m[group];
       const original = words(group, offset);
       const children =
         depth < 8
-          ? parseFormattedInline(inner, original, references, depth + 1)
+          ? parseFormattedInline(
+              inner,
+              original,
+              references,
+              depth + 1,
+              sourceOffset + start + offset,
+              onStyleRange,
+            )
           : [{ text: original, start: 0 }];
       out.push(
         ...children.map((child) => ({
@@ -954,8 +1000,7 @@ function parseFormattedInline(
     };
     // Each run's `start` skips its opening marker, so it points at the
     // first character its `text` actually holds.
-    if (m[13] !== undefined) formatted(13, 3, { bold: true, italic: true });
-    else if (m[1] !== undefined)
+    if (m[1] !== undefined)
       out.push({ text: words(1, 1), start: start + 1, math: true });
     else if (m[2] !== undefined)
       out.push({ text: words(2, 2), start: start + 2, footnote: words(2, 2) });
@@ -970,25 +1015,50 @@ function parseFormattedInline(
         ...(tint ? { tint } : {}),
       });
     } else if (m[7] !== undefined) formatted(7, 2, { strike: true });
-    else if (m[8] !== undefined) formatted(8, 2, { bold: true });
-    else if (m[9] !== undefined) formatted(9, 1, { italic: true });
-    else if (m[10] !== undefined)
+    else if (m[8] !== undefined)
       out.push({
-        text: words(10, m[0].indexOf(m[10], 5)),
-        start: start + m[0].indexOf(m[10], 5),
+        text: words(8, m[0].indexOf(m[8], 5)),
+        start: start + m[0].indexOf(m[8], 5),
         source: true,
       });
-    if (m[11] !== undefined) {
-      const label = referenceLabel(m[12] || m[11]);
+    if (m[9] !== undefined) {
+      const label = referenceLabel(m[10] || m[9]);
       const href = references?.get(label);
       if (href && isDocLinkSafe(href) && source[start - 1] !== "!")
-        formatted(11, 1, { link: href });
+        formatted(9, 1, { link: href });
       else out.push({ text: source.slice(start, start + m[0].length), start });
+    }
+    if (m[11] !== undefined || m[12] !== undefined) {
+      const group = m[11] !== undefined ? 11 : 12;
+      const label = words(group, 1);
+      const href = group === 12 ? `mailto:${label}` : label;
+      out.push(
+        isDocLinkSafe(href)
+          ? { text: label, start: start + 1, link: href }
+          : { text: source.slice(start, start + m[0].length), start },
+      );
+    } else if (m[13] !== undefined) {
+      // HTML remains literal source, including delimiters in attributes.
+      out.push({ text: source.slice(start, start + m[0].length), start });
     }
     at = start + m[0].length;
   }
   if (at < text.length) out.push({ text: source.slice(at), start: at });
-  return out.length ? out : [{ text: "", start: 0 }];
+  return inlineEmphasis(
+    out.length ? out : [{ text: "", start: 0 }],
+    text.replace(/<!--[\s\S]*?-->|<\/?[A-Za-z][^<>\n]*>/g, (value) =>
+      "\uE000".repeat(value.length),
+    ),
+    source,
+    (range) =>
+      onStyleRange?.({
+        ...range,
+        openStart: range.openStart + sourceOffset,
+        openEnd: range.openEnd + sourceOffset,
+        closeStart: range.closeStart + sourceOffset,
+        closeEnd: range.closeEnd + sourceOffset,
+      }),
+  );
 }
 
 // --------------------------------------------------------------- sources ---
