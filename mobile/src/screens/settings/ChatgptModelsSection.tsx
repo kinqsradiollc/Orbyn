@@ -1,7 +1,7 @@
 import { AgendaPrivateSettings } from "./AgendaPrivateSettings";
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
-import { CHATGPT_USAGE_URL } from "@orbyn/core";
+import { CHATGPT_USAGE_URL, chatgptConnectFeedback } from "@orbyn/core";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -26,6 +26,9 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
   const { state, refresh, select, save } = useChatgptRemote(userId);
   const [query, setQuery] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [connectFeedback, setConnectFeedback] = useState(
+    chatgptConnectFeedback("starting"),
+  );
   const [connectError, setConnectError] = useState<string | null>(null);
   const lifetime = useRef<AbortController | null>(null);
   useEffect(
@@ -41,10 +44,14 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     const token = session.token;
     setConnecting(true);
     setConnectError(null);
+    setConnectFeedback(chatgptConnectFeedback("starting"));
     try {
       const request = await client.startChatgptConnectRequest(
         controller.signal,
       );
+      if (controller.signal.aborted || token !== session.token) return;
+      const requestedAt = Date.now();
+      setConnectFeedback(chatgptConnectFeedback("pending"));
       while (
         !controller.signal.aborted &&
         token === session.token &&
@@ -68,6 +75,10 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
           controller.signal,
         );
         if (controller.signal.aborted || token !== session.token) return;
+        if (next.state === "pending" || next.state === "claimed")
+          setConnectFeedback(
+            chatgptConnectFeedback(next.state, Date.now() - requestedAt),
+          );
         if (next.state === "completed") {
           refresh();
           return;
@@ -113,17 +124,16 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       <AgendaPrivateSettings userId={userId} />
       <Text style={shared.body}>ChatGPT</Text>
       <Text style={shared.small}>
-        Connect your ChatGPT account and choose its default model.
+        Requires Orbyn desktop open and signed into the same Orbyn account.
       </Text>
       <SmallAction
-        label={connecting ? "Waiting for ChatGPT…" : "Connect to ChatGPT"}
+        label={connecting ? connectFeedback.label : "Connect to ChatGPT"}
         disabled={!userId || connecting}
         onPress={() => void connect()}
       />
       {connecting && (
         <Text accessibilityLiveRegion="polite" style={shared.small}>
-          Keep Orbyn desktop open and signed in to this account. It will open
-          ChatGPT sign-in automatically.
+          {connectFeedback.message}
         </Text>
       )}
       {connectError && (

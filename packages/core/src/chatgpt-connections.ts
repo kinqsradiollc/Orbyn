@@ -60,3 +60,28 @@ export const chatgptConnectRequestState = z
 export const chatgptConnectRequestFinish = z
   .object({ connection_id: z.uuid().nullable() })
   .strict();
+
+/** Shared app feedback; pending does not prove a desktop app is installed or online. */
+export function chatgptConnectFeedback(
+  phase: "starting" | "pending" | "claimed",
+  elapsedMs = 0,
+): { label: string; message: string } {
+  if (phase === "starting")
+    return {
+      label: "Starting connection…",
+      message: "Creating a ChatGPT sign-in request…",
+    };
+  if (phase === "claimed")
+    return {
+      label: "Complete sign-in…",
+      message:
+        "Orbyn desktop received the request. Complete ChatGPT sign-in in the browser it opens.",
+    };
+  return {
+    label: "Waiting for Orbyn desktop…",
+    message:
+      elapsedMs >= 30_000
+        ? "No desktop app has received this request yet. Open the updated Orbyn desktop app and sign into this Orbyn account."
+        : "Keep Orbyn desktop open and signed into this Orbyn account. It will open ChatGPT sign-in when it receives the request.",
+  };
+}

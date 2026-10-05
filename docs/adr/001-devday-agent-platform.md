@@ -2,28 +2,28 @@
 
 Date: 30 September 2026. Status: **accepted architectural direction; implementation incomplete**.
 
-### Current delivery state — 5 October 2026
+### Authoritative checkpoint — 5 October 2026
 
-This table supersedes historical checkpoint descriptions below; the complete
-C1–C6/M1/D1/U1 acceptance contract remains in force.
+Main `9c5bb744` contains PR196 selected-provider routing, PR198 migration deadlock
+recovery and PR200 web ChatGPT handoff correction. The small PR200 merge did not
+wait for CI, as explicitly authorized by the user. PR198's CI37279096979 completed
+successfully in all four jobs, including 2,856 backend passes, zero failures and
+one existing Tesseract skip. Production deployment/recovery remains user-run and
+unverified.
 
-| Priority                    | Current state                                                                                                                                                                                                                                                                                    | Next acceptance gate                                                                                                                                                  |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Recovery and main promotion | PR #196 merged as `e0a432a5`. Migration recovery PR #198 is on main as `f816675b`; its full CI remains pending. Fresh full local suite: 2,842/2,842 pass. CI 37273639006: all four jobs pass; backend 2,841 pass and one existing Tesseract skip. Earlier intermittent failures remain recorded. | Qualify each subsequent candidate before promotion. User deploys main manually.                                                                                       |
-| ChatGPT execution and usage | Official connection/catalog, provider choice/fallback and measured completed-call usage are merged. Real inference previously reported a subscription-sharing usage limit.                                                                                                                       | Real nonempty completed inference and client acceptance. Account tier, quota and reset times remain unverified.                                                       |
-| Scheduled Agenda            | Separate committed runtime candidate and matching Settings controls, integrated with main without conflict. Producer/capacity/permission/catalog cohort: 37/37. Study transaction repair and Agenda cohort: 36/36. Final-write expiry regression passes.                                         | Final NOWAIT page-lock regression, full candidate qualification and native/visual inspection. Current SIWC cannot enable scheduling that requires hard output limits. |
+Scheduled private Agenda remains draft PR199 at `a2d30b88`; CI37280711360 is still
+running. Successful source checks do not establish native acceptance or enable
+budgeted scheduling for official SIWC accounts lacking hard-limit support.
+Separate plugin OAuth/UI/import-job implementations are present on main; managed/
+BYO plugin provider execution, launch context and external host acceptance remain
+unfinished. Full C1–C6/M1/D1/U1 remains active. See the current table in
+[implementation handoff](../reviews/task.md) and the refreshed P1 table in
+[implementation review](../reviews/devday-2026-implementation-review.md).
 
-Both signed inference and hard-limit capabilities are required for scheduled
-execution. Authentication or a model list does not establish budget enforcement.
-Migration 239's eighteen-table source fencing passed the 60-case combined cohort;
-the final application cohort passed 17/17 before the later NOWAIT change. That
-change has four pure cases but its new PostgreSQL regression is unexecuted while
-the test container is stopped. It must not be treated as qualified yet.
-User/character changes and unrelated candidates remain preserved. No deployment
-or cleanup occurred. Current evidence is recorded in
-[the implementation handoff](../reviews/task.md#latest-qualification-and-top-three-work).
+All checkpoint entries below are historical evidence for the named source;
+they do not supersede this current state or prove the full ADR complete.
 
-### Combined candidate verification — 5 October 2026
+### Historical combined candidate verification — 5 October 2026
 
 Exact candidate `ae02bd0e` passed 2,765/2,765 local tests with zero failures,
 skips or cancellations, production build, and all four CI jobs in run 37251178079. PR196 remains a draft and is mergeable against main `82576dfa`.
@@ -1848,3 +1848,26 @@ assertion after correcting the previously generic error. Build, expanded recover
 atomic source fencing, actual positive provider completion and native/visual
 acceptance remain open. This candidate is uncommitted and not on main. Full
 C1–C6/M1/D1/U1 remains incomplete.
+
+## Preserved candidate history before main integration
+
+### Historical candidate delivery state — 5 October 2026
+
+This table supersedes historical checkpoint descriptions below; the complete
+C1–C6/M1/D1/U1 acceptance contract remains in force.
+
+| Priority                    | Current state                                                                                                                                                                                                                                                                                    | Next acceptance gate                                                                                                                                                  |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Recovery and main promotion | PR #196 merged as `e0a432a5`. Migration recovery PR #198 is on main as `f816675b`; its full CI remains pending. Fresh full local suite: 2,842/2,842 pass. CI 37273639006: all four jobs pass; backend 2,841 pass and one existing Tesseract skip. Earlier intermittent failures remain recorded. | Qualify each subsequent candidate before promotion. User deploys main manually.                                                                                       |
+| ChatGPT execution and usage | Official connection/catalog, provider choice/fallback and measured completed-call usage are merged. Real inference previously reported a subscription-sharing usage limit.                                                                                                                       | Real nonempty completed inference and client acceptance. Account tier, quota and reset times remain unverified.                                                       |
+| Scheduled Agenda            | Separate committed runtime candidate and matching Settings controls, integrated with main without conflict. Producer/capacity/permission/catalog cohort: 37/37. Study transaction repair and Agenda cohort: 36/36. Final-write expiry regression passes.                                         | Final NOWAIT page-lock regression, full candidate qualification and native/visual inspection. Current SIWC cannot enable scheduling that requires hard output limits. |
+
+Both signed inference and hard-limit capabilities are required for scheduled
+execution. Authentication or a model list does not establish budget enforcement.
+Migration 239's eighteen-table source fencing passed the 60-case combined cohort;
+the final application cohort passed 17/17 before the later NOWAIT change. That
+change has four pure cases but its new PostgreSQL regression is unexecuted while
+the test container is stopped. It must not be treated as qualified yet.
+User/character changes and unrelated candidates remain preserved. No deployment
+or cleanup occurred. Current evidence is recorded in
+[the implementation handoff](../reviews/task.md#latest-qualification-and-top-three-work).
