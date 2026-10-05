@@ -2646,7 +2646,14 @@ test("a paused assistant refuses to run, and new grants leave booking out", asyn
   assert.equal(result.message, "Your assistant is paused in Connected agents.");
 });
 
-test("stale running jobs and week-old cards fail and free their automations", async () => {
+test("stale running jobs and week-old cards fail and free their automations", async (t) => {
+  // This test owns recovery: the separate runner otherwise races the explicit
+  // sweep and can consume these fixtures before its returned IDs are asserted.
+  await stopBackground?.();
+  stopBackground = undefined;
+  t.after(async () => {
+    stopBackground = await startTestAssistantRuntime("background");
+  });
   const user = await register();
   const legacyChat = randomUUID();
   await pool.query(

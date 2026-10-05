@@ -278,3 +278,15 @@ with3130 passes, zero failures and one existing Tesseract skip
 still pending at recording time. Current delivery/controls source still needs
 immutable full/CI qualification before main promotion. Teams replies, real
 tenant, visual/native acceptance and the remaining full ADR scope stay open.
+
+## Full identity checkpoint qualification and catalog repair
+
+Immutable05dc8265 ended its full local run with3129 passes, one failure and one
+existing Tesseract skip (3131 total;722536ms), recorded in
+/tmp/orbyn-channel-teams-identity-full.log. The failure was the generated MCP
+catalog route-exclusion count: Teams adds five credential-only routes. The
+canonical generator changes only that count from280 to285 in docs/mcp.md and
+docs/mcp-catalog.json. Four catalog consistency cases pass after regeneration
+(/tmp/orbyn-channel-teams-catalog-repaired.log). No application, migration or test
+assertion changes are needed. Exact repaired-source full/CI qualification remains
+required; preserve the earlier failing terminal result. Full ADR remains active.
