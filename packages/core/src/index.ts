@@ -1,4 +1,5 @@
 export * from "./errors.js";
+export * from "./agent-channels.js";
 export * from "./overnight.js";
 export * from "./reminder-nudges.js";
 export * from "./rbac.js";

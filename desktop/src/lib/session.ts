@@ -32,6 +32,7 @@ export const session = {
     try {
       localStorage.removeItem(KEY);
       sessionStorage.removeItem(KEY);
+      sessionStorage.removeItem("orbyn-slack-installation");
     } catch {
       // Nothing stored to clear.
     }

@@ -4,7 +4,7 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 5 October 2026
 
-Main baseline `689a15a4` includes selected-provider routing, migration deadlock recovery,
+Main baseline `429f2de2` includes selected-provider routing, migration deadlock recovery,
 web/mobile-to-desktop ChatGPT connection handoff, separate plugin launch context,
 Docs source-dialog focus recovery and scoped scheduled Agenda summaries (PR199).
 PR199 exact source `a6a65525` passed all four CI jobs in37291303840:2938 backend
@@ -22,22 +22,25 @@ typechecks pass. External plugin host, real provider and native/visual acceptanc
 remain open. Personal ChatGPT credentials stay excluded; portable MCP remains
 independent. This checkpoint does not prove the entire P1 or ADR acceptance.
 
-Slack candidate49cfde8e with main88154ae5 integrated asb27eb8ba adds durable
-Background DM intents and one independently named Overnight morning notice.
-96 integrated and25 pure checks pass, including cold pool1, live source fences
-and uncertain commit/restart handling. Both client connection/review/permission
-controls and their shared session store are now implemented in source;23 store/
-Settings cases, workspace types, web build and iOS/Android exports pass. The
-fixed receipt retention rule is corrected to an explicit14-day cutoff, including
-expired queues without active Slack configuration; the current integrated
-outbox/notice/Agenda/sweeper cohort passes104/104 with no failures or skips.
+Slack candidate includes session-bound installation, both client review/DM
+controls, durable Background and independently named Overnight morning delivery,
+and one canonical encrypted bot vault per app/workspace/bot. Owner-local verified
+actors, reviewed scopes and DM permissions remain separate.137 latest-source
+integration checks and31 pure checks pass; the full/CI rerun remains required.
+Uncertain canonical refresh clears the pair and DM permissions without replay;
+unchanged scopes/rotation preserve each consent revision. Last-owner unlink or
+account deletion erases the pair without uninstalling the shared workspace app.
 
-The broad run launched atb27eb8ba completed3027 passes/zero failures/one existing
-Tesseract skip while later edits proceeded; exact-head qualification is still
-required. Source/screenshots/native and authorized external delivery are separate
-gates. Token rotation, durable exact-card reply consumption, Teams and real
-workspace/UI acceptance remain open. This channel candidate is not on main.
-Current evidence: [agent channels](../reviews/evidence/agent-channels.md).
+Migrations244–246 require explicit reconnect for legacy candidate pairs/pending
+exchanges. Stale captured OAuth results cannot overwrite a later canonical
+refresh or reviewed reconnect. Signed exact-card replies, Teams, exact-head
+full/CI and authorized
+workspace/native/visual acceptance remain open. Channel runtime/UI is not on main.
+Current source and retained failures: [agent channels](../reviews/evidence/agent-channels.md).
+
+Main429f2de2 passed all four jobs in CI37308099452:2976 backend passes, zero
+failures and one existing Tesseract skip. This qualifies the retention/docs
+main checkpoint; the user deploys manually. It does not prove channel acceptance.
 
 The settings grid cascade/theme patch removes a late three-column override and
 uses existing theme tokens.15 focused tests, backend/desktop typechecks and web
@@ -1942,3 +1945,81 @@ cohort passes104/104 without failures/skips. Candidate connection controls,
 rotation/reply/Teams work and exact-head/native/real acceptance remain separate.
 See evidence/agent-channels.md for retained failures and current evidence.
 Full C1–C6/M1/D1/U1 remains active; deployment remains user-run.
+
+### Canonical Slack bot ownership — implemented candidate, 6 October 2026
+
+A Slack bot credential belongs to its app/workspace/bot installation. Orbyn
+owner mappings bind a verified Slack actor and independently reviewed scope/DM
+permission to that credential; the credential must not be rotated independently
+for each actor. This does not give one Orbyn owner access to another owner's
+mapping, source data or replies.
+
+Implementation order:
+
+1. Introduce a server-only encrypted bot vault keyed by app/workspace/bot, with
+   one durable refresh claim and token pair. Preserve verified installer
+   provenance separately from the DM recipient actor.
+2. Bind owner mappings to that vault through an exact namespace reference and
+   reviewed scope revision. OAuth confirmation remains same-session and exact
+   actor/scopes/version; connecting another owner cannot change existing DM
+   permission or expand an existing owner's reviewed scope.
+3. Read/send with the live owner mapping and canonical credential under both
+   consent/source and credential guards. Recipient actor comes only from the
+   owner's verified mapping; it is never the vault's original installer actor.
+4. Rotate only the canonical pair. Concurrent workers/owners redeem once;
+   unknown completion is not replayed. Publication cannot resurrect revoked
+   mappings or DM consent. Scope drift requires renewed per-owner review.
+5. Unlink only the requesting owner. Other explicitly linked owners retain
+   their installation. Erase the vault credential when no authorized mapping
+   remains; do not uninstall the shared provider app.
+6. Upgrade existing candidate mappings without guessing through uncertain
+   refresh claims. Preserve pending/unknown evidence, and require explicit
+   reconnect where the credential/mapping cannot be proven live.
+7. Qualify three owners in one workspace, concurrent rotation/delivery,
+   disconnect during send/refresh, scope/actor change, last-owner cleanup,
+   cross-owner metadata/refusals and cold pool1 operation. Then implement
+   durable exact-card signed replies and Teams using the same authority model.
+
+Steps1–6 are now implemented in the canonical-vault candidate. Step7 has
+137 latest-source integrated passing checks; full/CI qualification and external/native/visual acceptance remains open. Continue durable
+exact-card signed replies and Teams. This checkpoint does not complete A6 or
+the full ADR; prior owner-pair evidence remains historical only.
+
+### Signed question replies — candidate, 6 October 2026
+
+Canonical vault checkpoint d9225450 completed its immutable full local suite:
+3064 passes, zero failures, one existing Tesseract skip. It is pushed separately;
+no channel source is promoted to main yet.
+
+Slack question cards bind all displayed question/choice contents, the exact sent
+message and waiting ID, reviewed owner/connection revision and a 15-minute expiry.
+Options use signed button callbacks; free text uses the exact message thread and
+requires reviewed im:history scope. Unsupported message input blocks are not used.
+Unrelated/bot/edited/deleted/unthreaded messages cannot answer a question. Approvals
+continue through the full owned Orbyn review; this is not standing permission.
+
+A bounded provider acknowledgement follows encrypted durable receipt capture.
+The notifier rechecks current source/grant/owner/consent/configuration and commits
+the answer, chat history and accepted receipt together. Lost claim recovery cannot
+replay a committed answer. Consumed/refused answer content is cleared; expired
+pending content is swept even with Slack disabled, and terminal receipts last14days.
+
+Focused qualification passes26 database/outbox cases and27 protocol cases; the
+new HTTP fixture initially omitted createService's module list (2 failures), then
+passed2/2 after repair without weakening assertions. Earlier DB diagnostics tried
+to revoke the nonrevocable assistant grant and hung on an incompatible pool mock;
+these were replaced with legal suspension and an actual test-DB rollback trigger.
+Combined qualification, CI, real workspace callbacks, native/visual controls,
+Teams and the full C1–C6/M1/D1/U1 contract remain open. Deployment remains user-run.
+
+Latest combined focused qualification passes64/64 integrated database cases,
+12/12 single-connection reply cases, and41/41 protocol/HTTP/gateway/privacy cases.
+All workspace types, backend build and whole format check pass. Full/CI and
+external/native/visual acceptance still precede production promotion; earlier
+diagnostic failures are retained in evidence/agent-channels.md. The complete
+ADR goal remains active.
+
+Immutable signed-reply checkpoint3d163bcd now has a terminal full local suite:
+3089passes, zero failures, one existing Tesseract skip (3090total). Application,
+migration and test source stayed unchanged during qualification. CI and external/
+client acceptance remain distinct gates; Teams and the full ADR remain open.

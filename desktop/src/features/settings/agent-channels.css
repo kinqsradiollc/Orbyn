@@ -1,0 +1,58 @@
+.agent-channel-body {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.agent-channel-body p {
+  margin: 0;
+}
+.agent-channel-row,
+.agent-channel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.agent-channel-row {
+  justify-content: space-between;
+}
+.agent-channel-review {
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  display: grid;
+  gap: 12px;
+}
+.agent-channel-identity {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 100px) minmax(0, 1fr);
+  gap: 8px 12px;
+}
+.agent-channel-identity dt {
+  color: var(--color-muted);
+}
+.agent-channel-identity dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.agent-channel-body .check-line {
+  min-width: 0;
+  align-items: center;
+}
+.agent-channel-body .link-button {
+  justify-self: start;
+}
+.agent-channel-actions > * {
+  max-width: 100%;
+  white-space: normal;
+}
+@media (max-width: 440px) {
+  .agent-channel-identity {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .agent-channel-identity dd {
+    margin-bottom: 8px;
+  }
+}

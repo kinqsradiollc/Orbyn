@@ -807,6 +807,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "mcp claude chatgpt ai agent",
   ),
   setting(
+    "agent-channels",
+    "Agent channels",
+    "Background and Overnight updates in Slack",
+    "connections",
+    "Agent channels",
+    { sheet: "connections" },
+    "slack background overnight dm messages",
+  ),
+  setting(
     "api-keys",
     "Personal API keys",
     "Keys for your own scripts",

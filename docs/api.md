@@ -3407,3 +3407,43 @@ No executable scripts or private file links are added. Native download/share int
 parity remain separate acceptance gates.
 
 For page section embeds, `references` contains `[normalized_label, destination]` pairs from the authorized source page, including definitions outside the selected section. The complete page is projected through current link privacy before the section is selected. Inaccessible object destinations are omitted from the reference map; their displayed words are neutral. Clients must use this section context rather than definitions from the containing page. Older responses without `references` fall back to definitions inside the section.
+
+## Agent channel installation candidate
+
+These API paths are session-only and excluded from portable MCP/plugin grants.
+They return metadata, never bot credentials. Requests reject extra input keys;
+status/request reads are fresh and all responses use `Cache-Control: no-store`.
+
+| Method/path                                            | Input/result                                                                                                                                                                                                        |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /agent-channels/slack`                            | `configured` and this owner's nullable connection: workspace/account/scopes, connection revision, DM permission, disconnection flag, token expiry and `token_state` (`ready`, `refreshing`, `unknown`, `reconnect`) |
+| `POST /agent-channels/slack/installations`             | Empty object; returns request UUID, fixed Slack authorization URL and expiry                                                                                                                                        |
+| `GET /agent-channels/slack/installations/:id`          | Only the initiating owner/session can review request status and verified workspace/account/scopes                                                                                                                   |
+| `POST /agent-channels/slack/installations/:id/confirm` | Exact reviewed `workspace_id`, `external_user_id`, `expected_bot_scopes`, `expected_version` and explicit `dm_enabled`; returns connection metadata                                                                 |
+| `POST /agent-channels/slack/permission`                | `expected_version`, `dm_enabled`; returns the new revision. Enabling requires configured, available credentials; disabling remains available without app configuration                                              |
+| `POST /agent-channels/slack/disconnect`                | `expected_version`; erases credentials and fences old delivery consent                                                                                                                                              |
+| `GET /agent-channels/slack/callback`                   | Public single-use OAuth capture by state; cannot link an Orbyn account or enable messages. Returns static HTML with no-store/no-referrer/restrictive CSP                                                            |
+
+OAuth attempts expire after ten minutes. Confirmation requires the original
+live session. Callback retries cannot repeat a code exchange. Bot-token rotation
+has a durable one-use claim; uncertainty clears local credentials and requires
+explicit reconnect. This candidate's DMs link to in-app review; no signed reply
+endpoint is mounted yet. Current source/qualification and remaining provider,
+shared-workspace, native/visual gates are in
+[agent channel evidence](reviews/evidence/agent-channels.md).
+
+### Signed Slack question callbacks (candidate)
+
+- `POST /agent-channels/slack/interactions`: bounded raw form payload, Slack v0 HMAC,
+  five-minute timestamp window and configured app identity; minted option buttons only.
+- `POST /agent-channels/slack/events`: bounded signed JSON; URL challenge or human
+  DM-thread answer for the exact committed question card. Unrelated signed events
+  are acknowledged without storing their text.
+
+These provider-authenticated public callbacks cannot be substituted with an Orbyn
+session, API key or MCP grant. Responses are uncached and gateway retry is disabled.
+The receipt and eventual current-question answer have separate durable stages;
+consumption clears encrypted answer content and commits the receipt with the job
+and chat history in one transaction. One sent card accepts at most one decision.
+Permission changes, source loss, question edits, expiry and configuration rotation
+refuse queued answers. No callback grants standing approval.

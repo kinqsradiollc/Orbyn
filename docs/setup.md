@@ -358,3 +358,63 @@ remain supported; embedded image-byte parity is a separate D1 gate.
 from the root's locked build dependencies. Export integration tests require a
 sandboxed Chromium executable (`PDF_TEST_CHROME` or the detected platform path)
 and their own marked PostgreSQL test database. Each process owns its test renderer.
+
+## Optional agent channels: Slack
+
+Agent channels are separate from ChatGPT providers, portable MCP grants and
+incoming-webhook reminders. The candidate implementation uses these optional
+administrator-owned values; blank values leave installation unavailable.
+
+| Variable               | Used by       | Purpose                                                                                                                                        |
+| ---------------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SLACK_CLIENT_ID`      | API, notifier | Slack application's OAuth client ID                                                                                                            |
+| `SLACK_CLIENT_SECRET`  | API, notifier | OAuth client secret; retain only in server configuration                                                                                       |
+| `SLACK_APP_ID`         | API, notifier | Exact Slack application ID                                                                                                                     |
+| `SLACK_REDIRECT_URI`   | API           | Registered public HTTPS callback ending in `/api/agent-channels/slack/callback` (or `/agent-channels/slack/callback` without a gateway prefix) |
+| `SLACK_SIGNING_SECRET` | API, notifier | App-specific signature secret for signed callbacks and configuration-bound question consumption                                                |
+
+The OAuth app requests bot scopes `chat:write`, `im:write` and `im:history`. Register the
+exact callback in Slack; neither request headers nor clients can override it.
+Settings → Connections → Agent channels starts authorization. After Slack
+returns, review the workspace, installer account and actual granted scopes in
+the same Orbyn session. DMs are a separate opt-in, initially off. Reconnecting
+requires another explicit review; it does not silently grant DM permission.
+
+The notifier candidate refreshes one canonical rotating bot credential per
+app/workspace/bot before expiry. Owner mappings retain separate reviewed actors,
+scopes and DM permissions, without their own credential copies. A durable claim
+prevents concurrent redemption of the shared token. Unlinking one owner preserves
+other connected owners; the last mapping unlink or account deletion erases the
+shared pair without uninstalling the workspace app. Changed scopes require each
+affected owner to review again. Migrations244–246 invalidate legacy candidate
+pairs and pending exchanges, requiring an explicit reconnect rather than guessing
+which competing refresh token is live. Captured OAuth results are fenced to the
+canonical credential generation, so an older review cannot overwrite a later
+refresh or reconnect. Transport/commit ambiguity requires reconnect;
+it does not replay the refresh token. Declared rate-limit refusals use bounded
+provider delays and a three-attempt limit. Unknown credentials are cleared and
+DM permission is turned off. Long-lived tokens with no expiry are not refreshed.
+
+Register Interactivity at `/api/agent-channels/slack/interactions` and Events API
+at `/api/agent-channels/slack/events` on the public HTTPS app origin (omit `/api`
+only on an unprefixed gateway). Subscribe to bot event `message.im`. The API
+verifies the raw request HMAC and timestamp before parsing and durably captures
+one encrypted reply before its bounded acknowledgement. The notifier consumes
+it under current owner, consent and source guards. Option buttons support existing
+reviewed two-scope connections; free-text replies in the exact question's thread
+require explicitly reviewed `im:history`. Reconnect to review that additional
+scope. This scope can deliver other DMs to the callback; unrelated, bot, edited,
+deleted and unthreaded messages are discarded without storing their content.
+Questions expire after 15 minutes. Approvals still open the full Orbyn review.
+A successful callback acknowledgement means received, not that work completed.
+Both services need the same signing secret; rotation refuses old queued replies.
+
+Teams, exact-head qualification and real authorized workspace/UI acceptance remain
+implementation gates; do not treat mock-provider qualification
+as a completed production installation. The notifier and API need the same app
+configuration and encryption key. The Compose backend environment already reads
+`.env`. Configure a test workspace and complete acceptance before enabling the
+Slack application's irreversible token-rotation setting in production.
+
+Official contracts: [OAuth installation](https://docs.slack.dev/authentication/installing-with-oauth/),
+[token rotation](https://docs.slack.dev/authentication/using-token-rotation/).

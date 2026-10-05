@@ -381,6 +381,12 @@ export const COVERED: Record<string, string[]> = {
 
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
+  "GET /agent-channels/slack": "credentials",
+  "POST /agent-channels/slack/installations": "credentials",
+  "GET /agent-channels/slack/installations/:id": "credentials",
+  "POST /agent-channels/slack/installations/:id/confirm": "credentials",
+  "PUT /agent-channels/slack/permission": "credentials",
+  "POST /agent-channels/slack/disconnect": "credentials",
   "GET /ai/provider-choice": "credentials",
   "GET /ai/agenda/private-permission": "credentials",
   "GET /ai/agenda/private-summary": "credentials",
@@ -688,6 +694,10 @@ export const PENDING: string[] = [];
  * documents. Listed so a new public route is looked at before it ships.
  */
 export const PUBLIC: string[] = [
+  // OAuth state captures a pending install; linking requires the originating app session.
+  "GET /agent-channels/slack/callback",
+  "POST /agent-channels/slack/interactions",
+  "POST /agent-channels/slack/events",
   "GET /maintenance",
   "GET /announcement",
   "POST /auth/register",

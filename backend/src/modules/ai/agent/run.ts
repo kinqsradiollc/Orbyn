@@ -28,7 +28,7 @@ import { checkPlan, type PlanStep } from "../../../capabilities/plan-run.js";
 import type { CapabilityResult } from "../../../capabilities/registry.js";
 import { policy, type Principal } from "../../../capabilities/policy.js";
 import { pool, transaction } from "../../../db/pool.js";
-import type { Queryable } from "../../../db/pool.js";
+import type { Queryable, Db } from "../../../db/pool.js";
 import { keptOutFor } from "../../../lib/assistant-off.js";
 import { recordAssistantSources } from "../../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../../lib/assistant-visibility.js";
@@ -2018,9 +2018,10 @@ export async function answerAssistantQuestion(
   user: UserRow,
   value: unknown,
   log: FastifyBaseLogger,
+  suppliedDb?: Db,
 ) {
   const { answer, waiting_id } = pendingInput.parse(value);
-  await transaction(async (db) => {
+  const consume = async (db: Db) => {
     const row = (
       await db.query<{ run_state: unknown }>(
         `SELECT run_state FROM ai_jobs WHERE id = $1 AND user_id = $2
@@ -2083,7 +2084,9 @@ export async function answerAssistantQuestion(
       );
     }
     return envelope;
-  });
+  };
+  if (suppliedDb) await consume(suppliedDb);
+  else await transaction(consume);
   return { accepted: true, job_id: jobId };
 }
 

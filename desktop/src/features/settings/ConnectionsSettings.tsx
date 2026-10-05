@@ -20,6 +20,7 @@ import { apiBase, client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { PortabilitySettings } from "./PortabilitySettings";
 import { EmailToTask } from "./EmailToTask";
+import { AgentChannels } from "./AgentChannels";
 import { ConnectedAgents } from "./ConnectedAgents";
 import { ChatDelivery } from "./ChatDelivery";
 import { CalDavNote } from "./CalDavNote";
@@ -97,6 +98,7 @@ export function ConnectionsSettings({ report }: Props) {
           (OpenAPI).
         </p>
       </SettingsSection>
+      <AgentChannels />
       <ConnectedAgents report={report} />
       <ApiKeys report={report} />
       <Webhooks report={report} />

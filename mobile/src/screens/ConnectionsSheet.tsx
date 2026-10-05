@@ -27,6 +27,7 @@ import { parseMinutes, shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { useRun } from "../hooks/useRun";
 import { CalendarFeedCard, SubscriptionsCard } from "./CalendarLinks";
+import { AgentChannelsCard } from "./AgentChannels";
 import { ConnectedAgentsCard } from "./ConnectedAgents";
 import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
@@ -135,6 +136,7 @@ function Body() {
           </Text>
         </View>
 
+        <AgentChannelsCard />
         <ConnectedAgentsCard busy={busy} run={run} />
 
         {/* API keys */}

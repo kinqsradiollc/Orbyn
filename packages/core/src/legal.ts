@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-10-05";
+export const DEFAULT_LEGAL_VERSION = "2026-10-05-channels";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -306,6 +306,12 @@ If you select ChatGPT as your personal AI provider, Orbyn sends the authorized c
 Unless you opted out of analytics in Privacy, Orbyn also keeps the model, completion time and reported token counts of accepted ChatGPT requests for 30 days so you can inspect your usage in Orbyn. This record has no prompt, reply or provider credentials. Missing token counts remain unknown. These measurements do not show your account-wide ChatGPT allowance, use in other apps or remaining quota.
 
 You choose whether to allow Orbyn's configured AI provider as a fallback. If enabled, it can receive the same request when your ChatGPT device is unavailable or OpenAI rejects the request before answering. A partial or uncertain ChatGPT completion is not automatically retried through that provider. Changing your provider choice prevents older queued requests from being claimed or their results from being accepted; it cannot recall content already sent to OpenAI. This provider choice does not grant MCP or plugin access.
+
+## Agent channels
+
+If this service enables Slack connections and you choose to connect, Slack receives our app's requested bot permissions and returns its workspace, installing user and bot identifiers and bot credentials. Orbyn binds the connection to your initiating Orbyn session, asks you to review the returned workspace and user, and stores bot credentials encrypted once per app, workspace and bot. Your reviewed Slack identity and message permission remain separate from other owners. The credential record keeps the verified installing-user identifier separately from message recipients. It refreshes expiring bot credentials using encrypted single-use refresh tokens; an uncertain refresh clears the local credentials and turns messages off until you reconnect. It does not use Slack to sign you into Orbyn or link an account by email. Unconfirmed credentials expire with the ten-minute connection attempt and are removed by the hourly sweeper; failed or confirmed attempts contain no pending credentials.
+
+Direct messages require your explicit opt-in for that connection. Background updates may include the current work's title and question; Overnight sends a morning summary notice. Orbyn checks current source access before sending. Completed delivery receipts retain message identifiers, timestamps and outcomes for 14 days, without storing message bodies; messages already sent remain in Slack under its own retention rules. Uncertain sends are not replayed automatically. Turning messages off changes the connection revision so queued work cannot rely on old permission. Disconnecting immediately stops Orbyn from using your mapping. Other explicitly connected owners retain the shared bot credential; the last local owner disconnect or account deletion clears that credential without uninstalling the Slack app. Empty bot records and installer metadata are removed after 30 days once no mappings remain. The disconnected mapping is removed after 30 days, or when you delete your Orbyn account. This connection has no access to personal ChatGPT plan tokens or the portable MCP sign-in. If the administrator enables signed callbacks, bounded question cards may offer option buttons and, with reviewed DM-history permission, replies in that exact message’s thread for 15 minutes. Orbyn verifies the signed actor, sent card, current question, source access and connection revision. It encrypts a pending answer until it is consumed or refused, then clears its content. Expired pending answers are removed by the hourly sweeper even when Slack is disabled; content-free reply receipts remain for 14 days. Unrelated messages, bot messages and edited or deleted messages do not authorize answers and are not stored. Approval cards open the complete Orbyn review; question replies do not grant standing approval.
 
 ## Files you import
 

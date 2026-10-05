@@ -1,4 +1,6 @@
 import { pluginRoutes } from "./modules/plugin/routes.js";
+import { createSlackReplyRoutes } from "./modules/agent-channels/reply-routes.js";
+import { agentChannelRoutes } from "./modules/agent-channels/routes.js";
 import { pluginDiscoveryRoutes } from "./modules/plugin/discovery.js";
 import { reminderActionRoutes } from "./modules/assistant-workspace/reminder-actions.js";
 import { systemRoutes } from "./modules/system/routes.js";
@@ -97,6 +99,8 @@ export const serviceModules: Record<
 > = {
   /** Accounts, items, teams, devices, notifications, and the admin console. */
   api: [
+    agentChannelRoutes,
+    createSlackReplyRoutes(),
     chatgptModelRoutes,
     systemRoutes,
     authRoutes,

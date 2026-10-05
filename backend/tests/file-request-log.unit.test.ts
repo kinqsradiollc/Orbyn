@@ -4,6 +4,24 @@ import { PassThrough } from "node:stream";
 import Fastify from "fastify";
 import { serializeFileRequest } from "../src/lib/file-request-log.js";
 
+test("Slack OAuth codes and state never enter the request URL serializer", () => {
+  for (const prefix of ["", "/api"]) {
+    const path = `${prefix}/agent-channels/slack/callback`;
+    assert.equal(
+      serializeFileRequest({
+        url: `${path}?code=synthetic-private-code&state=synthetic-private-state`,
+      }).url,
+      path,
+    );
+    assert.equal(
+      serializeFileRequest({
+        url: `${path}?error=access_denied&state=synthetic-private-state`,
+      }).url,
+      path,
+    );
+  }
+});
+
 test("signed file paths and query tails are redacted while ordinary routes retain their fields", () => {
   for (const kind of ["u", "p", "r"]) {
     assert.equal(
@@ -64,4 +82,18 @@ test("Fastify's actual request logs omit signed file tokens and token query valu
     await app.close();
     stream.destroy();
   }
+});
+
+test("signed Slack interaction and event callback queries never enter request logs", () => {
+  for (const prefix of ["", "/api"])
+    for (const kind of ["interactions", "events"]) {
+      const path = `${prefix}/agent-channels/slack/${kind}`;
+      assert.equal(
+        serializeFileRequest({
+          url: `${path}?answer=private-text`,
+          headers: { "x-slack-signature": "private-signature" },
+        }).url,
+        path,
+      );
+    }
 });

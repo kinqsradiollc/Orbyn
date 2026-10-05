@@ -44,6 +44,14 @@ import {
   chatgptConnectionChallenge,
   chatgptConnection,
   chatgptConnectionList,
+  slackChannelStatus,
+  slackChannelConnection,
+  slackInstallationStart,
+  slackInstallationId,
+  slackInstallationRequest,
+  slackInstallationConfirm,
+  slackChannelPermission,
+  slackChannelDisconnect,
   type ChatgptConnectionStart,
   chatgptConnectRequestStart,
   aiProviderChoice,
@@ -1454,6 +1462,61 @@ export class OrbynClient {
       await this.request("/ai/connections/chatgpt/connect-requests", {
         method: "POST",
         body: {},
+        signal,
+      }),
+    );
+  }
+  /** Read this owner's Slack mapping; installation and messages require separate consent. */
+  async slackChannel(signal?: AbortSignal) {
+    return slackChannelStatus.parse(
+      await this.request("/agent-channels/slack", { fresh: true, signal }),
+    );
+  }
+  async startSlackInstallation(signal?: AbortSignal) {
+    return slackInstallationStart.parse(
+      await this.request("/agent-channels/slack/installations", {
+        method: "POST",
+        body: {},
+        signal,
+      }),
+    );
+  }
+  async slackInstallation(id: string, signal?: AbortSignal) {
+    const requestId = slackInstallationId.parse(id);
+    return slackInstallationRequest.parse(
+      await this.request(`/agent-channels/slack/installations/${requestId}`, {
+        fresh: true,
+        signal,
+      }),
+    );
+  }
+  async confirmSlackInstallation(
+    id: string,
+    input: unknown,
+    signal?: AbortSignal,
+  ) {
+    const requestId = slackInstallationId.parse(id);
+    return slackChannelConnection.parse(
+      await this.request(
+        `/agent-channels/slack/installations/${requestId}/confirm`,
+        { method: "POST", body: slackInstallationConfirm.parse(input), signal },
+      ),
+    );
+  }
+  async setSlackDmPermission(input: unknown, signal?: AbortSignal) {
+    return slackChannelConnection.parse(
+      await this.request("/agent-channels/slack/permission", {
+        method: "PUT",
+        body: slackChannelPermission.parse(input),
+        signal,
+      }),
+    );
+  }
+  async disconnectSlack(input: unknown, signal?: AbortSignal) {
+    return slackChannelConnection.parse(
+      await this.request("/agent-channels/slack/disconnect", {
+        method: "POST",
+        body: slackChannelDisconnect.parse(input),
         signal,
       }),
     );

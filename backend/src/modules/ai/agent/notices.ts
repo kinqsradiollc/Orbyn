@@ -1,4 +1,5 @@
 import { assistantJobSourcesVisible } from "../../../lib/assistant-job-sources.js";
+import { queueAgentJobUpdate } from "../../agent-channels/outbox.js";
 import { assistantChatVisible } from "../../../lib/assistant-visibility.js";
 import { announceTo } from "../../presence/live.js";
 import { transaction, type Queryable } from "../../../db/pool.js";
@@ -10,6 +11,7 @@ export async function notifyAssistantAway(
   event: "done" | "failed" | "waiting",
   waitingId = "",
 ): Promise<void> {
+  await queueAgentJobUpdate(db, jobId, event, waitingId);
   const key = event === "waiting" ? `waiting:${waitingId}` : event;
   await db.query(
     `INSERT INTO assistant_notice_events(job_id,event_key,event,waiting_id)

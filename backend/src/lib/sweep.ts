@@ -35,6 +35,61 @@ const olderThan = (column: string) =>
 
 export const SWEEP_RULES: SweepRule[] = [
   {
+    key: "agent_channel_reply_receipts",
+    label: "Agent channel question replies",
+    detail:
+      "Encrypted pending question replies expire with their card; terminal content-free receipts remain for 14 days.",
+    table: "agent_channel_reply_receipts",
+    where:
+      "(state IN ('queued','processing') AND expires_at<now()) OR (state IN ('accepted','refused') AND updated_at<now()-interval '14 days')",
+    days: 14,
+    configurable: false,
+  },
+  {
+    key: "agent_channel_outbox",
+    label: "Agent channel delivery receipts",
+    detail:
+      "Content-free delivery identities, timestamps and outcomes; messages remain at the connected provider.",
+    table: "agent_channel_outbox",
+    where: `updated_at < now() - interval '14 days' AND (
+      state IN ('sent','failed','unknown','cancelled')
+      OR (state='queued' AND expires_at < now())
+      OR (state='dispatching' AND lease_until < now()))`,
+    days: 14,
+    configurable: false,
+  },
+  {
+    key: "agent_channel_oauth_pending",
+    label: "Agent channel connection attempts",
+    detail:
+      "Expired session-bound installations and unconfirmed encrypted Slack credentials.",
+    table: "agent_channel_oauth_pending",
+    where: "expires_at < now()",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "agent_channel_disconnected",
+    label: "Disconnected agent channels",
+    detail:
+      "Disconnected workspace/actor mappings; credentials are erased immediately on unlink.",
+    table: "agent_channel_installations",
+    where: olderThan("disconnected_at"),
+    days: 30,
+    configurable: false,
+  },
+  {
+    key: "agent_channel_bot_vaults",
+    label: "Unused agent channel bots",
+    detail:
+      "Empty workspace bot records after the last owner disconnects; no provider uninstall.",
+    table: "agent_channel_bot_vaults",
+    where:
+      "updated_at < now() - interval '30 days' AND credentials_encrypted IS NULL AND NOT EXISTS(SELECT 1 FROM agent_channel_installations c WHERE c.bot_vault_id=agent_channel_bot_vaults.id)",
+    days: 30,
+    configurable: false,
+  },
+  {
     key: "agenda_summary_runs",
     label: "Completed Agenda summaries",
     detail: "Scheduled summaries, failures and expired device waits.",

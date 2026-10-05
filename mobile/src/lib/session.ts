@@ -61,6 +61,7 @@ export async function clearSession() {
   await store.remove(SESSION_KEY);
   await store.remove(ASSISTANT_CHAT_KEY).catch(() => undefined);
   await store.remove("orbyn-assistant-view-open").catch(() => undefined);
+  await saveSlackInstallation(null);
   session.token = "";
 }
 
@@ -80,3 +81,18 @@ export const getPushToken = () => store.get(PUSH_KEY);
 export const savePushToken = (token: string) => store.set(PUSH_KEY, token);
 
 export const clearPushToken = () => store.remove(PUSH_KEY);
+
+/** Only a pending request UUID; no channel token or authorization code is stored on the device. */
+export const loadSlackInstallation = () =>
+  store.get("orbyn-slack-installation").catch(() => null);
+let slackInstallationWrite: Promise<void> = Promise.resolve();
+export const saveSlackInstallation = (id: string | null) => {
+  slackInstallationWrite = slackInstallationWrite
+    .then(() =>
+      id
+        ? store.set("orbyn-slack-installation", id)
+        : store.remove("orbyn-slack-installation"),
+    )
+    .catch(() => undefined);
+  return slackInstallationWrite;
+};

@@ -234,3 +234,194 @@ Source checkpoint4b9c670f is pushed; current main689a15a4 is integrated without
 conflicts as54976eeb. The worktree is tracked-clean. Full rotation/reply/Teams,
 exact-head qualification and real/native/visual acceptance remain open; this
 channel runtime/UI is not on main.
+
+## Rotating-token worker candidate — 5 October 2026
+
+Migration243 adds durable refresh claims, expiry, retry availability and explicit
+ready/refreshing/unknown/reconnect states. The notifier claims one due mapping
+before HTTP, decrypts outside authority transactions, locks live owner/mapping
+through one bounded redemption, encrypts outside the guard, then publishes the
+new pair only against the exact retained claim/configuration/cipher snapshot.
+Successful refresh preserves workspace/actor/scopes and DM consent revision.
+Disabling DMs concurrently cannot be undone by publishing fresh credentials.
+A reconnect or unlink fences and clears the older claim.
+
+The fixed Slack endpoint uses only refresh-token grant and configured app
+credentials. Returned identity fields must match when present; missing optional
+identity fields retain the previously verified mapping. Scope drift, token reuse,
+user-token responses, oversized/malformed bodies and uncertain transport/commit
+outcomes cannot be accepted or replayed. Ambiguity clears local credentials and
+turns DMs off. Declared429 delays are bounded and capped at three attempts.
+Long-lived tokens are not refreshed. Delivery waits for a valid rotation without
+consuming send attempts, then reloads the new ciphertext; mismatched expiry
+metadata remains a refusal. Both clients show refresh/reconnect status and cannot
+turn messages back on without available credentials.
+
+Evidence:31/31 pure protocol/client/store/route cases pass in
+/tmp/orbyn-channel-rotation-pure-final.log.126/126 integrated database cases,
+zero failures/skips, pass in /tmp/orbyn-channel-rotation-integrated.log, including
+registered HTTP shields, installation, outbox, notices, Overnight, Agenda and
+sweep suites. Rotation tests cover four concurrent workers, unknown restart,
+rate-limit delays, invalid-token refusal, revoked owner/mapping, post-redemption
+commit refusal, cold DB_POOL_MAX=1 and an actually blocked concurrent consent
+write. Earlier logs retain the failed empty-scope check and expiry-deferral check;
+input/source guards were corrected without weakening those assertions.
+
+Workspace typechecks, full formatting, web build and iOS/Android exports pass
+in /tmp/orbyn-channel-rotation-types-final.log,
+/tmp/orbyn-channel-rotation-format-final.log,
+/tmp/orbyn-channel-rotation-web-build.log and
+/tmp/orbyn-channel-rotation-native-export.log. Builds are not native interaction
+or screenshots. No real provider call, token exchange or external message occurred.
+API/setup and Privacy documentation describe current source and boundaries.
+
+Slack's two-active-token limit requires canonical workspace-bot credential
+coordination across independently consented owner mappings. Current rotation
+claims isolate one stored owner pair, but do not yet coordinate every mapping
+for the same app/workspace/bot. This is a required implementation gate before
+channel production promotion, not a complete rotation/A6 claim. Continue that
+coordination, then durable exact-card signed replies, Teams, exact-head full/CI
+qualification and authorized external/native/visual acceptance.
+
+Official references: [token rotation](https://docs.slack.dev/authentication/using-token-rotation/),
+[oauth.v2.access](https://docs.slack.dev/reference/methods/oauth.v2.access/).
+
+Main429f2de2 passed all four CI jobs in37308099452:2976 backend passes, zero
+failures and one existing Tesseract skip. Production Deploy runs were skipped;
+the user deploys manually. This proves the main retention/docs checkpoint's CI,
+not this unmerged channel source or whole ADR completion.
+
+## Canonical workspace bot vault — 6 October 2026 candidate
+
+Supersedes the owner-pair runtime described above. Checkpoint35ec3c69 preserves
+that earlier tested design; this candidate replaces it with one encrypted bot
+vault per provider/app/workspace/bot and separate owner-local verified actor,
+reviewed scopes and DM consent revision. Installer provenance is checked against
+the vault; delivery selects the recipient only from the live owner mapping.
+Owner rows are constrained to contain no credential or expiry copy. Equivalent
+returned scope order is normalized; changed scope sets disable affected owners'
+DM consent and require their own review. No status response reveals another
+owner or the shared vault/installer/credentials.
+
+Concurrent workers claim/redemption/publication use the canonical pair. HTTP is
+fenced by live reviewed mappings and the exact claimed encrypted snapshot.
+Uncertainty/expired claims clear the pair and disable recipient permissions,
+without replay. Bounded post-redemption publication can wait for a concurrent
+local consent write and preserves its newer revision/disabled state. Unlinking
+one owner, including the original OAuth installer, preserves others; last unlink
+or account deletion erases the pair without provider uninstall. Empty unreferenced
+vault metadata receives a fixed30-day sweeper rule.
+
+Migrations244/245 discard candidate-era competing credentials and invalidate
+unconfirmed exchanges rather than infer which single-use token survives. Owners
+must explicitly reconnect. A temporary-schema upgrade regression applies the
+actual241/243/244/245 SQL to populated legacy rows, including an in-flight claim,
+and proves erasure, consent invalidation and the prohibition on owner secrets.
+
+Current integrated run133/133 passes, zero failures/skips:
+/tmp/orbyn-channel-vault-integrated-final.log. Pure31/31 passes:
+/tmp/orbyn-channel-vault-pure-final.log. Two further shared-owner regressions
+(scope-order stability and concurrent final-owner deletion) join the full
+qualification run; its terminal result must be recorded before promotion.
+All workspace typechecks and backend build passed before those two test-only
+additions; latest legal/package rebuild and all workspace types are rerunning.
+
+Retained failed runs:/tmp/orbyn-channel-vault-db.log (35/36),
+/tmp/orbyn-channel-vault-db-final.log (36/42),
+/tmp/orbyn-channel-vault-db-repaired.log (41/42),
+/tmp/orbyn-channel-vault-integrated.log (131/132). Fixes retain assertions: use
+PostgreSQL's5s timeout syntax, address the mapping UUID for the permission writer,
+and review the provider's normalized actual scopes. The shared-vault regressions
+cover three owners, one concurrent redemption, canonical-token/owner-recipient
+DM isolation, installer unlink, final-owner credential cleanup, scope drift,
+unknown-token refusal, deletion during publication and populated upgrades.
+
+Signed exact-card reply consumption, Teams, authorized live Slack delivery,
+current desktop/narrow/native screenshots and full/CI qualification remain open.
+No real provider request/message or Docker engine operation occurred. Channel
+runtime/UI remains on its candidate branch, not main. Full ADR remains active.
+
+### Stale OAuth confirmation fence
+
+Migration246 adds a database-maintained canonical credential generation and
+records that generation/namespace in the encrypted pending capture. Confirmation
+may replace only that exact canonical revision; an older review cannot overwrite
+a newer rotation or another owner's freshly confirmed connection. Unknown or
+deleted vault references require a fresh connection. Claim/state/credential
+changes advance the generation through a database trigger, including last-owner
+cleanup. Two additional regressions exercise stale captured pairs after rotation
+and after another owner connects.
+
+The broader diagnostic run /tmp/orbyn-channel-vault-full.log started before this
+final fence and command-map repair, and cannot qualify the exact latest source.
+It found the missing settings.agent-channels credentials-only reason; the
+original three command registry assertions pass after adding that reason in
+/tmp/orbyn-channel-vault-command-map.log. Keep its failures and terminal result;
+run latest source serially again before claiming full qualification.
+
+Updated legal/package build and all workspace typechecks pass:
+/tmp/orbyn-channel-vault-final-types.log. Web build, iOS/Android exports and whole
+format check pass:/tmp/orbyn-channel-vault-web-build.log,
+/tmp/orbyn-channel-vault-native-export.log and /tmp/orbyn-channel-vault-format.log.
+These do not establish native/browser visual acceptance. Latest fence-only
+backend types are in /tmp/orbyn-channel-vault-generation-types.log.
+
+### Latest-source focused qualification
+
+After the generation fence and terminal stale-capture cleanup, all137 integrated
+cases pass with zero failures/skips in
+/tmp/orbyn-channel-vault-generation-integrated.log. Backend types pass in
+/tmp/orbyn-channel-vault-generation-final-types.log and whole format check passes
+in /tmp/orbyn-channel-vault-generation-format.log. The command mapping repair
+passes its original3/3 assertions. Stale confirmation commits a failed pending
+request with no encrypted pair before returning409, allowing a fresh connection.
+
+The earlier broader diagnostic run is terminal:3062 passes, two failures (both
+missing command mapping, now repaired), and one existing Tesseract skip out of
+3065 tests;718096ms. It contains passing canonical/stale-generation cases but
+started before final edits and is not exact-head qualification. Preserve
+/tmp/orbyn-channel-vault-full.log. A fresh full run of the committed checkpoint
+is required; no claim of all tests passing or full/CI qualification is made yet.
+
+## Immutable vault and signed-question follow-up, 6 October 2026
+
+- Immutable d9225450: `/tmp/orbyn-channel-d9225450-full.log`,3064pass/0fail/1existing skip,3065total,718357ms. Terminal session79486 exit0.
+- New signed-question source: `/tmp/orbyn-channel-reply-db-repaired.log`,26/26 DB/outbox; `/tmp/orbyn-channel-reply-protocol.log`,27/27 raw-signature/events/card/OAuth; `/tmp/orbyn-channel-reply-http-repaired.log`,2/2 mounted HTTP callback shields.
+- Backend types: `/tmp/orbyn-channel-reply-wired-types.log` passes. These focused runs do not qualify the combined source's full suite or external Slack behavior.
+- Retained failures: `/tmp/orbyn-channel-reply-db.log` has invalid grant-revoke fixture then an incompatible pool mock hang (terminated130); `/tmp/orbyn-channel-reply-http-pure.log`37pass/2fixturefail because createService modules omitted. Repairs preserve acceptance assertions; queued fixture receipts are isolated per test.
+- The reused runtime-integration worktree owns codex/agent-channel-replies. Immutable vault qualification tree remains unchanged. Root user dirt and all unrelated branches/worktrees remain preserved.
+- Pending: combined latest-source focused/full/CI, exact-card real Slack callback/choice/thread/expiry/revoke acceptance, web/mobile native/visual, Teams, all other governing ADR requirements. No main/production/full-goal completion claimed.
+
+### Combined signed-reply checkpoint qualification
+
+- `/tmp/orbyn-channel-reply-integrated-final.log`:64/64 latest-source DB cases,
+  including replies/outbox/installations/vault/HTTP ownership/rotation/retention.
+- `/tmp/orbyn-channel-reply-cold-final2.log`:12/12 reply tests with DB_POOL_MAX1,
+  empty SECRETS_KEY and the DB-backed encryption key; no nested-pool deadlock.
+- `/tmp/orbyn-channel-reply-final-pure.log`:41/41 protocol, mounted HTTP shield,
+  ordinary JSON parser isolation, gateway privacy/no-retry and log-redaction cases.
+- All workspace types `/tmp/orbyn-channel-reply-all-types.log`, latest backend
+  `/tmp/orbyn-channel-reply-latest-types.log`, backend build
+  `/tmp/orbyn-channel-reply-backend-build.log` pass. Whole format check passes.
+- Additional retained diagnostics: a one-connection wrapper incorrectly included
+  existing multi-connection fence tests and stopped130 after9passes
+  (`/tmp/orbyn-channel-reply-cold-integrated.log`); this is a runner configuration
+  error, not evidence for source acceptance. The corrected cold run isolates reply
+  tests, while the combined64case run uses the normal pool10.
+- `/tmp/orbyn-channel-reply-cold-latest.log` had11pass/1retention-fixturefail because
+  it ran the consumer after expiring the pending reply: the consumer correctly
+  erased content and retained a new terminal receipt. The fixture now expires the
+  pending answer after the completed-answer setup, testing the sweeper with Slack
+  disabled. The original deletion and retention assertions remain unchanged.
+- Full suite/CI for the combined checkpoint remains pending; canonical d922's
+  3064pass result belongs to that earlier immutable source only. No production or
+  real workspace/native/visual acceptance is claimed.
+
+## Immutable signed-reply full qualification — 6 October 2026
+
+Committed/pushed3d163bcd finished `/tmp/orbyn-channel-3d163bcd-full.log`:
+3089pass/0fail/1existing Tesseract skip,3090total,719714ms. Terminal session90571
+exit0. Its worktree stayed tracked-clean throughout the run; Teams implementation
+was in another worktree. This documentation-only evidence update changes no
+qualified application, migration or test source. Combined CI and real Slack /
+client-native-visual acceptance still remain; no main promotion is claimed yet.
