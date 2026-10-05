@@ -2068,3 +2068,19 @@ previous goal turn was progress: committed/pushed broker and owner controls,
 34 focused passes, and repaired catalog/lease qualification failures. Current
 0f6f222e CI37290712062 is live; PR199 c8403ea1 has no reported checks yet.
 Native Simulator inspection again timed out -10005. No visual proof claimed.
+
+### Fresh isolated local plugin qualification — 5 October 2026
+
+A read-only Docker inventory found the already-running embedding test PostgreSQL
+healthy on55435 with a persistent volume and ample available space. Created only
+a new isolated database orbyn_plugin_20261005_0940_test and its server-side test
+marker. No engine/container restart, tuning or application database change.
+Initial33-case cohort failed two new fixtures: an impossible duplicate OAuth
+client/resource grant and the wrong expected OpenAI cap field. Corrected the
+second-grant fixture to a separate client and assert max_completion_tokens512
+(and absence of max_tokens), preserving the output cap. Rerun33/33 passes with
+zero skips/failures in /tmp/orbyn-plugin-durable-local-integration-fixed.log.
+This includes owner consent/CAS, eleven broker/worker cases, actual managed HTTP
+transport, plugin service security and complete route inventory. Earlier failed
+log remains /tmp/orbyn-plugin-durable-local-integration.log. Exact-head full
+local/CI qualification and external host/native visual acceptance remain open.

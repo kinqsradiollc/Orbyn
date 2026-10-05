@@ -392,10 +392,15 @@ test("separate plugin grants cannot read another grant's private receipt", async
   await enable();
   const run = await enqueue();
   const otherToken = `oat_${randomUUID()}`;
+  const otherClient = `https://fixture.example.test/${randomUUID()}`;
+  await pool.query(
+    "INSERT INTO oauth_clients(id,kind,name,host,redirect_uris) VALUES($1,'dcr','Other fixture','fixture.example.test',ARRAY['https://fixture.example.test/callback'])",
+    [otherClient],
+  );
   const otherGrant = (
     await pool.query(
       "INSERT INTO agent_grants(user_id,kind,resource_kind,client_id,access,personal,toolsets,authorized_at) VALUES($1,'oauth','plugin',$2,'read',true,ARRAY['core'],now()) RETURNING id",
-      [owner.id, clientId],
+      [owner.id, otherClient],
     )
   ).rows[0].id;
   try {
@@ -412,6 +417,7 @@ test("separate plugin grants cannot read another grant's private receipt", async
     assert.ok(!result.body.includes("Host text"));
   } finally {
     await pool.query("DELETE FROM agent_grants WHERE id=$1", [otherGrant]);
+    await pool.query("DELETE FROM oauth_clients WHERE id=$1", [otherClient]);
   }
 });
 
@@ -481,7 +487,8 @@ test("managed plugin dispatch uses the actual bounded HTTP adapter and private r
   const request = wireCalls.at(-1)!;
   assert.equal(request.url, "/v1/chat/completions");
   assert.equal(request.body.model, "fixture-model");
-  assert.equal(request.body.max_tokens, 512);
+  assert.equal(request.body.max_completion_tokens, 512);
+  assert.equal(request.body.max_tokens, undefined);
   assert.deepEqual(request.body.messages, [
     { role: "user", content: "Host text" },
   ]);
