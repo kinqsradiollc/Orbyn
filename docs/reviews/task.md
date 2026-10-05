@@ -2662,8 +2662,8 @@ one existing Tesseract case. It overlapped later source edits; no exact-head
 full qualification is claimed. Review repaired fixed14-day receipt retention
 and bounds stale queue/dispatch records when configuration is disabled.
 The final integrated outbox/notice/Agenda/sweeper cohort passes104/104, zero
-failures/skips (/tmp/orbyn-channel-fixed-retention-final.log). Commit/push
-controls and updated evidence, then
+failures/skips (/tmp/orbyn-channel-fixed-retention-final.log). Controls are committed as4b9c670f and pushed, with current main689a15a4
+integrated as54976eeb without conflicts. Continue
 continue token rotation, durable signed exact-card replies and Teams. Do not
 claim whole ADR, real delivery or production/native acceptance. Root main
 user files remain preserved; no cleanup or deployment was performed.
@@ -2676,3 +2676,9 @@ cohort passes104/104 without failures/skips. Candidate connection controls,
 rotation/reply/Teams work and exact-head/native/real acceptance remain separate.
 See evidence/agent-channels.md for retained failures and current evidence.
 Full C1–C6/M1/D1/U1 remains active; deployment remains user-run.
+
+Current channel checkpoint54976eeb is pushed and tracked-clean. Main689a15a4
+rerun passed7/7 using the existing macOS esbuild binary after root dependency
+bootstrap failed; no dependency files or user-owned root files were changed.
+Next implementation: token rotation, durable signed exact-card replies, Teams;
+then exact-head qualification and real/native/visual acceptance. No cleanup.

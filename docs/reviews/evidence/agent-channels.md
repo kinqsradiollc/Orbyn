@@ -226,6 +226,11 @@ This independent two-file repair is committed on main as689a15a4 and pushed.
 The larger channel/UI implementation remains a candidate. Root local tests
 initially stopped before source execution because its esbuild installation
 contained a different platform binary; the rerun uses the already installed
-macOS ARM binary without changing dependencies. Main qualification follows
+macOS ARM binary without changing dependencies. The main rerun passed7/7, zero failures/skips,
 in /tmp/orbyn-main-689a15a4-sweep-regression-repaired.log. No production
 execution or full ADR acceptance is claimed.
+
+Source checkpoint4b9c670f is pushed; current main689a15a4 is integrated without
+conflicts as54976eeb. The worktree is tracked-clean. Full rotation/reply/Teams,
+exact-head qualification and real/native/visual acceptance remain open; this
+channel runtime/UI is not on main.
