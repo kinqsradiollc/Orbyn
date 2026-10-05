@@ -415,7 +415,9 @@ async function createChatgptManager({
       () => cancelSchedule(ctx.connectTimer),
       { once: true },
     );
-    ctx.connectTimer = schedule(pulse, 15000);
+    // Check an already queued web/mobile request as soon as the app session
+    // is ready. Later polls retain the normal bounded interval.
+    ctx.connectTimer = schedule(pulse, 0);
     ctx.connectTimer?.unref?.();
   };
   const manager = {
