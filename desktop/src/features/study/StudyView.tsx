@@ -22,7 +22,6 @@ import {
   type StudyExam,
   type StudyOverview,
   aiFeatureProviderLabel,
-  type AiFeatureProvider,
   type SuggestedCard,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -371,7 +370,7 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
                           </span>
                         </div>
                       ) : (
-                        <small className="muted study-provider-label">
+                        <small className="muted">
                           No pages attached yet. Choose what you&apos;re
                           revising.
                         </small>
@@ -446,13 +445,13 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
                               }
                             />
                             {x.title}
-                            <small className="muted study-provider-label">
+                            <small className="muted">
                               {x.cards} card{x.cards === 1 ? "" : "s"}
                             </small>
                           </label>
                         ))
                       ) : (
-                        <small className="muted study-provider-label">
+                        <small className="muted">
                           No pages with cards yet.
                         </small>
                       )}
@@ -642,9 +641,7 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
             {data.weak.map((w) => (
               <li key={w.id}>
                 <span>{w.question}</span>
-                <small className="muted study-provider-label">
-                  wrong {w.misses || w.lapses}×
-                </small>
+                <small className="muted">wrong {w.misses || w.lapses}×</small>
                 <button
                   className="text-button"
                   onClick={() => void openPage(w.source?.doc_id ?? w.doc_id)}
@@ -998,9 +995,7 @@ export function MakeCardsDialog({
                         onChange={(e) => update(i, { answer: e.target.value })}
                       />
                       {c.source && (
-                        <small className="muted study-provider-label">
-                          From: “{c.source}”
-                        </small>
+                        <small className="muted">From: “{c.source}”</small>
                       )}
                     </div>
                   </li>

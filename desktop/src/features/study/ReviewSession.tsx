@@ -328,10 +328,7 @@ export function ReviewSession({
                       </small>
                     )}
                     {explained.beyond_notes && (
-                      <small className="muted study-provider-label">
-                        {" "}
-                        Goes beyond your notes.
-                      </small>
+                      <small className="muted"> Goes beyond your notes.</small>
                     )}
                   </span>
                 </p>
