@@ -1,6 +1,6 @@
 # Authoritative implementation pipeline — 6 October 2026
 
-Main application checkpoint: `49a5d844`, pushed (Docs formatting PR208).
+Main application checkpoint: `14415dcb`, pushed (Docs links PR209).
 PR205 account linking, PR206 delivery and PR204 Slack are also merged.
 User deploys main manually; production deployment is unverified.
 Full ADR goal remains active and incomplete.
@@ -8,7 +8,7 @@ Full ADR goal remains active and incomplete.
 | Order | Work                        | Current state                                                                                                                                               | Next implementation / acceptance                                                                                                                                                                                                                                |
 | ----- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1     | Teams question replies      | PR207 merged: signed bounded cards, sent-card proofs, encrypted durable receipts, current authority checks and atomic exact-question answers.               | Real tenant and native/web interaction acceptance; approvals stay in Orbyn.                                                                                                                                                                                     |
-| 2     | Docs D1                     | Nested formatting, delimiter editing and safe autolinks merged in PR208; balanced-link PR209 is under exact-head qualification.                             | Finish PR209 qualification, then preserve paragraph/break semantics, block IDs and comment source ranges across editing, paste, import and exports. Complete the remaining D1 matrices.                                                                         |
+| 2     | Docs D1                     | Nested formatting, delimiter editing and safe autolinks merged in PR208; balanced inline links and titles merged in PR209.                                  | Qualify the local paragraph/break repair across editing, paste and exports, preserving block IDs and comment source ranges. Complete the remaining D1 matrices.                                                                                                 |
 | 3     | Whole-app U1                | Modal settings and shared layout checkpoints on main                                                                                                        | Review and adjust public/signed-in Home, assistant/agent panels, Docs, tasks/views, calendar, projects/teams, lists/study, settings/admin, booking and overlays. Preserve palette and mobile feature parity; prove narrow/collapsed/large-text/keyboard states. |
 | 4     | Agent and provider contract | Independent Background/Overnight runtimes, reflection/ownership, maintained pages, ChatGPT models/defaults and separate plugin execution checkpoints merged | Audit every retained C1–C6/M1/D1/U1 requirement against source/evidence; finish budgets/collaboration/publication and remaining client/runtime gaps. Real-account/tenant/host acceptance stays open until observed.                                             |
 | 5     | Deployment and cleanup      | Qualified checkpoints pushed; root user dirt and related worktrees preserved                                                                                | User deploys. After all relevant work is integrated, audit patch equivalence/unmerged changes and clean only expendable worktrees/branches.                                                                                                                     |
@@ -17,10 +17,13 @@ PR207 exact `c18f405b`: all four CI37341791063 jobs passed; fresh isolated local
 full suite3211 passes/0 failures/1 existing skip. Main has identical tested tree
 `4c3f19f1f7a8f70a6c1d431eda2401ad59b35496`.
 PR208 exact `4c9edf00`: CI37346372738 all four jobs passed; fresh local full
-suite3383 passes/0 failures/1 existing skip. Main matches tested tree
+suite3383 passes/0 failures/1 existing skip. PR208 merge matches tested tree
 `b7e56186bf9d5e478800def4b143b808f3da7ccb`.
-PR209 exact `4c3dffb4` is frozen; CI37348529721 and fresh full local
-qualification remain running. No passing result is implied.
+PR209 exact `4c3dffb4`: all four CI37348529721 jobs passed; fresh local full
+suite3403 passes/0 failures/1 existing skip, terminal exit0, 718822ms.
+Application source matches main; audit/docs-only checkpoint is also retained.
+Log: `/tmp/orbyn-channel-docs-links-4c3dffb4-full.log`; CI:
+`/tmp/orbyn-docs-links-4c3dffb4-ci.log`.
 
 Full log:`/tmp/orbyn-channel-teams-replies-c18f405b-full.log`.
 CI log:`/tmp/orbyn-channel-teams-replies-c18f405b-ci.log`.

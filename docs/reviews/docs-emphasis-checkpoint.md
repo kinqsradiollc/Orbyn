@@ -1,7 +1,8 @@
 # D1 emphasis and autolinks checkpoint — 6 October 2026
 
-Status: implementation candidate; not yet qualified for main. Will update PR208
-with the parser/editing follow-up before seeking main integration.
+Status: merged in PR208 as `49a5d844`, exact candidate `4c9edf00`.
+All four CI37346372738 jobs passed and fresh local full suite3383/0/1 passed.
+The merge and candidate have identical tree `b7e56186bf9d5e478800def4b143b808f3da7ccb`.
 
 ## Implementation
 
