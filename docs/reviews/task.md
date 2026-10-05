@@ -1723,3 +1723,17 @@ and production build passed on e8c10979. CI run 37255077796 is still pending
 at this checkpoint, so no green full qualification or main promotion is claimed.
 Logs: `/tmp/orbyn-e8c10979-full-tests.log`,
 `/tmp/orbyn-doc-heading-scale-tests.log`. Requalify the corrected commit.
+
+## Usage cutoff precision correction — 5 October 2026
+
+Frozen e1866399 full local qualification passed 2,775/2,775 with no skips or
+failures. CI 37256031469 failed one usage aggregation assertion (11 rather
+than 12), while mail/mobile/docker succeeded. Investigation identified a real
+query boundary defect: node-postgres Date conversion loses PostgreSQL
+microseconds before the upper/lower bounds are sent back to SQL. The cutoff
+query now retains database text timestamps for filtering, preserving full
+precision; public timestamps remain ISO dates. A deterministic unit test
+requires both exact bounds and exercises the real usage reader with a mocked
+checked-out client. Broker plus precision checks pass 16/16, no skips, in
+/tmp/orbyn-e186-usage-precision-focused.log. Requalify the corrected commit
+before main promotion. The full ADR remains incomplete; no deployment/cleanup.
