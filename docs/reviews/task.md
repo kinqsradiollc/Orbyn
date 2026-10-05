@@ -48,12 +48,17 @@ and CI37355677316 are running; no merge/full completion claim follows yet.
 Logs: `/tmp/orbyn-channel-reference-integrated-full.log` and
 `/tmp/orbyn-reference-integrated-*.log`.
 
-Docs available-width layout repair is local in `codex/ui-layout-completion`:
+Docs available-width layout repair PR212 is draft, attached and pushed at
+`f72f9f34` in `codex/ui-layout-completion`:
 comments/history/Info stack when app/library panels leave a narrow page; outline
 responds to actual page width. Observer mount/resize/disconnect/fallback and CSS
-wiring are covered by unit tests. This is not browser/native visual acceptance.
-Preserve reference/image/container continuations, diagram families and whole-app
-layout requirements. Simulator inspection returned timeout -10005; Browser5174
+wiring pass twelve focused cases. Owned packages, desktop types/build and full
+formatting pass. CI is running; serial full local qualification waits for PR211
+tests to finish. This is not browser/native visual acceptance.
+Word hyperlink relationships/reference resolution/import round trips remain a
+confirmed gap; source/archive evidence and the next repair are recorded in
+[the Word link audit](docs-word-link-audit.md). Preserve reference/image/container
+continuations, diagram families and whole-app layout requirements. Simulator inspection returned timeout -10005; Browser5174
 saved Block remains recorded. User/character files and worktrees are preserved.
 
 # Historical implementation pipeline — earlier 6 October 2026
