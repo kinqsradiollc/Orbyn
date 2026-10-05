@@ -1,4 +1,5 @@
 import { runDueTemplates } from "../modules/templates/service.js";
+import { rotateSlackOne } from "../modules/agent-channels/rotation.js";
 import { configuredSlack } from "../modules/agent-channels/slack-config.js";
 import { deliverAgentChannelOne } from "../modules/agent-channels/outbox.js";
 import { settings } from "../lib/settings.js";
@@ -275,10 +276,11 @@ export async function runWorker() {
               const reminder = await deliverOne();
               const webhook = await deliverWebhookOne();
               const slack = configuredSlack();
+              const rotation = slack ? await rotateSlackOne(slack) : false;
               const channel = slack
                 ? await deliverAgentChannelOne(slack, env.APP_URL)
                 : false;
-              if (!reminder && !webhook && !channel) return false;
+              if (!reminder && !webhook && !channel && !rotation) return false;
             }
             return true;
           },

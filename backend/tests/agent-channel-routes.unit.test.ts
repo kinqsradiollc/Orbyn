@@ -55,6 +55,7 @@ test("Slack HTTP boundary requires app sessions, strict input and bounded reques
     version: 1,
     disconnected: false,
     token_expires_at: null,
+    token_state: "ready" as const,
   };
   const deps: typeof actual = {
     ...actual,

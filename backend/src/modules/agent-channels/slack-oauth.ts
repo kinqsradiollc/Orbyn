@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { fail } from "@orbyn/core";
 import { z } from "zod";
+import { slackJson } from "./slack-response.js";
 
 export const SLACK_BOT_SCOPES = ["chat:write", "im:write"] as const;
 const identity = (prefix: string) =>
@@ -173,32 +174,7 @@ export async function exchangeSlackCode(
       }),
     });
     if (!response.ok || !response.body) throw new Error("Unavailable");
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let length = 0;
-    try {
-      for (;;) {
-        const chunk = await reader.read();
-        if (chunk.done) break;
-        length += chunk.value.byteLength;
-        if (length > 65536) {
-          await reader.cancel();
-          throw new Error("Unavailable");
-        }
-        chunks.push(chunk.value);
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    const body = new Uint8Array(length);
-    let offset = 0;
-    for (const chunk of chunks) {
-      body.set(chunk, offset);
-      offset += chunk.length;
-    }
-    const json = JSON.parse(
-      new TextDecoder("utf-8", { fatal: true }).decode(body),
-    );
+    const json = await slackJson(response);
     return readSlackInstallation(json, current.appId);
   } catch {
     // Never publish an upstream body, OAuth code, bot token or transport error.

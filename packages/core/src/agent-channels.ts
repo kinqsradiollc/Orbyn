@@ -15,6 +15,7 @@ export const slackChannelConnection = z
     version: z.number().int().positive(),
     disconnected: z.boolean(),
     token_expires_at: z.iso.datetime().nullable(),
+    token_state: z.enum(["ready", "refreshing", "unknown", "reconnect"]),
   })
   .strict();
 export type SlackChannelConnection = z.output<typeof slackChannelConnection>;

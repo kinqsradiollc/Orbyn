@@ -30,6 +30,7 @@ type Channel = {
   version: number;
   disconnected_at: Date | null;
   token_expires_at: Date | null;
+  refresh_state: "ready" | "refreshing" | "unknown" | "reconnect";
 };
 type Pending = {
   id: string;
@@ -51,6 +52,7 @@ const view = (row: Channel) => ({
   version: Number(row.version),
   disconnected: row.disconnected_at !== null,
   token_expires_at: row.token_expires_at?.toISOString() ?? null,
+  token_state: row.refresh_state,
 });
 
 async function decodeInstallation(
@@ -310,7 +312,7 @@ export async function confirmSlackInstallation(
          VALUES($1,'slack',$2,$3,$4,$5,$6,$7,$8,$9,$10)
          ON CONFLICT(user_id,provider) DO UPDATE SET app_id=excluded.app_id,workspace_id=excluded.workspace_id,workspace_name=excluded.workspace_name,
          external_user_id=excluded.external_user_id,bot_user_id=excluded.bot_user_id,scopes=excluded.scopes,credentials_encrypted=excluded.credentials_encrypted,
-         token_expires_at=excluded.token_expires_at,dm_enabled=excluded.dm_enabled,disconnected_at=NULL,version=agent_channel_installations.version+1,updated_at=now() RETURNING *`,
+         token_expires_at=excluded.token_expires_at,dm_enabled=excluded.dm_enabled,disconnected_at=NULL,refresh_state='ready',refresh_claim=NULL,refresh_lease_until=NULL,refresh_config_hash=NULL,refresh_attempts=0,refresh_available_at=now(),version=agent_channel_installations.version+1,updated_at=now() RETURNING *`,
           [
             binding.userId,
             installation.appId,
@@ -348,7 +350,7 @@ export async function disconnectSlackInstallation(
     await live(db, binding);
     const row = (
       await db.query<Channel>(
-        `UPDATE agent_channel_installations SET dm_enabled=false,credentials_encrypted=NULL,token_expires_at=NULL,disconnected_at=now(),version=version+1,updated_at=now()
+        `UPDATE agent_channel_installations SET dm_enabled=false,credentials_encrypted=NULL,token_expires_at=NULL,disconnected_at=now(),refresh_state='ready',refresh_claim=NULL,refresh_lease_until=NULL,refresh_config_hash=NULL,refresh_attempts=0,version=version+1,updated_at=now()
        WHERE user_id=$1 AND provider='slack' AND version=$2 RETURNING *`,
         [binding.userId, input.expected_version],
       )
@@ -389,7 +391,7 @@ export async function setSlackDmPermission(
       await db.query<Channel>(
         `UPDATE agent_channel_installations SET dm_enabled=$3,version=version+1,updated_at=now()
        WHERE user_id=$1 AND provider='slack' AND version=$2 AND
-       (NOT $3 OR (disconnected_at IS NULL AND credentials_encrypted IS NOT NULL AND app_id=$4)) RETURNING *`,
+       (NOT $3 OR (disconnected_at IS NULL AND credentials_encrypted IS NOT NULL AND app_id=$4 AND refresh_state='ready')) RETURNING *`,
         [
           binding.userId,
           input.expected_version,

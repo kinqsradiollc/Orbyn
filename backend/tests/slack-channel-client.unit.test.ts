@@ -14,6 +14,7 @@ const connection = {
   version: 1,
   disconnected: false,
   token_expires_at: null,
+  token_state: "ready" as const,
 };
 const review = {
   workspace_id: connection.workspace_id,

@@ -159,15 +159,17 @@ export async function deliverAgentChannelOne(
           workspace_id: string;
           bot_user_id: string;
           scopes: string[];
+          credentials_encrypted: string;
+          refresh_state: "ready" | "refreshing" | "unknown" | "reconnect";
+          token_expires_at: Date | null;
         }>(
-          `SELECT external_user_id,workspace_id,bot_user_id,scopes FROM agent_channel_installations
+          `SELECT external_user_id,workspace_id,bot_user_id,scopes,credentials_encrypted,refresh_state,token_expires_at FROM agent_channel_installations
         WHERE id=$1 AND user_id=$2 AND provider='slack' AND version=$3 AND dm_enabled AND disconnected_at IS NULL
-        AND credentials_encrypted=$4 AND app_id=$5 AND (token_expires_at IS NULL OR token_expires_at>clock_timestamp()+interval '30 seconds') FOR SHARE NOWAIT`,
+        AND app_id=$4 FOR SHARE NOWAIT`,
           [
             delivery.connection_id,
             delivery.user_id,
             delivery.connection_version,
-            encrypted ?? null,
             config.appId,
           ],
         )
@@ -179,10 +181,36 @@ export async function deliverAgentChannelOne(
         )
       ).rows[0];
       if (
+        user &&
+        channel &&
+        grant &&
+        (channel.refresh_state === "refreshing" ||
+          (channel.refresh_state === "ready" &&
+            (channel.credentials_encrypted !== encrypted ||
+              (channel.token_expires_at !== null &&
+                installation?.refreshToken &&
+                installation.expiresAt &&
+                Date.parse(installation.expiresAt) ===
+                  channel.token_expires_at.getTime() &&
+                channel.token_expires_at.getTime() <= Date.now() + 30000))))
+      ) {
+        // Rotation never changes delivery consent. Reload the new credential without consuming a send attempt.
+        await db.query(
+          "UPDATE agent_channel_outbox SET state='queued',attempts=attempts-1,claim_id=NULL,lease_until=NULL,available_at=now()+interval '10 seconds',updated_at=now() WHERE id=$1 AND claim_id=$2",
+          [delivery.id, delivery.claim_id],
+        );
+        return;
+      }
+      if (
         !user ||
         !channel ||
+        channel.refresh_state !== "ready" ||
         !grant ||
         !installation ||
+        (installation.expiresAt === null
+          ? null
+          : Date.parse(installation.expiresAt)) !==
+          (channel.token_expires_at?.getTime() ?? null) ||
         installation.appId !== config.appId ||
         installation.userId !== channel.external_user_id ||
         installation.workspaceId !== channel.workspace_id ||

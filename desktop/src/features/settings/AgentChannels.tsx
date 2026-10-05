@@ -106,9 +106,14 @@ export function AgentChannels() {
               <dd>{connection.workspace_id}</dd>
               <dt>Token</dt>
               <dd>
-                {connection.token_expires_at
-                  ? `Expires ${new Date(connection.token_expires_at).toLocaleString()}`
-                  : "No expiry reported"}
+                {connection.token_state === "unknown" ||
+                connection.token_state === "reconnect"
+                  ? "Reconnect required"
+                  : connection.token_state === "refreshing"
+                    ? "Refreshing token…"
+                    : connection.token_expires_at
+                      ? `Expires ${new Date(connection.token_expires_at).toLocaleString()}`
+                      : "No expiry reported"}
               </dd>
             </dl>
             <label className="check-line">
@@ -119,7 +124,8 @@ export function AgentChannels() {
                 checked={connection.dm_enabled}
                 disabled={
                   state.busy ||
-                  (!state.status?.configured && !connection.dm_enabled)
+                  (!state.status?.configured && !connection.dm_enabled) ||
+                  (connection.token_state !== "ready" && !connection.dm_enabled)
                 }
                 onChange={(e) => void store.permission(e.target.checked)}
               />

@@ -107,9 +107,14 @@ export function AgentChannelsCard() {
             Slack account: {connection.external_user_id}
             {"\n"}Workspace: {connection.workspace_id}
             {"\n"}
-            {connection.token_expires_at
-              ? `Token expires ${new Date(connection.token_expires_at).toLocaleString()}`
-              : "No token expiry reported"}
+            {connection.token_state === "unknown" ||
+            connection.token_state === "reconnect"
+              ? "Reconnect required"
+              : connection.token_state === "refreshing"
+                ? "Refreshing token…"
+                : connection.token_expires_at
+                  ? `Token expires ${new Date(connection.token_expires_at).toLocaleString()}`
+                  : "No token expiry reported"}
           </Text>
           <View style={s.row}>
             <Text style={[shared.body, s.wrap]}>Send agent DMs to me</Text>
@@ -118,7 +123,8 @@ export function AgentChannelsCard() {
               value={connection.dm_enabled}
               disabled={
                 state.busy ||
-                (!state.status?.configured && !connection.dm_enabled)
+                (!state.status?.configured && !connection.dm_enabled) ||
+                (connection.token_state !== "ready" && !connection.dm_enabled)
               }
               trackColor={{ true: colors.accent }}
               onValueChange={(enabled) => void store.permission(enabled)}

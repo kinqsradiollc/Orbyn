@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { slackJson, slackRetryAfter } from "./slack-response.js";
 
 const slackId = (prefix: string) =>
   z.string().regex(new RegExp(`^[${prefix}][A-Z0-9]{2,63}$`));
@@ -13,32 +14,6 @@ export type SlackSendResult =
   | { state: "failed" }
   | { state: "unknown" };
 
-/** Read only a bounded Slack JSON response. Never retain or report private upstream text. */
-async function slackJson(response: Response) {
-  if (!response.body) throw new Error("Unavailable");
-  const reader = response.body.getReader();
-  let size = 0;
-  const chunks: Uint8Array[] = [];
-  try {
-    for (;;) {
-      const part = await reader.read();
-      if (part.done) break;
-      size += part.value.byteLength;
-      if (size > 65536) throw new Error("Unavailable");
-      chunks.push(part.value);
-    }
-  } finally {
-    await reader.cancel().catch(() => {});
-  }
-  const body = Buffer.concat(chunks);
-  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(body));
-}
-const delay = (response: Response) => {
-  const value = response.headers.get("retry-after");
-  return value && /^\d{1,6}$/.test(value)
-    ? Math.max(5, Math.min(3600, Number(value)))
-    : 60;
-};
 const failure = z.object({ ok: z.literal(false), error: z.string().max(200) });
 // These documented refusals explicitly mean that no message was accepted.
 const refused = new Set([
@@ -91,7 +66,7 @@ export async function sendSlackDm(
     });
     if (opened.status === 429) {
       await opened.body?.cancel();
-      return { state: "limited", retryAfter: delay(opened) };
+      return { state: "limited", retryAfter: slackRetryAfter(opened) };
     }
     if (!opened.ok) {
       await opened.body?.cancel();
@@ -112,7 +87,7 @@ export async function sendSlackDm(
     });
     if (posted.status === 429) {
       await posted.body?.cancel();
-      return { state: "limited", retryAfter: delay(posted) };
+      return { state: "limited", retryAfter: slackRetryAfter(posted) };
     }
     if (!posted.ok) {
       await posted.body?.cancel();

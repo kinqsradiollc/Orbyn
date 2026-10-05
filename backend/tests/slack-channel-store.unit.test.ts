@@ -13,6 +13,7 @@ const connection = {
   version: 4,
   disconnected: false,
   token_expires_at: null,
+  token_state: "ready" as const,
 };
 function fixture() {
   let session = "owner-session";

@@ -234,3 +234,59 @@ Source checkpoint4b9c670f is pushed; current main689a15a4 is integrated without
 conflicts as54976eeb. The worktree is tracked-clean. Full rotation/reply/Teams,
 exact-head qualification and real/native/visual acceptance remain open; this
 channel runtime/UI is not on main.
+
+## Rotating-token worker candidate — 5 October 2026
+
+Migration243 adds durable refresh claims, expiry, retry availability and explicit
+ready/refreshing/unknown/reconnect states. The notifier claims one due mapping
+before HTTP, decrypts outside authority transactions, locks live owner/mapping
+through one bounded redemption, encrypts outside the guard, then publishes the
+new pair only against the exact retained claim/configuration/cipher snapshot.
+Successful refresh preserves workspace/actor/scopes and DM consent revision.
+Disabling DMs concurrently cannot be undone by publishing fresh credentials.
+A reconnect or unlink fences and clears the older claim.
+
+The fixed Slack endpoint uses only refresh-token grant and configured app
+credentials. Returned identity fields must match when present; missing optional
+identity fields retain the previously verified mapping. Scope drift, token reuse,
+user-token responses, oversized/malformed bodies and uncertain transport/commit
+outcomes cannot be accepted or replayed. Ambiguity clears local credentials and
+turns DMs off. Declared429 delays are bounded and capped at three attempts.
+Long-lived tokens are not refreshed. Delivery waits for a valid rotation without
+consuming send attempts, then reloads the new ciphertext; mismatched expiry
+metadata remains a refusal. Both clients show refresh/reconnect status and cannot
+turn messages back on without available credentials.
+
+Evidence:31/31 pure protocol/client/store/route cases pass in
+/tmp/orbyn-channel-rotation-pure-final.log.126/126 integrated database cases,
+zero failures/skips, pass in /tmp/orbyn-channel-rotation-integrated.log, including
+registered HTTP shields, installation, outbox, notices, Overnight, Agenda and
+sweep suites. Rotation tests cover four concurrent workers, unknown restart,
+rate-limit delays, invalid-token refusal, revoked owner/mapping, post-redemption
+commit refusal, cold DB_POOL_MAX=1 and an actually blocked concurrent consent
+write. Earlier logs retain the failed empty-scope check and expiry-deferral check;
+input/source guards were corrected without weakening those assertions.
+
+Workspace typechecks, full formatting, web build and iOS/Android exports pass
+in /tmp/orbyn-channel-rotation-types-final.log,
+/tmp/orbyn-channel-rotation-format-final.log,
+/tmp/orbyn-channel-rotation-web-build.log and
+/tmp/orbyn-channel-rotation-native-export.log. Builds are not native interaction
+or screenshots. No real provider call, token exchange or external message occurred.
+API/setup and Privacy documentation describe current source and boundaries.
+
+Slack's two-active-token limit requires canonical workspace-bot credential
+coordination across independently consented owner mappings. Current rotation
+claims isolate one stored owner pair, but do not yet coordinate every mapping
+for the same app/workspace/bot. This is a required implementation gate before
+channel production promotion, not a complete rotation/A6 claim. Continue that
+coordination, then durable exact-card signed replies, Teams, exact-head full/CI
+qualification and authorized external/native/visual acceptance.
+
+Official references: [token rotation](https://docs.slack.dev/authentication/using-token-rotation/),
+[oauth.v2.access](https://docs.slack.dev/reference/methods/oauth.v2.access/).
+
+Main429f2de2 passed all four CI jobs in37308099452:2976 backend passes, zero
+failures and one existing Tesseract skip. Production Deploy runs were skipped;
+the user deploys manually. This proves the main retention/docs checkpoint's CI,
+not this unmerged channel source or whole ADR completion.
