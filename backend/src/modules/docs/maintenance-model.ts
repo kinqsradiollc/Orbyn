@@ -2,6 +2,7 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { pool, type Queryable } from "../../db/pool.js";
 import { resolveAi } from "../ai/providers/resolve.js";
+import { readAiProviderChoice } from "../auth/ai-provider-choice.js";
 import type { ChatMessage, ResolvedAi } from "../ai/providers/adapters.js";
 import {
   maintainedPageModelOrigin,
@@ -11,7 +12,10 @@ import {
 } from "@orbyn/core";
 
 export class PageModelUnavailable extends Error {
-  constructor(readonly reason: "chatgpt_device_required" | "not_configured") {
+  constructor(
+    readonly reason:
+      "chatgpt_device_required" | "not_configured" | "provider_choice_changed",
+  ) {
     super(reason);
   }
 }
@@ -21,22 +25,29 @@ export async function captureMaintainedPageModelOrigin(
   db: Queryable,
   userId: string,
 ): Promise<MaintainedPageModelOrigin> {
+  const choice = await readAiProviderChoice(db, userId);
+  if (choice.primary === "default")
+    return { kind: "hosted", provider_choice_version: choice.version };
   const preferences = (
     await db.query<{ connection_id: string; model: string; version: string }>(
       `SELECT p.connection_id,p.model,p.version FROM chatgpt_model_preferences p
      JOIN chatgpt_identity_connections c ON c.id=p.connection_id
-     WHERE c.user_id=$1 AND p.model IS NOT NULL ORDER BY c.id LIMIT 2`,
-      [userId],
+     WHERE c.user_id=$1 AND c.id=$2 AND p.model IS NOT NULL`,
+      [userId, choice.connection_id],
     )
   ).rows;
-  if (!preferences.length) return { kind: "hosted" };
-  if (preferences.length > 1) return { kind: "chatgpt_selection_required" };
+  if (!preferences.length)
+    return {
+      kind: "chatgpt_selection_required",
+      provider_choice_version: choice.version,
+    };
   const p = preferences[0];
   return maintainedPageModelOrigin.parse({
     kind: "chatgpt",
     connection_id: p.connection_id,
     model: p.model,
     preference_version: Number(p.version),
+    provider_choice_version: choice.version,
   });
 }
 
@@ -50,8 +61,12 @@ export async function resolveMaintainedPageModel(
   if (origin.kind !== "hosted")
     throw new PageModelUnavailable("chatgpt_device_required");
   // A newly chosen account also cannot silently replace the job's original hosted intent.
-  if ((await captureMaintainedPageModelOrigin(pool, userId)).kind !== "hosted")
-    throw new PageModelUnavailable("chatgpt_device_required");
+  const current = await captureMaintainedPageModelOrigin(pool, userId);
+  if (
+    current.kind !== "hosted" ||
+    (origin.provider_choice_version ?? 0) !== current.provider_choice_version
+  )
+    throw new PageModelUnavailable("provider_choice_changed");
   const ai = await resolveAi();
   if (!ai) throw new PageModelUnavailable("not_configured");
   const key = createHash("sha256")

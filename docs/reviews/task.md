@@ -1,6 +1,25 @@
-# Current implementation handoff — 3 October 2026
+# Current implementation handoff — 5 October 2026
 
-## Current authoritative checkpoint — reflection integration
+## Current checkpoint — selected provider features
+
+Authoritative main remains `82576dfa` (PR197). Exact PR196 candidate `ae02bd0e`
+passed 2,765/2,765 local tests with no skips, production build, and all four CI
+37251178079 jobs. Draft PR196 is mergeable, not merged or deployed. Earlier
+chronological entries below are historical, not current qualification.
+
+Docs/Study/project/capture are routed through owned selected-provider contexts.
+Actual native wide Docs fixture and contrast correction were inspected; narrow,
+Study and mobile rendering remain open. Personal authorization/catalog verified;
+real inference returned sharing quota exhaustion, so successful real inference
+and whole-account usage visibility are unproven.
+
+Next local maintained-page change captures explicit provider choice/revision and
+ignores unrelated saved catalog defaults. It does not yet implement private page
+execution. Continue scoped broker integration for maintained pages, agenda and
+recording capabilities, full U1/D1 visuals and workflows, plugin/external host and
+channels acceptance, then audit and cleanup. Preserve user files and characters.
+
+## Historical checkpoint — reflection integration
 
 Main is e0afd266: PR189 Projects library merged after exact71f58c9f passed
 2,534/2,534 local tests and all four CI37110461919 jobs. PR188 protected MCP

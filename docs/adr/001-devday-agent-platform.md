@@ -2,6 +2,25 @@
 
 Date: 30 September 2026. Status: **accepted architectural direction; implementation incomplete**.
 
+### Combined candidate verification — 5 October 2026
+
+Exact candidate `ae02bd0e` passed 2,765/2,765 local tests with zero failures,
+skips or cancellations, production build, and all four CI jobs in run 37251178079. PR196 remains a draft and is mergeable against main `82576dfa`.
+These results qualify that source's automated checks; they do not establish
+real-account completed inference or full cross-client visual acceptance.
+
+Docs, Study, project proposals and capture text calls use owned selected-provider
+contexts and report actual provider/model provenance. One native desktop Docs
+fixture was inspected; remaining narrow/mobile provider labels need inspection.
+Real OpenAI authorization and models worked, but the actual inference attempt
+returned a subscription-sharing usage limit. Whole-account quota/tier/reset
+information is not established by Orbyn's own recorded-call totals.
+
+The next maintained-page change corrects catalog-preference versus provider-choice
+selection and captures the consent revision. Private maintained-page execution,
+agenda routing, recording capability routing and the rest of C1–C6/M1/D1/U1 remain
+unfinished. This ADR is not complete and this candidate is not deployed.
+
 ### Qualified main checkpoint — 5 October 2026
 
 PR197 merged as `82576dfa`. Main now contains replay reference-array planning,

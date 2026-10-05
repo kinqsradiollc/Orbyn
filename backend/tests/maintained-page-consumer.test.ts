@@ -170,6 +170,10 @@ async function fixture(
       "INSERT INTO chatgpt_model_preferences(connection_id,model) VALUES($1,'account-model')",
       [c],
     );
+    await pool.query(
+      "INSERT INTO user_ai_provider_choice(user_id,primary_provider,connection_id) VALUES($1,'chatgpt',$2)",
+      [user.id, c],
+    );
   }
   let nightId: string | null = null;
   if (opts.night) {
@@ -321,6 +325,10 @@ test("a selected ChatGPT account default is never silently sent to a hosted prov
     "INSERT INTO chatgpt_model_preferences(connection_id,model) VALUES($1,'account-model')",
     [connection],
   );
+  await pool.query(
+    "INSERT INTO user_ai_provider_choice(user_id,primary_provider,connection_id) VALUES($1,'chatgpt',$2)",
+    [f.user.id, connection],
+  );
   assert.equal(
     (await processMaintainedPageRun(log, "background", options(f.run.id)))
       .state,
@@ -336,6 +344,88 @@ test("a selected ChatGPT account default is never silently sent to a hosted prov
     (await processMaintainedPageRun(log, "background", options(f.run.id)))
       .state,
     "idle",
+  );
+});
+
+test("a saved ChatGPT catalog preference does not override the default provider choice", async () => {
+  const f = await fixture();
+  const connection = (
+    await pool.query(
+      "INSERT INTO chatgpt_identity_connections(user_id,issuer,subject,client_id) VALUES($1,'https://auth.openai.com',$2,'oaiapp_fixture') RETURNING id",
+      [f.user.id, randomUUID()],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO chatgpt_model_preferences(connection_id,model) VALUES($1,'account-model')",
+    [connection],
+  );
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "done",
+  );
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].model, "fixture-model");
+});
+
+test("changing provider choice away and back cannot revive an older hosted page run", async () => {
+  const f = await fixture();
+  await pool.query(
+    "INSERT INTO user_ai_provider_choice(user_id,primary_provider) VALUES($1,'chatgpt')",
+    [f.user.id],
+  );
+  await pool.query(
+    "UPDATE user_ai_provider_choice SET primary_provider='default',version=version+1 WHERE user_id=$1",
+    [f.user.id],
+  );
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "deferred",
+  );
+  assert.equal(seen.length, 0);
+  assert.equal((await current(f.run.id)).token_estimate, 0);
+});
+
+test("unavailable personal choice without a model never becomes a hosted page request", async () => {
+  const f = await fixture();
+  await pool.query(
+    "INSERT INTO user_ai_provider_choice(user_id,primary_provider) VALUES($1,'chatgpt')",
+    [f.user.id],
+  );
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "deferred",
+  );
+  assert.equal(seen.length, 0);
+});
+
+test("provider consent changing during a page call prevents staging its answer", async () => {
+  const f = await fixture();
+  responseHook = async () => {
+    await pool.query(
+      "INSERT INTO user_ai_provider_choice(user_id,primary_provider) VALUES($1,'chatgpt')",
+      [f.user.id],
+    );
+    return JSON.stringify({
+      expected_revision: 1,
+      replacements: [
+        { id: "summary", type: "paragraph", text: "Rejected answer." },
+      ],
+    });
+  };
+  assert.equal(
+    (await processMaintainedPageRun(log, "background", options(f.run.id)))
+      .state,
+    "failed",
+  );
+  assert.equal(seen.length, 1);
+  assert.equal((await current(f.run.id)).proposal, null);
+  assert.equal(
+    (await pool.query("SELECT content FROM docs WHERE id=$1", [f.doc.id]))
+      .rows[0].content[1].text,
+    "Authorized selected source.",
   );
 });
 

@@ -198,3 +198,28 @@ unchanged2000ms deadline, with one actual presence revision. The sampled Node
 profiles were mostly idle (85.5% and94%). This observation does not identify the
 cause of the earlier delayed batches or replace full qualification. Evidence:
 `/tmp/orbyn-presence-profile-run.log` and `/tmp/orbyn-presence-cpu-profile/`.
+
+### Combined automated verification and maintained-page choice correction
+
+Exact ae02bd0e completed 2,765/2,765 local tests, no failures/skips/cancellations,
+production build and all four CI37251178079 jobs. Evidence logs:
+`/tmp/orbyn-ae02-full-tests.log`, `/tmp/orbyn-ae02-build.log`. The old full session
+handle is no longer retained; terminal TAP totals and GitHub job states were read
+again. PR196 remains draft, mergeable against main82576dfa; no deployment.
+
+Maintained-page admission now uses the explicit provider choice, selecting only
+that connection's model. A catalog preference alone no longer forces ChatGPT.
+New origins capture provider consent revision; legacy hosted origins are usable
+only while the user still has the untouched default choice. Changed consent
+blocks dispatch and result staging, including change-away-and-back revisions.
+An unavailable private choice remains private and cannot silently become hosted.
+The existing selected-account regression fixtures now also establish explicit
+provider choice. New checks cover preference-only default routing, consent revision
+changes, missing private models and consent changing during a call. Private page
+execution remains required and is not implemented by this selection correction.
+
+Selection correction verification: 39/39 maintained-page consumer/run checks,
+zero failures/skips, in `/tmp/orbyn-page-choice-final-tests.log`; all workspace
+types passed in `/tmp/orbyn-page-choice-types.log` and subsequent backend types
+in `/tmp/orbyn-page-choice-final-types.log`. No production main promotion is
+claimed from these focused results.

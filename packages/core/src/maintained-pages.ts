@@ -172,16 +172,42 @@ export function applyMaintainedPagePatch(
 
 /** Credential-free provenance captured before a scoped job is queued. */
 export const maintainedPageModelOrigin = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("hosted") }).strict(),
+  z
+    .object({
+      kind: z.literal("hosted"),
+      provider_choice_version: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional(),
+    })
+    .strict(),
   z
     .object({
       kind: z.literal("chatgpt"),
       connection_id: z.uuid(),
       model: z.string().min(1).max(200),
       preference_version: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+      provider_choice_version: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional(),
     })
     .strict(),
-  z.object({ kind: z.literal("chatgpt_selection_required") }).strict(),
+  z
+    .object({
+      kind: z.literal("chatgpt_selection_required"),
+      provider_choice_version: z
+        .number()
+        .int()
+        .min(0)
+        .max(Number.MAX_SAFE_INTEGER)
+        .optional(),
+    })
+    .strict(),
   z.object({ kind: z.literal("legacy_unverified") }).strict(),
 ]);
 export type MaintainedPageModelOrigin = z.output<

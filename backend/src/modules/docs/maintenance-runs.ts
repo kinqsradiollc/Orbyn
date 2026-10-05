@@ -610,13 +610,16 @@ export async function deferMaintainedPageModel(
   db: Db,
   runId: string,
   leaseToken: string,
-  reason: "chatgpt_device_required" | "not_configured",
+  reason:
+    "chatgpt_device_required" | "not_configured" | "provider_choice_changed",
   now = new Date(),
 ) {
   const messages = {
     chatgpt_device_required:
       "This page update is waiting for its selected ChatGPT device.",
     not_configured: "Set up an assistant model to run this page update.",
+    provider_choice_changed:
+      "Your AI provider choice changed. Cancel this page run and queue a fresh update.",
   };
   await guardMaintainedPageRun(db, runId, leaseToken, now);
   await db.query(
