@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-10-05-channels";
+export const DEFAULT_LEGAL_VERSION = "2026-10-06-teams";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -308,6 +308,8 @@ Unless you opted out of analytics in Privacy, Orbyn also keeps the model, comple
 You choose whether to allow Orbyn's configured AI provider as a fallback. If enabled, it can receive the same request when your ChatGPT device is unavailable or OpenAI rejects the request before answering. A partial or uncertain ChatGPT completion is not automatically retried through that provider. Changing your provider choice prevents older queued requests from being claimed or their results from being accepted; it cannot recall content already sent to OpenAI. This provider choice does not grant MCP or plugin access.
 
 ## Agent channels
+
+For an enabled Teams connection, Microsoft organizational sign-in verifies your tenant and user object identifiers using identity-only scopes. It does not sign you into Orbyn or link accounts by email. Orbyn encrypts the temporary PKCE verifier and captured identity, binds review to the original Orbyn session, and removes expired attempts through its hourly sweeper. Review clears the temporary identity and creates a separate one-use, ten-minute conversation-link challenge; it does not enable messages. The account mapping retains your tenant/user identifiers and display name. Abandoned conversation links and disconnected mappings are removed after 30 days, or when you delete your Orbyn account. User Microsoft access/refresh tokens are not retained by this identity-only flow.
 
 If this service enables Slack connections and you choose to connect, Slack receives our app's requested bot permissions and returns its workspace, installing user and bot identifiers and bot credentials. Orbyn binds the connection to your initiating Orbyn session, asks you to review the returned workspace and user, and stores bot credentials encrypted once per app, workspace and bot. Your reviewed Slack identity and message permission remain separate from other owners. The credential record keeps the verified installing-user identifier separately from message recipients. It refreshes expiring bot credentials using encrypted single-use refresh tokens; an uncertain refresh clears the local credentials and turns messages off until you reconnect. It does not use Slack to sign you into Orbyn or link an account by email. Unconfirmed credentials expire with the ten-minute connection attempt and are removed by the hourly sweeper; failed or confirmed attempts contain no pending credentials.
 

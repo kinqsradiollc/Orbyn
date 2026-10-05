@@ -93,3 +93,94 @@ export type SlackChannelStatus = z.output<typeof slackChannelStatus>;
 export type SlackInstallationRequest = z.output<
   typeof slackInstallationRequest
 >;
+
+export const teamsInstallationId = z.uuid();
+export const teamsChannelConnection = z
+  .object({
+    id: z.uuid(),
+    display_name: z.string().min(1).max(200),
+    tenant_id: z.uuid(),
+    object_id: z.uuid(),
+    version: z.number().int().positive(),
+    dm_enabled: z.boolean(),
+    state: z.enum([
+      "awaiting_conversation",
+      "linked",
+      "reconnect",
+      "disconnected",
+    ]),
+  })
+  .strict();
+export const teamsChannelStatus = z
+  .object({
+    configured: z.boolean(),
+    delivery_available: z.boolean(),
+    connection: teamsChannelConnection.nullable(),
+  })
+  .strict();
+export const teamsInstallationStart = z
+  .object({
+    id: z.uuid(),
+    authorization_url: z
+      .url()
+      .max(4096)
+      .refine((value) => {
+        const url = new URL(value);
+        return (
+          url.origin === "https://login.microsoftonline.com" &&
+          url.pathname === "/organizations/oauth2/v2.0/authorize" &&
+          !url.username &&
+          !url.password &&
+          !url.hash
+        );
+      }),
+    expires_at: z.iso.datetime(),
+  })
+  .strict();
+export const teamsInstallationRequest = z
+  .object({
+    id: z.uuid(),
+    state: z.enum([
+      "pending",
+      "exchanging",
+      "ready",
+      "confirmed",
+      "failed",
+      "expired",
+    ]),
+    expires_at: z.iso.datetime(),
+    identity: z
+      .object({
+        tenantId: z.uuid(),
+        objectId: z.uuid(),
+        subject: z.string().min(1).max(255),
+        displayName: z.string().min(1).max(200),
+      })
+      .strict()
+      .nullable(),
+  })
+  .strict();
+export const teamsInstallationConfirm = z
+  .object({
+    expected_version: z.number().int().nonnegative(),
+    tenant_id: z.uuid(),
+    object_id: z.uuid(),
+  })
+  .strict();
+export const teamsConversationChallenge = z
+  .object({
+    id: z.uuid(),
+    version: z.number().int().positive(),
+    link_token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+    link_expires_at: z.iso.datetime(),
+    dm_enabled: z.literal(false),
+  })
+  .strict();
+export const teamsChannelDisconnect = z
+  .object({ expected_version: z.number().int().positive() })
+  .strict();
+export type TeamsChannelConnection = z.output<typeof teamsChannelConnection>;
+export type TeamsChannelStatus = z.output<typeof teamsChannelStatus>;
+export type TeamsInstallationRequest = z.output<
+  typeof teamsInstallationRequest
+>;

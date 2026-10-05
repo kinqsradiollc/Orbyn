@@ -95,6 +95,11 @@ const schema = z.object({
   SLACK_APP_ID: z.string().default(""),
   SLACK_SIGNING_SECRET: z.string().default(""),
   SLACK_REDIRECT_URI: z.string().default(""),
+  /** Optional organizational Teams identity link; distinct from bot application credentials. */
+  TEAMS_CLIENT_ID: z.string().default(""),
+  TEAMS_CLIENT_SECRET: z.string().default(""),
+  TEAMS_BOT_APP_ID: z.string().default(""),
+  TEAMS_REDIRECT_URI: z.string().default(""),
   /**
    * Opening the web app's links in the phone app: the Apple developer team
    * that signs the iOS app, and the SHA-256 fingerprints (comma separated) of

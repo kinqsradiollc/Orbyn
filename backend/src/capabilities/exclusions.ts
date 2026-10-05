@@ -382,6 +382,11 @@ export const COVERED: Record<string, string[]> = {
 /** Routes agents never reach, with the reason. */
 export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /agent-channels/slack": "credentials",
+  "GET /agent-channels/teams": "credentials",
+  "POST /agent-channels/teams/installations": "credentials",
+  "GET /agent-channels/teams/installations/:id": "credentials",
+  "POST /agent-channels/teams/installations/:id/confirm": "credentials",
+  "POST /agent-channels/teams/disconnect": "credentials",
   "POST /agent-channels/slack/installations": "credentials",
   "GET /agent-channels/slack/installations/:id": "credentials",
   "POST /agent-channels/slack/installations/:id/confirm": "credentials",
@@ -696,6 +701,7 @@ export const PENDING: string[] = [];
 export const PUBLIC: string[] = [
   // OAuth state captures a pending install; linking requires the originating app session.
   "GET /agent-channels/slack/callback",
+  "GET /agent-channels/teams/callback",
   "POST /agent-channels/slack/interactions",
   "POST /agent-channels/slack/events",
   "GET /maintenance",

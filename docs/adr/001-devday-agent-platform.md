@@ -2023,3 +2023,51 @@ Immutable signed-reply checkpoint3d163bcd now has a terminal full local suite:
 3089passes, zero failures, one existing Tesseract skip (3090total). Application,
 migration and test source stayed unchanged during qualification. CI and external/
 client acceptance remain distinct gates; Teams and the full ADR remain open.
+
+### Teams provider authentication foundation — candidate, 6 October 2026
+
+The separate Teams adapter now has a tested Bot Connector JWT boundary: exact
+bot audience/issuer/RS256/time, Teams key endorsement, recipient and signed service
+URL matching, fixed bounded Microsoft key discovery and restricted credential
+destinations. Eleven pure tests and backend types pass. No Teams public route,
+user OAuth mapping, installed conversation, DM delivery or client controls are
+mounted yet. Service JWT authentication never authorizes an Orbyn owner link.
+See evidence/teams-agent-channels.md for primary contracts, retained diagnostics
+and the full installation/delivery/reply/client/retention acceptance pipeline.
+The Slack3d163bcd source remains immutable during full-suite qualification.
+All A6 and broader C1–C6/M1/D1/U1 requirements remain active.
+
+### Teams identity capture and review — candidate, 6 October 2026
+
+Session-bound organizational OAuth and encrypted ten-minute capture now have
+strict verified tenant/object identity, one-redemption claims, original-session
+review, revision/configuration fencing and cross-owner uniqueness. Review creates
+a one-use personal-conversation challenge and leaves DMs off. Fixed sweeps and
+Privacy text cover the new temporary identity data. Pure protocol cases21/21,
+integrated database cases37/37 and latest cold-pool account cases12/12 pass.
+No public route, conversation binding, bot credential transport, Teams delivery
+or client controls are mounted. The complete implementation and external/native
+acceptance pipeline remains in evidence/teams-agent-channels.md. SlackPR204 is
+merged on main690f6246 after all four CI jobs passed; deployment is user-run.
+All C1–C6/M1/D1/U1 requirements remain active and the full goal is incomplete.
+
+### Teams personal conversation proof — candidate, 6 October 2026
+
+A Connector-authenticated personal message can now consume the reviewed
+tenant/user's one-use linking challenge. Encrypted conversation storage and
+revision advancement are atomic; current owner/configuration/expiry/disconnect
+checks refuse stale or wrong recipients. Linking leaves DMs off. Sixteen cold-pool
+database cases pass, including real signed activities and concurrent replay.
+This service remains unmounted; transport, delivery, replies, client controls and
+external/native/visual acceptance remain open. Full ADR goal remains active.
+
+### Teams HTTP identity controls — candidate, 6 October 2026
+
+Optional API status, session-bound OAuth review and disconnect are mounted, with
+strict typed contracts available to both clients. Provider codes/state are hidden
+from gateway/request logs and proxy retries disabled. Disconnect destroys pending
+identity and stored personal-conversation authority. Fifty-eight integrated cases
+and17 cold-pool account cases pass. Delivery remains explicitly unavailable; no
+Teams DM permission/activity endpoint or client UI is mounted. Transport, exact
+question replies, both client controls and external/native/visual gates remain
+open. This checkpoint does not complete A6 or C1–C6/M1/D1/U1.
