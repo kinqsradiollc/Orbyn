@@ -1,5 +1,41 @@
 # Current implementation handoff — 5 October 2026
 
+## Current main and active candidates — 5 October 2026
+
+Main2f4108d7 includes Docs source-dialog focus PR202 (exact7f60b352,
+CI37285248757 all four jobs passed; 2,862 backend pass, zero fail, one existing
+Tesseract skip) and separate plugin launch PR201 (exacte7d629b0,
+CI37285386062 all four jobs passed; 2,868 backend pass, zero fail, one existing
+skip). User deploys main manually. Live browser/native visual acceptance and
+external plugin host launch remain open; these CI results do not prove them.
+
+Scheduled Agenda candidate50a92aa2 is in CI37286333130 after repairing the two
+capability compatibility failures. Mail, Docker and mobile passed; backend
+suite is still live. Do not promote before inspecting the terminal result.
+
+Plugin managed-provider branch07214863 has a transport boundary, owner/provider-
+bound default-off CAS consent, persistent receipt tables, retention and privacy
+text. Four consent/schema/client tests plus ten transport/operation tests pass;
+all workspace typechecks pass. Migration/HTTP tests are added but not run locally
+because test PostgreSQL remains unavailable and user-controlled. Atomic daily
+reservation, deduplication/unknown-outcome recovery worker, private status/results,
+both client permission controls and runtime qualification remain unfinished. No
+inference endpoint is mounted and this feature is not merged to main.
+
+Full C1-C6/M1/D1/U1 remains active. Preserve all user/character files and unmerged
+work; no cleanup or production deployment. Next: qualify current candidates and
+complete the plugin broker and client controls, then continue retained whole-app
+UI/Docs/provider acceptance.
+
+## Docs source dialog focus checkpoint
+
+Source validation no longer closes and reopens the desktop/web source preview
+dialog. Escape reads current validation state, so invalid edits still block
+dismissal; cleanup restores focus only when the dialog unmounts. The captured
+dialog is closed even if React has already cleared its ref. Cross-client source
+and preview checks31/31 and desktop typecheck passed. This is component/source
+evidence, not visual acceptance; full D1/U1 and native/runtime checks remain open.
+
 ## Automatic desktop request watcher checkpoint
 
 The desktop checks pending web/mobile ChatGPT requests on a zero-delay first
