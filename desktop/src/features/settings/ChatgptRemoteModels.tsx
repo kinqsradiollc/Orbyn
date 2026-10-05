@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { client } from "../../lib/api";
 import { session } from "../../lib/session";
 import { errorText } from "../../lib/errors";
-import { CHATGPT_USAGE_URL } from "@orbyn/core";
+import { CHATGPT_USAGE_URL, chatgptConnectFeedback } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { useChatgptRemote } from "../../hooks/useChatgptRemote";
 
@@ -14,6 +14,9 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
   const id = useId();
   const [query, setQuery] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [connectFeedback, setConnectFeedback] = useState(
+    chatgptConnectFeedback("starting"),
+  );
   const [connectError, setConnectError] = useState<string | null>(null);
   const lifetime = useRef<AbortController | null>(null);
   useEffect(
@@ -29,10 +32,14 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
     const token = session.get();
     setConnecting(true);
     setConnectError(null);
+    setConnectFeedback(chatgptConnectFeedback("starting"));
     try {
       const request = await client.startChatgptConnectRequest(
         controller.signal,
       );
+      if (controller.signal.aborted || token !== session.get()) return;
+      const requestedAt = Date.now();
+      setConnectFeedback(chatgptConnectFeedback("pending"));
       if (controller.signal.aborted || token !== session.get()) return;
       // The signed-in desktop runtime picks up this owned request. Browsers
       // cannot reliably detect an installed custom-protocol handler.
@@ -58,6 +65,10 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
           controller.signal,
         );
         if (controller.signal.aborted || token !== session.get()) return;
+        if (next.state === "pending" || next.state === "claimed")
+          setConnectFeedback(
+            chatgptConnectFeedback(next.state, Date.now() - requestedAt),
+          );
         if (next.state === "completed") {
           refresh();
           return;
@@ -106,7 +117,7 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
         <div>
           <h3>ChatGPT</h3>
           <p className="muted">
-            Connect your ChatGPT account and choose its default model.
+            Requires Orbyn desktop open and signed into the same Orbyn account.
           </p>
         </div>
         <div className="ai-connection-actions">
@@ -116,7 +127,7 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
             disabled={connecting || !userId}
             onClick={() => void connect()}
           >
-            {connecting ? "Waiting for ChatGPT…" : "Connect to ChatGPT"}
+            {connecting ? connectFeedback.label : "Connect to ChatGPT"}
           </button>
           <button
             type="button"
@@ -128,12 +139,7 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
           </button>
         </div>
       </div>
-      {connecting && (
-        <p role="status">
-          Keep Orbyn desktop open and signed in to this account. It will open
-          ChatGPT sign-in automatically.
-        </p>
-      )}
+      {connecting && <p role="status">{connectFeedback.message}</p>}
       {connectError && <p role="alert">{connectError}</p>}
       <a
         className="text-button"

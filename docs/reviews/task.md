@@ -1,5 +1,26 @@
 # Current implementation handoff — 5 October 2026
 
+## ChatGPT handoff feedback checkpoint
+
+The web/mobile Connect button now distinguishes creating a request, waiting for
+Orbyn desktop, and a request claimed by desktop. After 30 seconds unclaimed,
+feedback says no desktop app has received the request and asks for the updated
+app on the same Orbyn account; it does not assert that the device is offline.
+The desktop prerequisite is visible before clicking. Shared feedback tests5/5,
+remote UI rendered-component tests9/9 and desktop/mobile typechecks passed.
+These are source/component checks, not a live web-to-desktop authorization or
+visual acceptance. No automatic custom-scheme navigation was reintroduced.
+
+Official plan authorization uses a local callback, unlike website identity
+sign-in: https://developers.openai.com/siwc/token-sharing-open-source/sign-in
+and https://developers.openai.com/siwc/website. Browser-only plan authorization
+is not provided by this checkpoint. Pending/claimed UI makes the actual handoff
+state visible rather than implying a browser authorization has already opened.
+
+Agenda CI37280711360 completed with 2,913 passes, 11 failures and one existing
+skip. Candidate remains draft; inspect and repair the exact failed cases before
+promotion. Its prior live-CI entry below is historical.
+
 ## Main checkpoints and remaining work
 
 Authoritative main is `9c5bb744` (PR200). User deploys main manually with the
