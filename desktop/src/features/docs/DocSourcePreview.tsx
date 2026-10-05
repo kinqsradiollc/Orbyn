@@ -98,6 +98,10 @@ export function DocSourcePreview({
   const closeSource = () => {
     if (!sourceError) onClose();
   };
+  // Dialog lifetime follows mounting, not parser errors. Escape still reads
+  // the latest error/close callback without closing and reopening the modal.
+  const closeSourceRef = useRef(closeSource);
+  closeSourceRef.current = closeSource;
   const revertSource = () => {
     mustRestore.current = false;
     acceptedSource.current = canonical.source;
@@ -117,20 +121,21 @@ export function DocSourcePreview({
   );
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
-    dialog.current?.showModal();
+    const modal = dialog.current;
+    modal?.showModal();
     const escape = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.preventDefault();
       event.stopImmediatePropagation();
-      closeSource();
+      closeSourceRef.current();
     };
     document.addEventListener("keydown", escape, true);
     return () => {
       document.removeEventListener("keydown", escape, true);
-      dialog.current?.close();
+      modal?.close();
       opener?.focus?.();
     };
-  }, [sourceError]);
+  }, []);
   const select = (index: number, fromSource = false) => {
     const range = map.ranges[index];
     if (!range) return;
