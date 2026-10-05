@@ -10,28 +10,11 @@ import {
   slackChannelPermission,
   slackChannelDisconnect,
 } from "@orbyn/core";
-import { env } from "../../config/env.js";
 import { authenticateSessionBinding } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
-import {
-  validateSlackOAuthConfig,
-  type SlackOAuthConfig,
-} from "./slack-oauth.js";
+import { type SlackOAuthConfig } from "./slack-oauth.js";
 import * as service from "./slack-installations.js";
-
-/** Configuration is administrator-owned; request headers and bodies cannot override it. */
-export function configuredSlack(): SlackOAuthConfig | undefined {
-  try {
-    return validateSlackOAuthConfig({
-      clientId: env.SLACK_CLIENT_ID,
-      clientSecret: env.SLACK_CLIENT_SECRET,
-      appId: env.SLACK_APP_ID,
-      redirectUri: env.SLACK_REDIRECT_URI,
-    });
-  } catch {
-    return undefined;
-  }
-}
+import { configuredSlack } from "./slack-config.js";
 
 /** Injectable boundary for HTTP shield tests; the production registration uses only real services. */
 export function createAgentChannelRoutes(

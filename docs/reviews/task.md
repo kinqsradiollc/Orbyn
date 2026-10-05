@@ -2617,3 +2617,19 @@ finish both client controls, rotating tokens, durable outbox/current waiting-car
 reply consumption, then Teams. External workspace, gateway runtime and native/
 visual acceptance remain open. Full ADR remains active. PluginPR203 is now
 qualified and merged as0faf19dc, with2975 local/CI passes and one existing skip.
+
+### Durable channel delivery candidate — 5 October 2026
+
+Implemented Slack outbox deduplication, committed claims, live source/owner/
+consent fences, independently named Background and single morning Overnight
+DMs, bounded provider transport and terminal uncertain-send recovery.96/96
+integrated database tests and25/25 pure checks pass; all workspace types and
+changed source formatting pass. Cold DB_POOL_MAX=1 process succeeds without
+cached encryption keys. Commit-failure-after-acceptance and real source-write
+blocking are exercised. Evidence: evidence/agent-channels.md.
+
+Continue both client channel controls, token rotation, durable exact-card
+signed reply consumption and Teams. Full local/CI and authorized external,
+native/visual acceptance remain required before runtime promotion. Main still
+contains qualified prior features; this channel source is unmerged. Full
+C1–C6/M1/D1/U1 remains active, with no production deployment or cleanup.

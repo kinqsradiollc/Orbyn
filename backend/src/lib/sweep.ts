@@ -35,6 +35,16 @@ const olderThan = (column: string) =>
 
 export const SWEEP_RULES: SweepRule[] = [
   {
+    key: "agent_channel_outbox",
+    label: "Agent channel delivery receipts",
+    detail:
+      "Content-free delivery identities, timestamps and outcomes; messages remain at the connected provider.",
+    table: "agent_channel_outbox",
+    where: `${olderThan("updated_at")} AND state IN ('sent','failed','unknown','cancelled')`,
+    days: 14,
+    configurable: false,
+  },
+  {
     key: "agent_channel_oauth_pending",
     label: "Agent channel connection attempts",
     detail:

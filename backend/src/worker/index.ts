@@ -1,4 +1,6 @@
 import { runDueTemplates } from "../modules/templates/service.js";
+import { configuredSlack } from "../modules/agent-channels/slack-config.js";
+import { deliverAgentChannelOne } from "../modules/agent-channels/outbox.js";
 import { settings } from "../lib/settings.js";
 import { closeDatabase, pool } from "../db/pool.js";
 import { runSweep } from "../lib/sweep.js";
@@ -272,7 +274,11 @@ export async function runWorker() {
             for (let n = 0; n < LANE_BATCH && !stopping; n++) {
               const reminder = await deliverOne();
               const webhook = await deliverWebhookOne();
-              if (!reminder && !webhook) return false;
+              const slack = configuredSlack();
+              const channel = slack
+                ? await deliverAgentChannelOne(slack, env.APP_URL)
+                : false;
+              if (!reminder && !webhook && !channel) return false;
             }
             return true;
           },

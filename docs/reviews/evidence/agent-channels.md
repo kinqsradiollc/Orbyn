@@ -3,7 +3,7 @@
 Scope: A6/C6 Slack, then Teams. Existing incoming-webhook digest delivery is a
 separate feature; it does not establish OAuth installation, private DM delivery
 or replies to assistant waiting cards. Personal ChatGPT credentials and portable
-MCP grants are not channel credentials. No message is sent by this checkpoint.
+MCP grants are not channel credentials. No real Slack message has been sent during qualification.
 
 ## Signed Slack reply boundary
 
@@ -132,3 +132,37 @@ main. Its clean tracked checkout was fast-forwarded to8b6748c5 and package
 builds passed; both untracked connection-preview files were preserved. The
 listener is still running. This metadata check is not a browser screenshot
 or a visual acceptance claim.
+
+## Durable Slack DM delivery candidate — 5 October 2026
+
+Migration242 and the notifier implement a durable outbox with owner/connection
+revision binding, transition deduplication and a committed dispatch claim before
+external HTTP. Background updates use the current independently named agent;
+Overnight emits one generic morning notice using its separate identity, without
+individual night-job messages. Questions and approvals open the in-app review;
+this candidate does not expose an in-Slack approval action.
+
+Before dispatch, the worker rechecks live owner, grant, source provenance,
+project/team policy, current waiting ID, encrypted actor/workspace/scopes and
+explicit DM consent under the shared source fence. Source writes cannot commit
+through the guarded send. Fixed provider URLs, bounded replies and sanitized
+outcomes retain no message bodies. Slack acceptance IDs and terminal outcomes
+expire after14 days. Expired or ambiguous dispatches are terminal unknown;
+provider-declared429 waits its bounded Retry-After, with at most three attempts.
+An uncertain commit after provider acceptance cannot replay a message.
+
+Qualification:96/96 database/integrated cases pass, zero failures/skips in
+/tmp/orbyn-channel-outbox-cold-integrated.log. This includes a fresh subprocess
+with DB_POOL_MAX=1 and a database-backed encryption key, concurrent workers,
+actual blocked source mutation, unknown/restart handling, consent/source/waiting
+revocation and a rejected database commit after simulated provider acceptance.
+Existing away notices, Overnight, Agenda guards and scheduled-runtime suites
+are included.25/25 pure provider/client/route/OAuth/reply cases pass in
+/tmp/orbyn-channel-outbox-final-pure.log. All workspace types and changed source
+formatting pass in /tmp/orbyn-channel-outbox-current-types.log and
+/tmp/orbyn-channel-outbox-final-format.log.
+
+This remains branch source. Full local/CI qualification, rotating-token worker,
+both client controls, transactional signed reply consumption, Teams and
+real authorized Slack/native/visual acceptance remain open. No real external
+message, production deployment or whole-ADR completion is claimed.
