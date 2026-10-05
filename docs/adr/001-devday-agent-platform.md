@@ -1,3 +1,20 @@
+## Current continuation — 6 October 2026
+
+| Checkpoint             | State                                                                    | Next gate                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------- |
+| Main application       | e7232e11; structured parser/source foundation delivered                  | Full editor adoption remains open                                                               |
+| Storage PR216          | Frozen4f45e904 full DB49:3548 pass,0 fail,1 skip, terminal0              | Integrate privacy/API follow-up; CI Docker success, other three cancelled                       |
+| Structured API         | Pushed357b58cd;46 pure and88 mounted tests, all types/builds/format pass | Frozen full DB51 running; session81935, log /tmp/orbyn-channel-structured-api-357b58cd-full.log |
+| Legacy history restore | Local committeddd2a06af; backend types pass                              | New current/past structured-version refusal regression awaits serial DB52 after DB51            |
+| ChatGPT                | Handoff/routing/catalog/defaults on main                                 | Real authorization/inference and truthful account plan/usage acceptance remain open             |
+
+No structured API/storage promotion yet. A legacy restore could flatten a past
+structured version after a flat downgrade; dd2a06af refuses both current and past
+structured content before tick/history changes. Both editors, collaboration,
+task-item mapping, imports/exports, whole-app layout acceptance and remaining
+C1-C6/M1/D1/U1 are still required. Preserve character/user work; no deploy/cleanup.
+Historical sections below retain their original point-in-time evidence.
+
 # ADR 001 — Orbyn agent, provider, plugin and document platform
 
 Date: 30 September 2026. Status: **accepted architectural direction; implementation incomplete**.
