@@ -207,12 +207,10 @@ test("titled and formatted inline object links redact through reads, exports and
   assert.match(exported.body, /Public guide hint/);
   const edited = await call(ben, "PUT", `/docs/${id}`, {
     version: shown.json().version,
-    content: shown
-      .json()
-      .content.map((block: { text: string }) => ({
-        ...block,
-        text: block.text + " Added.",
-      })),
+    content: shown.json().content.map((block: { text: string }) => ({
+      ...block,
+      text: block.text + " Added.",
+    })),
   });
   assert.equal(edited.statusCode, 200, edited.body);
   noSecrets(edited.body, "titled inline save response");
