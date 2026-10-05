@@ -6,6 +6,11 @@ import {
   type Scope,
 } from "./visibility.js";
 
+/** Item facts and derived busy time must also honor the team's current AI consent. */
+export function visibleAiItems(alias = "i", user = "$1"): string {
+  return `${visibleItems(alias, { user, ai: true })} AND NOT EXISTS(SELECT 1 FROM teams ai_team WHERE ai_team.id=${alias}.team_id AND NOT ai_team.assistant_allowed)`;
+}
+
 /** Current source access for saved reminder cards, independent of whether work is now done. */
 export function assistantSourceVisible(
   kind: string,

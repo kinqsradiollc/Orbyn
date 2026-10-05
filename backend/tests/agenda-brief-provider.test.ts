@@ -129,3 +129,57 @@ test("provider choice changes during Agenda completion discard generated output"
     hook = undefined;
   }
 });
+
+test("Agenda dispatch rereads owned AI facts rather than trusting a caller's supplied day", async () => {
+  const owner = await person();
+  const now = new Date("2026-10-05T09:00:00Z");
+  await pool.query(
+    "INSERT INTO items(user_id,title,kind,due_at) VALUES($1,'Actual owned task','task',$2)",
+    [owner, now],
+  );
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name,assistant_off) VALUES($1,'Excluded project',true) RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO items(user_id,title,project_id,kind,due_at) VALUES($1,'Excluded project task',$2,'task',$3)",
+    [owner, project, now],
+  );
+  const before = bodies.length;
+  assert.match(
+    (await briefFor(
+      { ...day, aiPriorities: ["Untrusted supplied priority"] },
+      now,
+      owner,
+    ))!,
+    /quiet day/,
+  );
+  assert.equal(bodies.length, before + 1);
+  const request = JSON.stringify(bodies.at(-1));
+  assert.ok(request.includes("Actual owned task"));
+  assert.ok(!request.includes("Untrusted supplied priority"));
+  assert.ok(!request.includes("Excluded project task"));
+});
+
+test("Changed Agenda source revision rejects generated text after the provider responds", async () => {
+  const owner = await person();
+  const now = new Date("2026-10-05T09:00:00Z");
+  const id = (
+    await pool.query(
+      "INSERT INTO items(user_id,title,kind,due_at) VALUES($1,'Current task','task',$2) RETURNING id",
+      [owner, now],
+    )
+  ).rows[0].id;
+  const before = bodies.length;
+  hook = async () => {
+    await pool.query("UPDATE items SET version=version+1 WHERE id=$1", [id]);
+  };
+  try {
+    assert.equal(await briefFor(day, now, owner), null);
+    assert.equal(bodies.length, before + 1);
+  } finally {
+    hook = undefined;
+  }
+});

@@ -1885,3 +1885,31 @@ with zero skips:60 polls3018ms, locked fresh read90ms and one row revision.
 The earlier full2775/2776 result remains failed, not waived. Requalify this
 combined commit with full local tests and CI before main promotion. Full ADR,
 real positive inference and desktop/mobile acceptance remain incomplete.
+
+## Agenda fact authority checkpoint — 5 October 2026
+
+Agenda managed briefs reread owned AI facts, filter project/team exclusions in
+task/event/block and derived busy queries, and validate an owner/time-bound
+snapshot before dispatch and acceptance. Original task/page versions, calendar
+and habit identities, event UIDs/occurrences and block revisions are retained.
+Internal preferences/placement inputs are hashed without exposing their source
+identities in the prompt. Missing revisions fail closed. Excluded busy work
+causes omission of affected AI availability, preserving the human calendar and
+avoiding a false claim that private occupied time is free.
+
+Final current checks92/92, no skips, pass in
+/tmp/orbyn-agenda-retained-sources-tests.log. All workspace types and production
+build pass with terminal exit0 in /tmp/orbyn-agenda-retained-sources-types.log
+and /tmp/orbyn-agenda-retained-sources-build.log. Provider fixture tests prove
+untrusted supplied priorities are not sent, excluded titles remain absent and a
+revision changed during the model request rejects its output. Snapshot tests
+cover exact owner/time, preferences, task revisions, habit names/placement,
+subscription UID replacement/unsubscribe, team AI revocation and human page
+preservation. Calendar/planner/habit/visibility suites retain ordinary behavior.
+
+Previous combined f1ecc45b full session78088 completed2811/2811, no skips or
+failures, and all four CI37259956426 jobs passed. Main82576dfa remains unchanged.
+Do not substitute that previous full result for this newer source checkpoint.
+Next: full current-head qualification, durable private Agenda transport with
+source context and app/scheduled consent, real inference and native UI acceptance,
+then remaining full ADR implementation and eventual cleanup. No deployment.

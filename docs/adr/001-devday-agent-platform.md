@@ -1729,3 +1729,29 @@ took about13 seconds and changed the row beyond the10-second grace interval.
 The unchanged assistant-run suite is being rechecked; no assertions, timeouts,
 database settings or production interval have been relaxed. Do not promote the
 candidate on the basis of CI alone. Whole C1–C6/M1/D1/U1 acceptance remains open.
+
+### Agenda fact authority — 5 October 2026 candidate
+
+Briefs reread the actual owner's current AI-visible day rather than accepting
+caller-supplied day facts. Task/event/time-block reads and derived busy intervals
+honor project exclusions and team AI consent. When excluded busy sources change
+available time, omit the AI availability total instead of advertising occupied
+time as free; the ordinary calendar retains its full schedule.
+
+The snapshot is bound to the owner and exact capture time. It retains original
+task/page revisions, calendar/habit identities, calendar event UIDs/occurrences
+and time/habit block revisions. Internal scheduling inputs and preferences are
+hashed, never included in the prompt. Rechecking the same captured time before
+dispatch and acceptance rejects changes to source access, revisions, feed event
+identity/content, habits, placement, Study counts or derived facts. Missing block
+revisions fail closed. Task reference checks are batched rather than one query
+per task.
+
+Current Agenda/calendar/planner/habit/visibility/neatness checks92/92 pass,
+zero skips; all workspace types and production build pass. Prior combined
+f1ecc45b qualification completed2811/2811 with zero failures/skips and all four
+CI37259956426 jobs passed. This newer source checkpoint still needs exact-head
+full/CI qualification. Private Agenda routing remains unfinished: integrate the
+captured context with durable transport, app versus scheduled authorization and
+visible waiting/recovery behavior. Full provider/native and C1–C6/M1/D1/U1
+acceptance remains required. No main merge, deployment or cleanup is claimed.

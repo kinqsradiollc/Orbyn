@@ -6,7 +6,10 @@ import {
 } from "@orbyn/core";
 import { pool } from "../../db/pool.js";
 import { visibleDocs } from "../../lib/visibility.js";
-import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
+import {
+  assistantSourceVisible,
+  visibleAiItems,
+} from "../../lib/assistant-source-visibility.js";
 import { LIVE_CARDS } from "../study/service.js";
 
 export type AgendaAiSource = {
@@ -171,7 +174,26 @@ export async function assertAgendaStudySources(
   owner: string,
   sources: AgendaAiSource[],
 ) {
+  const tasks = sources.filter((source) => source.kind === "task");
+  if (tasks.length) {
+    const ids = [...new Set(tasks.map((source) => source.id))];
+    const current = await pool.query<{ id: string; version: number }>(
+      `SELECT i.id,i.version FROM items i WHERE i.id=ANY($2::uuid[]) AND ${visibleAiItems()}`,
+      [owner, ids],
+    );
+    const versions = new Map(current.rows.map((row) => [row.id, row.version]));
+    if (
+      current.rows.length !== ids.length ||
+      tasks.some(
+        (source) =>
+          source.version !== undefined &&
+          source.version !== versions.get(source.id),
+      )
+    )
+      throw new Error("Agenda Study source changed.");
+  }
   for (const source of sources) {
+    if (source.kind === "task") continue;
     if (source.kind === "doc") {
       const row = await pool.query<{ version: number }>(
         `SELECT d.version FROM docs d WHERE d.id=$2 AND ${readable("d")}`,
@@ -194,18 +216,6 @@ export async function assertAgendaStudySources(
           [owner, source.id],
         );
         if (!exam.rowCount) throw new Error("Agenda Study source changed.");
-      }
-      if (source.kind === "task") {
-        const task = await pool.query<{ version: number }>(
-          `SELECT i.version FROM items i WHERE i.id=$2 AND ${teamAllowed("i")}`,
-          [owner, source.id],
-        );
-        if (
-          !task.rowCount ||
-          (source.version !== undefined &&
-            task.rows[0].version !== source.version)
-        )
-          throw new Error("Agenda Study source changed.");
       }
     }
   }
