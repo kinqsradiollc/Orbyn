@@ -50,3 +50,6 @@ export { SlackChannelStore } from "./slack-channel-store.js";
 export type { SlackChannelState } from "./slack-channel-store.js";
 
 export { TeamsChannelStore } from "./teams-channel-store.js";
+
+export { DocContentStore } from "./doc-content-store.js";
+export type { DocContentEditorState } from "./doc-content-store.js";

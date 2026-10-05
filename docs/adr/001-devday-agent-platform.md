@@ -1,3 +1,26 @@
+## Shared structured editor ownership checkpoint — 6 October 2026
+
+The shared API-client `DocContentStore` now owns full-format reads, source and
+stable-leaf edits, optimistic saves and remote observations. Accepted nested
+content is immutable. Page switches fence delayed reads/saves; typing during a
+save keeps its draft against the returned revision. A conflicting refresh retains
+local source and exposes the remote revision separately. A failed observation
+cannot block an otherwise valid optimistic save. Markdown conversion refusal
+retains the complete visual tree; no flat or empty fallback is used.
+
+Qualification: 29 pure store/source/format cases pass, all workspace typechecks
+pass. Two initial test fixtures were corrected: a leaf used `kind` instead of the
+actual `type` field, and an empty quote was representable rather than a refusal
+case. The refusal case now uses tight adjacent paragraphs that cannot round-trip.
+Normal web/mobile editor adoption, offline recovery, task-item identity and CRDT
+remain pending. This shared controller does not claim UI or runtime acceptance.
+
+Separately, frozen PR216 e9a93e98 has unchanged application source from5511d215.
+Full DB53 ended3563/2/1; stronger private export expectations and the generated
+catalog count were repaired. Fresh DB54 repaired cohort64/64 passed. Corrected
+full DB55 session50150 and CI37377748532 remain running; mobile, Docker and mail
+CI have passed. Do not start another DB suite or alter that frozen checkout.
+
 ## Paired structured editor contract candidate — 6 October 2026
 
 A separate codex/docs-structured-editor-contract checkout continues from frozen
