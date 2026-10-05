@@ -1724,6 +1724,20 @@ at this checkpoint, so no green full qualification or main promotion is claimed.
 Logs: `/tmp/orbyn-e8c10979-full-tests.log`,
 `/tmp/orbyn-doc-heading-scale-tests.log`. Requalify the corrected commit.
 
+## Usage cutoff precision correction — 5 October 2026
+
+Frozen e1866399 full local qualification passed 2,775/2,775 with no skips or
+failures. CI 37256031469 failed one usage aggregation assertion (11 rather
+than 12), while mail/mobile/docker succeeded. Investigation identified a real
+query boundary defect: node-postgres Date conversion loses PostgreSQL
+microseconds before the upper/lower bounds are sent back to SQL. The cutoff
+query now retains database text timestamps for filtering, preserving full
+precision; public timestamps remain ISO dates. A deterministic unit test
+requires both exact bounds and exercises the real usage reader with a mocked
+checked-out client. Broker plus precision checks pass 16/16, no skips, in
+/tmp/orbyn-e186-usage-precision-focused.log. Requalify the corrected commit
+before main promotion. The full ADR remains incomplete; no deployment/cleanup.
+
 ## Recording provider checkpoint — 5 October 2026 candidate
 
 Text recording summaries now capture explicit provider choice, source page
@@ -1861,3 +1875,13 @@ and observed an additional row revision. Log:
 recheck is running as session55232 in
 /tmp/orbyn-82f5f20e-presence-recheck.log. No test/timeout/database/interval waiver
 or main promotion. Main remains82576dfa; user deploys main manually.
+
+## Combined provider checkpoint — 5 October 2026
+
+Integrated the usage precision correction with recording, bounded private page,
+Agenda owner and Study source work. The handoff append conflict retains both
+sets of evidence. The unchanged82f5f20e assistant-runs recheck completed41/41
+with zero skips:60 polls3018ms, locked fresh read90ms and one row revision.
+The earlier full2775/2776 result remains failed, not waived. Requalify this
+combined commit with full local tests and CI before main promotion. Full ADR,
+real positive inference and desktop/mobile acceptance remain incomplete.
