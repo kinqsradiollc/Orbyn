@@ -21,6 +21,28 @@ selection and every existing block widget. PR216 full DB53 session98110 and
 CI37376039791 remain independent; no second DB suite while the full run is live.
 All C1-C6/M1/D1/U1 and manual visual/runtime/import acceptance stay required.
 
+## Combined Docs full-regression repair — 6 October 2026
+
+Frozen5511d215 full DB53 terminated1:3563 passes,2 failures,1 existing skip,
+744869ms. Neither failure showed a new runtime exception: link-privacy's older
+export assertion required a clickable private link, while the new exported safe
+label deliberately omits its destination; mcp-catalog expected the old287 excluded
+routes instead of289 after the new editor-protocol endpoints.
+
+The privacy regression retains title redaction and authorized-owner assertions,
+adds private page/task ID absence and preserves visible destinations. The generated
+MCP catalog/docs are refreshed by npm run mcp:catalog; its equality test is unchanged.
+64 fresh DB54 privacy/content/export/inventory/catalog cases pass,0 failures,
+terminal0,23956ms. Original full failure logs are retained.
+
+Current main07a61716 documentation is integrated with both histories preserved.
+Application source is unchanged from5511d215 across backend/src, packages, desktop/
+mobile source. A corrected frozen full regression and CI are next; no main
+application promotion/deployment is claimed. Separate editor candidatebc619297
+has75 pure cases/all types/web build/format and paired renderers/source contracts;
+normal loading/selection/saving/task/CRDT integration and visual acceptance remain
+open. All C1-C6/M1/D1/U1 and original scope stay required.
+
 ## Combined structured Docs qualification — 6 October 2026
 
 | Requirement                                 | Current evidence                                                                         | Remaining gate                                |
@@ -166,6 +188,34 @@ preserved, Docker is unchanged, user deploys manually, and cleanup remains later
 | 5     | Production and cleanup      | Main checkpoints pushed; user files/worktrees preserved                                    | User deployment confirmation; final relevant integration and cleanup audit            |
 
 ## Main checkpoint notes retained during integration
+
+## Updated main handoff retained during integration
+
+## Current combined Docs checkpoint — 6 October 2026
+
+| Work                           | Verified state                                                            | Next gate                                                             |
+| ------------------------------ | ------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Structured storage/API/history | PR216 head5511d215, pushed;117 fresh DB52 mounted cases pass              | Full fresh DB53 running, session98110                                 |
+| Container exports              | Markdown/HTML/PDF/Word/plain text adapters implemented;72 pure cases pass | Complete structured rendering/import/visual matrices                  |
+| Build checks                   | Packages/all workspace types/backend/web builds/full formatting pass      | Frozen combined full regression and CI37376039791                     |
+| Earlier API full               | 357b58cd DB51:3554 pass,1 fail,1 skip; terminal1                          | Inventory omission corrected without changing assertions; DB52 passes |
+| Main                           | Application e7232e11, docs516db089; user work preserved                   | Promote qualified combined checkpoint                                 |
+
+[PR216](https://github.com/kinqsradiollc/Orbyn/pull/216) remains draft, now contains
+storage, capability-negotiated API, private-label limits, legacy restore protection
+and ownership-preserving exports. Full log:
+`/tmp/orbyn-channel-structured-combined-5511d215-full.log`.
+Do not run another DB suite or mutate its frozen checkout while session98110 lives.
+CI mail has passed; the other three jobs were in progress at this update.
+No full-pass/merge/deployment claim is made.
+
+The previous temporary Word/plain-text409 boundary is replaced by typed adapters.
+Word archive checks establish XML/numbering/content order, not a rendered layout or
+Word import round-trip. Both editors/CRDT/task mapping/typed agent integration,
+complete source/import/render matrices, real ChatGPT authorization/inference and
+truthful account plan/usage acceptance, whole-app UI and remaining C1-C6/M1/D1/U1
+stay in scope. Character/user files remain preserved; no cleanup yet. Historical
+sections retain original point-in-time results.
 
 ## Current continuation — 6 October 2026
 

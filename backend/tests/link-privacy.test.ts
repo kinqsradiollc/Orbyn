@@ -306,10 +306,23 @@ test("exports keep no private titles", async () => {
     noSecrets(res.body, `export ${format}`);
     assert.match(res.body, /Private page/);
     assert.match(res.body, /Lab 3 notes/);
+    assert.ok(
+      !res.body.includes(personalId),
+      "Private page IDs are not exported.",
+    );
+    assert.ok(
+      !res.body.includes(sideTaskId),
+      "Private task IDs are not exported.",
+    );
+    if (format !== "txt")
+      assert.ok(res.body.includes(openId), "Visible destinations stay usable.");
   }
   const md = await call(ben, "GET", `/docs/${sharedId}/markdown`);
   noSecrets(md.body, "markdown");
-  assert.match(md.body, /\[Private task\]\(/);
+  assert.match(md.body, /Private task/);
+  assert.doesNotMatch(md.body, /\[Private task\]\(/);
+  assert.ok(!md.body.includes(personalId));
+  assert.ok(!md.body.includes(sideTaskId));
   // Ana's own export still names them.
   const own = await call(ana, "GET", `/docs/${sharedId}/export?format=md`);
   assert.match(own.body, /Side quest secret/);
