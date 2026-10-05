@@ -150,6 +150,7 @@ export function Inline({
               !!run.tag && s.tag,
               lit && s.marked,
             ]}
+            accessibilityHint={run.linkTitle}
             onPress={
               run.link && !person ? () => followLink(run.link!) : undefined
             }

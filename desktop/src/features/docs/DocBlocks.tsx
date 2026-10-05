@@ -174,6 +174,7 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
                 data-src={run.start}
                 target={destination.kind === "external" ? "_blank" : undefined}
                 rel="noreferrer"
+                title={run.linkTitle}
                 onClick={(event) => {
                   if (
                     event.button !== 0 ||

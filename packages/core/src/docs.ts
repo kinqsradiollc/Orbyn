@@ -1,3 +1,4 @@
+import { docInlineLinks } from "./doc-inline-links.js";
 import { inlineEmphasis } from "./inline-emphasis.js";
 import type { AiFeatureProvider } from "./ai-feature.js";
 import { docInlineLiterals } from "./doc-inline-literals.js";
@@ -744,6 +745,8 @@ export type DocInline = {
   code?: boolean;
   math?: boolean;
   link?: string;
+  /** Optional Markdown link title, displayed without evaluating markup. */
+  linkTitle?: string;
   /** `==words==`, drawn on a soft tint like a highlighter pen. */
   highlight?: boolean;
   /** The highlighter's colour when it isn't the usual amber (`=={green}…==`). */
@@ -788,7 +791,7 @@ export const isStyledRun = (run: DocInline): boolean =>
 // "a == b" in a note about code stays text. A source marker (`[src: …]`)
 // is tried after links, so `[src: x](https://…)` stays a link.
 const INLINE_RE =
-  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]|\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?|<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>|<([A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)>|(<!--[\s\S]*?-->|<\/?[A-Za-z][^<>\n]*>)/g;
+  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]|\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?|<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>|<([A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*)>|(<!--[\s\S]*?-->|<\/?[A-Za-z][^<>\n]*>)/g;
 
 /** Only supported document and external protocols can become actionable links. */
 export function isDocLinkSafe(href: string): boolean {
@@ -893,17 +896,9 @@ export function parseDocInline(
   onStyleRange?: (range: DocStyleRange) => void,
 ): DocInline[] {
   const literals = docInlineLiterals(text);
-  for (const literal of literals) {
-    if (!literal.run.code) continue;
-    const width = /^`+/.exec(text.slice(literal.start))![0].length;
-    onStyleRange?.({
-      kind: "code",
-      openStart: literal.start,
-      openEnd: literal.start + width,
-      closeStart: literal.end - width,
-      closeEnd: literal.end,
-    });
-  }
+  const opaque: { start: number; end: number }[] = [];
+  const onOpaque = (range: { start: number; end: number }) =>
+    opaque.push(range);
   if (literals.length) {
     const masked: string[] = [];
     let at = 0;
@@ -917,16 +912,54 @@ export function parseDocInline(
     masked.push(text.slice(at));
     const out: DocInline[] = [];
     let index = 0;
-    for (const run of parseFormattedInline(
+    const formattedRuns = parseFormattedInline(
       masked.join(""),
       text,
       references,
       0,
       0,
       onStyleRange,
-    )) {
+      onOpaque,
+    );
+    opaque.sort((a, b) => a.start - b.start);
+    let literalOpaqueIndex = 0;
+    for (const literal of literals) {
+      if (!literal.run.code) continue;
+      while (
+        literalOpaqueIndex < opaque.length &&
+        opaque[literalOpaqueIndex].end <= literal.start
+      )
+        literalOpaqueIndex++;
+      const range = opaque[literalOpaqueIndex];
+      if (range && range.start <= literal.start && range.end >= literal.end)
+        continue;
+      const width = /^`+/.exec(text.slice(literal.start))![0].length;
+      onStyleRange?.({
+        kind: "code",
+        openStart: literal.start,
+        openEnd: literal.start + width,
+        closeStart: literal.end - width,
+        closeEnd: literal.end,
+      });
+    }
+    let opaqueIndex = 0;
+    for (const run of formattedRuns) {
       let cursor = run.start;
       const end = run.start + run.text.length;
+      while (
+        opaqueIndex < opaque.length &&
+        opaque[opaqueIndex].end <= run.start
+      )
+        opaqueIndex++;
+      const opaqueRange = opaque[opaqueIndex];
+      if (
+        opaqueRange &&
+        opaqueRange.start <= run.start &&
+        opaqueRange.end >= end
+      ) {
+        out.push(run);
+        continue;
+      }
       while (index < literals.length && literals[index].end <= cursor) index++;
       while (index < literals.length && literals[index].start < end) {
         const literal = literals[index++];
@@ -944,7 +977,15 @@ export function parseDocInline(
     }
     return out;
   }
-  return parseFormattedInline(text, text, references, 0, 0, onStyleRange);
+  return parseFormattedInline(
+    text,
+    text,
+    references,
+    0,
+    0,
+    onStyleRange,
+    onOpaque,
+  );
 }
 
 function parseFormattedInline(
@@ -954,12 +995,114 @@ function parseFormattedInline(
   depth = 0,
   sourceOffset = 0,
   onStyleRange?: (range: DocStyleRange) => void,
+  onOpaque?: (range: { start: number; end: number }) => void,
 ): DocInline[] {
   const out: DocInline[] = [];
+  const opaque: { start: number; end: number }[] = [];
+  const patterns = [...text.matchAll(INLINE_RE)].map((match) => ({
+    kind: "pattern" as const,
+    start: match.index!,
+    match,
+  }));
+  const links = docInlineLinks(text, source).map((link) => ({
+    kind: "link" as const,
+    start: link.start,
+    link,
+  }));
+  const matches = [...patterns, ...links].sort(
+    (a, b) => a.start - b.start || (a.kind === "link" ? -1 : 1),
+  );
   let at = 0;
-  for (const m of text.matchAll(INLINE_RE)) {
-    const start = m.index ?? 0;
+  for (const event of matches) {
+    const start = event.start;
+    if (start < at) continue;
     if (start > at) out.push({ text: source.slice(at, start), start: at });
+    if (event.kind === "link") {
+      const link = event.link;
+      const refuse = () => {
+        out.push({ text: source.slice(start, link.end), start });
+        opaque.push({ start, end: link.end });
+        onOpaque?.({
+          start: sourceOffset + start,
+          end: sourceOffset + link.end,
+        });
+      };
+      if (link.image || !isDocLinkSafe(link.href)) refuse();
+      else {
+        const ranges: DocStyleRange[] = [];
+        const labelOpaque: { start: number; end: number }[] = [];
+        const children =
+          depth < 8
+            ? parseFormattedInline(
+                text.slice(link.labelStart, link.labelEnd),
+                source.slice(link.labelStart, link.labelEnd),
+                references,
+                depth + 1,
+                sourceOffset + link.labelStart,
+                (range) => ranges.push(range),
+                (range) => labelOpaque.push(range),
+              )
+            : [
+                {
+                  text: source.slice(link.labelStart, link.labelEnd),
+                  start: 0,
+                },
+              ];
+        if (children.some((child) => child.link)) {
+          // Nested anchors are invalid. Keep the outer syntax as text while
+          // retaining the already validated inner link and its formatting.
+          for (const range of ranges) onStyleRange?.(range);
+          for (const range of labelOpaque) {
+            opaque.push({
+              start: range.start - sourceOffset,
+              end: range.end - sourceOffset,
+            });
+            onOpaque?.(range);
+          }
+          out.push(
+            { text: source.slice(start, link.labelStart), start },
+            ...children.map((child) => ({
+              ...child,
+              start: link.labelStart + child.start,
+            })),
+            {
+              text: source.slice(link.labelEnd, link.end),
+              start: link.labelEnd,
+            },
+          );
+          for (const range of [
+            { start, end: link.labelStart },
+            { start: link.labelEnd, end: link.end },
+          ]) {
+            opaque.push(range);
+            onOpaque?.({
+              start: sourceOffset + range.start,
+              end: sourceOffset + range.end,
+            });
+          }
+        } else {
+          for (const range of ranges) onStyleRange?.(range);
+          for (const range of labelOpaque) {
+            opaque.push({
+              start: range.start - sourceOffset,
+              end: range.end - sourceOffset,
+            });
+            onOpaque?.(range);
+          }
+          out.push(
+            ...children.map((child) => ({
+              ...child,
+              start: link.labelStart + child.start,
+              link: link.href,
+              ...(link.title !== undefined ? { linkTitle: link.title } : {}),
+            })),
+          );
+        }
+      }
+      at = link.end;
+      continue;
+    }
+    const m = event.match;
     const words = (group: number, offset: number) =>
       source.slice(start + offset, start + offset + m[group].length);
     // Recurse only inside supported delimiters. Masks retain literal code,
@@ -988,6 +1131,13 @@ function parseFormattedInline(
               depth + 1,
               sourceOffset + start + offset,
               onStyleRange,
+              (range) => {
+                opaque.push({
+                  start: range.start - sourceOffset,
+                  end: range.end - sourceOffset,
+                });
+                onOpaque?.(range);
+              },
             )
           : [{ text: original, start: 0 }];
       out.push(
@@ -1004,51 +1154,52 @@ function parseFormattedInline(
       out.push({ text: words(1, 1), start: start + 1, math: true });
     else if (m[2] !== undefined)
       out.push({ text: words(2, 2), start: start + 2, footnote: words(2, 2) });
-    else if (m[3] !== undefined) {
-      const href = words(4, m[0].indexOf("](") + 2);
-      if (isDocLinkSafe(href)) formatted(3, 1, { link: href });
-      else out.push({ text: source.slice(start, start + m[0].length), start });
-    } else if (m[6] !== undefined) {
-      const tint = m[5] ? (m[5].slice(1, -1) as "green" | "rose") : undefined;
-      formatted(6, 2 + (m[5]?.length ?? 0), {
+    else if (m[4] !== undefined) {
+      const tint = m[3] ? (m[3].slice(1, -1) as "green" | "rose") : undefined;
+      formatted(4, 2 + (m[3]?.length ?? 0), {
         highlight: true,
         ...(tint ? { tint } : {}),
       });
-    } else if (m[7] !== undefined) formatted(7, 2, { strike: true });
-    else if (m[8] !== undefined)
+    } else if (m[5] !== undefined) formatted(5, 2, { strike: true });
+    else if (m[6] !== undefined)
       out.push({
-        text: words(8, m[0].indexOf(m[8], 5)),
-        start: start + m[0].indexOf(m[8], 5),
+        text: words(6, m[0].indexOf(m[6], 5)),
+        start: start + m[0].indexOf(m[6], 5),
         source: true,
       });
-    if (m[9] !== undefined) {
-      const label = referenceLabel(m[10] || m[9]);
+    if (m[7] !== undefined) {
+      const label = referenceLabel(m[8] || m[7]);
       const href = references?.get(label);
       if (href && isDocLinkSafe(href) && source[start - 1] !== "!")
-        formatted(9, 1, { link: href });
+        formatted(7, 1, { link: href });
       else out.push({ text: source.slice(start, start + m[0].length), start });
     }
-    if (m[11] !== undefined || m[12] !== undefined) {
-      const group = m[11] !== undefined ? 11 : 12;
+    if (m[9] !== undefined || m[10] !== undefined) {
+      const group = m[9] !== undefined ? 9 : 10;
       const label = words(group, 1);
-      const href = group === 12 ? `mailto:${label}` : label;
+      const href = group === 10 ? `mailto:${label}` : label;
       out.push(
         isDocLinkSafe(href)
           ? { text: label, start: start + 1, link: href }
           : { text: source.slice(start, start + m[0].length), start },
       );
-    } else if (m[13] !== undefined) {
+    } else if (m[11] !== undefined) {
       // HTML remains literal source, including delimiters in attributes.
       out.push({ text: source.slice(start, start + m[0].length), start });
     }
     at = start + m[0].length;
   }
   if (at < text.length) out.push({ text: source.slice(at), start: at });
+  const emphasisMask = text.split("");
+  for (const range of opaque)
+    for (let i = range.start; i < range.end; i++) emphasisMask[i] = "\uE000";
   return inlineEmphasis(
     out.length ? out : [{ text: "", start: 0 }],
-    text.replace(/<!--[\s\S]*?-->|<\/?[A-Za-z][^<>\n]*>/g, (value) =>
-      "\uE000".repeat(value.length),
-    ),
+    emphasisMask
+      .join("")
+      .replace(/<!--[\s\S]*?-->|<\/?[A-Za-z][^<>\n]*>/g, (value) =>
+        "\uE000".repeat(value.length),
+      ),
     source,
     (range) =>
       onStyleRange?.({

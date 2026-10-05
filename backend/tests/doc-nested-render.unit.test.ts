@@ -103,3 +103,16 @@ test("Word retains combined run properties and imports bold italic text", () => 
     ),
   );
 });
+
+test("web link titles and balanced destinations stay escaped and preserve label offsets", () => {
+  const Inline = webInline();
+  const html = renderToStaticMarkup(
+    React.createElement(Inline, {
+      text: '[label](https://example.test/a(b) "Read <first> & second")',
+    }),
+  );
+  assert.ok(html.includes('href="https://example.test/a(b)"'));
+  assert.ok(html.includes('title="Read &lt;first&gt; &amp; second"'));
+  assert.ok(html.includes('data-src="1"'));
+  assert.ok(!html.includes("<first>"));
+});
