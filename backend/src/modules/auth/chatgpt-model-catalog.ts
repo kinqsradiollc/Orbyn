@@ -163,7 +163,10 @@ export async function readChatgptCatalogLocked(
   });
 }
 
-/** A reader's own session can inspect another owned device's sanitized catalog. */
+/**
+ * A reader's own session can inspect another owned device's sanitized catalog.
+ * Capability metadata is opt-in so strict legacy consumers retain their shape.
+ */
 export async function readChatgptModelCatalog(
   session: Session,
   value: unknown,
