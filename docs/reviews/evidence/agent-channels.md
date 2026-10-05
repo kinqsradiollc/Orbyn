@@ -166,3 +166,66 @@ This remains branch source. Full local/CI qualification, rotating-token worker,
 both client controls, transactional signed reply consumption, Teams and
 real authorized Slack/native/visual acceptance remain open. No real external
 message, production deployment or whole-ADR completion is claimed.
+
+## Cross-client connection controls and retention correction — 5 October 2026
+
+The shared session-bound SlackChannelStore now owns Connect, same-session
+pending review, exact actor/scopes/version confirmation, permission changes
+and local unlink. Both clients place this in Connections → Agent channels,
+separate from personal ChatGPT providers and MCP grants. DMs default off;
+revocation stays available when administrator setup becomes unavailable.
+
+Web reserves a popup directly in the click and provides an explicit provider
+link when it cannot open. Native opens the validated authorization URL.
+Both restore only a pending request UUID, poll pending requests at ten-second
+intervals within their server expiry, and abort reads on disposal. Account
+switches suppress late callbacks. Mobile serializes UUID storage writes and
+logout clears the UUID. No credentials or OAuth callback parameters are stored
+by these controls. Disconnect is a title toolbar action on web and a MoreMenu
+on mobile. Theme tokens, wrapping actions and a narrow identity layout retain
+the existing visual system.
+
+Eight shared-store behavioral cases and15 existing Settings navigation/layout
+cases pass (23/23, zero failures/skips):
+/tmp/orbyn-channel-controls-settings-pure.log. Current workspace typechecks pass
+in /tmp/orbyn-channel-controls-final-types-2.log; web production build and both
+iOS/Android exports pass in /tmp/orbyn-channel-controls-final-web-build.log and
+/tmp/orbyn-channel-controls-final-native-export.log. These are build/source
+checks, not native interactions or screenshots. The permitted preview still
+serves main; the saved browser restriction and prior simulator timeout remain
+unresolved. Visual/manual and actual authorized Slack acceptance remain open.
+
+Review found the fixed outbox retention rule incorrectly used the configurable
+retention parameter: the sweeper intentionally passes zero to fixed rules.
+Use an explicit14-day SQL cutoff. Include expired queued and abandoned
+claims even when Slack configuration is disabled, while preserving recent
+outcomes and live leases. A regression exercises the real rule predicate for
+all those cases. Final integrated outbox/away/Overnight/Agenda/sweeper cohort
+passes103/103, zero failures/skips, in
+/tmp/orbyn-channel-retention-integrated-final.log.
+
+The broader run launched atb27eb8ba completed3027 passes, zero failures and one
+existing Tesseract skip in /tmp/orbyn-channel-b27eb8ba-full.log. UI/retention
+source work proceeded during that run, so it is diagnostic broad coverage,
+not an exact committed-head qualification. A fresh exact-head full local/CI
+run remains required before promotion. No real Slack message was sent.
+
+### Fixed retention dispatcher repair
+
+The same zero-day dispatcher affected five other declared fixed rules:
+disconnected mappings, Agenda summaries, completed/awaiting maintained-page
+runs and assistant nudges. The dispatcher now passes rule.days for fixed rules.
+Generic production-sweeper regression proves a14-day fixed rule retains a
+one-day-old row and removes a15-day-old row. Existing tuple replacement,
+composite-key, missing-key and security cases pass:7/7 in
+/tmp/orbyn-fixed-sweep-engine-regression.log. The current channel/outbox/notice/
+Agenda/sweep cohort passes104/104, zero failures/skips, in
+/tmp/orbyn-channel-fixed-retention-final.log.
+
+This independent two-file repair is committed on main as689a15a4 and pushed.
+The larger channel/UI implementation remains a candidate. Root local tests
+initially stopped before source execution because its esbuild installation
+contained a different platform binary; the rerun uses the already installed
+macOS ARM binary without changing dependencies. Main qualification follows
+in /tmp/orbyn-main-689a15a4-sweep-regression-repaired.log. No production
+execution or full ADR acceptance is claimed.

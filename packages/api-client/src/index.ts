@@ -45,3 +45,6 @@ export * from "./assistant-profile-store.js";
 export * from "./chatgpt-remote-store.js";
 
 export * from "./page-maintenance-store.js";
+
+export { SlackChannelStore } from "./slack-channel-store.js";
+export type { SlackChannelState } from "./slack-channel-store.js";

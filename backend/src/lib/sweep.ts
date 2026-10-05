@@ -40,7 +40,10 @@ export const SWEEP_RULES: SweepRule[] = [
     detail:
       "Content-free delivery identities, timestamps and outcomes; messages remain at the connected provider.",
     table: "agent_channel_outbox",
-    where: `${olderThan("updated_at")} AND state IN ('sent','failed','unknown','cancelled')`,
+    where: `updated_at < now() - interval '14 days' AND (
+      state IN ('sent','failed','unknown','cancelled')
+      OR (state='queued' AND expires_at < now())
+      OR (state='dispatching' AND lease_until < now()))`,
     days: 14,
     configurable: false,
   },

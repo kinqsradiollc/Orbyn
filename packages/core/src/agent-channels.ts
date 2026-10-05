@@ -87,3 +87,8 @@ export const slackChannelPermission = z
 export const slackChannelDisconnect = z
   .object({ expected_version: z.number().int().positive() })
   .strict();
+
+export type SlackChannelStatus = z.output<typeof slackChannelStatus>;
+export type SlackInstallationRequest = z.output<
+  typeof slackInstallationRequest
+>;

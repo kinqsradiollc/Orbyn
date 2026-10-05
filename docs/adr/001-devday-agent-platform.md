@@ -4,7 +4,7 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 5 October 2026
 
-Main baseline `8b6748c5` includes selected-provider routing, migration deadlock recovery,
+Main baseline `689a15a4` includes selected-provider routing, migration deadlock recovery,
 web/mobile-to-desktop ChatGPT connection handoff, separate plugin launch context,
 Docs source-dialog focus recovery and scoped scheduled Agenda summaries (PR199).
 PR199 exact source `a6a65525` passed all four CI jobs in37291303840:2938 backend
@@ -22,17 +22,22 @@ typechecks pass. External plugin host, real provider and native/visual acceptanc
 remain open. Personal ChatGPT credentials stay excluded; portable MCP remains
 independent. This checkpoint does not prove the entire P1 or ADR acceptance.
 
-Slack candidate `dc71351c` is committed and pushed on
-`codex/agent-channel-delivery`, integrated with main8b6748c5. Session-bound
-installation, encrypted pending credentials, exact actor/scopes confirmation,
-versioned opt-in/unlink, bounded callback/status endpoints and shared client
-methods exist.34 pure checks and17 real database/route-inventory checks pass;
-all workspace types and formatting pass. The OAuth callback is correctly
-classified as public; linking still requires the originating app session.
-The broader local suite was stopped to repair that inventory classification;
-no complete-suite pass is claimed. Client screens, durable DM outbox, token
-rotation, mounted current-card replies, Teams and real workspace/native
-acceptance remain open. This candidate has not been promoted to main.
+Slack candidate49cfde8e with main88154ae5 integrated asb27eb8ba adds durable
+Background DM intents and one independently named Overnight morning notice.
+96 integrated and25 pure checks pass, including cold pool1, live source fences
+and uncertain commit/restart handling. Both client connection/review/permission
+controls and their shared session store are now implemented in source;23 store/
+Settings cases, workspace types, web build and iOS/Android exports pass. The
+fixed receipt retention rule is corrected to an explicit14-day cutoff, including
+expired queues without active Slack configuration; the current integrated
+outbox/notice/Agenda/sweeper cohort passes104/104 with no failures or skips.
+
+The broad run launched atb27eb8ba completed3027 passes/zero failures/one existing
+Tesseract skip while later edits proceeded; exact-head qualification is still
+required. Source/screenshots/native and authorized external delivery are separate
+gates. Token rotation, durable exact-card reply consumption, Teams and real
+workspace/UI acceptance remain open. This channel candidate is not on main.
+Current evidence: [agent channels](../reviews/evidence/agent-channels.md).
 
 The settings grid cascade/theme patch removes a late three-column override and
 uses existing theme tokens.15 focused tests, backend/desktop typechecks and web
@@ -1928,3 +1933,12 @@ route inventory entries; repairs preserve all capacity/shield assertions.
 Browser inspection remains rejected by the saved site permission; native visual
 acceptance and external host delivery remain outstanding. This is candidate
 implementation, not P1 or full ADR completion. Merge only after qualification.
+
+### Fixed retention main checkpoint — 5 October 2026
+
+Main689a15a4 is pushed: fixed retention uses each rule's declared duration,
+with7/7 sweeper regression/security/concurrency cases passing. The channel
+cohort passes104/104 without failures/skips. Candidate connection controls,
+rotation/reply/Teams work and exact-head/native/real acceptance remain separate.
+See evidence/agent-channels.md for retained failures and current evidence.
+Full C1–C6/M1/D1/U1 remains active; deployment remains user-run.

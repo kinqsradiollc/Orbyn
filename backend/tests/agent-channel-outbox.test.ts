@@ -588,3 +588,74 @@ test("a cold single-connection worker decrypts and sends without exhausting its 
   assert.deepEqual(JSON.parse(stdout), { attempted: true, calls: 2 });
   assert.equal((await receipt(f.owner)).state, "sent");
 });
+
+test("fixed receipt retention keeps recent outcomes and bounds stale queues without configured Slack", async () => {
+  const { SWEEP_RULES } = await import("../src/lib/sweep.js");
+  const rule = SWEEP_RULES.find((rule) => rule.key === "agent_channel_outbox")!;
+  assert.equal(rule.configurable, false);
+  assert.equal(rule.where.includes("$1"), false);
+  const f = await fixture();
+  await intent(f);
+  const eligible = async () =>
+    (
+      await pool.query(
+        `SELECT id FROM agent_channel_outbox WHERE user_id=$1 AND (${rule.where})`,
+        [f.owner],
+      )
+    ).rowCount;
+  assert.equal(await eligible(), 0);
+  await pool.query(
+    "UPDATE agent_channel_outbox SET state='failed' WHERE user_id=$1",
+    [f.owner],
+  );
+  assert.equal(await eligible(), 0);
+  await pool.query(
+    "UPDATE agent_channel_outbox SET updated_at=now()-interval '15 days' WHERE user_id=$1",
+    [f.owner],
+  );
+  assert.equal(await eligible(), 1);
+  await pool.query(
+    "UPDATE agent_channel_outbox SET state='queued',expires_at=now()-interval '1 day' WHERE user_id=$1",
+    [f.owner],
+  );
+  assert.equal(await eligible(), 1);
+  await pool.query(
+    "UPDATE agent_channel_outbox SET state='dispatching',claim_id=gen_random_uuid(),lease_until=now()-interval '1 day' WHERE user_id=$1",
+    [f.owner],
+  );
+  assert.equal(await eligible(), 1);
+  await pool.query(
+    "UPDATE agent_channel_outbox SET lease_until=now()+interval '1 minute' WHERE user_id=$1",
+    [f.owner],
+  );
+  assert.equal(await eligible(), 0);
+  await pool.query(
+    "UPDATE agent_channel_outbox SET state='queued',claim_id=NULL,lease_until=NULL,expires_at=now()+interval '1 day' WHERE user_id=$1",
+    [f.owner],
+  );
+  assert.equal(await eligible(), 0);
+});
+
+test("the sweeper uses declared fixed retention instead of zero and retains fresh disconnected mappings", async () => {
+  const { runSweep } = await import("../src/lib/sweep.js");
+  const f = await fixture();
+  await pool.query(
+    "UPDATE agent_channel_installations SET disconnected_at=now(),dm_enabled=false,credentials_encrypted=NULL,token_expires_at=NULL WHERE id=$1",
+    [f.connection],
+  );
+  assert.ok(await runSweep());
+  const count = async () =>
+    (
+      await pool.query(
+        "SELECT id FROM agent_channel_installations WHERE id=$1",
+        [f.connection],
+      )
+    ).rowCount;
+  assert.equal(await count(), 1);
+  await pool.query(
+    "UPDATE agent_channel_installations SET disconnected_at=now()-interval '31 days' WHERE id=$1",
+    [f.connection],
+  );
+  assert.ok(await runSweep());
+  assert.equal(await count(), 0);
+});
