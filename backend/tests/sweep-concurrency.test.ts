@@ -114,3 +114,36 @@ test("retention reports a table without a primary key and preserves its data", a
     await pool.query(`DROP TABLE ${table}`);
   }
 });
+
+test("fixed retention uses its declared duration and preserves recent records", async () => {
+  const table = `sweep_fixed_${randomUUID().replaceAll("-", "")}`;
+  await pool.query(
+    `CREATE TABLE ${table}(id integer PRIMARY KEY,at timestamptz NOT NULL)`,
+  );
+  await pool.query(
+    `INSERT INTO ${table} VALUES(1,now()-interval '1 day'),(2,now()-interval '15 days')`,
+  );
+  const rule = {
+    key: table,
+    label: "Fixed retention fixture",
+    detail: "Disposable fixture only",
+    table,
+    where: "at < now() - make_interval(days => $1::int)",
+    days: 14,
+    configurable: false,
+  };
+  SWEEP_RULES.push(rule);
+  try {
+    const result = await runSweep();
+    assert.ok(result);
+    assert.equal(result.errors[table], undefined);
+    assert.equal(result.removed[table], 1);
+    assert.deepEqual(
+      (await pool.query(`SELECT id FROM ${table} ORDER BY id`)).rows,
+      [{ id: 1 }],
+    );
+  } finally {
+    SWEEP_RULES.splice(SWEEP_RULES.indexOf(rule), 1);
+    await pool.query(`DROP TABLE ${table}`);
+  }
+});
