@@ -78,6 +78,80 @@ test("editor reads reject missing ownership, unsupported format and mismatched p
   assert.equal(calls, 5);
 });
 
+test("normal editor saves metadata and complete ownership in one guarded request", async () => {
+  const nodes = parseDocContainers("> Changed ^words", { anchors: true });
+  let calls = 0;
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    fetch: async (url, init) => {
+      calls++;
+      assert.equal(new URL(String(url)).pathname, `/docs/${id}`);
+      assert.equal(init?.method, "PUT");
+      const body = JSON.parse(String(init?.body));
+      assert.equal(body.title, "New title");
+      assert.equal(body.version, 4);
+      assert.deepEqual(body.document, { format: 2, nodes });
+      assert.equal("content" in body, false);
+      assert.equal(new Headers(init?.headers).get("x-orbyn-ticks-from"), "3");
+      return Response.json({
+        id,
+        title: body.title,
+        version: 5,
+        document: body.document,
+        content: docContainerBlocks(nodes),
+        updated_at: "2026-10-06T00:00:00Z",
+      });
+    },
+  });
+  const saved = await client.updateDocForEditor(
+    id,
+    { title: "New title", version: 4, document: { format: 2, nodes } },
+    { ticksFrom: 3 },
+  );
+  assert.equal(saved.version, 5);
+  assert.equal(saved.updated_at, "2026-10-06T00:00:00Z");
+  assert.equal(calls, 1);
+  await assert.rejects(
+    client.updateDocForEditor(id, {
+      title: "New title",
+      version: 4,
+      document: { format: 2, nodes },
+      content: [],
+    } as any),
+  );
+  assert.equal(calls, 1);
+});
+
+test("normal editor save refuses a wrong revision or unsupported server without fallback", async () => {
+  let version = 1,
+    calls = 0,
+    refused = false;
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    fetch: async () => {
+      calls++;
+      return refused
+        ? Response.json({ message: "Unsupported" }, { status: 409 })
+        : Response.json({ id, title: "Page", version, content: [], document });
+    },
+  });
+  await assert.rejects(
+    client.updateDocForEditor(id, { version: 1, document }),
+    /revision/,
+  );
+  version = 2;
+  assert.equal(
+    (await client.updateDocForEditor(id, { version: 1, document })).version,
+    2,
+  );
+  refused = true;
+  await assert.rejects(
+    client.updateDocForEditor(id, { version: 2, document }),
+    { statusCode: 409 },
+  );
+  assert.equal(calls, 3);
+});
+
 test("content client declares capabilities and reads fresh revisions", async () => {
   let calls = 0;
   const client = new OrbynClient({

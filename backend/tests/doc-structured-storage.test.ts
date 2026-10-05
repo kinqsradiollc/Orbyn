@@ -365,6 +365,129 @@ test("normal editor read enforces disabled-account and request-rate limits", asy
   }
 });
 
+test("normal editor saves title and complete nested content as one atomic revision", async () => {
+  const id = await page();
+  const nodes = parseDocContainers(
+    "> - Words ^words\n>\n>   Continuation ^more\n^outer",
+    { anchors: true },
+  );
+  const url = `/docs/${id}`;
+  const headers = {
+    authorization: `Bearer ${token}`,
+    "x-orbyn-doc-formats": "1,2",
+  };
+  const payload = {
+    version: 1,
+    title: "Atomic title",
+    document: { format: 2, nodes },
+  };
+  assert.equal(
+    (await app.inject({ method: "PUT", url, payload })).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "PUT",
+        url,
+        payload,
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "PUT",
+        url,
+        payload: { ...payload, content: [] },
+        headers,
+      })
+    ).statusCode,
+    422,
+  );
+  const saved = await app.inject({ method: "PUT", url, payload, headers });
+  assert.equal(saved.statusCode, 200);
+  assert.equal(saved.json().version, 2);
+  assert.equal(saved.json().title, "Atomic title");
+  assert.deepEqual(saved.json().document, { format: 2, nodes });
+  assert.deepEqual(saved.json().content, docContainerBlocks(nodes));
+  assert.equal(
+    (await app.inject({ method: "PUT", url, payload, headers })).statusCode,
+    409,
+  );
+  const bad = {
+    version: 2,
+    title: "Must roll back",
+    document: {
+      format: 2,
+      nodes: [
+        {
+          kind: "block",
+          block: { type: "paragraph", id: "words", text: "x".repeat(10001) },
+        },
+      ],
+    },
+  };
+  assert.equal(
+    (await app.inject({ method: "PUT", url, payload: bad, headers }))
+      .statusCode,
+    400,
+  );
+  const downgrade = await app.inject({
+    method: "PUT",
+    url,
+    payload: {
+      version: 2,
+      title: "Lost structure",
+      document: { format: 1, blocks: [] },
+    },
+    headers,
+  });
+  assert.equal(downgrade.statusCode, 409);
+  const read = await app.inject({ method: "GET", url, headers });
+  assert.equal(read.json().version, 2);
+  assert.equal(read.json().title, "Atomic title");
+  assert.deepEqual(read.json().document, { format: 2, nodes });
+  const nextNodes = parseDocContainers("> Revised ^words\n^outer", {
+    anchors: true,
+  });
+  const next = await app.inject({
+    method: "PUT",
+    url,
+    headers,
+    payload: {
+      version: 2,
+      title: "Second title",
+      document: { format: 2, nodes: nextNodes },
+    },
+  });
+  assert.equal(next.statusCode, 200);
+  assert.equal(next.json().version, 3);
+  const past = (
+    await pool.query(
+      "SELECT title,content_format,content_nodes FROM doc_versions WHERE doc_id=$1 AND version=2",
+      [id],
+    )
+  ).rows[0];
+  assert.equal(past.title, "Atomic title");
+  assert.equal(past.content_format, 2);
+  assert.deepEqual(past.content_nodes, nodes);
+  const metadata = await app.inject({
+    method: "PUT",
+    url,
+    headers,
+    payload: { version: 3, title: "Metadata only" },
+  });
+  assert.equal(metadata.statusCode, 200);
+  assert.equal(metadata.json().version, 4);
+  assert.deepEqual((await readVersionedDoc(pool, owner, id, [1, 2])).document, {
+    format: 2,
+    nodes: nextNodes,
+  });
+});
+
 test("database trigger blocks legacy content and ownership changes and mismatched authorized projection", async () => {
   const id = await page();
   const nodes = parseDocContainers("> Original");

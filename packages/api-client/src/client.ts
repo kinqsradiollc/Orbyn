@@ -3,6 +3,8 @@ import {
   versionedDocSave,
   parseVersionedDocContent,
   docContainerBlocks,
+  docEditorUpdate,
+  type DocEditorUpdate,
   type VersionedDocContent,
 } from "@orbyn/core";
 import {
@@ -2747,6 +2749,33 @@ export class OrbynClient {
       signal: options.signal,
       headers: { "x-orbyn-doc-formats": "1,2" },
     });
+    return this.docEditorResult(result, id);
+  }
+  /** Save complete content and ordinary metadata atomically, without a second revision or flat fallback. */
+  async updateDocForEditor(
+    id: string,
+    value: DocEditorUpdate,
+    options: { signal?: AbortSignal; ticksFrom?: number } = {},
+  ) {
+    id = versionedDocRead.shape.id.parse(id).toLowerCase();
+    const body = docEditorUpdate.parse(value);
+    const result = await this.request<Doc>(`/docs/${id}`, {
+      method: "PUT",
+      body,
+      signal: options.signal,
+      headers: {
+        "x-orbyn-doc-formats": "1,2",
+        ...(options.ticksFrom !== undefined
+          ? { "x-orbyn-ticks-from": String(options.ticksFrom) }
+          : {}),
+      },
+    });
+    const read = this.docEditorResult(result, id);
+    if (read.version !== body.version + 1)
+      throw new Error("Unexpected saved document revision.");
+    return read;
+  }
+  private docEditorResult(result: Doc, id: string) {
     if (result.id?.toLowerCase() !== id)
       throw new Error("Unexpected document identity.");
     const read = versionedDocRead.parse({

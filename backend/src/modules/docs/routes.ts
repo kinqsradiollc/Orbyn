@@ -19,6 +19,7 @@ import {
   docToMarkdown,
   docToText,
   docUpdate,
+  docEditorUpdate,
   EXPORT_FORMATS,
   EXPORT_LABELS,
   exportName,
@@ -96,6 +97,7 @@ import { exportImages } from "./export-images.js";
 import { claimToken } from "../imports/tokens.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { docContentFormatsHeader } from "./content-routes.js";
+import { readVersionedDoc } from "./content-format.js";
 import {
   COLUMNS,
   COMMENT_SELECT,
@@ -545,20 +547,47 @@ export async function docRoutes(app: FastifyInstance) {
     return n > 0 ? Math.min(n, base) : null;
   };
 
-  app.put("/docs/:id", async (r) => {
-    const u = await authenticate(r);
-    const id = idParam(r);
-    const body = docUpdate.parse(r.body);
-    const saved = await transaction((db) =>
-      saveDoc(db, u, id, body, { ticksFrom: ticksFrom(r, body.version) }),
-    );
-    // Announced after the transaction commits, so anyone who comes running
-    // to re-read the document finds the new version already there.
-    await announceDocChange(pool, id, saved.version, editorOf(r));
-    // Study follows the page (its card lines, and who can read it).
-    await syncSavedPages(id);
-    return saved;
-  });
+  app.put(
+    "/docs/:id",
+    {
+      bodyLimit: 32_000_000,
+      onRequest: async (r) => {
+        await authenticate(r);
+      },
+    },
+    async (r) => {
+      const u = await authenticate(r);
+      const id = idParam(r);
+      const full =
+        !!r.body &&
+        typeof r.body === "object" &&
+        Object.hasOwn(r.body, "document");
+      const structured = full ? docEditorUpdate.parse(r.body) : undefined;
+      const body = structured
+        ? (({ document: _document, ...metadata }) => metadata)(structured)
+        : docUpdate.parse(r.body);
+      const supported = structured
+        ? docContentFormatsHeader(r.headers["x-orbyn-doc-formats"])
+        : undefined;
+      const saved = await transaction(async (db) => {
+        const saved = await saveDoc(db, u, id, body, {
+          ticksFrom: ticksFrom(r, body.version),
+          ...(structured && supported
+            ? { structured: { document: structured.document, supported } }
+            : {}),
+        });
+        if (!structured || !supported) return saved;
+        const read = await readVersionedDoc(db, u, id, supported);
+        return { ...saved, document: read.document };
+      });
+      // Announced after the transaction commits, so anyone who comes running
+      // to re-read the document finds the new version already there.
+      await announceDocChange(pool, id, saved.version, editorOf(r));
+      // Study follows the page (its card lines, and who can read it).
+      await syncSavedPages(id);
+      return saved;
+    },
+  );
 
   /**
    * One batch of CRDT updates for a page (EDT-live). The bytes are opaque

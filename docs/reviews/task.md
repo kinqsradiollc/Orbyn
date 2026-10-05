@@ -1,3 +1,27 @@
+## Atomic normal editor save candidate — 6 October 2026
+
+The normal editor now has a strict shared metadata+complete-document contract and
+one transactional save at revision+1. Existing authorization, private-memory rules,
+filing/tags/file ACL, task synchronization, comment/suggestion anchors and postcommit
+announcements are preserved. Hidden labels are restored before stored validation;
+invalid content and lossy downgrades roll back metadata too. Structured saves keep
+the complete previous typed revision in history. Flat and typed ownership cannot
+be mixed. Shared client checks saved identity, exact projection and next revision.
+
+Nine pure client cases pass. Fresh DB59 mounted/client cohort104/104 passed, then
+DB60 repeated104/104 after adding complete structured revision-history assertions
+and matching the content API's forced snapshot policy (0 failures/skips,terminal0,
+12837ms). All workspace types, production web build and formatting passed before
+the final history-only adjustment; affected files were formatted afterward. Full
+combined qualification is next, before main promotion. Normal editor activation,
+source/visual selection, existing widgets, task-item identity, offline recovery,
+CRDT and actual visual/native checks remain required.
+
+Separately, main4ddba094 application is the exact fullDB58 qualified source:
+3585 pass,0 fail,1 existing skip,terminal0,872710ms. Documentation78052af4 records
+that main checkpoint. Root character/user changes remain untouched. No production
+deployment or final cleanup is claimed. Full C1-C6/M1/D1/U1 remains active.
+
 ## Normal editor read contract candidate — 6 October 2026
 
 The negotiated normal GET /docs/:id now carries complete typed ownership alongside

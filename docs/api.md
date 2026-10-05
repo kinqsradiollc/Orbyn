@@ -3492,6 +3492,20 @@ raw64KiB limit, strict query and120/min callback rate limit remain in place.
 
 ### Versioned Docs content (auth)
 
+`PUT /docs/:id` also accepts the strict structured editor body
+`{ version, document, title?, folder_id?, project_id?, tags?, aliases?, parent_id?, position? }`
+with explicit content capabilities. `content` and `document` cannot be combined.
+The complete tree and ordinary metadata commit atomically at version+1 and return
+ordinary metadata, the authorized leaf projection and `document`. Stored history
+retains the complete previous typed revision. Private labels are restored before
+storage limits; invalid content, inaccessible files/filing and lossy downgrades
+roll back the entire transaction. The authenticated body ceiling is32MB. Legacy
+metadata-only requests and format1 saves retain their existing paths. The shared
+`updateDocForEditor` validates the saved identity, projection and next revision
+without a second save/read or provider fallback. Normal editor activation remains
+pending until the existing widgets, selection, tasks and collaboration use this
+complete contract.
+
 A capable normal editor can also request `GET /docs/:id` with
 `X-Orbyn-Doc-Formats: 1,2`. It receives ordinary page metadata plus `document`
 and its authorized flat `content` from one current page revision. This negotiated

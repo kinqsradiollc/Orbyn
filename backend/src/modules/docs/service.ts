@@ -17,6 +17,12 @@ import {
   type Item,
   blockText,
   keepLinkLabels,
+  parseVersionedDocContent,
+  docContainerBlocks,
+  projectDocContainers,
+  downgradeDocContent,
+  type VersionedDocContent,
+  type DocContentFormat,
 } from "@orbyn/core";
 import {
   pool,
@@ -1173,6 +1179,11 @@ export async function saveDoc(
     always?: boolean;
     /** Server-only block ownership: unrelated task ticks and labels are untouched. */
     ownedBlockIds?: readonly string[];
+    /** Server-validated complete editor ownership; never accepted as a flat agent edit. */
+    structured?: {
+      document: VersionedDocContent;
+      supported: readonly DocContentFormat[];
+    };
   } = {},
 ): Promise<Doc> {
   await actAs(db, u.id);
@@ -1188,6 +1199,28 @@ export async function saveDoc(
       `memory:${u.id}`,
     ]);
   const current = await requireDoc(db, id, u, "items:write");
+  const structured = options.structured;
+  if (structured && (body.content !== undefined || options.ownedBlockIds))
+    fail(400, "Structured and flat edit ownership cannot be combined.");
+  if (
+    structured &&
+    (!structured.supported.includes(current.content_format ?? 1) ||
+      !structured.supported.includes(structured.document.format))
+  )
+    fail(409, "This editor does not support the document content format.");
+  if (structured?.document.format === 1 && current.content_format === 2) {
+    const row = (
+      await db.query<{ content_nodes: unknown }>(
+        "SELECT content_nodes FROM docs WHERE id=$1",
+        [id],
+      )
+    ).rows[0];
+    try {
+      downgradeDocContent({ format: 2, nodes: row.content_nodes });
+    } catch {
+      fail(409, "Nested content cannot be converted to a flat document.");
+    }
+  }
   if (body.content !== undefined && current.content_format === 2)
     fail(409, "This page requires an editor that supports nested content.");
   if (current.kind === "memory" && body.project_id)
@@ -1211,11 +1244,14 @@ export async function saveDoc(
   const move = await planMove(db, u, current, body);
   // Lines tied to tasks are stored as their tasks now stand.
   const owned = options.ownedBlockIds && new Set(options.ownedBlockIds);
+  const input = structured
+    ? structured.document.format === 1
+      ? structured.document.blocks
+      : docContainerBlocks(structured.document.nodes, { projected: true })
+    : body.content;
   const submitted =
-    body.content &&
-    (owned
-      ? body.content.filter((block) => block.id && owned.has(block.id))
-      : body.content);
+    input &&
+    (owned ? input.filter((block) => block.id && owned.has(block.id)) : input);
   const processed = submitted
     ? await syncTicks(
         db,
@@ -1239,15 +1275,38 @@ export async function saveDoc(
             : block,
         )
       : processed);
+  let stored: VersionedDocContent | undefined;
+  if (structured && content) {
+    try {
+      stored = parseVersionedDocContent(
+        structured.document.format === 1
+          ? { format: 1, blocks: content }
+          : {
+              format: 2,
+              nodes: projectDocContainers(
+                structured.document.nodes,
+                () => content,
+                { projected: true },
+              ),
+            },
+      );
+    } catch {
+      fail(400, "Document content exceeds its storage limits.");
+    }
+  }
   if (content) await followComments(db, id, content);
   if (content) await followSuggestions(db, id, content);
   // A picture or file pasted in is linked only if the saver can read it.
   if (processed) await allowPageFiles(db, u.id, processed);
-  await snapshot(db, id, u.id, options.always);
+  await snapshot(db, id, u.id, options.always || structured !== undefined);
+  if (stored)
+    await db.query("SELECT set_config('orbyn.doc_content_writer','2',true)");
   await db.query(
     `UPDATE docs SET
        title = coalesce($2, title),
        content = coalesce($3::jsonb, content),
+       content_nodes = CASE WHEN $11::boolean THEN $12::jsonb ELSE content_nodes END,
+       content_format = coalesce($13::smallint, content_format),
        folder_id = CASE WHEN $4::boolean THEN $5::uuid ELSE folder_id END,
        project_id = CASE WHEN $6::boolean THEN $7::uuid ELSE project_id END,
        aliases = coalesce($8::text[], aliases),
@@ -1272,6 +1331,9 @@ export async function saveDoc(
       body.aliases ?? null,
       move.parent !== undefined,
       move.parent ?? null,
+      stored !== undefined,
+      stored?.format === 2 ? JSON.stringify(stored.nodes) : null,
+      stored?.format ?? null,
     ],
   );
   // Pages inside it follow it to its folder.
