@@ -2934,6 +2934,20 @@ h6.doc-heading {
     order: -1;
   }
 }
+/* The app/library may leave a narrow page inside a wide browser window. */
+.doc-layout.is-narrow {
+  grid-template-columns: minmax(0, 1fr);
+}
+.doc-layout.is-narrow .doc-card.is-anchored {
+  position: static;
+  margin-bottom: 10px;
+}
+.doc-layout.is-narrow .doc-margin-anchored {
+  min-height: 0 !important;
+}
+.doc-layout.is-narrow.has-info .page-info {
+  order: -1;
+}
 .doc-outline-label {
   margin: 0 0 6px;
   font-size: 11px;
