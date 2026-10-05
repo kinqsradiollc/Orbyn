@@ -116,7 +116,9 @@ function inlineHtml(text: string, o: HtmlOptions = {}): string {
         if (run.source) return `<small class="src">[${body}]</small>`;
         if (run.link) {
           const href = o.linkUrl ? o.linkUrl(run.link) : run.link;
-          return href ? `<a href="${escapeHtml(href)}">${body}</a>` : body;
+          return href
+            ? `<a href="${escapeHtml(href)}"${run.linkTitle !== undefined ? ` title="${escapeHtml(run.linkTitle)}"` : ""}>${body}</a>`
+            : body;
         }
         return body;
       })();
