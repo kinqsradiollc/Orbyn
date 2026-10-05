@@ -1,7 +1,10 @@
 import { readdir, readFile } from "node:fs/promises";
 import { transaction } from "./pool.js";
 import { retryMigrationTransaction } from "./migration-retry.js";
-import { lockMigrationJobTable } from "./migration-locks.js";
+import {
+  lockMigrationJobTable,
+  lockMigrationDocumentTables,
+} from "./migration-locks.js";
 
 const MIGRATIONS_DIR = new URL("../../migrations/", import.meta.url);
 
@@ -36,6 +39,10 @@ export async function migrate() {
         // Old workers claim using a read followed by a write. Upgrading a
         // weaker migration lock after they start can deadlock (production231).
         await lockMigrationJobTable(
+          db,
+          pending.map((file) => file.sql),
+        );
+        await lockMigrationDocumentTables(
           db,
           pending.map((file) => file.sql),
         );

@@ -146,12 +146,23 @@ test("empty, wrong type and duplicate identities fail across container and leaf 
         nodes: [{ kind: "quote", id, children: [] }],
       }),
     );
+  const legacyEmpty = [{ type: "paragraph" as const, id: "", text: "words" }];
+  assert.deepEqual(legacyDocContent(legacyEmpty).blocks, legacyEmpty);
+  assert.throws(() => upgradeDocContent(legacyDocContent(legacyEmpty)));
   assert.throws(() =>
-    legacyDocContent([
-      { type: "paragraph", id: "same", text: "a" },
-      { type: "paragraph", id: "same", text: "b" },
-    ]),
+    parseVersionedDocContent({
+      format: 2,
+      nodes: [
+        { kind: "block", block: { type: "paragraph", id: "", text: "words" } },
+      ],
+    }),
   );
+  const legacyDuplicates = [
+    { type: "paragraph" as const, id: "same", text: "a" },
+    { type: "paragraph" as const, id: "same", text: "b" },
+  ];
+  assert.deepEqual(legacyDocContent(legacyDuplicates).blocks, legacyDuplicates);
+  assert.throws(() => upgradeDocContent(legacyDocContent(legacyDuplicates)));
   assert.throws(() =>
     parseVersionedDocContent({
       format: 2,

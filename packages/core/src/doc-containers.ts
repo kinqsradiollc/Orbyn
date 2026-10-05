@@ -443,7 +443,12 @@ export function validateDocContainers(
     )
       throw new DocContainerError("Invalid callout metadata.");
     const id = node.kind === "block" ? node.block.id : node.id;
-    if (id && (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || ids.has(id)))
+    if (
+      id !== undefined &&
+      (typeof id !== "string" ||
+        !/^[A-Za-z0-9_-]{1,64}$/.test(id) ||
+        ids.has(id))
+    )
       throw new DocContainerError("Invalid or duplicate document block ID.");
     if (id) ids.add(id);
     if (

@@ -150,6 +150,7 @@ export type Owned = {
   team_id: string | null;
   version: number;
   kind: string;
+  content_format?: 1 | 2;
 };
 
 /**
@@ -250,7 +251,7 @@ export async function requireDoc(
 ): Promise<Owned> {
   const row = (
     await db.query<Owned & { deleted_at: Date | null }>(
-      `SELECT id, user_id, team_id, version, kind, deleted_at
+      `SELECT id, user_id, team_id, version, kind, deleted_at, content_format
          FROM docs WHERE id = $1 FOR UPDATE`,
       [id],
     )
@@ -899,8 +900,14 @@ export async function snapshot(
   always = false,
 ) {
   const current = (
-    await db.query<{ version: number; title: string; content: unknown }>(
-      "SELECT version, title, content FROM docs WHERE id = $1",
+    await db.query<{
+      version: number;
+      title: string;
+      content: unknown;
+      content_format: 1 | 2;
+      content_nodes: unknown;
+    }>(
+      "SELECT version, title, content, content_format, content_nodes FROM docs WHERE id = $1",
       [docId],
     )
   ).rows[0];
@@ -915,8 +922,8 @@ export async function snapshot(
   ).rows[0];
   if (!always && last && last.recent && last.user_id === byUser) return;
   await db.query(
-    `INSERT INTO doc_versions (doc_id, version, title, content, user_id)
-       VALUES ($1, $2, $3, $4::jsonb, $5)
+    `INSERT INTO doc_versions (doc_id, version, title, content, user_id, content_format, content_nodes)
+       VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7::jsonb)
        ON CONFLICT (doc_id, version) DO NOTHING`,
     [
       docId,
@@ -924,6 +931,10 @@ export async function snapshot(
       current.title,
       JSON.stringify(current.content),
       byUser,
+      current.content_format,
+      current.content_nodes === null
+        ? null
+        : JSON.stringify(current.content_nodes),
     ],
   );
 }
@@ -1177,6 +1188,8 @@ export async function saveDoc(
       `memory:${u.id}`,
     ]);
   const current = await requireDoc(db, id, u, "items:write");
+  if (body.content !== undefined && current.content_format === 2)
+    fail(409, "This page requires an editor that supports nested content.");
   if (current.kind === "memory" && body.project_id)
     fail(403, "Memory notes cannot be filed in a project.");
   if (current.kind === "memory" && body.title?.trim()) {

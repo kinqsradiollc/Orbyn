@@ -501,7 +501,12 @@ export async function docRoutes(app: FastifyInstance) {
     // The write check happens under the transaction, against the row: a
     // page moved to Trash (or a share withdrawn) mid-batch is refused.
     await transaction(async (db) => {
-      await requireDoc(db, id, u, "items:write");
+      const owned = await requireDoc(db, id, u, "items:write");
+      if (owned.content_format === 2)
+        fail(
+          409,
+          "This page requires a collaboration client that supports nested content.",
+        );
       for (const encoded of batch.updates)
         await db.query(
           `INSERT INTO doc_updates (doc_id, editor_id, update)

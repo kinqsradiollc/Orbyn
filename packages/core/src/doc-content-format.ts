@@ -56,7 +56,6 @@ export function parseVersionedDocContent(value: unknown): VersionedDocContent {
   if (content.format === 1) {
     keys(content, ["format", "blocks"]);
     const blocks = leaves(content.blocks);
-    validateDocContainers(blocks.map((block) => ({ kind: "block", block })));
     return { format: 1, blocks };
   }
   if (content.format !== 2)
@@ -141,10 +140,10 @@ export function upgradeDocContent(
   const content = parseVersionedDocContent(value);
   return content.format === 2
     ? content
-    : {
+    : (parseVersionedDocContent({
         format: 2,
         nodes: content.blocks.map((block) => ({ kind: "block", block })),
-      };
+      }) as VersionedDocContent & { format: 2 });
 }
 
 /** Only an actually flat document can be represented by legacy clients. */
