@@ -1339,14 +1339,22 @@ export async function restoreDocVersion(
   n: number,
 ): Promise<Doc> {
   await actAs(db, u.id);
-  await requireDoc(db, id, u, "items:write");
+  const current = await requireDoc(db, id, u, "items:write");
+  if (current.content_format === 2)
+    fail(409, "Restore requires an editor that supports nested content.");
   const past = (
-    await db.query<{ title: string; content: DocBlock[] }>(
-      "SELECT title, content FROM doc_versions WHERE doc_id = $1 AND version = $2",
+    await db.query<{
+      title: string;
+      content: DocBlock[];
+      content_format: 1 | 2;
+    }>(
+      "SELECT title, content, content_format FROM doc_versions WHERE doc_id = $1 AND version = $2",
       [id, n],
     )
   ).rows[0];
   if (!past) fail(404, "That version is not kept");
+  if (past.content_format === 2)
+    fail(409, "Restore requires an editor that supports nested content.");
   // A restored version's ticks are ones the page said before.
   const content = await syncTicks(db, u, id, past.content, null);
   // Going back in time moves the words a remark points at, so the same

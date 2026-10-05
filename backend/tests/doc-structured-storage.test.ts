@@ -580,3 +580,44 @@ test("expanded private labels round-trip through API without widening stored lim
     3,
   );
 });
+
+test("legacy history restore cannot flatten a structured version after a flat downgrade", async () => {
+  const id = await page();
+  const nodes = [
+    {
+      kind: "block" as const,
+      block: { type: "paragraph" as const, id: "words", text: "Original" },
+    },
+  ];
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const currentRefusal = await app.inject({
+    method: "POST",
+    url: `/docs/${id}/versions/1/restore`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(currentRefusal.statusCode, 409);
+  await transaction((db) =>
+    saveVersionedDoc(
+      db,
+      owner,
+      id,
+      2,
+      { format: 1, blocks: [nodes[0].block] },
+      [1, 2],
+    ),
+  );
+  const pastRefusal = await app.inject({
+    method: "POST",
+    url: `/docs/${id}/versions/2/restore`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(pastRefusal.statusCode, 409);
+  const stored = (
+    await pool.query("SELECT version,content_format FROM docs WHERE id=$1", [
+      id,
+    ])
+  ).rows[0];
+  assert.deepEqual(stored, { version: 3, content_format: 1 });
+});
