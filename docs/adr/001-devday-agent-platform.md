@@ -42,6 +42,21 @@ visual/native acceptance remain open; these callbacks are not editor activation.
 Main remains0b3cad2e (application93a30807). PR216 CI37377748532 has now completed
 successfully across all four jobs. No production deployment or cleanup is claimed.
 
+## Qualified shared editor and suggestion checkpoint — 6 October 2026
+
+Main is now `4ddba094`, fast-forwarded and pushed with application source matching
+the fixed full-run source. Fresh DB58 full regression passed3,585 tests,0 failures,
+1 existing skip,terminal0,872710ms. This promotes the shared full-format source/
+editor owner, paired container renderers and nested suggestion acceptance adapter.
+Those foundations preserve ownership; they are not normal editor activation or
+visual/native acceptance. Root character/user changes remain untouched.
+
+The separate normal editor read candidate3a6e12d7 and atomic metadata/structured
+save work remain outside main. New functionality must preserve every existing
+widget, comments, task links, offline recovery, source selection and collaboration.
+All C1-C6/M1/D1/U1 and deployment/cleanup gates remain open. The user deploys main
+manually; no production delivery is claimed from this source checkpoint.
+
 ## Structured suggestion acceptance adapter — 6 October 2026
 
 Suggestion acceptance now writes both the exact flat projection and nested
