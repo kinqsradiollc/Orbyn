@@ -2,34 +2,53 @@
 
 ## Current delivery state — 6 October 2026
 
-Main application checkpoint is `773f1441` (PR214), pushed. Word/reference-preview
-privacy PR213 is merged asbb9c10f5. Exactad83a3d8 passed the repaired fresh full
-DB37:3460passes/0failures/1existing skip, terminal0,755914ms. Main backend/core/API
-source matches that tested candidate. DB36's seven export-route VM dependency
-failures remain recorded; the mock repair preserved its original assertions.
-CI37364955550 is still running backend tests; mail/mobile jobs were cancelled with
-no executed steps and no logs available, so no all-green CI claim is made.
+Main application checkpoint is `8e792ecb` (PR215), pushed. The combined
+quote/footnote candidate `5f5a1833` completed fresh full DB39:3498 passes,
+zero failures and one existing skip, terminal0,733948ms. Its application source
+matches merged main.131 parser/source/HTML/Word/export/layout cases and29 mounted
+import/privacy cases pass; packages, all workspace types, backend/web builds and
+full formatting pass. Evidence: `/tmp/orbyn-channel-doc-footnote-main-full.log`,
+`/tmp/orbyn-doc-footnote-main-focused.log` and
+`/tmp/orbyn-channel-doc-footnote-main-mounted.log`.
 
-Views/Review available-width repair PR214 merged773f1441 under the user's permission
-for small fixes without waiting for CI. Both web/desktop pages follow available
-page width after panels; native Review actions and headers wrap.18 focused cases,
-all workspace types, web build and formatting pass. CI37366765411 is pending.
-Browser preview again rejected5174 due to saved permission, explicitly prohibiting
-workarounds; Simulator selection again timed out -10005. No visual/native proof.
-PR212 layout CI37361223961 attempt2 passed all four jobs; earlier startup failure
-is retained. PR211 finala34ed83b passed all four CI37360062404 jobs.
+Word/reference privacy PR213 is merged `bb9c10f5`, repaired full3460/0/1.
+CI37364955550 passed backend/web and Docker; cancelled mail/mobile jobs had no
+executed steps. Attempt2 is queued. Views/Review available-width and native
+wrapping PR214 merged `773f1441`, with18 focused passes and types/build/format.
+CI37366765411 ended with all jobs cancelled; failed jobs were rerun. PR215
+CI37366986451 passed mail/mobile/Docker; backend/web was cancelled, and was
+rerun. No failing step was reported in these cancellations; no all-green claim.
+PR212 attempt2 and PR211 final CI passed all four jobs.
 
-Quote/footnote combined PR215 is draft at5f5a1833, pushed with actual main773f1441
-integrated without conflicts.131 parser/source/HTML/Word/primary-fixture/layout
-cases and29 mounted import/privacy cases pass, zero failures/skips. The uploaded
-Word footnote test verifies conversion, stored markers/text, source export,
-cross-owner refusal and uploaded-file cleanup. Final types/build/format are
-running. Immutable fresh full DB39 is live:
-`/tmp/orbyn-channel-doc-footnote-main-full.log`. Keep candidate source frozen.
-Nested quote/list containers, media, bookmarks/endnotes and full D1 matrices remain
-open. Whole-app U1, governing agents/pages/provider contract and real-account/
-tenant/host acceptance remain incomplete. User deploys manually; production and
-cleanup are unverified. Character/user work remains preserved; Docker is unchanged.
+The pushed, unmerged `codex/docs-structured-containers` candidate `20752130` preserves nested
+quote/list typed children, IDs/source ranges and whole-page reference/footnote
+context.94 focused and11 fresh mounted library-hierarchy cases pass; types and
+backend/web builds and full formatting pass. Fresh immutable full DB41 is running
+(`/tmp/orbyn-channel-container-20752130-full.log`); keep source frozen.
+Storage/API versioning, CRDT and both editors/export
+integration remain required. See [container integration gates](docs-container-audit.md#structured-container-candidate--6-october-2026).
+This source candidate is not a shipped D1 feature.
+
+ChatGPT web handoff, feedback and selected-provider routing are already on main.
+Web creates an opaque same-account request for desktop official authorization;
+it does not launch an unregistered `orbyn://` scheme automatically. Real handoff,
+successful eligible inference and whole-account plan/usage acceptance remain open.
+Prior actual inference was refused for sharing quota exhaustion. No new chargeable
+probe or invented quota was used. Unsupported hard-limit catalogs remain ineligible
+for budgeted scheduling.
+
+Browser5174 remains blocked by the tool's saved permission, and Simulator
+inspection timed out -10005; no new visual/native acceptance is claimed.
+Full C1-C6/M1/D1/U1 remains active and incomplete. Character/user files are
+preserved, Docker is unchanged, user deploys manually, and cleanup remains later.
+
+| Order | Work                        | Confirmed state                                                                            | Next implementation or acceptance                                                     |
+| ----- | --------------------------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
+| 1     | Docs quote/footnote/privacy | PR213/215 merged; repaired full3460/0/1 and3498/0/1                                        | Inspect rerun CI; actual editor/import/export acceptance                              |
+| 2     | Structured Docs D1          | Experimental parser/source/HTML candidate;94+11 tests pass                                 | Stored/API compatibility, privacy adapters, CRDT and both editors; PDF/Word matrices  |
+| 3     | Whole-app U1                | Responsive Views/Review, native wrapping and earlier settings/assistant checkpoints merged | Every page, narrow/collapsed/panel/large-text states and actual visual/native review  |
+| 4     | Providers/agents C1-C6/M1   | Routing/catalog/plugin/separate runtimes/reflection/channels checkpoints merged            | Governing budget/collaboration/publication audit; real account/tenant/host acceptance |
+| 5     | Production and cleanup      | Main checkpoints pushed; user files/worktrees preserved                                    | User deployment confirmation; final relevant integration and cleanup audit            |
 
 The current pipeline is in [ADR001](../adr/001-devday-agent-platform.md) and
 [the live handoff](task.md). Older checkpoint maps below are historical.
