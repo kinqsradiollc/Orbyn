@@ -102,20 +102,26 @@ export function TeamsChannelSettings() {
                 : "Link your personal chat"}
           </span>
           {connection.state === "linked" && (
-            <label className="check-line">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={connection.dm_enabled}
-                disabled={
-                  state.busy ||
-                  (!state.status?.delivery_available && !connection.dm_enabled)
-                }
-                onChange={(e) => void store.permission(e.target.checked)}
-              />
-              Send agent DMs to me
-            </label>
+            <>
+              <label className="check-line">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="ai-switch"
+                  checked={connection.dm_enabled}
+                  disabled={
+                    state.busy ||
+                    (!state.status?.delivery_available &&
+                      !connection.dm_enabled)
+                  }
+                  onChange={(e) => void store.permission(e.target.checked)}
+                />
+                Send agent DMs to me
+              </label>
+              <span className="muted">
+                Background updates, questions and morning Overnight results.
+              </span>
+            </>
           )}
           {state.status && !state.status.delivery_available && (
             <p className="muted">

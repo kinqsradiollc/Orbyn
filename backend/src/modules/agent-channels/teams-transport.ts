@@ -1,3 +1,4 @@
+import type { teamsQuestionCard } from "./teams-question-card.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { teamsServiceUrl } from "./teams-auth.js";
@@ -146,15 +147,24 @@ export function createTeamsTransport(
     configInput: TeamsBotConfig,
     targetInput: TeamsConversationReference,
     text: string,
+    card?: NonNullable<ReturnType<typeof teamsQuestionCard>>,
   ): Promise<TeamsSendResult> {
     let config: TeamsBotConfig,
       target: TeamsConversationReference,
-      destination: string;
+      destination: string,
+      body: string;
     try {
       config = validateTeamsBotConfig(configInput);
       target = teamsConversationReference.parse(targetInput);
       if (target.botId !== `28:${config.appId}`) return { state: "refused" };
       destination = `${teamsServiceUrl(target.serviceUrl)}v3/conversations/${encodeURIComponent(target.conversationId)}/activities`;
+      if (
+        card &&
+        (card.attachment.contentType !==
+          "application/vnd.microsoft.card.adaptive" ||
+          Buffer.byteLength(JSON.stringify(card.attachment), "utf8") > 24576)
+      )
+        return { state: "refused" };
       z.string()
         .min(1)
         .max(8000)
@@ -163,6 +173,19 @@ export function createTeamsTransport(
             !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(value),
         )
         .parse(text);
+      body = JSON.stringify({
+        type: "message",
+        textFormat: "plain",
+        text,
+        from: { id: target.botId },
+        recipient: { id: target.userId },
+        conversation: { id: target.conversationId },
+        channelData: { tenant: { id: target.tenantId } },
+        ...(card ? { attachments: [card.attachment] } : {}),
+      });
+      // Teams recommends an 80 KB message budget, measured including UTF-16 text.
+      if (Buffer.byteLength(body, "utf16le") > 80000)
+        return { state: "refused" };
     } catch {
       return { state: "refused" };
     }
@@ -181,15 +204,7 @@ export function createTeamsTransport(
           authorization: `Bearer ${accessToken}`,
           "content-type": "application/json",
         },
-        body: JSON.stringify({
-          type: "message",
-          textFormat: "plain",
-          text,
-          from: { id: target.botId },
-          recipient: { id: target.userId },
-          conversation: { id: target.conversationId },
-          channelData: { tenant: { id: target.tenantId } },
-        }),
+        body,
       });
       if (response.status === 429) {
         await response.body?.cancel();

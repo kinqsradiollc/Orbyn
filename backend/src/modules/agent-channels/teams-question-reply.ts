@@ -31,7 +31,10 @@ const personal = z.object({
   channelId: z.literal("msteams"),
   serviceUrl: z.url().max(2048),
   from: z.object({
-    id: z.string().regex(/^29:.{1,997}$/),
+    id: z
+      .string()
+      .regex(/^29:.+/)
+      .max(500),
     aadObjectId: z.uuid(),
   }),
   recipient: z.object({ id: z.string().min(1).max(200) }),

@@ -1,3 +1,4 @@
+import { consumeTeamsQuestionReplyOne } from "../modules/agent-channels/teams-question-receipts.js";
 import {
   configuredTeams,
   configuredTeamsBot,
@@ -310,13 +311,22 @@ export async function runWorker() {
                 teams && teamsBot
                   ? await deliverTeamsChannelOne(teams, teamsBot, env.APP_URL)
                   : false;
+              const teamsReply =
+                teams && teamsBot
+                  ? await consumeTeamsQuestionReplyOne(
+                      teams,
+                      teamsBot,
+                      console as unknown as FastifyBaseLogger,
+                    )
+                  : false;
               if (
                 !reminder &&
                 !webhook &&
                 !channel &&
                 !rotation &&
                 !reply &&
-                !teamsDelivery
+                !teamsDelivery &&
+                !teamsReply
               )
                 return false;
             }

@@ -2787,3 +2787,13 @@ previous reused-database full result (3171 pass, 9 fail, 1 skip) is retained.
 Several failures claimed unrelated queued fixtures left by an interrupted run;
 unchanged source is being qualified in a fresh marked test database. No main
 promotion or whole ADR completion is claimed from this rerun before it ends.
+
+### Current Teams reply candidate — 6 October 2026
+
+Durable cards, signed callback capture, exact-question receipt consumer, expiry
+and both-client messaging disclosure are implemented locally on
+codex/agent-teams-replies.132 integrated channel checks,20 sweep/reply checks,
+9 cold pool1 checks, workspace types/builds/format pass. Migration251 and the
+existing sweep connection reuse repair are included. Full immutable suite/CI
+remain next; real tenant and native/browser acceptance remain open. Main remains
+28059ed1. No production deployment or cleanup is claimed.
