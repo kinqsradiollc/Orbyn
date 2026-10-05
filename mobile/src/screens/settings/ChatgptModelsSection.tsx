@@ -1,3 +1,4 @@
+import { AgendaPrivateSettings } from "./AgendaPrivateSettings";
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
 import { CHATGPT_USAGE_URL } from "@orbyn/core";
@@ -109,6 +110,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         }
       />
       <ChatgptUsage userId={userId} />
+      <AgendaPrivateSettings userId={userId} />
       <Text style={shared.body}>ChatGPT</Text>
       <Text style={shared.small}>
         Connect your ChatGPT account and choose its default model.

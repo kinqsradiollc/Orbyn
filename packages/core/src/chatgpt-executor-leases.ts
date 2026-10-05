@@ -92,6 +92,10 @@ export const chatgptCatalogRead = z
     status: z.enum(["ready", "offline", "stale", "unavailable"]),
     models: z.array(chatgptModel.strict()).max(1000),
     preference: chatgptModelPreference,
+    capabilities: z
+      .array(z.enum(["plan_inference_v1", "plan_inference_limits_v1"]))
+      .max(2)
+      .optional(),
     published_at: z.iso.datetime().nullable(),
     expires_at: z.iso.datetime().nullable(),
     sequence: z.number().int().nonnegative(),

@@ -290,3 +290,77 @@ test("permission routes require a first-party session, strict bodies, owner-only
   }
   assert.ok(limited);
 });
+
+test("summary status is owner-only, excludes private context, rejects keys and obeys strict limits", async () => {
+  const person = await h.register("agenda-summary-status");
+  const other = await h.register("agenda-summary-other");
+  owners.push(person.id, other.id);
+  const url = "/ai/agenda/private-summary";
+  const key = (
+    await h.call(person.token, "POST", "/me/api-keys", {
+      name: "Status fixture",
+    })
+  ).json().key;
+  assert.equal((await h.call(null, "GET", url)).statusCode, 401);
+  assert.equal((await h.call(key, "GET", url)).statusCode, 403);
+  const first = await h.call(person.token, "GET", url);
+  assert.equal(first.statusCode, 200, first.body);
+  assert.equal(first.headers["cache-control"], "no-store");
+  assert.deepEqual(first.json(), { run: null });
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title,kind,content) VALUES($1,'Status fixture','agenda','[]') RETURNING id",
+      [person.id],
+    )
+  ).rows[0].id;
+  const id = randomUUID();
+  await pool.query(
+    `INSERT INTO agenda_summary_runs(id,user_id,doc_id,local_day,target_block_id,target_hash,snapshot,permission,expires_at)
+    VALUES($1,$2,$3,current_date,'summary','hash','{"private_fact":"must not be returned"}','{"private_permission":"must not be returned"}',now()+interval '1 hour')`,
+    [id, person.id, doc],
+  );
+  const read = await h.call(person.token, "GET", url);
+  assert.equal(read.statusCode, 200, read.body);
+  assert.equal(read.json().run.id, id);
+  assert.equal(read.json().run.state, "queued");
+  assert.deepEqual(
+    Object.keys(read.json().run).sort(),
+    [
+      "id",
+      "doc_id",
+      "local_day",
+      "state",
+      "expires_at",
+      "updated_at",
+      "reason",
+      "provider",
+    ].sort(),
+  );
+  assert.ok(!read.body.includes("private_fact"));
+  assert.ok(!read.body.includes("private_permission"));
+  assert.deepEqual((await h.call(other.token, "GET", url)).json(), {
+    run: null,
+  });
+  assert.equal(
+    (await h.call(other.token, "GET", `${url}?user_id=${person.id}`))
+      .statusCode,
+    422,
+  );
+  const malformed = await app.inject({
+    method: "GET",
+    url,
+    headers: { ...bearer(person.token), "content-type": "application/json" },
+    payload: "{",
+  });
+  assert.equal(malformed.statusCode, 400);
+  let limited = false;
+  for (let n = 0; n < 15; n++) {
+    const response = await h.call(person.token, "GET", url);
+    if (response.statusCode === 429) {
+      limited = true;
+      break;
+    }
+    assert.equal(response.statusCode, 200, response.body);
+  }
+  assert.ok(limited);
+});

@@ -1,5 +1,17 @@
 # DevDay 2026 → Orbyn: researched implementation proposal
 
+## Current delivery state — 5 October 2026
+
+The latest authoritative implementation/qualification status is recorded in
+[ADR001](../adr/001-devday-agent-platform.md#current-delivery-state--5-october-2026)
+and [the live handoff](task.md#latest-qualification-and-top-three-work).
+PR #196 is merged into main as `e0a432a5`, with the exact tested file tree.
+Fresh full local qualification passed 2,842/2,842 tests; all four CI jobs passed.
+Earlier failures remain recorded as historical evidence. Scheduled Agenda and
+its controls remain a separate uncommitted candidate. Real positive ChatGPT
+execution, source concurrency and visual/native acceptance remain open. The full
+C1–C6/M1/D1/U1 contract below is retained; older checkpoint maps are historical.
+
 ## Completed draft result qualification — 2 October 2026
 
 PR #147 merged as **4bbcfec** from frozen **53089fd** on base **e1d46af**.

@@ -1,5 +1,7 @@
 import {
   agendaPrivatePermission,
+  agendaPrivatePermissionInput,
+  agendaPrivateSummary,
   type AgendaPrivatePermissionInput,
   type AgendaBriefOutcome,
   type MaintainedPageBinding,
@@ -1208,18 +1210,31 @@ export class OrbynClient {
     });
   }
   /** Read explicit scheduled-plan permission, independently of email/digest preferences. */
-  async agendaPrivatePermission() {
+  async agendaPrivatePermission(signal?: AbortSignal) {
     return agendaPrivatePermission.parse(
-      await this.request("/ai/agenda/private-permission"),
+      await this.request("/ai/agenda/private-permission", {
+        signal,
+        fresh: true,
+      }),
     );
   }
   /** Grant/revoke only the reviewed current account/device/model selection. */
-  async setAgendaPrivatePermission(input: AgendaPrivatePermissionInput) {
+  async setAgendaPrivatePermission(
+    input: AgendaPrivatePermissionInput,
+    signal?: AbortSignal,
+  ) {
     return agendaPrivatePermission.parse(
       await this.request("/ai/agenda/private-permission", {
         method: "PUT",
-        body: input,
+        signal,
+        body: agendaPrivatePermissionInput.parse(input),
       }),
+    );
+  }
+  /** Read private scheduled summary status without exposing execution context. */
+  async agendaPrivateSummary(signal?: AbortSignal) {
+    return agendaPrivateSummary.parse(
+      await this.request("/ai/agenda/private-summary", { signal, fresh: true }),
     );
   }
   /**

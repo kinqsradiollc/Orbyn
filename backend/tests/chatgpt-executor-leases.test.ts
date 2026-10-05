@@ -377,6 +377,7 @@ test("owned cross-device catalog reads expose explicit state and one account-bou
   await publishChatgptExecutorCatalog(f.session, f.publication(1));
   const ready = await readChatgptModelCatalog(reader, selection);
   assert.equal(ready.status, "ready");
+  assert.deepEqual(ready.capabilities, []);
   assert.deepEqual(
     ready.models.map((m) => m.slug),
     ["model-b", "model-a"],
@@ -392,9 +393,16 @@ test("owned cross-device catalog reads expose explicit state and one account-bou
   );
   const changed = f.publication(1, 2);
   changed.catalog.models = [changed.catalog.models[1]];
-  changed.signature = f.signature(chatgptCatalogProofMessage(changed.catalog));
-  await publishChatgptExecutorCatalog(f.session, changed);
+  const capabilityPublication = {
+    ...changed,
+    catalog: { ...changed.catalog, capabilities: ["plan_inference_v1"] },
+  };
+  capabilityPublication.signature = f.signature(
+    chatgptCatalogProofMessage(capabilityPublication.catalog),
+  );
+  await publishChatgptExecutorCatalog(f.session, capabilityPublication);
   const removed = await readChatgptModelCatalog(reader, selection);
+  assert.deepEqual(removed.capabilities, ["plan_inference_v1"]);
   assert.equal(
     removed.preference.model,
     "model-b",

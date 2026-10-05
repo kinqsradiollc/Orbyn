@@ -3,6 +3,7 @@ import {
   saveAiProviderChoice,
 } from "./ai-provider-choice.js";
 import { pool } from "../../db/pool.js";
+import { readScheduledAgendaSummary } from "../docs/agenda-summary-runs.js";
 import { readCompletedChatgptUsage } from "./chatgpt-usage.js";
 import {
   readAgendaPrivatePermission,
@@ -24,6 +25,7 @@ import {
   chatgptConnectionChallenge,
   chatgptConnection,
   chatgptConnectionList,
+  fail,
 } from "@orbyn/core";
 import { authenticateSessionBinding } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
@@ -36,6 +38,17 @@ import {
 
 /** First-party identity metadata only. Plan credentials and plugin grants stay separate. */
 export async function chatgptConnectionRoutes(app: FastifyInstance) {
+  app.get("/ai/agenda/private-summary", strictRateLimit, async (r, reply) => {
+    const binding = await authenticateSessionBinding(r);
+    if (
+      (r.headers["content-length"] && r.headers["content-length"] !== "0") ||
+      r.headers["transfer-encoding"]
+    )
+      fail(400, "Summary status reads do not accept a request body.");
+    z.object({}).strict().parse(r.query);
+    reply.header("Cache-Control", "no-store");
+    return readScheduledAgendaSummary(binding);
+  });
   app.get(
     "/ai/agenda/private-permission",
     strictRateLimit,

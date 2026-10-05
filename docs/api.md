@@ -3291,7 +3291,13 @@ old publications. Catalog bodies are capped at 2 MiB and at 1,000 model entries.
 Expired proof rows are removed by the central sweeper.
 
 `GET /models` returns credential-free `binding`, `executor_id`, `models`,
-`preference`, `published_at`, `expires_at`, `sequence` and `status`:
+`preference`, `published_at`, `expires_at`, `sequence`, optional `capabilities`
+and `status`. Capability metadata comes from the signed device publication;
+omission means no capability is established. Bounded scheduled work requires
+`plan_inference_limits_v1` as well as a ready catalog and reviewed default. A
+login or visible model does not establish hard output-limit support.
+
+Catalog status:
 
 - `unavailable`: no published snapshot exists.
 - `offline`: the owning device has no current live session/lease.
@@ -3363,8 +3369,27 @@ Disabling requires the permission version but does not require the old device to
 remain available. Re-enabling advances version and cannot revive older grants.
 
 Morning-email preferences and recent activity do not grant private inference.
-Scheduled execution/status/recovery UI is still under implementation; this API
-alone does not create or run a scheduled job.
+Permission alone does not immediately run a summary. The morning producer queues
+one summary per owner/local day for an untouched generated personal Agenda page;
+only the Background runtime executes it, within the morning window. The transport
+uses a stable operation ID and preserves unrelated human Notes. Changed sources,
+target paragraph or permission invalidate acceptance. An undisclosed offline call
+can wait; an already claimed/unknown model call is not issued a second time.
+
+`GET /ai/agenda/private-summary` is an owner-only app-session read with no query
+fields or request body, `Cache-Control: no-store`, and 10 requests/minute. Keys,
+MCP and plugins cannot read it. It returns `{ run: null }` or the most recent
+currently visible run: `{ id, doc_id, local_day, state, expires_at, updated_at,
+reason, provider }`. Dates are ISO timestamps except `local_day` (YYYY-MM-DD).
+States are queued/running/waiting/done/failed; fixed reasons are device_required,
+expired, completion_unknown, authority_changed, usage_limit or provider_failed (or null).
+Provider metadata is the accepted result's source/model/fallback, not a promise
+about pending execution. Captured facts, credentials and permission snapshots
+are never included. A past run retains its date; it is not today's status.
+
+Web/desktop/mobile permission and status controls are candidates pending final
+runtime/recovery and visual/native acceptance. This API is independent of hosted
+ChatGPT website OAuth eligibility and does not expose ChatGPT account-wide quota.
 
 ### Document PDF delivery
 
