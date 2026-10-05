@@ -1641,6 +1641,7 @@ h6.doc-heading {
 }
 .doc-chat-turn p {
   margin: 0;
+  color: inherit;
 }
 .doc-chat-turn.is-you {
   justify-self: end;

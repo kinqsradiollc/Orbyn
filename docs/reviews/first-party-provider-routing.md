@@ -126,3 +126,27 @@ Separately the unmodified parent `f8e1d632` finished2749/2749 full local checks,
 no skips, in `/tmp/orbyn-f8e1-full-tests.log`; its production build and CI also
 pass. Those results do not qualify this later feature source. Full combined
 qualification and visual/platform acceptance remain open before main promotion.
+
+### Native desktop inspection and contrast correction
+
+The official native Electron QA app loads the actual first-party file build,
+using the marked local preview database and disposable Preview Admin account.
+A temporary local stand-in provider returned fixed fixture answers; no OpenAI
+plan inference was requested. The Docs panel visibly rendered the actual managed
+provider label beside a cited answer. Native screenshot inspection also revealed
+that the global paragraph color overrode the outgoing bubble's foreground. The
+scoped `.doc-chat-turn p { color: inherit; }` correction was built and inspected;
+the question now uses the intended foreground and the answer remains readable.
+
+Evidence: `evidence/page-feature-provider/desktop-doc-provider.png`. This proves
+one wide desktop Docs fixture at this source; it does not establish narrow
+layouts, Study rendering, mobile rendering or real-account inference. Simulator
+Computer Use access timed out twice (display name and exact installed path).
+No browser permission bypass was attempted.
+
+The full local run on parent3ef30a27 remains running but has failed assertions
+during database recovery. PostgreSQL's current log identifies its checkpointer
+being killed by signal9 at2026-10-05 00:19:29 UTC, followed by server reinitialization.
+This evidence does not identify a particular application query as the cause.
+No timers, assertions, database/JIT settings or Docker limits were waived.
+The previous2749/2749 parent result does not qualify this newer source.
