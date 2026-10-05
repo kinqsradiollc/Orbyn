@@ -108,3 +108,18 @@ test("Word quote import prefixes every hard-broken line and retains literal call
   assert.equal(plainText(quotes[1].text), "[!tip] literal\nLast");
   assert.ok(!imported.some((block) => block.type === "callout"));
 });
+
+test("literal anchor words in multiline quotes preserve text and stored IDs", () => {
+  const blocks = [
+    {
+      id: "quote-id",
+      type: "quote" as const,
+      text: "First ^literal\nSecond ^other",
+    },
+    { id: "single-id", type: "quote" as const, text: "Single ^literal" },
+  ];
+  assert.deepEqual(
+    parseDoc(serializeDoc(blocks, { anchors: true }), { anchors: true }),
+    blocks,
+  );
+});

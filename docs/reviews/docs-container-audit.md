@@ -57,3 +57,18 @@ shared quote serializer, which prefixes every line and escapes literal callout
 markers. The current expanded source/export/import cohort passes88/88 in1516ms,
 zero failures/skips (`/tmp/orbyn-doc-quote-word-focused.log`). This repairs Word
 quote ownership; nested container and complete Word import parity remain open.
+
+## Literal quote anchors — 6 October continuation
+
+Multiline quotes now escape literal caret words on every serialized line when
+source anchors are requested. The original block IDs and single-line legacy
+anchors are preserved. Word import prefixes each hard-broken quote line and
+keeps literal callout markers as quote text.
+
+The current pure parser/source/HTML/Word continuation cohort passes58/58, zero
+failures/skips (`/tmp/orbyn-doc-quote-anchor-focused.log`). All workspace types
+and formatting pass (`/tmp/orbyn-doc-quote-anchor-*-types.log`,
+`/tmp/orbyn-doc-quote-anchor-format.log`). Previous Word-import cohort88/88 is
+retained. Actual Word/privacy checkpoint integration, full combined qualification
+and visual/native acceptance remain required before promotion. This does not
+complete nested quote/list containers, media or the full D1 goal.

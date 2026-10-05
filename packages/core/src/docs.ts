@@ -1924,7 +1924,13 @@ function blockMarkdown(
     case "quote":
       return b.text
         .split("\n")
-        .map((line) => `> ${calloutLike(line, false) ? "\\" : ""}${line}`)
+        .map((line) => {
+          const words =
+            anchors && b.text.includes("\n")
+              ? line.replace(ANCHOR_LIKE, "$1\\$2")
+              : line;
+          return `> ${calloutLike(words, false) ? "\\" : ""}${words}`;
+        })
         .join("\n");
     case "code": {
       const fence = codeFence(b.text);
