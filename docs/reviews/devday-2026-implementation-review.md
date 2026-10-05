@@ -2,11 +2,11 @@
 
 ## Current delivery state — 6 October 2026
 
-Main application checkpoint `9cc2dad0` includes Teams linking, consented
-delivery/lifecycle and signed exact-question durable replies (PR205–207), after
-Slack PR204. PR207 exact `c18f405b` and main have identical tested file tree;
-all four CI jobs and the fresh full local suite pass (3211 passes,0 failures,
-1 existing skip). The complete current state and implementation pipeline are in
+Main application checkpoint `49a5d844` includes Docs nested formatting and
+exact delimiter editing (PR208), following Teams PR205–207 and Slack PR204.
+PR208 exact `4c9edf00` and main have identical tested file tree; all four
+CI37346372738 jobs and the fresh full local suite pass (3383 passes,0 failures,
+1 existing skip). Balanced-link PR209 remains under qualification. The complete current state and implementation pipeline are in
 [ADR001](../adr/001-devday-agent-platform.md#authoritative-checkpoint--6-october-2026)
 and [the live handoff](task.md#authoritative-implementation-pipeline--6-october-2026).
 D1, U1, agent/provider acceptance, real-account/tenant/host checks and final cleanup
