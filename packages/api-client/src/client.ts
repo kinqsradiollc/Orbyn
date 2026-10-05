@@ -1,6 +1,8 @@
 import {
   versionedDocRead,
   versionedDocSave,
+  parseVersionedDocContent,
+  docContainerBlocks,
   type VersionedDocContent,
 } from "@orbyn/core";
 import {
@@ -2736,6 +2738,38 @@ export class OrbynClient {
   }
   getDoc(id: string, options: Pick<RequestOptions, "fresh" | "signal"> = {}) {
     return this.request<Doc>(`/docs/${id}`, options);
+  }
+  /** Read metadata and complete editor ownership from one fresh authorized revision. */
+  async getDocForEditor(id: string, options: { signal?: AbortSignal } = {}) {
+    id = versionedDocRead.shape.id.parse(id).toLowerCase();
+    const result = await this.request<Doc>(`/docs/${id}`, {
+      fresh: true,
+      signal: options.signal,
+      headers: { "x-orbyn-doc-formats": "1,2" },
+    });
+    if (result.id?.toLowerCase() !== id)
+      throw new Error("Unexpected document identity.");
+    const read = versionedDocRead.parse({
+      id: result.id,
+      title: result.title,
+      version: result.version,
+      document: result.document,
+    });
+    const document = read.document;
+    const blocks =
+      document.format === 1
+        ? document.blocks
+        : docContainerBlocks(document.nodes, { projected: true });
+    const projection = parseVersionedDocContent(
+      { format: 1, blocks: result.content },
+      { projected: true },
+    );
+    if (
+      projection.format !== 1 ||
+      JSON.stringify(projection.blocks) !== JSON.stringify(blocks)
+    )
+      throw new Error("Document ownership and visible content do not match.");
+    return { ...result, document };
   }
   /** A page's Info panel: what it belongs to, tags, links, versions. */
   docInfo(id: string) {

@@ -375,6 +375,8 @@ export type Doc = {
   title: string;
   kind: DocKind;
   content: DocBlock[];
+  /** Complete negotiated editor ownership; content remains its authorized leaf projection. */
+  document?: import("./doc-content-format.js").VersionedDocContent;
   item_id: string | null;
   /** The project this note belongs to, for a note that belongs to one. */
   project_id: string | null;

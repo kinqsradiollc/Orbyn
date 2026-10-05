@@ -244,6 +244,127 @@ test("capability, stale revision and ownership refuse writes before changing pag
   );
 });
 
+test("normal editor read negotiates one revision, preserves metadata and projects private nested labels", async () => {
+  const privateId = await page(stranger);
+  const id = await page();
+  const nodes = parseDocContainers(
+    `> - [Secret title][private] ^words\n\n[private]: orbyn://doc/${privateId} "Secret hint"`,
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const url = `/docs/${id}`;
+  const headers = {
+    authorization: `Bearer ${token}`,
+    "x-orbyn-doc-formats": "1,2",
+  };
+  assert.equal((await app.inject({ method: "GET", url })).statusCode, 401);
+  assert.equal(
+    (
+      await app.inject({
+        method: "GET",
+        url,
+        headers: { authorization: `Bearer ${token}` },
+      })
+    ).statusCode,
+    409,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "GET",
+        url,
+        headers: { ...headers, "x-orbyn-doc-formats": "3" },
+      })
+    ).statusCode,
+    400,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "GET",
+        url,
+        headers: { ...headers, authorization: `Bearer ${strangerToken}` },
+      })
+    ).statusCode,
+    404,
+  );
+  const response = await app.inject({ method: "GET", url, headers });
+  assert.equal(response.statusCode, 200);
+  assert.equal(response.headers["cache-control"], "no-store");
+  const read = response.json();
+  assert.equal(read.id, id);
+  assert.equal(read.user_id, owner.id);
+  assert.equal(read.title, "Structured page");
+  assert.equal(read.version, 2);
+  assert.equal(read.document.format, 2);
+  assert.deepEqual(
+    docContainerBlocks(read.document.nodes, { projected: true }),
+    read.content,
+  );
+  assert.doesNotMatch(response.body, /Secret title|Secret hint|content_nodes/);
+  assert.match(response.body, /Private page/);
+  const later = parseDocContainers("> Updated ^words", { anchors: true });
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 2, { format: 2, nodes: later }, [1, 2]),
+  );
+  const fresh = await app.inject({
+    method: "GET",
+    url,
+    headers: { ...headers, "if-none-match": response.headers.etag ?? "old" },
+  });
+  assert.equal(fresh.statusCode, 200);
+  assert.equal(fresh.json().version, 3);
+  assert.deepEqual(fresh.json().document, { format: 2, nodes: later });
+});
+
+test("normal editor read enforces disabled-account and request-rate limits", async () => {
+  const registered = await register("Editor read guard");
+  const id = await page(registered.row);
+  const headers = {
+    authorization: `Bearer ${registered.token}`,
+    "x-orbyn-doc-formats": "1,2",
+  };
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [
+    registered.row.id,
+  ]);
+  try {
+    assert.equal(
+      (await app.inject({ method: "GET", url: `/docs/${id}`, headers }))
+        .statusCode,
+      403,
+    );
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [
+      registered.row.id,
+    ]);
+  }
+  const { settings, cachedSettings } = await import("../src/lib/settings.js");
+  const { freshRateLimitSession } = await import("./rate-limit-session.js");
+  const fresh = await freshRateLimitSession(registered.token);
+  await settings();
+  const live = cachedSettings(),
+    previous = live.rate_limit_per_minute;
+  live.rate_limit_per_minute = 2;
+  try {
+    const read = () =>
+      app.inject({
+        method: "GET",
+        url: `/docs/${id}`,
+        headers: { ...headers, authorization: `Bearer ${fresh}` },
+        remoteAddress: "10.88.44.2",
+      });
+    assert.equal((await read()).statusCode, 200);
+    assert.equal((await read()).statusCode, 200);
+    const limited = await read();
+    assert.equal(limited.statusCode, 429);
+    assert.ok(Number(limited.headers["retry-after"]) > 0);
+  } finally {
+    live.rate_limit_per_minute = previous;
+  }
+});
+
 test("database trigger blocks legacy content and ownership changes and mismatched authorized projection", async () => {
   const id = await page();
   const nodes = parseDocContainers("> Original");

@@ -7,6 +7,7 @@ import {
   footnoteNumbers,
   footnoteTexts,
   type DocContainerNode,
+  type DocBlock,
 } from "@orbyn/core";
 import { DocBody } from "./DocBody";
 import { FootnoteContext } from "./footnotes";
@@ -16,8 +17,11 @@ import { colors, fonts } from "../../theme";
 /** Native nested ownership uses existing block widgets and complete page reference/footnote context. */
 export function DocContainerBody({
   nodes,
+  renderLeaf,
 }: {
   nodes: readonly DocContainerNode[];
+  /** Existing editor widgets receive their complete-page leaf position. */
+  renderLeaf?: (block: DocBlock, index: number) => React.ReactNode;
 }) {
   const blocks = useMemo(
     () => docContainerBlocks(nodes, { projected: true }),
@@ -44,6 +48,12 @@ export function DocContainerBody({
           : (node.id ?? here.join("/"));
       if (node.kind === "block") {
         const position = leafIndex++;
+        if (renderLeaf)
+          return (
+            <React.Fragment key={key}>
+              {renderLeaf(node.block, position)}
+            </React.Fragment>
+          );
         return (
           <DocBody
             key={key}

@@ -5,9 +5,78 @@ import {
   parseVersionedDocContent,
   versionedDocRead,
   versionedDocSave,
+  parseDocContainers,
+  docContainerBlocks,
 } from "@orbyn/core";
 const id = "00000000-0000-4000-8000-000000000001";
 const document = { format: 1 as const, blocks: [] };
+
+test("editor read gets metadata and complete ownership from one fresh request", async () => {
+  const nodes = parseDocContainers("> - Words ^words\n^outer", {
+    anchors: true,
+  });
+  let calls = 0;
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    fetch: async (url, init) => {
+      calls++;
+      assert.equal(new URL(String(url)).pathname, `/docs/${id}`);
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("x-orbyn-doc-formats"), "1,2");
+      assert.equal(headers.has("if-none-match"), false);
+      return Response.json(
+        {
+          id,
+          title: "Page",
+          version: calls,
+          content: docContainerBlocks(nodes),
+          document: { format: 2, nodes },
+          project_id: "project",
+        },
+        { headers: { etag: "fixture" } },
+      );
+    },
+  });
+  const first = await client.getDocForEditor(id);
+  assert.equal(first.version, 1);
+  assert.equal(first.project_id, "project");
+  assert.deepEqual(first.document, { format: 2, nodes });
+  assert.equal((await client.getDocForEditor(id)).version, 2);
+  assert.equal(calls, 2);
+});
+
+test("editor reads reject missing ownership, unsupported format and mismatched projections", async () => {
+  const nodes = parseDocContainers("> Words ^words", { anchors: true });
+  const valid = {
+    id,
+    title: "Page",
+    version: 1,
+    content: docContainerBlocks(nodes),
+    document: { format: 2, nodes },
+  };
+  let reply: unknown = valid;
+  let calls = 0;
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    fetch: async () => {
+      calls++;
+      return Response.json(reply);
+    },
+  });
+  for (const malformed of [
+    { ...valid, document: undefined },
+    { ...valid, document: { format: 3, nodes } },
+    { ...valid, content: [{ type: "paragraph", text: "Other" }] },
+    { ...valid, id: "00000000-0000-4000-8000-000000000002" },
+    { ...valid, version: -1 },
+  ]) {
+    reply = malformed;
+    await assert.rejects(client.getDocForEditor(id));
+  }
+  assert.equal(calls, 5, "no second flat read or fallback request");
+  await assert.rejects(client.getDocForEditor("../outside"));
+  assert.equal(calls, 5);
+});
 
 test("content client declares capabilities and reads fresh revisions", async () => {
   let calls = 0;

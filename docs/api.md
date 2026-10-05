@@ -3492,6 +3492,18 @@ raw64KiB limit, strict query and120/min callback rate limit remain in place.
 
 ### Versioned Docs content (auth)
 
+A capable normal editor can also request `GET /docs/:id` with
+`X-Orbyn-Doc-Formats: 1,2`. It receives ordinary page metadata plus `document`
+and its authorized flat `content` from one current page revision. This negotiated
+read uses the primary database and `Cache-Control: no-store`; the stored raw
+`content_nodes` field is never returned. Private labels and task state are projected
+through the complete tree. Without a capability header, a format1 page retains the
+legacy response; a format2 page returns409 instead of a misleading flat editor read.
+The shared `getDocForEditor` client rejects missing ownership, unsupported formats,
+wrong identity/revision and mismatched flat/tree projections without fallback.
+This contract is a candidate until its mounted/full qualification is recorded;
+normal editor activation still requires ownership-preserving saves and selection.
+
 `GET /docs/:id/content` returns `{ id, title, version, document }` under current
 visibility from the primary database, with `Cache-Control: no-store`.
 `PUT /docs/:id/content` accepts the strict body `{ version, document }` and requires

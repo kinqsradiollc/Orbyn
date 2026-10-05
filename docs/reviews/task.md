@@ -1,3 +1,23 @@
+## Normal editor read contract candidate — 6 October 2026
+
+The negotiated normal GET /docs/:id now carries complete typed ownership alongside
+ordinary metadata and its authorized flat projection from one current revision.
+It uses the primary for capable readers, refuses unsupported/malformed declarations,
+and never returns raw stored content_nodes. Private labels and task-state updates
+are redistributed into the tree. The shared getDocForEditor validates identity,
+revision and exact normalized flat/tree agreement; no second flat read/fallback.
+Both container renderers now accept an existing-widget leaf callback with the
+complete-page index, preparing reuse of the current editor widgets.
+
+Seven pure client cases pass; all workspace types and production web build pass.
+The new mounted read/privacy/security/freshness cases are not run yet: frozen
+editor/suggestion fullDB58 session3956 on4ddba094 remains live in its independent
+checkout. Fresh DB59 is next only after it terminates. Current normal editor
+loading/selection/saves, CRDT, offline recovery, task-item identity and actual
+visual/native acceptance remain open; these callbacks are not editor activation.
+Main remains0b3cad2e (application93a30807). PR216 CI37377748532 has now completed
+successfully across all four jobs. No production deployment or cleanup is claimed.
+
 ## Structured suggestion acceptance adapter — 6 October 2026
 
 Suggestion acceptance now writes both the exact flat projection and nested

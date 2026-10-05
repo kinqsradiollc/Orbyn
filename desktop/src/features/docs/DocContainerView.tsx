@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { Fragment, useMemo } from "react";
 import {
   CALLOUT_LABELS,
   listLayout,
@@ -7,6 +7,7 @@ import {
   footnoteNumbers,
   footnoteTexts,
   type DocContainerNode,
+  type DocBlock,
 } from "@orbyn/core";
 import { BlockView } from "./DocBlocks";
 import { FootnoteContext } from "./RichBlocks";
@@ -15,8 +16,11 @@ import "./doc-containers.css";
 /** Render full ownership with existing block widgets and one page-wide reference context. */
 export function DocContainerView({
   nodes,
+  renderLeaf,
 }: {
   nodes: readonly DocContainerNode[];
+  /** Existing editor widgets receive their complete-page leaf position. */
+  renderLeaf?: (block: DocBlock, index: number) => React.ReactNode;
 }) {
   const blocks = useMemo(
     () => docContainerBlocks(nodes, { projected: true }),
@@ -44,6 +48,10 @@ export function DocContainerView({
           : (node.id ?? here.join("/"));
       if (node.kind === "block") {
         const position = leafIndex++;
+        if (renderLeaf)
+          return (
+            <Fragment key={key}>{renderLeaf(node.block, position)}</Fragment>
+          );
         return (
           <div
             key={key}

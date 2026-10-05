@@ -95,6 +95,7 @@ import { exportRenderedPdf, exportRenderedHtml } from "./pdf-client.js";
 import { exportImages } from "./export-images.js";
 import { claimToken } from "../imports/tokens.js";
 import { visibleItems } from "../../lib/visibility.js";
+import { docContentFormatsHeader } from "./content-routes.js";
 import {
   COLUMNS,
   COMMENT_SELECT,
@@ -275,22 +276,48 @@ export async function docRoutes(app: FastifyInstance) {
     return doc;
   });
 
-  app.get("/docs/:id", async (r) => {
+  app.get("/docs/:id", async (r, reply) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const db = reader(r.headers);
+    const declared = r.headers["x-orbyn-doc-formats"];
+    const supported = docContentFormatsHeader(declared);
+    // A capable editor gets ownership and metadata from one current row.
+    const db = declared === undefined ? reader(r.headers) : pool;
+    if (declared !== undefined) reply.header("Cache-Control", "no-store");
     const doc = (
-      await db.query<Doc>(
-        `SELECT ${COLUMNS}, d.content, ${LINKED} FROM docs d ${JOINS}
+      await db.query<Doc & { content_format: 1 | 2; content_nodes: unknown }>(
+        `SELECT ${COLUMNS}, d.content, d.content_format, d.content_nodes, ${LINKED} FROM docs d ${JOINS}
           WHERE d.id = $2 AND ${VISIBLE}`,
         [u.id, id],
       )
     ).rows[0];
     if (!doc) fail(404, "Document not found");
-    return readableLinks(db, u.id, {
-      ...doc,
+    if (!supported.includes(doc.content_format))
+      fail(409, "Update this client before opening nested document content.");
+    const { content_format, content_nodes, ...metadata } = doc;
+    // Never send the unredacted stored tree through a metadata response.
+    const shown = await readableLinks(db, u.id, {
+      ...metadata,
       content: await withTaskState(db, id, doc.content ?? []),
     });
+    if (declared === undefined) return shown;
+    const stored = parseVersionedDocContent(
+      content_format === 1
+        ? { format: 1, blocks: doc.content ?? [] }
+        : { format: 2, nodes: content_nodes },
+    );
+    const document = parseVersionedDocContent(
+      stored.format === 1
+        ? { format: 1, blocks: shown.content }
+        : {
+            format: 2,
+            nodes: projectDocContainers(stored.nodes, () => shown.content, {
+              projected: true,
+            }),
+          },
+      { projected: true },
+    );
+    return { ...shown, document };
   });
 
   /** Export as Markdown, with any LaTeX kept as source. */
