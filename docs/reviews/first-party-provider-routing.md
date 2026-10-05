@@ -249,3 +249,20 @@ returned500 instead of200 and the test-file teardown also failed during recovery
 The process remains live at the latest observation; no full success is claimed,
 and no timer/assertion/database setting was relaxed. Original evidence remains
 in `/tmp/orbyn-4bed-full-tests.log`.
+
+### Test fixture cleanup after database recovery
+
+Full4bed qualification was intentionally stopped after its poll assertions and
+after-hook failed; the owned HTTP fixtures remained open. The verified process
+identities and stop reason are recorded in `/tmp/orbyn-4bed-failed-run-stop.json`.
+The preserved `/tmp/orbyn-4bed-full-tests.log` is a failed/interrupted run, not a
+passing full-suite result. CI37253216587 separately completed all four jobs on
+exact4bed2f5a; that remote success does not erase the local failure.
+
+The affected test teardown now attempts every cleanup and aggregates all errors,
+so a database failure cannot skip closing the API, database pool or mock provider.
+A unit test injects synchronous/asynchronous cleanup failures and verifies later
+resources still close and both original errors survive. Focused unchanged
+assistant-run assertions plus cleanup tests pass43/43 with no skips in
+`/tmp/orbyn-fixture-cleanup-focused.log`. No deadline/assertion/database setting
+was relaxed; Docker was not restarted or reconfigured.

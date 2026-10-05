@@ -198,15 +198,21 @@ test("assistant chat requires a signed-in person and a valid timezone", async ()
 });
 
 after(async () => {
-  await stopBackground?.();
-  await pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [users]);
-  await pool.query(
-    "UPDATE ai_settings SET provider_id=NULL, model='' WHERE id",
-  );
-  await pool.query("DELETE FROM ai_providers WHERE name='Assistant run test'");
-  await app.close();
-  await pool.end();
-  provider.close();
+  const { cleanupFixtures } = await import("./cleanup.js");
+  await cleanupFixtures([
+    () => stopBackground?.(),
+    () => pool.query("DELETE FROM users WHERE id = ANY($1::uuid[])", [users]),
+    () =>
+      pool.query("UPDATE ai_settings SET provider_id=NULL, model='' WHERE id"),
+    () =>
+      pool.query("DELETE FROM ai_providers WHERE name='Assistant run test'"),
+    () => app.close(),
+    () => pool.end(),
+    () =>
+      new Promise<void>((resolve, reject) =>
+        provider.close((error) => (error ? reject(error) : resolve())),
+      ),
+  ]);
 });
 
 test("the lead delegates, stages specialist work, and applies one checked plan", async () => {
