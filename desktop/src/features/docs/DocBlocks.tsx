@@ -1,4 +1,9 @@
-import { useContext, type CSSProperties, type ReactNode } from "react";
+import {
+  Fragment,
+  useContext,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import {
   mentionedPerson,
   docLinkDestination,
@@ -96,140 +101,134 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
           ) : (
             inner
           );
-        if (run.math)
-          return (
-            <span key={i} data-src={run.start}>
-              {shade(<Math latex={run.text} />)}
-            </span>
-          );
-        if (run.code)
-          return (
-            <code key={i} data-src={run.start}>
-              {shade(run.text)}
-            </code>
-          );
-        if (run.footnote)
-          return <FootnoteRef key={i} label={run.footnote} start={run.start} />;
-        // Where the line came from (`[src: …]`): a small quiet chip.
-        if (run.source)
-          return (
-            <span
-              key={i}
-              data-src={run.start}
-              className="doc-inline-source"
-              title={`Source: ${run.text}`}
-            >
-              {shade(run.text)}
-            </span>
-          );
-        // A mention of someone who can open the page: a quiet pill, not a
-        // link to follow.
-        if (run.link && mentionedPerson(run.link))
-          return (
-            <span
-              key={i}
-              data-src={run.start}
-              className="doc-mention"
-              title={`Mentioned: ${run.text.replace(/^@/, "")}`}
-            >
-              {shade(run.text)}
-            </span>
-          );
-        // A link made with the picker reads as a pill with the thing's
-        // live title, and opens it in the app rather than the browser.
-        if (run.link && parseObjectHref(run.link))
-          return (
-            <LinkPillView
-              key={i}
-              href={run.link}
-              label={run.text}
-              start={run.start}
-            />
-          );
-        if (run.link) {
-          const destination = docLinkDestination(run.link, webOrigin());
-          if (!destination) return <span key={i}>{shade(run.text)}</span>;
-          return (
-            <a
-              key={i}
-              href={
-                destination.kind === "fragment"
-                  ? navigation
-                    ? linkTo({
-                        kind: "doc",
-                        id: navigation.docId,
-                        block: destination.fragment,
-                      })
-                    : run.link
-                  : destination.url
-              }
-              data-src={run.start}
-              target={destination.kind === "external" ? "_blank" : undefined}
-              rel="noreferrer"
-              onClick={(event) => {
-                if (
-                  event.button !== 0 ||
-                  event.metaKey ||
-                  event.ctrlKey ||
-                  event.shiftKey ||
-                  event.altKey
-                )
-                  return;
-                if (destination.kind === "fragment" && navigation) {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  navigation.onFragment(destination.fragment);
-                } else if (destination.kind === "app") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  if (navigation) navigation.onAppLink(destination.url);
-                  else
-                    window.dispatchEvent(
-                      new CustomEvent(OPEN_LINK_EVENT, {
-                        detail: destination.url,
-                      }),
-                    );
+        const base = (() => {
+          if (run.math)
+            return (
+              <span key={i} data-src={run.start}>
+                {shade(<Math latex={run.text} />)}
+              </span>
+            );
+          if (run.code)
+            return (
+              <code key={i} data-src={run.start}>
+                {shade(run.text)}
+              </code>
+            );
+          if (run.footnote)
+            return (
+              <FootnoteRef key={i} label={run.footnote} start={run.start} />
+            );
+          // Where the line came from (`[src: …]`): a small quiet chip.
+          if (run.source)
+            return (
+              <span
+                key={i}
+                data-src={run.start}
+                className="doc-inline-source"
+                title={`Source: ${run.text}`}
+              >
+                {shade(run.text)}
+              </span>
+            );
+          // A mention of someone who can open the page: a quiet pill, not a
+          // link to follow.
+          if (run.link && mentionedPerson(run.link))
+            return (
+              <span
+                key={i}
+                data-src={run.start}
+                className="doc-mention"
+                title={`Mentioned: ${run.text.replace(/^@/, "")}`}
+              >
+                {shade(run.text)}
+              </span>
+            );
+          // A link made with the picker reads as a pill with the thing's
+          // live title, and opens it in the app rather than the browser.
+          if (run.link && parseObjectHref(run.link))
+            return (
+              <LinkPillView
+                key={i}
+                href={run.link}
+                label={run.text}
+                start={run.start}
+              />
+            );
+          if (run.link) {
+            const destination = docLinkDestination(run.link, webOrigin());
+            if (!destination) return <span key={i}>{shade(run.text)}</span>;
+            return (
+              <a
+                key={i}
+                href={
+                  destination.kind === "fragment"
+                    ? navigation
+                      ? linkTo({
+                          kind: "doc",
+                          id: navigation.docId,
+                          block: destination.fragment,
+                        })
+                      : run.link
+                    : destination.url
                 }
-              }}
-            >
-              {shade(run.text)}
-            </a>
-          );
-        }
-        if (run.bold)
-          return (
-            <strong key={i}>
-              <Pieces run={run} marks={marks} />
-            </strong>
-          );
-        if (run.italic)
-          return (
-            <em key={i}>
-              <Pieces run={run} marks={marks} />
-            </em>
-          );
-        if (run.strike)
-          return (
-            <s key={i} className="doc-strike">
-              <Pieces run={run} marks={marks} />
-            </s>
-          );
+                data-src={run.start}
+                target={destination.kind === "external" ? "_blank" : undefined}
+                rel="noreferrer"
+                onClick={(event) => {
+                  if (
+                    event.button !== 0 ||
+                    event.metaKey ||
+                    event.ctrlKey ||
+                    event.shiftKey ||
+                    event.altKey
+                  )
+                    return;
+                  if (destination.kind === "fragment" && navigation) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    navigation.onFragment(destination.fragment);
+                  } else if (destination.kind === "app") {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    if (navigation) navigation.onAppLink(destination.url);
+                    else
+                      window.dispatchEvent(
+                        new CustomEvent(OPEN_LINK_EVENT, {
+                          detail: destination.url,
+                        }),
+                      );
+                  }
+                }}
+              >
+                {shade(run.text)}
+              </a>
+            );
+          }
+          if (run.tag)
+            return (
+              <span
+                key={i}
+                className="doc-inline-tag"
+                title={`Tag: ${run.tag}`}
+              >
+                <Pieces run={run} marks={marks} />
+              </span>
+            );
+          return <Pieces run={run} marks={marks} />;
+        })();
+        let styled: ReactNode = base;
         if (run.highlight)
-          return (
+          styled = (
             <mark
-              key={i}
               className={"doc-highlight" + (run.tint ? ` is-${run.tint}` : "")}
             >
-              <Pieces run={run} marks={marks} />
+              {styled}
             </mark>
           );
-        if (run.tag)
-          return (
-            <span key={i} className="doc-inline-tag" title={`Tag: ${run.tag}`}>
-              <Pieces run={run} marks={marks} />
-            </span>
-          );
-        return <Pieces key={i} run={run} marks={marks} />;
+        if (run.strike) styled = <s className="doc-strike">{styled}</s>;
+        if (run.italic) styled = <em>{styled}</em>;
+        if (run.bold) styled = <strong>{styled}</strong>;
+        return <Fragment key={i}>{styled}</Fragment>;
       })}
     </>
   );

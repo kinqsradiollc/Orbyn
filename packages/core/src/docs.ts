@@ -778,7 +778,7 @@ export const isStyledRun = (run: DocInline): boolean =>
 // "a == b" in a note about code stays text. A source marker (`[src: …]`)
 // is tried after links, so `[src: x](https://…)` stays a link.
 const INLINE_RE =
-  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]|\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?/g;
+  /\$([^$\n]+?)\$|\[\^([\w-]{1,24})\]|\[([^\]\n]+)\]\(([^)\s]+)\)|==(\{(?:green|rose)\})?([^=\s](?:[^=\n]*[^=\s])?)==|~~([^~\s](?:[^~\n]*[^~\s])?)~~|\*\*([^*]+)\*\*|\*([^*\n]+)\*|\[src:[ \t]*([^\]\s][^\]\n]{0,299}?)[ \t]*\]|\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?|\*\*\*([^*\n]+)\*\*\*/g;
 
 /** Only supported document and external protocols can become actionable links. */
 export function isDocLinkSafe(href: string): boolean {
@@ -922,6 +922,7 @@ function parseFormattedInline(
   text: string,
   source = text,
   references?: ReadonlyMap<string, string>,
+  depth = 0,
 ): DocInline[] {
   const out: DocInline[] = [];
   let at = 0;
@@ -930,33 +931,47 @@ function parseFormattedInline(
     if (start > at) out.push({ text: source.slice(at, start), start: at });
     const words = (group: number, offset: number) =>
       source.slice(start + offset, start + offset + m[group].length);
+    // Recurse only inside supported delimiters. Masks retain literal code,
+    // escaped punctuation and original source coordinates at every depth.
+    const formatted = (
+      group: number,
+      offset: number,
+      style: Partial<DocInline>,
+    ) => {
+      const inner = m[group];
+      const original = words(group, offset);
+      const children =
+        depth < 8
+          ? parseFormattedInline(inner, original, references, depth + 1)
+          : [{ text: original, start: 0 }];
+      out.push(
+        ...children.map((child) => ({
+          ...style,
+          ...child,
+          start: start + offset + child.start,
+        })),
+      );
+    };
     // Each run's `start` skips its opening marker, so it points at the
     // first character its `text` actually holds.
-    if (m[1] !== undefined)
+    if (m[13] !== undefined) formatted(13, 3, { bold: true, italic: true });
+    else if (m[1] !== undefined)
       out.push({ text: words(1, 1), start: start + 1, math: true });
     else if (m[2] !== undefined)
       out.push({ text: words(2, 2), start: start + 2, footnote: words(2, 2) });
     else if (m[3] !== undefined) {
       const href = words(4, m[0].indexOf("](") + 2);
-      out.push(
-        isDocLinkSafe(href)
-          ? { text: words(3, 1), start: start + 1, link: href }
-          : { text: source.slice(start, start + m[0].length), start },
-      );
+      if (isDocLinkSafe(href)) formatted(3, 1, { link: href });
+      else out.push({ text: source.slice(start, start + m[0].length), start });
     } else if (m[6] !== undefined) {
       const tint = m[5] ? (m[5].slice(1, -1) as "green" | "rose") : undefined;
-      out.push({
-        text: words(6, 2 + (m[5]?.length ?? 0)),
-        start: start + 2 + (m[5]?.length ?? 0),
+      formatted(6, 2 + (m[5]?.length ?? 0), {
         highlight: true,
         ...(tint ? { tint } : {}),
       });
-    } else if (m[7] !== undefined)
-      out.push({ text: words(7, 2), start: start + 2, strike: true });
-    else if (m[8] !== undefined)
-      out.push({ text: words(8, 2), start: start + 2, bold: true });
-    else if (m[9] !== undefined)
-      out.push({ text: words(9, 1), start: start + 1, italic: true });
+    } else if (m[7] !== undefined) formatted(7, 2, { strike: true });
+    else if (m[8] !== undefined) formatted(8, 2, { bold: true });
+    else if (m[9] !== undefined) formatted(9, 1, { italic: true });
     else if (m[10] !== undefined)
       out.push({
         text: words(10, m[0].indexOf(m[10], 5)),
@@ -966,11 +981,9 @@ function parseFormattedInline(
     if (m[11] !== undefined) {
       const label = referenceLabel(m[12] || m[11]);
       const href = references?.get(label);
-      out.push(
-        href && isDocLinkSafe(href) && source[start - 1] !== "!"
-          ? { text: words(11, 1), start: start + 1, link: href }
-          : { text: source.slice(start, start + m[0].length), start },
-      );
+      if (href && isDocLinkSafe(href) && source[start - 1] !== "!")
+        formatted(11, 1, { link: href });
+      else out.push({ text: source.slice(start, start + m[0].length), start });
     }
     at = start + m[0].length;
   }

@@ -81,6 +81,15 @@ export function Inline({
           (m) => m.start < run.start + run.text.length && m.end > run.start,
         );
         const shown = run.math ? mathToText(run.text) : run.text;
+        const formatting = [
+          style,
+          run.bold && s.bold,
+          run.italic && s.italic,
+          run.highlight && s.highlight,
+          run.highlight && run.tint === "green" && s.green,
+          run.highlight && run.tint === "rose" && s.rose,
+          run.strike && s.strike,
+        ];
         // A footnote's marker: its number, small; its words a tap away.
         if (run.footnote) {
           const n = notes.numbers.get(run.footnote) ?? run.footnote;
@@ -88,7 +97,7 @@ export function Inline({
           return (
             <Text
               key={i}
-              style={[style, s.footnote]}
+              style={[formatting, s.footnote]}
               accessibilityLabel={`Footnote ${n}${words ? `: ${words}` : ""}`}
               onPress={
                 words ? () => notes.onShow?.(String(n), words) : undefined
@@ -103,7 +112,7 @@ export function Inline({
           return (
             <Text
               key={i}
-              style={[style, s.source]}
+              style={[formatting, s.source]}
               accessibilityLabel={`Source: ${run.text}`}
             >
               {` ${run.text} `}
@@ -125,7 +134,7 @@ export function Inline({
               key={i}
               href={run.link}
               label={run.text}
-              style={style}
+              style={formatting}
             />
           );
         // "@Anna": someone named in the page, a quiet pill, not a link.
@@ -134,16 +143,10 @@ export function Inline({
           <Text
             key={i}
             style={[
-              style,
-              run.bold && s.bold,
-              run.italic && s.italic,
+              formatting,
               (run.code || run.math) && s.code,
               !!run.link && !person && s.link,
               person && s.mention,
-              run.highlight && s.highlight,
-              run.highlight && run.tint === "green" && s.green,
-              run.highlight && run.tint === "rose" && s.rose,
-              run.strike && s.strike,
               !!run.tag && s.tag,
               lit && s.marked,
             ]}
