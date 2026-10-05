@@ -383,6 +383,8 @@ export const COVERED: Record<string, string[]> = {
 export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /agent-channels/slack": "credentials",
   "GET /agent-channels/teams": "credentials",
+  "PUT /agent-channels/teams/permission": "credentials",
+  "POST /agent-channels/teams/conversation-link": "credentials",
   "POST /agent-channels/teams/installations": "credentials",
   "GET /agent-channels/teams/installations/:id": "credentials",
   "POST /agent-channels/teams/installations/:id/confirm": "credentials",
@@ -702,6 +704,7 @@ export const PUBLIC: string[] = [
   // OAuth state captures a pending install; linking requires the originating app session.
   "GET /agent-channels/slack/callback",
   "GET /agent-channels/teams/callback",
+  "POST /agent-channels/teams/activities",
   "POST /agent-channels/slack/interactions",
   "POST /agent-channels/slack/events",
   "GET /maintenance",

@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   fail,
   teamsChannelStatus,
+  teamsChannelPermission,
   teamsChannelConnection,
   teamsInstallationStart,
   teamsInstallationRequest,
@@ -14,7 +15,7 @@ import { authenticateSessionBinding } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { type TeamsOAuthConfig } from "./teams-oauth.js";
 import * as service from "./teams-installations.js";
-import { configuredTeams } from "./teams-config.js";
+import { configuredTeams, configuredTeamsBot } from "./teams-config.js";
 
 /** Injectable boundary for HTTP shield tests; the production registration uses only real services. */
 export function createTeamsChannelRoutes(
@@ -31,13 +32,11 @@ export function createTeamsChannelRoutes(
       const binding = await authenticateSessionBinding(r);
       z.object({}).strict().parse(r.query);
       reply.header("Cache-Control", "no-store");
+      const config = configuration();
       return teamsChannelStatus.parse({
-        configured: !!configuration(),
-        delivery_available: false,
-        connection: await dependencies.readTeamsChannel(
-          binding,
-          configuration(),
-        ),
+        configured: !!config,
+        delivery_available: !!config && !!configuredTeamsBot(),
+        connection: await dependencies.readTeamsChannel(binding, config),
       });
     });
     app.post(
@@ -83,6 +82,41 @@ export function createTeamsChannelRoutes(
             idParam(r),
             requireConfig(),
             body,
+          ),
+        );
+      },
+    );
+    app.post(
+      "/agent-channels/teams/conversation-link",
+      strictRateLimit,
+      async (r, reply) => {
+        const binding = await authenticateSessionBinding(r);
+        z.object({}).strict().parse(r.query);
+        const body = teamsChannelDisconnect.parse(r.body);
+        reply.header("Cache-Control", "no-store");
+        return teamsConversationChallenge.parse(
+          await dependencies.restartTeamsConversationLink(
+            binding,
+            body.expected_version,
+            requireConfig(),
+          ),
+        );
+      },
+    );
+    app.put(
+      "/agent-channels/teams/permission",
+      strictRateLimit,
+      async (r, reply) => {
+        const binding = await authenticateSessionBinding(r);
+        z.object({}).strict().parse(r.query);
+        const body = teamsChannelPermission.parse(r.body);
+        reply.header("Cache-Control", "no-store");
+        return teamsChannelConnection.parse(
+          await dependencies.setTeamsDmPermission(
+            binding,
+            body,
+            configuration(),
+            configuredTeamsBot(),
           ),
         );
       },

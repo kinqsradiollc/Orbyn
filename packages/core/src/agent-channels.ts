@@ -184,3 +184,10 @@ export type TeamsChannelStatus = z.output<typeof teamsChannelStatus>;
 export type TeamsInstallationRequest = z.output<
   typeof teamsInstallationRequest
 >;
+
+export const teamsChannelPermission = z
+  .object({
+    expected_version: z.number().int().positive(),
+    dm_enabled: z.boolean(),
+  })
+  .strict();

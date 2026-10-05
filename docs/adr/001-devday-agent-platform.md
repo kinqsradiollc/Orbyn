@@ -2091,3 +2091,24 @@ separate; fixed receipt retention is defined. Seven cold-pool database cases pas
 Transition/worker hooks, explicit DM opt-in, lifecycle events, commit/race gates,
 question replies and client controls remain unmounted. Complete A6 and broader
 C1–C6/M1/D1/U1 acceptance remains open.
+
+### Teams lifecycle, delivery and cross-client controls — candidate, 6 October 2026
+
+Transport credentials are independent of Microsoft identity OAuth, ChatGPT and
+MCP. Public Connector authentication precedes bounded activity parsing; only the
+reviewed tenant/user's personal linking message can prove a conversation. Explicit
+DM consent, immutable queued revision, current source/owner/grant visibility and
+bot configuration are checked through dispatch. Unknown accepted sends never
+replay. Provider uninstall revokes only the current route, with authenticated
+message timestamps protecting later personal proof from old removal events.
+
+Web/desktop/mobile share account review, personal linking, expiring in-memory
+commands, lost-command recovery, default-off DM controls and disconnect. UUID
+restoration alone cannot recover a private command or change ownership. Linking
+or reconnecting immediately clears prior messaging permission, including local
+UI state if the subsequent status fetch fails. Current pure cases21/21 and
+workspace types/backend/web builds pass; prior56 integrated cases pass. Updated
+migration/retention, full/CI and real tenant/native/visual qualification remain
+required. Teams current-card replies remain unimplemented. Identity PR205's
+CI fixture repair is being qualified; this delivery/UI candidate is not on main.
+The complete C1–C6/M1/D1/U1 scope remains open and deployment remains user-run.

@@ -15,10 +15,14 @@ import {
 const message = z.object({
   type: z.literal("message"),
   id: z.string().min(1).max(500),
+  timestamp: z.iso.datetime({ offset: true }),
   channelId: z.literal("msteams"),
   serviceUrl: z.string(),
   from: z.object({
-    id: z.string().regex(/^29:/).max(500),
+    id: z
+      .string()
+      .regex(/^29:.+/)
+      .max(500),
     aadObjectId: z.uuid(),
   }),
   recipient: z.object({ id: z.string().min(1).max(200) }),
@@ -30,9 +34,24 @@ const message = z.object({
   channelData: z.object({ tenant: z.object({ id: z.uuid() }) }),
   text: z.string().regex(/^\/orbyn connect [A-Za-z0-9_-]{43}$/),
   textFormat: z.literal("plain").optional(),
-  attachments: z.array(z.unknown()).max(0).optional(),
   channel: z.never().optional(),
 });
+/** Hash only the authenticated route tuple; service base changes cannot hide an uninstall. */
+export const teamsConversationRouteDigest = (
+  botAppId: string,
+  tenantId: string,
+  conversationId: string,
+) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify([
+        botAppId.toLowerCase(),
+        tenantId.toLowerCase(),
+        conversationId,
+      ]),
+    )
+    .digest("hex");
+
 const digest = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 
@@ -62,6 +81,8 @@ export async function bindTeamsPersonalConversation(
     activity.conversation.tenantId !== tenantId
   )
     fail(403, "This Teams conversation is unavailable.");
+  if (Date.parse(activity.timestamp) > Date.now() + 300000)
+    fail(400, "This Teams connection message is unavailable.");
   const nonceHash = digest(activity.text.slice("/orbyn connect ".length));
   const reference = JSON.stringify({
     serviceUrl: activity.serviceUrl,
@@ -95,7 +116,7 @@ export async function bindTeamsPersonalConversation(
     );
     if (!owner.rowCount) fail(403, "This Teams connection is unavailable.");
     const linked = await db.query(
-      `UPDATE agent_channel_teams_installations SET conversation_encrypted=$6,conversation_hash=$7,
+      `UPDATE agent_channel_teams_installations SET conversation_encrypted=$6,conversation_hash=$7,conversation_route_hash=$9,conversation_bound_at=$10::timestamptz,
        link_nonce_hash=NULL,link_expires_at=NULL,dm_enabled=false,version=version+1,updated_at=now()
        WHERE id=$1 AND bot_app_id=$2 AND tenant_id=$3 AND object_id=$4 AND link_nonce_hash=$5
        AND config_hash=$8 AND disconnected_at IS NULL AND link_expires_at>clock_timestamp()
@@ -109,10 +130,20 @@ export async function bindTeamsPersonalConversation(
         encrypted,
         digest(reference),
         configHash,
+        teamsConversationRouteDigest(
+          config.botAppId,
+          tenantId,
+          activity.conversation.id,
+        ),
+        activity.timestamp,
       ],
     );
     if (!linked.rowCount)
       fail(409, "This Teams connection changed or expired.");
     return { ...linked.rows[0], dm_enabled: false };
+  }).catch((error: unknown) => {
+    if ((error as { code?: string })?.code === "23505")
+      fail(409, "This Teams conversation is already connected.");
+    throw error;
   });
 }

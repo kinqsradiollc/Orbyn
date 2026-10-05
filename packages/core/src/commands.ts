@@ -809,7 +809,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   setting(
     "agent-channels",
     "Agent channels",
-    "Background and Overnight updates in Slack",
+    "Background and Overnight updates in Slack or Teams",
     "connections",
     "Agent channels",
     { sheet: "connections" },

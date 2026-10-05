@@ -4,6 +4,8 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
+const { teamsConversationRouteDigest } =
+  await import("../src/modules/agent-channels/teams-conversations.js");
 const { encryptSecret } = await import("../src/lib/secrets.js");
 const { teamsOAuthConfigDigest } =
   await import("../src/modules/agent-channels/teams-oauth.js");
@@ -91,8 +93,8 @@ async function fixture(kind = "goal", state = "done") {
     encrypted = await encryptSecret(serialized);
   const connection = (
     await pool.query(
-      `INSERT INTO agent_channel_teams_installations(user_id,bot_app_id,tenant_id,object_id,display_name,config_hash,dm_enabled,conversation_encrypted,conversation_hash)
- VALUES($1,$2,$3,$4,'Fixture',$5,true,$6,$7) RETURNING id`,
+      `INSERT INTO agent_channel_teams_installations(user_id,bot_app_id,tenant_id,object_id,display_name,config_hash,dm_enabled,conversation_encrypted,conversation_hash,conversation_route_hash,conversation_bound_at)
+ VALUES($1,$2,$3,$4,'Fixture',$5,true,$6,$7,$8,now()) RETURNING id`,
       [
         owner,
         bot.appId,
@@ -101,6 +103,11 @@ async function fixture(kind = "goal", state = "done") {
         teamsOAuthConfigDigest(config),
         encrypted,
         createHash("sha256").update(serialized).digest("hex"),
+        teamsConversationRouteDigest(
+          bot.appId,
+          target.tenantId,
+          target.conversationId,
+        ),
       ],
     )
   ).rows[0].id;
@@ -282,4 +289,182 @@ test("Overnight sends only one generic morning result after the window and keeps
     }),
     false,
   );
+});
+
+test("busy source advisory fence restores its attempt before network dispatch", async () => {
+  const f = await fixture();
+  await queueTeamsJobUpdate(pool, f.job, "done");
+  const holder = await pool.connect();
+  try {
+    await holder.query("BEGIN");
+    await holder.query(
+      "SELECT pg_advisory_xact_lock_shared(hashtextextended('agenda-sources:' || $1::text,0))",
+      [f.owner],
+    );
+    await delivered(async () => {
+      assert.fail("No send across busy source fence");
+    });
+    const row = await receipt(f.owner);
+    assert.equal(row.state, "queued");
+    assert.equal(row.attempts, 0);
+  } finally {
+    await holder.query("ROLLBACK");
+    holder.release();
+  }
+  await pool.query(
+    "UPDATE agent_channel_teams_outbox SET available_at=now() WHERE user_id=$1",
+    [f.owner],
+  );
+  await delivered(async () => ({ state: "sent", activityId: "after-fence" }));
+  assert.equal((await receipt(f.owner)).state, "sent");
+});
+test("receipt commit failure after provider acceptance remains unknown and is never replayed", async () => {
+  const f = await fixture();
+  await queueTeamsJobUpdate(pool, f.job, "done");
+  await pool.query(
+    "CREATE FUNCTION teams_outbox_fixture_refuse_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'fixture receipt failure'; END; $$",
+  );
+  await pool.query(
+    `CREATE TRIGGER teams_outbox_fixture_refuse_receipt BEFORE UPDATE ON agent_channel_teams_outbox FOR EACH ROW WHEN (NEW.state='sent' AND NEW.user_id='${f.owner}'::uuid) EXECUTE FUNCTION teams_outbox_fixture_refuse_receipt()`,
+  );
+  let calls = 0;
+  try {
+    await delivered(async () => {
+      calls++;
+      return { state: "sent", activityId: "remote-accepted" };
+    });
+  } finally {
+    await pool.query(
+      "DROP TRIGGER teams_outbox_fixture_refuse_receipt ON agent_channel_teams_outbox",
+    );
+    await pool.query("DROP FUNCTION teams_outbox_fixture_refuse_receipt()");
+  }
+  const row = await receipt(f.owner);
+  assert.equal(row.state, "unknown");
+  assert.equal(row.activity_id, null);
+  assert.equal(calls, 1);
+  assert.equal(
+    await delivered(async () => {
+      assert.fail("No replay after commit ambiguity");
+    }),
+    false,
+  );
+});
+test("concurrent consent change waits for the in-flight guarded send and fences the next queued intent", async () => {
+  const f = await fixture();
+  const second = (
+    await pool.query(
+      "INSERT INTO ai_jobs(user_id,chat_id,state,run_state,run_origin,sources_checked) VALUES($1,$2,'done',$3,'goal',true) RETURNING id",
+      [
+        f.owner,
+        f.chat,
+        JSON.stringify({
+          version: 1,
+          request: { automation: { kind: "goal" } },
+          state: {},
+        }),
+      ],
+    )
+  ).rows[0].id;
+  await queueTeamsJobUpdate(pool, f.job, "done");
+  await queueTeamsJobUpdate(pool, second, "done");
+  let release!: () => void, started!: () => void;
+  const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    }),
+    entered = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+  let sends = 0;
+  const dispatch = delivered(async () => {
+    sends++;
+    started();
+    await wait;
+    return { state: "sent", activityId: "before-revocation" };
+  });
+  await entered;
+  let revoked = false;
+  const revoke = pool
+    .query(
+      "UPDATE agent_channel_teams_installations SET dm_enabled=false,version=version+1 WHERE id=$1",
+      [f.connection],
+    )
+    .then(() => {
+      revoked = true;
+    });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.equal(revoked, false);
+  release();
+  await dispatch;
+  await revoke;
+  await delivered(async () => {
+    assert.fail("No send after committed consent change");
+  });
+  const rows = (
+    await pool.query(
+      "SELECT state FROM agent_channel_teams_outbox WHERE user_id=$1",
+      [f.owner],
+    )
+  ).rows
+    .map((row) => row.state)
+    .sort();
+  assert.deepEqual(rows, ["cancelled", "sent"]);
+  assert.equal(sends, 1);
+});
+test("expired queued intent and unavailable credentials do not cause an unbounded send loop", async () => {
+  const expired = await fixture();
+  await queueTeamsJobUpdate(pool, expired.job, "done");
+  await pool.query(
+    "UPDATE agent_channel_teams_outbox SET expires_at=now()-interval '1 second' WHERE user_id=$1",
+    [expired.owner],
+  );
+  assert.equal(
+    await delivered(async () => {
+      assert.fail("No expired send");
+    }),
+    false,
+  );
+  assert.equal((await receipt(expired.owner)).state, "cancelled");
+  const f = await fixture();
+  await queueTeamsJobUpdate(pool, f.job, "done");
+  let calls = 0;
+  for (let i = 1; i <= 3; i++) {
+    await delivered(async () => {
+      calls++;
+      return { state: "unavailable" };
+    });
+    assert.equal((await receipt(f.owner)).attempts, i);
+    if (i < 3)
+      await pool.query(
+        "UPDATE agent_channel_teams_outbox SET available_at=now() WHERE user_id=$1",
+        [f.owner],
+      );
+  }
+  assert.equal((await receipt(f.owner)).state, "failed");
+  assert.equal(calls, 3);
+});
+test("Teams content-free receipt retention removes old terminal or expired records and preserves current delivery", async () => {
+  const { SWEEP_RULES } = await import("../src/lib/sweep.js");
+  const old = await fixture(),
+    recent = await fixture(),
+    expired = await fixture();
+  for (const f of [old, recent, expired])
+    await queueTeamsJobUpdate(pool, f.job, "done");
+  await pool.query(
+    "UPDATE agent_channel_teams_outbox SET state='unknown',updated_at=now()-interval '15 days' WHERE user_id=$1",
+    [old.owner],
+  );
+  await pool.query(
+    "UPDATE agent_channel_teams_outbox SET updated_at=now()-interval '15 days',expires_at=now()-interval '1 minute' WHERE user_id=$1",
+    [expired.owner],
+  );
+  const rule = SWEEP_RULES.find(
+    (rule) => rule.key === "agent_channel_teams_outbox",
+  )!;
+  assert.equal(rule.configurable, false);
+  assert.equal(rule.days, 14);
+  await pool.query(`DELETE FROM ${rule.table} WHERE ${rule.where}`);
+  assert.equal(await receipt(old.owner), undefined);
+  assert.equal(await receipt(expired.owner), undefined);
+  assert.equal((await receipt(recent.owner)).state, "queued");
 });

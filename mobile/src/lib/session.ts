@@ -62,6 +62,7 @@ export async function clearSession() {
   await store.remove(ASSISTANT_CHAT_KEY).catch(() => undefined);
   await store.remove("orbyn-assistant-view-open").catch(() => undefined);
   await saveSlackInstallation(null);
+  await saveTeamsInstallation(null);
   session.token = "";
 }
 
@@ -95,4 +96,19 @@ export const saveSlackInstallation = (id: string | null) => {
     )
     .catch(() => undefined);
   return slackInstallationWrite;
+};
+
+/** Persist only the pending Teams request UUID; private linking commands stay in memory. */
+export const loadTeamsInstallation = () =>
+  store.get("orbyn-teams-installation").catch(() => null);
+let teamsInstallationWrite: Promise<void> = Promise.resolve();
+export const saveTeamsInstallation = (id: string | null) => {
+  teamsInstallationWrite = teamsInstallationWrite
+    .then(() =>
+      id
+        ? store.set("orbyn-teams-installation", id)
+        : store.remove("orbyn-teams-installation"),
+    )
+    .catch(() => undefined);
+  return teamsInstallationWrite;
 };

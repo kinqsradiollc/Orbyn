@@ -1,3 +1,8 @@
+import {
+  configuredTeams,
+  configuredTeamsBot,
+} from "../modules/agent-channels/teams-config.js";
+import { deliverTeamsChannelOne } from "../modules/agent-channels/teams-outbox.js";
 import { runDueTemplates } from "../modules/templates/service.js";
 import { rotateSlackOne } from "../modules/agent-channels/rotation.js";
 import type { FastifyBaseLogger } from "fastify";
@@ -299,7 +304,20 @@ export async function runWorker() {
                     !!signingSecret,
                   )
                 : false;
-              if (!reminder && !webhook && !channel && !rotation && !reply)
+              const teams = configuredTeams(),
+                teamsBot = configuredTeamsBot();
+              const teamsDelivery =
+                teams && teamsBot
+                  ? await deliverTeamsChannelOne(teams, teamsBot, env.APP_URL)
+                  : false;
+              if (
+                !reminder &&
+                !webhook &&
+                !channel &&
+                !rotation &&
+                !reply &&
+                !teamsDelivery
+              )
                 return false;
             }
             return true;

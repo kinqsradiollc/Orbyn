@@ -150,8 +150,8 @@ export async function deliverTeamsChannelOne(
       );
       const connection = (
         await db.query(
-          `SELECT tenant_id,object_id,conversation_encrypted,conversation_hash FROM agent_channel_teams_installations
-        WHERE id=$1 AND user_id=$2 AND version=$3 AND dm_enabled AND disconnected_at IS NULL AND bot_app_id=$4 AND config_hash=$5 FOR SHARE NOWAIT`,
+          `SELECT tenant_id,object_id,conversation_encrypted,conversation_hash,conversation_route_hash FROM agent_channel_teams_installations
+        WHERE id=$1 AND user_id=$2 AND version=$3 AND dm_enabled AND disconnected_at IS NULL AND bot_app_id=$4 AND config_hash=$5 AND conversation_route_hash IS NOT NULL FOR SHARE NOWAIT`,
           [
             delivery.connection_id,
             delivery.user_id,

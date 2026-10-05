@@ -3448,20 +3448,30 @@ and chat history in one transaction. One sent card accepts at most one decision.
 Permission changes, source loss, question edits, expiry and configuration rotation
 refuse queued answers. No callback grants standing approval.
 
-### Teams identity connection (candidate)
+### Teams account and personal messaging connection (candidate)
 
-| Method and path                                        | Behavior                                                                                             |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `GET /agent-channels/teams`                            | Owned connection status; no private challenge or conversation contents                               |
-| `POST /agent-channels/teams/installations`             | Empty body; original-session OAuth attempt                                                           |
-| `GET /agent-channels/teams/installations/:id`          | Original-session encrypted identity review                                                           |
-| `POST /agent-channels/teams/installations/:id/confirm` | Exact `tenant_id`, `object_id`, `expected_version`; returns one-use personal-link challenge, DMs off |
-| `POST /agent-channels/teams/disconnect`                | Current `expected_version`; clears conversation, challenge and pending identity authority            |
-| `GET /agent-channels/teams/callback`                   | Public state-bound capture; never grants ownership or DM permission                                  |
+| Method and path                                        | Behavior                                                                                                             |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `GET /agent-channels/teams`                            | Owned connection status; no private challenge or conversation contents                                               |
+| `POST /agent-channels/teams/installations`             | Empty body; original-session OAuth attempt                                                                           |
+| `GET /agent-channels/teams/installations/:id`          | Original-session encrypted identity review                                                                           |
+| `POST /agent-channels/teams/installations/:id/confirm` | Exact `tenant_id`, `object_id`, `expected_version`; returns one-use personal-link challenge, DMs off                 |
+| `POST /agent-channels/teams/disconnect`                | Current `expected_version`; clears conversation, challenge and pending identity authority                            |
+| `POST /agent-channels/teams/conversation-link`         | Current `expected_version`; replaces an expired/lost challenge and clears old conversation permission                |
+| `PUT /agent-channels/teams/permission`                 | Current `expected_version`, `dm_enabled`; enabling requires both configurations and a proved personal route          |
+| `POST /agent-channels/teams/activities`                | Public provider-authenticated raw JSON; links the exact reviewed personal actor or revokes its current removed route |
+| `GET /agent-channels/teams/callback`                   | Public state-bound capture; never grants ownership or DM permission                                                  |
 
 All owned routes require live app sessions, exclude API keys/MCP/plugin credentials,
 reject extra input and use strict rate limits with uncached responses. Callback
 code/state are omitted from gateway and request URL logs, with upstream retry
 disabled. OAuth capture, explicit identity review and personal conversation proof
-are separate boundaries. Delivery status is false until transport is implemented;
-there is no Teams DM permission route or mounted activity endpoint yet.
+are separate boundaries. Bot transport credentials are independent of user identity
+OAuth. The activity endpoint authenticates the Connector JWT before parsing bounded
+JSON; unknown personal text is acknowledged without storage. Owned changes use
+10/minute limits; the provider activity endpoint uses120/minute/IP. Delivery is
+configured only when both configurations are valid and still requires the owner's
+separate versioned permission. Background and morning intents recheck live source,
+owner, grant, conversation proof and revision at dispatch. Accepted-but-uncertain
+sends are terminal, with no automatic replay. Teams question replies are not yet
+implemented; decisions open Orbyn.
