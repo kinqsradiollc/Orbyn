@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { fail, aiFeatureProvider, type AiFeatureProvider } from "@orbyn/core";
-import { pool, transaction, type Queryable } from "../../../db/pool.js";
+import { pool, transaction, type Db } from "../../../db/pool.js";
 import { recordAssistantSources } from "../../../lib/assistant-job-sources.js";
 import { readableDocs } from "../../../lib/visibility.js";
 import { docKeptOut, PAGE_KEPT_OUT } from "../../../lib/assistant-off.js";
@@ -47,7 +47,7 @@ export type PageFeatureKind =
 
 /** Page input must remain readable, AI-enabled and at its captured revision. */
 async function assertFeatureSources(
-  db: Queryable,
+  db: Db,
   owner: string,
   sources: FeatureSource[],
 ) {
@@ -62,7 +62,7 @@ async function assertFeatureSources(
       if (!member) fail(404, "Team not found");
       if (member.role === "viewer")
         fail(403, "Viewers cannot draft team projects.");
-      await requireAssistantAllowed(source.id);
+      await requireAssistantAllowed(source.id, db);
       continue;
     }
     const page = (
@@ -75,7 +75,7 @@ async function assertFeatureSources(
     if (Number(page.version) !== source.version)
       fail(409, "The page changed. Start a fresh request.");
     if (await docKeptOut(db, source.id)) fail(422, PAGE_KEPT_OUT);
-    await requireAssistantAllowed(page.team_id);
+    await requireAssistantAllowed(page.team_id, db);
   }
 }
 
@@ -155,7 +155,7 @@ export async function completeFeature(
     const assertAuthority = async () => {
       await providerAuthority?.();
       await assertChatgptJobAccess(owner, jobId);
-      await assertFeatureSources(pool, owner, sources);
+      await transaction((db) => assertFeatureSources(db, owner, sources));
     };
     const text = await complete(
       { ...ai, operationId, assertAuthority },

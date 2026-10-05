@@ -183,3 +183,18 @@ same case also failed in isolation with unchanged deadlines. Read-only plans
 for the sampled poll statements had costs below1500 and no JIT; this does not
 establish the cause of the burst delay. The local failure remains unresolved;
 no assertion, deadline or database setting has been relaxed.
+
+### Transaction ownership and poll diagnostics
+
+Feature source admission and rechecks now use one transaction connection for
+page/team policy checks, instead of requesting another pooled connection while
+holding the admission transaction. Focused checks remain49/49 without skips in
+`/tmp/orbyn-feature-source-transaction-tests.log`; backend types pass in
+`/tmp/orbyn-feature-source-transaction-types.log`.
+
+The unchanged isolated poll test passed under CPU profiling:60 simultaneous
+polls took9055ms; the read while the runner row was locked took68ms, within the
+unchanged2000ms deadline, with one actual presence revision. The sampled Node
+profiles were mostly idle (85.5% and94%). This observation does not identify the
+cause of the earlier delayed batches or replace full qualification. Evidence:
+`/tmp/orbyn-presence-profile-run.log` and `/tmp/orbyn-presence-cpu-profile/`.
