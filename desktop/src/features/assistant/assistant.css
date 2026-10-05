@@ -11,7 +11,8 @@
 }
 /* `.shell >` outranks the pages' `.shell > .content { flex: 1 0 auto }`,
    which would let the chat grow with the conversation instead of scrolling. */
-.shell > .content:has(.ai-chat) {
+.shell > .content:has(.ai-chat),
+.app.workspace .shell > .content:has(.ai-chat) {
   flex: 1 1 0;
   display: flex;
   flex-direction: column;
@@ -1137,40 +1138,46 @@
   gap: 0 12px;
 }
 
-/* A narrower window: Upcoming sits over the conversation. */
-@media (max-width: 1100px) {
-  .ai-chat {
-    position: relative;
-  }
-  .ai-upcoming {
-    position: absolute;
-    inset: 0 0 0 auto;
-    z-index: 5;
-    width: min(360px, calc(100vw - 56px));
-  }
+/* Use the space left inside the workspace, including the app navigation rail. */
+.ai-chat {
+  position: relative;
 }
-
-@media (max-width: 600px) {
-  .ai-chat {
-    position: relative;
-  }
-
-  .ai-history {
-    position: absolute;
-    inset: 0 auto 0 0;
-    z-index: 5;
-    display: none;
-    width: min(280px, calc(100vw - 56px));
-    flex: none;
-  }
-
-  .ai-history.is-open {
-    display: flex;
-  }
-
-  .ai-chat-head .ai-narrow-only {
-    display: inline-flex;
-  }
+.ai-chat.is-compact .ai-history {
+  display: none;
+}
+.ai-chat.is-compact .ai-history.is-open {
+  display: flex;
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 6;
+  width: min(320px, 100%);
+  flex: none;
+}
+.ai-chat.is-compact .ai-upcoming {
+  position: absolute;
+  inset: 0 0 0 auto;
+  z-index: 6;
+  width: min(400px, 100%);
+  flex: none;
+}
+.ai-chat.is-compact .ai-chat-head .ai-narrow-only {
+  display: inline-flex;
+}
+.ai-chat.is-compact.has-panel .ai-chat-head {
+  visibility: hidden;
+}
+.ai-panel-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: var(--color-backdrop);
+  cursor: default;
+}
+.ai-panel-backdrop:hover {
+  background: var(--color-backdrop);
 }
 
 .ai-changes {
@@ -1219,13 +1226,7 @@
   padding: 0;
 }
 
-/* Companion-led conversation: a quiet identity above soft, readable messages. */
-.ai-chat-head {
-  position: relative;
-  min-height: 148px;
-  padding-top: 16px;
-  align-items: flex-start;
-}
+/* Conversation surfaces retain the shared message styling. */
 .ai-character-trigger {
   position: absolute;
   left: 50%;
@@ -1254,16 +1255,19 @@
   color: var(--color-muted);
 }
 .ai-chat.is-empty .ai-thread {
-  flex: 1;
-  justify-content: flex-start;
+  flex: 0 1 38%;
+  justify-content: flex-end;
   overflow-y: auto;
-  padding-top: 24px;
+  padding-top: 16px;
+  padding-bottom: 24px;
 }
 .ai-intro {
   display: grid;
   gap: 10px;
-  max-width: 480px;
-  align-self: flex-start;
+  width: 100%;
+  max-width: var(--ai-column);
+  box-sizing: border-box;
+  align-self: center;
   padding: 18px 22px;
   background: var(--color-surfaceMuted);
   border-radius: var(--radius-lg);
@@ -1321,10 +1325,7 @@
     padding: 10px;
   }
   .ai-chat-head .ai-narrow-only {
-    margin-right: auto;
-  }
-  .ai-chat-head .ai-narrow-only + .ai-narrow-only {
-    margin-right: 0;
+    margin: 0;
   }
   .ai-reply {
     padding: 14px 16px;
@@ -1372,4 +1373,29 @@
     padding: 10px;
     min-width: 36px;
   }
+}
+
+/* Interactive chat has a quiet workspace header; characters belong to agent profiles. */
+.ai-chat-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-textSoft);
+  margin-right: auto;
+}
+.ai-chat-head {
+  justify-content: flex-start;
+  align-items: center;
+  min-height: 52px;
+  padding: 6px var(--ai-inset);
+}
+.ai-intro {
+  padding: 16px 0;
+  background: none;
+  border: 0;
+  text-align: center;
+}
+.ai-intro h2 {
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--color-text);
 }

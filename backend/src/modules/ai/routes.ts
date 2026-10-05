@@ -6,6 +6,9 @@ import type { FastifyInstance } from "fastify";
 import {
   chatRequest,
   fail,
+  HttpError,
+  type AiFeatureProvider,
+  type AgendaBriefOutcome,
   localDateKey,
   projectRequest,
   type ChatScope,
@@ -16,7 +19,12 @@ import {
 } from "@orbyn/core";
 import { pool, transaction, type Db } from "../../db/pool.js";
 import { readableLinks } from "../links/privacy.js";
-import { authenticate, type UserRow } from "../../lib/auth.js";
+import {
+  authenticate,
+  isSessionPrincipal,
+  authenticateSessionBinding,
+  type UserRow,
+} from "../../lib/auth.js";
 import { z } from "zod";
 import { assistantMayRead, docVisibleTo } from "../../lib/doc-visibility.js";
 
@@ -25,8 +33,9 @@ import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 
 type ChatRequest = z.output<typeof chatRequest>;
 import { idParam, strictRateLimit } from "../../lib/params.js";
-import { resolveAi } from "./providers/resolve.js";
-import { complete } from "./providers/adapters.js";
+import { completeFeature } from "./providers/feature-call.js";
+import { assistantProviderCapabilities } from "./providers/admission.js";
+import { privateProviderFailureMessage } from "./providers/user-choice.js";
 import { beginChatTurn, resolveChatScope } from "./chats.js";
 import { type AgentContext, getItem } from "./agent/tools.js";
 import { getProject } from "./agent/workspace.js";
@@ -211,12 +220,8 @@ export async function aiRoutes(app: FastifyInstance) {
     ).rows;
   });
   app.get("/ai/capabilities", async (r) => {
-    await authenticate(r);
-    const provider = await resolveAi();
-    return {
-      enabled: !!provider,
-      tools: !!provider && !provider.structuredOutput,
-    };
+    const u = await authenticate(r);
+    return assistantProviderCapabilities(u.id);
   });
   // Draft a project from a prompt: a set of subtasks with estimates and due
   // dates, returned as a proposal to review — nothing is saved until applied.
@@ -230,7 +235,17 @@ export async function aiRoutes(app: FastifyInstance) {
     const zone = (r.body as { timezone?: unknown } | null)?.timezone;
     if (typeof zone === "string")
       await adoptDeviceZone(u.id, zone.slice(0, 64));
-    return rewriteAgenda(u.id, { brief: briefFor });
+    const binding = isSessionPrincipal(u)
+      ? await authenticateSessionBinding(r)
+      : undefined;
+    let briefing: AgendaBriefOutcome | undefined;
+    const doc = await rewriteAgenda(u.id, {
+      brief: (day, now, owner) =>
+        briefFor(day, now, owner, binding, (outcome) => {
+          briefing = outcome;
+        }),
+    });
+    return { ...doc, ...(briefing ? { briefing } : {}) };
   });
 
   app.post("/ai/project", strictRateLimit, async (r) => {
@@ -242,30 +257,38 @@ export async function aiRoutes(app: FastifyInstance) {
       fail(422, "Unknown timezone");
     }
     if (d.team_id) await requireTeam(d.team_id, u, "items:write");
-    const ai = await resolveAi();
-    if (!ai)
-      fail(
-        503,
-        "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
-      );
     const today = localDateKey(new Date(), d.timezone);
     const system = PROJECT_DRAFT_PROMPT;
+    let provider: AiFeatureProvider | undefined;
     let content: string;
     try {
-      content = await complete(
-        ai,
+      content = await completeFeature(
+        u.id,
+        "project_draft",
+        d.team_id ? [{ kind: "team", id: d.team_id }] : [],
         [
           { role: "system", content: system },
           { role: "user", content: `Today is ${today}. Project: ${d.prompt}` },
         ],
-        { timeoutMs: 60_000 },
+        {
+          timeoutMs: 60_000,
+          allowPersonal: isSessionPrincipal(u),
+          onProvider: (value) => {
+            provider = value;
+          },
+        },
       );
     } catch (error) {
+      if (error instanceof HttpError) throw error;
       r.log.error(
-        { event: "ai_project_failed", provider: ai.kind },
+        { event: "ai_project_failed", provider: "selected" },
         "AI project draft failed",
       );
-      fail(502, "The AI provider could not answer. Please try again.");
+      fail(
+        502,
+        privateProviderFailureMessage(error) ??
+          "The AI provider could not answer. Please try again.",
+      );
     }
     let draft;
     try {
@@ -288,7 +311,7 @@ export async function aiRoutes(app: FastifyInstance) {
         deadline: d.deadline,
       },
     );
-    if (!d.team_id) return proposal;
+    if (!d.team_id) return { ...proposal, provider };
     // Approving it makes a team project, as a template started for a team does.
     await pool.query(
       "UPDATE proposals SET project = project || $2::jsonb WHERE id = $1",
@@ -296,6 +319,7 @@ export async function aiRoutes(app: FastifyInstance) {
     );
     return {
       ...proposal,
+      provider,
       project: { ...proposal.project!, team_id: d.team_id },
     };
   });
@@ -306,10 +330,10 @@ export async function aiRoutes(app: FastifyInstance) {
     } catch {
       fail(422, "Unknown timezone");
     }
-    if (!(await resolveAi()))
+    if (!(await assistantProviderCapabilities(u.id)).enabled)
       fail(
         503,
-        "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
+        "Choose an available provider in Settings → AI connections & models. Reconnect ChatGPT or ask an admin to configure Orbyn's default provider.",
       );
     const submission = {
       ...d,

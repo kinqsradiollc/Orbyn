@@ -1,10 +1,7 @@
 import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { AppState, Text, View } from "react-native";
 import { AssistantProfileStore } from "@orbyn/api-client";
-import {
-  ASSISTANT_ACTIVITY_LABELS,
-  type PersonalAgentSettings,
-} from "@orbyn/core";
+import { ASSISTANT_ACTIVITY_LABELS } from "@orbyn/core";
 import { BottomSheet } from "../components/BottomSheet";
 import { Character } from "../components/Character";
 import { Button } from "../components/Button";
@@ -15,13 +12,11 @@ import { shared } from "../styles";
 /** Same evidence and character as web, in the existing safe-area scrolling sheet. */
 export function AssistantAgents({
   visible,
-  identity,
   onClose,
   onOpenChat,
   canOpen,
 }: {
   visible: boolean;
-  identity: PersonalAgentSettings | null;
   onClose: () => void;
   onOpenChat: (id: string) => void;
   canOpen: boolean;
@@ -85,8 +80,11 @@ export function AssistantAgents({
         >
           <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
             <Character
-              appearance={identity?.character}
-              name={identity?.name ?? "Orbyn"}
+              appearance={profile.identity?.character}
+              name={
+                profile.identity?.name ??
+                (profile.lane === "background" ? "Background" : "Overnight")
+              }
               state={
                 profile.state === "working"
                   ? "working"

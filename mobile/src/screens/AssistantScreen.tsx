@@ -1,5 +1,4 @@
-import { Character } from "../components/Character";
-import { CharacterEditor } from "../components/CharacterEditor";
+import { providerDetailLines } from "@orbyn/core";
 import { ReminderNudge } from "../components/ReminderNudge";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -13,9 +12,6 @@ import {
 } from "react-native";
 import {
   assistantSuggestions,
-  characterAppearance,
-  CHARACTER_PERSONAS,
-  CHARACTER_STATE_LABELS,
   type AssistantSource,
   type Item,
   type Plan,
@@ -47,19 +43,23 @@ import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 /** Same starter prompts as the desktop assistant, one icon each. */
-const SUGGESTIONS = assistantSuggestions.map((s) => s.title);
+const SUGGESTIONS = assistantSuggestions;
 const SUGGESTION_ICONS: IconName[] = ["calendar", "flag", "sun", "squarePen"];
 
 /** Starter prompts for what the chat is about. */
-function suggestionsFor(scope: Assistant["scope"]): string[] {
+function suggestionsFor(
+  scope: Assistant["scope"],
+): { title: string; prompt: string }[] {
   if (!scope) return SUGGESTIONS;
-  return scope.kind === "project"
-    ? [
-        "Where does it stand?",
-        "What's at risk before the deadline?",
-        "What changed since I last looked?",
-      ]
-    : ["Will I finish this by the deadline?", "What should I plan next?"];
+  const titles =
+    scope.kind === "project"
+      ? [
+          "Where does it stand?",
+          "What's at risk before the deadline?",
+          "What changed since I last looked?",
+        ]
+      : ["Will I finish this by the deadline?", "What should I plan next?"];
+  return titles.map((title) => ({ title, prompt: title }));
 }
 
 /**
@@ -75,16 +75,8 @@ export function AssistantTopBar({
   busy: boolean;
   onMenu: () => void;
 }) {
-  const {
-    agentName,
-    reset,
-    thinking,
-    runProgress,
-    turns,
-    identity,
-    characterState,
-    setCustomizingCharacter,
-  } = assistant;
+  const { agentName, reset, thinking, runProgress, turns, identity } =
+    assistant;
   const locked = busy || thinking || runProgress?.state === "waiting";
   return (
     <View style={s.topBar}>
@@ -96,26 +88,7 @@ export function AssistantTopBar({
       >
         <Icon name="menu" size={20} color={colors.text} strokeWidth={2} />
       </PressableScale>
-      <PressableScale
-        style={s.topIdentity}
-        accessibilityRole="button"
-        accessibilityLabel={`Customize ${agentName}`}
-        disabled={!identity}
-        onPress={() => setCustomizingCharacter(true)}
-      >
-        <Character
-          appearance={identity?.character}
-          state={characterState}
-          size={72}
-          name={agentName}
-        />
-        <Text style={s.topName} numberOfLines={1}>
-          {agentName}
-        </Text>
-        <Text style={s.topStatus} numberOfLines={1}>
-          {CHARACTER_STATE_LABELS[characterState]}
-        </Text>
-      </PressableScale>
+      <Text style={s.topName}>Orbyn</Text>
       <PressableScale
         accessibilityRole="button"
         accessibilityLabel="New chat"
@@ -198,16 +171,8 @@ export function AssistantScreen({
     turnChanges,
     undoTurnChanges,
     identity,
-    setIdentity,
     agentName,
-    characterState,
-    customizingCharacter,
-    setCustomizingCharacter,
   } = assistant;
-  const [identityName, setIdentityName] = useState("Orbyn");
-  const [identityPersona, setIdentityPersona] = useState("");
-  const [appearance, setAppearance] = useState(() => characterAppearance({}));
-  const [identitySaving, setIdentitySaving] = useState(false);
   const [upcomingOpen, setUpcomingOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<AiChatSummary | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -220,45 +185,6 @@ export function AssistantScreen({
   };
   const [personAnswer, setPersonAnswer] = useState("");
   const activeChat = savedChats?.find((chat) => chat.id === activeChatId);
-  const identityFormWasOpen = useRef(false);
-  const identitySheetMode = useRef(false);
-  if (identity && (!identity.named_at || customizingCharacter))
-    identitySheetMode.current = customizingCharacter;
-  useEffect(() => {
-    const open = !!identity && (!identity.named_at || customizingCharacter);
-    const alreadyOpen = identityFormWasOpen.current;
-    identityFormWasOpen.current = open;
-    // A foreground refresh must not replace edits in an open form.
-    if (!identity || (open && alreadyOpen)) return;
-    setIdentityName(identity.name);
-    setIdentityPersona(identity.persona);
-    setAppearance(characterAppearance(identity.character));
-  }, [identity, customizingCharacter]);
-  const saveIdentity = async (skip = false) => {
-    if (identitySaving) return;
-    setIdentitySaving(true);
-    try {
-      setIdentity(
-        await client.updateAgentSettings(
-          skip
-            ? { name: "Orbyn", persona: "" }
-            : {
-                name: identityName.trim() || "Orbyn",
-                persona: identityPersona,
-                character: appearance,
-              },
-        ),
-      );
-      setCustomizingCharacter(false);
-    } catch {
-      Alert.alert(
-        "Couldn't save",
-        "Your assistant details could not be saved. Try again.",
-      );
-    } finally {
-      setIdentitySaving(false);
-    }
-  };
   const chatActions = (chat: AiChatSummary): MoreAction[] => [
     {
       label: chat.pinned ? "Unpin chat" : "Pin chat",
@@ -320,84 +246,6 @@ export function AssistantScreen({
 
   return (
     <>
-      <BottomSheet
-        visible={!!identity && (!identity.named_at || customizingCharacter)}
-        title={
-          identitySheetMode.current
-            ? "Make your assistant your own"
-            : "Meet your Orbyn companion"
-        }
-        onClose={() => {
-          if (!identitySaving) {
-            if (customizingCharacter) setCustomizingCharacter(false);
-            else void saveIdentity(true);
-          }
-        }}
-        footer={
-          <View style={s.sheetActions}>
-            <Button
-              title={identitySaving ? "Saving…" : "Save"}
-              onPress={() => void saveIdentity()}
-              disabled={identitySaving}
-              style={s.sheetAction}
-            />
-            <Button
-              title={identitySheetMode.current ? "Cancel" : "Keep Orbyn"}
-              secondary
-              onPress={() =>
-                customizingCharacter
-                  ? setCustomizingCharacter(false)
-                  : void saveIdentity(true)
-              }
-              disabled={identitySaving}
-              style={s.sheetAction}
-            />
-          </View>
-        }
-      >
-        <Text style={[shared.small, s.sheetIntro]}>
-          Choose a name, appearance, and communication style. You can change
-          these whenever you like.
-        </Text>
-        <Field label="Name">
-          <TextInput
-            autoFocus
-            maxLength={40}
-            value={identityName}
-            onChangeText={setIdentityName}
-            placeholder="Orbyn"
-            placeholderTextColor={colors.faint}
-            style={shared.input}
-          />
-        </Field>
-        <Field label="Persona (optional)">
-          <TextInput
-            multiline
-            maxLength={1000}
-            value={identityPersona}
-            onChangeText={setIdentityPersona}
-            placeholder="Warm, direct, and concise"
-            placeholderTextColor={colors.faint}
-            style={[shared.input, s.multiline]}
-          />
-        </Field>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {CHARACTER_PERSONAS.map((preset) => (
-            <SmallAction
-              key={preset.label}
-              label={preset.label}
-              disabled={identitySaving}
-              onPress={() => setIdentityPersona(preset.persona)}
-            />
-          ))}
-        </View>
-        <CharacterEditor
-          value={appearance}
-          onChange={setAppearance}
-          name={identityName}
-          disabled={identitySaving}
-        />
-      </BottomSheet>
       <AssistantDrawer
         visible={drawerOpen}
         onClose={() => onDrawerChange(false)}
@@ -541,16 +389,7 @@ export function AssistantScreen({
             </View>
           ) : (
             <View style={s.intro}>
-              <Text style={s.introTitle}>Hi, I’m {agentName}.</Text>
-              <Text style={s.introBody}>
-                What’s on your mind? We can make a plan, untangle a task, or
-                find a little room in your day.
-              </Text>
-              <SmallAction
-                label="Make me yours"
-                disabled={!identity}
-                onPress={() => setCustomizingCharacter(true)}
-              />
+              <Text style={s.introTitle}>What would you like to work on?</Text>
             </View>
           )}
         </FadeIn>
@@ -628,6 +467,11 @@ export function AssistantScreen({
                     undo={undoTurnChanges}
                   />
                 )}
+                {providerDetailLines(turn.trace).map((label) => (
+                  <Text key={label} style={shared.small}>
+                    {label}
+                  </Text>
+                ))}
                 <ChatTrace trace={turn.trace} />
               </View>
             </FadeIn>
@@ -767,7 +611,7 @@ export function AssistantScreen({
           >
             <ActivityIndicator size="small" color={colors.accent} />
             <Text style={s.workingText} numberOfLines={2}>
-              {progressText(runProgress?.label) || `${agentName} is thinking…`}
+              {progressText(runProgress?.label) || "Orbyn is thinking…"}
             </Text>
             {runProgress?.state === "running" && (
               <Button
@@ -826,12 +670,12 @@ export function AssistantComposer({
     <View>
       {turns.length === 0 && !thinking && (
         <FadeIn style={s.suggestions}>
-          {suggestions.map((text, n) => (
+          {suggestions.map((suggestion, n) => (
             <Pressable
-              key={text}
+              key={suggestion.title}
               accessibilityRole="button"
               disabled={locked}
-              onPress={() => ask(text)}
+              onPress={() => ask(suggestion.prompt)}
               style={({ pressed }) => [
                 s.suggestion,
                 pressed && { backgroundColor: colors.surfaceMuted },
@@ -844,7 +688,7 @@ export function AssistantComposer({
                 color={colors.textSoft}
               />
               <Text style={s.suggestionText} numberOfLines={1}>
-                {text}
+                {suggestion.title}
               </Text>
             </Pressable>
           ))}
@@ -854,13 +698,13 @@ export function AssistantComposer({
         <TextInput
           style={[s.input, { maxHeight: LINE * 4 * fontScale + 20 }]}
           multiline
-          placeholder={`Ask ${agentName}…`}
+          placeholder="Ask Orbyn…"
           placeholderTextColor={colors.faint}
           value={message}
           onChangeText={setMessage}
           maxLength={4000}
           textAlignVertical="center"
-          accessibilityLabel={`Message ${agentName}`}
+          accessibilityLabel="Message Orbyn"
         />
         {running ? (
           <PressableScale
@@ -1076,25 +920,21 @@ const s = themed(() =>
       minHeight: controls.tap,
     },
     topName: {
-      flexShrink: 1,
+      flex: 1,
       textAlign: "center",
-      fontFamily: fonts.bold,
+      fontFamily: fonts.medium,
       fontSize: 15,
       color: colors.text,
-      paddingHorizontal: 12,
-      paddingVertical: 3,
-      backgroundColor: colors.surfaceMuted,
-      borderRadius: radii.pill,
     },
     topStatus: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted },
-    intro: {
-      gap: 10,
-      padding: 18,
-      borderRadius: radii.card,
-      backgroundColor: colors.surfaceMuted,
-      alignSelf: "stretch",
+    intro: { paddingVertical: 32, paddingHorizontal: 16, alignSelf: "stretch" },
+    introTitle: {
+      fontFamily: fonts.medium,
+      fontSize: 24,
+      lineHeight: 32,
+      color: colors.text,
+      textAlign: "center",
     },
-    introTitle: { fontFamily: fonts.medium, fontSize: 18, color: colors.text },
     introBody: {
       fontFamily: fonts.regular,
       fontSize: 15,

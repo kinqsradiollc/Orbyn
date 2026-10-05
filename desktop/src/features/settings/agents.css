@@ -507,3 +507,9 @@
     grid-column: auto;
   }
 }
+
+.agents-identity-tabs button[aria-pressed="true"] {
+  color: var(--color-accent);
+  background: var(--color-accentSoft);
+  border-color: var(--color-accent);
+}

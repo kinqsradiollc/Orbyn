@@ -51,6 +51,33 @@ export const chatTraceEntry = z
   .strict();
 export type ChatTraceEntry = z.output<typeof chatTraceEntry>;
 
+/** Server provider receipt markers are display provenance, never tool authorization. */
+export function providerDetailLines(
+  trace: readonly ChatTraceEntry[],
+): string[] {
+  const completed = new Set<string>();
+  const requested = new Set<string>();
+  for (const entry of trace) {
+    if (!/^(pc|pf|pd)_[cs](?::[0-9a-f-]{36})?$/.test(entry.tool ?? ""))
+      continue;
+    if (entry.kind === "result" && /^p[cfd]_c/.test(entry.tool ?? ""))
+      completed.add(entry.label);
+    else if (entry.kind === "thinking" && entry.tool?.startsWith("pf_s"))
+      requested.add(entry.label);
+  }
+  return [
+    ...completed,
+    ...[...requested].filter(
+      (label) =>
+        ![...completed].some(
+          (done) =>
+            done.replace(" · completed", "") ===
+            label.replace(" · started", ""),
+        ),
+    ),
+  ].slice(-8);
+}
+
 /** A list row in the assistant's saved chat history. */
 export type AiChatSummary = {
   id: string;

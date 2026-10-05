@@ -7,6 +7,28 @@ import {
 
 export const chatgptRegistrationId = z.union([z.literal("primary"), z.uuid()]);
 
+/** Only usage reported by a completed Responses request, never an allowance estimate. */
+export const chatgptPlanUsage = z
+  .object({
+    input_tokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    output_tokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    total_tokens: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict()
+  .refine(
+    (value) => value.total_tokens === value.input_tokens + value.output_tokens,
+  );
+export type ChatgptPlanUsage = z.output<typeof chatgptPlanUsage>;
+export const CHATGPT_USAGE_URL = "https://chatgpt.com/settings/usage";
+export const chatgptPlanVerification = z
+  .object({
+    binding: chatgptModelBinding,
+    model: chatgptModel.shape.slug,
+    verified_at: z.iso.datetime(),
+    usage: chatgptPlanUsage.nullable(),
+  })
+  .strict();
+
 /** Renderer-facing state contains identity/catalog metadata, never plan credentials. */
 export const chatgptDesktopState = z
   .object({
@@ -29,6 +51,10 @@ export const chatgptDesktopState = z
       .object({
         registrationId: chatgptRegistrationId.nullable(),
         revision: z.uuid().nullable(),
+        executor: z
+          .object({ connection_id: z.uuid(), executor_id: z.uuid() })
+          .strict()
+          .optional(),
       })
       .strict()
       .nullable(),
@@ -43,6 +69,7 @@ export const chatgptDesktopState = z
       .strict()
       .nullable(),
     error: z.string().max(2000).nullable(),
+    verification: chatgptPlanVerification.optional(),
   })
   .strict()
   .superRefine((value, ctx) => {
@@ -53,7 +80,8 @@ export const chatgptDesktopState = z
         value.selection !== null ||
         value.catalog !== null ||
         value.busy ||
-        value.error !== null
+        value.error !== null ||
+        value.verification !== undefined
       )
         ctx.addIssue({
           code: "custom",
@@ -88,6 +116,26 @@ export const chatgptDesktopState = z
     )
       ctx.addIssue({ code: "custom", message: "Desktop selection changed." });
     if (
+      value.verification &&
+      (!selected[0] ||
+        JSON.stringify(value.verification.binding) !==
+          JSON.stringify(selected[0].binding))
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Plan verification belongs to another account.",
+      });
+    if (
+      value.selection?.executor &&
+      (!selected[0] ||
+        value.selection.executor.connection_id !==
+          selected[0].binding.connection_id)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Desktop executor belongs to another selected connection.",
+      });
+    if (
       value.catalog?.preference &&
       (!selected[0] ||
         JSON.stringify(value.catalog.preference.binding) !==
@@ -103,8 +151,12 @@ export const chatgptDesktopState = z
 export const chatgptDesktopCommand = z.discriminatedUnion("action", [
   z.object({ action: z.literal("state") }).strict(),
   z.object({ action: z.literal("connect") }).strict(),
+  z
+    .object({ action: z.literal("connect-request"), requestId: z.uuid() })
+    .strict(),
   z.object({ action: z.literal("cancel") }).strict(),
   z.object({ action: z.literal("refresh") }).strict(),
+  z.object({ action: z.literal("verify-plan") }).strict(),
   z
     .object({
       action: z.literal("select"),

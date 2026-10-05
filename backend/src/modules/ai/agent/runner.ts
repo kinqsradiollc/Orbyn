@@ -1,3 +1,4 @@
+import { assistantRuntimeHasRoom } from "./runtime-slots.js";
 import { flushAssistantAwayNotices } from "./notices.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
@@ -22,30 +23,53 @@ export async function claimAssistantJob(
   lane: AssistantRuntimeLane = "interactive",
 ) {
   return transaction(async (db) => {
-    // Serialize the short claim across replicas, including old consumers during
-    // a rolling upgrade. No lock is held during a provider call.
-    await db.query(
-      "SELECT pg_advisory_xact_lock(hashtext('assistant-global-slots'))",
-    );
-    const occupied = (
-      await db.query<{ count: number; lane_count: number }>(
-        `SELECT count(*)::int AS count,
-         count(*) FILTER (WHERE runtime_lane = $1)::int AS lane_count
-         FROM ai_jobs WHERE state='running' AND run_state->>'version'='1' AND lease_until > now()`,
-        [lane],
-      )
-    ).rows[0];
-    if (
-      occupied.count >= 8 ||
-      occupied.lane_count >= ASSISTANT_RUNTIME_CAPACITY[lane]
-    )
-      return null;
+    if (!(await assistantRuntimeHasRoom(db, lane))) return null;
     const row = (
       await db.query<{ id: string; user_id: string; run_state: unknown }>(
         `WITH candidate AS (
          SELECT candidate.id FROM ai_jobs candidate
          WHERE candidate.state = 'queued' AND candidate.runtime_lane = $2 AND candidate.run_state->>'version' = '1'
            AND candidate.run_state->'request' IS NOT NULL
+           AND (
+             candidate.runtime_lane='interactive'
+             OR coalesce(candidate.provider_choice_snapshot->>'primary','default')<>'chatgpt'
+             OR candidate.provider_choice_snapshot->>'fallback_to_default'='true'
+             OR candidate.private_inference_legacy
+             OR candidate.cancel_requested
+             OR (candidate.runtime_lane='overnight'
+               AND coalesce(candidate.run_state->>'reviewed','false')<>'true'
+               AND EXISTS(SELECT 1 FROM assistant_nights ended_night
+                 WHERE ended_night.id::text=candidate.run_state#>>'{request,automation,night_id}'
+                   AND ended_night.user_id=candidate.user_id AND ended_night.status='done'))
+             OR EXISTS(SELECT 1 FROM users disabled_owner WHERE disabled_owner.id=candidate.user_id AND disabled_owner.disabled)
+             OR NOT EXISTS(SELECT 1 FROM user_ai_provider_choice current_choice
+               WHERE current_choice.user_id=candidate.user_id AND current_choice.primary_provider='chatgpt'
+                 AND current_choice.version::text=candidate.provider_choice_snapshot->>'version'
+                 AND current_choice.connection_id::text=candidate.provider_choice_snapshot->>'connection_id'
+                 AND current_choice.executor_id::text=candidate.provider_choice_snapshot->>'executor_id'
+                 AND NOT current_choice.fallback_to_default)
+             OR EXISTS(SELECT 1 FROM chatgpt_inference_operations operation
+               LEFT JOIN chatgpt_inference_requests received ON received.id=operation.request_id
+               WHERE operation.job_id=candidate.id AND operation.user_id=candidate.user_id
+                 AND (operation.fallback_result_encrypted IS NOT NULL
+                   OR (received.state='completed' AND received.result_encrypted IS NOT NULL)))
+             OR EXISTS(SELECT 1 FROM chatgpt_executor_enrollments executor
+               JOIN chatgpt_identity_connections connection ON connection.id=executor.connection_id
+               JOIN chatgpt_executor_leases lease ON lease.executor_id=executor.id
+               JOIN sessions session ON session.id=executor.session_id
+               JOIN chatgpt_executor_catalogs catalog ON catalog.executor_id=executor.id
+               WHERE executor.id::text=candidate.provider_choice_snapshot->>'executor_id'
+                 AND connection.id::text=candidate.provider_choice_snapshot->>'connection_id'
+                 AND connection.user_id=candidate.user_id AND connection.revoked_at IS NULL
+                 AND session.user_id=candidate.user_id AND session.expires_at>clock_timestamp()
+                 AND lease.session_id=executor.session_id AND lease.enrollment_epoch=executor.epoch
+                 AND lease.expires_at>clock_timestamp() AND catalog.enrollment_epoch=executor.epoch
+                 AND catalog.lease_epoch=lease.epoch AND catalog.published_at>clock_timestamp()-interval '5 minutes'
+                 AND catalog.capabilities @> '["plan_inference_v1"]'::jsonb)
+           )
+           AND (candidate.runtime_lane<>'overnight' OR NOT EXISTS (
+             SELECT 1 FROM assistant_page_runs busy WHERE busy.user_id=candidate.user_id
+               AND busy.lane='overnight' AND busy.state='running' AND busy.lease_expires_at>now()))
            AND (candidate.work_source_id IS NULL OR NOT EXISTS (
              SELECT 1 FROM ai_jobs busy WHERE busy.id<>candidate.id
                AND busy.work_source_kind=candidate.work_source_kind AND busy.work_source_id=candidate.work_source_id
@@ -63,6 +87,12 @@ export async function claimAssistantJob(
   });
 }
 
+/** A leased scoped job managed by the same lane consumer and shutdown lifecycle. */
+export type ScopedAssistantWork = {
+  run: () => Promise<void>;
+  stop: () => void;
+};
+
 /** A bounded consumer for one runtime lane, shared only by its own replicas. */
 export function startAssistantRunner(
   log: FastifyBaseLogger,
@@ -70,13 +100,33 @@ export function startAssistantRunner(
     shutdownMs?: number;
     lane?: AssistantRuntimeLane;
     onTick?: () => Promise<void>;
+    claimScopedWork?: () => Promise<ScopedAssistantWork | null>;
   } = {},
 ) {
   const lane = options.lane ?? "interactive";
+  if (lane === "interactive" && options.claimScopedWork)
+    throw new Error("Scoped automation cannot run in the interactive runtime.");
   const releaseRuntime = acquireAssistantRuntime(lane);
   const claimedBy = `${lane}-${process.pid}-${randomUUID()}`;
   const active = new Set<Promise<void>>();
   const jobs = new Map<Promise<void>, string>();
+  const scopedStops = new Map<Promise<void>, () => void>();
+  let preferScoped = false;
+  const startScoped = (scoped: ScopedAssistantWork) => {
+    const work = Promise.resolve()
+      .then(scoped.run)
+      .catch(() => {
+        log.warn("Scoped assistant work could not finish");
+      });
+    active.add(work);
+    scopedStops.set(work, scoped.stop);
+    void work.finally(() => {
+      active.delete(work);
+      scopedStops.delete(work);
+      schedule();
+    });
+    preferScoped = false;
+  };
   let stopping = false;
   let claiming: Promise<void> | null = null;
   let lastRecovery = 0;
@@ -88,10 +138,23 @@ export function startAssistantRunner(
         lastRecovery = Date.now();
       }
       while (!stopping && active.size < ASSISTANT_RUNTIME_CAPACITY[lane]) {
+        if (preferScoped && options.claimScopedWork) {
+          const scoped = await options.claimScopedWork();
+          if (scoped) {
+            startScoped(scoped);
+            continue;
+          }
+        }
         // Each attempt gets a new token, even when this process recovers its own job.
         const owner = `${claimedBy}-${randomUUID()}`;
         const job = await claimAssistantJob(owner, lane);
-        if (!job) break;
+        if (!job) {
+          const scoped = await options.claimScopedWork?.();
+          if (!scoped) break;
+          startScoped(scoped);
+          continue;
+        }
+        preferScoped = true;
         const work = (async () => {
           const checkpoint = assistantRunStateFor(job.run_state);
           const user = (
@@ -154,6 +217,7 @@ export function startAssistantRunner(
       clearInterval(timer);
       await claiming;
       for (const id of jobs.values()) requestAssistantJobShutdown(id);
+      for (const stopScoped of scopedStops.values()) stopScoped();
       let timeout: ReturnType<typeof setTimeout> | undefined;
       await Promise.race([
         Promise.allSettled([...active]),

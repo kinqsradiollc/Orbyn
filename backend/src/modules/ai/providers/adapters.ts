@@ -8,6 +8,19 @@ import {
 /** Everything needed to call one provider with one model. */
 export type ResolvedAi = {
   kind: string;
+  /** Internal authority check before dispatch; never supplied by an HTTP caller. */
+  assertAuthority?: () => Promise<void>;
+  /** Content-free receipt after a parsed provider response. */
+  recordCompletion?: () => Promise<void>;
+  /** Durable private-call slot; per-loop copies prevent cross-specialist mutation. */
+  operationId?: string;
+  /** Credential-free, internal device transport; never serialized into a client request. */
+  textTransport?: (
+    messages: ChatMessage[],
+    signal: AbortSignal,
+    operationId?: string,
+    maxOutputTokens?: number,
+  ) => Promise<string>;
   format: AiRequestFormat;
   baseUrl: string;
   apiKey: string;
@@ -262,6 +275,15 @@ export async function complete(
     );
   const signal =
     options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 60_000);
+  await ai.assertAuthority?.();
+  signal.throwIfAborted();
+  if (ai.textTransport)
+    return ai.textTransport(
+      messages,
+      signal,
+      ai.operationId,
+      options.maxOutputTokens,
+    );
   const system = messages
     .filter((m) => m.role === "system")
     .map((m) => m.content)

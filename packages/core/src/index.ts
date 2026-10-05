@@ -119,3 +119,11 @@ export * from "./diagram-export.js";
 export * from "./assistant-profiles.js";
 
 export * from "./doc-source.js";
+export * from "./maintained-pages.js";
+
+export * from "./chatgpt-inference.js";
+
+export * from "./ai-provider-choice.js";
+export * from "./chatgpt-usage.js";
+
+export * from "./ai-feature.js";

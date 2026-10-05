@@ -8,6 +8,8 @@ import {
   useWindowDimensions,
 } from "react-native";
 import {
+  aiFeatureProviderLabel,
+  type AiFeatureProvider,
   DOC_AI_ACTIONS,
   DOC_AI_LABELS,
   blockText,
@@ -35,6 +37,7 @@ type Turn = {
   role: "you" | "orbyn";
   text: string;
   sources?: DocAnswer["sources"];
+  provider?: AiFeatureProvider;
   /** Set when this turn proposed a change rather than said something. */
   proposed?: DocSuggestion;
 };
@@ -105,7 +108,12 @@ export function DocAsk({
     setBusy(true);
     try {
       const answer = await client.askDoc(docId, question);
-      say({ role: "orbyn", text: answer.answer, sources: answer.sources });
+      say({
+        role: "orbyn",
+        text: answer.answer,
+        sources: answer.sources,
+        provider: answer.provider,
+      });
     } catch (e) {
       fail(e);
     } finally {
@@ -131,6 +139,7 @@ export function DocAsk({
         role: "orbyn",
         text: "Proposed. It waits with the rest of them.",
         proposed: made,
+        provider: made.provider,
       });
     } catch (e) {
       fail(e);
@@ -199,6 +208,11 @@ export function DocAsk({
                 <Text style={turn.role === "you" ? s.youText : s.orbynText}>
                   {turn.text}
                 </Text>
+                {turn.provider && (
+                  <Text style={s.sourceText}>
+                    {aiFeatureProviderLabel(turn.provider)}
+                  </Text>
+                )}
                 {turn.proposed && (
                   <Text style={s.proposed}>
                     “{plainText(turn.proposed.quote)}” →{" "}

@@ -607,3 +607,17 @@ test("agenda days answer 429 past the per-minute limit", async () => {
     live.rate_limit_per_minute = was;
   }
 });
+
+test("agenda briefing receives the page owner for provider authority", async () => {
+  const now = new Date();
+  let seenOwner: string | undefined;
+  const result = await rewriteAgenda(userId, {
+    now,
+    brief: async (_day, _now, owner) => {
+      seenOwner = owner;
+      return "A short fixture summary of your available day.";
+    },
+  });
+  assert.equal(seenOwner, userId);
+  assert.equal(result.brief, true);
+});

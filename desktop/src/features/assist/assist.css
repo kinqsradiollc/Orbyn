@@ -71,3 +71,8 @@
   gap: 10px;
   padding: 12px 23px 20px;
 }
+
+.assist-provider {
+  display: block;
+  overflow-wrap: anywhere;
+}

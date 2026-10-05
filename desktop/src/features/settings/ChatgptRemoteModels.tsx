@@ -1,4 +1,10 @@
-import { useId, useState } from "react";
+import { AiProviderChoiceControls } from "./AiProviderChoice";
+import { ChatgptUsage } from "./ChatgptUsage";
+import { useEffect, useId, useRef, useState } from "react";
+import { client } from "../../lib/api";
+import { session } from "../../lib/session";
+import { errorText } from "../../lib/errors";
+import { CHATGPT_USAGE_URL } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { useChatgptRemote } from "../../hooks/useChatgptRemote";
 
@@ -7,6 +13,68 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
   const { state, refresh, select, save } = useChatgptRemote(userId);
   const id = useId();
   const [query, setQuery] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
+  const lifetime = useRef<AbortController | null>(null);
+  useEffect(
+    () => () => {
+      lifetime.current?.abort();
+    },
+    [userId],
+  );
+  const connect = async () => {
+    const controller = new AbortController();
+    lifetime.current?.abort();
+    lifetime.current = controller;
+    const token = session.get();
+    setConnecting(true);
+    setConnectError(null);
+    try {
+      const request = await client.startChatgptConnectRequest(
+        controller.signal,
+      );
+      if (controller.signal.aborted || token !== session.get()) return;
+      window.location.href = request.launch_url;
+      while (
+        !controller.signal.aborted &&
+        Date.now() < Date.parse(request.expires_at)
+      ) {
+        await new Promise<void>((resolve) => {
+          const cancel = () => {
+            clearTimeout(timer);
+            resolve();
+          };
+          const timer = setTimeout(() => {
+            controller.signal.removeEventListener("abort", cancel);
+            resolve();
+          }, 3000);
+          controller.signal.addEventListener("abort", cancel, { once: true });
+          if (controller.signal.aborted) cancel();
+        });
+        if (controller.signal.aborted || token !== session.get()) return;
+        const next = await client.chatgptConnectRequest(
+          request.id,
+          controller.signal,
+        );
+        if (controller.signal.aborted || token !== session.get()) return;
+        if (next.state === "completed") {
+          refresh();
+          return;
+        }
+        if (next.state === "failed" || next.state === "expired")
+          throw new Error(
+            "ChatGPT sign-in did not finish. Try connecting again.",
+          );
+      }
+      if (!controller.signal.aborted)
+        throw new Error("ChatGPT sign-in expired. Try connecting again.");
+    } catch (error) {
+      if (!controller.signal.aborted && token === session.get())
+        setConnectError(errorText(error));
+    } finally {
+      if (lifetime.current === controller) setConnecting(false);
+    }
+  };
   const busy = state.status === "loading" || state.saving;
   const catalog = state.catalog;
   const models = catalog?.models ?? [];
@@ -21,33 +89,69 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
     !models.some((m) => m.slug === catalog.preference.model);
   return (
     <div className="ai-model-settings">
+      <AiProviderChoiceControls
+        userId={userId}
+        selection={
+          state.selection
+            ? {
+                connection_id: state.selection.connection_id,
+                executor_id: state.selection.executor_id,
+              }
+            : null
+        }
+      />
+      <ChatgptUsage userId={userId} />
       <div className="settings-head">
         <div>
-          <h3>ChatGPT devices &amp; models</h3>
+          <h3>ChatGPT</h3>
           <p className="muted">
-            Choose a connected device to inspect its account’s model catalog.
+            Connect your ChatGPT account and choose its default model.
           </p>
         </div>
-        <button
-          type="button"
-          className="secondary"
-          disabled={busy || !userId}
-          onClick={refresh}
-        >
-          Refresh devices &amp; models
-        </button>
+        <div className="ai-connection-actions">
+          <button
+            type="button"
+            className="primary"
+            disabled={connecting || !userId}
+            onClick={() => void connect()}
+          >
+            {connecting ? "Waiting for ChatGPT…" : "Connect to ChatGPT"}
+          </button>
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || !userId}
+            onClick={refresh}
+          >
+            Refresh
+          </button>
+        </div>
       </div>
-      <p className="muted">
-        New ChatGPT connections currently require the Orbyn desktop app. You can
-        manage a connected device’s saved default here. Model selection does not
-        start an assistant run.
-      </p>
+      {connecting && (
+        <p role="status">
+          Finish ChatGPT sign-in and consent in the browser opened by your Orbyn
+          runtime.
+        </p>
+      )}
+      {connectError && <p role="alert">{connectError}</p>}
+      <a
+        className="text-button"
+        href={CHATGPT_USAGE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        Manage ChatGPT usage
+      </a>
+      <small className="field-hint">
+        Choose the same ChatGPT account to view its current allowance and app
+        limits.
+      </small>
       {state.status === "loading" && (
         <p role="status">Loading ChatGPT devices and models…</p>
       )}
       {state.error && <p role="alert">{state.error}</p>}
       {state.status === "ready" && !state.devices.length && (
-        <p>No ChatGPT devices are connected to this Orbyn account.</p>
+        <p>No ChatGPT model catalog is available yet.</p>
       )}
       {!!state.devices.length && (
         <label className="settings-field" htmlFor={`${id}-device`}>

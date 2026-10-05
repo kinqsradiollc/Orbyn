@@ -52,6 +52,10 @@ async function fixture() {
       assert.equal(token, "first-party-fixture-session");
       return empty;
     },
+    verifyPlan: async () => {
+      calls.push("verify-plan");
+      return empty;
+    },
     connect: async () => {
       calls.push("connect");
       return empty;
@@ -250,4 +254,64 @@ test("desktop state enforces current account, selection and empty signed-out sta
     }).success,
     false,
   );
+});
+
+test("plan verification is a guarded metadata command, never renderer-supplied input", async () => {
+  const f = await fixture();
+  try {
+    const result = await f.handlers.get("orbyn:chatgpt")!(f.event, {
+      action: "verify-plan",
+    });
+    assert.deepEqual(result, empty);
+    assert.ok(f.calls.includes("verify-plan"));
+    await assert.rejects(
+      f.handlers.get("orbyn:chatgpt")!(f.event, {
+        action: "verify-plan",
+        input: "Injected content",
+      }),
+    );
+  } finally {
+    f.dispose();
+  }
+});
+
+test("bridge preserves safe plan eligibility/usage recovery without provider text or request IDs", async () => {
+  const { ChatgptPlanError } = await import("@orbyn/api-client");
+  const f = await fixture();
+  try {
+    for (const [status, code, expected] of [
+      [
+        429,
+        "subscription_sharing_usage_limit_exceeded",
+        "ChatGPT plan usage limit reached. Manage usage in ChatGPT.",
+      ],
+      [
+        403,
+        "subscription_sharing_user_not_eligible",
+        "ChatGPT plan usage is unavailable for this account or workspace.",
+      ],
+      [
+        503,
+        "subscription_sharing_usage_unavailable",
+        "ChatGPT usage availability could not be checked. Try again later.",
+      ],
+      [
+        401,
+        "unrecognized",
+        "ChatGPT access expired or was declined. Reconnect before continuing.",
+      ],
+    ] as const) {
+      f.manager.verifyPlan = async () => {
+        const error = new ChatgptPlanError(status, code, "private-request-id");
+        error.message = "private-provider-token";
+        throw error;
+      };
+      await assert.rejects(
+        f.handlers.get("orbyn:chatgpt")!(f.event, { action: "verify-plan" }),
+        (e: Error) => e.message === expected,
+      );
+    }
+  } finally {
+    f.dispose();
+  }
 });

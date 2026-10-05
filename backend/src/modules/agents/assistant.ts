@@ -1,6 +1,6 @@
 import { AGENT_TOOLSETS, type AgentAccess, type SystemRole } from "@orbyn/core";
 import { z } from "zod";
-import { pool } from "../../db/pool.js";
+import { pool, type Queryable } from "../../db/pool.js";
 import { reachableTeams, type Principal } from "../../capabilities/policy.js";
 
 const approvalScopeInput = z.union([
@@ -61,18 +61,27 @@ export async function assistantPrincipal(
     name: string;
     role: SystemRole;
   },
-  options: { refusePaused?: boolean } = {},
+  options: { refusePaused?: boolean; db?: Queryable; touch?: boolean } = {},
 ): Promise<Principal> {
+  const db = options.db ?? pool;
   const identity = (
-    await pool.query<{ name: string }>(
+    await db.query<{ name: string }>(
       "SELECT name FROM agent_settings WHERE user_id = $1",
       [user.id],
     )
   ).rows[0];
   const name = identity?.name || "Orbyn";
-  const grant = (
-    await pool.query<AssistantGrantRow>(
-      `INSERT INTO agent_grants
+  const grant =
+    options.touch === false
+      ? (
+          await db.query<AssistantGrantRow>(
+            "SELECT id,access,personal,team_ids,flags,trust,space_trust,acts_alone,toolsets,suspended_at,assistant_rules_revision FROM agent_grants WHERE user_id=$1 AND kind='assistant'",
+            [user.id],
+          )
+        ).rows[0]
+      : (
+          await db.query<AssistantGrantRow>(
+            `INSERT INTO agent_grants
          (user_id, kind, name, client_name, access, team_ids, personal,
           toolsets, flags, trust, space_trust, acts_alone)
        VALUES ($1, 'assistant', $3, $3, 'write',
@@ -82,9 +91,9 @@ export async function assistantPrincipal(
        DO UPDATE SET name = EXCLUDED.name, client_name = EXCLUDED.client_name,
                      last_used_at = now()
        RETURNING id, access, personal, team_ids, flags, trust, space_trust, acts_alone, toolsets, suspended_at, assistant_rules_revision`,
-      [user.id, [...DEFAULT_ASSISTANT_TOOLSETS], name],
-    )
-  ).rows[0];
+            [user.id, [...DEFAULT_ASSISTANT_TOOLSETS], name],
+          )
+        ).rows[0];
   if (!grant) throw new Error("The Orbyn assistant grant is unavailable.");
   if (options.refusePaused && grant.suspended_at)
     throw new AssistantPausedError();
@@ -112,7 +121,7 @@ export async function assistantPrincipal(
       spaces: grant.space_trust ?? {},
       acts_alone: (grant.acts_alone ?? []) as Principal["trust"]["acts_alone"],
     },
-    teams: await reachableTeams(pool, user.id, grant.team_ids, "assistant"),
+    teams: await reachableTeams(db, user.id, grant.team_ids, "assistant"),
   };
 }
 

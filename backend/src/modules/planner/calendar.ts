@@ -21,6 +21,7 @@ import type { Queryable as Db } from "../../db/pool.js";
 import { frameSpans, loadFrames } from "./frames.js";
 import { externalEntries } from "./subscriptions.js";
 import { visibleItems } from "../../lib/visibility.js";
+import { visibleAiItems } from "../../lib/assistant-source-visibility.js";
 
 /** Alerts new items get until someone chooses their own: 30 minutes before. */
 export const DEFAULT_ALERTS: DefaultAlerts = {
@@ -306,6 +307,7 @@ export async function calendarEntries(
   from: Date,
   to: Date,
   itemIds?: string[],
+  options: { ai?: boolean } = {},
 ): Promise<CalendarEntry[]> {
   const rows = (
     await db.query<EntryRow>(
@@ -315,7 +317,7 @@ export async function calendarEntries(
               i.all_day, i.busy, i.color, i.alerts,
               (SELECT count(*)::int FROM item_attendees x WHERE x.item_id = i.id) AS attendee_count
        FROM items i LEFT JOIN teams t ON t.id = i.team_id
-       WHERE ${visibleItems()} AND i.due_at IS NOT NULL AND (
+       WHERE ${options.ai ? visibleAiItems() : visibleItems()} AND i.due_at IS NOT NULL AND (
          (i.rrule IS NULL AND i.due_at < $3 AND coalesce(i.end_at, i.due_at) >= $2)
          OR (i.rrule IS NOT NULL AND coalesce(i.series_start, i.due_at) < $3)
        ) AND ($4::uuid[] IS NULL OR i.id = ANY ($4::uuid[]))
@@ -390,6 +392,7 @@ export async function timeBlocks(
   userId: string,
   from: Date,
   to: Date,
+  options: { ai?: boolean } = {},
 ): Promise<TimeBlock[]> {
   return (
     await db.query<TimeBlock>(
@@ -397,7 +400,7 @@ export async function timeBlocks(
               b.started_at, b.outcome, b.revision,
               i.title, i.status, i.kind, i.priority, i.team_id, i.list_id, i.estimate_minutes
        FROM time_blocks b JOIN items i ON i.id = b.item_id
-       WHERE b.user_id = $1 AND b.start_at < $3 AND b.end_at > $2 AND ${visibleItems()}
+       WHERE b.user_id = $1 AND b.start_at < $3 AND b.end_at > $2 AND ${options.ai ? visibleAiItems() : visibleItems()}
        ORDER BY b.start_at`,
       [userId, from, to],
     )
@@ -624,6 +627,8 @@ export function mergeIntervals(intervals: BusyInterval[]): BusyInterval[] {
 }
 
 export type BusyOptions = {
+  /** AI facts exclude project and team sources kept out of the assistant. */
+  ai?: boolean;
   /** Count time blocks as busy (the planner leaves out the plan it replaces). */
   blocks?: boolean;
   excludeBlockIds?: string[];
@@ -668,6 +673,8 @@ export async function busyIntervals(
       userId,
       new Date(from.getTime() - pad),
       new Date(to.getTime() + pad),
+      undefined,
+      { ai: options.ai },
     )
   ).filter((e) => !skip.has(e.item_id));
   const events = entries.filter(blocksTime);
@@ -691,7 +698,7 @@ export async function busyIntervals(
   if (options.blocks) {
     const exclude = new Set(options.excludeBlockIds ?? []);
     busy.push(
-      ...(await timeBlocks(db, userId, from, to))
+      ...(await timeBlocks(db, userId, from, to, { ai: options.ai }))
         .filter((b) => !exclude.has(b.id))
         .map((b) => ({ start_at: b.start_at, end_at: b.end_at })),
     );
@@ -748,10 +755,10 @@ export async function agendaEntries(
   userId: string,
   from: Date,
   to: Date,
-  options: { hidden?: boolean } = {},
+  options: { hidden?: boolean; ai?: boolean } = {},
 ): Promise<AgendaEntry[]> {
   const [own, subscribed] = await Promise.all([
-    calendarEntries(db, userId, from, to),
+    calendarEntries(db, userId, from, to, undefined, { ai: options.ai }),
     externalEntries(db, userId, from, to, { visible: !options.hidden }),
   ]);
   const out: AgendaEntry[] = [

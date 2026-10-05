@@ -1,3 +1,4 @@
+import { PageMaintenanceDialog } from "./PageMaintenanceDialog";
 import { DocNavigationContext } from "./doc-navigation";
 import { DocSourcePreview } from "./DocSourcePreview";
 import {
@@ -32,7 +33,6 @@ import {
   Plus,
   Sparkles,
   Strikethrough,
-  Trash2,
   Users,
 } from "lucide-react";
 import type { DragEvent } from "react";
@@ -612,6 +612,7 @@ export function DocEditor({
   const [merging, setMerging] = useState(false);
   /** "Publish to web…" (SHR-05). */
   const [publishing, setPublishing] = useState(false);
+  const [maintaining, setMaintaining] = useState(false);
   /** Presenting the page as slides (CNV-03), recording into it (CAP-10). */
   const [presenting, setPresenting] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -1011,6 +1012,8 @@ export function DocEditor({
             ? theirs.content
             : [{ type: "paragraph", text: "" }],
         );
+        setSavedAt(theirs.updated_at);
+        setNow(new Date());
         if (news) setNote(news);
         onChanged(theirs);
         return;
@@ -3061,16 +3064,6 @@ export function DocEditor({
                 </ul>
               )}
             </span>
-            {!reading && doc.kind !== "memory" && (
-              <button
-                className="icon-button"
-                onClick={() => void remove()}
-                aria-label="Move to Trash"
-                title="Move to Trash"
-              >
-                <Trash2 size={15} />
-              </button>
-            )}
             {/* Rarer page actions live behind ⋯. */}
             <span className="doc-download">
               <button
@@ -3210,6 +3203,27 @@ export function DocEditor({
                       </button>
                     </li>
                   )}
+                  {canWrite && doc.kind === "doc" && !suggesting && (
+                    <li>
+                      <button
+                        role="menuitem"
+                        aria-haspopup="dialog"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          void (async () => {
+                            await flush();
+                            if (dirty.current)
+                              throw new Error(
+                                "Save your page edits before scheduling updates.",
+                              );
+                            setMaintaining(true);
+                          })().catch(report);
+                        }}
+                      >
+                        Page updates…
+                      </button>
+                    </li>
+                  )}
                   {doc.kind !== "agenda" && doc.kind !== "memory" && (
                     <li>
                       <button
@@ -3235,6 +3249,19 @@ export function DocEditor({
                         }}
                       >
                         Save as template
+                      </button>
+                    </li>
+                  )}
+                  {!reading && doc.kind !== "memory" && (
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          void remove();
+                        }}
+                      >
+                        Move to Trash
                       </button>
                     </li>
                   )}
@@ -4151,6 +4178,18 @@ export function DocEditor({
               void addFiles(files, place.index, place.replace);
           }}
         />
+        {maintaining && (
+          <PageMaintenanceDialog
+            id={doc.id}
+            onChanged={(updated) => {
+              if (updated.version < version.current) return;
+              setSavedAt(updated.updated_at);
+              setNow(new Date());
+              onChanged(updated);
+            }}
+            onClose={() => setMaintaining(false)}
+          />
+        )}
         {publishing && (
           <PublishDialog
             kind="doc"

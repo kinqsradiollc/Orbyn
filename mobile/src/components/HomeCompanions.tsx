@@ -4,9 +4,10 @@ import {
   CHARACTER_PRESETS,
   HOME_AGENT_GUIDE,
   HOME_AGENT_IDLE_NOTE,
-  type PersonalAgentSettings,
+  type AutomationAgentIdentity,
 } from "@orbyn/core";
 import { client } from "../lib/api";
+import { session } from "../lib/session";
 import { shared } from "../styles";
 import { Character } from "./Character";
 import { Pressable } from "../motion";
@@ -19,31 +20,57 @@ export function HomeCompanions({
   canOpen = false,
   onOpenChat = () => {},
 }: { canOpen?: boolean; onOpenChat?: (id: string) => void } = {}) {
-  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+  const accountBinding = session.token;
+  const [identityState, setIdentityState] = useState<{
+    binding: string;
+    values: Partial<
+      Record<"background" | "overnight", AutomationAgentIdentity>
+    >;
+  }>({ binding: accountBinding, values: {} });
+  const identities =
+    identityState.binding === accountBinding ? identityState.values : {};
   const [expanded, setExpanded] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [guideOpen, setGuideOpen] = useState(false);
   useEffect(() => {
     let live = true;
-    let updated = false;
-    const unsubscribe = client.onAgentSettings((value) => {
-      updated = true;
-      if (live) setIdentity(value);
+    const token = session.token;
+    const updated = new Set<string>();
+    const unsubscribe = client.onAutomationAgentIdentity((value) => {
+      updated.add(value.lane);
+      if (live && token === session.token)
+        setIdentityState((old) => ({
+          binding: token,
+          values: {
+            ...(old.binding === token ? old.values : {}),
+            [value.lane]: value,
+          },
+        }));
     });
-    void client.agentSettings({ fresh: true }).then(
-      (value) => live && !updated && setIdentity(value),
-      () => undefined,
-    );
+    for (const lane of ["background", "overnight"] as const) {
+      void client.automationAgentIdentity(lane).then(
+        (value) => {
+          if (live && token === session.token && !updated.has(lane))
+            setIdentityState((old) => ({
+              binding: token,
+              values: {
+                ...(old.binding === token ? old.values : {}),
+                [lane]: value,
+              },
+            }));
+        },
+        () => undefined,
+      );
+    }
     return () => {
       live = false;
       unsubscribe();
     };
-  }, []);
+  }, [accountBinding]);
   return (
     <View style={[shared.card, { gap: 14 }]}>
       <AssistantAgents
         visible={agentsOpen}
-        identity={identity}
         canOpen={canOpen}
         onClose={() => setAgentsOpen(false)}
         onOpenChat={onOpenChat}
@@ -56,17 +83,8 @@ export function HomeCompanions({
           gap: 12,
         }}
       >
-        {identity && (
-          <Character
-            appearance={identity.character}
-            name={identity.name}
-            size={40}
-          />
-        )}
         <View style={{ flexGrow: 1, flexBasis: 120, minWidth: 0 }}>
-          <Text style={shared.sectionTitle}>
-            {identity?.name ?? "Your companion"}
-          </Text>
+          <Text style={shared.sectionTitle}>Your agents</Text>
         </View>
         <Pressable
           accessibilityRole="button"
@@ -108,7 +126,31 @@ export function HomeCompanions({
               borderTopColor: colors.border,
             }}
           >
-            <Text style={shared.sectionTitle}>{agent.name}</Text>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+            >
+              <Character
+                appearance={
+                  identities[
+                    agent.name === "Background" ? "background" : "overnight"
+                  ]?.character
+                }
+                name={
+                  identities[
+                    agent.name === "Background" ? "background" : "overnight"
+                  ]?.name ?? agent.name
+                }
+                size={40}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={shared.sectionTitle}>
+                  {identities[
+                    agent.name === "Background" ? "background" : "overnight"
+                  ]?.name ?? agent.name}
+                </Text>
+                <Text style={shared.small}>{agent.name}</Text>
+              </View>
+            </View>
             <Text style={shared.small}>{agent.brief}</Text>
             {guideOpen && (
               <View style={{ gap: 8, marginTop: 6 }}>

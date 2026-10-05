@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { AssistantProfileStore } from "@orbyn/api-client";
-import {
-  ASSISTANT_ACTIVITY_LABELS,
-  type PersonalAgentSettings,
-} from "@orbyn/core";
+import { ASSISTANT_ACTIVITY_LABELS } from "@orbyn/core";
 import { X } from "lucide-react";
 import { client } from "../../lib/api";
 import { session, onSessionChange } from "../../lib/session";
@@ -12,12 +9,10 @@ import "./assistant-agents.css";
 
 /** Separate runtime profiles; an idle companion never implies an active worker. */
 export function AssistantAgents({
-  identity,
   onClose,
   onOpenChat,
   canOpen,
 }: {
-  identity: PersonalAgentSettings | null;
   onClose: () => void;
   onOpenChat: (id: string) => void;
   canOpen: boolean;
@@ -85,8 +80,11 @@ export function AssistantAgents({
           >
             <header>
               <Character
-                appearance={identity?.character}
-                name={identity?.name ?? "Orbyn"}
+                appearance={profile.identity?.character}
+                name={
+                  profile.identity?.name ??
+                  (profile.lane === "background" ? "Background" : "Overnight")
+                }
                 state={
                   profile.state === "working"
                     ? "working"

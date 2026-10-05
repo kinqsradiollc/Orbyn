@@ -36,11 +36,13 @@ export async function listChatgptExecutors(session: Session) {
 }
 
 /** Connection locks serialize catalog/default decisions with publication and revocation. */
-async function catalogLocked(
+export async function readChatgptCatalogLocked(
   db: Db,
   session: Session,
   selection: Selection,
   write = false,
+  requireInference = false,
+  requireOutputLimits = false,
 ) {
   // Lock the device session before its cascading children, matching sign-out.
   const device = (
@@ -90,11 +92,25 @@ async function catalogLocked(
       lease_epoch: string;
       sequence: string;
       published_at: Date;
+      capabilities: string[];
     }>(
-      "SELECT models,enrollment_epoch,lease_epoch,sequence,published_at FROM chatgpt_executor_catalogs WHERE executor_id=$1 FOR SHARE",
+      "SELECT models,enrollment_epoch,lease_epoch,sequence,published_at,capabilities FROM chatgpt_executor_catalogs WHERE executor_id=$1 FOR SHARE",
       [selection.executor_id],
     )
   ).rows[0];
+  if (requireInference && !snapshot?.capabilities.includes("plan_inference_v1"))
+    fail(
+      503,
+      "Update the Orbyn desktop app and refresh its ChatGPT connection before using it as a provider.",
+    );
+  if (
+    requireOutputLimits &&
+    !snapshot?.capabilities.includes("plan_inference_limits_v1")
+  )
+    fail(
+      503,
+      "Update the Orbyn desktop app before running budgeted ChatGPT work.",
+    );
   // Evaluate freshness after every row lock, with the database's current clock.
   const fresh = (
     await db.query<{ live: boolean; fresh: boolean }>(
@@ -154,7 +170,7 @@ export async function readChatgptModelCatalog(
   const selection = chatgptCatalogSelection.parse(value);
   return transaction(async (db) => {
     await requireLiveSession(db, session);
-    const result = await catalogLocked(db, session, selection);
+    const result = await readChatgptCatalogLocked(db, session, selection);
     await requireLiveSession(db, session);
     return result;
   });
@@ -168,7 +184,12 @@ export async function selectChatgptDefaultModel(
   const input = chatgptCatalogDefaultUpdate.parse(value);
   return transaction(async (db) => {
     await requireLiveSession(db, session);
-    const current = await catalogLocked(db, session, input.selection, true);
+    const current = await readChatgptCatalogLocked(
+      db,
+      session,
+      input.selection,
+      true,
+    );
     if (
       JSON.stringify(input.preference.binding) !==
       JSON.stringify(current.binding)
@@ -182,7 +203,12 @@ export async function selectChatgptDefaultModel(
       async () => {
         await requireLiveSession(db, session);
         if (input.preference.model === null) return;
-        const catalog = await catalogLocked(db, session, input.selection, true);
+        const catalog = await readChatgptCatalogLocked(
+          db,
+          session,
+          input.selection,
+          true,
+        );
         if (catalog.status !== "ready")
           fail(503, "Reconnect the ChatGPT executor before selecting a model.");
         if (

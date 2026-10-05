@@ -1,3 +1,5 @@
+import { scanMaintainedPages } from "../worker/maintained-page-scan.js";
+import { claimMaintainedPageWork } from "../worker/maintained-pages.js";
 import { pool } from "../db/pool.js";
 import { startAssistantRunner } from "../modules/ai/agent/runner.js";
 import { createService } from "./http.js";
@@ -9,6 +11,7 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
   let stop: (() => Promise<void>) | undefined;
   let lastTick = 0;
   let lastHeartbeat = 0;
+  let lastPageScan = 0;
   app.get("/ready", async (_request, reply) => {
     if (!lastTick || Date.now() - lastTick > 30_000)
       return reply.code(503).send({ ok: false });
@@ -18,6 +21,7 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
   app.addHook("onReady", async () => {
     stop = startAssistantRunner(app.log, {
       lane,
+      claimScopedWork: () => claimMaintainedPageWork(app.log, lane),
       onTick: async () => {
         const now = Date.now();
         if (now - lastHeartbeat >= 10_000) {
@@ -29,6 +33,10 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
           lastHeartbeat = now;
         }
         lastTick = now;
+        if (lane === "background" && now - lastPageScan >= 60_000) {
+          lastPageScan = now;
+          await scanMaintainedPages(new Date(now));
+        }
       },
     });
   });

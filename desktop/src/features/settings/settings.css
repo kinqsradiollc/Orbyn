@@ -689,9 +689,11 @@
   border-color: var(--color-accent);
 }
 .settings-search .settings-search-field input[type="search"],
-.settings-search .settings-search-field input[type="search"]:focus {
+.settings-search .settings-search-field input[type="search"]:focus,
+.settings-search .settings-search-field input[type="search"]:focus-visible {
   box-shadow: none;
   border: none;
+  outline: none;
 }
 .settings-search-field input {
   flex: 1;
@@ -1024,4 +1026,19 @@
 }
 .settings-grid .wide {
   grid-column: 1 / -1;
+}
+
+.ai-connection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ai-model-settings .settings-subform ol {
+  padding-left: 20px;
+  margin: 0 0 12px;
+}
+.ai-model-settings .settings-subform li {
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
 }

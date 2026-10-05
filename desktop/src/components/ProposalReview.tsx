@@ -12,6 +12,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  aiFeatureProviderLabel,
   describeRrule,
   dateLabel,
   type Action,
@@ -294,6 +295,11 @@ export function ProposalReview({
   return (
     <div className="ai-proposal">
       <SummaryText text={proposal.summary} />
+      {proposal.provider && (
+        <small className="muted ai-feature-provider">
+          {aiFeatureProviderLabel(proposal.provider)}
+        </small>
+      )}
       {/* What the assistant actually read, so the answer can be checked
           against it rather than taken on trust. */}
       {sources.length > 0 && (

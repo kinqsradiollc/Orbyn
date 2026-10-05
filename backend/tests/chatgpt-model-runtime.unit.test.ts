@@ -97,6 +97,19 @@ test("live picker and real registration store preserve defaults across restart a
     runtimes.push(fresh);
     await fresh.picker.load();
     await fresh.picker.setDefault("fixture-model");
+    const callsBeforeBounded = calls;
+    await assert.rejects(
+      fresh.completeAssigned("fixture-model", {
+        input: [{ role: "user", content: "Bounded summary" }],
+        max_output_tokens: 512,
+      }),
+      /hard output-token limit/,
+    );
+    assert.equal(
+      calls,
+      callsBeforeBounded,
+      "Assigned output budgets are not silently stripped before transport.",
+    );
     const restarted = await createStore(options);
     assert.deepEqual(await restarted.modelPreference(), {
       binding,

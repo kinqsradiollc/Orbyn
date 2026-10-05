@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import { Pressable } from "../../motion";
 import {
   AudioQuality,
@@ -14,6 +14,7 @@ import {
   RECORDING_MAX_MINUTES,
   recordingClock,
   summaryLines,
+  aiFeatureProviderLabel,
   type DocBlock,
   type RecordingSummary,
 } from "@orbyn/core";
@@ -201,27 +202,44 @@ export function RecordingSummarySheet({
   onClose: () => void;
 }) {
   const [asked, setAsked] = useState(false);
+  const [transcript, setTranscript] = useState("");
   const [result, setResult] = useState<RecordingSummary | null>(null);
   const [error, setError] = useState("");
   const [made, setMade] = useState<Set<number>>(new Set());
+  const summaryGeneration = useRef(0);
   useEffect(() => {
+    summaryGeneration.current++;
     setAsked(false);
+    setTranscript("");
     setResult(null);
     setError("");
     setMade(new Set());
+    return () => {
+      summaryGeneration.current++;
+    };
   }, [target?.fileId]);
   const ask = () => {
     if (!target) return;
+    const generation = summaryGeneration.current;
     setAsked(true);
     setError("");
-    client.summariseRecording(target.fileId).then(setResult, (e) => {
-      setError(errorText(e));
-      setAsked(false);
-    });
+    client
+      .summariseRecording(target.fileId, transcript.trim() || undefined)
+      .then(
+        (value) => {
+          if (generation === summaryGeneration.current) setResult(value);
+        },
+        (e) => {
+          if (generation !== summaryGeneration.current) return;
+          setError(errorText(e));
+          setAsked(false);
+        },
+      );
   };
   const makeTask = (i: number) => {
     const a = result?.actions[i];
     if (!a) return;
+    const generation = summaryGeneration.current;
     client
       .createItem({
         title: a.title,
@@ -231,8 +249,13 @@ export function RecordingSummarySheet({
           : {}),
       })
       .then(
-        () => setMade((s) => new Set(s).add(i)),
-        (e) => setError(errorText(e)),
+        () => {
+          if (generation === summaryGeneration.current)
+            setMade((s) => new Set(s).add(i));
+        },
+        (e) => {
+          if (generation === summaryGeneration.current) setError(errorText(e));
+        },
       );
   };
   return (
@@ -245,17 +268,26 @@ export function RecordingSummarySheet({
         {!result ? (
           <>
             <Text style={s.note}>
-              The assistant writes out the recording, then gives a short summary
-              and any action items. The recording is sent to the assistant's AI
-              service to do this.
+              Summaries use your selected AI provider. Paste a transcript to use
+              ChatGPT; audio transcription requires the Orbyn provider.
             </Text>
+            <Text style={s.label}>Transcript (optional)</Text>
+            <TextInput
+              accessibilityLabel="Transcript (optional)"
+              multiline
+              value={transcript}
+              onChangeText={setTranscript}
+              editable={!asked}
+              maxLength={200000}
+              style={s.transcript}
+            />
             {error ? (
               <Text style={s.error} accessibilityRole="alert">
                 {error}
               </Text>
             ) : null}
             <Button
-              title={asked ? "Listening… this can take a minute" : "Summarise"}
+              title={asked ? "Preparing summary…" : "Summarise"}
               icon="sparkles"
               disabled={asked}
               onPress={ask}
@@ -263,6 +295,11 @@ export function RecordingSummarySheet({
           </>
         ) : (
           <>
+            {result.provider && (
+              <Text style={s.note}>
+                {aiFeatureProviderLabel(result.provider)}
+              </Text>
+            )}
             {result.summary.split(/\n{2,}/).map((p, i) => (
               <Text key={i} style={s.summary}>
                 {p}
@@ -314,6 +351,17 @@ const s = themed(() =>
   StyleSheet.create({
     body: { gap: 14, paddingBottom: 8 },
     note: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
+    transcript: {
+      minHeight: 100,
+      padding: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      color: colors.text,
+      textAlignVertical: "top",
+    },
     clock: { flexDirection: "row", alignItems: "center", gap: 10 },
     dot: {
       width: 12,

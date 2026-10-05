@@ -1,6 +1,21 @@
+import {
+  readAiProviderChoice,
+  saveAiProviderChoice,
+} from "./ai-provider-choice.js";
+import { pool } from "../../db/pool.js";
+import { readCompletedChatgptUsage } from "./chatgpt-usage.js";
+import { z } from "zod";
+import {
+  startChatgptConnectRequest,
+  pendingChatgptConnectRequests,
+  readChatgptConnectRequest,
+  claimChatgptConnectRequest,
+  finishChatgptConnectRequest,
+} from "./chatgpt-connect-requests.js";
 import type { FastifyInstance } from "fastify";
 import {
   chatgptConnectionStart,
+  chatgptConnectRequestFinish,
   chatgptConnectionFinish,
   chatgptConnectionChallenge,
   chatgptConnection,
@@ -17,6 +32,71 @@ import {
 
 /** First-party identity metadata only. Plan credentials and plugin grants stay separate. */
 export async function chatgptConnectionRoutes(app: FastifyInstance) {
+  app.get(
+    "/ai/connections/chatgpt/usage",
+    strictRateLimit,
+    async (r, reply) => {
+      const binding = await authenticateSessionBinding(r);
+      z.object({}).strict().parse(r.query);
+      reply.header("Cache-Control", "no-store");
+      return readCompletedChatgptUsage(binding);
+    },
+  );
+  app.get("/ai/provider-choice", async (r, reply) => {
+    const b = await authenticateSessionBinding(r);
+    z.object({}).strict().parse(r.query);
+    reply.header("Cache-Control", "no-store");
+    return readAiProviderChoice(pool, b.userId);
+  });
+  app.put("/ai/provider-choice", strictRateLimit, async (r, reply) => {
+    const b = await authenticateSessionBinding(r);
+    reply.header("Cache-Control", "no-store");
+    return saveAiProviderChoice(b, r.body);
+  });
+  app.post(
+    "/ai/connections/chatgpt/connect-requests",
+    strictRateLimit,
+    async (r, reply) => {
+      const b = await authenticateSessionBinding(r);
+      z.object({}).strict().parse(r.body);
+      reply.header("Cache-Control", "no-store");
+      return startChatgptConnectRequest(b);
+    },
+  );
+  app.get(
+    "/ai/connections/chatgpt/connect-requests/pending",
+    async (r, reply) => {
+      const b = await authenticateSessionBinding(r);
+      z.object({}).strict().parse(r.query);
+      reply.header("Cache-Control", "no-store");
+      return pendingChatgptConnectRequests(b);
+    },
+  );
+  app.get("/ai/connections/chatgpt/connect-requests/:id", async (r, reply) => {
+    const b = await authenticateSessionBinding(r);
+    reply.header("Cache-Control", "no-store");
+    return readChatgptConnectRequest(b, idParam(r));
+  });
+  app.post(
+    "/ai/connections/chatgpt/connect-requests/:id/claim",
+    strictRateLimit,
+    async (r, reply) => {
+      const b = await authenticateSessionBinding(r);
+      z.object({}).strict().parse(r.body);
+      reply.header("Cache-Control", "no-store");
+      return claimChatgptConnectRequest(b, idParam(r));
+    },
+  );
+  app.post(
+    "/ai/connections/chatgpt/connect-requests/:id/finish",
+    strictRateLimit,
+    async (r, reply) => {
+      const b = await authenticateSessionBinding(r);
+      const body = chatgptConnectRequestFinish.parse(r.body);
+      reply.header("Cache-Control", "no-store");
+      return finishChatgptConnectRequest(b, idParam(r), body.connection_id);
+    },
+  );
   app.post(
     "/ai/connections/chatgpt/challenges",
     strictRateLimit,

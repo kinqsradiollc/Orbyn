@@ -21,7 +21,9 @@ export async function recordNightRun(
          (j.result->'assistant_run'->>'token_estimate')::integer,
          (j.run_state->'state'->>'token_estimate')::integer, 0)), 0)
        FROM assistant_night_runs nr JOIN ai_jobs j ON j.id = nr.job_id
-       WHERE nr.night_id = $1), updated_at = now() WHERE id = $1`,
+       WHERE nr.night_id = $1) + (
+       SELECT coalesce(sum(pr.token_estimate),0) FROM assistant_page_runs pr WHERE pr.night_id=$1
+       ), updated_at = now() WHERE id = $1`,
     [row.night_id],
   );
 }

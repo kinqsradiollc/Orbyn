@@ -1,5 +1,7 @@
 import {
   chatgptModel,
+  chatgptPlanUsage,
+  type ChatgptPlanUsage,
   parseChatgptModels,
   type ChatgptModel,
 } from "@orbyn/core";
@@ -14,8 +16,72 @@ export type ChatgptCredential = ChatgptAccount & { accessToken: string };
 export type ChatgptPlanRequest = {
   model: string;
   instructions?: string;
+  max_output_tokens?: number;
   input: { role: "user" | "assistant"; content: string }[];
 };
+
+/** Sanitized provider failure with enough metadata to choose the correct recovery. */
+export class ChatgptPlanError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly providerCode: string | null,
+    public readonly requestId: string | null,
+  ) {
+    super(
+      providerCode === "subscription_sharing_usage_limit_exceeded"
+        ? "ChatGPT plan usage limit reached. Manage usage in ChatGPT."
+        : providerCode === "subscription_sharing_user_not_eligible"
+          ? "ChatGPT plan usage is unavailable for this account or workspace."
+          : providerCode === "subscription_sharing_usage_unavailable"
+            ? "ChatGPT usage availability could not be checked. Try again later."
+            : status === 401 || status === 403
+              ? "ChatGPT access expired or was declined. Reconnect before continuing."
+              : status === 429
+                ? "ChatGPT usage is limited. Manage usage in ChatGPT."
+                : "ChatGPT could not complete the request.",
+    );
+    this.name = "ChatgptPlanError";
+  }
+}
+const CHATGPT_ACTION_FAILURE =
+  "ChatGPT could not complete this action. Retry or reconnect this account.";
+const SAFE_ACTION_MESSAGES = new Set([
+  CHATGPT_ACTION_FAILURE,
+  ...[
+    [429, "subscription_sharing_usage_limit_exceeded"],
+    [403, "subscription_sharing_user_not_eligible"],
+    [503, "subscription_sharing_usage_unavailable"],
+    [401, null],
+    [429, null],
+    [500, null],
+  ].map(
+    ([status, code]) =>
+      new ChatgptPlanError(status as number, code as string | null, null)
+        .message,
+  ),
+  "Choose a ChatGPT default model first.",
+  "Choose an available ChatGPT default model before continuing.",
+  "This model is unavailable for the selected ChatGPT account.",
+  "ChatGPT plan verification did not complete.",
+  "ChatGPT did not return a response stream.",
+  "ChatGPT sent an invalid stream event.",
+  "ChatGPT did not complete the response.",
+  "ChatGPT disconnected before completing the response.",
+]);
+/** Only fixed recovery messages cross IPC; arbitrary provider text is never reflected. */
+export function safeChatgptActionError(error: unknown): string {
+  if (error instanceof ChatgptPlanError)
+    return new ChatgptPlanError(error.status, error.providerCode, null).message;
+  const prefix = "Error invoking remote method 'orbyn:chatgpt': Error: ";
+  const raw = error instanceof Error ? error.message : "";
+  const message = raw.startsWith(prefix) ? raw.slice(prefix.length) : raw;
+  return SAFE_ACTION_MESSAGES.has(message) ? message : CHATGPT_ACTION_FAILURE;
+}
+
+const safeCode = (value: unknown) =>
+  typeof value === "string" && /^[a-zA-Z0-9_-]{1,128}$/.test(value)
+    ? value
+    : null;
 
 /** Fixed, credential-owning transport. Never pass this client to the shared backend. */
 export class ChatgptPlanClient {
@@ -69,14 +135,17 @@ export class ChatgptPlanClient {
         },
       },
     );
-    if (!response.ok)
-      throw new Error(
-        response.status === 401 || response.status === 403
-          ? "ChatGPT access expired or was declined. Reconnect before continuing."
-          : response.status === 429
-            ? "ChatGPT usage is limited. Try again later."
-            : "ChatGPT could not complete the request.",
+    if (!response.ok) {
+      let body: any = null;
+      try {
+        body = JSON.parse(await boundedText(response, 16_384));
+      } catch {}
+      throw new ChatgptPlanError(
+        response.status,
+        safeCode(body?.error?.code),
+        safeCode(response.headers.get("x-request-id")),
       );
+    }
     return response;
   }
 
@@ -101,10 +170,30 @@ export class ChatgptPlanClient {
     options: {
       signal?: AbortSignal;
       onText?: (text: string) => void;
+      onUsage?: (usage: ChatgptPlanUsage | null) => void;
     } = {},
   ): Promise<string> {
     const signal = options.signal ?? AbortSignal.timeout(120_000);
     const model = chatgptModel.shape.slug.parse(request.model);
+    const maxOutputTokens = request.max_output_tokens;
+    if (
+      maxOutputTokens !== undefined &&
+      (!Number.isSafeInteger(maxOutputTokens) ||
+        maxOutputTokens < 1 ||
+        maxOutputTokens > 65536)
+    )
+      throw new Error("Use a supported output-token limit.");
+    if (maxOutputTokens !== undefined) {
+      // SIWC preview rejects max_output_tokens. Never silently discard a caller's hard budget.
+      const error = new Error(
+        "ChatGPT cannot enforce this hard output-token limit.",
+      );
+      Object.assign(error, {
+        status: 503,
+        providerCode: "orbyn_output_limit_unavailable",
+      });
+      throw error;
+    }
     if (
       request.input.length > 1000 ||
       request.input.some(
@@ -141,10 +230,13 @@ export class ChatgptPlanClient {
       },
       signal,
     );
-    if (
-      !response.headers.get("content-type")?.includes("text/event-stream") ||
-      !response.body
-    )
+    const mediaType = (response.headers.get("content-type") ?? "")
+      .split(";", 1)[0]
+      .trim()
+      .toLowerCase();
+    // Some plan responses omit Content-Type. The bounded event parser below
+    // still requires valid SSE and response.completed; no JSON fallback exists.
+    if ((mediaType && mediaType !== "text/event-stream") || !response.body)
       throw new Error("ChatGPT did not return a response stream.");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -152,6 +244,7 @@ export class ChatgptPlanClient {
       text = "",
       bytes = 0,
       completed = false;
+    let usage: ChatgptPlanUsage | null = null;
     const consume = (frame: string) => {
       const data = frame
         .split(/\r?\n/)
@@ -184,11 +277,27 @@ export class ChatgptPlanClient {
       } else if (event.type === "response.completed") {
         if (event.response?.status !== "completed")
           throw new Error("ChatGPT did not complete the response.");
+        const reported = chatgptPlanUsage.safeParse(
+          event.response?.usage
+            ? {
+                input_tokens: event.response.usage.input_tokens,
+                output_tokens: event.response.usage.output_tokens,
+                total_tokens: event.response.usage.total_tokens,
+              }
+            : null,
+        );
+        usage = reported.success ? reported.data : null;
         completed = true;
       } else if (
         ["response.failed", "response.incomplete", "error"].includes(event.type)
       ) {
-        throw new Error("ChatGPT did not complete the response.");
+        throw new ChatgptPlanError(
+          response.status,
+          safeCode(
+            event.response?.error?.code ?? event.error?.code ?? event.code,
+          ),
+          safeCode(response.headers.get("x-request-id")),
+        );
       }
     };
     try {
@@ -209,6 +318,7 @@ export class ChatgptPlanClient {
       }
       if (!completed)
         throw new Error("ChatGPT disconnected before completing the response.");
+      options.onUsage?.(usage);
       return text;
     } finally {
       await reader.cancel().catch(() => {});

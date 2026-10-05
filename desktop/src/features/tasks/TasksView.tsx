@@ -744,10 +744,21 @@ export function TasksView({
       {progressOpen && (
         <ProgressDialog onClose={() => setProgressOpen(false)} />
       )}
-      <div className="section-heading tasks-heading">
+      <div className="section-heading tasks-heading workspace-task-toolbar">
         <h2>
           All items <span>{items.length}</span>
         </h2>
+        <button
+          className="secondary tasks-view-button"
+          aria-haspopup="dialog"
+          aria-label="Done this week"
+          title="Done this week"
+          onClick={() => setProgressOpen(true)}
+        >
+          <BadgeCheck size={14} aria-hidden="true" />{" "}
+          <span>Done this week</span>
+        </button>
+
         <div className="tasks-tools">
           <div className="search">
             <Search size={16} aria-hidden="true" />
@@ -772,16 +783,6 @@ export function TasksView({
             }
           >
             <Pin size={14} aria-hidden="true" /> <span>Views</span>
-          </button>
-          <button
-            className="secondary tasks-view-button"
-            aria-haspopup="dialog"
-            aria-label="Done this week"
-            title="Done this week"
-            onClick={() => setProgressOpen(true)}
-          >
-            <BadgeCheck size={14} aria-hidden="true" />{" "}
-            <span>Done this week</span>
           </button>
           <div className="segmented" role="group" aria-label="Layout">
             <button

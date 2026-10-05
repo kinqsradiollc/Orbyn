@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles, X } from "lucide-react";
 import {
+  aiFeatureProviderLabel,
+  type AiFeatureProvider,
   DOC_AI_ACTIONS,
   DOC_AI_LABELS,
   blockText,
@@ -23,6 +25,7 @@ type Turn = {
   role: "you" | "orbyn";
   text: string;
   sources?: DocAnswer["sources"];
+  provider?: AiFeatureProvider;
   /** Set when this turn proposed a change rather than said something. */
   proposed?: DocSuggestion;
 };
@@ -97,7 +100,12 @@ export function DocChat({
     setBusy(true);
     try {
       const answer = await client.askDoc(docId, question);
-      say({ role: "orbyn", text: answer.answer, sources: answer.sources });
+      say({
+        role: "orbyn",
+        text: answer.answer,
+        sources: answer.sources,
+        provider: answer.provider,
+      });
     } catch (e) {
       fail(e);
     } finally {
@@ -124,6 +132,7 @@ export function DocChat({
         role: "orbyn",
         text: "Proposed. It waits with the rest of them.",
         proposed: made,
+        provider: made.provider,
       });
     } catch (e) {
       fail(e);
@@ -190,6 +199,11 @@ export function DocChat({
             }
           >
             <p>{turn.text}</p>
+            {turn.provider && (
+              <small className="doc-chat-provider">
+                {aiFeatureProviderLabel(turn.provider)}
+              </small>
+            )}
             {turn.proposed && (
               <p className="doc-chat-proposed">
                 “{plainText(turn.proposed.quote)}” →{" "}

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CalendarClock, GraduationCap, Sparkles, X } from "lucide-react";
 import {
+  aiFeatureProviderLabel,
   ASSIST_CHIPS,
   CHIP_CARDS,
   withSummary,
@@ -175,6 +176,11 @@ function AssistDialog({
             From “{title}”, by Orbyn's assistant. Nothing changes until you take
             it.
           </p>
+          {result?.provider && (
+            <small className="muted assist-provider">
+              {aiFeatureProviderLabel(result.provider)}
+            </small>
+          )}
           {!result && !error && (
             <p className="muted" aria-live="polite">
               Reading the page…

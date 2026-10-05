@@ -186,6 +186,23 @@ export function OvernightSheet(props: Props) {
                 />
               </View>
             )}
+            {(night.page_runs ?? []).map((run) => (
+              <View key={run.id} style={shared.card}>
+                <Text style={shared.sectionTitle}>
+                  Page update · {run.state}
+                </Text>
+                <Text style={shared.small}>
+                  {run.estimated_tokens} estimated tokens
+                </Text>
+                <Button
+                  title={
+                    run.state === "waiting" ? "Review in page" : "Open page"
+                  }
+                  secondary
+                  onPress={() => props.onOpen("doc", run.doc_id)}
+                />
+              </View>
+            ))}
             {night.runs.map((run) => (
               <RunCard
                 key={run.id}

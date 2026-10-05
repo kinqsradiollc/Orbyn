@@ -19,7 +19,11 @@ export type {
   ReminderActionClient,
   ReminderActionOptions,
 } from "./reminder-actions.js";
-export { ChatgptPlanClient } from "./chatgpt-plan.js";
+export {
+  ChatgptPlanClient,
+  ChatgptPlanError,
+  safeChatgptActionError,
+} from "./chatgpt-plan.js";
 export { ChatgptModelPicker } from "./chatgpt-model-picker.js";
 export { ChatgptDesktopStore } from "./chatgpt-desktop-store.js";
 export type {
@@ -39,3 +43,5 @@ export type {
 export * from "./assistant-profile-store.js";
 
 export * from "./chatgpt-remote-store.js";
+
+export * from "./page-maintenance-store.js";

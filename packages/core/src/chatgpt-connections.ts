@@ -37,3 +37,26 @@ export const chatgptConnectionList = z.array(
 export type ChatgptConnection = z.output<typeof chatgptConnection>;
 export type ChatgptConnectionStart = z.input<typeof chatgptConnectionStart>;
 export type ChatgptConnectionFinish = z.input<typeof chatgptConnectionFinish>;
+
+/** Handoff identifiers authorize nothing without the bound first-party Orbyn session. */
+export const chatgptConnectRequestStart = z
+  .object({
+    id: z.uuid(),
+    expires_at: z.iso.datetime(),
+    launch_url: z.string(),
+  })
+  .strict()
+  .refine(
+    (value) => value.launch_url === `orbyn://chatgpt?request=${value.id}`,
+  );
+export const chatgptConnectRequestState = z
+  .object({
+    id: z.uuid(),
+    state: z.enum(["pending", "claimed", "completed", "failed", "expired"]),
+    connection_id: z.uuid().nullable(),
+    expires_at: z.iso.datetime(),
+  })
+  .strict();
+export const chatgptConnectRequestFinish = z
+  .object({ connection_id: z.uuid().nullable() })
+  .strict();

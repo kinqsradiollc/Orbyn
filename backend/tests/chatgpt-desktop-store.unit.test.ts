@@ -158,3 +158,25 @@ test("subscriber failures do not interrupt account clearing or shutdown fencing"
   await pending;
   assert.equal(f.store.snapshot().connection?.user_id, f.current.user_id);
 });
+
+test("safe plan failures survive routine metadata refresh but clear on the next successful action", async () => {
+  const f = fixture();
+  await f.store.syncSession("orbyn-session");
+  const expected = "ChatGPT plan usage limit reached. Manage usage in ChatGPT.";
+  f.bridge.command = async (command) => {
+    if (command.action === "verify-plan")
+      throw new Error(
+        `Error invoking remote method 'orbyn:chatgpt': Error: ${expected}`,
+      );
+    return f.current;
+  };
+  await assert.rejects(
+    f.store.command({ action: "verify-plan" }),
+    (e) => e instanceof Error && e.message === expected,
+  );
+  await f.store.reload();
+  assert.equal(f.store.snapshot().error, expected);
+  await f.store.command({ action: "refresh" });
+  assert.equal(f.store.snapshot().error, null);
+  f.store.close();
+});

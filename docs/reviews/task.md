@@ -1,6 +1,25 @@
-# Current implementation handoff — 3 October 2026
+# Current implementation handoff — 5 October 2026
 
-## Current authoritative checkpoint — reflection integration
+## Current checkpoint — selected provider features
+
+Authoritative main remains `82576dfa` (PR197). Exact PR196 candidate `ae02bd0e`
+passed 2,765/2,765 local tests with no skips, production build, and all four CI
+37251178079 jobs. Draft PR196 is mergeable, not merged or deployed. Earlier
+chronological entries below are historical, not current qualification.
+
+Docs/Study/project/capture are routed through owned selected-provider contexts.
+Actual native wide Docs fixture and contrast correction were inspected; narrow,
+Study and mobile rendering remain open. Personal authorization/catalog verified;
+real inference returned sharing quota exhaustion, so successful real inference
+and whole-account usage visibility are unproven.
+
+Next local maintained-page change captures explicit provider choice/revision and
+ignores unrelated saved catalog defaults. It does not yet implement private page
+execution. Continue scoped broker integration for maintained pages, agenda and
+recording capabilities, full U1/D1 visuals and workflows, plugin/external host and
+channels acceptance, then audit and cleanup. Preserve user files and characters.
+
+## Historical checkpoint — reflection integration
 
 Main is e0afd266: PR189 Projects library merged after exact71f58c9f passed
 2,534/2,534 local tests and all four CI37110461919 jobs. PR188 protected MCP
@@ -515,6 +534,310 @@ head before another main checkpoint. Remaining C6 protocol/host/account/provider
 and full C1–C6/M1/D1/U1 acceptance stay open. User manages production deployment;
 no deployment or worktree/branch cleanup. Native Sign in consent question pending.
 
+## Maintained pages continuation — 4 October
+
+Current mainfdaf13e2 contains merged Settings modal PR193, qualified local2580/2580
+and CI37132802593 all four jobs. User deploys main manually. Primary checkout
+user changes remain preserved.
+
+Owned branch codex/maintained-pages-contract includes current main and local
+A5 migration219, selected-block storage/context plus owner-only CAS management
+routes/client methods. Focused28/28 and all workspace types pass; no public UI or
+runtime consumes the bindings yet. No new PR/main merge until runnable end-to-end.
+
+Next: persist binding/revision references in scoped jobs; claim schedules once,
+respect Background/Overnight lane ownership and budgets; rebuild current context
+before provider/resume/apply; document save must preserve human blocks, refuse
+stale/moved/deleted ownership and fence linked task writes; baseline advances
+only for an authorized successful agent save. Then both client explicit selection,
+schedule/consent, pause/status/review; scoped @orbyn comments, edit/delete/retry
+dedup and privacy. Finish real concurrency/revocation tests, full local/CI and
+web/manual + iOS/Android inspection. Full C1-C6/M1/D1/U1 remains active.
+
+### A5 guarded save follow-up — 4 October
+
+Owned page-binding branch has an internal apply helper plus server-only
+selected-block save processing. Current trust/action rules and separately locked
+linked-task authority precede all writes; page history and binding baseline
+advance atomically. Human blocks and unrelated task ticks remain untouched.
+25/25 focused,118/118 broader Docs regressions and all workspace types pass.
+No route accepts a client-provided approval flag. No scheduler/model/UI wiring or
+production promotion yet. Next durable claims must carry binding and rule
+revisions (IDs, not copied source text), preserve them across review/resume, and
+use selected-block-only provider context. Preserve all broader acceptance gates.
+
+### A5 scoped job checkpoint — 4 October
+
+Migration220 and internal scoped-run helpers queue references only, bind original
+rule/page/binding revisions, claim lane-specific unique leases, stage once, and
+carry a unique owner-bound waiting card. Replaced workers cannot write/fail their
+successors. Binding edits clear in-flight output; expired work releases ownership.
+Final159/159 regressions include Docs/rules/worker lanes/storage/API/core/retention.
+No model request or actual scanner/consumer is wired yet, so do not promote or
+claim working page automation from these helpers.
+
+Next wire selected-block-only provider execution with staged recovery; respect
+current account/default model selection. Integrate the existing Overnight serial
+queue, run/reflection slot limits, shared token accounting and morning results
+rather than running a second parallel night consumer. Then both client controls,
+scoped @orbyn comments and full runtime/native qualification. Main remains
+fdaf13e2; user deployment and unrelated primary files stay under their control.
+
+### A5 hosted execution / provider main candidate — latest 4 October
+
+Owned maintained-pages branch has bounded real hosted provider execution,
+pre-transmission reservation, staged recovery, immutable account model origin,
+current Night window/policy and retained review consent. Explicit owner review
+applies a saved patch immediately, including after the night window, without
+resuming model work. Live doc/collection notices commit with the page; Study uses
+its existing durable queue.209 regressions, all workspace types and build pass.
+
+Compatible provider files were isolated from this unfinished feature:
+PR194, branch codex/provider-completion-guards, exact4e0a246f based mainfdaf13e2,
+worktree devday-model-catalog/Orbyn. Full persistent local qualification PID25912,
+config /tmp/orbyn-persistent-provider-guards-4e0a246f.json; fresh CI pending. Main
+merge requires local types/build/full plus exact CI success. No A5 files in PR194.
+Provider guards include HTTP200 error-envelope key redaction, validated optional
+output caps, and credential-free provider identity/configuration snapshots.
+
+Next A5: connect actual producers/consumer to shared runtime slots; explicit fresh
+source selection, account/default execution channel, budget/activity/undo, Night
+serial slot/reflection/morning integration, both UI flows and @orbyn comments.
+Do not promote the internal helper as completed automation. Full C1-C6/M1/D1/U1,
+real-account/host/provider/native gates and user deployment remain unchanged.
+
+### A5 owner review API checkpoint — 4 October 2026 (not promoted)
+
+Owned document-run listing and nonce-bound decisions are available in the development
+branch and shared client contract. Progress GETs neither create nor touch assistant
+grants; they omit worker leases and hide proposals when current source or authority
+changed. Decision transactions retain Night → grant → document → binding → run lock
+ordering and reject stale/repeated cards. Successful saves synchronize Study.
+
+Focused HTTP coverage passes15/15 with no skips/cancellations; all workspace types
+pass. Evidence: `/tmp/orbyn-page-review-api-focused.log` and
+`/tmp/orbyn-page-review-api-final-types.log`. This is not a visible/running feature:
+service/shared-slot integration, sources, budget/activity/undo, both client controls
+and the broader C1-C6/M1/D1/U1 acceptance remain open.
+
+Main is now ee45ecf0: PR194 merged after corrected934e87d8 passed2582/2582
+local tests and all four CI jobs37149341825. User deploys main themselves.
+
+### A5 shared provider capacity checkpoint — 4 October (not promoted)
+
+Chat and maintained-page claims now use the same transaction advisory lock and
+count live leases across both queues. Background page work shares the existing
+two Background slots; it cannot consume the four interactive slots. The separate
+two Overnight slots and eight total slots remain unchanged. Expired leases and
+waiting jobs do not occupy execution capacity. Mixed queue regressions prove
+both directions, concurrent page claims and released capacity after expiry.
+
+Verified45/45 (runs, owner review API, provider consumer, runtime lanes and runner),
+zero skips/cancellations; backend typecheck passes. Evidence:
+`/tmp/orbyn-page-shared-slots-verified.log` and
+`/tmp/orbyn-page-shared-slots-types.log`. Earlier fixture failures are superseded
+by this terminal code0 run; they are not passing evidence.
+
+Still no service producer/consumer or client controls. Before activation, require
+shared consumer lifecycle/shutdown recovery, mixed-version worker rollout safety,
+Night per-person serial ordering/ten-run/reflection/morning outputs, explicit
+source selection, budgets/activity/undo and all broader ADR acceptance gates.
+
+### A5 consumer lifecycle and Night serialization — 4 October (not promoted)
+
+Private Background/Overnight services now claim page work through their existing
+lane runner, sharing process capacity, cross-replica leases and shutdown. Queue
+preference alternates to avoid starving scoped work behind chat automation.
+Interactive workers reject scoped automation. The runner stops each scoped job
+once and waits for its cleanup. Uncharged or already staged work is requeued
+without another provider charge; unknown charged requests remain held.
+
+Claim guards serialize page and ordinary Overnight work for the same person.
+The Night scanner sees queued/running page jobs before selecting or closing work.
+Waiting human review does not occupy provider execution capacity. Different
+people retain the existing two global Overnight slots.
+
+Verified77/77 tests, no skips/cancellations, terminal code0:
+`/tmp/orbyn-page-worker-lifecycle-final-tests.log`. Backend typecheck code0:
+`/tmp/orbyn-page-worker-lifecycle-final-types.log`. Tests cover consumer recovery,
+uncertain requests, process capacity/shutdown, exact approvals, mixed queue
+claims, existing Night scanner behavior and original runner recovery. Source
+wiring is present; a full live-service/page scheduling acceptance is still absent.
+
+Next: actual bounded due producer with current source/authority; Night candidate
+integration and ten-run/reflection slot accounting/morning results; safe rolling
+upgrade activation; explicit sources, budgets/activity/undo; both clients and
+complete ADR/local/CI/runtime/native qualification. Do not promote as finished A5.
+
+### A5 bounded Background producer / service delivery — 4 October (not promoted)
+
+The private Background service now scans due bindings once per minute in bounded
+round-robin batches. It excludes disabled/suspended/revoked/expired owners,
+paused/ended bindings, active jobs, inaccessible/AI-excluded pages and Night-owned
+follow-through. Each candidate rebuilds current authority and selected context
+inside the canonical transaction lock order. Reviewed deny rules stop queueing;
+source/authority conflicts do not advance the schedule. Concurrent replicas queue
+a due occurrence once. Selected unavailable models retain the existing defer
+semantics without falling back to a different account/provider.
+
+Verified79/79 tests, terminal code0, no skips/cancellations:
+`/tmp/orbyn-page-due-service-tests.log`. Backend types pass:
+`/tmp/orbyn-page-due-service-types.log`. New actual-service test starts the private
+Background Fastify worker, observes its real due producer and hosted HTTP fixture
+request, verifies ready200 and selected-block version2 save while preserving the
+human block, then closes the worker. This proves local service delivery; it is
+not real-provider/account or deployed production acceptance.
+
+Night candidate/ten-run/reflection slot accounting and morning outputs remain
+next. Safe rolling upgrade, explicit source selection beyond target blocks,
+budget/activity/undo, web/mobile controls and full ADR qualification remain open.
+Main is unchanged; this feature is still on the development branch.
+
+### A5 Night plan, shared limits and morning progress — 4 October (not promoted)
+
+Due page bindings participate in the existing Night candidate plan through
+follow-through. Current source, page ownership and reviewed rules are checked
+before selection and again inside queueing. They use the scoped page queue,
+retain original consent/model provenance, and advance the Night cursor/run count
+atomically. Queued/running pages serialize with ordinary Night work; the shared
+ten-run cap and final reflection slot still apply. No private instruction or
+page title is copied into the Night candidate labels.
+
+The Night API now includes optional scoped page progress metadata. Current
+assistant authority and page visibility guard it; no proposal words, worker
+leases, credentials or hidden titles are exposed there. Page approvals remain
+nonce-bound in their document API. Morning digest counts finished/review/settling
+page work and links to the document; the existing single morning push also treats
+page work as settling. Revoking the current scope hides its page progress.
+
+Verified93/93 tests, no skips/cancellations, terminal code0:
+`/tmp/orbyn-page-night-service-final-tests.log`. All workspace types pass in
+`/tmp/orbyn-page-night-all-types.log`. New tests cover dedup/run accounting, shared
+ten-run cap, reflection slot priority, current visibility and morning metadata.
+An actual private Overnight worker test queues from the real scanner, calls the
+local HTTP provider fixture once, stages required approval, reads the Night
+progress, closes its runtime, then applies an exact owner decision without
+resuming inference. Real provider/account/deployment acceptance is still open.
+
+Next both client binding/source/consent/status/review controls and Night page
+cards. Still open: explicit source selection beyond target blocks; budgets and
+activity/undo; including page outcomes in reflection evidence; safe rolling
+worker activation; verified account-default/device inference; broader full
+local/CI/web/manual/native acceptance and complete C1-C6/M1/D1/U1. Main unchanged.
+
+### A5 cross-client controls draft — 4 October (visual acceptance pending)
+
+Web/desktop now has a bounded native modal; mobile has our native BottomSheet.
+Both document menus flush pending edits and refuse unsaved/offline work before
+opening Page updates. One shared portable controller owns fresh page/binding/run
+reads, stable missing-block IDs through ordinary CAS document persistence,
+selected-block create/edit, pause/resume/remove and exact waiting-card decisions.
+Account switches prevent dependent writes and clear old evidence. Disposal and
+React effect replay cannot restore an old result or leave the panel busy forever.
+
+Both surfaces show selected blocks/instructions/daily or weekly cadence, saved
+schedules behind options, recent status/token estimates and the actual saved
+proposal in Markdown source before Apply/Decline. Pausing preserves the original
+reviewed page revision; explicit Edit/Save reviews and rebinds current blocks.
+The web native dialog owns focus/Escape; repeat buttons remain inside it, avoiding
+our Select portal outside the browser's modal top layer. Palette/radius tokens
+and native scrolling/keyboard sheet primitives are retained.
+
+Shared controller4/4 unit checks pass, no skips/cancellations:
+`/tmp/orbyn-page-controls-delivery-tests.log`. All workspace types code0:
+`/tmp/orbyn-page-controls-delivery-types.log`. Production build code0:
+`/tmp/orbyn-page-controls-delivery-build.log` (existing large-chunk warning remains).
+These prove source/build/controller behavior, not rendered acceptance. The iOS
+Simulator was reached with Computer Use, but it is still serving the prior preview
+source; its existing planner429 overlay is not evidence for this draft's layout.
+
+Next switch owned API/Metro previews to this branch against the marked preview DB
+with migrations219-223, preserve the test admin, inspect/screenshot the new native
+sheet, typing/scrolling/schedule/review states and correct layout. Web visual
+acceptance remains human review under the explicit blind-redesign authorization;
+no saved Browser Use block bypass. Add Night page cards on both clients, explicit
+additional sources/budgets, activity/undo/page reflection evidence, rolling worker
+activation and account/default device delivery. Full local/CI/native/ADR acceptance
+still required before main promotion; full C1-C6/M1/D1/U1 remains active.
+
+### A5 native inspection, schedule layout and Night cards — 4 October (not promoted)
+
+Owned API/web/Metro previews now use this branch; migrations219-223 were applied
+only after proving the preview database's `_test` name and server-side test marker.
+The existing local admin/session is preserved. Persistent helper backups remain
+in `/tmp/*before-maintained-pages`; current preview PIDs are recorded externally.
+
+Actual iPhone17/iOS26.5 Computer Use verified saved page content, menu entry,
+selected-block checkbox, instruction typing, weekly schedule creation, Pause,
+paused Edit/Resume actions and reopening with retained selection/cadence. The
+first run caught a real save guard bug: mobile's focused draft left a reference
+`dirty` flag set after successful persistence. The new shared content/title
+comparison accepts saved drafts and refuses changed/offline content. It has a
+focused regression alongside the shared controller tests.
+
+Both clients now collapse configuration when schedules exist and show schedules
+and recent runs first. Add/Edit opens just the configuration section. Native has
+an explicit accessible Close; its action was verified to restore the underlying
+page without changing saved content. Night page cards on both clients open the
+corresponding page; they are excluded from unrelated chat bulk decisions.
+Screenshots: `docs/reviews/evidence/maintained-pages-ui/`. Before-layout and edited
+form snapshots are labeled separately; compact paused view includes the final
+Close control and singular block wording. Native scroll/drag attempts did not
+move the earlier long form; this is not scroll acceptance. Software keyboard,
+long proposals, Night cards, landscape/dark/large-text/Android and web rendered
+acceptance remain open. HMR left an empty native modal once; returning to Expo
+Home and reconnecting the owned Metro project restored it. No browser bypass.
+
+98/98 combined store/controller/Night/reflection/page service/API/run tests pass,
+zero skips/cancellations, terminal code0:
+`/tmp/orbyn-page-native-layout-regressions.log`. All workspace types pass in
+`/tmp/orbyn-page-native-acceptance-types.log`; final production build passes in
+`/tmp/orbyn-page-native-acceptance-build.log` (existing large-chunk warning).
+Rendered acceptance is limited to the interactions above, not the full app.
+A new planner GET/items429 was observed after native dismissal; production
+refresh/profile429 is explicitly still unresolved, not merely an old overlay.
+
+Next exact proposal/approval native screenshots, Night page cards and manual web
+acceptance. Then explicit additional sources and budgets, activity/undo and page
+reflection evidence, rolling worker safety, real account/device delivery and
+remaining full C1-C6/M1/D1/U1 gates. Main promotion/full goal completion remains
+unproven; the disposable native schedule stays paused and production untouched.
+
+### A5 native exact review and receipt follow-up — 4 October (not promoted)
+
+A labeled proposal was staged through internal scoped helpers in the marked
+local preview DB only. It is a UI fixture, not provider/inference evidence:
+modelCalls0 and synthetic100 estimated tokens. Native UI showed the exact saved
+replacement, then Apply changed the owned run to done and removed its waiting
+card. The underlying document displayed exactly `UI fixture: a concise disposable
+summary.`; authoritative DB check reported version6, done and waiting ID cleared.
+The disposable schedule was paused and prior Night preferences restored.
+
+Native Overnight displayed its separate page-result card and Open page action;
+current screenshots are in `docs/reviews/evidence/maintained-pages-ui/` with
+`fixture` in their filenames. Existing dev LogBox partially covered the review
+buttons visually, although the native accessibility action and persisted result
+were verified. This is not long-proposal/software-keyboard/Android acceptance.
+
+Inspection also caught stale receipt metadata: external/maintained saves updated
+content but left the old Saved time. Both editors now update receipt time on
+accepted clean external changes and maintained-page callbacks; callbacks older
+than the current page revision cannot regress it. All workspace types pass in
+`/tmp/orbyn-page-review-receipt-types.log`. Native re-read displayed the newer
+20-minute receipt instead of the old one-hour label. No local draft was overwritten.
+
+Main/PR195 remains a separate compatible session-rate checkpoint. Corrected e4ed6749
+passed CI37157146020 all four jobs. Its local full run completed2396 checks without
+failures before sessions.test.ts stalled with an identical IPv6 local/peer TCP
+endpoint and no registered PostgreSQL connection. That confirmed transport stall
+was cancelled and recorded externally, not called passing qualification. A new
+fresh marked IPv4 full run is live; merge still waits for complete local evidence.
+
+Next: complete that qualified main checkpoint and bring it into this branch,
+then complete explicit extra sources/budgets, activity/undo and page reflection,
+rolling worker activation, real account/device execution, remaining native/web
+render acceptance and full C1-C6/M1/D1/U1. No A5/main or whole-goal completion claim.
+
 ### Session refresh rate-limit candidate — 4 October (qualification pending)
 
 The observed local429 burst contained288-311 requests/minute from web and mobile
@@ -558,3 +881,1074 @@ local renderer/environment setup.
 full run and exact CI are required; c82's failed full run is not qualification.
 Product thresholds/stricter routes/gateway/API-key/MCP behavior stay unchanged.
 A5/native work remains separate and incomplete; main remains ee45ecf0.
+
+### Qualified main checkpoint and workspace layout draft — 4 October
+
+PR195 merged exact e4ed6749 after full fresh IPv4 local2588/2588 code0, no skips
+or cancellations, and CI37157146020 all four jobs passed. Main/origin main now
+7f253b80; the primary checkout fast-forwarded with user changes preserved. This
+addresses authenticated session/IP interference; production deployment remains
+with the user and universal production429 resolution is not asserted. Qualified
+main was integrated into the maintained-pages branch. Only two documentation
+append conflicts occurred; both histories were retained and markers cleared.
+The owned preview API restarted with the qualified session bucket implementation.
+
+U1's new signed-in workspace layout draft now spans every web/desktop screen:
+compact sidebar/wordmark, header rail toggle, quieter location label, consistent
+working-surface padding and cards, unrestricted Docs canvas width, smaller Home
+panels and a task toolbar with separate title/progress and search/layout/filter
+rows. Desktop/tablet rail geometry uses one224px/72px pair; existing800px mobile
+web drawer breakpoint stays aligned, and coarse-pointer controls retain44px
+minimum targets. Palette/radius tokens are used and public landing/auth/dialog
+surfaces retain their separate styling. Navigation controls now reference the
+same accessible sidebar landmark and report expanded state.
+
+Source-contract4/4 checks pass in `/tmp/orbyn-workspace-layout-contract-tests.log`;
+final desktop types pass in `/tmp/orbyn-workspace-layout-final-types.log`.
+All workspace types/production build pass in
+`/tmp/orbyn-workspace-redesign-final-types.log` and
+`/tmp/orbyn-workspace-redesign-build.log` before final aria-only control wiring.
+These are source/build checks, not overlap or visual acceptance. Browser Use was
+retried at the original127.0.0.1:5174/app tab and again denied by saved permission;
+no alternate browser/port/CDP/indirect bypass was attempted. User's standing blind
+web redesign/manual screenshot review authorization applies. The live preview
+serves this draft; rendered web acceptance remains pending.
+
+Next complete remaining whole-app layouts and manual web/desktop acceptance,
+retaining native behavior/feature parity. A5 extra source selection, per-binding
+budgets, activity/undo/page reflection, rolling worker activation and actual
+account/device inference remain open, along with full C1-C6/M1/D1/U1 gates.
+No workspace/A5 production promotion or full goal completion is asserted.
+
+## 2026-10-04 — chat layout and contextual suggestion feedback
+
+Scope clarification: character configuration belongs exclusively to Background
+and Overnight. Those agents need separate identities and profiles as well as
+separate runtimes. Interactive chat uses Orbyn and does not force character setup.
+Independent per-agent saved identity/configuration remains open; the legacy
+Background/Overnight identity is still shared.
+
+The collapsed-sidebar screenshot revealed competing chat/workspace CSS and an
+obsolete 148px character header. The draft now gives chat viewport rules priority,
+uses a compact aligned header and centers the empty heading above its bounded
+composer. Search fields use one wrapper focus indicator. Connection controls now
+expose desktop connection instructions on web/mobile; direct web/mobile ChatGPT
+sign-in and verified device inference remain incomplete.
+
+Shared chat actions now request fresh model-generated task suggestions, priorities,
+plans and reflections from authorized context. Prompts request evidence/citations,
+separate inferred patterns from observed facts, avoid invented commitments and
+require review before task creation. The invented personal example task was removed.
+These action labels are requests, not already generated recommendations. No extra
+background inference or refresh-time AI calls were added.
+
+Home quote selection still draws an excerpt from the person's selected page.
+Automatic AI Home task suggestions and context-based quote/excerpt selection are
+NOT complete. Next implement a bounded, consented generation pipeline with source
+references, freshness/invalidation, account isolation, current visibility checks,
+no duplicate tasks and explicit AI-written reflection labels. Reuse Background
+outputs where appropriate; preserve separate Overnight execution and review.
+
+Validation: all workspace typechecks passed and focused regression checks 9/9
+passed (no skips). iOS was inspected and captured at
+`docs/reviews/evidence/interactive-agent-separation/ios-context-actions.png`:
+new actions/composer are visible without overlap in the current portrait viewport.
+Production web build passed. Source tests are not rendered web acceptance or live model-output validation.
+Browser permission remains blocked; user-authorized manual web screenshot review
+applies. No main promotion, production deployment or full ADR completion asserted.
+
+## 2026-10-04 — independent automation identities checkpoint
+
+Background and Overnight now have distinct persisted name/persona/character
+settings. Migration224 copies each existing legacy identity into two independent
+rows once; later saves are owner/lane-bound and compare an expected revision.
+Concurrent or stale saves return409. Defaults for new accounts use lane names.
+First-party identity routes reject API keys, unknown lanes/bodies/query arguments,
+and rate-limit writes. They do not alter grants or make either worker active.
+
+Interactive chat retains Orbyn with no automation persona. Automation context
+reads the relevant lane identity. Profile snapshots and both Home companion cards
+read the separate identities. The client validates returned lane/revision metadata
+and suppresses save broadcasts after an account change. Web/mobile settings have
+Background/Overnight selection, a reload action and a compact character preview;
+detailed appearance editing opens only when requested. The original shared
+`/me/agent` interface remains for legacy integration compatibility and no longer
+controls these two runtime identities after migration.
+
+Evidence: API/migration3/3 pass in `/tmp/orbyn-lane-identities-api-final2.log`,
+including simultaneous save CAS, account separation,401/403/400/422/429 coverage,
+legacy snapshot preservation and owner-delete cascade. Client/profile/runtime
+contract8/8 checks pass in `/tmp/orbyn-lane-identities-final-units.log`.
+All workspace types and production build passed on the final source checkpoint
+(`/tmp/orbyn-lane-identities-final-source-types.log` and
+`/tmp/orbyn-lane-identities-final-source-build.log`). Final native spacing adjustment
+has its own typecheck in `/tmp/orbyn-lane-identities-final-native-types.log`.
+
+Native iOS was actually operated: switch to Overnight, edit name, save, switch to
+Background (unchanged), return to Overnight (saved name persisted), then restore
+the fixture name. Screenshot `docs/reviews/evidence/automation-identities/ios-overnight-saved.png`
+shows the compact editor. `ios-compact-identity-restored.png` shows the selected
+segmented control after fixture restoration (a final10pt gap separates it from
+Reload). `ios-restored-fixture.json` records the verified local
+test database's independent revisions and restored names. Native drag/scroll APIs
+returned noWindowsAvailable; accessibility clicks brought controls into view.
+The screenshot still includes the old planner429 LogBox. Broad native layout,
+keyboard/landscape/large-text, Android and web rendered acceptance remain open.
+Preview test database was marker-verified, migrated and owned API restarted.
+No production migration/deployment, main promotion or full ADR completion claimed.
+
+Next qualify a frozen branch head, then isolate qualified production checkpoints.
+Continue automatic grounded Home suggestions/reflections, A5 source/budget controls,
+activity/undo/page-reflection, actual device inference, external host acceptance
+and whole-app C1-C6/M1/D1/U1 requirements. Existing execution lanes remain separate.
+
+### Frozen qualification correction — independent identities / A5 capability mapping
+
+Checkpoint `deffbfc4` is committed and pushed. Its full fresh marked test-database
+run was stopped after a confirmed failure in `agent-no-ai.test.ts`: six maintained-
+page control routes were classified as hosted inference with no declared twins.
+The failed run is not passing evidence. Cancellation and exact head are recorded
+in `/tmp/orbyn-lane-identities-deffbfc4-cancelled.json`.
+
+Inspection shows these six routes configure/inspect owner-approved bindings and
+review results; they do not expose model execution to outside agents. They now
+use the existing `assistant_control` classification, preserving first-party
+restriction. The maintained-page feature has an explicit outside-agent equivalent:
+`fetch`, `get_history`, `edit_doc` under the connection's existing grant and its
+own model/scheduler. It neither enrolls hosted work nor approves hosted output.
+A dedicated contract asserts this separation while the existing import-graph
+shield still checks all capabilities for provider/hosted-run imports. The old
+unused global identity lane helper was removed so it cannot suggest that the two
+new persisted profiles still share a settings object.
+
+Focused API/migration/client/import-graph/parity7/7 checks passed in
+`/tmp/orbyn-lane-identities-parity-followup.log`. A fresh full run on the corrected
+frozen head is still required. Web/manual review, native wide/keyboard/large-text,
+Android, automatic Home recommendations/reflections, A5 source/budget/activity,
+reflection evidence, verified device inference and external host gates remain
+open. No main promotion or deployment is asserted.
+
+### Route inventory qualification follow-up — 4 October 2026
+
+The exact `6974d65c` route-inventory preflight found the new GET/PUT lane identity
+routes were not classified. That run was stopped on this confirmed same-head
+failure; `/tmp/orbyn-lane-identities-6974d65c-cancelled.json` is not passing evidence.
+Both endpoints now explicitly use `assistant_control`; they remain first-party
+and cannot be reached by connected agents. The complete route inventory,
+model-free import-graph/twin shield and identity API/migration checks now pass
+12/12 with no skips in `/tmp/orbyn-identities-inventory-parity-final.log`. The
+focused identity schema/runtime/client checks pass4/4 in
+`/tmp/orbyn-identities-parity-units.log`. All workspace types pass in
+`/tmp/orbyn-identities-parity-final-types.log`. A fresh exact-head full suite remains
+required before main promotion; full ADR and visual acceptance remain open.
+
+## 2026-10-04 — SIWC plan/usage priority and narrow-panel feedback
+
+User priority: use the official Sign in with ChatGPT flow; a pre-issued client ID
+is not needed for local dynamic registration. The pasted prototype starts with
+`dynamic_agent_client`, receives an issued ID and uses granted plan credentials.
+Existing desktop OAuth already follows that pattern with persistent installation
+host ID, PKCE/state/nonce, bounded loopback callback, retained registration,
+verified ID token and protected credentials. Do not add a partner client-ID gate
+to this local flow. The official website identity flow is distinct; a local
+127.0.0.1 callback reaches the browser's computer, not a hosted API. Direct web
+sign-in/connected-device inference is still incomplete and remains highest priority.
+
+Official sources inspected: cookbook article `sign-in-with-chatgpt`, SIWC website,
+self-hosted VMs, models-and-inference, token-reference and errors-and-recovery.
+OpenAI authentication metadata is opaque. Do not invent Plus/Pro tier claims,
+remaining quota or reset times from identity tokens or error codes. Identity,
+granted plan permission, live model discovery and completed inference are
+separate evidence states. Account and workspace registrations remain separate.
+
+A desktop `verify-plan` metadata command now sends one fixed short test through
+the selected account/default model's private runtime. It requires granted plan
+access, fresh account model discovery, nonempty output and response.completed.
+The receipt is account-bound, records the actual used model, time and only valid
+provider-reported input/output/total token counts. Missing/invalid counts stay
+unknown. Account switching/closing the runtime drops this receipt. It is a proof
+for that completed test request, not a guarantee of future quota or plan tier.
+The renderer cannot supply arbitrary test content or credentials. Quota and
+eligibility errors remain terminal and do not change billing. Errors preserve
+sanitized machine code, HTTP status and request ID; no provider body is echoed.
+
+Desktop settings expose Verify plan access (explicitly describes the small test)
+and Manage ChatGPT usage. Web/mobile expose the same official usage-settings link
+and remind the person to choose the corresponding ChatGPT account. Remote/native
+verification receipts and actual user-chat plan inference remain open; this is
+not full cross-client plan verification or remaining-allowance delivery.
+
+The narrow chat drawer uses available chat width via ResizeObserver, a single
+History/Upcoming open state, bounded overlay width, scrim, close/Escape/Tab focus
+behavior and inert conversation controls. Opening global navigation closes chat
+panels; opening a chat panel closes global navigation. Duplicate header controls
+are hidden under the overlay. Manual web layout acceptance is still pending.
+Home fixtures now use separate lane reads/subscriptions and real functional state
+updates. Account changes hide prior identities immediately. Generated MCP docs
+were regenerated after inventory changes. The stopped ee0cd5a2 full run had11
+failures (ten Home old-fixture dependency failures and the catalog mismatch),
+not four; cancellation is recorded and is not passing evidence.
+
+Evidence: plan/UI49/49 focused checks pass in
+`/tmp/orbyn-priority-plan-ui-final-tests.log`; inventory/catalog13/13 pass in
+`/tmp/orbyn-priority-plan-inventory-tests.log`, all without skips. All workspace
+types pass in `/tmp/orbyn-priority-plan-final-types.log`; production build passes
+in `/tmp/orbyn-priority-plan-final-build.log`. The owned preview API was restored
+and health returned ok after a PostgreSQL connection terminated unexpectedly.
+
+User-requested browser diagnostic: original127.0.0.1:5174/app was explicitly
+rejected by saved Block preference. An unrelated example.com page opened via the
+same Browser Use surface. Screenshot `evidence/browser-access/example-com-control.png`
+is public diagnostic evidence, not Orbyn web acceptance. No alternate port,
+Chrome, CDP or indirect blocked-preview inspection was attempted. Full frozen-head
+local/CI and actual OpenAI account authorization/inference acceptance remain
+required; no main promotion, deployment or whole ADR completion claimed.
+
+## 2026-10-04 — one-button ChatGPT provider authorization follow-up
+
+User clarification: MCP is a separate Orbyn data/tool connection. Provider
+settings must offer one Connect to ChatGPT button, start authorization directly,
+let the person finish OpenAI sign-in/consent, and return to updated connection
+state. Remove Connect on desktop and the intermediate sign-in-settings tutorial.
+ChatGPT-primary chat routing and a separately chosen Orbyn-default fallback are
+now the immediate next implementation priority. Neither is claimed delivered.
+
+Migration225 adds bounded, ten-minute, session-bound authorization handoffs.
+First-party web/mobile start a request; the signed-in credential-owning app for
+the same person claims it once and calls the existing dynamic SIWC flow directly.
+Web's opaque app link speeds up that handoff; the app also watches explicitly
+requested pending handoffs for cross-client initiation. Different accounts,
+replay, expired/revoked initiating sessions and other claimant sessions cannot
+complete a request. OpenAI codes/tokens are absent from handoff storage and app
+links. The user still finishes actual OpenAI consent. No MCP grant is minted or
+changed. Original/claiming Orbyn sessions and current verified connection are
+rechecked before completion. Hourly sweeping deletes expired handoffs.
+
+Web/mobile now show Connect to ChatGPT and bounded, cancellable status polling;
+no sign-in-settings redirect is part of the primary action. The installed,
+signed-in credential-owning app is still required for this local OAuth callback
+flow. Pure hosted-browser OAuth and native-only local callback ownership have not
+been invented or claimed. This limitation must remain visible in qualification.
+
+Focused source/API/client/UI/inventory tests pass70/70 with no skips in
+`/tmp/orbyn-one-click-full-focused.log`; all workspace types and production build
+pass in `/tmp/orbyn-one-click-final-source-types.log` and
+`/tmp/orbyn-one-click-final-source-build.log`. Current native controls were actually
+inspected in dark mode and captured at
+`evidence/chatgpt-one-click/ios-connect-usage-controls.png`, showing one provider
+Connect action, refresh and usage management without overlap. No actual OpenAI
+account consent or live plan inference was performed. The test preview was
+marker-verified and migrated through225; the helper's fixed console message still
+says224 and is not the migration-version authority.
+
+The desktop fixed verification request and measured usage receipt remain in this
+candidate; availability, permission and completed inference remain distinct.
+Web/mobile can view official usage settings; no account tier, remaining allowance
+or reset time is fabricated. Actual composer/job routing through the user's
+ChatGPT account, signed execution results and explicit default-provider fallback
+remain open before production promotion. Full C1-C6/M1/D1/U1 scope is retained.
+
+### 4905456e full qualification correction — 4 October 2026
+
+The full run was stopped on confirmed failures and is not passing evidence.
+Replay/rules failures coincide with PostgreSQL connection termination and recovery
+mode57P03. A healthy marked-database rerun of those actual suites passed37/37 in
+`/tmp/orbyn-490-replay-rules-recheck.log`; no product assertions were removed.
+Model-control fixtures lacked new core/API/session/error imports and used one
+state cell for every React hook. They now model separate state/ref slots and
+functional state updates. Existing bounded-search, disabled/offline selection
+and model/default behavior checks remain. Font styles were moved onto the shared
+11/13/15/18/24/36 scale; no checker exception was added. Neatness and model UI19/19
+checks passed in `/tmp/orbyn-490-style-ui-followup.log`.
+
+A separate attached model worktree is on `codex/chatgpt-execution` for the actual
+inference transport. Its workspace package builds are isolated; preserved preview
+files and the former dependency symlink remain intact. Runtime request/receipt
+contracts and encrypted request storage are in progress there, not delivered.
+Continue ChatGPT-primary routing and explicit Orbyn-default fallback first, while
+retaining every C1-C6/M1/D1/U1 requirement. No main or production promotion claimed.
+
+## 2026-10-04 — signed ChatGPT inference broker foundation (not delivered routing)
+
+Execution work is isolated in the attached `devday-model-catalog/Orbyn` worktree
+on `codex/chatgpt-execution`, based on current source checkpoint0de9ca3d. Its
+workspace package links point to its own builds; preserved preview files are
+untouched and the former dependency symlink remains backed up under/tmp.
+
+Migration226 introduces bounded per-job request storage with encrypted prompts
+and results, a two-minute expiry and one active request per job. The internal
+runner queue captures the current owned account, model, enrollment/lease epochs,
+input hash and nonce. No HTTP endpoint accepts arbitrary prompt input. A claim
+requires the exact enrolled Orbyn session and current lease/catalog/account.
+Publication verifies an Ed25519 signature covering the exact request identity,
+nonce, epochs, model and completed/failed result. Replays, forged results, changed
+leases, another owner and inactive/unverified-source jobs are rejected. Input is
+cleared on completion/cancellation. Runner result reads recheck current job/source
+access. These are storage/contract gates; no device polling endpoint, processing
+loop, composer integration, fallback choice or live provider result is delivered.
+
+Backend types pass in `/tmp/orbyn-inference-broker-final-types.log`. Broker storage
+checks3/3 pass with no skips in `/tmp/orbyn-inference-broker-final-three-tests.log`.
+This diagnostic run uses `PGOPTIONS=-c jit=off`; it does not modify PostgreSQL or
+production configuration. No OpenAI request is made. Fixture fixes preserve real
+JSON encoding, mandatory chat IDs and allowed inactive job states.
+
+Current full checkpoint qualification0de9ca3d actually ended code1, signal:null:
+2670/2677 pass, seven failures, no skips. The attempted cancellation happened
+after its handle had already disappeared (ESRCH); the cancellation record was
+corrected and the exit JSON is authoritative. Logs confirm a PostgreSQL backend
+was SIGKILLed while evaluating the replay permission query, with container OOM
+state and postmaster recovery. This affected both full and broker test sessions.
+JIT-off broker passing is not proof the replay OOM is fixed. Investigate query
+planning/memory and complete fresh full/CI qualification; do not restart Docker
+Desktop or erase test/primary data as a workaround. Source permission predicates
+must stay enforced. Goal remains full C1-C6/M1/D1/U1, with actual ChatGPT-primary
+execution and explicit Orbyn-default fallback highest priority.
+
+### Direct Connect interaction — 4 October 2026
+
+User confirmed that Connect to ChatGPT must immediately start authorization,
+without opening ChatGPT sign-in settings first. Desktop dispatches `connect`;
+web/mobile create an opaque connect request and launch the credential-owning
+Orbyn runtime, which claims it and starts OpenAI authorization directly. MCP
+configuration remains separate. The local runtime dependency is still present;
+this is not standalone hosted-browser OAuth.
+
+Direct entrypoint and manager tests pass13/13 with no skips in
+`/tmp/orbyn-direct-connect-recheck.log`. Backend typecheck passes in
+`/tmp/orbyn-routing-backend-recheck.log` after restoring fresh default-provider
+resolution in the explicit admission-failure fallback. Uncommitted execution,
+provider-choice and UI work still needs authorization-fence, integration and
+full qualification before promotion to main. No live OpenAI consent or inference
+was performed in this check.
+
+### ChatGPT dispatch and provider-choice candidate — 4 October 2026
+
+Active branch: `codex/chatgpt-execution`. Private device polling claims encrypted
+runner assignments, checks owner/session/lease/model/hash, invokes the public
+Responses transport, signs completed or classified failed results, and publishes
+them to the runner. Composer JSON steps use personal provider routing. No renderer
+inference IPC or arbitrary-prompt HTTP enqueue endpoint is introduced.
+
+Migration227 stores explicit ChatGPT-primary/default and fallback choices with
+CAS. Migration228 captures provider consent revision on each assignment and
+cancels legacy active assignments without that evidence. Enqueue, claim, result
+publication and read reject provider changes. Web/desktop/mobile controls hide
+another account's state, abort stale requests and offer reload after conflict.
+MCP and plugin grants remain separate.
+
+Actual marked-database routing tests pass6/6: encrypted once-only assignment,
+signed completion, forged/lease/source/session rejection, revision fencing,
+runner consumption of the assigned model, and a local default-provider stand-in
+called only with explicit fallback and a confirmed admission rejection. Stream
+and unknown failures do not retry. Evidence:
+`/tmp/orbyn-chatgpt-routing-admission-tests.log`. Endpoint/security, manager,
+private processor, routing contract and catalog checks pass27/27 in
+`/tmp/orbyn-routing-security-focused.log`. Model UI/neatness checks pass19/19 in
+`/tmp/orbyn-routing-ui-recheck.log`; the model-only fixture mocks the separate
+provider-choice child and does not prove that child's rendered appearance.
+
+Workspace types and production build pass in
+`/tmp/orbyn-routing-complete-types.log` and
+`/tmp/orbyn-routing-production-build.log`. These checks do not qualify main:
+full-suite PostgreSQL OOM investigation, actual OpenAI consent/inference,
+cross-client provider-control visual review, durable user-visible inference
+usage/provenance, and broader ADR acceptance remain open. The running preview
+still serves the earlier worktree; do not claim it shows this candidate.
+
+Final combined ChatGPT-focused run passes249/249, no skips, exit0, including
+new endpoint security, all `chatgpt*.test.ts`, provider choice, route inventory,
+catalog and neatness checks. Log:
+`/tmp/orbyn-chatgpt-checkpoint-all-focused.log`. PostgreSQL JIT is disabled only
+for this diagnostic test process (`PGOPTIONS=-c jit=off`); it is not production
+configuration and does not resolve the earlier full-suite OOM qualification.
+Final workspace typecheck passes in `/tmp/orbyn-routing-checkpoint-types.log`.
+
+### Replay qualification follow-up — 4 October 2026
+
+Known literal source families now emit their existing predicate directly instead
+of the complete dynamic CASE. Dynamic source-kind columns keep every allowlisted
+family and the fail-closed default. The source-expression regression compares
+each emitted literal predicate with its exact dynamic branch; replay authority
+checks pass24/24 using normal PostgreSQL settings, without `PGOPTIONS` overrides.
+Evidence: `/tmp/orbyn-replay-static-family-tests.log`.
+
+Read-only EXPLAIN comparison (`/tmp/orbyn-replay-family-plans.json`) shows reduced
+SQL bytes for task/doc/record/exam but identical estimated costs and plan nodes in
+the synthetic comparison. This is not proof of the earlier OOM cause or a JIT
+fix. Full tests are currently running normally in
+`/tmp/orbyn-fe0ef346-replayfix-full-tests.log`, session79424; do not restart them
+on an observation timeout. Types pass. The standard format command warns only
+about the preserved untracked `desktop/src/settings-connection-preview.tsx`;
+that file was not edited. Separate tracked-source formatting is checked without
+adding checker exceptions. No main promotion is qualified yet.
+
+The normal-settings full run completed with exit0:2701/2701 pass, no skips, in
+`/tmp/orbyn-fe0ef346-replayfix-full-tests.log` (session79424 terminal). This covers
+the dispatch/provider-choice checkpoint and replay SQL change; do not attribute
+it to later capability or legal changes. No PostgreSQL restart or JIT override
+was used. Tracked-source format passes in
+`/tmp/orbyn-replayfix-tracked-format.log`; standard formatting still warns on the
+preserved untracked preview file.
+
+The owned API8027, web5174 and Metro8083 previews were refreshed to the execution
+worktree after the marked preview database was migrated. The running API health
+is good. Native Expo was reloaded through its developer menu; the current
+Provider/default/Connect/Refresh/Usage controls were inspected and captured at
+`evidence/chatgpt-provider-routing/ios-settings-provider.png`. Controls fit with
+no overlap in this dark-mode empty-account view. This is not verification of
+connected accounts, large catalogs, web layout or actual OpenAI consent. The
+stale development warning was dismissed only after capturing its presence.
+
+### Rolling-upgrade and privacy follow-up — 4 October 2026
+
+Migration229 adds signed `plan_inference_v1` catalog capability. Omission keeps
+legacy canonical signatures and the existing strict catalog response shape;
+catalog-only devices remain readable. Primary-provider selection and private
+dispatch require an advertised execution processor. Missing/old runtimes cannot
+receive input. New catalog metadata advertises capability only when the private
+adapter and claim/result client methods exist.
+
+Capability, broker, lease/proof, manager and private runtime checks pass43/43
+with normal PostgreSQL settings in `/tmp/orbyn-chatgpt-capability-tests.log`.
+Privacy text now describes device/OpenAI routing, encrypted temporary envelopes,
+explicit fallback and the limits of revoking already-sent content. Shipped legal
+version becomes2026-10-04 using the existing default-text/version workflow.
+Legal/provider-route/broker checks pass14/14 in
+`/tmp/orbyn-chatgpt-capability-legal-tests.log`. These follow-ups require their
+own fresh full/CI qualification;2701 passing is the preceding checkpoint's
+evidence. Usage/provenance display, connected-state visual coverage, real-account
+acceptance and the remaining full ADR contract are still open.
+
+### Completed ChatGPT usage implementation — 4 October 2026
+
+Migration230 adds owner-only completed-call measurements without conversation
+content, identity tokens or provider credentials. Only the transaction accepting
+a verified signed completion writes them; replay, failure and rejected receipts
+do not. Analytics opt-out prevents recording. Measurements last30 days, survive
+temporary request cleanup and cascade on account deletion. The first-party usage
+route is excluded from agent/plugin access and returns no-store metadata, exact
+decimal totals and at most ten recent records. Missing usage remains null, not
+an estimate. It does not measure account-wide allowance, other apps or direct
+plan-verification requests that were not accepted through the assistant broker.
+
+Web/desktop/mobile load Usage in Orbyn only on demand. Ownership/token changes
+hide prior data before effects and abort old requests. Unit checks exercise both
+surfaces, delayed responses, exact large totals and distinct quota wording.
+The native panel was opened against the refreshed API and displayed the actual
+empty test-account result. Empty-state zeros and irrelevant fallback help were
+then removed; the latest compact view still needs its screenshot after agreeing
+to the refreshed legal version.
+
+Broker/UI checks17/17 pass in `/tmp/orbyn-chatgpt-usage-focused.log`.
+Route/catalog/inventory/neatness checks23/23 pass in
+`/tmp/orbyn-usage-contract-routes.log`. Usage/recovery/privacy/sweeper checks22/22
+pass in `/tmp/orbyn-usage-recovery-privacy-tests.log`. Final focused ledger/client/
+UI checks15/15 pass in `/tmp/orbyn-usage-ledger-final-tests.log`, including exact
+database aggregation above Number precision, retention-window exclusion, null
+measurement constraints, stale sessions and fresh-client requests. These scoped
+counts overlap; do not sum them as a full-suite count. Workspace types and build
+pass in `/tmp/orbyn-usage-final-types.log` and
+`/tmp/orbyn-usage-production-build.log`; fresh final-source checks remain needed
+after the last count conversion and document updates.
+
+An official Electron44.3.0 runtime was downloaded/verified into a task-owned
+temporary directory for independent native desktop QA. An isolated profile loads
+the built desktop app from its first-party file path and points at test API8027;
+it does not load or capture the blocked web URL or change the OS URI association.
+Its login is filled from the private disposable-account file, never printed or
+stored in repository text. Evidence: `evidence/chatgpt-provider-routing/desktop-qa-signin.png`.
+The desktop Sign in action accepts Terms/Privacy and has a pending action-time
+Computer Use confirmation. iOS now shows the2026-10-04 agreement gate too. Do not
+accept either agreement automatically or treat elapsed time as authorization.
+
+Next routing gate: provider choice is captured in the resolver closure and on
+private assignments, but not yet at job enqueue in durable job state. A runner
+restart can therefore read a changed primary choice and retarget remaining work;
+queued-before-selection changes also need durable fencing. Persist enqueue-time
+choice and test recovery before production promotion. Also verify private request
+recovery across restart/expiry so accepted or unknown calls cannot be duplicated,
+and persist actual fallback/provider provenance for the final result. Fresh
+full/CI, real-account acceptance, connected large-catalog visual checks and all
+remaining governing ADR gates stay open. The preceding2701 passing result belongs
+to01690700 and does not qualify these later changes.
+
+Usage snapshot follow-up: totals and recent records are read by one SQL statement
+so concurrent receipts cannot produce contradictory counts/history. The schema
+rejects history larger than the completion count. Fallback controls now update
+the saved device instead of silently using a different inspected device; controls
+identify that distinction and reject retained actions after account replacement.
+These two-surface action tests pass8/8 in
+`/tmp/orbyn-provider-usage-action-fences.log`.
+
+The final combined normal-settings focused run passes273/273, no skips, exit0,
+in `/tmp/orbyn-chatgpt-usage-all-focused.log`. This includes all ChatGPT suites,
+provider choice, usage client/UI, legal, sweeper, route inventory, catalog and
+neatness. Types and build pass in `/tmp/orbyn-usage-provider-fence-types.log` and
+`/tmp/orbyn-usage-checkpoint-build.log`. No full-suite/CI result for this latest
+source is claimed. Main stays unchanged until the durable recovery gaps above
+are fixed and acceptance is qualified. Native desktop QA process9478 is still
+live at the pending login; refreshing/rebuilding its file bundle must keep its
+test API8027 configuration before the next visual check.
+
+### Durable provider-choice fencing — 4 October 2026
+
+Migration231 captures the current personal provider choice on every ai_jobs
+insert, covering interactive and automation producers. It ignores a supplied
+snapshot and rejects later edits to the captured value. Existing rows with no
+configured personal choice are backfilled with the known legacy default;
+uncertain beta rows remain fail-closed instead of inventing original consent.
+Resolver recovery and private queue/claim/publication/read compare this immutable
+snapshot with current settings. Managed native/JSON dispatch and plain
+completions also recheck authority before any network/device transport call.
+Explicit fallback keeps that guard, including after its notice callback.
+
+Snapshot/broker/routing tests13/13 pass in
+`/tmp/orbyn-provider-snapshot-focused.log`. Existing assistant runs, protocol and
+provider-limit checks61/61 pass in
+`/tmp/orbyn-provider-snapshot-protocol-runs.log`. Dispatch guard/limit checks21/21
+pass in `/tmp/orbyn-provider-authority-protocol-tests.log`, with zero network or
+device calls after rejection. Final snapshot/broker/protocol checks30/30 pass
+in `/tmp/orbyn-provider-choice-durable-tests.log`. Types pass in
+`/tmp/orbyn-provider-choice-durable-types.log`. Counts overlap and are not full
+qualification.
+
+The enqueue/restart retarget gap is addressed by this source. Remaining private
+transport recovery needs stable per-call operation IDs and consumed/checkpoint
+evidence. The current unique-active-per-job constraint also conflicts with the
+lead's real parallel specialist execution (`Promise.all`); it must become an
+operation-level constraint, with separate queued work for each specialist.
+Do not use payload equality alone as operation identity or replay a charge after
+unknown completion/expired envelope cleanup. Actual provider/fallback provenance,
+current full/CI, real-account acceptance and connected-layout checks remain open.
+
+### Private operation recovery and parallel dispatch — 4 October 2026
+
+Migration232 replaces per-job active uniqueness with durable per-operation
+identity. Each private loop persists a UUID before dispatch, freezes its exact
+wire messages, and saves received/parsed replies and its finished result.
+Recovery retains the original budget reservation and does not count the pending
+lead step again. Finished context hashes match the bounded checkpoint projection;
+a new person answer invalidates the finished-loop cache rather than repeating the
+same question forever. Separate specialists share an adapter but have distinct
+operation IDs and assignments.
+
+The broker serializes creation per operation and returns the original assignment
+on replay. Accepted output can recover with the device offline. Expired undisclosed
+queued work becomes a known admission failure; claimed/unknown work cannot silently
+switch provider. Fallback is marked before its managed call, and a missing result
+holds the original operation instead of repeating a possible charge. Received
+fallback output is encrypted for recovery. Active request envelopes survive their
+dispatch deadline for saved-run recovery; expired inactive envelopes are swept.
+Content-free operation tombstones survive envelope deletion and follow job
+retention. Existing beta private jobs without operation evidence are held, not
+silently retried. Privacy text reflects this retention.
+
+Actual marked-database and child-process tests include SIGKILL after a signed
+reply is accepted but before the loop saves it. Recovery, with the device offline,
+uses one physical request and one usage record. The same suite exercises parallel
+loops reaching separate signed assignments and independently replaying their saved
+results. Process/broker checks14/14 pass in
+`/tmp/orbyn-private-process-recovery-tests.log`. Loop reservation/cache/context
+checks5/5 pass in `/tmp/orbyn-private-budget-tests.log`.
+
+The initial broader run failed74/75: its sixty-poll presence check took over11s,
+crossing the real10s grace interval, while asserting the row never changed. No
+test assertion or production interval was altered. An isolated normal-settings
+rerun passed (684ms for sixty polls;62ms under the runner lock) in
+`/tmp/orbyn-private-presence-isolated.log`. The subsequent assistant/broker/loop
+rerun passed59/59 in `/tmp/orbyn-private-parallel-final-tests.log`. Final combined
+assistant/process recovery/broker/loop/legal/sweeper checks pass83/83, no skips,
+in `/tmp/orbyn-private-operation-checkpoint-tests.log`. Final workspace types pass
+in `/tmp/orbyn-private-operation-checkpoint-types.log`; production build passes
+in `/tmp/orbyn-private-recovery-build.log`. This is focused evidence, not a fresh
+full-suite/CI result for this source.
+
+Remaining M1 release gates include actual provider/fallback provenance in the
+user-visible result, fresh current full/CI, real-account acceptance and connected
+large-catalog visual checks. Native desktop sign-in and the refreshed iOS agreement
+remain pending Computer Use confirmations. Full governing ADR scope remains active.
+
+### Provider receipt labels and atomic fallback recovery — 4 October 2026
+
+Both assistant result views now display provider/model receipts from the existing
+trace contract. Signed ChatGPT completion records its label in the same transaction
+as accepted output and usage. Managed fallback completion records its label in the
+same transaction as the encrypted recoverable reply; a crash cannot leave a cached
+completed fallback represented only as started. Managed protocol completion also
+records the actual model. Duplicate receipt labels are suppressed while distinct
+models remain visible. These markers are display metadata, not authorization.
+
+Focused provenance, broker/process recovery and assistant-run checks pass56/56,
+no skips, in `/tmp/orbyn-provider-provenance-atomic-tests.log`. Workspace types pass
+in `/tmp/orbyn-provider-provenance-atomic-types.log`. A subsequent small change
+preserves distinct default models during trace deduplication. Fresh full-source
+qualification is running in `/tmp/orbyn-provider-provenance-full-tests.log`;
+production build is running in `/tmp/orbyn-provider-provenance-build.log`.
+Neither running process is a passing result. Current full/CI, real-account and
+connected native/web visual acceptance remain open. Main promotion is not claimed.
+
+### Notice-query qualification repair and connected desktop evidence — 4 October 2026
+
+The latest local full run terminated2678/2687 pass,9fail in
+`/tmp/orbyn-provider-provenance-full-tests.log`. Notice-list failures coincided
+with database disconnect/recovery and subsequent setup failures. Do not classify
+this as a passing local gate or assert a proven PostgreSQL kill cause. GitHub
+CI37202016175 passed all backend/web, mobile bundles, Docker image/live smoke and
+mail jobs for8bd2e48d. The preceding CI stopped at one indentation-only test
+format issue, corrected by8bd2e48d.
+
+The notification list now pages ordinary owner/item-visible notices separately
+from assistant chat, proposal and reminder-nudge source checks. Only families
+present in a page expand their guard SQL. Hidden source notices do not consume
+the100 visible-result limit. Timestamp/ID cursors preserve database microsecond
+precision and internal cursor fields never enter client responses. Malformed
+chat references and absent sources fail closed. Final planner/deadline/privacy/
+pagination checks pass123/123, no skips, in
+`/tmp/orbyn-notification-final-focused-tests.log`; workspace types pass in
+`/tmp/orbyn-notification-bounds-final-types.log`. No test/JIT/database setting was
+weakened. This repair still requires a fresh complete local and CI run.
+
+Native desktop Settings was inspected against the marked local preview database.
+Connect opened OpenAI's real account chooser. The UI subsequently displayed a
+connected account, granted plan permission and a live selected model. Screenshot:
+`docs/reviews/evidence/chatgpt-provider-routing/desktop-connected-models.png`.
+Control links now share button styling without browser-default blue/underline.
+The native tool stopped responding during plan verification; completed live
+inference, refresh/revocation, actual assistant receipts/usage and mobile/web
+connected acceptance remain unproven. No production/main promotion is claimed.
+
+### Personal chat admission and visible recovery errors — 5 October 2026
+
+The notice-query checkpointcbbea304 passed2731/2731 full local checks with no
+skips in `/tmp/orbyn-notification-guard-full-tests.log`. CI37203144839 passed all
+backend/web, mobile, Docker/live smoke and mail jobs. Production build passed
+in `/tmp/orbyn-notification-guard-production-build.log`. This qualifies that
+source; subsequent changes require fresh qualification.
+
+Live preview inspection exposed a separate admission defect: chat submission
+and capabilities still required managed workspace configuration before the
+personal resolver could run. Both now consult the owner's selected provider.
+A selected ChatGPT binding can enqueue without a managed provider. Missing or
+revoked bindings cannot admit through default billing without explicit fallback.
+Dispatch still performs current identity/catalog/lease/model/source checks and
+captured-choice fencing. No readiness/entitlement is invented at admission.
+
+An HTTP regression proves202 enqueue and captured personal choice with no managed
+provider, plus401/403/422/429 shields and idempotent replay. Broker, admission,
+plan transport, desktop bridge/store checks pass50/50, no skips, in
+`/tmp/orbyn-chatgpt-admission-recovery-final-tests.log`, using the separately marked
+`orbyn_admission_cbbea304_test` database. Workspace types pass in
+`/tmp/orbyn-chatgpt-admission-action-types.log`.
+
+Fixed safe plan recovery messages now cross desktop IPC; arbitrary provider text,
+mutated Error.message and request IDs remain excluded. Routine metadata reload
+preserves an action failure for the same owner instead of immediately hiding it.
+A new successful action or owner/session change clears it. Actual plan permission
+and model discovery remain distinct from a completed verification/inference.
+
+Open routing work includes safe Background deferral when its private runtime is
+absent without fallback, actual completed assistant inference/receipts/usage,
+non-chat first-party AI features that still use managed adapters, maintained-page
+private execution and the remaining full ADR/platform acceptance. Plugin/MCP
+calls retain their separate provider and grant boundaries. Main is unchanged.
+
+### Live stream header, checked-out connections and replay planning — 5 October 2026
+
+CI37204783047 passed all four jobs on195f2d22. Its local full run ended2706/2717
+pass,11fail in `/tmp/orbyn-chatgpt-admission-current-full-tests.log`, including
+recovery57P03 and timing failures. This is not a passing local gate. A focused
+replay run reproduced a proposal-family connection loss; its19/25 result includes
+recovery/setup failures. No assertion, deadline, JIT or database setting was waived.
+
+The replay query now binds reference IDs as a text array instead of a JSON
+recordset. All ownership, grant, membership and source predicates remain intact
+in the same query. A synthetic normal-settings EXPLAIN changed reference rows100
+to1 and estimated total cost70785.15 to732.43. Both synthetic plans had JIT disabled
+by their own cost estimates, not by a configuration change; this is not proof of
+a specific PostgreSQL kill cause. Evidence: `/tmp/orbyn-replay-cardinality-plans.json`.
+The reproduced proposal read lost its connection after6086ms before the change;
+three subsequent reads completed in75,168,72ms. Replay tests24/24 pass in
+`/tmp/orbyn-replay-array-cardinality-tests.log`. Combined pool/replay/rules/runner/
+assistant/process-recovery checks102/102 pass with no skips in
+`/tmp/orbyn-resilience-array-final-tests.log`.
+
+Every primary/replica pool connection now observes transport errors even while
+checked out between async transaction queries. Rollback failure cannot replace
+the original error; transactions are never retried or reported successful by this
+handler. A marked-database test terminates only its own tagged backend, proves one
+failed attempt and a healthy later pool query. The preview API remained alive
+through a subsequent database recovery.
+
+Live OpenAI diagnostics recorded an actual public Responses request with
+stream:true/store:false, HTTP200, a body and no Content-Type header. The client
+now allows an absent header and still requires bounded valid SSE plus
+response.completed. Declared JSON/HTML and incomplete/malformed streams do not
+become successful inference or usage. The live request then correctly reported
+subscription-sharing usage exhaustion. It did not complete inference, so no
+successful plan-use or remaining-allowance claim is made. Further live inference
+checks stopped; the temporary startup verification hook was removed.
+
+Runtime snapshots retain the fixed safe quota message without raw provider
+content. Plan/model runtime/manager/bridge/store checks56/56 pass, no skips, in
+`/tmp/orbyn-plan-media-runtime-final-tests.log`. Workspace types pass in
+`/tmp/orbyn-stream-resilience-final-types.log`. Fresh frozen full/CI qualification,
+actual completed inference after availability returns, remaining cross-client
+acceptance and full C1-C6/M1/D1/U1 remain open. No main promotion is claimed.
+
+### Main checkpoint delivered — 5 October 2026
+
+PR197 merged as82576dfa after2592/2592 full local tests, workspace types,
+production build and all four CI37230581000 jobs passed. Root main was safely
+fast-forwarded with mobile/app.json and all user untracked files preserved.
+The broader codex/chatgpt-execution branch merged origin/main without conflict;
+only the scoped qualification document was new because the code fixes already
+matched. Full C1-C6/M1/D1/U1 remains active. Next: Background/private-device
+availability deferral, all first-party AI feature routing and remaining pages,
+Docs, whole-app layouts and external host/platform acceptance. No more live
+plan retries while the connected provider reports usage exhaustion. Cleanup
+remains at the end; no production deployment was performed.
+
+### Private automation queue admission — 5 October 2026 (candidate)
+
+Background and Overnight jobs whose captured choice requires ChatGPT without
+managed fallback now remain queued while the chosen device has no live matching
+session/lease, fresh catalog or signed inference capability. This admission guard
+runs before claiming; it does not disclose prompts or reserve a running slot.
+Interactive requests retain their immediate failure behavior. Current provider
+choice changes, legacy private-run holds, cancellation and disabled owners can
+still be claimed for execution-time settlement. Closed unreviewed night work can
+also be settled; reviewed work retains its normal provider requirement.
+
+An accepted signed completion or stored fallback reply remains recoverable with
+the device offline. The worker still rechecks current source/choice authority
+before using it. Tests perform actual broker signing/publication before checking
+this recovery path. Queue/runner lifecycle checks14/14 pass, no skips, in
+`/tmp/orbyn-private-queue-lifecycle-tests.log`; the preceding broker/run regression
+checks69/69 pass in `/tmp/orbyn-private-queue-broker-regression.log`. Workspace
+types pass in `/tmp/orbyn-private-queue-types.log`. Counts overlap and do not
+replace fresh combined qualification.
+
+This is pre-claim admission, not complete offline deferral. A device/lease can
+still disappear after claim and before dispatch; that known admission failure
+needs durable requeue handling without repeating unknown or already disclosed
+operations. No complete Background deferral or main promotion is claimed.
+Remaining first-party feature routing, A5, Docs, UI/platform and plugin/host
+acceptance retain the full C1-C6/M1/D1/U1 scope.
+
+### Known post-claim private admission failure — 5 October 2026 (candidate)
+
+An unattended run now distinguishes a rolled-back503 queue admission failure
+from an unknown/disclosed model completion. Without authorized managed fallback,
+that failure saves the current loop, operation ID, captured model, wire input and
+budget reservation, then requeues the same leased job. Queued wait is excluded
+from active elapsed time and does not consume a crash-resume attempt. Linked
+working tasks return to queued atomically under their owning assistant grant.
+
+The transition locks the live owner's job and rechecks captured consent/source
+visibility. Any unfinished private assignment or fallback blocks safe requeue;
+unknown charges are not repeated. Private job-live checks hold a share lock so
+queued/cancelled state cannot race prompt admission/publication. Cancellation,
+lease ownership and current choice remain fenced. Fixed private-provider recovery
+messages can appear in run failures without reflecting upstream content.
+
+Actual runner tests prove lease loss before dispatch parks the job with its
+operation/model/reservation intact and zero inference envelopes. Broker/run/error
+checks64/64 pass, no skips, in `/tmp/orbyn-private-deferral-final-tests.log`;
+Night/queue checks20/20 pass in `/tmp/orbyn-private-deferral-night-regression.log`.
+A final safe-message check passes in `/tmp/orbyn-private-provider-error-final.log`.
+Workspace types pass in `/tmp/orbyn-private-deferral-final-types.log`.
+
+The earlier898b full run ended2740/2745 pass,5fail, including a historical Night
+read connection loss/recovery and a deadline timing failure. CI37234445505 passed
+all jobs on that earlier head. These are not latest-source qualification. Night
+leftover source checks now bind paired kind/UUID arrays instead of a100-row JSON
+recordset estimate; all visibility predicates and redacted labels remain intact.
+The previously failing historical read passes in the focused Night suite. No
+assertion, timer, database or JIT setting was waived. Fresh frozen full/CI and
+remaining C1-C6/M1/D1/U1 acceptance remain required before main promotion.
+
+### Deferral state-lock verification — 5 October 2026
+
+A concurrent dispatch blocked on the job's share lock now rejects after another
+transaction queues that job; it creates no inference envelope. The queue/broker/
+runner concurrency suite passes33/33, no skips, in
+`/tmp/orbyn-private-deferral-concurrency-tests.log`.
+
+The42c70383 local full run ended2747/2748 pass,1fail. The remaining failure was a
+source-contract assertion requiring resolveUserAi's call and arguments to occupy
+one line after Prettier wrapped the new argument. Its updated whitespace-tolerant
+pattern still requires that exact resolver and owner/job arguments; no behavior,
+authority assertion or deadline was waived. Routing/error checks pass in
+`/tmp/orbyn-private-routing-contract-final.log`. Fresh full/CI qualification on
+this verification head remains required. Main82576dfa and the broader full ADR
+scope remain unchanged.
+
+### Deferral verification updates — 5 October 2026
+
+The queue/broker/runner concurrency suite passes33/33, no skips, including an
+actual blocked dispatch rejecting queued state with zero assignments. The
+routing-contract check now accepts whitespace formatting while still requiring
+resolveUserAi with the owner/job arguments; routing/error checks pass. The
+preceding42c70383 full local result remains2747/2748 with that formatting assertion
+failure, not a passing qualification. Fresh full/CI must qualify this verification
+head before promotion. Main82576dfa and full ADR scope remain unchanged.
+
+## Page budget checkpoint — 5 October 2026
+
+Per-page schedules now expose 1,000–20,000 estimated tokens per update in both
+clients. Migration 233 defaults existing bindings to 20,000. Queueing captures
+the binding budget on the run; editing cancels outstanding work without changing
+the old run's budget. Updates from older clients that omit the field preserve
+the saved budget. Pause/resume sends the selected allowance. Shared Overnight
+limits remain in force.
+
+Focused budget/binding/run/consumer/route/store checks pass 73/73 with no skips
+and all workspace typechecks pass. Native desktop build passes; the actual
+page-update dialog was inspected and its invalid 999 / valid 5000 enable state
+verified without submitting. Bare frequency buttons were changed to the existing
+secondary controls and section paragraph margins corrected. Screenshot:
+`evidence/page-budget/native-dialog.png`. Preview API has not yet been aligned
+with migration 233; native save, narrow layout and mobile acceptance remain open.
+This is a candidate checkpoint, not a main merge or completion of C5/U1. Full
+exact-commit qualification and all remaining ADR requirements still apply.
+
+## Exact-commit qualification follow-up — 5 October 2026
+
+The full local suite on e8c10979 completed with 2,774 passes, one failure and
+no skips/cancellations. The failure was the newly introduced 20px Docs library
+heading, outside the existing six-size type scale. It is corrected to 18px;
+the unchanged neatness suite passes 10/10 without skips. All workspace types
+and production build passed on e8c10979. CI run 37255077796 is still pending
+at this checkpoint, so no green full qualification or main promotion is claimed.
+Logs: `/tmp/orbyn-e8c10979-full-tests.log`,
+`/tmp/orbyn-doc-heading-scale-tests.log`. Requalify the corrected commit.
+
+## Usage cutoff precision correction — 5 October 2026
+
+Frozen e1866399 full local qualification passed 2,775/2,775 with no skips or
+failures. CI 37256031469 failed one usage aggregation assertion (11 rather
+than 12), while mail/mobile/docker succeeded. Investigation identified a real
+query boundary defect: node-postgres Date conversion loses PostgreSQL
+microseconds before the upper/lower bounds are sent back to SQL. The cutoff
+query now retains database text timestamps for filtering, preserving full
+precision; public timestamps remain ISO dates. A deterministic unit test
+requires both exact bounds and exercises the real usage reader with a mocked
+checked-out client. Broker plus precision checks pass 16/16, no skips, in
+/tmp/orbyn-e186-usage-precision-focused.log. Requalify the corrected commit
+before main promotion. The full ADR remains incomplete; no deployment/cleanup.
+
+## Recording provider checkpoint — 5 October 2026 candidate
+
+Text recording summaries now capture explicit provider choice, source page
+revision and live recording identity through a durable feature job. Both clients
+allow a supplied transcript and show actual completed-provider metadata. Signed
+private output cannot be accepted after file removal; page/exclusion/team checks
+and explicit fallback remain enforced. Existing audio transcription remains
+managed and cannot run while ChatGPT is selected. Target generation guards
+prevent late summary/task UI responses from landing on another recording.
+
+Focused checks pass 21/21, neatness 10/10, all workspace typechecks and native
+desktop build pass. Recording UI screenshots/native mobile acceptance, actual
+completed OpenAI inference and full exact-commit qualification remain open.
+The separate corrected e1866399 checkpoint is under full qualification in
+`/tmp/orbyn-e1866399-full-tests.log`; its live session is 18479 and types/build
+session 33414. CI run 37256031469 targets that exact commit. Earlier e8c10979
+CI was cancelled by the newer push; it was not a completed green run. Main
+remains 82576dfa. All C1–C6/M1/D1/U1 scope and eventual cleanup remain active.
+
+## Private page transport in progress — 5 October 2026
+
+Uncommitted private maintained-page transport uses a version-3 companion job
+linked to its page parent (migration 234), checks the parent lease and captured
+provider/model/source authority at broker boundaries, and settles companion
+state with its parent. Overnight admission excludes that run's own companion.
+This is incomplete: direct signed private-page execution, safe undisclosed
+reservation rollback/deferral, recovery, and native/mobile acceptance still
+require implementation and tests. Do not merge this work as complete.
+
+Output limits now propagate through the private transport, hashed assignment,
+public Responses request, and explicit managed fallback. Migration 235 permits
+plan_inference_limits_v1; bounded queue/claim requires that current capability,
+while older devices remain eligible for ordinary calls. Unit checks32/32 and
+broker/page-consumer checks40/40 passed without skips. The new broker regression
+covers pre-dispatch rejection, unchanged queued state on capability downgrade,
+limit immutability on replay, and signed completion after capability restoration.
+Logs: /tmp/orbyn-private-output-unit-final.log and
+/tmp/orbyn-page-private-capability-final.log. These existing page-consumer tests
+do not prove direct private-page execution. Latest workspace types passed with terminal exit0 in
+/tmp/orbyn-page-private-current-types.log (session19260).
+
+Separate frozen candidate82f5f20e corrects usage cutoff microsecond truncation
+following e1866399 local2775/2775 and CI37256031469's usage count failure.
+Corrected broker/precision16/16 passes. Full session82103/log
+/tmp/orbyn-82f5f20e-full-tests.log and CI37257405383 are live. All workspace types passed with terminal exit0 (session28996). Main82576dfa remains unchanged;
+no deployment, cleanup, or full ADR completion is claimed.
+
+## Direct private page execution checkpoint — 5 October 2026
+
+Private maintained-page execution now has direct signed broker coverage. The
+consumer sends only selected blocks, carries an output-token limit and applies
+one bounded replacement under the parent lease. A genuine unique companion job
+tracks that lease and runtime lane; source, provider-choice and preference
+revision changes reject late output without recording accepted usage. Parent
+cancellation invalidates the transport and preserves the page.
+
+The first direct test exposed a lock inversion: device claim/finish locked the
+physical envelope before parent/source authority, while worker polling used the
+reverse order. Claim and signed acceptance now check parent/job authority before
+locking the envelope. No deadlock retry or relaxed timeout was added. Recovery
+also exposed an invalid transport cancellation state; page terminal transitions
+use ai_jobs' existing failed state. Migration236 replaces the trigger function
+for databases that already exercised the initial234 checkpoint.
+
+Confirmed device loss before enqueue can restore only an undispatched page's
+reservation, clear its model key, and requeue without consuming a retry. Any
+operation envelope prevents restoration. The companion and durable operation
+identity are reused on resume. Overnight direct coverage proves the shared night
+reservation returns to zero before transmission, its own queued companion does
+not block reclaim, and successful execution charges only the parent once.
+
+Direct private page checks8/8 pass without skips in
+/tmp/orbyn-private-page-night-direct.log. Source/provider/model/cancellation,
+old-device capability, undispatched resume and already-dispatched reservation
+retention are covered. Combined current checks pass81/81 without skips; all-workspace types and production
+build pass with terminal exit0. Evidence: /tmp/orbyn-private-page-final-focused.log,
+/tmp/orbyn-private-page-checkpoint-types.log and
+/tmp/orbyn-private-page-checkpoint-build.log. Native/mobile interaction,
+real positive OpenAI inference, full exact-head tests/CI, and remaining ADR
+requirements are still open. This checkpoint does not complete the full goal.
+
+## Agenda owner boundary and private review — 5 October 2026
+
+Agenda BriefWriter now receives the actual page owner from contentFor, covering
+interactive rewrite and scheduled morning creation. Managed briefs check that
+owner and captured provider-choice revision before dispatch and before returning
+output, with a 512-token output cap. A selected ChatGPT plan is never silently
+sent to the managed provider. Private Agenda dispatch is still incomplete: retain
+source identities and revisions across tasks, subscription events, habits, Study
+and computed facts; implement durable owner-bound dispatch and distinguish app
+session from scheduled authorization. Returning an agenda without a generated
+brief is a temporary guard, not completion of that feature.
+
+Actual managed fixture tests prove bounded default requests, zero calls for a
+selected ChatGPT plan, no calls for missing/disabled owners, and discarded output
+when consent changes in flight. The agenda pipeline verifies the owner passed to
+the writer. Direct private page approval now proves stale/foreign waiting cards
+are rejected and the saved patch applies with the device offline without another
+model call. Combined Agenda/direct private review checks40/40 pass, no skips,
+in /tmp/orbyn-agenda-choice-review-final.log. All workspace types pass with
+terminal exit0 in /tmp/orbyn-agenda-owner-current-types.log.
+
+Candidate82f5f20e CI37257405383 passed all jobs. Local full qualification ended
+2770/2776 pass, six failures, zero skips, during PostgreSQL recovery. Database
+logs confirm checkpointer PID20590 was killed by signal9 at03:01:47UTC and
+connections were ready again03:01:53UTC. No assertions, timeout, database/JIT or
+Docker settings were weakened. The terminal failed run is retained. Fresh marked
+orbyn_82f5f20e_qualification_test full qualification is running alone in
+/tmp/orbyn-82f5f20e-fresh-full-tests.log, session81660. Do not restart it for an
+observation timeout. Main82576dfa remains unchanged, and whole ADR acceptance,
+real inference, visual/native checks and eventual cleanup remain open.
+
+## Agenda Study source safety checkpoint — 5 October 2026
+
+The separate AI Study snapshot excludes hidden root decks and original card
+sources, revoked team AI consent, lost membership and deleted/foreign pages.
+Exam titles require every stored attached deck to remain authorized even when
+the human overview already dropped one; readiness uses permitted cards only.
+Captured page identities and revisions are rechecked before managed dispatch
+and acceptance. Missing original references between reads fail closed; snapshot
+failure preserves the ordinary agenda without an unrestricted AI fallback.
+
+Focused checks26/26, zero skips, pass in
+/tmp/orbyn-agenda-study-final-regressions.log. All workspace types and production
+build pass with terminal exit0 in /tmp/orbyn-agenda-study-final-types.log and
+/tmp/orbyn-agenda-study-checkpoint-build.log. No UI/native completion is claimed
+for this backend checkpoint. Private Agenda dispatch, source/revision authority
+for tasks/calendar/habits/computed facts, scheduled consent, native acceptance,
+real positive provider inference and full current-head qualification remain open.
+
+Frozen82f5f20e full session81660 is terminal exit1:2775pass/1fail/0skip.
+The unchanged sixty-poll test crossed the10-second presence window in about13s
+and observed an additional row revision. Log:
+/tmp/orbyn-82f5f20e-fresh-full-tests.log. An unchanged entire assistant-runs
+recheck is running as session55232 in
+/tmp/orbyn-82f5f20e-presence-recheck.log. No test/timeout/database/interval waiver
+or main promotion. Main remains82576dfa; user deploys main manually.
+
+## Combined provider checkpoint — 5 October 2026
+
+Integrated the usage precision correction with recording, bounded private page,
+Agenda owner and Study source work. The handoff append conflict retains both
+sets of evidence. The unchanged82f5f20e assistant-runs recheck completed41/41
+with zero skips:60 polls3018ms, locked fresh read90ms and one row revision.
+The earlier full2775/2776 result remains failed, not waived. Requalify this
+combined commit with full local tests and CI before main promotion. Full ADR,
+real positive inference and desktop/mobile acceptance remain incomplete.
+
+## Agenda fact authority checkpoint — 5 October 2026
+
+Agenda managed briefs reread owned AI facts, filter project/team exclusions in
+task/event/block and derived busy queries, and validate an owner/time-bound
+snapshot before dispatch and acceptance. Original task/page versions, calendar
+and habit identities, event UIDs/occurrences and block revisions are retained.
+Internal preferences/placement inputs are hashed without exposing their source
+identities in the prompt. Missing revisions fail closed. Excluded busy work
+causes omission of affected AI availability, preserving the human calendar and
+avoiding a false claim that private occupied time is free.
+
+Final current checks92/92, no skips, pass in
+/tmp/orbyn-agenda-retained-sources-tests.log. All workspace types and production
+build pass with terminal exit0 in /tmp/orbyn-agenda-retained-sources-types.log
+and /tmp/orbyn-agenda-retained-sources-build.log. Provider fixture tests prove
+untrusted supplied priorities are not sent, excluded titles remain absent and a
+revision changed during the model request rejects its output. Snapshot tests
+cover exact owner/time, preferences, task revisions, habit names/placement,
+subscription UID replacement/unsubscribe, team AI revocation and human page
+preservation. Calendar/planner/habit/visibility suites retain ordinary behavior.
+
+Previous combined f1ecc45b full session78088 completed2811/2811, no skips or
+failures, and all four CI37259956426 jobs passed. Main82576dfa remains unchanged.
+Do not substitute that previous full result for this newer source checkpoint.
+Next: full current-head qualification, durable private Agenda transport with
+source context and app/scheduled consent, real inference and native UI acceptance,
+then remaining full ADR implementation and eventual cleanup. No deployment.
+
+## Interactive private Agenda and shared result feedback — 5 October 2026
+
+The version4 Agenda job captures its originating app session, current provider
+choice/preference and owned AI source/fact snapshot. Dispatch and signed receipt
+acceptance use the broker's existing database connection; no nested pool checkout
+is required for snapshot reads. Forged facts with a preserved digest, revoked
+sessions, changed source revisions/preferences and pre-job provider changes reject
+the operation. Calls preserve the512-token cap through an explicitly consented
+managed fallback. Stream/unknown failures and missing fallback consent produce
+zero managed calls. Completed Agenda jobs retain their actual provider/model.
+
+The API exposes optional briefing outcome metadata, and web/desktop/mobile use
+one shared feedback formatter. A calendar rewrite remains available after a failed
+summary, with clear failure information rather than generic rewrite success.
+API keys remain rejected403 by the existing AI boundary. Provider errors use
+fixed recovery text; raw upstream responses never appear in summary feedback.
+
+Current focused Agenda/source/broker checks65/65 pass with no skips in
+/tmp/orbyn-private-agenda-feedback-final.log. Route/ordinary Agenda/private-page
+checks31/31 pass in /tmp/orbyn-private-agenda-route-final.log. They cover401,
+403,400,429, API-key exclusion, revoked app sessions, source/model changes,
+bounded signed success and explicit fallback provenance. All workspace types and
+production build completed exit0 in /tmp/orbyn-private-agenda-feedback-types.log
+and /tmp/orbyn-private-agenda-feedback-build.log. Earlier failed fixture assertions
+are retained: compatible providers use max_tokens, and personal API keys are
+already forbidden on AI routes; neither production controls nor limits were
+weakened. Rate-limit exhaustion runs last so it does not mask auth assertions.
+
+Frozen d602d90e qualification is now terminal:2820/2820 local pass with zero
+failures/skips, and CI37261261363 passed. PR196 remains draft and mergeable;
+main remains82576dfa. These earlier results do not qualify the newer Agenda
+checkpoint. Run full exact-head/CI after committing and integrating this candidate.
+
+Remaining: explicit scheduled plan consent; persistent waiting/recovery and retry
+semantics; target/body/source coherence through page application; atomic policy/
+source fencing; actual positive OpenAI inference and desktop/mobile visual/native
+acceptance. A same-connection snapshot reread is not atomic all-source fencing.
+Full C1–C6/M1/D1/U1 stays active. No main merge, deployment or cleanup yet.

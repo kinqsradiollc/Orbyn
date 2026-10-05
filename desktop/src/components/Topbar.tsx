@@ -1,4 +1,11 @@
-import { Bell, Menu, Plus, Search } from "lucide-react";
+import {
+  Bell,
+  Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plus,
+  Search,
+} from "lucide-react";
 import type { User } from "@orbyn/core";
 import {
   SCREENS,
@@ -15,6 +22,9 @@ type TopbarProps = {
   /** The assistant's chosen name, shown for its view. */
   agentName?: string;
   onToggleMenu: () => void;
+  onToggleRail?: () => void;
+  railed?: boolean;
+  navigationOpen?: boolean;
   onOpenNotifications: () => void;
   /** Opens the command bar (also ⌘K / Ctrl+K). */
   onOpenCommand: () => void;
@@ -33,6 +43,9 @@ export function Topbar({
   view,
   agentName,
   onToggleMenu,
+  onToggleRail,
+  railed = false,
+  navigationOpen = false,
   onOpenNotifications,
   onOpenCommand,
   timeZone,
@@ -47,15 +60,27 @@ export function Topbar({
   ).join(isMac ? "" : "+");
   return (
     <header className="topbar">
+      {onToggleRail && (
+        <button
+          className="icon-button workspace-rail-toggle"
+          aria-label={railed ? "Expand navigation" : "Collapse navigation"}
+          aria-expanded={!railed}
+          aria-controls="workspace-navigation"
+          onClick={onToggleRail}
+        >
+          {railed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
+        </button>
+      )}
       <button
         className="icon-button mobile-menu"
         aria-label="Toggle navigation"
+        aria-expanded={navigationOpen}
+        aria-controls="workspace-navigation"
         onClick={onToggleMenu}
       >
         <Menu size={20} />
       </button>
-      <span>
-        My workspace <span className="slash">/</span>{" "}
+      <span className="workspace-location">
         <strong>{navName(view, agentName)}</strong>
       </span>
       <div>

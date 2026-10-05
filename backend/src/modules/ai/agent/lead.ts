@@ -513,7 +513,11 @@ export async function runLead(input: {
     }
   };
 
-  const startingStep = state.lead_steps;
+  // The pending model call was already counted before its durable dispatch.
+  const startingStep = Math.max(
+    0,
+    state.lead_steps - (state.loop?.pending_provider ? 1 : 0),
+  );
   // Refresh the system facts on resume; trimmed raw tool replies are backed by
   // the persisted reports and exact staged plan in this prompt.
   if (state.loop?.messages[0]?.role === "system")

@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import {
   addDays,
+  agendaRewriteFeedback,
   agendaTitleOn,
   agendaTodayAt,
   localDateKey,
@@ -195,11 +196,7 @@ export function AgendaView({
       const next = await client.rewriteAgenda(deviceTimeZone());
       setDoc(next);
       setEdition((n) => n + 1);
-      setNote(
-        next.brief
-          ? "Rewritten from your calendar, with the assistant's summary."
-          : "Rewritten from your calendar.",
-      );
+      setNote(agendaRewriteFeedback(next));
     } catch (e) {
       report(e);
     } finally {

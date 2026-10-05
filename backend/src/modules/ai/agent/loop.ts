@@ -1,4 +1,5 @@
 import { fitData } from "./format.js";
+import { randomUUID, createHash } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import type { Action, ChatTurn, AssistantSource, DraftNote } from "@orbyn/core";
 import {
@@ -84,6 +85,16 @@ export type AgentLoopCheckpoint = {
   over_budget: boolean;
   iterations?: number;
   final_call_used?: boolean;
+  pending_provider?: {
+    id: string;
+    model: string;
+    reservation_charged: boolean;
+    wire_messages?: import("../providers/adapters.js").ChatMessage[];
+    raw_reply?: string;
+    result?: StepResult;
+  };
+  finished_result?: AgentResult;
+  finished_context?: string;
 };
 
 /** Optional controls for the shared internal and specialist loop. */
@@ -216,6 +227,30 @@ export async function runAgent(
   let overBudget = options.resume?.over_budget ?? false;
   let iterations = options.resume?.iterations ?? 0;
   let finalCallUsed = options.resume?.final_call_used ?? false;
+  let pendingProvider = options.resume?.pending_provider;
+  let finishedResult = options.resume?.finished_result;
+  const contextHash = () =>
+    createHash("sha256")
+      .update(
+        JSON.stringify(
+          messages
+            .filter((m) => m.role !== "system")
+            .map((m) => [
+              m.role,
+              m.content.slice(0, m.role === "tool" ? 3000 : 4000),
+              m.role === "assistant"
+                ? (m.tool_calls ?? []).map((c) => [c.id, c.name, c.arguments])
+                : [],
+              m.role === "tool" ? m.tool_call_id : null,
+            ]),
+        ),
+      )
+      .digest("hex");
+  let finishedContext = options.resume?.finished_context;
+  if (finishedResult && finishedContext !== contextHash()) {
+    finishedResult = undefined;
+    finishedContext = undefined;
+  }
   const checkpoint = () =>
     options.checkpoint?.({
       messages: messages.map((entry) => ({
@@ -238,12 +273,37 @@ export async function runAgent(
       over_budget: overBudget,
       iterations,
       final_call_used: finalCallUsed,
+      ...(pendingProvider
+        ? { pending_provider: structuredClone(pendingProvider) }
+        : {}),
+      ...(finishedResult
+        ? { finished_result: structuredClone(finishedResult) }
+        : {}),
+      ...(finishedContext ? { finished_context: finishedContext } : {}),
     });
 
   const replyReserve = 8192; // At most 32 KiB of serialized output is accepted.
   const call = async (toolsAllowed: boolean): Promise<StepResult> => {
     for (let attempt = 1; ; attempt++) {
       try {
+        if (
+          pendingProvider?.model !== undefined &&
+          pendingProvider.model !== ai.model
+        )
+          throw new ProviderError(
+            "provider_changed",
+            "The captured model changed. Start a fresh request.",
+          );
+        if (pendingProvider?.result) {
+          await ai.assertAuthority?.();
+          return structuredClone(pendingProvider.result);
+        }
+        if (ai.textTransport && !pendingProvider)
+          pendingProvider = {
+            id: randomUUID(),
+            model: ai.model,
+            reservation_charged: false,
+          };
         // The JSON protocol offers fewer tools: the overview is already in the
         // prompt, and Matilda wandered through get_overview and list_teams.
         const available = options.tools ?? [];
@@ -260,7 +320,11 @@ export async function runAgent(
         ]);
         const fittedMessages = fit(messages, ai);
         let inputCharge = 0;
-        if (options.tokenBudget && charged < messages.length) {
+        if (
+          options.tokenBudget &&
+          !pendingProvider?.reservation_charged &&
+          charged < messages.length
+        ) {
           // Only what is new since the last call counts: the prompt once,
           // then each tool result and note. The model's own replies are
           // counted as output below, not again as input.
@@ -283,7 +347,7 @@ export async function runAgent(
           inputCharge = estimated;
           charged = messages.length;
         }
-        if (options.tokenBudget) {
+        if (options.tokenBudget && !pendingProvider?.reservation_charged) {
           if (
             !overBudget &&
             options.tokenBudget.used + inputCharge + replyReserve >
@@ -292,15 +356,42 @@ export async function runAgent(
             throw new AgentTokenBudgetExhausted();
           options.tokenBudget.used += inputCharge + replyReserve;
         }
+        if (pendingProvider) pendingProvider.reservation_charged = true;
         // Debit and persist before the provider call: a lost reply retains its reserve.
         await checkpoint();
+        const callAi: ResolvedAi =
+          pendingProvider && ai.textTransport
+            ? {
+                ...ai,
+                operationId: pendingProvider.id,
+                textTransport: async (wire, transportSignal) => {
+                  if (pendingProvider!.raw_reply !== undefined)
+                    return pendingProvider!.raw_reply;
+                  pendingProvider!.wire_messages ??= structuredClone(wire);
+                  await checkpoint();
+                  const raw = await ai.textTransport!(
+                    pendingProvider!.wire_messages,
+                    transportSignal,
+                    pendingProvider!.id,
+                  );
+                  if (Buffer.byteLength(raw) > replyReserve * 4)
+                    throw new ProviderError(
+                      "response_too_large",
+                      "The provider reply exceeded the bounded reply size.",
+                    );
+                  pendingProvider!.raw_reply = raw;
+                  await checkpoint();
+                  return raw;
+                },
+              }
+            : ai;
         const result =
           forceToolLoop && ai.structuredOutput
-            ? await runGraphToolStep(ai, fittedMessages, tools, {
+            ? await runGraphToolStep(callAi, fittedMessages, tools, {
                 toolsAllowed,
                 signal,
               })
-            : await step(ai, fittedMessages, tools, {
+            : await step(callAi, fittedMessages, tools, {
                 mode,
                 toolsAllowed,
                 signal,
@@ -314,6 +405,7 @@ export async function runAgent(
           );
         if (options.tokenBudget)
           options.tokenBudget.used += Math.ceil(replyBytes / 4) - replyReserve;
+        if (pendingProvider) pendingProvider.result = structuredClone(result);
         await checkpoint();
         return result;
       } catch (error) {
@@ -334,6 +426,16 @@ export async function runAgent(
         );
         if (attempt >= 2 || deadline.aborted || !RETRYABLE.test(reason))
           throw error;
+        if (pendingProvider?.raw_reply !== undefined) {
+          // A malformed received answer is a completed call, not an uncertain transport.
+          messages.push({
+            role: "user",
+            content:
+              "Return a valid answer matching the requested JSON schema.",
+          });
+          pendingProvider = undefined;
+          await checkpoint();
+        }
       }
     }
   };
@@ -356,6 +458,8 @@ export async function runAgent(
       !deadline.aborted
     ) {
       messages.push({ role: "user", content: PROSE_ANSWER_NOTE });
+      pendingProvider = undefined;
+      await checkpoint();
       try {
         const prose = (await call(false)).text.trim();
         if (prose) summary = prose;
@@ -385,7 +489,7 @@ export async function runAgent(
     const checked = finalizeSources(summary, [...(ctx.cited?.values() ?? [])]);
     summary = checked.summary;
     trace?.({ step: Math.max(1, steps), kind: "reply", label: "Answer ready" });
-    return {
+    const result: AgentResult = {
       summary,
       actions,
       follow_ups: ctx.clarification?.options ?? [],
@@ -395,6 +499,13 @@ export async function runAgent(
       steps,
       partial,
     };
+    if (ai.textTransport) {
+      finishedResult = result;
+      finishedContext = contextHash();
+      pendingProvider = undefined;
+      await checkpoint();
+    }
+    return result;
   };
 
   const consume = async (
@@ -479,9 +590,14 @@ export async function runAgent(
     }
   }
 
-  if (overBudget && finalCallUsed) return finish(lastText, 0, true);
+  if (finishedResult) {
+    await ai.assertAuthority?.();
+    return structuredClone(finishedResult);
+  }
+  if (overBudget && finalCallUsed && !pendingProvider)
+    return finish(lastText, 0, true);
   for (let n = 1; n <= maxSteps; n++) {
-    iterations++;
+    if (!pendingProvider) iterations++;
     const last = n === maxSteps;
     if (last) messages.push({ role: "user", content: FINAL_STEP_NOTE });
     trace?.({ step: n, kind: "thinking", label: "Considering the request" });
@@ -512,6 +628,7 @@ export async function runAgent(
         content: result.text,
         tool_calls: calls,
       });
+      pendingProvider = undefined;
       await checkpoint();
       const completed = await consume(calls, n);
       if (completed) return completed;
@@ -524,6 +641,7 @@ export async function runAgent(
     // gets one nudge, whether or not tools ran first.
     if (!text && guards-- > 0 && !last) {
       messages.push({ role: "user", content: EMPTY_ANSWER_NOTE });
+      pendingProvider = undefined;
       await checkpoint();
       continue;
     }
@@ -537,6 +655,7 @@ export async function runAgent(
     ) {
       messages.push({ role: "assistant", content: text });
       messages.push({ role: "user", content: PROMISED_TOOLS_NOTE });
+      pendingProvider = undefined;
       await checkpoint();
       continue;
     }

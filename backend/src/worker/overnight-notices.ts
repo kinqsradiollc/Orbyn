@@ -20,7 +20,7 @@ export async function queueOvernightNotices(
       }>(
         `SELECT n.id, n.user_id, n.local_day::text AS day, coalesce(a.name, 'Orbyn') AS name, n.notified_at,
          EXISTS(SELECT 1 FROM assistant_night_runs nr JOIN ai_jobs j ON j.id=nr.job_id
-           WHERE nr.night_id=n.id AND j.state IN ('queued','running')) AS active
+           WHERE nr.night_id=n.id AND j.state IN ('queued','running')) OR EXISTS(SELECT 1 FROM assistant_page_runs pr WHERE pr.night_id=n.id AND pr.state IN ('queued','running')) AS active
        FROM assistant_nights n JOIN users u ON u.id = n.user_id
        JOIN agent_settings a ON a.user_id = u.id
        WHERE NOT u.disabled

@@ -35,6 +35,24 @@ const olderThan = (column: string) =>
 
 export const SWEEP_RULES: SweepRule[] = [
   {
+    key: "assistant_page_runs",
+    label: "Completed page maintenance runs",
+    detail: "Completed, failed or cancelled scoped page maintenance work.",
+    table: "assistant_page_runs",
+    where: `${olderThan("updated_at")} AND state IN ('done','failed','cancelled')`,
+    days: 90,
+    configurable: false,
+  },
+  {
+    key: "assistant_page_waiting",
+    label: "Expired page maintenance reviews",
+    detail: "Page changes awaiting a decision for more than a week.",
+    table: "assistant_page_runs",
+    where: `${olderThan("updated_at")} AND state='waiting'`,
+    days: 7,
+    configurable: false,
+  },
+  {
     key: "request_log",
     label: "Request traces",
     detail: "Each request the services answered (Admin → Requests).",
@@ -459,6 +477,37 @@ export const SWEEP_RULES: SweepRule[] = [
     where: `(source = 'assistant' AND expires_at < now() - interval '1 day')
       OR (source = 'agent'
           AND coalesce(decided_at, expires_at) < now() - interval '30 days')`,
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "chatgpt_inference_requests",
+    label: "ChatGPT inference requests",
+    detail:
+      "Expired encrypted envelopes after the saved run becomes inactive; active calls retain recovery evidence.",
+    table: "chatgpt_inference_requests",
+    where:
+      "expires_at < now() AND NOT EXISTS (SELECT 1 FROM ai_jobs recovery_job WHERE recovery_job.id=chatgpt_inference_requests.job_id AND recovery_job.state IN ('queued','running','waiting'))",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "chatgpt_completed_usage",
+    label: "Completed ChatGPT request usage",
+    detail:
+      "Owner-only token measurements without conversation content, kept for 30 days.",
+    table: "chatgpt_completed_usage",
+    where: "completed_at < now() - interval '30 days'",
+    days: 0,
+    configurable: false,
+  },
+  {
+    key: "chatgpt_connect_requests",
+    label: "ChatGPT connection requests",
+    detail:
+      "Expired session-bound authorization handoffs; no provider credentials.",
+    table: "chatgpt_connect_requests",
+    where: "expires_at < now()",
     days: 0,
     configurable: false,
   },

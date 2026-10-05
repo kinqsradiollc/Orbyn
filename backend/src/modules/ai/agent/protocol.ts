@@ -54,10 +54,16 @@ export async function step(
   tools: ToolSpec[],
   options: { mode: Mode; toolsAllowed: boolean; signal: AbortSignal },
 ): Promise<StepResult> {
-  if (options.mode === "json") return jsonStep(ai, messages, tools, options);
-  if (ai.format === "anthropic")
-    return anthropicStep(ai, messages, tools, options);
-  return openAiStep(ai, messages, tools, options);
+  await ai.assertAuthority?.();
+  options.signal.throwIfAborted();
+  const result =
+    options.mode === "json"
+      ? await jsonStep(ai, messages, tools, options)
+      : ai.format === "anthropic"
+        ? await anthropicStep(ai, messages, tools, options)
+        : await openAiStep(ai, messages, tools, options);
+  await ai.recordCompletion?.();
+  return result;
 }
 
 // ---- OpenAI-compatible (and Azure) native tools ----------------------------
@@ -452,25 +458,41 @@ async function jsonStep(
 ): Promise<StepResult> {
   const usable = toolsAllowed ? tools : [];
   const schema = ai.structuredOutput === "json_schema" && usable.length;
-  const response = await send(
-    chatUrl(ai),
-    {
-      method: "POST",
-      headers: headers(ai),
-      body: JSON.stringify({
-        ...(ai.format === "azure" ? {} : { model: ai.model }),
-        messages: toJsonHistory(
-          messages,
-          usable,
-          ai.limits?.maxMessageChars,
-          !!ai.structuredOutput,
-        ),
-        ...(schema ? { response_format: stepFormat(usable) } : {}),
-      }),
-    },
-    signal,
-    ai.apiKey,
+  const protocolMessages = toJsonHistory(
+    messages,
+    usable,
+    ai.limits?.maxMessageChars,
+    !!ai.structuredOutput,
   );
+  const response = ai.textTransport
+    ? Response.json({
+        choices: [
+          {
+            message: {
+              content: await ai.textTransport(
+                protocolMessages,
+                signal,
+                ai.operationId,
+              ),
+            },
+            finish_reason: "stop",
+          },
+        ],
+      })
+    : await send(
+        chatUrl(ai),
+        {
+          method: "POST",
+          headers: headers(ai),
+          body: JSON.stringify({
+            ...(ai.format === "azure" ? {} : { model: ai.model }),
+            messages: protocolMessages,
+            ...(schema ? { response_format: stepFormat(usable) } : {}),
+          }),
+        },
+        signal,
+        ai.apiKey,
+      );
   const body = await json<{
     error?: unknown;
     choices?: { message?: { content?: unknown }; finish_reason?: string }[];

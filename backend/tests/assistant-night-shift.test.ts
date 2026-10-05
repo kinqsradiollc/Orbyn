@@ -800,3 +800,179 @@ test("night goal selection respects weekly attempt limits and retry backoff", as
     false,
   );
 });
+
+async function pagePerson() {
+  const me = await person();
+  await pool.query("DELETE FROM items WHERE id=$1", [me.task]);
+  const prefs = {
+    ...defaultNightShift(),
+    enabled: true,
+    start: "22:00",
+    end: "08:00",
+    timezone: "UTC",
+  };
+  for (const kind of Object.keys(prefs.kinds))
+    prefs.kinds[kind as keyof typeof prefs.kinds] = false;
+  prefs.kinds.follow_through = true;
+  await pool.query(
+    "UPDATE agent_settings SET night_shift=$2 WHERE user_id=$1",
+    [me.id, JSON.stringify(prefs)],
+  );
+  const user = (await pool.query("SELECT * FROM users WHERE id=$1", [me.id]))
+    .rows[0];
+  const doc = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title,content) VALUES($1,'Private page title',$2) RETURNING id",
+      [
+        me.id,
+        JSON.stringify([
+          { id: "summary", type: "paragraph", text: "Selected page summary" },
+        ]),
+      ],
+    )
+  ).rows[0];
+  const { createMaintainedPageBinding } =
+    await import("../src/modules/docs/maintenance.js");
+  const binding = await transaction(async (db) =>
+    createMaintainedPageBinding(
+      db,
+      user,
+      await assistantPrincipal(user, { db }),
+      doc.id,
+      {
+        block_ids: ["summary"],
+        expected_doc_version: 1,
+        instruction: "Maintain summary",
+        rrule: "FREQ=DAILY",
+        timezone: "UTC",
+        next_run_at: "2050-01-02T22:00:00Z",
+        paused: false,
+      },
+    ),
+  );
+  return { ...me, doc: doc.id, binding: binding.id };
+}
+
+test("Night queues a scoped page once, counts it and reports safe morning progress", async () => {
+  const me = await pagePerson();
+  const now = new Date("2050-01-02T23:00:00Z");
+  const opts = { only: [me.id], ai };
+  assert.equal(await scanNightShift(now, opts), 1);
+  const n = await night(me.id);
+  assert.equal(n.runs, 1);
+  assert.ok(!JSON.stringify(n.summary).includes("Private page title"));
+  assert.equal(await scanNightShift(now, opts), 0);
+  const run = (
+    await pool.query("SELECT * FROM assistant_page_runs WHERE night_id=$1", [
+      n.id,
+    ])
+  ).rows[0];
+  assert.equal(run.lane, "overnight");
+  assert.equal(run.requires_review, true);
+  assert.equal(
+    (
+      await pool.query("SELECT count(*)::int n FROM ai_jobs WHERE user_id=$1", [
+        me.id,
+      ])
+    ).rows[0].n,
+    0,
+  );
+  await pool.query("UPDATE assistant_page_runs SET state='done' WHERE id=$1", [
+    run.id,
+  ]);
+  assert.equal(await scanNightShift(now, opts), 0);
+  assert.equal((await night(me.id)).status, "done");
+  const { latestNight } =
+    await import("../src/modules/assistant-workspace/overnight.js");
+  const shown = await transaction((db) => latestNight(db, me.id, n.id));
+  assert.equal(shown?.page_runs?.length, 1);
+  assert.equal(shown?.page_runs?.[0].doc_id, me.doc);
+  const { buildOvernightSection } = await import("../src/worker/digest.js");
+  const section = await buildOvernightSection(me.id, "2050-01-03", n.id);
+  assert.ok(section?.firstLine.includes("1 run finished"));
+  assert.ok(section?.markdown.join(" ").includes("Page updated"));
+  assert.ok(!JSON.stringify(section).includes("Private page title"));
+  await pool.query("UPDATE agent_grants SET personal=false WHERE id=$1", [
+    me.grant,
+  ]);
+  assert.equal(
+    (await transaction((db) => latestNight(db, me.id, n.id)))?.page_runs
+      ?.length,
+    0,
+  );
+  assert.equal(await buildOvernightSection(me.id, "2050-01-03", n.id), null);
+});
+
+test("page candidates obey the shared Night ten-run cap", async () => {
+  const me = await pagePerson();
+  const now = new Date("2050-01-02T23:00:00Z");
+  await pool.query(
+    "INSERT INTO assistant_nights(user_id,local_day,runs) VALUES($1,'2050-01-02',10)",
+    [me.id],
+  );
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 0);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM assistant_page_runs WHERE user_id=$1",
+        [me.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+  const n = await night(me.id);
+  assert.equal(n.status, "done");
+  assert.ok(
+    n.summary.not_done.some((entry: { reason: string }) =>
+      entry.reason.includes("ten-run"),
+    ),
+  );
+});
+
+test("a due page cannot take the final Night slot reserved for reflection", async () => {
+  const me = await pagePerson();
+  const now = new Date("2050-01-02T23:00:00Z");
+  await pool.query(
+    "UPDATE agent_settings SET night_shift=jsonb_set(night_shift,'{kinds,reflection}','true') WHERE user_id=$1",
+    [me.id],
+  );
+  const chat = randomUUID();
+  await pool.query(
+    "INSERT INTO ai_chats(id,user_id,title,origin) VALUES($1,$2,'Reflection evidence','person')",
+    [chat, me.id],
+  );
+  await pool.query(
+    "INSERT INTO ai_jobs(user_id,chat_id,turn_id,state,result,sources_checked,created_at) VALUES($1,$2,$3,'done',$4,true,$5)",
+    [
+      me.id,
+      chat,
+      randomUUID(),
+      JSON.stringify({ answer: "A completed authorized draft." }),
+      new Date(now.getTime() - 1000),
+    ],
+  );
+  await pool.query(
+    "INSERT INTO assistant_nights(user_id,local_day,runs) VALUES($1,'2050-01-02',9)",
+    [me.id],
+  );
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 1);
+  const job = await queuedJob(me.id);
+  assert.equal(job.run_state.request.automation.night_kind, "reflection");
+  assert.equal((await night(me.id)).runs, 10);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM assistant_page_runs WHERE user_id=$1",
+        [me.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+  await complete(job.id);
+  assert.equal(await scanNightShift(now, { only: [me.id], ai }), 0);
+  assert.ok(
+    (await night(me.id)).summary.not_done.some(
+      (entry: { kind: string }) => entry.kind === "page_update",
+    ),
+  );
+});

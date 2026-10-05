@@ -1,3 +1,4 @@
+import type { AiFeatureProvider } from "./ai-feature.js";
 import type { ProjectDecomposition } from "./projectDraft.js";
 import type { AssistantSource, DraftNote } from "./docs.js";
 import type { SessionChange } from "./schemas.js";
@@ -410,6 +411,7 @@ export type Notice = {
 
 /** An AI plan awaiting user approval. `id` is the proposal id to apply. */
 export type Proposal = AgentReply & {
+  provider?: AiFeatureProvider;
   /** A dependency-aware project and schedule, approved together. */
   project?: ProjectDecomposition | null;
   id: string;

@@ -80,7 +80,7 @@ test("plan requests use the fixed endpoint, supported fields and observed comple
     event("response.output_text.delta", { delta: "Hi" }) + done,
     calls,
   ).complete(
-    { ...request, ...{ max_output_tokens: 20, background: true } },
+    { ...request, ...{ background: true } },
     { onText: (x) => deltas.push(x) },
   );
   assert.equal(result, "Hi");
@@ -276,5 +276,122 @@ test("missing account binding is rejected before any credential request", () => 
         credential,
       }),
     /account/,
+  );
+});
+
+test("only completed Responses usage is reported; missing or invalid counts remain unknown", async () => {
+  for (const usage of [
+    { input_tokens: 9, output_tokens: 3, total_tokens: 12 },
+    undefined,
+    { input_tokens: 9, output_tokens: 3, total_tokens: 99 },
+  ]) {
+    const reported: unknown[] = [];
+    await client(
+      event("response.output_text.delta", { delta: "hello" }) +
+        event("response.completed", {
+          response: { status: "completed", usage },
+        }),
+    ).complete(request, { onUsage: (value) => reported.push(value) });
+    assert.deepEqual(reported, [usage?.total_tokens === 12 ? usage : null]);
+  }
+  const rejected: unknown[] = [];
+  await assert.rejects(
+    client(
+      event("response.failed", {
+        response: {
+          error: { code: "subscription_sharing_usage_limit_exceeded" },
+        },
+      }),
+    ).complete(request, { onUsage: (value) => rejected.push(value) }),
+    /usage limit/,
+  );
+  assert.deepEqual(rejected, []);
+});
+
+test("missing media headers still require a valid completed event stream, never JSON or HTML", async () => {
+  const responseFor = (body: string, mime?: string) =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(body));
+          controller.close();
+        },
+      }),
+      { headers: mime ? { "Content-Type": mime } : {} },
+    );
+  const make = (body: string, mime?: string) =>
+    new ChatgptPlanClient({
+      account,
+      credential,
+      fetch: (async (url) =>
+        String(url).endsWith("/models")
+          ? Response.json(catalog)
+          : responseFor(body, mime)) as typeof fetch,
+    });
+  const usage = { input_tokens: 4, output_tokens: 2, total_tokens: 6 };
+  const stream =
+    event("response.output_text.delta", { delta: "Verified" }) +
+    event("response.completed", { response: { status: "completed", usage } });
+  const reported: unknown[] = [];
+  assert.equal(
+    await make(stream).complete(request, { onUsage: (u) => reported.push(u) }),
+    "Verified",
+  );
+  assert.deepEqual(reported, [usage]);
+  assert.equal(
+    await make(stream, "Text/Event-Stream; charset=utf-8").complete(request),
+    "Verified",
+  );
+  for (const body of [
+    '{"status":"completed"}',
+    "<html>not a stream</html>",
+    event("response.output_text.delta", { delta: "partial" }),
+  ]) {
+    await assert.rejects(
+      make(body).complete(request, {
+        onUsage: () => assert.fail("incomplete output cannot publish usage"),
+      }),
+      /disconnected/,
+    );
+  }
+  await assert.rejects(
+    make("data: invalid-json\n\n").complete(request),
+    /invalid stream/,
+  );
+  await assert.rejects(
+    make(stream, "application/json").complete(request),
+    /response stream/,
+  );
+});
+
+test("private Responses wire refuses an unenforceable output-token limit", async () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  await assert.rejects(
+    client(done, calls).complete({ ...request, max_output_tokens: 321 }),
+    /hard output-token limit/,
+  );
+  assert.equal(
+    calls.length,
+    0,
+    "A required budget is never dropped or dispatched as unsupported input.",
+  );
+  const before = calls.length;
+  for (const value of [0, -1, 1.5, 65537, NaN])
+    await assert.rejects(
+      client(done, calls).complete({ ...request, max_output_tokens: value }),
+    );
+  assert.equal(calls.length, before);
+});
+
+test("a required hard output budget is rejected before any public ChatGPT request when the route cannot enforce it", async () => {
+  const calls: { url: string; init?: RequestInit }[] = [];
+  await assert.rejects(
+    client(done, calls).complete({ ...request, max_output_tokens: 512 }),
+    /hard output-token limit/,
+  );
+  assert.equal(
+    calls.length,
+    0,
+    "No model lookup or inference is dispatched without budget enforcement",
   );
 });

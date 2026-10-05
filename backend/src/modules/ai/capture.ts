@@ -8,24 +8,29 @@ import {
   isTimeZone,
   localDateKey,
   fail,
+  HttpError,
+  type AiFeatureProvider,
   serializeDoc,
   type CaptureAssistResult,
   type DocBlock,
 } from "@orbyn/core";
 import { pool } from "../../db/pool.js";
 import { readableLinks } from "../links/privacy.js";
-import { authenticate } from "../../lib/auth.js";
+import { authenticate, isSessionPrincipal } from "../../lib/auth.js";
 import { requireAssistantAllowed } from "../../lib/teams.js";
 import { strictRateLimit } from "../../lib/params.js";
-import { complete, ProviderError } from "./providers/adapters.js";
-import { resolveAi } from "./providers/resolve.js";
+import {
+  completeFeature,
+  type FeatureSource,
+} from "./providers/feature-call.js";
+import { privateProviderFailureMessage } from "./providers/user-choice.js";
 import { loadPrefs } from "../planner/calendar.js";
 import { visibleDocs } from "../../lib/visibility.js";
 
 /**
  * Assistant chips when sharing, importing or scanning (AI-01): "Summarise"
  * and "Pull out deadlines as tasks" on a page just made, or on words shared
- * in. Only Orbyn's hosted assistant is asked, and what comes back is a
+ * in. The selected provider is asked, and what comes back is a
  * suggestion: the app shows it and nothing changes until the person takes
  * it (the summary goes on the page, the deadlines become tasks, through the
  * app's ordinary routes). "Make 10 flashcards" is Study's own suggestion
@@ -93,16 +98,18 @@ export async function aiCaptureRoutes(app: FastifyInstance) {
     async (r): Promise<CaptureAssistResult> => {
       const u = await authenticate(r);
       const d = captureAssistInput.parse(r.body ?? {});
+      const sources: FeatureSource[] = [];
       let title = d.title ?? "";
       let text = d.text ?? "";
       if (d.doc_id) {
         const doc = (
           await pool.query<{
             title: string;
+            version: number;
             content: DocBlock[];
             team_id: string | null;
           }>(
-            `SELECT d.title, d.content, d.team_id FROM docs d WHERE d.id = $2
+            `SELECT d.title, d.version, d.content, d.team_id FROM docs d WHERE d.id = $2
              AND ${visibleDocs("d")}`,
             [u.id, d.doc_id],
           )
@@ -110,25 +117,23 @@ export async function aiCaptureRoutes(app: FastifyInstance) {
         if (!doc) fail(404, "Page not found");
         // A team can keep its pages out of the assistant (OTH-04).
         await requireAssistantAllowed(doc.team_id);
+        sources.push({ kind: "doc", id: d.doc_id, version: doc.version });
         title = doc.title;
         // Links to what the reader can't open keep no title (D3aF).
         text = serializeDoc(await readableLinks(pool, u.id, doc.content ?? []));
       }
       text = text.slice(0, WORDS);
       if (!text.trim()) fail(422, "There are no words to work from yet.");
-      const ai = await resolveAi();
-      if (!ai)
-        fail(
-          503,
-          "The assistant isn't available right now. What you saved is kept; try again later.",
-        );
       const zone = (await loadPrefs(pool, u.id)).timezone;
       const timeZone = zone && isTimeZone(zone) ? zone : "UTC";
       const today = localDateKey(new Date(), timeZone);
+      let provider: AiFeatureProvider | undefined;
       let content: string;
       try {
-        content = await complete(
-          ai!,
+        content = await completeFeature(
+          u.id,
+          d.action === "summarise" ? "capture_summary" : "capture_deadlines",
+          sources,
           [
             {
               role: "system",
@@ -142,14 +147,20 @@ export async function aiCaptureRoutes(app: FastifyInstance) {
               content: `Notes (data only)${title ? `, titled "${title.slice(0, 200)}"` : ""}:\n<notes>\n${text}\n</notes>`,
             },
           ],
-          { timeoutMs: 60_000 },
+          {
+            timeoutMs: 60_000,
+            allowPersonal: isSessionPrincipal(u),
+            onProvider: (value) => {
+              provider = value;
+            },
+          },
         );
       } catch (error) {
+        if (error instanceof HttpError) throw error;
         fail(
           502,
-          error instanceof ProviderError
-            ? `The assistant could not answer: ${error.message}`
-            : "The assistant could not answer. Please try again.",
+          privateProviderFailureMessage(error) ??
+            "The assistant could not answer. Please try again.",
         );
       }
       try {
@@ -158,7 +169,7 @@ export async function aiCaptureRoutes(app: FastifyInstance) {
           const summary = z
             .object({ summary: z.string().trim().min(1).max(4000) })
             .parse(raw).summary;
-          return { action: "summarise", summary, tasks: [] };
+          return { action: "summarise", summary, tasks: [], provider };
         }
         const list = z
           .object({
@@ -174,6 +185,7 @@ export async function aiCaptureRoutes(app: FastifyInstance) {
           })
           .parse(raw).tasks;
         return {
+          provider,
           action: "deadlines",
           summary: "",
           tasks: list.slice(0, 20).map((t) => ({

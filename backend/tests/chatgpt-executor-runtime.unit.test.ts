@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 const { createChatgptExecutorRuntime: create } = createRequire(import.meta.url)(
   "../../desktop/chatgpt-executor-runtime.cjs",
 );
@@ -278,4 +278,149 @@ test("closing during a provider read aborts it and prevents publication or queue
   assert.equal(f.published.length, 0);
   assert.equal(f.heartbeats.length, 0);
   f.runtime.close();
+});
+
+async function assignmentFixture(error: any = null) {
+  const f = await fixture();
+  const payload = {
+    instructions: "Private instructions",
+    input: [{ role: "user", content: "Private question" }],
+  };
+  const task = {
+    id: randomUUID(),
+    job_id: randomUUID(),
+    executor_id: f.lease.executor_id,
+    binding: f.binding,
+    enrollment_epoch: 1,
+    lease_epoch: 1,
+    model: "fixture-model",
+    nonce: "A".repeat(43),
+    request_hash: createHash("sha256")
+      .update(
+        JSON.stringify({
+          binding: f.binding,
+          model: "fixture-model",
+          payload,
+          job_id: "pending",
+        }),
+      )
+      .digest("hex"),
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+    payload,
+  };
+  task.request_hash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        binding: task.binding,
+        model: task.model,
+        payload: task.payload,
+        job_id: task.job_id,
+      }),
+    )
+    .digest("hex");
+  let calls = 0,
+    claimed = false;
+  const results: any[] = [];
+  const runtime = await create({
+    ...f.options,
+    client: {
+      ...f.client,
+      claimChatgptInference: async () => {
+        if (claimed) return null;
+        claimed = true;
+        return task;
+      },
+      finishChatgptInference: async (value: any) => {
+        results.push(value);
+      },
+    },
+    signer: {
+      ...f.options.signer,
+      signInference: async (receipt: any) => ({
+        receipt,
+        signature: "A".repeat(86),
+      }),
+    },
+    supportsOutputTokenLimit: true,
+    completeAssigned: async (model: string, value: any) => {
+      calls++;
+      assert.equal(model, task.model);
+      assert.deepEqual(value, payload);
+      if (error) throw error;
+      return {
+        text: "Completed",
+        usage: { input_tokens: 4, output_tokens: 2, total_tokens: 6 },
+      };
+    },
+  });
+  await runtime.start();
+  return { f, task, runtime, results, calls: () => calls };
+}
+test("device consumes only the captured assignment and publishes one completed usage receipt", async () => {
+  const f = await assignmentFixture();
+  try {
+    assert.deepEqual(f.f.published.at(-1).capabilities, [
+      "plan_inference_v1",
+      "plan_inference_limits_v1",
+    ]);
+    assert.deepEqual(await f.runtime.executeNext(), { processed: true });
+    assert.equal(f.calls(), 1);
+    assert.equal(f.results[0].receipt.result.status, "completed");
+    assert.equal(f.results[0].receipt.result.usage.total_tokens, 6);
+    assert.deepEqual(await f.runtime.executeNext(), { processed: false });
+    assert.equal(f.calls(), 1);
+  } finally {
+    f.runtime.close();
+    f.f.runtime.close();
+  }
+});
+test("changed input hash fails before inference; quota failure cannot become completed output", async () => {
+  const tampered = await assignmentFixture();
+  tampered.task.payload.instructions = "Tampered";
+  try {
+    await assert.rejects(tampered.runtime.executeNext(), /assignment changed/);
+    assert.equal(tampered.calls(), 0);
+    assert.equal(tampered.results.length, 0);
+  } finally {
+    tampered.runtime.close();
+    tampered.f.runtime.close();
+  }
+  const limited = await assignmentFixture(
+    Object.assign(new Error("Private provider body"), {
+      status: 429,
+      providerCode: "subscription_sharing_usage_limit_exceeded",
+    }),
+  );
+  try {
+    await limited.runtime.executeNext();
+    assert.equal(limited.results[0].receipt.result.status, "failed");
+    assert.equal(limited.results[0].receipt.result.reason, "usage_limit");
+    assert.equal(limited.results[0].receipt.result.phase, "admission");
+    assert.ok(
+      !JSON.stringify(limited.results).includes("Private provider body"),
+    );
+  } finally {
+    limited.runtime.close();
+    limited.f.runtime.close();
+  }
+});
+
+test("the default desktop executor never advertises unsupported hard output limits", async () => {
+  const f = await fixture();
+  const runtime = await create({
+    ...f.options,
+    client: {
+      ...f.options.client,
+      claimChatgptInference: async () => null,
+      finishChatgptInference: async () => {},
+    },
+    completeAssigned: async () => ({ text: "Not called", usage: null }),
+  });
+  try {
+    await runtime.start();
+    assert.deepEqual(f.published.at(-1).capabilities, ["plan_inference_v1"]);
+  } finally {
+    runtime.close();
+    f.runtime.close();
+  }
 });

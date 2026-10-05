@@ -27,7 +27,8 @@ async function createChatgptManager({
   schedule = setTimeout,
   cancelSchedule = clearTimeout,
 }) {
-  const { OrbynClient } = await import("@orbyn/api-client");
+  const { OrbynClient, safeChatgptActionError } =
+    await import("@orbyn/api-client");
   const { chatgptModelBinding, chatgptModelPreference } =
     await import("@orbyn/core");
   const storage = { directory, apiBaseUrl, safeStorage, platform };
@@ -71,6 +72,7 @@ async function createChatgptManager({
           "The credential-owning device is unavailable. Reconnect or retry.",
       };
     cancelSchedule(ctx.active.timer);
+    cancelSchedule(ctx.active.inferenceTimer);
     ctx.active.unsubscribe?.();
     ctx.active.models.close();
     ctx.active.executor.close();
@@ -102,9 +104,7 @@ async function createChatgptManager({
             return { ...result, state: { ...result.state, busy: false } };
           return result;
         } catch (error) {
-          if (ctx === context)
-            ctx.error =
-              "ChatGPT could not complete this action. Retry or reconnect this account.";
+          if (ctx === context) ctx.error = safeChatgptActionError(error);
           throw error;
         } finally {
           if (ctx === context) {
@@ -223,9 +223,17 @@ async function createChatgptManager({
           selected: value.registrationId === selection.registrationId,
           sharing_granted: ctx.grants.get(value.registrationId) ?? null,
         })),
-      selection,
+      selection: {
+        ...selection,
+        ...(ctx.active?.executorSelection
+          ? { executor: ctx.active.executorSelection }
+          : {}),
+      },
       catalog,
       error: ctx.error,
+      ...(ctx.active?.verification
+        ? { verification: ctx.active.verification }
+        : {}),
     };
   };
   const activate = async (ctx, registrationId) => {
@@ -296,6 +304,7 @@ async function createChatgptManager({
         signer,
         models: models.models,
         complete: models.completeDefault,
+        completeAssigned: models.completeAssigned,
         requireLiveConnection: live,
       });
       const active = {
@@ -313,10 +322,36 @@ async function createChatgptManager({
       const started = await executor.start(ctx.lifetime.signal);
       await live();
       serverSelection = started.selection;
+      active.executorSelection = started.selection;
       await models.picker.load();
       await live();
       if (models.picker.snapshot().status !== "ready")
         throw new Error("ChatGPT models could not be loaded.");
+      const processInference = async () => {
+        if (
+          ctx !== context ||
+          ctx.active !== active ||
+          ctx.lifetime.signal.aborted
+        )
+          return;
+        try {
+          await executor.executeNext(ctx.lifetime.signal);
+        } catch {
+          /* Terminal request failure or fenced assignment never retries inference. */
+        }
+        if (
+          ctx === context &&
+          ctx.active === active &&
+          !ctx.lifetime.signal.aborted
+        ) {
+          active.inferenceTimer = schedule(processInference, 5000);
+          active.inferenceTimer?.unref?.();
+        }
+      };
+      if (typeof ctx.client.claimChatgptInference === "function") {
+        active.inferenceTimer = schedule(processInference, 5000);
+        active.inferenceTimer?.unref?.();
+      }
       const pulse = async () => {
         if (ctx !== context || ctx.active !== active) return;
         try {
@@ -355,7 +390,35 @@ async function createChatgptManager({
       throw error;
     }
   };
-  return {
+  const watchConnectRequests = (ctx) => {
+    if (typeof ctx.client.pendingChatgptConnectRequests !== "function") return;
+    const pulse = async () => {
+      if (ctx !== context || ctx.lifetime.signal.aborted) return;
+      try {
+        if (!ctx.busy && !ctx.signInAbort) {
+          const pending = await ctx.client.pendingChatgptConnectRequests(
+            ctx.lifetime.signal,
+          );
+          requireContext(ctx);
+          if (pending[0]) await manager.connectRequest(pending[0].id);
+        }
+      } catch {
+        /* Another local runtime may have claimed it; no duplicate authorization. */
+      }
+      if (ctx === context && !ctx.lifetime.signal.aborted) {
+        ctx.connectTimer = schedule(pulse, 15000);
+        ctx.connectTimer?.unref?.();
+      }
+    };
+    ctx.lifetime.signal.addEventListener(
+      "abort",
+      () => cancelSchedule(ctx.connectTimer),
+      { once: true },
+    );
+    ctx.connectTimer = schedule(pulse, 15000);
+    ctx.connectTimer?.unref?.();
+  };
+  const manager = {
     subscribe(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -422,6 +485,7 @@ async function createChatgptManager({
         }
       }
       requireContext(ctx);
+      watchConnectRequests(ctx);
       notify();
       return snapshot();
     },
@@ -441,6 +505,30 @@ async function createChatgptManager({
         await activate(ctx, registrationId);
         return snapshot();
       }).finally(attempt.release);
+    },
+    async connectRequest(requestId) {
+      chatgptModelBinding.shape.connection_id.parse(requestId);
+      const ctx = requireContext();
+      await ctx.client.claimChatgptConnectRequest(requestId);
+      requireContext(ctx);
+      try {
+        const state = await manager.connect();
+        requireContext(ctx);
+        const selected = state.connections.find((value) => value.selected);
+        if (!selected) throw new Error("ChatGPT sign-in did not finish.");
+        await ctx.client.finishChatgptConnectRequest(
+          requestId,
+          selected.binding.connection_id,
+        );
+        requireContext(ctx);
+        return state;
+      } catch (error) {
+        if (ctx === context && ctx.generation === generation)
+          await ctx.client
+            .finishChatgptConnectRequest(requestId, null)
+            .catch(() => {});
+        throw error;
+      }
     },
     select(registrationId, expectedRevision) {
       if (registrationId !== "primary")
@@ -517,6 +605,46 @@ async function createChatgptManager({
         return snapshot();
       });
     },
+    verifyPlan() {
+      return ordered(async (ctx) => {
+        const active = ctx.active;
+        if (!active || !ctx.grants.get(active.registrationId))
+          throw new Error(
+            "Enable ChatGPT plan usage and select an account first.",
+          );
+        active.verification = null;
+        let receipt = null;
+        const model = active.models.picker.defaultStatus();
+        if (model.status !== "available")
+          throw new Error("Choose a ChatGPT default model first.");
+        const text = await active.models.completeDefault(
+          {
+            input: [
+              {
+                role: "user",
+                content: "Reply with exactly: Token sharing works.",
+              },
+            ],
+          },
+          {
+            signal: ctx.lifetime.signal,
+            onReceipt: (value) => {
+              receipt = value;
+            },
+          },
+        );
+        requireContext(ctx);
+        if (ctx.active !== active || !text.trim() || !receipt)
+          throw new Error("ChatGPT plan verification did not complete.");
+        active.verification = {
+          binding: active.binding,
+          model: receipt.model,
+          verified_at: new Date().toISOString(),
+          usage: receipt.usage,
+        };
+        return snapshot();
+      });
+    },
     disconnect(registrationId) {
       if (registrationId !== "primary")
         chatgptModelBinding.shape.connection_id.parse(registrationId);
@@ -567,5 +695,6 @@ async function createChatgptManager({
       notify();
     },
   };
+  return manager;
 }
 module.exports = { createChatgptManager };

@@ -20,6 +20,7 @@ import {
 } from "react-native";
 import {
   addDays,
+  agendaRewriteFeedback,
   agendaDay,
   agendaGroups,
   agendaMonthKey,
@@ -2381,11 +2382,7 @@ function OpenDoc({
         client.rewriteAgenda(deviceTimeZone()).then(
           (next) => {
             setRewriting(false);
-            setRewritten(
-              next.brief
-                ? "Rewritten from your calendar, with the assistant's summary."
-                : "Rewritten from your calendar.",
-            );
+            setRewritten(agendaRewriteFeedback(next));
             onChanged(next);
           },
           (e) => {

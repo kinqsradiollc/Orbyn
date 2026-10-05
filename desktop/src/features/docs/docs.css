@@ -25,6 +25,10 @@
 .docs-count {
   font-size: 13px;
 }
+.docs-library-title {
+  font-size: 18px;
+  margin-bottom: 0;
+}
 
 .docs-list {
   list-style: none;
@@ -1641,6 +1645,7 @@ h6.doc-heading {
 }
 .doc-chat-turn p {
   margin: 0;
+  color: inherit;
 }
 .doc-chat-turn.is-you {
   justify-self: end;
@@ -4201,4 +4206,10 @@ input.doc-image-caption:focus {
   max-width: 100%;
   max-height: 60dvh;
   overflow: auto;
+}
+
+.doc-chat-provider {
+  display: block;
+  color: var(--color-muted);
+  overflow-wrap: anywhere;
 }

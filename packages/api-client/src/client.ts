@@ -1,4 +1,9 @@
 import {
+  type AgendaBriefOutcome,
+  type MaintainedPageBinding,
+  type MaintainedPageRunSummary,
+  type MaintainedPageBindingInput,
+  type MaintainedPageBindingUpdate,
   assistantActivityLane,
   assistantProfiles,
   assistantActivityQuery,
@@ -33,6 +38,13 @@ import {
   chatgptConnection,
   chatgptConnectionList,
   type ChatgptConnectionStart,
+  chatgptConnectRequestStart,
+  aiProviderChoice,
+  aiProviderChoiceInput,
+  chatgptUsageSummary,
+  chatgptInferenceAssignment,
+  chatgptInferencePublication,
+  chatgptConnectRequestState,
   type ChatgptConnectionFinish,
   HttpError,
   type AgentGrant,
@@ -59,6 +71,10 @@ import {
   type ApprovalScopes,
   type AssistantIdea,
   type AgentIdentityInput,
+  automationAgentIdentity,
+  type AutomationAgentLane,
+  type AutomationAgentIdentity,
+  type AutomationAgentIdentityInput,
   type NewAgentWake,
   type ProposalStatus,
   type McpCatalog,
@@ -89,6 +105,7 @@ import {
   type RevisionPlan,
   type StudyCard,
   type StudyOverview,
+  type AiFeatureProvider,
   type SuggestedCard,
   type LegalDoc,
   type LegalDocument,
@@ -562,6 +579,18 @@ export class OrbynClient {
   private readonly agentSettingsListeners = new Set<
     (settings: PersonalAgentSettings) => void
   >();
+  private readonly automationIdentityListeners = new Set<
+    (identity: AutomationAgentIdentity) => void
+  >();
+  /** Observe saves in this client; results are isolated from account changes. */
+  onAutomationAgentIdentity(
+    listener: (identity: AutomationAgentIdentity) => void,
+  ) {
+    this.automationIdentityListeners.add(listener);
+    return () => {
+      this.automationIdentityListeners.delete(listener);
+    };
+  }
   /** Concurrent ordinary reads share transport, but never mutable result objects. */
   private readonly pendingReads = new Map<
     string,
@@ -1169,7 +1198,9 @@ export class OrbynClient {
    * page's content. `brief` says whether the assistant wrote one.
    */
   rewriteAgenda(timezone?: string) {
-    return this.request<Doc & { brief: boolean }>("/ai/agenda/today", {
+    return this.request<
+      Doc & { brief: boolean; briefing?: AgendaBriefOutcome }
+    >("/ai/agenda/today", {
       method: "POST",
       body: timezone ? { timezone } : {},
     });
@@ -1359,6 +1390,78 @@ export class OrbynClient {
   /** Your saved chats with the assistant about a project, newest first. */
   projectChats(projectId: string) {
     return this.request<AiChatSummary[]>(`/ai/projects/${projectId}/chats`);
+  }
+  async aiProviderChoice(signal?: AbortSignal) {
+    return aiProviderChoice.parse(
+      await this.request("/ai/provider-choice", { fresh: true, signal }),
+    );
+  }
+  /** Completed Orbyn request measurements, not account-wide ChatGPT quota. */
+  async chatgptUsage(signal?: AbortSignal) {
+    return chatgptUsageSummary.parse(
+      await this.request("/ai/connections/chatgpt/usage", {
+        fresh: true,
+        signal,
+      }),
+    );
+  }
+  async saveAiProviderChoice(input: unknown, signal?: AbortSignal) {
+    return aiProviderChoice.parse(
+      await this.request("/ai/provider-choice", {
+        method: "PUT",
+        body: aiProviderChoiceInput.parse(input),
+        signal,
+      }),
+    );
+  }
+  async startChatgptConnectRequest(signal?: AbortSignal) {
+    return chatgptConnectRequestStart.parse(
+      await this.request("/ai/connections/chatgpt/connect-requests", {
+        method: "POST",
+        body: {},
+        signal,
+      }),
+    );
+  }
+  async chatgptConnectRequest(id: string, signal?: AbortSignal) {
+    return chatgptConnectRequestState.parse(
+      await this.request(`/ai/connections/chatgpt/connect-requests/${id}`, {
+        fresh: true,
+        signal,
+      }),
+    );
+  }
+  async claimChatgptInference(executorId: string, signal?: AbortSignal) {
+    const result = await this.request(
+      "/ai/connections/chatgpt/inference/claim",
+      { method: "POST", body: { executor_id: executorId }, signal },
+    );
+    return result === null ? null : chatgptInferenceAssignment.parse(result);
+  }
+  finishChatgptInference(publication: unknown, signal?: AbortSignal) {
+    return this.request("/ai/connections/chatgpt/inference/result", {
+      method: "POST",
+      body: chatgptInferencePublication.parse(publication),
+      signal,
+    });
+  }
+  pendingChatgptConnectRequests(signal?: AbortSignal) {
+    return this.request<{ id: string; expires_at: string }[]>(
+      "/ai/connections/chatgpt/connect-requests/pending",
+      { fresh: true, signal },
+    );
+  }
+  claimChatgptConnectRequest(id: string) {
+    return this.request(
+      `/ai/connections/chatgpt/connect-requests/${id}/claim`,
+      { method: "POST", body: {} },
+    );
+  }
+  finishChatgptConnectRequest(id: string, connectionId: string | null) {
+    return this.request(
+      `/ai/connections/chatgpt/connect-requests/${id}/finish`,
+      { method: "POST", body: { connection_id: connectionId } },
+    );
   }
   /** Start a session-bound identity proof; plan credentials stay in the device runtime. */
   async startChatgptConnection(
@@ -2358,8 +2461,58 @@ export class OrbynClient {
     ).toString();
     return this.request<DocSummary[]>(`/docs${q ? `?${q}` : ""}`);
   }
-  getDoc(id: string) {
-    return this.request<Doc>(`/docs/${id}`);
+  /** Private ownership and schedules for selected page blocks. */
+  listPageMaintenanceRuns(docId: string) {
+    return this.request<MaintainedPageRunSummary[]>(
+      `/docs/${docId}/maintenance/runs`,
+      { fresh: true },
+    );
+  }
+  decidePageMaintenanceRun(
+    docId: string,
+    runId: string,
+    waitingId: string,
+    approved: boolean,
+  ) {
+    return this.request<{ state: "done" | "cancelled" }>(
+      `/docs/${docId}/maintenance/runs/${runId}/decision`,
+      { method: "POST", body: { waiting_id: waitingId, approved } },
+    );
+  }
+  listPageMaintenance(docId: string) {
+    return this.request<MaintainedPageBinding[]>(`/docs/${docId}/maintenance`);
+  }
+  createPageMaintenance(docId: string, body: MaintainedPageBindingInput) {
+    return this.request<MaintainedPageBinding>(`/docs/${docId}/maintenance`, {
+      method: "POST",
+      body,
+    });
+  }
+  updatePageMaintenance(
+    docId: string,
+    bindingId: string,
+    body: MaintainedPageBindingUpdate,
+  ) {
+    return this.request<MaintainedPageBinding>(
+      `/docs/${docId}/maintenance/${bindingId}`,
+      { method: "PUT", body },
+    );
+  }
+  deletePageMaintenance(
+    docId: string,
+    bindingId: string,
+    expectedRevision: number,
+  ) {
+    return this.request<{ ok: true }>(
+      `/docs/${docId}/maintenance/${bindingId}`,
+      {
+        method: "DELETE",
+        body: { expected_revision: expectedRevision },
+      },
+    );
+  }
+  getDoc(id: string, options: Pick<RequestOptions, "fresh" | "signal"> = {}) {
+    return this.request<Doc>(`/docs/${id}`, options);
   }
   /** A page's Info panel: what it belongs to, tags, links, versions. */
   docInfo(id: string) {
@@ -3425,6 +3578,35 @@ export class OrbynClient {
   agentContext() {
     return this.request<AgentContextSettings>("/me/agent-context");
   }
+  /** Fresh, account-bound identity for one independent automation runtime. */
+  async automationAgentIdentity(lane: AutomationAgentLane) {
+    const saved = await this.request<AutomationAgentIdentity>(
+      `/me/assistant/identity/${lane}`,
+      { fresh: true },
+    );
+    const checked = automationAgentIdentity.parse(saved);
+    if (checked.lane !== lane)
+      throw new Error("Agent identity belongs to another runtime.");
+    return checked;
+  }
+  async updateAutomationAgentIdentity(
+    lane: AutomationAgentLane,
+    input: AutomationAgentIdentityInput,
+  ) {
+    const token = await this.getToken();
+    const saved = await this.request<AutomationAgentIdentity>(
+      `/me/assistant/identity/${lane}`,
+      { method: "PUT", body: input },
+    );
+    const checked = automationAgentIdentity.parse(saved);
+    if (checked.lane !== lane)
+      throw new Error("Agent identity belongs to another runtime.");
+    if (token === (await this.getToken())) {
+      for (const listener of this.automationIdentityListeners)
+        listener(structuredClone(checked));
+    }
+    return checked;
+  }
   agentSettings(options?: Pick<RequestOptions, "fresh">) {
     return this.request<PersonalAgentSettings>("/me/agent", options);
   }
@@ -4254,14 +4436,18 @@ export class OrbynClient {
   }
   /** The assistant's suggested cards from a page — a proposal to tick. */
   suggestCards(docId: string, max?: number) {
-    return this.request<{ cards: SuggestedCard[] }>(
-      `/ai/study/pages/${docId}/cards`,
-      { method: "POST", body: max ? { max } : {} },
-    );
+    return this.request<{
+      cards: SuggestedCard[];
+      provider?: AiFeatureProvider;
+    }>(`/ai/study/pages/${docId}/cards`, {
+      method: "POST",
+      body: max ? { max } : {},
+    });
   }
   /** Grade a typed answer against the card and its page. */
   gradeAnswer(cardId: string, answer: string) {
     return this.request<{
+      provider?: AiFeatureProvider;
       verdict: "correct" | "partly" | "wrong";
       feedback: string;
       suggested_rating: Rating;
@@ -4271,10 +4457,11 @@ export class OrbynClient {
     });
   }
   explainCard(cardId: string) {
-    return this.request<{ explanation: string; beyond_notes: boolean }>(
-      `/ai/study/cards/${cardId}/explain`,
-      { method: "POST", body: {} },
-    );
+    return this.request<{
+      explanation: string;
+      beyond_notes: boolean;
+      provider?: AiFeatureProvider;
+    }>(`/ai/study/cards/${cardId}/explain`, { method: "POST", body: {} });
   }
   // ---- importing files into Docs ----
   /**

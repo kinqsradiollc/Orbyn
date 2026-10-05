@@ -21,6 +21,7 @@ import {
   type RevisionPlan,
   type StudyExam,
   type StudyOverview,
+  aiFeatureProviderLabel,
   type SuggestedCard,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -884,6 +885,7 @@ export function MakeCardsDialog({
   /** How many to suggest: "Make 10 flashcards" asks for ten (AI-01). */
   max?: number;
 }) {
+  const [providerLabel, setProviderLabel] = useState("");
   const [cards, setCards] = useState<
     (SuggestedCard & { keep: boolean })[] | null
   >(null);
@@ -891,7 +893,10 @@ export function MakeCardsDialog({
   const [saving, setSaving] = useState(false);
   useEffect(() => {
     client.suggestCards(docId, max).then(
-      (r) => setCards(r.cards.map((c) => ({ ...c, keep: true }))),
+      (r) => {
+        setProviderLabel(r.provider ? aiFeatureProviderLabel(r.provider) : "");
+        setCards(r.cards.map((c) => ({ ...c, keep: true })));
+      },
       (e: Error) => setError(errorText(e)),
     );
   }, [docId, max]);
@@ -941,6 +946,11 @@ export function MakeCardsDialog({
           </button>
         </div>
         <div className="modal-body">
+          {providerLabel && (
+            <small className="muted study-provider-label">
+              {providerLabel}
+            </small>
+          )}
           {error ? (
             <div role="alert" className="error">
               {error}

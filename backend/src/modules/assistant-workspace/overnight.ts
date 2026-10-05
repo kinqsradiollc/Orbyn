@@ -1,3 +1,4 @@
+import { maintainedPageNightProgress } from "../docs/maintenance-night.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 import { visibleItems } from "../../lib/visibility.js";
 import { visibleNightLeftovers } from "../../lib/assistant-leftovers.js";
@@ -303,6 +304,7 @@ export async function latestNight(
     status: night.status,
     budget_used: night.budget_used,
     runs: await Promise.all(rows.map((row) => card(db, userId, row))),
+    page_runs: await maintainedPageNightProgress(db, userId, night.id),
     not_done: await visibleNightLeftovers(db, userId, leftovers),
   };
 }

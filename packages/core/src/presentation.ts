@@ -128,16 +128,31 @@ export const screenTitle = (screen: ScreenName, name?: string) =>
   screen === "Overview"
     ? `Hello, ${name?.split(" ")[0] || "there"}.`
     : screens[screen].title;
+/** Requests for fresh model output, never prewritten personalized recommendations. */
 export const assistantSuggestions = [
-  { title: "Summarize my week", hint: "A calm overview of what’s coming" },
+  {
+    title: "Suggest my next tasks",
+    hint: "Use my context and explain each suggestion",
+    prompt:
+      "Suggest up to three useful next tasks from my authorized tasks, calendar, notes and recent activity. Use observed patterns only when there is supporting evidence; distinguish those observations from guesses. Cite the sources and explain briefly why each task matters now. Avoid duplicates and invented commitments. If there is too little context, say so. Show suggestions for my review before creating anything.",
+  },
   {
     title: "What needs my attention?",
-    hint: "Overdue and high-priority items",
+    hint: "Check deadlines and unresolved work",
+    prompt:
+      "Review my authorized current work for deadlines, blockers and unresolved decisions. Suggest up to three priorities, cite their sources and explain why they need attention. Do not invent missing information or change anything.",
   },
-  { title: "Help me plan tomorrow", hint: "Turn tomorrow into a doable plan" },
   {
-    title: "Add a task to call Mum on Friday at 6pm",
-    hint: "Create items in plain language",
+    title: "Help me plan tomorrow",
+    hint: "Fit my actual tasks around my calendar",
+    prompt:
+      "Suggest a realistic plan for tomorrow using my authorized tasks and calendar. Explain priorities, respect existing commitments and show any proposed changes for review.",
+  },
+  {
+    title: "Reflect on my recent work",
+    hint: "An AI-written reflection grounded in my context",
+    prompt:
+      "Write a short AI-written reflection on my authorized recent work. Ground it in specific cited evidence, distinguish observed patterns from uncertainty, and offer one useful next step. Label it AI-written reflection, not a quote from a person or page. If you include a real excerpt, quote it exactly and cite its source. Do not invent personal history or change anything.",
   },
 ];
 export const planDayPrompt =

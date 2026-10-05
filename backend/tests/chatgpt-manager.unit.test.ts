@@ -33,6 +33,7 @@ async function fixture(identityOnly = false) {
     leases = new Map<string, any>(),
     catalogs = new Map<string, any>();
   const preferences = new Map<string, any>();
+  const requests = new Map<string, any>();
   let providerCalls = 0,
     revokeConfirmed = false;
   const encrypt = (text: string) => {
@@ -84,6 +85,23 @@ async function fixture(identityOnly = false) {
     };
     return {
       me: async () => ({ id: userId }),
+      claimChatgptConnectRequest: async (id: string) => {
+        const r = requests.get(id);
+        if (!r || r.userId !== userId) throw new Error("Request not available");
+        if (r.state !== "pending") throw new Error("Request already claimed");
+        r.state = "claimed";
+      },
+      finishChatgptConnectRequest: async (
+        id: string,
+        connectionId: string | null,
+      ) => {
+        const r = requests.get(id);
+        if (!r || r.userId !== userId || r.state !== "claimed")
+          throw new Error("Request not available");
+        if (connectionId) own(connectionId);
+        r.state = connectionId ? "completed" : "failed";
+        r.connectionId = connectionId;
+      },
       startChatgptConnection: async (input: any) => {
         const value = {
           id: randomUUID(),
@@ -294,6 +312,25 @@ async function fixture(identityOnly = false) {
     createClient: client,
     openAuthorization: async () => {},
     fetch: async (url: string, init: RequestInit) => {
+      if (url === "https://api.openai.com/v1/responses") {
+        assert.equal(
+          (init.headers as any).Authorization,
+          "Bearer private-fixture-access",
+        );
+        const body = JSON.parse(String(init.body));
+        assert.equal(body.store, false);
+        assert.equal(body.stream, true);
+        assert.equal(body.model, "fixture-model");
+        assert.equal(
+          body.input[0].content,
+          "Reply with exactly: Token sharing works.",
+        );
+        providerCalls++;
+        return new Response(
+          'data: {"type":"response.output_text.delta","delta":"Token sharing works."}\n\ndata: {"type":"response.completed","response":{"status":"completed","usage":{"input_tokens":8,"output_tokens":4,"total_tokens":12}}}\n\n',
+          { headers: { "Content-Type": "text/event-stream" } },
+        );
+      }
       assert.equal(url, "https://api.openai.com/v1/models");
       assert.equal(
         (init.headers as any).Authorization,
@@ -363,6 +400,7 @@ async function fixture(identityOnly = false) {
     options,
     manager,
     preferences,
+    requests,
     catalogs,
     userA,
     userB,
@@ -672,6 +710,113 @@ test("background lease renewals stop with the selected runtime and a stale pulse
     const count = scheduled.length;
     await scheduled[count - 1]();
     assert.equal(scheduled.length, count);
+  } finally {
+    manager.close();
+    await f.cleanup();
+  }
+});
+
+test("plan verification requires granted access and completed inference; reports actual usage only", async () => {
+  const f = await fixture();
+  try {
+    await f.manager.setSession("account-a");
+    await f.manager.connect();
+    assert.equal((await f.manager.snapshot()).verification, undefined);
+    await assert.rejects(f.manager.verifyPlan(), /default model/);
+    await f.manager.setDefault("fixture-model", 0);
+    const result = chatgptDesktopState.parse(await f.manager.verifyPlan());
+    assert.equal(result.verification?.model, "fixture-model");
+    assert.deepEqual(result.verification?.usage, {
+      input_tokens: 8,
+      output_tokens: 4,
+      total_tokens: 12,
+    });
+    assert.equal(result.verification?.binding.user_id, f.userA);
+    assert.ok(!JSON.stringify(result).includes("private-fixture-access"));
+    await f.manager.setSession("account-b");
+    assert.equal((await f.manager.snapshot()).verification, undefined);
+  } finally {
+    await f.cleanup();
+  }
+  const identity = await fixture(true);
+  try {
+    await identity.manager.setSession("account-a");
+    await identity.manager.connect();
+    await assert.rejects(identity.manager.verifyPlan(), /Enable ChatGPT plan/);
+    assert.equal(identity.calls(), 0);
+  } finally {
+    await identity.cleanup();
+  }
+});
+
+test("one-click authorization claims the initiating person's request and directly signs in", async () => {
+  const f = await fixture();
+  const id = randomUUID(),
+    wrong = randomUUID();
+  try {
+    await f.manager.setSession("account-a");
+    f.requests.set(id, { userId: f.userA, state: "pending" });
+    f.requests.set(wrong, { userId: f.userB, state: "pending" });
+    await assert.rejects(f.manager.connectRequest(wrong), /not available/);
+    assert.equal((await f.manager.snapshot()).connections.length, 0);
+    const result = chatgptDesktopState.parse(
+      await f.manager.connectRequest(id),
+    );
+    assert.equal(result.connections.length, 1);
+    assert.equal(f.requests.get(id).state, "completed");
+    assert.equal(
+      f.requests.get(id).connectionId,
+      result.connections[0].binding.connection_id,
+    );
+    await assert.rejects(f.manager.connectRequest(id), /already claimed/);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("the runtime preserves safe quota failure metadata when the provider stream omits its media header", async () => {
+  const f = await fixture();
+  f.manager.close();
+  const manager = await create({
+    ...f.options,
+    fetch: async (url: string, init: RequestInit) => {
+      if (url !== "https://api.openai.com/v1/responses")
+        return f.options.fetch(url, init);
+      const failed =
+        "data: " +
+        JSON.stringify({
+          type: "response.failed",
+          response: {
+            error: {
+              code: "subscription_sharing_usage_limit_exceeded",
+              message: "private-provider-details",
+            },
+          },
+        }) +
+        "\n\n";
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(failed));
+            controller.close();
+          },
+        }),
+      );
+    },
+  });
+  try {
+    await manager.setSession("account-a");
+    await manager.connect();
+    await manager.setDefault("fixture-model", 0);
+    await assert.rejects(manager.verifyPlan(), /usage limit/);
+    const snapshot = chatgptDesktopState.parse(await manager.snapshot());
+    assert.equal(snapshot.busy, false);
+    assert.equal(snapshot.verification, undefined);
+    assert.equal(
+      snapshot.error,
+      "ChatGPT plan usage limit reached. Manage usage in ChatGPT.",
+    );
+    assert.ok(!JSON.stringify(snapshot).includes("private-provider-details"));
   } finally {
     manager.close();
     await f.cleanup();

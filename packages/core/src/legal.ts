@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-10-01";
+export const DEFAULT_LEGAL_VERSION = "2026-10-04";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -294,6 +294,14 @@ If you connect an outside AI agent or app to Orbyn (for example Claude, ChatGPT 
 ## Connecting your ChatGPT identity
 
 If you choose to connect your ChatGPT identity, Orbyn receives a short-lived identity token from your sign-in and checks it with OpenAI's public signing keys. Orbyn keeps the verified issuer, account subject identifier, issued app registration identifier, and connection and verification dates, linked to your Orbyn account. It does not store that identity token or your ChatGPT plan access or refresh tokens. Sign-in challenges are tied to your Orbyn session, expire after ten minutes, and are removed by the hourly cleanup. You can disconnect a verified identity; its disconnected record remains until you delete your Orbyn account, to prevent that same identity registration from being silently linked to another account. Connecting an identity does not itself authorize model usage or access to your Orbyn content. Outside-agent and plugin permissions are separate connections.
+
+## Using ChatGPT as your AI provider
+
+If you select ChatGPT as your personal AI provider, Orbyn sends the authorized conversation and workspace context needed for each request to your selected Orbyn desktop device. That device calls OpenAI using the ChatGPT plan permission you granted. OpenAI handles this content under its own terms and privacy policy. Your access and refresh tokens stay encrypted on that device and are not sent to Orbyn's servers. Orbyn keeps encrypted temporary request and reply envelopes, including reported token usage. Envelopes needed to recover an active saved run stay until that run becomes inactive, then the hourly cleanup removes expired envelopes. Encrypted fallback replies and content-free operation markers follow saved-job retention and are removed with that job. Replies retained in your saved conversations follow the saved-conversation rules above.
+
+Unless you opted out of analytics in Privacy, Orbyn also keeps the model, completion time and reported token counts of accepted ChatGPT requests for 30 days so you can inspect your usage in Orbyn. This record has no prompt, reply or provider credentials. Missing token counts remain unknown. These measurements do not show your account-wide ChatGPT allowance, use in other apps or remaining quota.
+
+You choose whether to allow Orbyn's configured AI provider as a fallback. If enabled, it can receive the same request when your ChatGPT device is unavailable or OpenAI rejects the request before answering. A partial or uncertain ChatGPT completion is not automatically retried through that provider. Changing your provider choice prevents older queued requests from being claimed or their results from being accepted; it cannot recall content already sent to OpenAI. This provider choice does not grant MCP or plugin access.
 
 ## Files you import
 

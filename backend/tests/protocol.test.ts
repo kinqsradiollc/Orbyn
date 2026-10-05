@@ -17,6 +17,49 @@ const base = {
   source: "database" as const,
 };
 const signal = new AbortController().signal;
+
+test("dispatch authority rejects changed choices before every native or JSON provider call", async (t) => {
+  let networkCalls = 0,
+    deviceCalls = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    networkCalls++;
+    throw new Error("Unexpected network");
+  });
+  const denied = async () => {
+    throw new Error("Provider choice changed");
+  };
+  for (const format of ["openai", "anthropic"] as const)
+    for (const mode of ["native", "json"] as const)
+      await assert.rejects(
+        step({ ...base, format, assertAuthority: denied }, [], [], {
+          mode,
+          toolsAllowed: false,
+          signal,
+        }),
+        /Provider choice changed/,
+      );
+  const { complete } = await import("../src/modules/ai/providers/adapters.js");
+  await assert.rejects(
+    complete({ ...base, assertAuthority: denied }, []),
+    /Provider choice changed/,
+  );
+  await assert.rejects(
+    complete(
+      {
+        ...base,
+        assertAuthority: denied,
+        textTransport: async () => {
+          deviceCalls++;
+          return "unexpected";
+        },
+      },
+      [],
+    ),
+    /Provider choice changed/,
+  );
+  assert.equal(networkCalls, 0);
+  assert.equal(deviceCalls, 0);
+});
 const history = [
   { role: "system" as const, content: "You are Orbyn." },
   { role: "user" as const, content: "Find gym" },

@@ -179,3 +179,22 @@ test("every hosted-AI route has an agent-path twin, naming tools and prompts tha
   for (const t of tools)
     assert.doesNotMatch(t, /^(generate|summari[sz]e|ai_|ask_ai|embed)/);
 });
+
+test("maintained-page controls remain first-party while outside agents use model-free page tools", () => {
+  for (const route of [
+    "GET /docs/:id/maintenance/runs",
+    "POST /docs/:id/maintenance/runs/:runId/decision",
+    "GET /docs/:id/maintenance",
+    "POST /docs/:id/maintenance",
+    "PUT /docs/:id/maintenance/:bindingId",
+    "DELETE /docs/:id/maintenance/:bindingId",
+  ])
+    assert.equal(EXCLUDED[route], "assistant_control");
+  const twin =
+    AI_FEATURE_TWINS["Maintaining selected page blocks (Background/Overnight)"];
+  assert.deepEqual(twin.tools, ["fetch", "get_history", "edit_doc"]);
+  assert.ok(twin.how.includes("own model and scheduler"));
+  assert.ok(
+    twin.how.includes("do not enroll hosted work or approve its output"),
+  );
+});

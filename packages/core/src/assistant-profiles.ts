@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { nightShiftInput } from "./agent-settings.js";
+import { automationAgentIdentity, nightShiftInput } from "./agent-settings.js";
 import { assistantActivityEvent } from "./assistant-activity.js";
 export const assistantProfileCounts = z
   .object({
@@ -23,6 +23,7 @@ export function assistantProfileState(
 export const assistantProfile = z
   .object({
     lane: z.enum(["background", "overnight"]),
+    identity: automationAgentIdentity.optional(),
     state: z.enum(["idle", "queued", "working", "waiting", "scheduled"]),
     counts: assistantProfileCounts,
     last_activity_at: z.iso.datetime().nullable(),
@@ -64,6 +65,12 @@ export const assistantProfile = z
   })
   .strict()
   .superRefine((profile, ctx) => {
+    if (profile.identity && profile.identity.lane !== profile.lane)
+      ctx.addIssue({
+        code: "custom",
+        path: ["identity", "lane"],
+        message: "Identity belongs to this runtime lane.",
+      });
     const scheduled =
       profile.lane === "overnight" &&
       !!profile.window?.enabled &&

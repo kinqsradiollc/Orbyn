@@ -1,0 +1,466 @@
+# Maintained-page block contract
+
+## Current implementation
+
+Shared helpers capture selected block IDs and positions in page order, bound to
+the current page version. Persisted snapshots contain identities only, not copied
+private page text. Duplicate IDs, absent/moved targets, stale versions and writes
+outside the saved target set fail. Updates retain untouched block objects and
+order; no implicit insert/delete or expansion into human blocks. Input uses the
+existing validated document block schema and100-target bound.
+
+Seven focused tests pass in `/tmp/orbyn-maintained-pages-final-focused.log`;
+shared package builds and all workspace typechecks pass. This
+code is not a runnable maintained-page feature and is not ready for main promotion.
+
+## Required next implementation
+
+1. Persist owner/agent/routine/binding revisions with exact selected block metadata;
+   constrain access to the intersection of current user rights, page access,
+   assistant grant scope, workspace policy and action rules. A caller-supplied
+   snapshot cannot replace the server's saved binding.
+2. Capture current binding/consent before provider work; enqueue IDs/revisions,
+   not copied document text. Limit model context to authorized source material.
+   Recheck permissions, source version and target placement on resume/apply.
+3. Apply through document history/comment/file/link checks and conditional saves,
+   preserving human blocks. Existing saveDoc also syncs linked task ticks: those
+   side effects need scoped task authorization and explicit target fencing.
+   Update binding baseline only after a successful agent-owned update; human
+   changes invalidate it rather than silently refreshing authority.
+4. Add explicit schedule creation, pause/resume, current status and review in both
+   clients. Respect separate Background/Overnight runtimes and existing budgets.
+5. Add scoped @orbyn comment jobs/replies, edit/delete/retry deduplication and
+   private-comment/source restrictions. No external messages without consent.
+6. Prove real concurrent saves, deleted/moved blocks, grant/page revocation and
+   cross-user/team isolation with real API tests; then full local/CI and signed-in
+   web/iOS/Android flows.
+
+Whole A5/C1–C6/M1/D1/U1 remains unfinished. Existing Slack/Discord webhooks do not
+complete the retained Slack/Teams OAuth, signed replies or durable outbox scope.
+No voice/computer-use product additions, deployment or cleanup.
+
+## Storage and management API — 4 October
+
+Migration219 persists owner/assistant identity, selected block IDs/positions and
+page version, a binding revision, instruction and validated schedule. Snapshots
+store no copied page text. Composite grant ownership prevents cross-account
+bindings. Creation is bounded to100 per account and rejects overlapping target
+ownership under the page lock. Bindings default to paused.
+
+Management routes GET/POST `/docs/:id/maintenance` and PUT/DELETE
+`/docs/:id/maintenance/:bindingId` authenticate app sessions and remain excluded
+from external MCP tools. Reads expose only the current person's bindings, even
+on a shared page. Create/update intersect the current assistant grant with page,
+project, team and membership policies under locks. Edits require both binding and
+page revisions; rebinding after a human edit is explicit. Stopping maintenance
+remains possible when the assistant is suspended, using the same owner/page and
+binding-revision checks. Both clients have typed API-client methods; no UI yet.
+
+Fresh context is selected-block-only and projects links against current user,
+grant and AI-exclusion policies. It rejects stale/moved/deleted targets. Linked
+private or AI-excluded labels are redacted without hiding unrelated blocks.
+
+Focused storage, real HTTP management, core contract, route inventory and catalog
+checks28/28 pass in `/tmp/orbyn-maintained-page-management-focused4.log`, no skips
+or cancellations. All workspace typechecks pass in
+`/tmp/orbyn-maintenance-management-types.log`. Initial route tests failed fixture
+column and expected denial-code mistakes; corrected to canonical team membership
+semantics, retaining strict401/403/400/422/429 and concurrent200/409 coverage.
+
+This branch includes current mainfdaf13e2. It is not a production-ready A5 feature:
+no scoped model job, schedule consumer, guarded document application, scoped
+@orbyn reply flow or client consent/review UI is wired. No PR/main promotion is
+claimed. Complete those pieces and signed-in cross-client acceptance before
+main qualification; do not silently call the metadata endpoints a working routine.
+
+## Guarded application — 4 October (runtime not yet wired)
+
+The server-only apply helper rereads owner/grant/page/block authority under locks,
+checks the binding receipt and pause state, validates replacements against saved
+IDs and positions, and applies current trust and typed action rules. Approval
+cannot override a deny rule. Ask/suggest work is held rather than saved silently.
+No client route can supply an approved helper option.
+
+Document saves now support server-only block ownership: task ticks, hidden-label
+processing and file authorization run on the selected blocks, while unrelated
+human blocks remain unchanged in storage. A selected checkbox's task receives
+independent current grant/source, membership, permission, trust and action-rule
+checks. Task authority is refreshed after its membership/project locks are
+acquired. Refusal rolls back the page and binding together. Successful saves use
+normal version history/comment/suggestion/file checks, then advance the binding
+baseline within the same transaction. Concurrent stale receipts cannot save twice.
+
+Focused25/25 pass in `/tmp/orbyn-maintained-page-apply-focused.log`. Existing Docs,
+editing and assistant-Docs plus binding/API/core/inventory/catalog regressions
+118/118 pass in `/tmp/orbyn-maintained-page-save-regressions.log`, no skips or
+cancellations. All workspace typechecks pass in
+`/tmp/orbyn-maintained-page-save-final-types.log`. This is an internal apply path,
+not a completed schedule or UI feature; full qualification is still required.
+
+Next implementation must connect saved binding/rule revisions to durable claims,
+provider context, staged results and review/resume. It must never substitute the
+general workspace agent's context for selected-block context or let a newly
+refreshed principal erase the revision captured by an earlier approval. Then wire
+both client selection/consent/schedule/status/review and scoped @orbyn comments.
+
+## Durable scoped job path — 4 October (consumer not wired)
+
+Migration220 stores job references to the binding, its revision, page revision,
+original assistant rule revision and owner/grant identity. Queue rows contain no
+instruction or copied page text. One active job owns a binding, and one schedule
+occurrence/revision queues once. Due time advances atomically with insertion.
+Schedule exhaustion is separate from pausing, so the final occurrence can finish.
+
+Lane-specific claims use row locks and unique leases. A dead worker's lease can
+be replaced; its later staging, completion or failure cannot affect the new
+worker. Lease checks run before loading source context and are repeated under
+lock. Context, staging, review/resume and save recheck current page/block/grant
+rights and the rule revision captured when queued. A deny rule holds work before
+context is returned to a model worker. Generated replacements and token estimates
+are bounded and staged once; recovery can reuse them without another model call.
+
+Approval uses a unique waiting ID, an owner check and the original source/rule
+revision. A stale card cannot answer later work. Explicit approval starts a fresh
+worker retry allowance while retaining the staged result, source revisions and
+budget counter. Binding edits cancel in-flight work and clear output; expired
+night/review work and invalid references release the schedule. Completed/failed/
+cancelled rows retain90days and waiting reviews7days through the existing sweeper.
+Page save, binding advancement and job completion share one transaction.
+
+Initial queue/storage/API checks28/28 passed; retention/core checks43/43 passed.
+Final Docs, assistant Docs/rules/lanes/workers, storage/API/core and retention
+regressions159/159 pass in `/tmp/orbyn-page-runs-release-regressions.log`, no skips
+or cancellations. All workspace types are rechecked for this checkpoint.
+
+| Remaining implementation            | Required proof                                                                                                                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Connect producer and model consumer | Due scanning, bounded selected-block prompt only, provider failure/cancel/restart, staged-result reuse; current account/default model selection must be respected.                                |
+| Integrate Overnight work            | Existing serialized night queue, ten-run limit, reflection reservation, shared token accounting and morning results must include page jobs. Internal lane/deadline tests alone do not prove this. |
+| Web/desktop and mobile controls     | Explicit block selection, schedule/consent, pause/ended status, generated preview and unique-card review/resume; current access controls on all reads.                                            |
+| Scoped @orbyn comments              | Comment edit/delete/retry dedup, scoped job and reply permissions, private comment/source restrictions.                                                                                           |
+| Production qualification            | Full local/CI, migrations and signed-in web/manual/iOS/Android acceptance. No PR/main promotion of this unfinished path.                                                                          |
+
+The general routine runner was deliberately not reused for model context: its
+whole-workspace overview would expand a selected-block binding's context. The
+scoped consumer must still use shared provider/trust/lane/budget infrastructure.
+No new voice/computer-use product feature, deployment or cleanup.
+
+## Hosted scoped consumer — 4 October (not service/UI wired)
+
+The consumer executes real provider HTTP calls with selected-block-only context,
+validated output schema, trusted execution time/zone, no tools, bounded output
+and pre-transmission budget reservation. Known credential shapes in source are
+held before sending. Generated output is staged and rechecked against current
+source/authority before atomic save. Recovery reuses staged work without another
+provider request; an unconfirmed in-flight request is held rather than billed
+again automatically. Provider identity/configuration changes are detected even
+when endpoint/model strings remain identical.
+
+Queued jobs now retain credential-free original model provenance. Removing or
+switching a selected ChatGPT account cannot turn that job into a hosted request.
+Account execution remains deferred: no verified device request/result channel is
+wired yet, and metadata/catalog availability is not treated as inference proof.
+
+Night policy/window are checked on automatic boundaries. Cost is reserved before
+transmission against the shared Night cap, and legacy Night recomputation includes
+page reservations. Original review consent remains required even if later prefs
+weaken it. Saved patches remain reviewable in the morning: an owner/nonce-bound
+human decision applies exactly that patch with fresh permissions and original
+rules, never resumes Night inference. Current rule/source/ownership conflicts
+remain holds. Document/collection signals are transactional; Study retains its
+existing durable queue and post-save synchronization.
+
+Provider error-envelope credential redaction/output caps/configuration identity
+are isolated as compatible candidate4e0a246f in PR194 for full main qualification.
+No maintained-page consumer/storage/UI files are in that PR. This fixes a real
+HTTP200 error path that could expose the configured provider key in an error.
+
+Current scoped/provider/Docs/rules/worker/retention regressions209/209 pass in
+`/tmp/orbyn-page-consumer-release-regressions.log`, no skips or cancellations.
+All workspace types and production build pass in
+`/tmp/orbyn-page-consumer-final-types.log` and `-final-build.log`.
+
+Protocol references for output caps:
+[OpenAI Chat](https://platform.openai.com/docs/api-reference/chat/create),
+[OpenAI Responses](https://platform.openai.com/docs/api-reference/responses/create),
+[Anthropic Messages](https://platform.claude.com/docs/en/api/messages/create).
+Existing requests without an output-cap option retain their behavior; these
+hosted API fields are not claimed to be supported by plan-token inference.
+
+Still required: actual due producer/consumer service wiring with shared runtime
+capacity; verified account/default executor delivery; explicit approved source
+selection beyond target blocks (not merely repeated paraphrasing); budget controls
+and complete activity/undo; existing Night ten-run/reflection-slot/morning-result
+integration; both client selection/consent/status/review flows; scoped @orbyn
+comments and privacy; full local/CI/real-account/native acceptance. No A5/main or
+whole C1-C6/M1/D1/U1 completion is asserted.
+
+### A5 owner review API checkpoint — 4 October 2026 (not promoted)
+
+Owned document-run listing and nonce-bound decisions are available in the development
+branch and shared client contract. Progress GETs neither create nor touch assistant
+grants; they omit worker leases and hide proposals when current source or authority
+changed. Decision transactions retain Night → grant → document → binding → run lock
+ordering and reject stale/repeated cards. Successful saves synchronize Study.
+
+Focused HTTP coverage passes15/15 with no skips/cancellations; all workspace types
+pass. Evidence: `/tmp/orbyn-page-review-api-focused.log` and
+`/tmp/orbyn-page-review-api-final-types.log`. This is not a visible/running feature:
+service/shared-slot integration, sources, budget/activity/undo, both client controls
+and the broader C1-C6/M1/D1/U1 acceptance remain open.
+
+Main is now ee45ecf0: PR194 merged after corrected934e87d8 passed2582/2582
+local tests and all four CI jobs37149341825. User deploys main themselves.
+
+### A5 shared provider capacity checkpoint — 4 October (not promoted)
+
+Chat and maintained-page claims now use the same transaction advisory lock and
+count live leases across both queues. Background page work shares the existing
+two Background slots; it cannot consume the four interactive slots. The separate
+two Overnight slots and eight total slots remain unchanged. Expired leases and
+waiting jobs do not occupy execution capacity. Mixed queue regressions prove
+both directions, concurrent page claims and released capacity after expiry.
+
+Verified45/45 (runs, owner review API, provider consumer, runtime lanes and runner),
+zero skips/cancellations; backend typecheck passes. Evidence:
+`/tmp/orbyn-page-shared-slots-verified.log` and
+`/tmp/orbyn-page-shared-slots-types.log`. Earlier fixture failures are superseded
+by this terminal code0 run; they are not passing evidence.
+
+Still no service producer/consumer or client controls. Before activation, require
+shared consumer lifecycle/shutdown recovery, mixed-version worker rollout safety,
+Night per-person serial ordering/ten-run/reflection/morning outputs, explicit
+source selection, budgets/activity/undo and all broader ADR acceptance gates.
+
+### A5 consumer lifecycle and Night serialization — 4 October (not promoted)
+
+Private Background/Overnight services now claim page work through their existing
+lane runner, sharing process capacity, cross-replica leases and shutdown. Queue
+preference alternates to avoid starving scoped work behind chat automation.
+Interactive workers reject scoped automation. The runner stops each scoped job
+once and waits for its cleanup. Uncharged or already staged work is requeued
+without another provider charge; unknown charged requests remain held.
+
+Claim guards serialize page and ordinary Overnight work for the same person.
+The Night scanner sees queued/running page jobs before selecting or closing work.
+Waiting human review does not occupy provider execution capacity. Different
+people retain the existing two global Overnight slots.
+
+Verified77/77 tests, no skips/cancellations, terminal code0:
+`/tmp/orbyn-page-worker-lifecycle-final-tests.log`. Backend typecheck code0:
+`/tmp/orbyn-page-worker-lifecycle-final-types.log`. Tests cover consumer recovery,
+uncertain requests, process capacity/shutdown, exact approvals, mixed queue
+claims, existing Night scanner behavior and original runner recovery. Source
+wiring is present; a full live-service/page scheduling acceptance is still absent.
+
+Next: actual bounded due producer with current source/authority; Night candidate
+integration and ten-run/reflection slot accounting/morning results; safe rolling
+upgrade activation; explicit sources, budgets/activity/undo; both clients and
+complete ADR/local/CI/runtime/native qualification. Do not promote as finished A5.
+
+### A5 bounded Background producer / service delivery — 4 October (not promoted)
+
+The private Background service now scans due bindings once per minute in bounded
+round-robin batches. It excludes disabled/suspended/revoked/expired owners,
+paused/ended bindings, active jobs, inaccessible/AI-excluded pages and Night-owned
+follow-through. Each candidate rebuilds current authority and selected context
+inside the canonical transaction lock order. Reviewed deny rules stop queueing;
+source/authority conflicts do not advance the schedule. Concurrent replicas queue
+a due occurrence once. Selected unavailable models retain the existing defer
+semantics without falling back to a different account/provider.
+
+Verified79/79 tests, terminal code0, no skips/cancellations:
+`/tmp/orbyn-page-due-service-tests.log`. Backend types pass:
+`/tmp/orbyn-page-due-service-types.log`. New actual-service test starts the private
+Background Fastify worker, observes its real due producer and hosted HTTP fixture
+request, verifies ready200 and selected-block version2 save while preserving the
+human block, then closes the worker. This proves local service delivery; it is
+not real-provider/account or deployed production acceptance.
+
+Night candidate/ten-run/reflection slot accounting and morning outputs remain
+next. Safe rolling upgrade, explicit source selection beyond target blocks,
+budget/activity/undo, web/mobile controls and full ADR qualification remain open.
+Main is unchanged; this feature is still on the development branch.
+
+### A5 Night plan, shared limits and morning progress — 4 October (not promoted)
+
+Due page bindings participate in the existing Night candidate plan through
+follow-through. Current source, page ownership and reviewed rules are checked
+before selection and again inside queueing. They use the scoped page queue,
+retain original consent/model provenance, and advance the Night cursor/run count
+atomically. Queued/running pages serialize with ordinary Night work; the shared
+ten-run cap and final reflection slot still apply. No private instruction or
+page title is copied into the Night candidate labels.
+
+The Night API now includes optional scoped page progress metadata. Current
+assistant authority and page visibility guard it; no proposal words, worker
+leases, credentials or hidden titles are exposed there. Page approvals remain
+nonce-bound in their document API. Morning digest counts finished/review/settling
+page work and links to the document; the existing single morning push also treats
+page work as settling. Revoking the current scope hides its page progress.
+
+Verified93/93 tests, no skips/cancellations, terminal code0:
+`/tmp/orbyn-page-night-service-final-tests.log`. All workspace types pass in
+`/tmp/orbyn-page-night-all-types.log`. New tests cover dedup/run accounting, shared
+ten-run cap, reflection slot priority, current visibility and morning metadata.
+An actual private Overnight worker test queues from the real scanner, calls the
+local HTTP provider fixture once, stages required approval, reads the Night
+progress, closes its runtime, then applies an exact owner decision without
+resuming inference. Real provider/account/deployment acceptance is still open.
+
+Next both client binding/source/consent/status/review controls and Night page
+cards. Still open: explicit source selection beyond target blocks; budgets and
+activity/undo; including page outcomes in reflection evidence; safe rolling
+worker activation; verified account-default/device inference; broader full
+local/CI/web/manual/native acceptance and complete C1-C6/M1/D1/U1. Main unchanged.
+
+### A5 cross-client controls draft — 4 October (visual acceptance pending)
+
+Web/desktop now has a bounded native modal; mobile has our native BottomSheet.
+Both document menus flush pending edits and refuse unsaved/offline work before
+opening Page updates. One shared portable controller owns fresh page/binding/run
+reads, stable missing-block IDs through ordinary CAS document persistence,
+selected-block create/edit, pause/resume/remove and exact waiting-card decisions.
+Account switches prevent dependent writes and clear old evidence. Disposal and
+React effect replay cannot restore an old result or leave the panel busy forever.
+
+Both surfaces show selected blocks/instructions/daily or weekly cadence, saved
+schedules behind options, recent status/token estimates and the actual saved
+proposal in Markdown source before Apply/Decline. Pausing preserves the original
+reviewed page revision; explicit Edit/Save reviews and rebinds current blocks.
+The web native dialog owns focus/Escape; repeat buttons remain inside it, avoiding
+our Select portal outside the browser's modal top layer. Palette/radius tokens
+and native scrolling/keyboard sheet primitives are retained.
+
+Shared controller4/4 unit checks pass, no skips/cancellations:
+`/tmp/orbyn-page-controls-delivery-tests.log`. All workspace types code0:
+`/tmp/orbyn-page-controls-delivery-types.log`. Production build code0:
+`/tmp/orbyn-page-controls-delivery-build.log` (existing large-chunk warning remains).
+These prove source/build/controller behavior, not rendered acceptance. The iOS
+Simulator was reached with Computer Use, but it is still serving the prior preview
+source; its existing planner429 overlay is not evidence for this draft's layout.
+
+Next switch owned API/Metro previews to this branch against the marked preview DB
+with migrations219-223, preserve the test admin, inspect/screenshot the new native
+sheet, typing/scrolling/schedule/review states and correct layout. Web visual
+acceptance remains human review under the explicit blind-redesign authorization;
+no saved Browser Use block bypass. Add Night page cards on both clients, explicit
+additional sources/budgets, activity/undo/page reflection evidence, rolling worker
+activation and account/default device delivery. Full local/CI/native/ADR acceptance
+still required before main promotion; full C1-C6/M1/D1/U1 remains active.
+
+### A5 native inspection, schedule layout and Night cards — 4 October (not promoted)
+
+Owned API/web/Metro previews now use this branch; migrations219-223 were applied
+only after proving the preview database's `_test` name and server-side test marker.
+The existing local admin/session is preserved. Persistent helper backups remain
+in `/tmp/*before-maintained-pages`; current preview PIDs are recorded externally.
+
+Actual iPhone17/iOS26.5 Computer Use verified saved page content, menu entry,
+selected-block checkbox, instruction typing, weekly schedule creation, Pause,
+paused Edit/Resume actions and reopening with retained selection/cadence. The
+first run caught a real save guard bug: mobile's focused draft left a reference
+`dirty` flag set after successful persistence. The new shared content/title
+comparison accepts saved drafts and refuses changed/offline content. It has a
+focused regression alongside the shared controller tests.
+
+Both clients now collapse configuration when schedules exist and show schedules
+and recent runs first. Add/Edit opens just the configuration section. Native has
+an explicit accessible Close; its action was verified to restore the underlying
+page without changing saved content. Night page cards on both clients open the
+corresponding page; they are excluded from unrelated chat bulk decisions.
+Screenshots: `docs/reviews/evidence/maintained-pages-ui/`. Before-layout and edited
+form snapshots are labeled separately; compact paused view includes the final
+Close control and singular block wording. Native scroll/drag attempts did not
+move the earlier long form; this is not scroll acceptance. Software keyboard,
+long proposals, Night cards, landscape/dark/large-text/Android and web rendered
+acceptance remain open. HMR left an empty native modal once; returning to Expo
+Home and reconnecting the owned Metro project restored it. No browser bypass.
+
+98/98 combined store/controller/Night/reflection/page service/API/run tests pass,
+zero skips/cancellations, terminal code0:
+`/tmp/orbyn-page-native-layout-regressions.log`. All workspace types pass in
+`/tmp/orbyn-page-native-acceptance-types.log`; final production build passes in
+`/tmp/orbyn-page-native-acceptance-build.log` (existing large-chunk warning).
+Rendered acceptance is limited to the interactions above, not the full app.
+A new planner GET/items429 was observed after native dismissal; production
+refresh/profile429 is explicitly still unresolved, not merely an old overlay.
+
+Next exact proposal/approval native screenshots, Night page cards and manual web
+acceptance. Then explicit additional sources and budgets, activity/undo and page
+reflection evidence, rolling worker safety, real account/device delivery and
+remaining full C1-C6/M1/D1/U1 gates. Main promotion/full goal completion remains
+unproven; the disposable native schedule stays paused and production untouched.
+
+### A5 native exact review and receipt follow-up — 4 October (not promoted)
+
+A labeled proposal was staged through internal scoped helpers in the marked
+local preview DB only. It is a UI fixture, not provider/inference evidence:
+modelCalls0 and synthetic100 estimated tokens. Native UI showed the exact saved
+replacement, then Apply changed the owned run to done and removed its waiting
+card. The underlying document displayed exactly `UI fixture: a concise disposable
+summary.`; authoritative DB check reported version6, done and waiting ID cleared.
+The disposable schedule was paused and prior Night preferences restored.
+
+Native Overnight displayed its separate page-result card and Open page action;
+current screenshots are in `docs/reviews/evidence/maintained-pages-ui/` with
+`fixture` in their filenames. Existing dev LogBox partially covered the review
+buttons visually, although the native accessibility action and persisted result
+were verified. This is not long-proposal/software-keyboard/Android acceptance.
+
+Inspection also caught stale receipt metadata: external/maintained saves updated
+content but left the old Saved time. Both editors now update receipt time on
+accepted clean external changes and maintained-page callbacks; callbacks older
+than the current page revision cannot regress it. All workspace types pass in
+`/tmp/orbyn-page-review-receipt-types.log`. Native re-read displayed the newer
+20-minute receipt instead of the old one-hour label. No local draft was overwritten.
+
+Main/PR195 remains a separate compatible session-rate checkpoint. Corrected e4ed6749
+passed CI37157146020 all four jobs. Its local full run completed2396 checks without
+failures before sessions.test.ts stalled with an identical IPv6 local/peer TCP
+endpoint and no registered PostgreSQL connection. That confirmed transport stall
+was cancelled and recorded externally, not called passing qualification. A new
+fresh marked IPv4 full run is live; merge still waits for complete local evidence.
+
+Next: complete that qualified main checkpoint and bring it into this branch,
+then complete explicit extra sources/budgets, activity/undo and page reflection,
+rolling worker activation, real account/device execution, remaining native/web
+render acceptance and full C1-C6/M1/D1/U1. No A5/main or whole-goal completion claim.
+
+### Qualified main checkpoint and workspace layout draft — 4 October
+
+PR195 merged exact e4ed6749 after full fresh IPv4 local2588/2588 code0, no skips
+or cancellations, and CI37157146020 all four jobs passed. Main/origin main now
+7f253b80; the primary checkout fast-forwarded with user changes preserved. This
+addresses authenticated session/IP interference; production deployment remains
+with the user and universal production429 resolution is not asserted. Qualified
+main was integrated into the maintained-pages branch. Only two documentation
+append conflicts occurred; both histories were retained and markers cleared.
+The owned preview API restarted with the qualified session bucket implementation.
+
+U1's new signed-in workspace layout draft now spans every web/desktop screen:
+compact sidebar/wordmark, header rail toggle, quieter location label, consistent
+working-surface padding and cards, unrestricted Docs canvas width, smaller Home
+panels and a task toolbar with separate title/progress and search/layout/filter
+rows. Desktop/tablet rail geometry uses one224px/72px pair; existing800px mobile
+web drawer breakpoint stays aligned, and coarse-pointer controls retain44px
+minimum targets. Palette/radius tokens are used and public landing/auth/dialog
+surfaces retain their separate styling. Navigation controls now reference the
+same accessible sidebar landmark and report expanded state.
+
+Source-contract4/4 checks pass in `/tmp/orbyn-workspace-layout-contract-tests.log`;
+final desktop types pass in `/tmp/orbyn-workspace-layout-final-types.log`.
+All workspace types/production build pass in
+`/tmp/orbyn-workspace-redesign-final-types.log` and
+`/tmp/orbyn-workspace-redesign-build.log` before final aria-only control wiring.
+These are source/build checks, not overlap or visual acceptance. Browser Use was
+retried at the original127.0.0.1:5174/app tab and again denied by saved permission;
+no alternate browser/port/CDP/indirect bypass was attempted. User's standing blind
+web redesign/manual screenshot review authorization applies. The live preview
+serves this draft; rendered web acceptance remains pending.
+
+Next complete remaining whole-app layouts and manual web/desktop acceptance,
+retaining native behavior/feature parity. A5 extra source selection, per-binding
+budgets, activity/undo/page reflection, rolling worker activation and actual
+account/device inference remain open, along with full C1-C6/M1/D1/U1 gates.
+No workspace/A5 production promotion or full goal completion is asserted.

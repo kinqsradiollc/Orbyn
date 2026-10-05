@@ -5,16 +5,17 @@ import {
   DOC_AI_LABELS,
   blockText,
   fail,
+  HttpError,
   keepLinkLabels,
+  type AiFeatureProvider,
   type DocAnswer,
   type DocBlock,
 } from "@orbyn/core";
 import { pool, reader, transaction } from "../../db/pool.js";
-import { authenticate } from "../../lib/auth.js";
+import { authenticate, isSessionPrincipal } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireAssistantAllowed, requireTeam } from "../../lib/teams.js";
-import { complete } from "./providers/adapters.js";
-import { resolveAi } from "./providers/resolve.js";
+import { completePageFeature } from "./providers/feature-call.js";
 import { docKeptOut, PAGE_KEPT_OUT } from "../../lib/assistant-off.js";
 import { readableDocs } from "../../lib/visibility.js";
 import { proposeChanges } from "../docs/service.js";
@@ -48,10 +49,11 @@ export async function aiDocRoutes(app: FastifyInstance) {
       await db.query<{
         id: string;
         title: string;
+        version: number;
         content: DocBlock[];
         team_id: string | null;
       }>(
-        `SELECT d.id, d.title, d.content, d.team_id FROM docs d
+        `SELECT d.id, d.title, d.version, d.content, d.team_id FROM docs d
           WHERE d.id = $2 AND d.deleted_at IS NULL
             AND ${readableDocs("d")}`,
         [userId, id],
@@ -72,17 +74,6 @@ export async function aiDocRoutes(app: FastifyInstance) {
     };
   }
 
-  /** The provider, or a message saying who can turn one on. */
-  async function provider() {
-    const ai = await resolveAi();
-    if (!ai)
-      fail(
-        503,
-        "The AI assistant is not set up yet. An admin can connect a provider in Admin → AI.",
-      );
-    return ai;
-  }
-
   /**
    * Offer words for a stretch of a page. The answer is written down as a
    * proposal attributed to whoever asked, so it goes through exactly the
@@ -99,7 +90,6 @@ export async function aiDocRoutes(app: FastifyInstance) {
     const quote = source.slice(d.range_start, d.range_end);
     if (!quote.trim()) fail(422, "There are no words there to work on");
 
-    const ai = await provider();
     const context = doc.content
       .slice(Math.max(0, at - AROUND), at + AROUND + 1)
       .map((b) => blockText(b))
@@ -115,11 +105,14 @@ Reply with the replacement passage and NOTHING else: no preamble, no
 quotation marks around it, no explanation, no Markdown fences. Keep the
 author's voice and any Markdown formatting the passage already uses. If the
 passage should be removed entirely, reply with an empty line.`;
+    let provider: AiFeatureProvider | undefined;
     let answer: string;
     try {
       answer = clean(
-        await complete(
-          ai,
+        await completePageFeature(
+          u.id,
+          "doc_assist",
+          [{ id, version: doc.version }],
           [
             { role: "system", content: system },
             {
@@ -127,11 +120,18 @@ passage should be removed entirely, reply with an empty line.`;
               content: `Document: ${doc.title}\n\nSurrounding text for context only:\n${context}\n\nThe passage to work on:\n${quote}\n\nWhat to do: ${asks}`,
             },
           ],
-          { timeoutMs: 60_000 },
+          {
+            timeoutMs: 60_000,
+            allowPersonal: isSessionPrincipal(u),
+            onProvider: (value) => {
+              provider = value;
+            },
+          },
         ),
       );
-    } catch {
-      r.log.error({ event: "ai_doc_assist_failed", provider: ai.kind });
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      r.log.error({ event: "ai_doc_assist_failed", provider: "selected" });
       fail(502, "The AI provider could not answer. Please try again.");
     }
     if (answer === quote)
@@ -175,7 +175,7 @@ passage should be removed entirely, reply with an empty line.`;
     // Places, quoted words and the offered words as this reader is shown
     // them (D3aF): the stored text keeps hidden titles, the reply must not.
     const [shown] = await carryRanges(pool, u.id, id, [made], "shown");
-    return readableLinks(pool, u.id, shown);
+    return { ...(await readableLinks(pool, u.id, shown)), provider };
   });
 
   /**
@@ -188,7 +188,6 @@ passage should be removed entirely, reply with an empty line.`;
     const id = idParam(r);
     const { question } = docAskRequest.parse(r.body);
     const doc = await readable(r.headers, id, u.id);
-    const ai = await provider();
     const numbered = doc.content
       .map((b, i) => ({ b, i }))
       .filter(({ b }) => blockText(b).trim())
@@ -200,10 +199,13 @@ object and nothing else: {"answer": string, "sources": [number]}
 - "sources" are the [n] line numbers your answer rests on, at most four.
 - If the document does not say, answer exactly "The page doesn't say." with
   no sources. Never use knowledge from outside the document.`;
+    let provider: AiFeatureProvider | undefined;
     let content: string;
     try {
-      content = await complete(
-        ai,
+      content = await completePageFeature(
+        u.id,
+        "doc_ask",
+        [{ id, version: doc.version }],
         [
           { role: "system", content: system },
           {
@@ -211,10 +213,17 @@ object and nothing else: {"answer": string, "sources": [number]}
             content: `Document: ${doc.title}\n\n${numbered}\n\nQuestion: ${question}`,
           },
         ],
-        { timeoutMs: 60_000 },
+        {
+          timeoutMs: 60_000,
+          allowPersonal: isSessionPrincipal(u),
+          onProvider: (value) => {
+            provider = value;
+          },
+        },
       );
-    } catch {
-      r.log.error({ event: "ai_doc_ask_failed", provider: ai.kind });
+    } catch (error) {
+      if (error instanceof HttpError) throw error;
+      r.log.error({ event: "ai_doc_ask_failed", provider: "selected" });
       fail(502, "The AI provider could not answer. Please try again.");
     }
     let parsed: { answer?: unknown; sources?: unknown };
@@ -225,10 +234,11 @@ object and nothing else: {"answer": string, "sources": [number]}
       );
     } catch {
       // A provider that would not give JSON still said something useful.
-      return { answer: clean(content).slice(0, 4000), sources: [] };
+      return { answer: clean(content).slice(0, 4000), sources: [], provider };
     }
     const lines = Array.isArray(parsed.sources) ? parsed.sources : [];
     return {
+      provider,
       answer: String(parsed.answer ?? "").slice(0, 4000),
       sources: lines.slice(0, 4).flatMap((n) => {
         const block = doc.content[Number(n)];

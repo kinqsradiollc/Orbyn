@@ -105,3 +105,26 @@ test("successful HTTP error envelopes redact the configured provider key", async
     globalThis.fetch = original;
   }
 });
+
+test("private transport receives the validated output allowance and durable operation", async () => {
+  const calls: unknown[][] = [];
+  const ai: ResolvedAi = {
+    ...base,
+    operationId: "operation-fixture",
+    textTransport: async (...args) => {
+      calls.push(args);
+      return "OK";
+    },
+  };
+  const messages = [
+    { role: "user" as const, content: "Neutral bounded input" },
+  ];
+  assert.equal(await complete(ai, messages, { maxOutputTokens: 321 }), "OK");
+  assert.equal(calls[0][2], "operation-fixture");
+  assert.equal(calls[0][3], 321);
+  await complete(ai, messages);
+  assert.equal(calls[1][3], undefined);
+  for (const value of [0, -1, 1.5, 65537, NaN])
+    await assert.rejects(complete(ai, messages, { maxOutputTokens: value }));
+  assert.equal(calls.length, 2);
+});

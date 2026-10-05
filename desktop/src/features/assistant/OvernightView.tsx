@@ -170,6 +170,18 @@ export function OvernightView(props: Props) {
           </button>
         </div>
       </header>
+      {(night.page_runs ?? []).map((run) => (
+        <section key={run.id} className="overnight-card">
+          <h3>Page update · {run.state}</h3>
+          <p>{run.estimated_tokens} estimated tokens</p>
+          <button
+            className="secondary"
+            onClick={() => props.onOpen("doc", run.doc_id)}
+          >
+            {run.state === "waiting" ? "Review in page" : "Open page"}
+          </button>
+        </section>
+      ))}
       {night.runs.map((run) => (
         <RunCard key={run.id} run={run} busy={busy} act={act} {...props} />
       ))}

@@ -5,6 +5,7 @@ import {
   RECORDING_MAX_MINUTES,
   recordingClock,
   summaryLines,
+  aiFeatureProviderLabel,
   type DocBlock,
   type RecordingSummary,
 } from "@orbyn/core";
@@ -203,20 +204,42 @@ export function RecordingSummaryDialog({
   onClose: () => void;
 }) {
   const [asked, setAsked] = useState(false);
+  const [transcript, setTranscript] = useState("");
   const [result, setResult] = useState<RecordingSummary | null>(null);
   const [error, setError] = useState("");
   const [made, setMade] = useState<Set<number>>(new Set());
   const [busy, setBusy] = useState(false);
+  const summaryGeneration = useRef(0);
+  useEffect(() => {
+    summaryGeneration.current++;
+    setAsked(false);
+    setTranscript("");
+    setResult(null);
+    setError("");
+    setMade(new Set());
+    setBusy(false);
+    return () => {
+      summaryGeneration.current++;
+    };
+  }, [fileId]);
   const ask = () => {
+    const generation = summaryGeneration.current;
     setAsked(true);
     setError("");
-    client.summariseRecording(fileId).then(setResult, (e) => {
-      setError(errorText(e));
-      setAsked(false);
-    });
+    client.summariseRecording(fileId, transcript.trim() || undefined).then(
+      (value) => {
+        if (generation === summaryGeneration.current) setResult(value);
+      },
+      (e) => {
+        if (generation !== summaryGeneration.current) return;
+        setError(errorText(e));
+        setAsked(false);
+      },
+    );
   };
   const makeTask = async (i: number) => {
     if (!result) return;
+    const generation = summaryGeneration.current;
     const a = result.actions[i];
     setBusy(true);
     try {
@@ -227,11 +250,12 @@ export function RecordingSummaryDialog({
           ? { due_at: new Date(`${a.due}T17:00:00`).toISOString() }
           : {}),
       });
-      setMade((s) => new Set(s).add(i));
+      if (generation === summaryGeneration.current)
+        setMade((s) => new Set(s).add(i));
     } catch (e) {
-      setError(errorText(e));
+      if (generation === summaryGeneration.current) setError(errorText(e));
     } finally {
-      setBusy(false);
+      if (generation === summaryGeneration.current) setBusy(false);
     }
   };
   return (
@@ -254,10 +278,19 @@ export function RecordingSummaryDialog({
         {!result ? (
           <>
             <p className="recorder-note">
-              The assistant writes out the recording, then gives a short summary
-              and any action items. The recording is sent to the assistant's AI
-              service to do this.
+              Summaries use your selected AI provider. Paste a transcript to use
+              ChatGPT; audio transcription requires the Orbyn provider.
             </p>
+            <label className="recorder-transcript">
+              Transcript (optional)
+              <textarea
+                value={transcript}
+                onChange={(event) => setTranscript(event.target.value)}
+                maxLength={200000}
+                disabled={asked}
+                rows={4}
+              />
+            </label>
             {error && (
               <p className="form-error" role="alert">
                 {error}
@@ -267,8 +300,7 @@ export function RecordingSummaryDialog({
               <button className="primary" disabled={asked} onClick={ask}>
                 {asked ? (
                   <>
-                    <Loader2 size={15} className="spin" /> Listening… this can
-                    take a minute
+                    <Loader2 size={15} className="spin" /> Preparing summary…
                   </>
                 ) : (
                   <>
@@ -280,6 +312,11 @@ export function RecordingSummaryDialog({
           </>
         ) : (
           <>
+            {result.provider && (
+              <p className="recorder-note">
+                {aiFeatureProviderLabel(result.provider)}
+              </p>
+            )}
             <div className="recorder-summary" dir="auto">
               {result.summary.split(/\n{2,}/).map((p, i) => (
                 <p key={i}>{p}</p>

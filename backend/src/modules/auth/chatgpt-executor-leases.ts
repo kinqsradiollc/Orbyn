@@ -338,14 +338,15 @@ export async function publishChatgptExecutorCatalog(
     await requireLease(db, session, enrollment, input.catalog.lease_epoch);
     const row = (
       await db.query<{ published_at: Date }>(
-        `INSERT INTO chatgpt_executor_catalogs(executor_id,enrollment_epoch,lease_epoch,sequence,models)
-       SELECT $1,$2,$3,$4,$5 FROM chatgpt_executor_leases WHERE executor_id=$1 AND expires_at>clock_timestamp() ON CONFLICT(executor_id) DO UPDATE SET enrollment_epoch=EXCLUDED.enrollment_epoch,lease_epoch=EXCLUDED.lease_epoch,sequence=EXCLUDED.sequence,models=EXCLUDED.models,published_at=clock_timestamp() RETURNING published_at`,
+        `INSERT INTO chatgpt_executor_catalogs(executor_id,enrollment_epoch,lease_epoch,sequence,models,capabilities)
+       SELECT $1,$2,$3,$4,$5,$6 FROM chatgpt_executor_leases WHERE executor_id=$1 AND expires_at>clock_timestamp() ON CONFLICT(executor_id) DO UPDATE SET enrollment_epoch=EXCLUDED.enrollment_epoch,lease_epoch=EXCLUDED.lease_epoch,sequence=EXCLUDED.sequence,models=EXCLUDED.models,capabilities=EXCLUDED.capabilities,published_at=clock_timestamp() RETURNING published_at`,
         [
           enrollment.id,
           enrollment.epoch,
           input.catalog.lease_epoch,
           input.catalog.sequence,
           JSON.stringify(input.catalog.models),
+          JSON.stringify(input.catalog.capabilities ?? []),
         ],
       )
     ).rows[0];

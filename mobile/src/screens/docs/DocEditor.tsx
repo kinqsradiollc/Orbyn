@@ -1,3 +1,5 @@
+import { maintainedPageDraftSaved } from "@orbyn/core";
+import { PageMaintenanceSheet } from "./PageMaintenanceSheet";
 import { DocNavigationContext } from "./doc-navigation";
 import { DocSourcePreview } from "./DocSourcePreview";
 import { openAppUrl } from "../../hooks/useAppLinks";
@@ -369,6 +371,7 @@ export function DocEditor({
   const [savingTemplate, setSavingTemplate] = useState(false);
   /** Whether "Publish to web" is open (SHR-05). */
   const [publishing, setPublishing] = useState(false);
+  const [maintaining, setMaintaining] = useState(false);
   /** Headings folded on this page (EDT-14), yours on every device. */
   const [folds, setFolds] = useState<Set<string>>(() => new Set());
   const [foldsLoaded, setFoldsLoaded] = useState(false);
@@ -904,6 +907,8 @@ export function DocEditor({
         setBlocks(theirs.content.length ? theirs.content : [EMPTY]);
         live.current = { title: theirs.title, blocks: theirs.content };
         history.current = emptyUndo();
+        setSavedAt(theirs.updated_at);
+        setNow(new Date());
         if (news) setNote(news);
         onChanged(theirs);
         return;
@@ -2367,6 +2372,31 @@ export function DocEditor({
 
   /** The page's ⋯: Ask, Copy link, Share, Export, History, template and Trash. */
   const pageActions: MoreAction[] = [
+    ...(canWrite && doc.kind === "doc" && !suggesting
+      ? [
+          {
+            label: "Page updates…",
+            onPress: () => {
+              void (async () => {
+                await flush();
+                if (
+                  !maintainedPageDraftSaved(
+                    live.current.title,
+                    onScreen(),
+                    baseTitle.current,
+                    base.current,
+                  )
+                )
+                  throw new Error(
+                    "Save your page edits before scheduling updates.",
+                  );
+                Keyboard.dismiss();
+                setMaintaining(true);
+              })().catch(report);
+            },
+          },
+        ]
+      : []),
     // Reading and editing (EDT-10): the same switch as Info's, a tap away.
     ...(canWrite && !suggesting
       ? [
@@ -2867,6 +2897,18 @@ export function DocEditor({
             canWrite && structural && !reading ? linkRelated : undefined
           }
         />
+        {maintaining && (
+          <PageMaintenanceSheet
+            id={doc.id}
+            onChanged={(updated) => {
+              if (updated.version < version.current) return;
+              setSavedAt(updated.updated_at);
+              setNow(new Date());
+              onChanged(updated);
+            }}
+            onClose={() => setMaintaining(false)}
+          />
+        )}
         <PublishSheet
           visible={publishing}
           kind="doc"

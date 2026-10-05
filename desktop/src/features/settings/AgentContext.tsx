@@ -1,3 +1,4 @@
+import { Character } from "../../components/Character";
 import { CharacterEditor } from "../../components/CharacterEditor";
 import { useEffect, useState, type FormEvent } from "react";
 import { FileText, Pencil } from "lucide-react";
@@ -6,10 +7,12 @@ import {
   characterAppearance,
   CHARACTER_PERSONAS,
   type AgentContextSettings,
-  type PersonalAgentSettings,
+  type AutomationAgentIdentity,
+  type AutomationAgentLane,
   type AgentInstructions,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { timeAgo } from "../../lib/tasks";
 import { openObject } from "../docs/DocLinks";
 import { OutcomeNote, useAction } from "../../components/Outcome";
@@ -25,7 +28,12 @@ import { ReminderNudges } from "./ReminderNudges";
  */
 export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
   const [data, setData] = useState<AgentContextSettings | null>(null);
-  const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
+  const [identity, setIdentity] = useState<AutomationAgentIdentity | null>(
+    null,
+  );
+  const [lane, setLane] = useState<AutomationAgentLane>("background");
+  const [editingLook, setEditingLook] = useState(false);
+  const [reload, setReload] = useState(0);
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
   const [appearance, setAppearance] = useState(() => characterAppearance({}));
@@ -42,14 +50,30 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
     });
   useEffect(() => {
     void load();
-    void client.agentSettings().then((value) => {
-      setIdentity(value);
-      setIdentityName(value.name);
-      setIdentityPersona(value.persona);
-      setAppearance(characterAppearance(value.character));
-    }, report);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    const token = session.get();
+    setIdentity(null);
+    setEditingLook(false);
+    void client.automationAgentIdentity(lane).then(
+      (value) => {
+        if (!live || token !== session.get()) return;
+        setIdentity(value);
+        setIdentityName(value.name);
+        setIdentityPersona(value.persona);
+        setAppearance(characterAppearance(value.character));
+      },
+      (error) => {
+        if (live && token === session.get()) report(error);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [lane, reload]);
 
   const openProfile = () =>
     void action.run(async () => {
@@ -70,13 +94,16 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
 
   const saveIdentity = (e: FormEvent) => {
     e.preventDefault();
+    if (!identity || identity.lane !== lane) return;
+    const token = session.get();
     void action.run(async () => {
-      const value = await client.updateAgentSettings({
+      const value = await client.updateAutomationAgentIdentity(lane, {
+        expected_revision: identity.revision,
         name: identityName,
         persona: identityPersona,
         character: appearance,
       });
-      setIdentity(value);
+      if (token === session.get()) setIdentity(value);
     });
   };
 
@@ -143,10 +170,40 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
 
   return (
     <div className="agents-rules">
-      <h3>Your assistant</h3>
+      <h3>Agent identity</h3>
+      <div
+        className="button-row start agents-identity-tabs"
+        aria-label="Agent identity profile"
+      >
+        {(["background", "overnight"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            className="secondary"
+            aria-pressed={lane === value}
+            disabled={action.pending}
+            onClick={() => setLane(value)}
+          >
+            {value === "background" ? "Background" : "Overnight"}
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="text-button"
+        disabled={action.pending}
+        onClick={() => setReload((value) => value + 1)}
+      >
+        Reload agent profile
+      </button>
+      {identity === null && (
+        <p role="status">
+          Agent profile is loading or unavailable. Reload to try again.
+        </p>
+      )}
       <p className="muted">
-        The name your built-in assistant goes by across Orbyn, and how it should
-        come across. Make its character your own.
+        {lane === "background" ? "Background" : "Overnight"} has its own name,
+        character and communication style.
       </p>
       <form className="agents-identity-form" onSubmit={saveIdentity}>
         <div className="settings-field">
@@ -154,6 +211,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
           <input
             id="agent-identity-name"
             required
+            disabled={action.pending || identity?.lane !== lane}
             maxLength={40}
             value={identityName}
             onChange={(e) => setIdentityName(e.target.value)}
@@ -164,6 +222,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
           <textarea
             id="agent-identity-persona"
             maxLength={1000}
+            disabled={action.pending || identity?.lane !== lane}
             rows={3}
             value={identityPersona}
             onChange={(e) => setIdentityPersona(e.target.value)}
@@ -179,23 +238,39 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
               key={preset.label}
               type="button"
               className="secondary"
-              disabled={action.pending}
+              disabled={action.pending || identity?.lane !== lane}
               onClick={() => setIdentityPersona(preset.persona)}
             >
               {preset.label}
             </button>
           ))}
         </div>
-        <CharacterEditor
-          value={appearance}
-          onChange={setAppearance}
-          name={identityName}
-          disabled={action.pending}
-        />
+        <div className="button-row start">
+          <Character appearance={appearance} name={identityName} size={48} />
+          <button
+            type="button"
+            className="secondary"
+            aria-expanded={editingLook}
+            disabled={action.pending || identity?.lane !== lane}
+            onClick={() => setEditingLook((value) => !value)}
+          >
+            {editingLook ? "Close character editor" : "Customize character"}
+          </button>
+        </div>
+        {editingLook && (
+          <CharacterEditor
+            value={appearance}
+            onChange={setAppearance}
+            name={identityName}
+            disabled={action.pending || identity?.lane !== lane}
+          />
+        )}
         <div className="button-row start">
           <button
             className="primary"
-            disabled={action.pending || identity === null}
+            disabled={
+              action.pending || identity === null || identity.lane !== lane
+            }
           >
             Save
           </button>

@@ -27,8 +27,12 @@ export async function visibleNightLeftovers(
     sources.length
       ? (
           await db.query<{ kind: string; id: string }>(
-            `SELECT source.kind, source.id FROM jsonb_to_recordset($2::jsonb) source(kind text,id uuid) WHERE ${assistantSourceVisible("source.kind", "source.id", "$1")}`,
-            [userId, JSON.stringify(sources)],
+            `SELECT source.kind, source.id FROM unnest($2::text[],$3::uuid[]) source(kind,id) WHERE ${assistantSourceVisible("source.kind", "source.id", "$1")}`,
+            [
+              userId,
+              sources.map((source) => source.kind),
+              sources.map((source) => source.id),
+            ],
           )
         ).rows.map((row) => `${row.kind}:${row.id}`)
       : [],
