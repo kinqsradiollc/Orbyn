@@ -356,7 +356,11 @@ export function docToHtml(
   blocks: DocBlock[],
   o: HtmlOptions = {},
 ): string {
-  const body = blocksHtml(blocks, { anchors: true, ...o });
+  return docHtmlPage(title, blocksHtml(blocks, { anchors: true, ...o }));
+}
+
+/** Wrap already escaped document HTML in the shared standalone export layout. */
+export function docHtmlPage(title: string, body: string): string {
   // The colours below are written out, not theme tokens: the file is opened
   // on its own, far from the app's stylesheet, so it has no variables to
   // read. They match the light theme (the highlight is its warnSoft tint),

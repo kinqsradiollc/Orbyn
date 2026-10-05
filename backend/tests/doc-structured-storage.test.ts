@@ -621,3 +621,49 @@ test("legacy history restore cannot flatten a structured version after a flat do
   ).rows[0];
   assert.deepEqual(stored, { version: 3, content_format: 1 });
 });
+
+test("Markdown export routes retain nested ownership and refuse unsupported lossy formats", async () => {
+  const privateId = await page(stranger);
+  const id = await page();
+  const nodes = parseDocContainers(
+    `> # Heading\n>\n> - [Secret][ref]\n>\n>   Continuation\n\n[ref]: orbyn://doc/${privateId} "Hidden hint"`,
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const headers = { authorization: `Bearer ${token}` };
+  for (const path of ["markdown", "export?format=md&version=2"]) {
+    const result = await app.inject({
+      method: "GET",
+      url: `/docs/${id}/${path}`,
+      headers,
+    });
+    assert.equal(result.statusCode, 200);
+    assert.match(result.body, /> - Private page/);
+    assert.match(result.body, />   Continuation/);
+    assert.ok(!result.body.includes(privateId));
+    assert.doesNotMatch(result.body, /Secret|Hidden hint/);
+  }
+  for (const format of ["docx", "txt"]) {
+    assert.equal(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/docs/${id}/export?format=${format}&version=2`,
+          headers,
+        })
+      ).statusCode,
+      409,
+    );
+  }
+  assert.equal(
+    (
+      await app.inject({
+        method: "GET",
+        url: `/docs/${id}/export?format=md&version=1`,
+        headers,
+      })
+    ).statusCode,
+    409,
+  );
+});

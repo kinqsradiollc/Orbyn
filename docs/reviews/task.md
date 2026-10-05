@@ -1,3 +1,20 @@
+## Structured export integration candidate — 6 October 2026
+
+The legacy restore guard is committeddd2a06af. Markdown and HTML/PDF route adapters
+now redistribute authorized leaves into their full container ownership. Exported
+private references lose their destination and definition identifiers; code/math
+literals retain authored source.56 pure route/parser/client/export cases pass;
+backend types pass. The first VM route cohort failed because its injected scope
+omitted the newly used export helper; binding the real helper retained the existing
+primary/revision/visibility assertions and repaired the cohort.
+
+Actual mounted Markdown/restore regressions await fresh serial DB52 after the
+frozen API full DB51 run terminates. HTML/PDF route evidence uses real container
+HTML passed to stubbed renderer boundaries, not a visual or real-render acceptance.
+Word/plain-text nested exporters still require implementation; current409 refusal
+is a temporary data-preservation boundary, not their final ADR state. Full source/
+editor/collaboration/import/export/native/whole-app requirements remain open.
+
 ## 6 October — structured content API follow-up
 
 Storage candidate4f45e904 completed fresh full DB49:3548 passes, zero failures,

@@ -3511,3 +3511,11 @@ stored content retains its smaller leaf/tree limits. Shared client methods
 `getDocContent` and `updateDocContent` validate identity, revision and capabilities.
 Normal editor/CRDT/import/export adoption is pending; this API does not establish
 visual or complete structured editor acceptance.
+
+Structured format2 exports preserve container ownership in Markdown and HTML/PDF.
+The `/markdown` alias uses the same complete-page link authorization. Exported
+private references become safe labels without private destination/definition IDs.
+Word and plain-text exports of format2 pages currently return409 rather than a
+flattened result; those adapters remain required work. Format1 exports retain their
+existing formats. HTML/PDF continue to recheck current visibility/revision after
+rendering and revalidate image access before returning a file.

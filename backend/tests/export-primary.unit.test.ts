@@ -6,6 +6,12 @@ import { runInNewContext } from "node:vm";
 import ts from "typescript";
 import { z } from "zod";
 import {
+  blocksWithExportLinks,
+  docHtmlPage,
+  docContainersHtml,
+  parseVersionedDocContent,
+  projectDocContainers,
+  serializeDocContainers,
   EXPORT_FORMATS,
   EXPORT_LABELS,
   exportName,
@@ -21,6 +27,7 @@ function fixture({
   path = "/docs/:id/export",
   visibleAfterRender = visible,
   versionAfterRender = 8,
+  structured = false,
 } = {}) {
   const source = ts.createSourceFile(
     "routes.ts",
@@ -54,6 +61,18 @@ function fixture({
         rows: (reads > 1 ? visibleAfterRender : visible)
           ? [
               {
+                content_format: structured ? 2 : 1,
+                content_nodes: structured
+                  ? [
+                      {
+                        kind: "quote",
+                        children: content.map((block) => ({
+                          kind: "block",
+                          block,
+                        })),
+                      },
+                    ]
+                  : null,
                 title: "Current title",
                 content,
                 version: reads > 1 ? versionAfterRender : 8,
@@ -66,6 +85,7 @@ function fixture({
   const exports: {
     handler?: (request: unknown, reply: unknown) => Promise<unknown>;
   } = {};
+  let renderedHtml = "";
   const render = () => "Current exported content";
   runInNewContext(
     ts.transpileModule(
@@ -105,11 +125,22 @@ function fixture({
         dependencies.push(db);
         return { value: (blocks: DocBlock[]) => blocks, hidden: () => false };
       },
-      blocksWithWebLinks: (blocks: DocBlock[]) => blocks,
+      blocksWithExportLinks,
+      docHtmlPage,
+      docContainersHtml,
+      parseVersionedDocContent,
+      projectDocContainers,
+      serializeDocContainers,
       env: { APP_URL: "https://fixture.invalid" },
       docToDocx: render,
-      exportRenderedPdf: render,
-      exportRenderedHtml: render,
+      exportRenderedPdf: (html: string) => {
+        renderedHtml = html;
+        return render();
+      },
+      exportRenderedHtml: (html: string) => {
+        renderedHtml = html;
+        return render();
+      },
       exportImages: async (db: unknown) => {
         dependencies.push(db);
         return { fileUrl: () => null, revalidate: async () => {} };
@@ -137,7 +168,13 @@ function fixture({
       assert.equal(reply.raw.listenerCount("close"), 0);
     }
   };
-  return { run, reads: () => reads, dependencies, pool };
+  return {
+    run,
+    reads: () => reads,
+    dependencies,
+    pool,
+    renderedHtml: () => renderedHtml,
+  };
 }
 
 for (const format of EXPORT_FORMATS) {
@@ -211,3 +248,19 @@ for (const format of ["html", "pdf"]) {
     });
   });
 }
+
+test("structured HTML and PDF routes retain quote ownership in the renderer input", async () => {
+  for (const format of ["html", "pdf"]) {
+    const page = fixture({ structured: true });
+    await page.run({ format, version: 8 });
+    assert.match(page.renderedHtml(), /<blockquote><p>/);
+    assert.match(page.renderedHtml(), /<title>Current title<\/title>/);
+  }
+});
+
+test("structured Markdown route retains quotes and refuses lossy Word/plain text", async () => {
+  const page = fixture({ structured: true });
+  assert.match(String(await page.run({ format: "md", version: 8 })), /\n> /);
+  for (const format of ["docx", "txt"])
+    await assert.rejects(page.run({ format, version: 8 }), { statusCode: 409 });
+});
