@@ -4,10 +4,10 @@ Date: 30 September 2026. Status: **accepted architectural direction; implementat
 
 ### Authoritative checkpoint — 6 October 2026
 
-Main application checkpoint is `9cc2dad0` (PR207), following PR205/206 and
+Main application checkpoint is `49a5d844` (PR208), following PR205–207 and
 Slack PR204. Deployment remains user-run and unverified. Main and exact
-reply candidate `c18f405b` have identical file tree
-`4c3f19f1f7a8f70a6c1d431eda2401ad59b35496`.
+Docs candidate `4c9edf00` have identical file tree
+`b7e56186bf9d5e478800def4b143b808f3da7ccb`.
 
 | Area                 | Implemented on main                                                                                                                                                                                                                                                                                                  | Remaining acceptance or implementation                                                                                                                                            |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -15,7 +15,7 @@ reply candidate `c18f405b` have identical file tree
 | Plugin / P1          | Separate backend and worker, provider-bound consent, managed/BYO inference receipts and both client controls                                                                                                                                                                                                         | External plugin host/provider and native interaction acceptance; private ChatGPT credentials and MCP remain separate.                                                             |
 | Agent channels / C6  | Slack installation, canonical bot vault, rotation, delivery and signed exact-question replies. Teams reviewed account/personal-conversation linking, uninstall/relink handling, bounded Background/morning delivery, sent-card proofs and atomic exact-question reply receipts/consumption, and both client controls | Real Slack/Teams tenant and cross-client visual/native acceptance. Optional unconfigured integrations remain disabled.                                                            |
 | Agents / C4–C5       | Independent Background/Overnight runtimes and identities, source ownership, reflection and maintained-page checkpoints                                                                                                                                                                                               | Audit governing collaboration, budgets, shared/public pages and publication requirements against current source; finish unresolved runtime/client acceptance.                     |
-| Docs / D1            | Shared Markdown, source/preview, Mermaid and authorized export checkpoints                                                                                                                                                                                                                                           | Complete native editor/render/export/import matrix for all required Markdown/diagram families and interaction states.                                                             |
+| Docs / D1            | Shared Markdown, source/preview, Mermaid and authorized export checkpoints, nested inline formatting and exact delimiter editing                                                                                                                                                                                     | Complete native editor/render/export/import matrix for all required Markdown/diagram families and interaction states.                                                             |
 | Whole-app UI / U1    | Settings modal/search, responsive assistant/settings and shared client checkpoints                                                                                                                                                                                                                                   | Page-by-page web/desktop/mobile layout and interaction review, including sidebar collapse, simultaneous panels, narrow widths, large text and stale state.                        |
 | Production / cleanup | Qualified checkpoints pushed; user/character files and worktrees preserved                                                                                                                                                                                                                                           | User deployment confirmation, then final relevant-worktree/branch audit and cleanup after integration.                                                                            |
 
@@ -37,9 +37,10 @@ sent question, then atomically consume an encrypted receipt and answer.
 Approvals remain in Orbyn. Cold pool-one sweep/reply coverage also passes.
 
 Next: D1 and U1 matrices and the remaining governing agent/provider acceptance
-audit. A separate local Docs checkpoint now repairs nested inline formatting
-across the shared parser, web rendering and HTML exports, with mobile label
-styling and Word regression coverage; it is not yet merged or visually accepted.
+audit. PR208 is merged: exact `4c9edf00`, all four CI37346372738 jobs passed and
+fresh local full suite3383/0/1. Balanced-link PR209 exact `4c3dffb4` is
+under qualification. Paragraph/break behavior, full Markdown matrices and
+visual/native acceptance remain open; see the [paragraph audit](../reviews/docs-paragraph-break-audit.md).
 Full C1–C6/M1/D1/U1 remains active and incomplete. See the
 [implementation pipeline](../reviews/task.md#authoritative-implementation-pipeline--6-october-2026)
 and [Teams evidence](../reviews/evidence/teams-agent-channels.md).
