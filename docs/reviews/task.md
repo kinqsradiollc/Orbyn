@@ -1,3 +1,21 @@
+# Current checkpoint and implementation pipeline — 5 October 2026
+
+| Work                        | Confirmed state                                                                                                      | Next implementation or acceptance                                                                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| ChatGPT provider connection | Handoff/status fixes on main; selected-provider routing on main                                                      | Real web request to same-account desktop authorization and successful Responses completion; truthful plan/usage checks           |
+| Scheduled Agenda            | PR199 merged as8dcc4bb1; all four CI jobs pass,2938 tests pass and one existing skip;99 focused local passes         | Cross-client/native controls and real-provider acceptance; keep unsupported hard-limit catalogs ineligible                       |
+| Plugin inference            | PR203 broker, consent, private receipts and worker implemented; integrated current main; fresh full local/CI running | Inspect terminal results, promote qualified source, exercise external host and both client controls                              |
+| Settings layout             | Late grid override removed; themed inputs/secrets;15 focused passes, backend/web types and web build pass            | Browser/native visual acceptance; whole-app responsive layout audit remains open                                                 |
+| Slack/Teams channels        | Slack signed-payload/current-card pure boundary committed separately;7 tests pass                                    | Session-bound OAuth installation, encrypted credentials, durable outbox, callback/reply transaction, client controls; then Teams |
+| Docs parity                 | Several source/editor/Mermaid/math fixes on main                                                                     | Requirement-by-requirement D1 editor, export, import and native visual matrix                                                    |
+| Agents and maintained pages | Runtime/identity and prior maintained-page checkpoints on main                                                       | Complete governing collaboration/reflection/publication requirements and external/runtime acceptance                             |
+| Deployment and cleanup      | User deploys main; root dirt and related worktrees preserved                                                         | Confirm production recovery; cleanup only after remaining work is integrated and preserved                                       |
+
+The full ADR goal remains active. Browser review again rejected5174 due to saved
+Block, without workaround. Native Simulator review returned timeout -10005.
+This table records implementation separately from runtime and visual acceptance.
+Earlier checkpoint notes below are retained as history.
+
 # Current integration — 5 October 2026
 
 Main62f5e9a0 is integrated into the scheduled Agenda candidate. The only merge
