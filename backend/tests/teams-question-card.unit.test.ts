@@ -16,6 +16,7 @@ test("Teams card binds the complete question and every choice to its delivery", 
     delivery = randomUUID(),
     card = teamsQuestionCard(delivery, q)!;
   assert.equal(card.questionDigest, teamsQuestionDigest(delivery, q));
+  assert.equal(card.attachment.content.version, "1.2");
   const body = card.attachment.content.body as any[];
   assert.equal(body[0].text, "Which draft?");
   assert.equal(body[1].text, "1\\. First");

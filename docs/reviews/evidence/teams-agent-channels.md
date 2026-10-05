@@ -411,3 +411,11 @@ Simulator inspection retried and again returned -10005 timeoutReached. No
 native/browser visual or real Teams tenant acceptance is claimed. Candidate
 reply behavior is not on main until full qualification and promotion complete.
 Full C1–C6/M1/D1/U1 remains active; Docs and whole-app layout matrices follow.
+
+Compatibility follow-up: verified the primary Universal Action Model contract
+again. Its older-client example uses card version1.2 and wraps Execute/fallback
+in ActionSet. The builder now uses that baseline and a visible free-answer label
+plus the supported input placeholder; server-side bounds remain mandatory.
+Using top-level version1.4 would prevent some older clients from reaching the
+Submit fallback. A regression assertion covers the compatible card version.
+No automatic refresh or approval action is introduced.

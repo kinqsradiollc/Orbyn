@@ -51,16 +51,16 @@ export function teamsQuestionCard(deliveryId: string, candidate: unknown) {
       isSubtle: true,
     },
   ];
-  if (!question.choices.length)
+  if (!question.choices.length) {
+    body.push({ type: "TextBlock", text: "Your answer", wrap: true });
     body.push({
       type: "Input.Text",
       id: "answer",
       isMultiline: true,
       maxLength: 4000,
-      label: "Your answer",
-      isRequired: true,
-      errorMessage: "Enter an answer.",
+      placeholder: "Your answer",
     });
+  }
   const actions = (
     question.choices.length
       ? question.choices.map((_, choice) => ({
@@ -83,7 +83,7 @@ export function teamsQuestionCard(deliveryId: string, candidate: unknown) {
   }));
   const content = {
     type: "AdaptiveCard",
-    version: "1.4",
+    version: "1.2",
     body: [...body, { type: "ActionSet", actions }],
   };
   // Do not truncate or send controls whose complete question cannot fit.
