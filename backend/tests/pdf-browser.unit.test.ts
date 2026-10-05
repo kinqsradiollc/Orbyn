@@ -88,3 +88,17 @@ test("PDF pipe bounds pending requests and drops unknown response IDs", async ()
   await Promise.all(rejected);
   assert.equal(view.kills(), 1);
 });
+
+test("PDF timeout identifies only the protocol stage without exposing input or session", async () => {
+  const view = fixture(5);
+  const request = view.pipe.command(
+    "Runtime.evaluate",
+    { expression: "private source and credentials" },
+    "private-session",
+  );
+  await assert.rejects(
+    request,
+    /^Error: Document PDF rendering timed out \(Runtime\.evaluate\)\.$/,
+  );
+  assert.equal(view.kills(), 1);
+});

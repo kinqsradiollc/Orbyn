@@ -131,3 +131,68 @@ test("many unmatched delimiter lengths preserve source", () => {
     source,
   );
 });
+
+for (const [source, visible, flags] of [
+  ["**bold ~~strike~~ end**", "bold strike end", { bold: true, strike: true }],
+  [
+    "=={green}**bold**==",
+    "bold",
+    { bold: true, highlight: true, tint: "green" },
+  ],
+  ["~~*italic*~~", "italic", { italic: true, strike: true }],
+  [
+    "[**label**](https://example.test)",
+    "label",
+    { bold: true, link: "https://example.test" },
+  ],
+  [
+    "==**before `code` after**==",
+    "before code after",
+    { bold: true, highlight: true, code: true },
+  ],
+] as const) {
+  test(`nested styles retain source positions: ${source}`, () => {
+    const runs = parseDocInline(source);
+    assert.equal(runs.map((run) => run.text).join(""), visible);
+    assert.ok(
+      runs.some((run) =>
+        Object.entries(flags).every(
+          ([key, value]) => run[key as keyof typeof run] === value,
+        ),
+      ),
+    );
+    for (const run of runs)
+      assert.equal(
+        source.slice(run.start, run.start + run.text.length),
+        run.text,
+      );
+  });
+}
+
+test("nested HTML styles compose around safe links and literal code", () => {
+  const html = docToHtml(
+    "Nested",
+    parseDoc(
+      "=={green}**bold**== [**label**](https://example.test) **`code`**",
+    ),
+  );
+  assert.ok(html.includes('<strong><mark class="green">bold</mark></strong>'));
+  assert.ok(
+    html.includes('<strong><a href="https://example.test">label</a></strong>'),
+  );
+  assert.ok(html.includes("<strong><code>code</code></strong>"));
+  const unsafe = docToHtml("Unsafe", parseDoc("[**label**](javascript:alert)"));
+  assert.ok(!unsafe.includes("<a "));
+});
+
+test("nested reference labels retain formatting and resolved destinations", () => {
+  const runs = parseDocInline(
+    "[**label**][target]",
+    new Map([["target", "https://example.test"]]),
+  );
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].text, "label");
+  assert.equal(runs[0].bold, true);
+  assert.equal(runs[0].link, "https://example.test");
+  assert.equal(runs[0].start, 3);
+});

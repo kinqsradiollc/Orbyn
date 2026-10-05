@@ -102,31 +102,34 @@ function inlineHtml(text: string, o: HtmlOptions = {}): string {
   return parseDocInline(text, o.references)
     .map((run: DocInline) => {
       const body = escapeHtml(run.math ? mathToText(run.text) : run.text);
-      if (run.math)
-        return o.math
-          ? (o.math(run.text, false) ??
-              `<code class="math-source" title="Math source (rendering unavailable)">${escapeHtml(run.text)}</code>`)
-          : `<span class="m">${body}</span>`;
-      if (run.code) return `<code>${body}</code>`;
-      if (run.footnote) {
-        const n = o.notes?.get(run.footnote) ?? run.footnote;
-        return `<sup><a href="#fn-${escapeHtml(String(n))}">${escapeHtml(String(n))}</a></sup>`;
-      }
-      if (run.source) return `<small class="src">[${body}]</small>`;
-      if (run.link) {
-        const href = o.linkUrl ? o.linkUrl(run.link) : run.link;
-        return href ? `<a href="${escapeHtml(href)}">${body}</a>` : body;
-      }
-      if (run.bold) return `<strong>${body}</strong>`;
-      if (run.italic) return `<em>${body}</em>`;
-      if (run.strike) return `<s>${body}</s>`;
+      let rendered = (() => {
+        if (run.math)
+          return o.math
+            ? (o.math(run.text, false) ??
+                `<code class="math-source" title="Math source (rendering unavailable)">${escapeHtml(run.text)}</code>`)
+            : `<span class="m">${body}</span>`;
+        if (run.code) return `<code>${body}</code>`;
+        if (run.footnote) {
+          const n = o.notes?.get(run.footnote) ?? run.footnote;
+          return `<sup><a href="#fn-${escapeHtml(String(n))}">${escapeHtml(String(n))}</a></sup>`;
+        }
+        if (run.source) return `<small class="src">[${body}]</small>`;
+        if (run.link) {
+          const href = o.linkUrl ? o.linkUrl(run.link) : run.link;
+          return href ? `<a href="${escapeHtml(href)}">${body}</a>` : body;
+        }
+        return body;
+      })();
       if (run.highlight) {
         const tint = run.tint ?? "amber";
-        return o.inline
-          ? `<mark style="background:${TINT_HEX[tint]}">${body}</mark>`
-          : `<mark${run.tint ? ` class="${run.tint}"` : ""}>${body}</mark>`;
+        rendered = o.inline
+          ? `<mark style="background:${TINT_HEX[tint]}">${rendered}</mark>`
+          : `<mark${run.tint ? ` class="${run.tint}"` : ""}>${rendered}</mark>`;
       }
-      return body;
+      if (run.strike) rendered = `<s>${rendered}</s>`;
+      if (run.italic) rendered = `<em>${rendered}</em>`;
+      if (run.bold) rendered = `<strong>${rendered}</strong>`;
+      return rendered;
     })
     .join("");
 }
