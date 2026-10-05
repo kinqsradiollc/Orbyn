@@ -199,10 +199,12 @@ export function LinkPillView({
   href,
   label,
   start,
+  hint,
 }: {
   href: string;
   label: string;
   start: number;
+  hint?: string;
 }) {
   const ref = parseObjectHref(href);
   const { pills, onToggle, onRestore, onItemsChanged, report } =
@@ -288,9 +290,11 @@ export function LinkPillView({
       tabIndex={openable ? 0 : undefined}
       aria-label={openable ? `Open ${noun} ${title}` : undefined}
       title={
-        openable
-          ? `Open. ${MOD_CLICK} opens it ${inTab ? "in a new tab" : "beside this page"}.`
-          : undefined
+        hint !== undefined && pill?.state === "ok"
+          ? hint
+          : openable
+            ? `Open. ${MOD_CLICK} opens it ${inTab ? "in a new tab" : "beside this page"}.`
+            : undefined
       }
       onClick={(e) => {
         stop(e);

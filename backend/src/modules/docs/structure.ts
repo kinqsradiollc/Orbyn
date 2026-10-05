@@ -6,6 +6,7 @@ import {
   blockText,
   docAnchorInput,
   docReferenceLinks,
+  docReferenceEntries,
   docExtractInput,
   docFoldsInput,
   docMergeInput,
@@ -561,10 +562,12 @@ export async function docStructureRoutes(app: FastifyInstance) {
       more: !block && content.length > EMBED_LINES,
       // Words of links this reader can't open read "Private page" (D3aF).
       blocks: lines,
-      references: [...docReferenceLinks(readable)].filter(([, href]) => {
-        const target = parseObjectHref(href);
-        return !target || !privacy.hidden(target);
-      }),
+      references: docReferenceEntries(docReferenceLinks(readable)).filter(
+        ([, href]) => {
+          const target = parseObjectHref(href);
+          return !target || !privacy.hidden(target);
+        },
+      ),
     };
   });
 

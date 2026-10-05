@@ -149,10 +149,12 @@ export function LinkPillText({
   href,
   label,
   style,
+  hint,
 }: {
   href: string;
   label: string;
   style?: object;
+  hint?: string;
 }) {
   const ref = parseObjectHref(href);
   const { pills, onToggle, onRestore, onCard } = useContext(PillContext);
@@ -198,7 +200,11 @@ export function LinkPillText({
       accessibilityRole={openable ? "link" : undefined}
       accessibilityLabel={openable ? `Open ${noun} ${title}` : undefined}
       accessibilityHint={
-        openable && onCard ? "Touch and hold for more" : undefined
+        hint !== undefined && pill?.state === "ok"
+          ? hint
+          : openable && onCard
+            ? "Touch and hold for more"
+            : undefined
       }
       onPress={openable ? () => openObject(target) : undefined}
       onLongPress={
