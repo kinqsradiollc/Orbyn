@@ -72,3 +72,17 @@ endpoint, implement the following retained P1 boundary:
 
 This is the implementation contract, not a shipped inference feature. The launch
 checkpoint has no provider-call endpoint and portable MCP remains unchanged.
+
+#### Managed transport foundation — candidate
+
+`provider-policy.ts` now defines strict host text/operation input and a separate
+server-owned permission record. It admits only a matching known database
+provider/revision/model and plugin owner/grant/client, rejecting personal-plan
+transports and first-party authority hooks. The transport uses a captured output
+limit, a 30-second deadline, pre/post current-authority callbacks, a bounded
+result and generic upstream failure text. It does not retry or select fallback.
+Nine isolated regressions and backend typecheck pass.
+
+This module is not mounted as an endpoint. Persisted owner consent, atomic daily
+reservation, durable operation deduplication/unknown outcomes, worker recovery,
+HTTP shields and both permission UIs remain required before enabling execution.
