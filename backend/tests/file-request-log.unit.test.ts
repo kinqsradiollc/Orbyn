@@ -97,3 +97,21 @@ test("signed Slack interaction and event callback queries never enter request lo
       );
     }
 });
+
+test("Teams OAuth codes and state never enter request URL serialization", () => {
+  for (const prefix of ["", "/api"]) {
+    const path = `${prefix}/agent-channels/teams/callback`;
+    assert.equal(
+      serializeFileRequest({
+        url: `${path}?code=private-teams-code&state=private-teams-state`,
+      }).url,
+      path,
+    );
+    assert.equal(
+      serializeFileRequest({
+        url: `${path}/?error=private-error&state=private-state`,
+      }).url,
+      `${path}/`,
+    );
+  }
+});

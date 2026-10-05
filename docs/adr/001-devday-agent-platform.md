@@ -2060,3 +2060,14 @@ checks refuse stale or wrong recipients. Linking leaves DMs off. Sixteen cold-po
 database cases pass, including real signed activities and concurrent replay.
 This service remains unmounted; transport, delivery, replies, client controls and
 external/native/visual acceptance remain open. Full ADR goal remains active.
+
+### Teams HTTP identity controls — candidate, 6 October 2026
+
+Optional API status, session-bound OAuth review and disconnect are mounted, with
+strict typed contracts available to both clients. Provider codes/state are hidden
+from gateway/request logs and proxy retries disabled. Disconnect destroys pending
+identity and stored personal-conversation authority. Fifty-eight integrated cases
+and17 cold-pool account cases pass. Delivery remains explicitly unavailable; no
+Teams DM permission/activity endpoint or client UI is mounted. Transport, exact
+question replies, both client controls and external/native/visual gates remain
+open. This checkpoint does not complete A6 or C1–C6/M1/D1/U1.

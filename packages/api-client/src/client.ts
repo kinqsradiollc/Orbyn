@@ -1,4 +1,14 @@
 import {
+  teamsInstallationId,
+  teamsChannelStatus,
+  teamsInstallationStart,
+  teamsInstallationRequest,
+  teamsInstallationConfirm,
+  teamsConversationChallenge,
+  teamsChannelConnection,
+  teamsChannelDisconnect,
+} from "@orbyn/core";
+import {
   agendaPrivatePermission,
   agendaPrivatePermissionInput,
   agendaPrivateSummary,
@@ -1462,6 +1472,52 @@ export class OrbynClient {
       await this.request("/ai/connections/chatgpt/connect-requests", {
         method: "POST",
         body: {},
+        signal,
+      }),
+    );
+  }
+  /** Teams OAuth identity review is separate from personal conversation linking and DM consent. */
+  async teamsChannel(signal?: AbortSignal) {
+    return teamsChannelStatus.parse(
+      await this.request("/agent-channels/teams", { fresh: true, signal }),
+    );
+  }
+  async startTeamsInstallation(signal?: AbortSignal) {
+    return teamsInstallationStart.parse(
+      await this.request("/agent-channels/teams/installations", {
+        method: "POST",
+        body: {},
+        signal,
+      }),
+    );
+  }
+  async teamsInstallation(id: string, signal?: AbortSignal) {
+    const requestId = teamsInstallationId.parse(id);
+    return teamsInstallationRequest.parse(
+      await this.request(`/agent-channels/teams/installations/${requestId}`, {
+        fresh: true,
+        signal,
+      }),
+    );
+  }
+  async confirmTeamsInstallation(
+    id: string,
+    input: unknown,
+    signal?: AbortSignal,
+  ) {
+    const requestId = teamsInstallationId.parse(id);
+    return teamsConversationChallenge.parse(
+      await this.request(
+        `/agent-channels/teams/installations/${requestId}/confirm`,
+        { method: "POST", body: teamsInstallationConfirm.parse(input), signal },
+      ),
+    );
+  }
+  async disconnectTeams(input: unknown, signal?: AbortSignal) {
+    return teamsChannelConnection.parse(
+      await this.request("/agent-channels/teams/disconnect", {
+        method: "POST",
+        body: teamsChannelDisconnect.parse(input),
         signal,
       }),
     );

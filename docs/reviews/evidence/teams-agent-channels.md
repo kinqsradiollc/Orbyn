@@ -140,3 +140,32 @@ confirmed by /tmp/orbyn-channel-teams-personal-link-types.log and
 [the official message activity contract](https://learn.microsoft.com/en-us/microsoftteams/platform/bots/build-conversational-capability).
 Actual installation/user interaction, bot transport, delivery, question replies,
 client controls, HTTP shields and native/visual acceptance remain outstanding.
+
+## HTTP and disconnect controls — candidate, 6 October 2026
+
+Optional Teams status/start/read/review/disconnect and the public OAuth callback
+are mounted on the API. Typed core/API-client contracts are available to both
+clients. Status truthfully exposes delivery unavailable; no activity or DM opt-in
+endpoint is mounted. The original session is required throughout review; API keys
+and MCP/plugin access are excluded by credential classification. Both gateway
+callback paths omit access/error query logs and disable proxy replay; request URL
+serialization removes OAuth query data. Disconnect erases conversation/challenge
+authority and all unfinished owner OAuth attempts, even without configuration.
+
+/tmp/orbyn-channel-teams-controls-integrated-final.log passes58/58 protocol, HTTP,
+actual route inventory, gateway/privacy and database cases.
+/tmp/orbyn-channel-teams-controls-cold.log passes17/17 single-pool account cases.
+Retained diagnostics: initial API-client build missed the UUID schema import;
+repaired using the exported typed installation ID. Copied HTTP scaffolding had an
+inapplicable Slack permission call; removed because this checkpoint exposes no
+Teams permission endpoint. The first mixed test invocation lacked the required
+TEST_DATABASE_URL for the actual inventory suite; the final isolated test-DB
+wrapper ran all58 cases serially. No security assertion or inventory ratchet was
+weakened. Full combined suite/CI, transport, replies, both UIs and authorized real
+tenant/native/visual acceptance remain open.
+
+All workspace typechecks, backend build and repository format check also pass:
+/tmp/orbyn-channel-teams-controls-all-types.log,
+/tmp/orbyn-channel-teams-controls-build.log and
+/tmp/orbyn-channel-teams-controls-format.log. Combined full-suite qualification
+is still required before this candidate can be promoted to main.

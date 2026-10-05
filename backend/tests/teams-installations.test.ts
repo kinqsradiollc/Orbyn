@@ -564,3 +564,48 @@ test("disabled owner, expired challenge and disconnect prevent personal linking"
   );
   await assert.rejects(connectionMessage(disconnected.activity), refusal(409));
 });
+
+const { readTeamsChannel, disconnectTeamsInstallation } =
+  await import("../src/modules/agent-channels/teams-installations.js");
+test("owned connection status hides secrets, reports configuration drift and disconnect clears pending authority", async () => {
+  const { f, link, activity } = await preparedLink();
+  assert.equal(
+    (await readTeamsChannel(f.binding, config))?.state,
+    "awaiting_conversation",
+  );
+  assert.equal((await readTeamsChannel(f.binding))?.state, "reconnect");
+  await connectionMessage(activity);
+  const linked = await readTeamsChannel(f.binding, config);
+  assert.equal(linked?.state, "linked");
+  assert.doesNotMatch(
+    JSON.stringify(linked),
+    /link_token|encrypted|29:|personal-fixture/,
+  );
+  const attempt = await beginTeamsInstallation(f.binding, config);
+  await assert.rejects(
+    disconnectTeamsInstallation(f.binding, link.version),
+    refusal(409),
+  );
+  const result = await disconnectTeamsInstallation(f.binding, linked!.version);
+  assert.equal(result.state, "disconnected");
+  assert.equal(result.dm_enabled, false);
+  assert.equal((await pending(attempt.id)).state, "failed");
+  assert.equal((await pending(attempt.id)).pkce_encrypted, null);
+  const stored = (
+    await pool.query(
+      "SELECT * FROM agent_channel_teams_installations WHERE id=$1",
+      [link.id],
+    )
+  ).rows[0];
+  assert.equal(stored.conversation_encrypted, null);
+  assert.equal(stored.conversation_hash, null);
+  assert.equal(stored.link_nonce_hash, null);
+  await assert.rejects(connectionMessage(activity), refusal(409));
+  assert.equal((await readTeamsChannel(f.binding))?.state, "disconnected");
+  const other = await fixture();
+  assert.equal(await readTeamsChannel(other.binding, config), null);
+  await assert.rejects(
+    disconnectTeamsInstallation(other.binding, result.version),
+    refusal(409),
+  );
+});

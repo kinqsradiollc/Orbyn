@@ -295,3 +295,61 @@ export async function confirmTeamsInstallation(
     throw error;
   });
 }
+
+/** Read only the current owner's mapping without exposing its challenge or encrypted conversation. */
+export async function readTeamsChannel(
+  binding: Binding,
+  config?: TeamsOAuthConfig,
+) {
+  const configHash = config ? teamsOAuthConfigDigest(config) : null;
+  return transaction(async (db) => {
+    await live(db, binding);
+    const row = (
+      await db.query(
+        "SELECT id,display_name,tenant_id,object_id,version,dm_enabled,disconnected_at,config_hash,conversation_hash,link_expires_at FROM agent_channel_teams_installations WHERE user_id=$1",
+        [binding.userId],
+      )
+    ).rows[0];
+    if (!row) return null;
+    return {
+      id: row.id,
+      display_name: row.display_name,
+      tenant_id: row.tenant_id,
+      object_id: row.object_id,
+      version: row.version,
+      dm_enabled: row.dm_enabled,
+      state: row.disconnected_at
+        ? ("disconnected" as const)
+        : row.config_hash !== configHash
+          ? ("reconnect" as const)
+          : row.conversation_hash
+            ? ("linked" as const)
+            : row.link_expires_at && row.link_expires_at.getTime() > Date.now()
+              ? ("awaiting_conversation" as const)
+              : ("reconnect" as const),
+    };
+  });
+}
+/** Disconnect remains available without provider configuration and destroys local conversation/challenge authority. */
+export async function disconnectTeamsInstallation(
+  binding: Binding,
+  expectedVersion: number,
+) {
+  z.number().int().positive().parse(expectedVersion);
+  return transaction(async (db) => {
+    await live(db, binding);
+    const result = await db.query(
+      `UPDATE agent_channel_teams_installations SET dm_enabled=false,conversation_encrypted=NULL,conversation_hash=NULL,
+       link_nonce_hash=NULL,link_expires_at=NULL,disconnected_at=now(),updated_at=now(),version=version+1
+       WHERE user_id=$1 AND version=$2 RETURNING id,display_name,tenant_id,object_id,version,dm_enabled`,
+      [binding.userId, expectedVersion],
+    );
+    if (!result.rowCount)
+      fail(409, "This Teams connection changed. Refresh before disconnecting.");
+    await db.query(
+      "UPDATE agent_channel_teams_oauth_pending SET state='failed',pkce_encrypted=NULL,identity_encrypted=NULL,exchange_claim=NULL WHERE user_id=$1 AND state IN ('pending','exchanging','ready')",
+      [binding.userId],
+    );
+    return { ...result.rows[0], state: "disconnected" as const };
+  });
+}

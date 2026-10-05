@@ -418,3 +418,26 @@ Slack application's irreversible token-rotation setting in production.
 
 Official contracts: [OAuth installation](https://docs.slack.dev/authentication/installing-with-oauth/),
 [token rotation](https://docs.slack.dev/authentication/using-token-rotation/).
+
+## Optional Teams identity connection (candidate)
+
+| Variable              | Purpose                                                                                    |
+| --------------------- | ------------------------------------------------------------------------------------------ |
+| `TEAMS_CLIENT_ID`     | Organizational Entra OAuth client ID                                                       |
+| `TEAMS_CLIENT_SECRET` | Server-only user identity OAuth client secret                                              |
+| `TEAMS_BOT_APP_ID`    | Exact Teams bot application UUID                                                           |
+| `TEAMS_REDIRECT_URI`  | Registered HTTPS callback `/api/agent-channels/teams/callback`, or the unprefixed API path |
+
+Blank configuration leaves linking unavailable. OAuth requests only `openid
+profile`; it stores no Microsoft access or refresh token. The original live Orbyn
+session must review the verified tenant and object ID. Review returns a ten-minute
+one-use personal-conversation challenge, with DMs off. Pending private identity
+data expires after ten minutes; abandoned/disconnected mappings are swept after
+thirty days. Disconnect remains available without provider configuration and
+erases local conversation/challenge authority plus unfinished OAuth attempts.
+
+This is an identity-link checkpoint. Its status returns `delivery_available:false`.
+The personal-message proof service is tested but not mounted; bot application
+transport, Teams delivery/replies and client UI remain under implementation. Do
+not enable or advertise Teams messaging from this checkpoint. These OAuth client
+credentials do not supply bot transport credentials, private ChatGPT or MCP access.

@@ -3447,3 +3447,21 @@ consumption clears encrypted answer content and commits the receipt with the job
 and chat history in one transaction. One sent card accepts at most one decision.
 Permission changes, source loss, question edits, expiry and configuration rotation
 refuse queued answers. No callback grants standing approval.
+
+### Teams identity connection (candidate)
+
+| Method and path                                        | Behavior                                                                                             |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `GET /agent-channels/teams`                            | Owned connection status; no private challenge or conversation contents                               |
+| `POST /agent-channels/teams/installations`             | Empty body; original-session OAuth attempt                                                           |
+| `GET /agent-channels/teams/installations/:id`          | Original-session encrypted identity review                                                           |
+| `POST /agent-channels/teams/installations/:id/confirm` | Exact `tenant_id`, `object_id`, `expected_version`; returns one-use personal-link challenge, DMs off |
+| `POST /agent-channels/teams/disconnect`                | Current `expected_version`; clears conversation, challenge and pending identity authority            |
+| `GET /agent-channels/teams/callback`                   | Public state-bound capture; never grants ownership or DM permission                                  |
+
+All owned routes require live app sessions, exclude API keys/MCP/plugin credentials,
+reject extra input and use strict rate limits with uncached responses. Callback
+code/state are omitted from gateway and request URL logs, with upstream retry
+disabled. OAuth capture, explicit identity review and personal conversation proof
+are separate boundaries. Delivery status is false until transport is implemented;
+there is no Teams DM permission route or mounted activity endpoint yet.
