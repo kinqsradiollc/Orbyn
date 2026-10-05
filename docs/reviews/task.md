@@ -1,3 +1,28 @@
+# Authoritative implementation pipeline — 5 October 2026
+
+Main is `0faf19dc`, pushed. User deploys manually; production recovery is not
+verified here. The full ADR goal remains active and incomplete.
+
+| Work                        | Confirmed state                                                                                                                       | Next implementation or acceptance                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| ChatGPT and model defaults  | Selected-provider routing, owned `/models`, defaults and web/mobile-to-desktop connection handoff on main                             | Successful real-account Responses completion, real handoff and truthful whole-account plan/usage acceptance    |
+| Scheduled Agenda            | PR199 merged;2938 CI passes plus99 local focused passes. Resumption fixture repair passed18 cases and five independent repeats        | Native/web controls and positive real-provider acceptance; unsupported hard-limit catalogs remain ineligible   |
+| Plugin provider integration | PR203 merged0faf19dc; exactff3c88ef all four CI jobs and full local suite pass:2975 pass/0 fail/1 existing skip                       | External host/provider delivery and both client/native visual acceptance                                       |
+| Agent channels              | Signed Slack replies and session-bound encrypted installation are separate candidates;17 pure and10 database installation checks pass | Mount bounded OAuth/status endpoints and both client controls; durable outbox/current-card replies; then Teams |
+| Docs                        | Source, Mermaid and earlier editor fixes on main; current pure matrix108/108 passes                                                   | D1 native/editor/preview, PDF/Word/import/export and accessible rendering matrix                               |
+| Whole-app UI                | Settings modal/search, assistant panels and narrow settings grid/theme checkpoints on main;15 grid/settings tests and web build pass  | Full page-by-page desktop/web/mobile layout and interaction review, including narrow/overlay states            |
+| Agents/pages/publication    | Prior runtime isolation, identity, ownership and maintained-page checkpoints on main                                                  | Governing collaboration/reflection/publication requirement audit and external/runtime acceptance               |
+| Production and cleanup      | Main checkpoints pushed; root user files and related worktrees preserved                                                              | User deployment confirmation; final cleanup after all relevant work is integrated and preserved                |
+
+Plugin automated qualification logs:/tmp/orbyn-plugin-ff3c88ef-full-local.log,
+/tmp/orbyn-plugin-integrated-types.log and /tmp/orbyn-plugin-integrated-format.log.
+CI37295933770 is terminal success. Earlier failed/cancelled runs do not supersede
+this source's passing result. Browser Use still reports a saved Block for5174;
+Simulator inspection times out -10005. No current visual/native proof is claimed.
+
+All checkpoint notes below are historical evidence for their named sources;
+they do not supersede this authoritative table or close the full ADR goal.
+
 # Current plugin integration — 5 October 2026
 
 Main7504be66 is integrated, including the narrow settings grid/theme repair and
