@@ -586,6 +586,118 @@ test("a task inserted during final summary application waits until the summary c
   );
 });
 
+test("a conflicting human page edit finishes while final application rejects without deadlocking", async () => {
+  const f = await fixture();
+  await grant(f);
+  const id = await queue(f),
+    claimed = await claimScheduledAgenda(id);
+  assert.ok(claimed?.run.lease_token);
+  const before = (
+    await pool.query("SELECT content,version FROM docs WHERE id=$1", [
+      f.page.doc.id,
+    ])
+  ).rows[0];
+  const writer = await pool.connect();
+  await writer.query("BEGIN");
+  const writerPid = (await writer.query("SELECT pg_backend_pid() AS pid"))
+    .rows[0].pid;
+  const wrapped = new Map<
+    import("pg").PoolClient,
+    import("pg").PoolClient["query"]
+  >();
+  let mutation: Promise<unknown> | undefined,
+    observed = false;
+  const intercept = (client: import("pg").PoolClient) => {
+    if (wrapped.has(client) || client === writer) return;
+    const original = client.query,
+      query = original.bind(client);
+    wrapped.set(client, original);
+    client.query = ((...args: any[]) => {
+      if (
+        !observed &&
+        typeof args[0] === "string" &&
+        args[0].includes(" FOR SHARE OF d") &&
+        args[1]?.[1] === f.page.doc.id
+      ) {
+        observed = true;
+        return (async () => {
+          const guardPid = (await query("SELECT pg_backend_pid() AS pid"))
+            .rows[0].pid;
+          mutation = writer.query(
+            "UPDATE docs SET title='Human changed this page',version=version+1 WHERE id=$1",
+            [f.page.doc.id],
+          );
+          void mutation.catch(() => undefined);
+          const deadline = Date.now() + 2000;
+          let blocked = false;
+          do {
+            const row = (
+              await pool.query(
+                "SELECT wait_event,$2::int=ANY(pg_blocking_pids(pid)) AS blocked FROM pg_stat_activity WHERE pid=$1",
+                [writerPid, guardPid],
+              )
+            ).rows[0];
+            if (row?.blocked && row.wait_event === "advisory") {
+              blocked = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 10));
+          } while (Date.now() < deadline);
+          assert.equal(
+            blocked,
+            true,
+            "Human holds the row while waiting on the source fence",
+          );
+          return (query as any)(...args);
+        })();
+      }
+      return (query as any)(...args);
+    }) as typeof client.query;
+  };
+  pool.on("acquire", intercept);
+  try {
+    await assert.rejects(
+      applyScheduledAgenda(
+        f.owner,
+        id,
+        claimed.run.lease_token,
+        "Stale result",
+      ),
+      (error: any) => error.statusCode === 409,
+    );
+    assert.equal(observed, true);
+    await mutation;
+    await writer.query("COMMIT");
+  } finally {
+    pool.off("acquire", intercept);
+    for (const [client, original] of wrapped) client.query = original;
+    await mutation?.catch(() => undefined);
+    await writer.query("ROLLBACK").catch(() => undefined);
+    writer.release();
+  }
+  const page = (
+    await pool.query("SELECT content,version,title FROM docs WHERE id=$1", [
+      f.page.doc.id,
+    ])
+  ).rows[0];
+  assert.deepEqual(page.content, before.content);
+  assert.equal(page.version, before.version + 1);
+  assert.equal(page.title, "Human changed this page");
+  assert.equal(
+    (
+      await pool.query("SELECT state FROM agenda_summary_runs WHERE id=$1", [
+        id,
+      ])
+    ).rows[0].state,
+    "running",
+  );
+  assert.equal(
+    (await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [claimed.jobId]))
+      .rows[0].state,
+    "running",
+  );
+});
+
 test("a lease expiring at final application rolls back page and transport completion", async () => {
   const f = await fixture();
   await grant(f);

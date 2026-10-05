@@ -10,7 +10,10 @@ import {
   type DocBlock,
 } from "@orbyn/core";
 import { pool, transaction, type Db } from "../../db/pool.js";
-import { lockAgendaSources } from "../../lib/agenda-source-fence.js";
+import {
+  lockAgendaSources,
+  lockAgendaSourcePage,
+} from "../../lib/agenda-source-fence.js";
 import { visibleDocs } from "../../lib/visibility.js";
 import { assistantMayRead } from "../../lib/doc-visibility.js";
 import { announceDocChange } from "./live.js";
@@ -141,7 +144,10 @@ export async function enqueueScheduledAgenda(
       await captureAgendaAiSnapshot(owner, now, db),
     );
     const page = (
-      await db.query(targetSql + " FOR UPDATE OF d", [owner, docId])
+      await lockAgendaSourcePage(db, targetSql + " FOR UPDATE OF d", [
+        owner,
+        docId,
+      ])
     ).rows[0];
     if (
       !page ||
@@ -220,7 +226,10 @@ export async function guardScheduledAgendaRun(
     throw error;
   }
   const page = (
-    await db.query(targetSql + " FOR SHARE OF d", [owner, run.doc_id])
+    await lockAgendaSourcePage(db, targetSql + " FOR SHARE OF d", [
+      owner,
+      run.doc_id,
+    ])
   ).rows[0];
   const content = page?.content as DocBlock[] | undefined;
   const block = content?.find((b) => b.id === run.target_block_id);
@@ -396,7 +405,10 @@ export async function applyScheduledAgenda(
   const result = await transaction(async (db) => {
     const { run } = await guardScheduledAgendaRun(db, owner, id, token);
     const page = (
-      await db.query(targetSql + " FOR UPDATE OF d", [owner, run.doc_id])
+      await lockAgendaSourcePage(db, targetSql + " FOR UPDATE OF d", [
+        owner,
+        run.doc_id,
+      ])
     ).rows[0];
     const content = page.content as DocBlock[];
     const index = content.findIndex((b) => b.id === run.target_block_id);

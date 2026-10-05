@@ -1,26 +1,32 @@
-# Production migration deadlock checkpoint — 5 October 2026
+# Production migration recovery and active Agenda candidate — 5 October 2026
 
-Production at `e0a432a5` failed migration231 while an assistant claim attempted
-its read-to-write table-lock upgrade. Server log identifies `ALTER TABLE ai_jobs
-ADD COLUMN provider_choice_snapshot` versus the queued-job CTE/UPDATE. The full
-pending migration batch is transactional. Candidate on
-`codex/migration-deadlock-recovery` prelocks existing ai_jobs before any pending
-batch SQL referencing it, retries only complete rolled-back40P01 transactions
-(maximum3 attempts;250/500ms delays), and attaches the failing migration name.
-No application run/provider operation is retried by this helper.
+PR198 is merged into main as `f816675b`, with the same tree as `81ffb44e`.
+Root main safely fast-forwarded; user/character changes remain preserved.
+All workspace types/build,13 pure and3 PostgreSQL cases passed locally.
+Full CI37279096979 and main CI37279497795 remain live; backend suites have not
+been reported terminal yet. The local full attempt failed on full test tmpfs;
+`orbyn-postgres-test-1` is now confirmed exited1. Do not restart Docker or claim
+local full qualification. No test fixture was removed: the cleanup attempt could
+not connect. The user's normal deploy script now receives the hotfix; production
+recovery remains unverified.
 
-Local focused PostgreSQL regression:3/3 pass, including worker/prelock ordering,
-real deadlock with DDL rollback/retry, and migration-order preservation:
-`/tmp/orbyn-migration-prelock-db.log`. Pure cases13/13 pass:
-`/tmp/orbyn-migration-prelock-unit.log`. All workspace types pass:
-`/tmp/orbyn-migration-prelock-types.log`. Full local attempt failed because test
-PostgreSQL's1.9GiB tmpfs was full (53100); test container then exited. Retain
-`/tmp/orbyn-migration-prelock-full.log` and aborted retry log. No Docker/database
-settings changed; attempted fixture cleanup could not connect and removed no
-fixture. Build and CI/full clean-database qualification remain pending. User
-requests qualified merge to main, then their normal deploy script alone.
-Production recovery is not yet verified. Broader Agenda/ADR goal remains active;
-its source-fence candidate is not part of this hotfix.
+Agenda candidate `84e88b86` is committed locally; main `f816675b` was integrated
+without conflicts as `2b20a074`. The isolated Study repair `06ebbf34` remains in
+this candidate. Latest page-lock change adds NOWAIT with a savepoint so a page
+edit waiting on the source advisory lock cannot create a cyclic row wait with
+final application. This is a candidate, not yet database-verified. Four new pure
+cases plus client/status cases pass10/10 in `/tmp/orbyn-agenda-nowait-pure.log`;
+backend types24095 pass. A real concurrent human edit/application regression is
+written but unexecuted because the test container is stopped. Full integrated
+workspace types44252 are in `/tmp/orbyn-agenda-integrated-types.log`.
+
+Prior source-fence/runtime/permission/catalog60/60 and final-application17/17
+results are retained below. They qualify the preceding source, not the new NOWAIT
+change. Scheduling remains unavailable for production SIWC catalogs without
+signed hard-output-limit capability. Real nonempty ChatGPT completion, whole-
+account plan/quota/reset data and client/native acceptance remain unverified.
+The full C1–C6/M1/D1/U1 ADR scope remains active. No Agenda/main promotion,
+worktree cleanup or deployment is claimed.
 
 ---
 
