@@ -402,7 +402,8 @@ export function docxToMarkdown(buf: Buffer): {
         `${"#".repeat(style.heading)} ${text.replace(/\*+/g, "")}`,
         "",
       );
-    else if (style.quote) lines.push(`> ${text}`, "");
+    else if (style.quote)
+      lines.push(serializeBlock({ type: "quote", text }), "");
     else if (numId && numId !== "0") {
       // Word's list level becomes the item's indentation, so nested lists
       // come in nested.

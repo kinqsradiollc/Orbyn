@@ -1,0 +1,123 @@
+{
+  "baseline": "cc77be51",
+  "cases": [
+    {
+      "name": "quote",
+      "source": "> First\n> Second\n\n> Next",
+      "blocks": [
+        {
+          "type": "quote",
+          "text": "First"
+        },
+        {
+          "type": "quote",
+          "text": "Second"
+        },
+        {
+          "type": "quote",
+          "text": "Next"
+        }
+      ],
+      "serialized": "> First\n\n> Second\n\n> Next\n"
+    },
+    {
+      "name": "nestedQuote",
+      "source": "> Outer\n> > Inner",
+      "blocks": [
+        {
+          "type": "quote",
+          "text": "Outer"
+        },
+        {
+          "type": "quote",
+          "text": "> Inner"
+        }
+      ],
+      "serialized": "> Outer\n\n> > Inner\n"
+    },
+    {
+      "name": "quoteFence",
+      "source": "> ```ts\n> const value = 1;\n> ```",
+      "blocks": [
+        {
+          "type": "quote",
+          "text": "```ts"
+        },
+        {
+          "type": "quote",
+          "text": "const value = 1;"
+        },
+        {
+          "type": "quote",
+          "text": "```"
+        }
+      ],
+      "serialized": "> ```ts\n\n> const value = 1;\n\n> ```\n"
+    },
+    {
+      "name": "listContinuation",
+      "source": "- First\n  continued\n\n  second paragraph\n- Next",
+      "blocks": [
+        {
+          "type": "bullet",
+          "text": "First"
+        },
+        {
+          "type": "paragraph",
+          "text": "continued"
+        },
+        {
+          "type": "paragraph",
+          "text": "second paragraph"
+        },
+        {
+          "type": "bullet",
+          "text": "Next"
+        }
+      ],
+      "serialized": "- First\n\ncontinued\n\nsecond paragraph\n\n- Next\n"
+    },
+    {
+      "name": "listFence",
+      "source": "- First\n  ```ts\n  const value = 1;\n  ```",
+      "blocks": [
+        {
+          "type": "bullet",
+          "text": "First"
+        },
+        {
+          "type": "code",
+          "text": "const value = 1;",
+          "lang": "ts"
+        }
+      ],
+      "serialized": "- First\n\n```ts\nconst value = 1;\n```\n"
+    },
+    {
+      "name": "externalImage",
+      "source": "![Chart](https://example.test/chart.png \"Figure\")",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "![Chart](https://example.test/chart.png \"Figure\")"
+        }
+      ],
+      "serialized": "![Chart](https://example.test/chart.png \"Figure\")\n"
+    },
+    {
+      "name": "referenceImage",
+      "source": "![Chart][chart]\n\n[chart]: https://example.test/chart.png \"Figure\"",
+      "blocks": [
+        {
+          "type": "paragraph",
+          "text": "![Chart][chart]"
+        },
+        {
+          "type": "paragraph",
+          "text": "[chart]: https://example.test/chart.png \"Figure\""
+        }
+      ],
+      "serialized": "![Chart][chart]\n\n[chart]: https://example.test/chart.png \"Figure\"\n"
+    }
+  ]
+}

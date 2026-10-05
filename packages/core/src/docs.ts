@@ -85,6 +85,8 @@ export const DOC_PARAGRAPH_MAX = 10000;
 
 /** Existing footnote text limit; continuation parsing must remain savable. */
 export const DOC_FOOTNOTE_MAX = 4000;
+/** Existing quote limit; grouped continuations must remain savable. */
+export const DOC_QUOTE_MAX = 4000;
 
 /** Markdown heading depth, independent of list nesting. */
 export type DocHeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
@@ -1348,7 +1350,7 @@ const WRITABLE_ID = new RegExp(`^${ANCHOR_ID}$`);
 
 /** Kinds whose anchor goes on a line of its own, under them. */
 const ownLineAnchor = (b: DocBlock) =>
-  ((b.type === "paragraph" || b.type === "footnote") &&
+  ((b.type === "paragraph" || b.type === "quote" || b.type === "footnote") &&
     b.text.includes("\n")) ||
   b.type === "code" ||
   b.type === "math" ||
@@ -1779,7 +1781,9 @@ export function parseDoc(
 
     const quote = /^>\s?(.*)$/.exec(line);
     if (quote) {
-      const text = quote[1].trim();
+      const text =
+        quote[1].trim() +
+        (/ {2,}$/.test(quote[1]) && quote[1].trim() ? "  " : "");
       push({
         type: "quote",
         text: calloutLike(text, true) ? text.slice(1) : text,
@@ -1812,7 +1816,7 @@ export function parseDoc(
   }
 
   finishSourceRanges();
-  // Ordinary continuation lines belong to one paragraph. Explicit inline
+  // Ordinary continuation lines belong to one paragraph or quote. Explicit inline
   // anchors keep separate editor blocks separate; a standalone anchor may
   // name the whole multiline paragraph immediately above it.
   const boundaries = new Set(
@@ -1832,17 +1836,23 @@ export function parseDoc(
     const ownId =
       current.id && OWN_ANCHOR.test(lines[range.end - 1]?.trim() ?? "");
     const hardSpaces =
-      before && / {2,}$/.test(lines[before.end - 1]) ? "  " : "";
-    if (
       previous?.type === "paragraph" &&
-      current.type === "paragraph" &&
+      before &&
+      / {2,}$/.test(lines[before.end - 1])
+        ? "  "
+        : "";
+    if (
+      (previous?.type === "paragraph" || previous?.type === "quote") &&
+      current.type === previous.type &&
+      (previous.type !== "quote" ||
+        (previous.text !== "" && current.text !== "")) &&
       !boundaries.has(previous) &&
       !boundaries.has(current) &&
       !previous.id &&
       (!current.id || ownId) &&
       before.end + 1 === range.start &&
       previous.text.length + hardSpaces.length + 1 + current.text.length <=
-        DOC_PARAGRAPH_MAX
+        (previous.type === "quote" ? DOC_QUOTE_MAX : DOC_PARAGRAPH_MAX)
     ) {
       out[kept - 1] = {
         ...previous,
@@ -1924,7 +1934,16 @@ function blockMarkdown(
     case "todo":
       return `- [${b.done ? "x" : " "}] ${b.text}`;
     case "quote":
-      return `> ${calloutLike(b.text, false) ? "\\" : ""}${b.text}`;
+      return b.text
+        .split("\n")
+        .map((line) => {
+          const words =
+            anchors && b.text.includes("\n")
+              ? line.replace(ANCHOR_LIKE, "$1\\$2")
+              : line;
+          return `> ${calloutLike(words, false) ? "\\" : ""}${words}`;
+        })
+        .join("\n");
     case "code": {
       const fence = codeFence(b.text);
       return `${fence}${b.lang}\n${b.text}\n${fence}`;
