@@ -2029,3 +2029,16 @@ semantics; target/body/source coherence through page application; atomic policy/
 source fencing; actual positive OpenAI inference and desktop/mobile visual/native
 acceptance. A same-connection snapshot reread is not atomic all-source fencing.
 Full C1–C6/M1/D1/U1 stays active. No main merge, deployment or cleanup yet.
+
+## Agent channel signed reply boundary — candidate
+
+A6/C6 remains unfinished. Added an isolated raw-byte Slack signature/parser and
+server-owned card-binding resolver. Seven pure cases pass; fresh package build
+and backend typecheck pass. It verifies configured app/DM actor, timestamp,
+message/delivery identity, connection revision/revocation and exact current
+waiting ID. Submitted replies use bounded text/current choices; approvals are
+once-only. Duplicate request digests are stable, but durable callback receipts
+and installation/outbox consumption are still required. No route, OAuth token
+collection or external message is enabled by the helper. Full pipeline and
+primary references: evidence/agent-channels.md. Keep real workspace and both
+client/native acceptance open; do not treat existing webhooks as A6 delivery.
