@@ -9,6 +9,7 @@
  * Nothing is sent anywhere until they ask, and the sheet says so first.
  */
 import { z } from "zod";
+import type { AiFeatureProvider } from "./ai-feature.js";
 import type { DocBlock } from "./docs.js";
 
 /** Types a recording is kept as. */
@@ -42,6 +43,7 @@ export const recordingSummaryInput = z
 
 /** A summary and action items from a recording. */
 export type RecordingSummary = {
+  provider?: AiFeatureProvider;
   transcript: string;
   summary: string;
   actions: { title: string; due: string | null }[];

@@ -22,31 +22,36 @@ const server = createServer((req, res) => {
       calls++;
       const system = JSON.parse(raw).messages[0].content;
       await responseHook?.();
-      const value = system.includes("break projects")
+      const value = system.includes("summarise a recording")
         ? {
-            title: "Local launch",
-            summary: "Fixture project",
-            tasks: [
-              {
-                id: "first",
-                title: "First step",
-                estimate_minutes: 30,
-                due_in_days: 1,
-                depends_on: [],
-              },
-            ],
+            summary: "Fixture recording summary",
+            actions: [{ title: "Review fixture", due: null }],
           }
-        : system.includes("find deadlines")
+        : system.includes("break projects")
           ? {
+              title: "Local launch",
+              summary: "Fixture project",
               tasks: [
                 {
-                  title: "Submit fixture",
-                  due: "2026-11-01",
-                  source: "Submit fixture on 2026-11-01.",
+                  id: "first",
+                  title: "First step",
+                  estimate_minutes: 30,
+                  due_in_days: 1,
+                  depends_on: [],
                 },
               ],
             }
-          : { summary: "- Local fixture summary" };
+          : system.includes("find deadlines")
+            ? {
+                tasks: [
+                  {
+                    title: "Submit fixture",
+                    due: "2026-11-01",
+                    source: "Submit fixture on 2026-11-01.",
+                  },
+                ],
+              }
+            : { summary: "- Local fixture summary" };
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(
         JSON.stringify({
@@ -335,6 +340,7 @@ test("personal API keys cannot borrow ChatGPT for project or capture features", 
     for (const [url, payload] of [
       ["/ai/project", { prompt: "Key fixture", timezone: "UTC" }],
       ["/ai/assist", { action: "summarise", text: "Key fixture" }],
+      [`/ai/recordings/${randomUUID()}/summary`, { transcript: "Key fixture" }],
     ] as const) {
       const response = await app.inject({
         method: "POST",
@@ -352,4 +358,201 @@ test("personal API keys cannot borrow ChatGPT for project or capture features", 
     ]);
     await pool.query("DELETE FROM api_keys WHERE key_hash=$1", [digest(key)]);
   }
+});
+
+async function recording(docId: string, mime = "audio/webm") {
+  return (
+    await pool.query(
+      "INSERT INTO page_files(user_id,doc_id,name,mime,kind,bytes,status) VALUES($1,$2,'Fixture recording',$3,'file',10,'ready') RETURNING id",
+      [owner, docId, mime],
+    )
+  ).rows[0].id;
+}
+
+test("recording text summaries preserve security, provenance and proposal-only behavior", async () => {
+  const doc = await page();
+  const file = await recording(doc.id);
+  const url = `/ai/recordings/${file}/summary`;
+  assert.equal(
+    (await call(url, { transcript: "Fixture words" }, false)).statusCode,
+    401,
+  );
+  assert.equal((await call(url, { unknown: true })).statusCode, 422);
+  assert.equal(
+    (
+      await call(`/ai/recordings/${randomUUID()}/summary`, {
+        transcript: "Fixture words",
+      })
+    ).statusCode,
+    404,
+  );
+  const picture = await recording(doc.id, "image/png");
+  assert.equal(
+    (
+      await call(`/ai/recordings/${picture}/summary`, {
+        transcript: "Fixture words",
+      })
+    ).statusCode,
+    400,
+  );
+  const result = await call(url, { transcript: "Fixture words" });
+  assert.equal(result.statusCode, 200, result.body);
+  assert.equal(result.json().transcript, "Fixture words");
+  assert.equal(result.json().summary, "Fixture recording summary");
+  assert.deepEqual(result.json().provider, {
+    source: "default",
+    model: "feature-fixture",
+    fallback: false,
+  });
+  const job = (
+    await pool.query(
+      "SELECT state,chat_id,run_state FROM ai_jobs WHERE user_id=$1 AND run_state->>'feature'='recording_summary' ORDER BY created_at DESC LIMIT 1",
+      [owner],
+    )
+  ).rows[0];
+  assert.equal(job.state, "done");
+  assert.equal(job.chat_id, null);
+  assert.deepEqual(job.run_state.sources, [
+    { kind: "doc", id: doc.id, version: doc.version, recording_file_id: file },
+  ]);
+  assert.equal(
+    (await pool.query("SELECT version FROM docs WHERE id=$1", [doc.id])).rows[0]
+      .version,
+    doc.version,
+  );
+});
+
+test("personal recording choice does not silently send audio or text to managed AI", async () => {
+  const doc = await page();
+  const file = await recording(doc.id);
+  await pool.query(
+    "INSERT INTO user_ai_provider_choice(user_id,primary_provider,fallback_to_default) VALUES($1,'chatgpt',false)",
+    [owner],
+  );
+  const before = calls;
+  try {
+    assert.equal(
+      (await call(`/ai/recordings/${file}/summary`, {})).statusCode,
+      422,
+    );
+    assert.equal(
+      (
+        await call(`/ai/recordings/${file}/summary`, {
+          transcript: "Private transcript",
+        })
+      ).statusCode,
+      502,
+    );
+    assert.equal(calls, before);
+  } finally {
+    await pool.query("DELETE FROM user_ai_provider_choice WHERE user_id=$1", [
+      owner,
+    ]);
+  }
+});
+
+test("removing a recording during inference fences its summary", async () => {
+  const doc = await page();
+  const file = await recording(doc.id);
+  responseHook = async () => {
+    await pool.query("DELETE FROM page_files WHERE id=$1", [file]);
+  };
+  try {
+    const result = await call(`/ai/recordings/${file}/summary`, {
+      transcript: "Deleted file input",
+    });
+    assert.equal(result.statusCode, 409, result.body);
+  } finally {
+    responseHook = undefined;
+  }
+});
+
+test("recording summaries honor team AI policy and route rate limits", async () => {
+  const doc = await page();
+  const file = await recording(doc.id);
+  const team = (
+    await pool.query(
+      "INSERT INTO teams(name,assistant_allowed) VALUES('Recording team',false) RETURNING id",
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner')",
+    [team, owner],
+  );
+  await pool.query("UPDATE docs SET team_id=$1 WHERE id=$2", [team, doc.id]);
+  const before = calls;
+  try {
+    assert.equal(
+      (
+        await call(`/ai/recordings/${file}/summary`, {
+          transcript: "Team data",
+        })
+      ).statusCode,
+      403,
+    );
+    assert.equal(calls, before);
+    let limited = false;
+    for (let i = 0; i < 35; i++) {
+      const r = await app.inject({
+        method: "POST",
+        url: `/ai/recordings/${file}/summary`,
+        payload: { transcript: "Team data" },
+        remoteAddress: "10.202.94.1",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (r.statusCode === 429) {
+        limited = true;
+        break;
+      }
+      assert.equal(r.statusCode, 403, r.body);
+    }
+    assert.ok(limited);
+  } finally {
+    await pool.query("DELETE FROM teams WHERE id=$1", [team]);
+  }
+});
+
+test("recording summaries only use managed fallback when explicitly enabled", async () => {
+  const doc = await page();
+  const file = await recording(doc.id);
+  await pool.query(
+    "INSERT INTO user_ai_provider_choice(user_id,primary_provider,fallback_to_default) VALUES($1,'chatgpt',true)",
+    [owner],
+  );
+  try {
+    const response = await call(`/ai/recordings/${file}/summary`, {
+      transcript: "Fallback transcript",
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    assert.deepEqual(response.json().provider, {
+      source: "default",
+      model: "feature-fixture",
+      fallback: true,
+    });
+  } finally {
+    await pool.query("DELETE FROM user_ai_provider_choice WHERE user_id=$1", [
+      owner,
+    ]);
+  }
+});
+
+test("recording summary refuses AI-excluded pages before any provider receives text", async () => {
+  const doc = await page();
+  const file = await recording(doc.id);
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name,assistant_off) VALUES($1,'Excluded recording',true) RETURNING id",
+      [owner],
+    )
+  ).rows[0].id;
+  await pool.query("UPDATE docs SET project_id=$1 WHERE id=$2", [
+    project,
+    doc.id,
+  ]);
+  const before = calls;
+  const response = await call(`/ai/recordings/${file}/summary`, {
+    transcript: "Excluded transcript",
+  });
+  assert.equal(response.statusCode, 422, response.body);
+  assert.equal(calls, before);
 });

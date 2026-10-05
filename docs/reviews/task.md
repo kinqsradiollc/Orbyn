@@ -1723,3 +1723,22 @@ and production build passed on e8c10979. CI run 37255077796 is still pending
 at this checkpoint, so no green full qualification or main promotion is claimed.
 Logs: `/tmp/orbyn-e8c10979-full-tests.log`,
 `/tmp/orbyn-doc-heading-scale-tests.log`. Requalify the corrected commit.
+
+## Recording provider checkpoint — 5 October 2026 candidate
+
+Text recording summaries now capture explicit provider choice, source page
+revision and live recording identity through a durable feature job. Both clients
+allow a supplied transcript and show actual completed-provider metadata. Signed
+private output cannot be accepted after file removal; page/exclusion/team checks
+and explicit fallback remain enforced. Existing audio transcription remains
+managed and cannot run while ChatGPT is selected. Target generation guards
+prevent late summary/task UI responses from landing on another recording.
+
+Focused checks pass 21/21, neatness 10/10, all workspace typechecks and native
+desktop build pass. Recording UI screenshots/native mobile acceptance, actual
+completed OpenAI inference and full exact-commit qualification remain open.
+The separate corrected e1866399 checkpoint is under full qualification in
+`/tmp/orbyn-e1866399-full-tests.log`; its live session is 18479 and types/build
+session 33414. CI run 37256031469 targets that exact commit. Earlier e8c10979
+CI was cancelled by the newer push; it was not a completed green run. Main
+remains 82576dfa. All C1–C6/M1/D1/U1 scope and eventual cleanup remain active.

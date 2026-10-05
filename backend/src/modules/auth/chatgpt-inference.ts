@@ -54,6 +54,9 @@ async function jobLive(db: Db, owner: string, id: string) {
         AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(j.run_state->'sources') feature_source
           LEFT JOIN docs feature_doc ON feature_doc.id=(feature_source->>'id')::uuid
           WHERE ((coalesce(feature_source->>'kind','doc')='doc') AND feature_doc.version::text IS DISTINCT FROM feature_source->>'version')
+            OR (feature_source ? 'recording_file_id' AND NOT EXISTS(SELECT 1 FROM page_files feature_file
+              WHERE feature_file.id=(feature_source->>'recording_file_id')::uuid
+                AND feature_file.doc_id=feature_doc.id AND feature_file.status='ready' AND feature_file.mime LIKE 'audio/%'))
             OR (feature_source->>'kind'='team' AND NOT EXISTS(SELECT 1 FROM teams feature_team
               JOIN team_members feature_member ON feature_member.team_id=feature_team.id
               WHERE feature_team.id=(feature_source->>'id')::uuid AND feature_member.user_id=$1

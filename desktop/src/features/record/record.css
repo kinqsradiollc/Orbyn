@@ -7,6 +7,16 @@
   font-size: 13px;
   color: var(--color-muted);
 }
+.recorder-transcript {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+}
+.recorder-transcript textarea {
+  width: 100%;
+  min-height: 100px;
+  resize: vertical;
+}
 .recorder-clock {
   display: flex;
   align-items: baseline;

@@ -18,6 +18,7 @@ const featureSource = z.discriminatedUnion("kind", [
       kind: z.literal("doc"),
       id: z.uuid(),
       version: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+      recording_file_id: z.uuid().optional(),
     })
     .strict(),
   z.object({ kind: z.literal("team"), id: z.uuid() }).strict(),
@@ -32,6 +33,7 @@ const featureKind = z.enum([
   "project_draft",
   "capture_summary",
   "capture_deadlines",
+  "recording_summary",
 ]);
 type FeatureKind = z.output<typeof featureKind>;
 type FeatureOptions = Omit<
@@ -76,6 +78,14 @@ async function assertFeatureSources(
       fail(409, "The page changed. Start a fresh request.");
     if (await docKeptOut(db, source.id)) fail(422, PAGE_KEPT_OUT);
     await requireAssistantAllowed(page.team_id, db);
+    if (source.recording_file_id) {
+      const recording = await db.query(
+        "SELECT id FROM page_files WHERE id=$1 AND doc_id=$2 AND status='ready' AND mime LIKE 'audio/%'",
+        [source.recording_file_id, source.id],
+      );
+      if (!recording.rowCount)
+        fail(409, "The recording changed. Start a fresh request.");
+    }
   }
 }
 
@@ -104,6 +114,18 @@ export async function completeFeature(
   )
     fail(400, "Source identities must be distinct.");
   const { onProvider, allowPersonal = false, ...completionOptions } = options;
+  if (
+    kind === "recording_summary" &&
+    (sources.length !== 1 ||
+      sources[0].kind !== "doc" ||
+      !sources[0].recording_file_id)
+  )
+    fail(400, "Choose the recording and its source page.");
+  if (
+    kind !== "recording_summary" &&
+    sources.some((source) => source.kind === "doc" && source.recording_file_id)
+  )
+    fail(400, "Recording sources are only valid for recording summaries.");
   const timeoutMs = options.timeoutMs ?? 60_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000)
     fail(400, "Choose a supported feature-call deadline.");

@@ -9,7 +9,7 @@ import {
 } from "@orbyn/core";
 const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
-const { completePageFeature } =
+const { completePageFeature, completeFeature } =
   await import("../src/modules/ai/providers/feature-call.js");
 const { claimChatgptInference, finishChatgptInference } =
   await import("../src/modules/auth/chatgpt-inference.js");
@@ -227,6 +227,72 @@ test("a feature caller without app-session authority cannot borrow the owner's p
   assert.equal(
     (await pool.query("SELECT 1 FROM ai_jobs WHERE user_id=$1", [f.owner]))
       .rowCount,
+    0,
+  );
+});
+
+async function recordingFile(f: Awaited<ReturnType<typeof fixture>>) {
+  return (
+    await pool.query(
+      "INSERT INTO page_files(user_id,doc_id,name,mime,kind,bytes,status) VALUES($1,$2,'Private fixture','audio/webm','file',10,'ready') RETURNING id",
+      [f.owner, f.doc.id],
+    )
+  ).rows[0].id;
+}
+
+test("a recording transcript uses the selected signed private provider", async () => {
+  const f = await fixture();
+  const file = await recordingFile(f);
+  let provider: AiFeatureProvider | undefined;
+  const answer = completeFeature(
+    f.owner,
+    "recording_summary",
+    [{ kind: "doc", ...f.doc, recording_file_id: file }],
+    [{ role: "user", content: "Private recording transcript" }],
+    {
+      timeoutMs: 5000,
+      allowPersonal: true,
+      onProvider: (value) => {
+        provider = value;
+      },
+    },
+  );
+  pending.push(answer);
+  void answer.catch(() => {});
+  const a = await assignment(f);
+  assert.equal(a.payload.input[0].content, "Private recording transcript");
+  await publish(f, a);
+  assert.equal(await answer, "Signed feature answer");
+  assert.deepEqual(provider, {
+    source: "chatgpt",
+    model: "fixture-model",
+    fallback: false,
+  });
+});
+
+test("a signed recording reply is rejected after its file is removed", async () => {
+  const f = await fixture();
+  const file = await recordingFile(f);
+  const answer = completeFeature(
+    f.owner,
+    "recording_summary",
+    [{ kind: "doc", ...f.doc, recording_file_id: file }],
+    [{ role: "user", content: "Private recording transcript" }],
+    { timeoutMs: 5000, allowPersonal: true },
+  );
+  pending.push(answer);
+  void answer.catch(() => {});
+  const a = await assignment(f);
+  await pool.query("DELETE FROM page_files WHERE id=$1", [file]);
+  await assert.rejects(publish(f, a), (error: any) => error.statusCode === 409);
+  await assert.rejects(answer);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM chatgpt_completed_usage WHERE user_id=$1",
+        [f.owner],
+      )
+    ).rowCount,
     0,
   );
 });

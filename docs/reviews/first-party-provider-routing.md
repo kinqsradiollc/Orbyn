@@ -266,3 +266,27 @@ resources still close and both original errors survive. Focused unchanged
 assistant-run assertions plus cleanup tests pass43/43 with no skips in
 `/tmp/orbyn-fixture-cleanup-focused.log`. No deadline/assertion/database setting
 was relaxed; Docker was not restarted or reconfigured.
+
+## Recording text routing candidate — 5 October 2026
+
+Recording summary text now uses the durable first-party feature context and
+the person's explicit provider choice. It captures the live source page/version
+and recording ID, records page dependencies, and checks file readiness, page
+visibility, exclusion and team policy before dispatch and result acceptance.
+The signed private broker also rejects output after the recording is removed.
+No new audio or voice capability is added: existing managed audio transcription
+is separate, and a selected ChatGPT connection requires a transcript instead
+of silently sending audio to the managed service. Explicit managed fallback
+remains available for text inference under the existing consent.
+
+Both clients expose an optional transcript field and completed-provider caption.
+Generation guards discard summary/task-result state after the target recording
+changes. Known private errors use fixed messages; source/consent conflicts retain
+their HTTP status. Focused provider/security/source tests pass 21/21 with no
+skips in `/tmp/orbyn-recording-choice-focused.log`; source-shape tests separately
+pass 2/2 without acquiring a database connection. Final workspace typechecks pass, the unchanged neatness suite passes 10/10,
+and the native desktop build passes. Affected native/mobile layouts still
+require inspection before delivery. No real
+ChatGPT completed inference, full current-source qualification or main merge
+is claimed by this candidate. Agenda and maintained-page private execution
+remain open, together with the full ADR contract.
