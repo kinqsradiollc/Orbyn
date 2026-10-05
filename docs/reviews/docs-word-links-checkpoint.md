@@ -1,6 +1,6 @@
 # D1 Word hyperlink implementation — 6 October 2026
 
-Status: implemented candidate; mounted/full/CI and native Word acceptance remain open.
+Status: implemented candidate integrated with main d4cbff9d; focused mounted tests pass. Full/CI and native Word acceptance remain open.
 
 ## Changes
 
@@ -40,8 +40,22 @@ titles remain in Markdown source. The documented tooltip/relationship contract i
   `/tmp/orbyn-doc-word-links-types-final.log`,
   `/tmp/orbyn-doc-word-links-build-final.log`,
   `/tmp/orbyn-doc-word-links-format-final.log`.
-- Mounted API privacy/auth/owner/viewer fixtures are implemented but not yet run;
-  database suites remain serial behind the reference-title/privacy full suite.
+- Current reference-preview/Word/privacy cohort passes48/48, zero failures/skips,
+  fresh DB33, terminal0: `/tmp/orbyn-channel-doc-reference-previews-final.log`.
+  The prior mounted cohort passed105/105 before the final preview additions.
+- Mounted cases exposed reference labels in backlinks and linked-line pills when
+  definitions were outside the snippet. Both paths now use the readable page's
+  definition context. Backlink definitions preserve source order and first-definition
+  precedence; the bounded result set rechecks source visibility. Privacy lookups
+  resolve targets without line previews, preventing recursive self-link traversal.
+- Added owner/viewer, three-space definition indentation, duplicate definitions and
+  self-links; original privacy assertions remain unchanged. A tab-indented fixture
+  was corrected to three spaces because the existing Markdown parser treats tabs
+  as literal source, not reference definitions. No grammar expansion is claimed.
+- Earlier mounted failures and the endpoint's existing422 invalid-format contract
+  are retained in `/tmp/orbyn-channel-doc-word-links-integrated.log`,
+  `/tmp/orbyn-channel-doc-word-backlinks-integrated.log` and
+  `/tmp/orbyn-channel-doc-reference-previews-current.log`.
 - Earlier unit failures are retained. An invalid1970 ZIP fixture timestamp was
   corrected to2026; escaped bracket runs are checked by combined text/formatting
   rather than an unsupported single-run assumption. No expected visible text or
@@ -49,8 +63,8 @@ titles remain in Markdown source. The documented tooltip/relationship contract i
 
 ## Remaining scope
 
-Integrate actual main after PR211 qualification, then qualify mounted/full/CI
-against the final combined source. Word UI/native appearance, same-document
+Actual PR211 main is integrated without conflicts. Qualify full/CI against the
+final combined source after the serial layout suite. Word UI/native appearance, same-document
 bookmark round trips, footnote import, complete math/code/image/container matrices
 and all D1/U1/agent/provider gates remain open. This is not full Markdown or Word
 parity. User deploys manually; preserve character/user files and final cleanup.

@@ -62,7 +62,13 @@ export async function linkPrivacy(
   if (!refs.length) return NOTHING_HIDDEN;
   if (!who) return privacyFrom(() => true);
   const userId = typeof who === "string" ? who : who.userId;
-  const pills = await resolveLinks(db, userId, refs);
+  // Visibility belongs to the target, not its selected line. Resolving line
+  // previews here would recursively inspect self-links and read unnecessary words.
+  const pills = await resolveLinks(
+    db,
+    userId,
+    refs.map(({ kind, id }) => ({ kind, id })),
+  );
   const hidden = new Set(
     pills.filter((p) => p.state === "missing").map((p) => targetKey(p)),
   );

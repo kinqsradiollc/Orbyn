@@ -233,12 +233,33 @@ test("Word hyperlink relationships contain only readable object targets and auth
     ),
     para(`[guide]: orbyn://doc/${openId} "Public guide hint"`, "word-guide"),
     para(
-      `[budget]: orbyn://doc/${personalId} "Budget 2027 private reference hint"`,
+      `   [budget]: orbyn://doc/${personalId} "Budget 2027 private reference hint"`,
       "word-budget",
     ),
+    para(
+      `[guide]: orbyn://doc/${personalId} "Budget 2027 private duplicate hint"`,
+      "word-duplicate",
+    ),
+    para(`[This line](orbyn://doc/${id}#word-links)`, "word-self"),
   ];
   const saved = await call(ana, "PUT", `/docs/${id}`, { version: 1, content });
   assert.equal(saved.statusCode, 200, saved.body);
+  const pill = await call(
+    ben,
+    "GET",
+    `/links/resolve?refs=${encodeURIComponent(`doc:${id}#word-links`)}`,
+  );
+  assert.equal(pill.statusCode, 200, pill.body);
+  noSecrets(pill.body, "Reference line pill");
+  assert.match(pill.body, /Private page/);
+  assert.match(pill.body, /Guide/);
+  const ownPill = await call(
+    ana,
+    "GET",
+    `/links/resolve?refs=${encodeURIComponent(`doc:${id}#word-links`)}`,
+  );
+  assert.equal(ownPill.statusCode, 200, ownPill.body);
+  assert.match(ownPill.body, /Budget 2027 private/);
   const denied = await call(null, "GET", `/docs/${id}/export?format=docx`);
   assert.equal(denied.statusCode, 401);
   assert.equal(
@@ -247,7 +268,7 @@ test("Word hyperlink relationships contain only readable object targets and auth
   );
   assert.equal(
     (await call(ben, "GET", `/docs/${id}/export?format=invalid`)).statusCode,
-    400,
+    422,
   );
   const viewer = await call(ben, "GET", `/docs/${id}/export?format=docx`);
   assert.equal(viewer.statusCode, 200, viewer.body);
