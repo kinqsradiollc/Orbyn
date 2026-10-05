@@ -301,3 +301,33 @@ merge; both evidence histories are retained. No unresolved conflict remains.
 The integrated source now starts a fresh immutable full run.41 recovery cases
 passed before this integration;112 delivery/controls cases and24 cold cases
 remain focused evidence. Teams replies and whole ADR acceptance remain open.
+
+## Teams exact-card reply boundary — separate candidate
+
+Reused the merged plugin checkout oncodex/agent-teams-replies, based on the
+frozen delivery candidate5bc0bc9d. Existing untracked dependency symlink and
+character checkout remain unchanged. A pure authenticated boundary supports
+manual `adaptiveCard/action` Execute submissions and a named Submit fallback,
+ignores automatic refresh/unrelated activities, requires signed personal actor
+and consistent tenant/conversation, and bounds event time and input. Exactly
+one option or text answer is accepted; standing-approval/extra fields refuse.
+Delivery/waiting IDs, complete-question digest and transient card nonce remain
+claims requiring server receipt validation, not authority by themselves.
+Canonical retry digests ignore provider retry metadata while binding input.
+
+Eleven real-RSA protocol/security cases pass in
+`/tmp/orbyn-channel-teams-reply-fallback-pure.log`; focused module/dependency
+typecheck passes in`/tmp/orbyn-channel-teams-reply-fallback-types.log`. The
+boundary is unmounted. It cannot currently accept or apply a question answer.
+Still required: complete bounded card rendering and sent-card identity; encrypted
+durable callback receipts/dedup and bounded acknowledgement; live source/owner/
+conversation/revision/expiry fencing; exact current waiting ID/digest and atomic
+answer/chat/receipt transaction; fixed retention; restart/stale/replay/privacy
+DB/HTTP cases and real tenant/client acceptance. Approval opens Orbyn review.
+
+Primary contracts: [Microsoft Universal Action Model](https://learn.microsoft.com/en-us/adaptive-cards/authoring-cards/universal-action-model)
+and [Teams card actions](https://learn.microsoft.com/en-us/microsoftteams/platform/task-modules-and-cards/cards/cards-actions).
+Execute invokes use manual vs automatic triggers. Submit fallback supplies
+merged form/action data. Invoke acknowledgements use HTTP200 with a typed body;
+capture is described as pending validation, while stale/refused cards use a
+generic supported400 error body, without exposing another question.
