@@ -1,5 +1,5 @@
 import "./setup.js";
-import { test, before, after } from "node:test";
+import { test, before, after, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID, generateKeyPairSync, createHash, sign } from "node:crypto";
 import {
@@ -26,6 +26,14 @@ const app = await buildApp();
 const owners: string[] = [],
   pending: Promise<unknown>[] = [];
 before(() => migrate());
+afterEach(async () => {
+  // Each test owns its users and intentionally leaves some leases running to
+  // assert recovery. Remove those fixtures before the next test measures the
+  // real global capacity; retaining them would consume unrelated test slots.
+  await Promise.allSettled(pending.splice(0));
+  await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [owners]);
+  owners.length = 0;
+});
 after(async () => {
   await Promise.allSettled(pending);
   await app.close();

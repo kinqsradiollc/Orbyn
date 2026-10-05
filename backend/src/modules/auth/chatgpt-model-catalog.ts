@@ -151,7 +151,6 @@ export async function readChatgptCatalogLocked(
           ? "stale"
           : "ready",
     models: snapshot?.models ?? [],
-    capabilities: snapshot?.capabilities ?? [],
     preference: {
       binding,
       model: preference?.model ?? null,
