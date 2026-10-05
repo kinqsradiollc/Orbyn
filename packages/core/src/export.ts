@@ -101,6 +101,7 @@ const TINT_HEX = { amber: "#fbf1dc", green: "#e7f0ea", rose: "#fbefea" };
 function inlineHtml(text: string, o: HtmlOptions = {}): string {
   return parseDocInline(text, o.references)
     .map((run: DocInline) => {
+      if (run.break) return run.break === "hard" ? "<br>" : " ";
       const body = escapeHtml(run.math ? mathToText(run.text) : run.text);
       let rendered = (() => {
         if (run.math)

@@ -41,6 +41,10 @@ let notes: Map<string, number> = new Map();
 
 /** One styled run. Word wants the styling before the text, in that order. */
 function run(piece: DocInline): string {
+  if (piece.break)
+    return piece.break === "hard"
+      ? "<w:r><w:br/></w:r>"
+      : '<w:r><w:t xml:space="preserve"> </w:t></w:r>';
   if (piece.footnote) {
     const n = notes.get(piece.footnote);
     if (n)

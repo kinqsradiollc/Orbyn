@@ -15,6 +15,7 @@ import {
   mentionedPerson,
   parseObjectHref,
   docLinkDestination,
+  mathToText,
 } from "@orbyn/core";
 
 /** Exercise the real web Inline and Pieces bodies without loading unrelated page widgets. */
@@ -67,6 +68,73 @@ function webInline() {
   assert.ok(exports.Inline);
   return exports.Inline;
 }
+
+test("actual web Inline preserves hard breaks and soft-break source coordinates", () => {
+  const Inline = webInline();
+  const html = renderToStaticMarkup(
+    React.createElement(Inline, { text: "First\\\nSecond\nThird" }),
+  );
+  assert.match(html, /First<\/span><br data-src="5"\/>/);
+  assert.match(html, /data-src="13"> <\/span>/);
+  assert.ok(!html.includes("First\\"));
+});
+
+test("actual mobile Inline consumes the same hard/soft breaks as web", () => {
+  const source = ts.createSourceFile(
+    "Inline.tsx",
+    readFileSync(
+      new URL("../../mobile/src/screens/docs/Inline.tsx", import.meta.url),
+      "utf8",
+    ),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const declaration = source.statements.find(
+    (node) => ts.isFunctionDeclaration(node) && node.name?.text === "Inline",
+  );
+  assert.ok(declaration);
+  const exports: { Inline?: React.ComponentType<{ text: string }> } = {};
+  const js = ts.transpileModule(declaration.getText(source), {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+      jsx: ts.JsxEmit.ReactJSX,
+    },
+  }).outputText;
+  const shown: string[] = [];
+  runInNewContext(js, {
+    exports,
+    require: (id: string) => {
+      assert.equal(id, "react/jsx-runtime");
+      return jsxRuntime;
+    },
+    React,
+    useContext: React.useContext,
+    parseDocInline,
+    tagRuns,
+    parseObjectHref,
+    mentionedPerson,
+    docLinkDestination,
+    mathToText,
+    DocNavigationContext: React.createContext(undefined),
+    FootnoteContext: React.createContext({
+      references: undefined,
+      numbers: new Map(),
+      texts: new Map(),
+    }),
+    s: {},
+    Text: ({ children }: { children: string }) => {
+      shown.push(children);
+      return React.createElement("span", {}, children);
+    },
+  });
+  assert.ok(exports.Inline);
+  renderToStaticMarkup(
+    React.createElement(exports.Inline, { text: "First\\\nSecond\nThird" }),
+  );
+  assert.deepEqual(shown, ["First", "\n", "Second", " ", "Third"]);
+});
 
 test("web reader composes nested styles while retaining source spans and link behavior", () => {
   const Inline = webInline();

@@ -80,7 +80,13 @@ export function Inline({
         const lit = marks.some(
           (m) => m.start < run.start + run.text.length && m.end > run.start,
         );
-        const shown = run.math ? mathToText(run.text) : run.text;
+        const shown = run.break
+          ? run.break === "hard"
+            ? "\n"
+            : " "
+          : run.math
+            ? mathToText(run.text)
+            : run.text;
         const formatting = [
           style,
           run.bold && s.bold,

@@ -31,6 +31,24 @@ Browser5174 saved Block and Simulator timeout -10005 remain recorded;
 no visual/native completion claim follows. Earlier qualification logs are retained.
 The historical checkpoints below do not supersede this table.
 
+PR210 paragraph/break checkpoint exact `91a3193e` is pushed and tracked-clean.
+Final focused editing/source/reference/Study/component/export cohort379/379
+passes; all workspace types, packages/backend/web builds and full formatting
+pass. Frozen-head full local suite session6765 ended exit0 against fresh marked
+DB22:3418 passes/0 failures/1 existing skip in733605ms. CI37352661791
+remains running; three jobs have passed and backend/web tests remain live.
+Log: `/tmp/orbyn-channel-docs-breaks-91a3193e-full.log`.
+Actual mobile Inline function is tested with mocked Text primitives; native
+interaction and appearance remain unverified. Preserve container continuation,
+reference-title/image, diagram-family and whole-app layout requirements.
+Reference-title checkpoint `ee7975e4` is committed/pushed on
+`codex/docs-reference-title-completion`:308 serial API/editing/privacy/component
+cases and206 pure cases pass, all workspace types and owned builds/full-format
+pass. It is not merged or fully qualified. Integrate actual PR210 main before
+qualifying the combined source; PR210 checkout stays frozen until terminal CI.
+Simulator inspection was retried this turn and returned timeout -10005;
+no native interaction/appearance acceptance is claimed.
+
 # Historical implementation pipeline — earlier 6 October 2026
 
 Main baseline is `690f6246`, pushed; Slack PR204 merged after all four CI37321894816 jobs passed. User deploys manually; production recovery is not

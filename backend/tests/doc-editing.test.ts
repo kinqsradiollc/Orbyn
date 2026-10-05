@@ -454,8 +454,7 @@ npm run build</code></pre>
     { type: "quote", text: "Said once" },
     { type: "code", text: "npm test\nnpm run build", lang: "" },
     { type: "table", text: "| Name | Role |\n| --- | --- |\n| Ann | Lead |" },
-    { type: "paragraph", text: "Line one" },
-    { type: "paragraph", text: "Line two" },
+    { type: "paragraph", text: "Line one\\\nLine two" },
     { type: "divider" },
   ]);
 });

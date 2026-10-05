@@ -3,7 +3,7 @@ import type { DocInline } from "./docs.js";
 type Literal = { start: number; end: number; run: DocInline };
 const punctuation = /^[!"#$%&'()*+,\-./:;<=>?@[\\\]^_`{|}~]$/;
 
-/** Opaque Markdown code and escaped punctuation, before inline formatting. */
+/** Literal Markdown code, escapes and source-aware breaks, before inline formatting. */
 export function docInlineLiterals(text: string): Literal[] {
   const ticks = new Map<number, number[]>();
   for (const match of text.matchAll(/`+/g)) {
@@ -31,6 +31,35 @@ export function docInlineLiterals(text: string): Literal[] {
       });
       at += 2;
       continue;
+    }
+    if (/[ \t\r\n\\]/.test(text[at])) {
+      let newline = at;
+      while (text[newline] === " " || text[newline] === "\t") newline++;
+      const slash = text[newline] === "\\";
+      if (slash) newline++;
+      if (text[newline] === "\n" || text[newline] === "\r") {
+        let end =
+          newline +
+          (text[newline] === "\r" && text[newline + 1] === "\n" ? 2 : 1);
+        while (text[end] === " " || text[end] === "\t") end++;
+        out.push({
+          start: at,
+          end,
+          run: {
+            text: text.slice(at, end),
+            start: at,
+            break:
+              slash || / {2,}$/.test(text.slice(at, newline)) ? "hard" : "soft",
+          },
+        });
+        at = end;
+        continue;
+      }
+      const next = slash ? newline - 1 : newline;
+      if (next > at) {
+        at = next;
+        continue;
+      }
     }
     if (text[at] === "$") {
       let close = at + 1;

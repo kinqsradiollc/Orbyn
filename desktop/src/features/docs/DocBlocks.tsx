@@ -102,6 +102,12 @@ export function Inline({ text, marks = [] }: { text: string; marks?: Mark[] }) {
             inner
           );
         const base = (() => {
+          if (run.break)
+            return run.break === "hard" ? (
+              <br data-src={run.start} />
+            ) : (
+              <span data-src={run.start}> </span>
+            );
           if (run.math)
             return (
               <span key={i} data-src={run.start}>
