@@ -2018,3 +2018,16 @@ All workspace types, backend build and whole format check pass. Full/CI and
 external/native/visual acceptance still precede production promotion; earlier
 diagnostic failures are retained in evidence/agent-channels.md. The complete
 ADR goal remains active.
+
+### Teams provider authentication foundation — candidate, 6 October 2026
+
+The separate Teams adapter now has a tested Bot Connector JWT boundary: exact
+bot audience/issuer/RS256/time, Teams key endorsement, recipient and signed service
+URL matching, fixed bounded Microsoft key discovery and restricted credential
+destinations. Eleven pure tests and backend types pass. No Teams public route,
+user OAuth mapping, installed conversation, DM delivery or client controls are
+mounted yet. Service JWT authentication never authorizes an Orbyn owner link.
+See evidence/teams-agent-channels.md for primary contracts, retained diagnostics
+and the full installation/delivery/reply/client/retention acceptance pipeline.
+The Slack3d163bcd source remains immutable during full-suite qualification.
+All A6 and broader C1–C6/M1/D1/U1 requirements remain active.
