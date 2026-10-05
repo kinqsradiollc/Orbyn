@@ -6,6 +6,7 @@ import {
   docContent,
   blocksHtml,
   DOC_QUOTE_MAX,
+  plainText,
 } from "@orbyn/core";
 
 test("adjacent quote lines retain one paragraph and explicit breaks", () => {
@@ -89,4 +90,21 @@ test("Word quote export uses one paragraph and only explicit hard breaks", async
     .map((run) => run[1] ?? "\n")
     .join("");
   assert.equal(words, "QuoteFirst second\nthird");
+});
+
+test("Word quote import prefixes every hard-broken line and retains literal callout text", async () => {
+  const { docToDocx } = await import("../src/modules/docs/docx.js");
+  const { docxToMarkdown } = await import("../src/modules/imports/docx.js");
+  const source = [
+    { type: "quote" as const, text: "First second  \nthird" },
+    { type: "quote" as const, text: "[!tip] literal\\\nLast" },
+  ];
+  const imported = parseDoc(
+    docxToMarkdown(docToDocx("Quote", source)).markdown,
+  );
+  const quotes = imported.filter((block) => block.type === "quote");
+  assert.equal(quotes.length, 2);
+  assert.equal(plainText(quotes[0].text), "First second\nthird");
+  assert.equal(plainText(quotes[1].text), "[!tip] literal\nLast");
+  assert.ok(!imported.some((block) => block.type === "callout"));
 });

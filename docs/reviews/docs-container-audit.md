@@ -50,3 +50,10 @@ initially doubled spaces, the boundary fixture exposed the existing4,000-charact
 quote limit, and the Word fixture initially assumed contiguous XML text. The source
 now respects the unchanged quote limit and Word output is checked by its actual
 text runs/breaks. Assertions for source, visible text and formatting remain exact.
+
+Word quote import also used a single leading marker for a multiline paragraph, so
+hard-broken continuation text escaped the quote on import. It now delegates to the
+shared quote serializer, which prefixes every line and escapes literal callout
+markers. The current expanded source/export/import cohort passes88/88 in1516ms,
+zero failures/skips (`/tmp/orbyn-doc-quote-word-focused.log`). This repairs Word
+quote ownership; nested container and complete Word import parity remain open.
