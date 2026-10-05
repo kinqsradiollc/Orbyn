@@ -131,3 +131,44 @@ and adjacent paragraph children in a tight list. Empty callouts, blank-line and
 lazy-continuation edge cases require further fixtures. Source-only parsing is
 not proof of storage, editing, CRDT or PDF/Word container delivery. No deployment,
 cleanup or full-goal completion is claimed.
+
+## Versioned content and source-switch contract candidate
+
+`codex/docs-container-storage-contract` extends the experimental tree foundation
+with explicit content formats. Format1 carries existing typed blocks; format2
+carries typed container nodes. This number is distinct from the page's optimistic
+revision. Decoding validates bounded/cyclic traversal, global identity and typed
+leaf limits; unknown envelope/node/item/callout/leaf fields fail instead of being
+stripped. Returned objects are detached from caller-owned state.
+
+Existing leaves upgrade without reparsing text or inventing ownership/IDs. A
+format2 page downgrades only when it actually contains root leaves exclusively;
+even an empty quote refuses conversion. An explicit capability check rejects a
+client without the required supported format. These helpers are not yet mounted
+in the Docs API or editors: they do not prove that older deployed clients are
+currently protected against future format2 pages. No format2 page is created by
+this checkpoint's runtime.
+
+Source switching parses in the declared format with anchors and compares the
+complete reconstructed typed content before exposing a writable source view.
+Adjacent compatible lists and tight adjacent paragraphs cannot silently merge.
+Metadata with no exact source representation refuses switching. Existing positive
+math check flags do round-trip through anchored `% check` syntax. The first test
+incorrectly expected that flag to disappear; the repaired fixture checks positive
+preservation and explicit-false refusal separately. Original failure is retained
+at `/tmp/orbyn-container-storage-source-focused.log`.
+
+Current shared format/source/dialect/inline/layout cohort passes108/108, no
+failures/skips: `/tmp/orbyn-container-storage-qualified-focused.log`.
+This is contract-level evidence. Required next implementation remains migration,
+read/write capability fences, document revisions and history, privacy/search/task
+adapters, CRDT identity/selection, both editors and all exports. Source equality
+refusal needs clear client feedback and normalization rules before UI adoption.
+Full combined qualification and actual client acceptance remain open.
+
+The storage/source contract's packages build, backend/desktop/mobile typechecks,
+backend/web builds and whole formatting pass, recorded under
+`/tmp/orbyn-container-storage-*.log`. No database suite was run concurrently with
+foundation20752130's immutable full DB41. A fresh Simulator selection again
+returned Computer Use timeout -10005; no native screenshot or interaction proof
+is available. The contract is not yet a runtime storage migration or editor feature.
