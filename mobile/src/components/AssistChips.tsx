@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../motion";
 import {
+  aiFeatureProviderLabel,
   ASSIST_CHIPS,
   CHIP_CARDS,
   withSummary,
@@ -215,6 +216,9 @@ function AssistResult({
           From “{title}”, by Orbyn's assistant. Nothing changes until you take
           it.
         </Text>
+        {result?.provider && (
+          <Text style={s.muted}>{aiFeatureProviderLabel(result.provider)}</Text>
+        )}
         {!result && !error && (
           <Text style={s.muted} accessibilityLiveRegion="polite">
             Reading it…

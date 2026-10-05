@@ -141,6 +141,7 @@ test("a first-party page call accepts a signed private reply and records measure
     ],
     {
       timeoutMs: 5000,
+      allowPersonal: true,
       onProvider: (value) => {
         provider = value;
       },
@@ -184,7 +185,7 @@ test("a signed feature reply cannot be accepted after its page revision changed"
     "doc_ask",
     [f.doc],
     [{ role: "user", content: "Old page facts" }],
-    { timeoutMs: 5000 },
+    { timeoutMs: 5000, allowPersonal: true },
   );
   pending.push(answer);
   void answer.catch(() => {});
@@ -199,6 +200,33 @@ test("a signed feature reply cannot be accepted after its page revision changed"
         [f.owner],
       )
     ).rowCount,
+    0,
+  );
+});
+
+test("a feature caller without app-session authority cannot borrow the owner's plan", async () => {
+  const f = await fixture();
+  await assert.rejects(
+    completePageFeature(
+      f.owner,
+      "doc_ask",
+      [f.doc],
+      [{ role: "user", content: "Unprivileged fixture" }],
+    ),
+    (error: any) => error.statusCode === 403,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM chatgpt_inference_requests WHERE user_id=$1",
+        [f.owner],
+      )
+    ).rowCount,
+    0,
+  );
+  assert.equal(
+    (await pool.query("SELECT 1 FROM ai_jobs WHERE user_id=$1", [f.owner]))
+      .rowCount,
     0,
   );
 });

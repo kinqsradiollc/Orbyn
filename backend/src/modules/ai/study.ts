@@ -13,7 +13,7 @@ import {
 import { requireAssistantAllowed } from "../../lib/teams.js";
 import { pool } from "../../db/pool.js";
 import { readableLinks } from "../links/privacy.js";
-import { authenticate } from "../../lib/auth.js";
+import { authenticate, isSessionPrincipal } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { cardById } from "../study/service.js";
 import { completePageFeature } from "./providers/feature-call.js";
@@ -137,6 +137,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
         ],
         {
           timeoutMs: 60_000,
+          allowPersonal: isSessionPrincipal(u),
           onProvider: (value) => {
             provider = value;
           },
@@ -216,6 +217,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
           ],
           {
             timeoutMs: 45_000,
+            allowPersonal: isSessionPrincipal(u),
             onProvider: (value) => {
               provider = value;
             },
@@ -282,6 +284,7 @@ export async function aiStudyRoutes(app: FastifyInstance) {
           ],
           {
             timeoutMs: 45_000,
+            allowPersonal: isSessionPrincipal(u),
             onProvider: (value) => {
               provider = value;
             },

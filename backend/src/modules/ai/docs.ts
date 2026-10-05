@@ -12,7 +12,7 @@ import {
   type DocBlock,
 } from "@orbyn/core";
 import { pool, reader, transaction } from "../../db/pool.js";
-import { authenticate } from "../../lib/auth.js";
+import { authenticate, isSessionPrincipal } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import { requireAssistantAllowed, requireTeam } from "../../lib/teams.js";
 import { completePageFeature } from "./providers/feature-call.js";
@@ -122,6 +122,7 @@ passage should be removed entirely, reply with an empty line.`;
           ],
           {
             timeoutMs: 60_000,
+            allowPersonal: isSessionPrincipal(u),
             onProvider: (value) => {
               provider = value;
             },
@@ -214,6 +215,7 @@ object and nothing else: {"answer": string, "sources": [number]}
         ],
         {
           timeoutMs: 60_000,
+          allowPersonal: isSessionPrincipal(u),
           onProvider: (value) => {
             provider = value;
           },

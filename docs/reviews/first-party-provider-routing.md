@@ -150,3 +150,36 @@ being killed by signal9 at2026-10-05 00:19:29 UTC, followed by server reinitiali
 This evidence does not identify a particular application query as the cause.
 No timers, assertions, database/JIT settings or Docker limits were waived.
 The previous2749/2749 parent result does not qualify this newer source.
+
+### Project and capture routing candidate
+
+The owned feature-call context now accepts bounded typed page or team sources;
+prompt-only project/capture requests remain limited to those named features.
+Page identities are normalized and version checks use UUID joins. Team project
+calls require current membership, write permission and the team's AI policy at
+admission, dispatch and result acceptance. Capture keeps page exclusion and
+revision guards, and summaries/deadlines remain suggestions. Project creation
+still requires the existing proposal approval.
+
+Personal-plan feature admission additionally defaults to refusing callers that
+have not supplied internal app-session authority. Route callers derive that
+flag from the authenticated principal, never from body fields. The shared HTTP
+auth guard already rejects personal API keys on all assistant routes; this
+existing restriction remains in place for managed and personal providers.
+Plugin/MCP credentials and defaults remain independent.
+
+Project and capture responses carry the actual completed provider metadata;
+shared proposal reviews and capture dialogs show it on desktop/web and mobile.
+Focused provider/broker/Docs/Study/project/capture checks pass49/49 without skips
+in `/tmp/orbyn-project-capture-qualified-focused.log`. All workspace typechecks
+pass in `/tmp/orbyn-feature-principal-final-types.log`. These additions still
+need combined qualification and rendered acceptance before main promotion.
+
+Parent3ef30a27's full local result ended2741/2756 pass,15fail after PostgreSQL
+checkpointer recovery. Parentc8554662's CI37247849840 passed all four jobs.
+The assistant recovery-focused suite then passed40/41; its concurrent presence
+assertion failed after the batch exceeded the ten-second write interval. The
+same case also failed in isolation with unchanged deadlines. Read-only plans
+for the sampled poll statements had costs below1500 and no JIT; this does not
+establish the cause of the burst delay. The local failure remains unresolved;
+no assertion, deadline or database setting has been relaxed.

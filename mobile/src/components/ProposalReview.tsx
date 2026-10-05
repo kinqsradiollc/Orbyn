@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import {
   dateLabel,
+  aiFeatureProviderLabel,
   describeRrule,
   parseRichText,
   type Action,
@@ -308,6 +309,11 @@ export function ProposalReview({
   return (
     <View>
       <SummaryText text={proposal.summary} />
+      {proposal.provider && (
+        <Text style={s.providerCaption}>
+          {aiFeatureProviderLabel(proposal.provider)}
+        </Text>
+      )}
       {/* What the assistant actually read, so the answer can be checked
           against it rather than taken on trust. */}
       {sources.length > 0 && (
@@ -488,6 +494,12 @@ const s = themed(() =>
       alignItems: "center",
       flexWrap: "wrap",
       gap: 6,
+    },
+    providerCaption: {
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      color: colors.muted,
+      marginBottom: 8,
     },
     sourcesLabel: { color: colors.muted, fontSize: 11, letterSpacing: 0.7 },
     heading: {

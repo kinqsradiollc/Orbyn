@@ -52,8 +52,12 @@ async function jobLive(db: Db, owner: string, id: string) {
       AND (coalesce(j.run_state->>'version','')<>'2' OR (
         jsonb_typeof(j.run_state->'sources')='array'
         AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(j.run_state->'sources') feature_source
-          LEFT JOIN docs feature_doc ON feature_doc.id::text=feature_source->>'id'
-          WHERE feature_doc.version::text IS DISTINCT FROM feature_source->>'version')
+          LEFT JOIN docs feature_doc ON feature_doc.id=(feature_source->>'id')::uuid
+          WHERE ((coalesce(feature_source->>'kind','doc')='doc') AND feature_doc.version::text IS DISTINCT FROM feature_source->>'version')
+            OR (feature_source->>'kind'='team' AND NOT EXISTS(SELECT 1 FROM teams feature_team
+              JOIN team_members feature_member ON feature_member.team_id=feature_team.id
+              WHERE feature_team.id=(feature_source->>'id')::uuid AND feature_member.user_id=$1
+                AND feature_member.role<>'viewer' AND feature_team.assistant_allowed)))
       )) FOR SHARE OF j`,
     [owner, id],
   );

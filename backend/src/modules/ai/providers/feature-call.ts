@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { fail, aiFeatureProvider, type AiFeatureProvider } from "@orbyn/core";
 import { pool, transaction, type Queryable } from "../../../db/pool.js";
@@ -6,20 +7,64 @@ import { readableDocs } from "../../../lib/visibility.js";
 import { docKeptOut, PAGE_KEPT_OUT } from "../../../lib/assistant-off.js";
 import { requireAssistantAllowed } from "../../../lib/teams.js";
 import { assertChatgptJobAccess } from "../../auth/chatgpt-inference.js";
+import { readAiProviderChoice } from "../../auth/ai-provider-choice.js";
 import { resolveUserAi } from "./user-choice.js";
 import { complete, type ChatMessage } from "./adapters.js";
 
 export type PageFeatureSource = { id: string; version: number };
+const featureSource = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("doc"),
+      id: z.uuid(),
+      version: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
+    })
+    .strict(),
+  z.object({ kind: z.literal("team"), id: z.uuid() }).strict(),
+]);
+export type FeatureSource = z.output<typeof featureSource>;
+const featureKind = z.enum([
+  "doc_assist",
+  "doc_ask",
+  "study_cards",
+  "study_grade",
+  "study_explain",
+  "project_draft",
+  "capture_summary",
+  "capture_deadlines",
+]);
+type FeatureKind = z.output<typeof featureKind>;
+type FeatureOptions = Omit<
+  NonNullable<Parameters<typeof complete>[2]>,
+  "signal"
+> & {
+  onProvider?: (provider: AiFeatureProvider) => void;
+  /** Derived from the authenticated app principal, never from request input. */
+  allowPersonal?: boolean;
+};
 export type PageFeatureKind =
   "doc_assist" | "doc_ask" | "study_cards" | "study_grade" | "study_explain";
 
 /** Page input must remain readable, AI-enabled and at its captured revision. */
-async function assertPageSources(
+async function assertFeatureSources(
   db: Queryable,
   owner: string,
-  sources: PageFeatureSource[],
+  sources: FeatureSource[],
 ) {
   for (const source of sources) {
+    if (source.kind === "team") {
+      const member = (
+        await db.query<{ role: string }>(
+          "SELECT role FROM team_members WHERE team_id=$2 AND user_id=$1",
+          [owner, source.id],
+        )
+      ).rows[0];
+      if (!member) fail(404, "Team not found");
+      if (member.role === "viewer")
+        fail(403, "Viewers cannot draft team projects.");
+      await requireAssistantAllowed(source.id);
+      continue;
+    }
     const page = (
       await db.query<{ version: number; team_id: string | null }>(
         `SELECT d.version,d.team_id FROM docs d WHERE d.id=$2 AND d.deleted_at IS NULL AND ${readableDocs("d")}`,
@@ -34,19 +79,31 @@ async function assertPageSources(
   }
 }
 
-/** One bounded first-party page call, with captured consent and no chat or tool authority. */
-export async function completePageFeature(
+/** One bounded first-party feature call, with captured consent and no chat or tool authority. */
+export async function completeFeature(
   owner: string,
-  kind: PageFeatureKind,
-  sources: PageFeatureSource[],
+  kind: FeatureKind,
+  sourceInput: FeatureSource[],
   messages: ChatMessage[],
-  options: Omit<NonNullable<Parameters<typeof complete>[2]>, "signal"> & {
-    onProvider?: (provider: AiFeatureProvider) => void;
-  } = {},
+  options: FeatureOptions = {},
 ): Promise<string> {
-  if (!sources.length || sources.length > 16)
+  featureKind.parse(kind);
+  const sources = z
+    .array(featureSource)
+    .max(16)
+    .parse(sourceInput)
+    .map((source) => ({ ...source, id: source.id.toLowerCase() }));
+  if (
+    !sources.length &&
+    !["project_draft", "capture_summary", "capture_deadlines"].includes(kind)
+  )
     fail(400, "Choose a bounded set of source pages.");
-  const { onProvider, ...completionOptions } = options;
+  if (
+    new Set(sources.map((source) => `${source.kind}:${source.id}`)).size !==
+    sources.length
+  )
+    fail(400, "Source identities must be distinct.");
+  const { onProvider, allowPersonal = false, ...completionOptions } = options;
   const timeoutMs = options.timeoutMs ?? 60_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000)
     fail(400, "Choose a supported feature-call deadline.");
@@ -58,7 +115,10 @@ export async function completePageFeature(
       [owner],
     );
     if (!user.rowCount) fail(403, "This account cannot run the assistant.");
-    await assertPageSources(db, owner, sources);
+    const choice = await readAiProviderChoice(db, owner);
+    if (choice.primary === "chatgpt" && !allowPersonal)
+      fail(403, "ChatGPT plan calls require a signed-in app session.");
+    await assertFeatureSources(db, owner, sources);
     const job = (
       await db.query<{ id: string }>(
         `INSERT INTO ai_jobs(user_id,state,claimed_by,lease_until,sources_checked,run_state)
@@ -77,8 +137,8 @@ export async function completePageFeature(
     ).rows[0];
     for (const source of sources)
       await db.query(
-        "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,'doc',$2)",
-        [job.id, source.id],
+        "INSERT INTO assistant_job_sources(job_id,source_kind,source_id) VALUES($1,$2,$3)",
+        [job.id, source.kind, source.id],
       );
     return job.id;
   });
@@ -87,7 +147,7 @@ export async function completePageFeature(
       jobId,
       owner,
       {},
-      sources.map((source) => `doc:${source.id}`),
+      sources.map((source) => `${source.kind}:${source.id}`),
     );
     const ai = await resolveUserAi(owner, jobId, async () => {});
     if (!ai) fail(503, "The selected AI provider is unavailable.");
@@ -95,7 +155,7 @@ export async function completePageFeature(
     const assertAuthority = async () => {
       await providerAuthority?.();
       await assertChatgptJobAccess(owner, jobId);
-      await assertPageSources(pool, owner, sources);
+      await assertFeatureSources(pool, owner, sources);
     };
     const text = await complete(
       { ...ai, operationId, assertAuthority },
@@ -130,4 +190,22 @@ export async function completePageFeature(
       .catch(() => {});
     throw error;
   }
+}
+
+/** Existing page feature callers retain their bounded page-only contract. */
+export function completePageFeature(
+  owner: string,
+  kind: PageFeatureKind,
+  sources: PageFeatureSource[],
+  messages: ChatMessage[],
+  options: FeatureOptions = {},
+): Promise<string> {
+  if (!sources.length) fail(400, "Choose a source page.");
+  return completeFeature(
+    owner,
+    kind,
+    sources.map((source) => ({ ...source, kind: "doc" as const })),
+    messages,
+    options,
+  );
 }

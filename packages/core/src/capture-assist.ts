@@ -1,9 +1,10 @@
+import type { AiFeatureProvider } from "./ai-feature.js";
 import { z } from "zod";
 import type { DocBlock } from "./docs.js";
 
 /**
  * Assistant chips when sharing, importing or scanning (AI-01). They are
- * optional, run only through Orbyn's hosted assistant, and come back as
+ * optional, use the selected provider, and come back as
  * suggestions: nothing is added until the person takes it.
  */
 
@@ -40,6 +41,7 @@ export type SuggestedDeadline = {
 };
 
 export type CaptureAssistResult = {
+  provider?: AiFeatureProvider;
   action: "summarise" | "deadlines";
   summary: string;
   tasks: SuggestedDeadline[];
