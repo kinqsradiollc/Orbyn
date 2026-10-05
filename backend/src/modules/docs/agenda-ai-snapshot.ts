@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { pool } from "../../db/pool.js";
+import { pool, type Queryable } from "../../db/pool.js";
 import { visibleAiItems } from "../../lib/assistant-source-visibility.js";
 import { readAgendaAiDay } from "./agenda.js";
 import { agendaBriefFacts } from "./agenda-ai-facts.js";
@@ -34,15 +34,16 @@ const sourceRevision = (value: number | undefined): number => {
 export async function captureAgendaAiSnapshot(
   owner: string,
   now: Date,
+  db: Queryable = pool,
 ): Promise<AgendaAiSnapshot> {
-  const day = await readAgendaAiDay(owner, now);
+  const day = await readAgendaAiDay(owner, now, db);
   const captured = day.aiSources ?? [];
   const tasks = [
     ...new Set(captured.filter((s) => s.kind === "task").map((s) => s.id)),
   ];
   const versions = tasks.length
     ? (
-        await pool.query<{ id: string; version: number }>(
+        await db.query<{ id: string; version: number }>(
           `SELECT i.id,i.version FROM items i WHERE i.id=ANY($2::uuid[]) AND ${visibleAiItems()}`,
           [owner, tasks],
         )
@@ -69,7 +70,7 @@ export async function captureAgendaAiSnapshot(
   const sources = [...unique.values()].sort((a, b) =>
     `${a.kind}:${a.id}`.localeCompare(`${b.kind}:${b.id}`),
   );
-  await assertAgendaStudySources(owner, sources);
+  await assertAgendaStudySources(owner, sources, db);
   const facts = agendaBriefFacts(day, now);
   const state = day.aiState;
   const referenceInput: AgendaAiReference[] = state
@@ -117,11 +118,17 @@ export async function assertAgendaAiSnapshot(
   owner: string,
   now: Date,
   captured: AgendaAiSnapshot,
+  db: Queryable = pool,
 ): Promise<void> {
   if (captured.ownerId !== owner || captured.capturedAt !== now.toISOString())
     throw new Error("Agenda snapshot belongs to a different owner or time.");
-  await assertAgendaStudySources(owner, captured.sources);
-  const current = await captureAgendaAiSnapshot(owner, now);
-  if (current.digest !== captured.digest)
+  await assertAgendaStudySources(owner, captured.sources, db);
+  const current = await captureAgendaAiSnapshot(owner, now, db);
+  if (
+    current.digest !== captured.digest ||
+    JSON.stringify(current.facts) !== JSON.stringify(captured.facts) ||
+    JSON.stringify(current.sources) !== JSON.stringify(captured.sources) ||
+    JSON.stringify(current.references) !== JSON.stringify(captured.references)
+  )
     throw new Error("Agenda facts changed. Start a fresh request.");
 }

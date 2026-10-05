@@ -1755,3 +1755,26 @@ full/CI qualification. Private Agenda routing remains unfinished: integrate the
 captured context with durable transport, app versus scheduled authorization and
 visible waiting/recovery behavior. Full provider/native and C1–C6/M1/D1/U1
 acceptance remains required. No main merge, deployment or cleanup is claimed.
+
+### Interactive private Agenda checkpoint — 5 October 2026
+
+Interactive Agenda summaries now capture the originating first-party app session,
+provider choice, model preference and owned source/fact snapshot in a durable
+version4 job. Broker dispatch and receipt acceptance validate that context using
+the broker's existing database connection. Modified facts with an unchanged
+digest, changed sources/preferences and a revoked app session reject output.
+Every request is bounded to512 output tokens. Managed fallback requires explicit
+consent and a confirmed admission rejection; stream/unknown failures do not retry.
+
+Accepted jobs retain the actual provider/model, including fallback. The API and
+both clients distinguish calendar rewrite success from optional summary failure
+and identify the provider of an accepted summary. These messages do not establish
+quota or plan-tier information, and Orbyn accepted usage is not whole-account
+ChatGPT usage.
+
+Scheduled private Agenda remains unfinished: an interactive app session does not
+grant scheduled plan usage. Explicit scheduled permission, persistent waiting and
+recovery UI, target/body/source consistency through page application, native visual
+acceptance and real positive OpenAI inference remain required. Snapshot rereads
+on the same connection do not prove atomic fencing of all source/policy changes.
+The complete C1–C6/M1/D1/U1 scope remains active.

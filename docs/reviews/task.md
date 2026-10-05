@@ -1913,3 +1913,42 @@ Do not substitute that previous full result for this newer source checkpoint.
 Next: full current-head qualification, durable private Agenda transport with
 source context and app/scheduled consent, real inference and native UI acceptance,
 then remaining full ADR implementation and eventual cleanup. No deployment.
+
+## Interactive private Agenda and shared result feedback — 5 October 2026
+
+The version4 Agenda job captures its originating app session, current provider
+choice/preference and owned AI source/fact snapshot. Dispatch and signed receipt
+acceptance use the broker's existing database connection; no nested pool checkout
+is required for snapshot reads. Forged facts with a preserved digest, revoked
+sessions, changed source revisions/preferences and pre-job provider changes reject
+the operation. Calls preserve the512-token cap through an explicitly consented
+managed fallback. Stream/unknown failures and missing fallback consent produce
+zero managed calls. Completed Agenda jobs retain their actual provider/model.
+
+The API exposes optional briefing outcome metadata, and web/desktop/mobile use
+one shared feedback formatter. A calendar rewrite remains available after a failed
+summary, with clear failure information rather than generic rewrite success.
+API keys remain rejected403 by the existing AI boundary. Provider errors use
+fixed recovery text; raw upstream responses never appear in summary feedback.
+
+Current focused Agenda/source/broker checks65/65 pass with no skips in
+/tmp/orbyn-private-agenda-feedback-final.log. Route/ordinary Agenda/private-page
+checks31/31 pass in /tmp/orbyn-private-agenda-route-final.log. They cover401,
+403,400,429, API-key exclusion, revoked app sessions, source/model changes,
+bounded signed success and explicit fallback provenance. All workspace types and
+production build completed exit0 in /tmp/orbyn-private-agenda-feedback-types.log
+and /tmp/orbyn-private-agenda-feedback-build.log. Earlier failed fixture assertions
+are retained: compatible providers use max_tokens, and personal API keys are
+already forbidden on AI routes; neither production controls nor limits were
+weakened. Rate-limit exhaustion runs last so it does not mask auth assertions.
+
+Frozen d602d90e qualification is now terminal:2820/2820 local pass with zero
+failures/skips, and CI37261261363 passed. PR196 remains draft and mergeable;
+main remains82576dfa. These earlier results do not qualify the newer Agenda
+checkpoint. Run full exact-head/CI after committing and integrating this candidate.
+
+Remaining: explicit scheduled plan consent; persistent waiting/recovery and retry
+semantics; target/body/source coherence through page application; atomic policy/
+source fencing; actual positive OpenAI inference and desktop/mobile visual/native
+acceptance. A same-connection snapshot reread is not atomic all-source fencing.
+Full C1–C6/M1/D1/U1 stays active. No main merge, deployment or cleanup yet.

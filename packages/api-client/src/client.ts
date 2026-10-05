@@ -1,4 +1,5 @@
 import {
+  type AgendaBriefOutcome,
   type MaintainedPageBinding,
   type MaintainedPageRunSummary,
   type MaintainedPageBindingInput,
@@ -1197,7 +1198,9 @@ export class OrbynClient {
    * page's content. `brief` says whether the assistant wrote one.
    */
   rewriteAgenda(timezone?: string) {
-    return this.request<Doc & { brief: boolean }>("/ai/agenda/today", {
+    return this.request<
+      Doc & { brief: boolean; briefing?: AgendaBriefOutcome }
+    >("/ai/agenda/today", {
       method: "POST",
       body: timezone ? { timezone } : {},
     });

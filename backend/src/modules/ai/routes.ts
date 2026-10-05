@@ -8,6 +8,7 @@ import {
   fail,
   HttpError,
   type AiFeatureProvider,
+  type AgendaBriefOutcome,
   localDateKey,
   projectRequest,
   type ChatScope,
@@ -21,6 +22,7 @@ import { readableLinks } from "../links/privacy.js";
 import {
   authenticate,
   isSessionPrincipal,
+  authenticateSessionBinding,
   type UserRow,
 } from "../../lib/auth.js";
 import { z } from "zod";
@@ -233,7 +235,17 @@ export async function aiRoutes(app: FastifyInstance) {
     const zone = (r.body as { timezone?: unknown } | null)?.timezone;
     if (typeof zone === "string")
       await adoptDeviceZone(u.id, zone.slice(0, 64));
-    return rewriteAgenda(u.id, { brief: briefFor });
+    const binding = isSessionPrincipal(u)
+      ? await authenticateSessionBinding(r)
+      : undefined;
+    let briefing: AgendaBriefOutcome | undefined;
+    const doc = await rewriteAgenda(u.id, {
+      brief: (day, now, owner) =>
+        briefFor(day, now, owner, binding, (outcome) => {
+          briefing = outcome;
+        }),
+    });
+    return { ...doc, ...(briefing ? { briefing } : {}) };
   });
 
   app.post("/ai/project", strictRateLimit, async (r) => {

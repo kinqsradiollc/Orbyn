@@ -47,6 +47,9 @@ async function providerLive(
 
 /** Current job authority is mandatory before exposing any conversation or accepting output. */
 async function jobLive(db: Db, owner: string, id: string) {
+  const { guardAgendaInferenceJob } =
+    await import("../ai/providers/agenda-call.js");
+  await guardAgendaInferenceJob(db, owner, id);
   const { guardPageInferenceJob } =
     await import("../docs/maintenance-inference.js");
   await guardPageInferenceJob(db, owner, id);

@@ -13,7 +13,7 @@ import {
   type DocBlock,
   type Item,
 } from "@orbyn/core";
-import { pool, transaction } from "../../db/pool.js";
+import { pool, transaction, type Queryable } from "../../db/pool.js";
 import {
   agendaEntries,
   calendarEntries,
@@ -82,21 +82,26 @@ export type Day = {
 };
 
 /** Cards to review today and the next exams, or null for someone with no cards. */
-async function studyFor(userId: string, now: Date, timezone: string) {
+async function studyFor(
+  userId: string,
+  now: Date,
+  timezone: string,
+  db: Queryable = pool,
+) {
   // Anyone with cards, or pages with card lines not yet read.
-  const has = await pool.query(
+  const has = await db.query(
     `SELECT 1 FROM ${LIVE_CARDS} WHERE c.user_id = $1
      UNION ALL SELECT 1 FROM docs d WHERE ${VISIBLE_DOC} AND (d.content::text LIKE '% :: %' OR d.content::text LIKE '%{{%}}%')
      LIMIT 1`,
     [userId],
   );
   if (!has.rowCount) return null;
-  const s = await studyOverview(userId, now);
+  const s = await studyOverview(userId, now, db);
   // A revoked source can invalidate the AI snapshot between reads. Keep the
   // ordinary agenda available without substituting its unrestricted facts.
   let ai: { study: Day["study"]; sources: AgendaAiSource[] };
   try {
-    ai = await agendaAiStudy(userId, s, now, timezone);
+    ai = await agendaAiStudy(userId, s, now, timezone, db);
   } catch {
     ai = { study: null, sources: [] };
   }
@@ -128,8 +133,9 @@ async function readDay(
   /** Study and priorities, which only today's page shows. */
   extras = true,
   ai = false,
+  db: Queryable = pool,
 ): Promise<Day> {
-  const prefs = await loadPrefs(pool, userId);
+  const prefs = await loadPrefs(db, userId);
   const tz = dayZone(prefs.timezone, true);
   const today = localDateKey(now, tz);
   const dayStart = dayTime(today, 0, tz);
@@ -137,29 +143,29 @@ async function readDay(
   const weekEnd = dayTime(addDays(today, 8), 0, tz);
   const [items, calendar, blocks, habits, ahead, busy, open, keptOut] =
     await Promise.all([
-      pool.query<Item>(
+      db.query<Item>(
         `SELECT i.* FROM items i WHERE ${ai ? visibleAiItems() : visibleItems()}
          AND i.due_at IS NOT NULL AND i.kind = 'task'
        ORDER BY i.due_at,i.id LIMIT 500`,
         [userId],
       ),
-      agendaEntries(pool, userId, dayStart, dayEnd, { ai }),
-      timeBlocks(pool, userId, dayStart, dayEnd, { ai }),
-      habitBlocksIn(pool, userId, dayStart, dayEnd),
-      agendaEntries(pool, userId, dayEnd, weekEnd, { ai }),
-      busyIntervals(pool, userId, now, dayEnd, {
+      agendaEntries(db, userId, dayStart, dayEnd, { ai }),
+      timeBlocks(db, userId, dayStart, dayEnd, { ai }),
+      habitBlocksIn(db, userId, dayStart, dayEnd),
+      agendaEntries(db, userId, dayEnd, weekEnd, { ai }),
+      busyIntervals(db, userId, now, dayEnd, {
         blocks: true,
         derived: true,
         ai,
       }),
       // Open tasks, dated or not, for "Top priorities".
-      pool.query<Item>(
+      db.query<Item>(
         `SELECT i.* FROM items i WHERE ${ai ? visibleAiItems() : visibleItems()}
          AND i.kind = 'task' AND i.status NOT IN ('done', 'cancelled')
        ORDER BY i.due_at NULLS LAST,i.id LIMIT 300`,
         [userId],
       ),
-      keptOutFor(pool, userId),
+      keptOutFor(db, userId),
     ]);
   const ranked = open.rows
     .map((i) => ({ id: i.id, title: i.title, score: priorityScore(i, now) }))
@@ -177,7 +183,7 @@ async function readDay(
     ai && !past && now < dayEnd
       ? freeSpans(
           workingSpans(prefs, now, dayEnd),
-          await busyIntervals(pool, userId, now, dayEnd, {
+          await busyIntervals(db, userId, now, dayEnd, {
             blocks: true,
             derived: true,
           }),
@@ -186,10 +192,10 @@ async function readDay(
   const availabilityComplete =
     freeMinutes ===
     Math.round(actualFree.reduce((n, s) => n + (s.end - s.start), 0) / 60_000);
-  const study = extras ? await studyFor(userId, now, tz) : null;
+  const study = extras ? await studyFor(userId, now, tz, db) : null;
   const busyOwn = ai
     ? await calendarEntries(
-        pool,
+        db,
         userId,
         new Date(now.getTime() - 4 * 3_600_000),
         new Date(dayEnd.getTime() + 4 * 3_600_000),
@@ -198,10 +204,10 @@ async function readDay(
       )
     : [];
   const busyExternal = ai
-    ? await externalOccurrences(pool, userId, now, dayEnd, { busy: true })
+    ? await externalOccurrences(db, userId, now, dayEnd, { busy: true })
     : [];
   const visibleExternal = ai
-    ? await externalOccurrences(pool, userId, dayStart, weekEnd, {
+    ? await externalOccurrences(db, userId, dayStart, weekEnd, {
         visible: true,
       })
     : [];
@@ -293,8 +299,12 @@ async function readDay(
 }
 
 /** Current AI-visible day; human agenda content uses the ordinary read path. */
-export function readAgendaAiDay(owner: string, now: Date): Promise<Day> {
-  return readDay(owner, now, false, true, true);
+export function readAgendaAiDay(
+  owner: string,
+  now: Date,
+  db: Queryable = pool,
+): Promise<Day> {
+  return readDay(owner, now, false, true, true, db);
 }
 
 /**

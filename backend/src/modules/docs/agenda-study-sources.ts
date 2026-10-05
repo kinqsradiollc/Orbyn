@@ -4,7 +4,7 @@ import {
   localDateKey,
   type StudyOverview,
 } from "@orbyn/core";
-import { pool } from "../../db/pool.js";
+import { pool, type Queryable } from "../../db/pool.js";
 import { visibleDocs } from "../../lib/visibility.js";
 import {
   assistantSourceVisible,
@@ -30,9 +30,10 @@ export async function agendaAiStudy(
   overview: StudyOverview,
   now: Date,
   timezone: string,
+  db: Queryable = pool,
 ) {
   const end = dayTime(addDays(localDateKey(now, timezone), 1), 0, timezone);
-  const cards = await pool.query<{
+  const cards = await db.query<{
     doc_id: string;
     version: number;
     due: number;
@@ -58,7 +59,7 @@ export async function agendaAiStudy(
   }));
   const originalIds = [...new Set(cards.rows.flatMap((row) => row.source_ids))];
   if (originalIds.length) {
-    const originals = await pool.query<{ id: string; version: number }>(
+    const originals = await db.query<{ id: string; version: number }>(
       `SELECT original.id,original.version FROM docs original WHERE original.id=ANY($2::uuid[]) AND ${readable("original")}`,
       [owner, originalIds],
     );
@@ -82,7 +83,7 @@ export async function agendaAiStudy(
     // Associated decks must all remain eligible; never retain a hidden title
     // merely because another attached deck is available.
     const attached = exam.doc_ids.length
-      ? await pool.query<{ id: string; version: number }>(
+      ? await db.query<{ id: string; version: number }>(
           `SELECT d.id,d.version FROM docs d WHERE d.id=ANY($2::uuid[]) AND ${readable("d")}`,
           [owner, exam.doc_ids],
         )
@@ -95,7 +96,7 @@ export async function agendaAiStudy(
       /^sub:([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}):/i.exec(exam.key);
     let source: AgendaAiSource | undefined;
     if (item) {
-      const row = await pool.query(
+      const row = await db.query(
         `SELECT i.id,i.version FROM items i WHERE i.id=$2 AND ${assistantSourceVisible("'task'", "i.id")} AND ${teamAllowed("i")}`,
         [owner, item[1]],
       );
@@ -108,7 +109,7 @@ export async function agendaAiStudy(
     } else if (subscription) {
       if (
         (
-          await pool.query(
+          await db.query(
             `SELECT 1 WHERE ${assistantSourceVisible("'calendar'", "$2::uuid")}`,
             [owner, subscription[1]],
           )
@@ -116,7 +117,7 @@ export async function agendaAiStudy(
       )
         source = { kind: "calendar", id: subscription[1] };
     } else {
-      const row = await pool.query(
+      const row = await db.query(
         `SELECT exam.id FROM study_exams exam WHERE exam.user_id=$1 AND exam.exam_key=$2 AND exam.own AND ${assistantSourceVisible("'exam'", "exam.id")} AND ${examDecksAllowed("exam")}`,
         [owner, exam.key],
       );
@@ -173,11 +174,12 @@ export async function agendaAiStudy(
 export async function assertAgendaStudySources(
   owner: string,
   sources: AgendaAiSource[],
+  db: Queryable = pool,
 ) {
   const tasks = sources.filter((source) => source.kind === "task");
   if (tasks.length) {
     const ids = [...new Set(tasks.map((source) => source.id))];
-    const current = await pool.query<{ id: string; version: number }>(
+    const current = await db.query<{ id: string; version: number }>(
       `SELECT i.id,i.version FROM items i WHERE i.id=ANY($2::uuid[]) AND ${visibleAiItems()}`,
       [owner, ids],
     );
@@ -195,7 +197,7 @@ export async function assertAgendaStudySources(
   for (const source of sources) {
     if (source.kind === "task") continue;
     if (source.kind === "doc") {
-      const row = await pool.query<{ version: number }>(
+      const row = await db.query<{ version: number }>(
         `SELECT d.version FROM docs d WHERE d.id=$2 AND ${readable("d")}`,
         [owner, source.id],
       );
@@ -205,13 +207,13 @@ export async function assertAgendaStudySources(
       )
         throw new Error("Agenda Study source changed.");
     } else {
-      const row = await pool.query(
+      const row = await db.query(
         `SELECT 1 WHERE ${assistantSourceVisible("'" + source.kind + "'", "$2::uuid")}`,
         [owner, source.id],
       );
       if (!row.rowCount) throw new Error("Agenda Study source changed.");
       if (source.kind === "exam") {
-        const exam = await pool.query(
+        const exam = await db.query(
           `SELECT 1 FROM study_exams exam WHERE exam.id=$2 AND exam.user_id=$1 AND ${examDecksAllowed("exam")}`,
           [owner, source.id],
         );

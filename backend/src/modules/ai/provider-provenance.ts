@@ -22,7 +22,12 @@ export async function recordProviderUse(
       )
     ).rows[0];
     if (!row?.chat_id || !row.turn_id) {
-      if (row?.run_state?.version === 2 && phase === "completed")
+      if (
+        phase === "completed" &&
+        (row?.run_state?.version === 2 ||
+          (row?.run_state?.version === 4 &&
+            row.run_state.feature === "agenda_brief"))
+      )
         await db.query(
           `UPDATE ai_jobs SET result=coalesce(result,'{}'::jsonb)||jsonb_build_object('feature_provider',$3::jsonb)
            WHERE id=$1 AND user_id=$2 AND state='running' AND lease_until>clock_timestamp()`,
