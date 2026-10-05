@@ -23,6 +23,9 @@ import {
   type DocHeadingLevel,
 } from "./docs.js";
 
+import { docInlineLinks } from "./doc-inline-links.js";
+import { docInlineLiterals } from "./doc-inline-literals.js";
+
 /** What a link can point to. An event is a task with a time. */
 export const LINK_KINDS = [
   "doc",
@@ -361,18 +364,15 @@ export function dateOptions(
  */
 export function webLinks(text: string, origin: string): string {
   const base = origin.replace(/\/+$/, "");
-  return text.replace(
-    /\[([^\]\n]+)\]\((orbyn:\/\/[^)\s]+)\)/g,
-    (whole, label: string, href: string) => {
-      const ref = parseObjectHref(href);
-      if (!ref) return whole;
-      if (ref.kind === "person") return label;
-      if (ref.kind === "date") return dateTitle(ref.id);
-      const kind = ref.kind === "event" ? "task" : ref.kind;
-      const line = ref.block ? `#${ref.block}` : "";
-      return `[${label}](${base}/app/${kind}/${ref.id}${line})`;
-    },
-  );
+  return replaceObjectLinks(text, (whole, label, href, match) => {
+    const ref = parseObjectHref(href);
+    if (!ref) return whole;
+    if (ref.kind === "person") return label;
+    if (ref.kind === "date") return dateTitle(ref.id);
+    const kind = ref.kind === "event" ? "task" : ref.kind;
+    const line = ref.block ? `#${ref.block}` : "";
+    return `[${label}](${base}/app/${kind}/${ref.id}${line}${titleSuffix(match.title)})`;
+  });
 }
 
 /** A page's lines with {@link webLinks} applied, for files to keep. */
@@ -384,7 +384,7 @@ export const blocksWithWebLinks = (
     "text" in b &&
     b.type !== "code" &&
     b.type !== "math" &&
-    b.text.includes("orbyn://")
+    /orbyn:\/\//i.test(b.text)
       ? { ...b, text: webLinks(b.text, origin) }
       : b,
   );
@@ -556,7 +556,61 @@ function restoreReferenceValues(
 }
 
 /** A picker link in a line's words: `[words](orbyn://kind/id)`. */
-const OBJECT_LINK = /\[([^\]\n]+)\]\((orbyn:\/\/[^)\s]+)\)/g;
+type ObjectLinkMatch = [string, string, string] & {
+  index: number;
+  labelEnd: number;
+  title?: string;
+};
+
+/** The same balanced syntax rendered by Docs, excluding literal code, math and escaped markers. */
+function objectLinkMatches(text: string): ObjectLinkMatch[] {
+  const masked = text.split("");
+  for (const literal of docInlineLiterals(text))
+    for (let at = literal.start; at < literal.end; at++)
+      masked[at] = literal.run.break ? " " : "x";
+  return docInlineLinks(masked.join(""), text)
+    .filter((link) => !link.image && parseObjectHref(link.href) !== null)
+    .map((link) =>
+      Object.assign(
+        [
+          text.slice(link.start, link.end),
+          text.slice(link.labelStart, link.labelEnd),
+          link.href,
+        ] as [string, string, string],
+        {
+          index: link.start,
+          labelEnd: link.labelEnd,
+          ...(link.title !== undefined ? { title: link.title } : {}),
+        },
+      ),
+    );
+}
+
+const titleSuffix = (title?: string) =>
+  title === undefined
+    ? ""
+    : ` "${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
+function replaceObjectLinks(
+  text: string,
+  replace: (
+    whole: string,
+    label: string,
+    href: string,
+    match: ObjectLinkMatch,
+  ) => string,
+): string {
+  let at = 0;
+  const parts: string[] = [];
+  for (const match of objectLinkMatches(text)) {
+    parts.push(
+      text.slice(at, match.index),
+      replace(match[0], match[1], match[2], match),
+    );
+    at = match.index + match[0].length;
+  }
+  return parts.join("") + text.slice(at);
+}
 
 /** The key a link's target is judged by: the thing, never one line of it. */
 export const targetKey = (r: ObjectRef): string =>
@@ -565,11 +619,11 @@ export const targetKey = (r: ObjectRef): string =>
 /** Every thing the picker links in `text` point to (with repeats). */
 export function objectRefsIn(text: string): ObjectRef[] {
   const out: ObjectRef[] = [];
-  if (!text.includes("orbyn://")) return out;
+  if (!/orbyn:\/\//i.test(text)) return out;
   const definition = docReferenceDefinition(text);
   const target = definition && parseObjectHref(definition.href);
   if (target) out.push(target);
-  for (const m of text.matchAll(OBJECT_LINK)) {
+  for (const m of objectLinkMatches(text)) {
     const ref = parseObjectHref(m[2]);
     if (ref) out.push(ref);
   }
@@ -617,16 +671,18 @@ export function redactLine(
     if (replacement !== text)
       changes.push({ from: 0, to: text.length, text: replacement });
   } else {
-    if (text.includes("orbyn://"))
-      for (const m of text.matchAll(OBJECT_LINK)) {
+    if (/orbyn:\/\//i.test(text))
+      for (const m of objectLinkMatches(text)) {
         const ref = parseObjectHref(m[2]);
         if (!ref || ref.kind === "date" || !hidden(ref)) continue;
         const label = PRIVATE_LINK_LABELS[ref.kind];
         if (m[1] !== label)
+          changes.push({ from: m.index + 1, to: m.labelEnd, text: label });
+        if (m.title !== undefined)
           changes.push({
-            from: m.index! + 1,
-            to: m.index! + 1 + m[1].length,
-            text: label,
+            from: m.labelEnd + 1,
+            to: m.index + m[0].length,
+            text: `(${m[2]})`,
           });
       }
     if (references)
@@ -710,7 +766,7 @@ export function redactValue<T>(
 ): T {
   const walk = (v: unknown): unknown => {
     if (typeof v === "string")
-      return v.includes("orbyn://") ? redactLinkLabels(v, hidden) : v;
+      return /orbyn:\/\//i.test(v) ? redactLinkLabels(v, hidden) : v;
     if (Array.isArray(v)) {
       const projected = documentBlocks(v)
         ? redactDocumentReferences(v, hidden)
@@ -779,15 +835,24 @@ export function keepLinkLabels<T>(
     }
   }
   next = restoreReferenceValues(next, before, shownPrivate) as T;
-  const labels = new Map<string, string>();
+  const labels = new Map<
+    string,
+    { label: string; title?: string; href: string; source: string }
+  >();
   const collect = (v: unknown) => {
     if (typeof v === "string") {
-      if (!v.includes("orbyn://")) return;
-      for (const m of v.matchAll(OBJECT_LINK)) {
+      if (!/orbyn:\/\//i.test(v)) return;
+      for (const m of objectLinkMatches(v)) {
         const ref = parseObjectHref(m[2]);
         if (!ref || m[1] === PRIVATE_LINK_LABELS[ref.kind]) continue;
         const key = targetKey(ref);
-        if (!labels.has(key)) labels.set(key, m[1]);
+        if (!labels.has(key))
+          labels.set(key, {
+            label: m[1],
+            href: m[2],
+            source: m[0],
+            ...(m.title !== undefined ? { title: m.title } : {}),
+          });
       }
     } else if (Array.isArray(v)) v.forEach(collect);
     else if (v && typeof v === "object") Object.values(v).forEach(collect);
@@ -796,13 +861,16 @@ export function keepLinkLabels<T>(
   if (!labels.size) return next;
   const fix = (v: unknown): unknown => {
     if (typeof v === "string")
-      return v.includes("orbyn://")
-        ? v.replace(OBJECT_LINK, (whole, label: string, href: string) => {
+      return /orbyn:\/\//i.test(v)
+        ? replaceObjectLinks(v, (whole, label, href) => {
             const ref = parseObjectHref(href);
             if (!ref || label !== PRIVATE_LINK_LABELS[ref.kind]) return whole;
             if (!shownPrivate(ref)) return whole;
             const kept = labels.get(targetKey(ref));
-            return kept ? `[${kept}](${href})` : whole;
+            if (!kept) return whole;
+            return kept.href === href
+              ? kept.source
+              : `[${kept.label}](${href}${titleSuffix(kept.title)})`;
           })
         : v;
     if (Array.isArray(v)) {
@@ -863,12 +931,17 @@ export function hiddenLinkLabels(
       }
     }
     if (typeof v === "string") {
-      if (!v.includes("orbyn://")) return;
-      for (const m of v.matchAll(OBJECT_LINK)) {
+      if (!/orbyn:\/\//i.test(v)) return;
+      for (const m of objectLinkMatches(v)) {
         const ref = parseObjectHref(m[2]);
         if (!ref || ref.kind === "date" || !hidden(ref)) continue;
         const label = PRIVATE_LINK_LABELS[ref.kind];
-        if (m[1] !== label && m[1].trim()) out.set(m[1], label);
+        if (m[1] !== label && m[1].trim()) {
+          out.set(m[1], label);
+          const visible = plainText(m[1]);
+          if (visible.trim()) out.set(visible, label);
+        }
+        if (m.title?.trim()) out.set(m.title, label);
       }
     } else if (Array.isArray(v)) v.forEach(walk);
     else if (v && typeof v === "object" && !(v instanceof Date))

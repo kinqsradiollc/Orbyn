@@ -43,6 +43,7 @@ import {
   FRONTMATTER_LANG,
   docCodeLabel,
   docReferenceLinks,
+  docReferenceMap,
   colourCode,
   colourable,
   diagramKind,
@@ -1425,7 +1426,7 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
               numbers,
               texts,
               references: section.references
-                ? new Map(section.references)
+                ? docReferenceMap(section.references)
                 : docReferenceLinks(section.blocks),
             }}
           >

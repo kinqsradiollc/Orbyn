@@ -824,24 +824,65 @@ function referenceLabel(label: string): string {
 export function docReferenceDefinition(
   text: string,
 ): { label: string; href: string; title?: string } | null {
-  const match =
-    /^ {0,3}\[([^\]\n]{1,999})\]:[ \t]*(?:<([^<>\n]+)>|(\S+))(?:[ \t]+(?:"([^"\n]*)"|'([^'\n]*)'|\(([^()\n]*)\)))?[ \t]*$/.exec(
-      text,
-    );
-  return match && !match[1].startsWith("^")
+  const match = /^ {0,3}\[([^\]\n]{1,999})\]:[ \t]*(.+?)[ \t]*$/.exec(text);
+  if (!match || match[1].startsWith("^")) return null;
+  const source = `[reference](${match[2]})`;
+  const link = docInlineLinks(source, source)[0];
+  return link && link.start === 0 && link.end === source.length
     ? {
         label: match[1],
-        href: match[2] ?? match[3],
-        ...((match[4] ?? match[5] ?? match[6])
-          ? { title: match[4] ?? match[5] ?? match[6] }
-          : {}),
+        href: link.href,
+        ...(link.title !== undefined ? { title: link.title } : {}),
       }
     : null;
 }
 
-/** Safe reference destinations in document order; definitions stay editable source. */
-export function docReferenceLinks(blocks: DocBlock[]): Map<string, string> {
+/** Optional title lookup tied to its original destination; ordinary caller maps still work. */
+export type DocReferences = ReadonlyMap<string, string> & {
+  titleFor?: (label: string, href: string) => string | undefined;
+};
+
+/** Portable authorized reference context: label, destination, optional plain-text title. */
+export type DocReferenceEntry = [string, string, string?];
+
+/** Reconstruct reference context without exposing a title for a changed destination. */
+export function docReferenceMap(
+  entries: Iterable<DocReferenceEntry>,
+): Map<string, string> & DocReferences {
   const references = new Map<string, string>();
+  const titles = new Map<string, { href: string; title: string }>();
+  for (const [rawLabel, href, title] of entries) {
+    const label = referenceLabel(rawLabel);
+    if (references.has(label)) continue;
+    references.set(label, href);
+    if (title !== undefined) titles.set(label, { href, title });
+  }
+  Object.defineProperty(references, "titleFor", {
+    value: (label: string, href: string) => {
+      const title = titles.get(label);
+      return references.get(label) === href && title?.href === href
+        ? title.title
+        : undefined;
+    },
+  });
+  return references;
+}
+
+/** Serialize title context only alongside the destination it was defined for. */
+export function docReferenceEntries(
+  references: DocReferences,
+): DocReferenceEntry[] {
+  return [...references].map(([label, href]) => {
+    const title = references.titleFor?.(label, href);
+    return title === undefined ? [label, href] : [label, href, title];
+  });
+}
+
+/** Safe reference destinations in document order; definitions stay editable source. */
+export function docReferenceLinks(
+  blocks: DocBlock[],
+): Map<string, string> & DocReferences {
+  const entries: DocReferenceEntry[] = [];
   const defined = new Set<string>();
   for (const block of blocks) {
     if (block.type !== "paragraph") continue;
@@ -850,9 +891,10 @@ export function docReferenceLinks(blocks: DocBlock[]): Map<string, string> {
     const label = referenceLabel(definition.label);
     if (!label || defined.has(label)) continue;
     defined.add(label);
-    if (isDocLinkSafe(definition.href)) references.set(label, definition.href);
+    if (isDocLinkSafe(definition.href))
+      entries.push([label, definition.href, definition.title]);
   }
-  return references;
+  return docReferenceMap(entries);
 }
 
 /** Source ranges of resolved references, excluding inline links and literal code/math. */
@@ -897,7 +939,7 @@ export function docReferenceSpans(
  */
 export function parseDocInline(
   text: string,
-  references?: ReadonlyMap<string, string>,
+  references?: DocReferences,
   onStyleRange?: (range: DocStyleRange) => void,
 ): DocInline[] {
   const literals = docInlineLiterals(text);
@@ -998,7 +1040,7 @@ export function parseDocInline(
 function parseFormattedInline(
   text: string,
   source = text,
-  references?: ReadonlyMap<string, string>,
+  references?: DocReferences,
   depth = 0,
   sourceOffset = 0,
   onStyleRange?: (range: DocStyleRange) => void,
@@ -1177,9 +1219,14 @@ function parseFormattedInline(
     if (m[7] !== undefined) {
       const label = referenceLabel(m[8] || m[7]);
       const href = references?.get(label);
-      if (href && isDocLinkSafe(href) && source[start - 1] !== "!")
-        formatted(7, 1, { link: href });
-      else out.push({ text: source.slice(start, start + m[0].length), start });
+      if (href && isDocLinkSafe(href) && source[start - 1] !== "!") {
+        const title = references?.titleFor?.(label, href);
+        formatted(7, 1, {
+          link: href,
+          ...(title !== undefined ? { linkTitle: title } : {}),
+        });
+      } else
+        out.push({ text: source.slice(start, start + m[0].length), start });
     }
     if (m[9] !== undefined || m[10] !== undefined) {
       const group = m[9] !== undefined ? 9 : 10;
@@ -3024,10 +3071,7 @@ export type AssistantSource = (
  * is plain text in a small box, and there `**unchanged**` reads as two stars,
  * a word and two more stars. This is what to show there.
  */
-export const plainText = (
-  text: string,
-  references?: ReadonlyMap<string, string>,
-): string =>
+export const plainText = (text: string, references?: DocReferences): string =>
   parseDocInline(text, references)
     .map((run) =>
       run.break

@@ -2513,7 +2513,7 @@ export class OrbynClient {
       more: boolean;
       blocks: DocBlock[];
       /** Authorized source-page definitions, including those outside the section. */
-      references?: [string, string][];
+      references?: [string, string, string?][];
     }>(`/docs/${docId}/section${block ? `?${params}` : ""}`);
   }
 
