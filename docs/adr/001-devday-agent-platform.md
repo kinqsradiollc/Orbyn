@@ -1778,3 +1778,21 @@ recovery UI, target/body/source consistency through page application, native vis
 acceptance and real positive OpenAI inference remain required. Snapshot rereads
 on the same connection do not prove atomic fencing of all source/policy changes.
 The complete C1–C6/M1/D1/U1 scope remains active.
+
+### Scheduled private Agenda permission — 5 October 2026
+
+Morning page generation, recent app activity and digest preferences do not imply
+permission to use a private ChatGPT plan. A separate first-party setting is off
+by default. Granting it requires the current owned connection/device, available
+default model, provider-choice/model-preference versions and bounded-inference
+capabilities. Permission captures the explicit fallback choice; changing any of
+these requires a fresh review. Revocation/re-enable advances permission version
+and cannot restore an old job's authority. Portable MCP and plugin capabilities
+cannot read or write the setting.
+
+The permission API and capture/revalidation helpers are implemented and have
+direct database/CAS/catalog/authorization tests. This does not yet complete
+scheduled execution: durable daily parent jobs, stable operation identities,
+offline-device deferral, final source/target checks and matching web/mobile
+permission/status/recovery controls remain required. Do not expose a scheduling
+toggle as working before those runtime paths and native acceptance are verified.

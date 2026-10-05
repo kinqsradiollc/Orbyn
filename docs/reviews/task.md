@@ -1952,3 +1952,40 @@ semantics; target/body/source coherence through page application; atomic policy/
 source fencing; actual positive OpenAI inference and desktop/mobile visual/native
 acceptance. A same-connection snapshot reread is not atomic all-source fencing.
 Full C1–C6/M1/D1/U1 stays active. No main merge, deployment or cleanup yet.
+
+## Scheduled Agenda authority — in progress, 5 October 2026
+
+The secondary provider worktree now has uncommitted migration237, strict shared
+permission schemas, first-party owner-only GET/PUT permission endpoints and
+API-client methods. Permission is off by default and independent of morning
+emails/recent sessions. Enabling requires the reviewed provider-choice and model
+preference versions plus a current inference/output-limit-capable device catalog.
+The captured setting includes the explicit fallback choice. Provider/account/
+device/model changes, revocation/re-enable and disabled accounts invalidate old
+grants. JSONB key ordering is normalized through the shared choice schema before
+comparison. Revocation is allowed even after the selected device disappears.
+The new routes are excluded from portable MCP/plugin credential capabilities.
+
+Direct database/CAS/catalog and401/403/400/422/429 route plus mocked authority
+checks12/12 pass with no skips in /tmp/orbyn-agenda-schedule-permission-final.log.
+These include real permission-row JSONB round trips, concurrent writes, model
+preference changes and disconnect/revoke/re-enable. All workspace typechecks
+passed in /tmp/orbyn-agenda-schedule-permission-types.log; the later backend
+recheck also passed. Migration237 was applied only to the marked test database.
+Production build passed in /tmp/orbyn-agenda-schedule-permission-build.log.
+Pure permission/MCP exclusion/neatness checks17/17 passed with no skips in
+/tmp/orbyn-agenda-schedule-pure-final.log; scoped formatting and diff checks pass.
+Frozen ce4895a5 full session40694 completed2838/2838, zero failures/skips, in
+/tmp/orbyn-ce4895a5-full-tests.log. CI37263198527 remains live on ce4895a5; this
+newer work is separate and must not receive the frozen commit's qualification.
+
+This permission foundation does not yet dispatch scheduled summaries or expose a
+working scheduling toggle. Next implementation must persist one daily summary
+parent with target/date/source/permission/model snapshots and a stable operation
+ID. It must defer an undisclosed offline-device request, preserve the same pending
+operation, never retry streamed/unknown completion, and recheck permission,
+source authority and target revision before applying only the owned summary block.
+Human edits/Notes remain intact. Web and mobile need the same truthful pending/
+failure/provider/recovery state and explicit permission control, with visual/native
+verification. The existing worker's five parallel lanes and morning time window
+are not durable recovery or scheduled permission.

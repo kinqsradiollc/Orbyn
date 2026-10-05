@@ -3345,6 +3345,27 @@ or replay does not add measurements. Opted-out users get no new records. This
 history is content-free, deleted after 30 days by the central sweeper and on
 account deletion, and is not account-wide ChatGPT quota, tier or remaining usage.
 
+#### Scheduled Agenda permission
+
+`GET /ai/agenda/private-permission` and `PUT /ai/agenda/private-permission` require
+a first-party app session, return `Cache-Control: no-store`, and are limited to
+10 requests/minute. Personal API keys, portable MCP and plugins cannot grant this
+permission. GET accepts no query fields and returns
+`{ id, enabled, active, version, model }`; no setting means disabled/version0.
+`active` means the saved permission still matches the account/device/model
+selection, not that a device is online or a scheduled run has completed.
+
+PUT accepts only `{ enabled, expected_version, expected_provider_choice_version,
+expected_preference_version? }`. Enabling requires the current provider and model
+versions plus an available bounded-inference-capable ChatGPT catalog. A stale
+permission/selection returns409; unavailable capability/catalog returns503.
+Disabling requires the permission version but does not require the old device to
+remain available. Re-enabling advances version and cannot revive older grants.
+
+Morning-email preferences and recent activity do not grant private inference.
+Scheduled execution/status/recovery UI is still under implementation; this API
+alone does not create or run a scheduled job.
+
 ### Document PDF delivery
 
 `GET /docs/:id/export?format=pdf` uses an authorized, primary-read snapshot and a

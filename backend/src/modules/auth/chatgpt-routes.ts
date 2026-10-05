@@ -4,6 +4,10 @@ import {
 } from "./ai-provider-choice.js";
 import { pool } from "../../db/pool.js";
 import { readCompletedChatgptUsage } from "./chatgpt-usage.js";
+import {
+  readAgendaPrivatePermission,
+  saveAgendaPrivatePermission,
+} from "./agenda-private-permission.js";
 import { z } from "zod";
 import {
   startChatgptConnectRequest,
@@ -32,6 +36,25 @@ import {
 
 /** First-party identity metadata only. Plan credentials and plugin grants stay separate. */
 export async function chatgptConnectionRoutes(app: FastifyInstance) {
+  app.get(
+    "/ai/agenda/private-permission",
+    strictRateLimit,
+    async (r, reply) => {
+      const binding = await authenticateSessionBinding(r);
+      z.object({}).strict().parse(r.query);
+      reply.header("Cache-Control", "no-store");
+      return readAgendaPrivatePermission(binding);
+    },
+  );
+  app.put(
+    "/ai/agenda/private-permission",
+    strictRateLimit,
+    async (r, reply) => {
+      const binding = await authenticateSessionBinding(r);
+      reply.header("Cache-Control", "no-store");
+      return saveAgendaPrivatePermission(binding, r.body);
+    },
+  );
   app.get(
     "/ai/connections/chatgpt/usage",
     strictRateLimit,

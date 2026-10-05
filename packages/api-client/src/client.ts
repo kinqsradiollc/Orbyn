@@ -1,4 +1,6 @@
 import {
+  agendaPrivatePermission,
+  type AgendaPrivatePermissionInput,
   type AgendaBriefOutcome,
   type MaintainedPageBinding,
   type MaintainedPageRunSummary,
@@ -1204,6 +1206,21 @@ export class OrbynClient {
       method: "POST",
       body: timezone ? { timezone } : {},
     });
+  }
+  /** Read explicit scheduled-plan permission, independently of email/digest preferences. */
+  async agendaPrivatePermission() {
+    return agendaPrivatePermission.parse(
+      await this.request("/ai/agenda/private-permission"),
+    );
+  }
+  /** Grant/revoke only the reviewed current account/device/model selection. */
+  async setAgendaPrivatePermission(input: AgendaPrivatePermissionInput) {
+    return agendaPrivatePermission.parse(
+      await this.request("/ai/agenda/private-permission", {
+        method: "PUT",
+        body: input,
+      }),
+    );
   }
   /**
    * Today's agenda document, written on first ask each day (a POST: asking
