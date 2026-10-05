@@ -2019,6 +2019,11 @@ external/native/visual acceptance still precede production promotion; earlier
 diagnostic failures are retained in evidence/agent-channels.md. The complete
 ADR goal remains active.
 
+Immutable signed-reply checkpoint3d163bcd now has a terminal full local suite:
+3089passes, zero failures, one existing Tesseract skip (3090total). Application,
+migration and test source stayed unchanged during qualification. CI and external/
+client acceptance remain distinct gates; Teams and the full ADR remain open.
+
 ### Teams provider authentication foundation — candidate, 6 October 2026
 
 The separate Teams adapter now has a tested Bot Connector JWT boundary: exact
