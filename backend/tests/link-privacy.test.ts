@@ -181,6 +181,45 @@ test("a reader sees neutral words for a personal target, another team's task and
   );
 });
 
+test("titled and formatted inline object links redact through reads, exports and save restoration", async () => {
+  const made = await call(ana, "POST", "/docs", {
+    title: "Inline title privacy",
+    team_id: lab,
+  });
+  assert.equal(made.statusCode, 201, made.body);
+  const id = made.json().id;
+  const storedText = `Read [**Budget 2027 private**](<orbyn://doc/${personalId}> "Budget 2027 private hint") and [*Lab guide*](orbyn://doc/${openId} 'Public guide hint').`;
+  const saved = await call(ana, "PUT", `/docs/${id}`, {
+    version: 1,
+    content: [para(storedText, "titled-link")],
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const shown = await call(ben, "GET", `/docs/${id}`);
+  assert.equal(shown.statusCode, 200, shown.body);
+  noSecrets(shown.body, "titled inline reader");
+  assert.ok(!shown.body.includes("private hint"));
+  assert.match(shown.json().content[0].text, /Private page/);
+  assert.match(shown.json().content[0].text, /Public guide hint/);
+  const exported = await call(ben, "GET", `/docs/${id}/export?format=html`);
+  assert.equal(exported.statusCode, 200, exported.body);
+  noSecrets(exported.body, "titled inline export");
+  assert.ok(!exported.body.includes("private hint"));
+  assert.match(exported.body, /Public guide hint/);
+  const edited = await call(ben, "PUT", `/docs/${id}`, {
+    version: shown.json().version,
+    content: shown
+      .json()
+      .content.map((block: { text: string }) => ({
+        ...block,
+        text: block.text + " Added.",
+      })),
+  });
+  assert.equal(edited.statusCode, 200, edited.body);
+  noSecrets(edited.body, "titled inline save response");
+  const original = await call(ana, "GET", `/docs/${id}`);
+  assert.equal(original.json().content[0].text, storedText + " Added.");
+});
+
 test("exports keep no private titles", async () => {
   for (const format of ["md", "txt", "html"]) {
     const res = await call(
