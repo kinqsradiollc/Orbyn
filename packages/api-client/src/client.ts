@@ -4,6 +4,9 @@ import {
   agendaPrivateSummary,
   type AgendaPrivatePermissionInput,
   type AgendaBriefOutcome,
+  pluginAiPermissionInput,
+  pluginAiPermissionView,
+  type PluginAiPermissionInput,
   type MaintainedPageBinding,
   type MaintainedPageRunSummary,
   type MaintainedPageBindingInput,
@@ -3543,6 +3546,29 @@ export class OrbynClient {
   /** The MCP server's public description, for the developer page. */
   developerCatalog() {
     return this.request<McpCatalog>("/developers/mcp", { anonymous: true });
+  }
+  /** Review explicit managed AI consent for an owned plugin connection. */
+  async pluginAiPermission(id: string, signal?: AbortSignal) {
+    return pluginAiPermissionView.parse(
+      await this.request<unknown>(`/me/agents/${id}/ai-permission`, {
+        fresh: true,
+        signal,
+      }),
+    );
+  }
+  /** Only the signed-in owner can enable or revoke provider-bound plugin AI. */
+  async setPluginAiPermission(
+    id: string,
+    input: PluginAiPermissionInput,
+    signal?: AbortSignal,
+  ) {
+    return pluginAiPermissionView.parse(
+      await this.request<unknown>(`/me/agents/${id}/ai-permission`, {
+        method: "PUT",
+        body: pluginAiPermissionInput.parse(input),
+        signal,
+      }),
+    );
   }
   /** A connection's toolsets besides core (Settings → Connected agents). */
   setAgentToolsets(id: string, toolsets: AgentToolset[]) {

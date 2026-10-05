@@ -564,6 +564,8 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /me/2fa/setup": "sign_in",
   "POST /me/agent-keys": "credentials",
   "GET /me/agents": "credentials",
+  "GET /me/agents/:id/ai-permission": "credentials",
+  "PUT /me/agents/:id/ai-permission": "credentials",
   // W2/W3: the board's agent lanes, and taking a task back from the
   // person's agent (it stops a hosted assistant run).
   "GET /me/agent-work": "assistant_control",

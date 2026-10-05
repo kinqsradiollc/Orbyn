@@ -72,3 +72,62 @@ endpoint, implement the following retained P1 boundary:
 
 This is the implementation contract, not a shipped inference feature. The launch
 checkpoint has no provider-call endpoint and portable MCP remains unchanged.
+
+#### Managed transport foundation — candidate
+
+`provider-policy.ts` now defines strict host text/operation input and a separate
+server-owned permission record. It admits only a matching known database
+provider/revision/model and plugin owner/grant/client, rejecting personal-plan
+transports and first-party authority hooks. The transport uses a captured output
+limit, a 30-second deadline, pre/post current-authority callbacks, a bounded
+result and generic upstream failure text. It does not retry or select fallback.
+Nine isolated regressions and backend typecheck pass.
+
+This module is not mounted as an endpoint. Persisted owner consent, atomic daily
+reservation, durable operation deduplication/unknown outcomes, worker recovery,
+HTTP shields and both permission UIs remain required before enabling execution.
+
+#### Consent and durable storage — candidate
+
+Migration240 adds default-off provider-bound permissions and grant/operation-
+unique execution receipts. Owner-only review and CAS update endpoints pin the
+current workspace provider revision/model and invalidate queued work when consent
+changes. Disabled or changed providers make consent inactive. The API client
+validates both the input and sanitized response; plugin grants are identified
+separately in Connected agents metadata. No provider-call endpoint is mounted yet.
+
+New operation IDs must be UUIDv7 with a timestamp no more than one day old or one
+minute ahead. A broker must look up an existing receipt before checking the age of
+a new operation. Receipts expire after thirty days through the hourly sweeper;
+old IDs cannot become dispatchable again after cleanup. The worker, atomic daily
+allowance reservation, response reads, owner controls and runtime qualification
+remain unfinished. HTTP security/CAS/provider-change tests are added but have not
+run locally because test PostgreSQL remains unavailable and user-controlled.
+
+#### Durable managed inference and owner controls — candidate
+
+`POST /plugin/inference` accepts only a recent UUIDv7 operation ID and bounded
+text. `GET /plugin/inference/:id/events` returns private ordered state events,
+a grant/resource/revision-bound reconnect cursor, and text only after accepted
+completion. Both endpoints use the plugin OAuth audience and fresh authority;
+read/write grants alone do not permit a provider call.
+
+The dedicated plugin service worker reserves a grant's UTC daily allowance and
+claims a receipt before outbound transport. Its separate persisted capacity is
+two; first-party runtime slots and personal ChatGPT tokens are excluded. Unknown
+or interrupted calls retain their reservation and are never replayed. Queued
+revocation is known undispatched and may release allowance. Current owner,
+client, token, team authority, consent and provider revision are checked before
+dispatch and acceptance. Grant-before-job locking is preserved during recovery.
+
+Connected agents exposes explicit provider/model review, output limits, daily
+allowance and revocation on web/desktop and mobile, only for plugin grants. This
+is candidate implementation: 26 isolated policy/consent/launch/cursor regressions
+pass; workspace typechecks pass. Eleven database integration cases are added but
+await exact-head CI. Web inspection remains rejected by the saved Browser Use
+permission; native visual acceptance is outstanding. P1 is not complete.
+
+The newest integration fixture also sends through the production managed HTTP
+adapter to a local mock upstream, checking the wire model/output cap, private
+completion and absence of repeat dispatch. This is added coverage awaiting CI,
+not a successful live external-provider or host acceptance claim.

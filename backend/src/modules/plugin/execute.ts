@@ -46,12 +46,19 @@ async function pluginTransaction<T>(
         "FORBIDDEN",
         "This connection is no longer valid.",
       );
+    // Keep the same grant -> token -> owner order as consent, revocation and
+    // managed inference. Locking a token first can cycle with grant updates.
     await db.query(
-      `SELECT g.id FROM agent_tokens t JOIN agent_grants g ON g.id=t.grant_id
-      JOIN users u ON u.id=g.user_id WHERE t.token_hash=$1 AND g.id=$2
-      ${write ? "FOR UPDATE OF t,g FOR SHARE OF u" : "FOR SHARE OF t,g,u"}`,
+      `SELECT id FROM agent_grants WHERE id=$1 ${write ? "FOR UPDATE" : "FOR SHARE"}`,
+      [principal.grant_id],
+    );
+    await db.query(
+      `SELECT token_hash FROM agent_tokens WHERE token_hash=$1 AND grant_id=$2 ${write ? "FOR UPDATE" : "FOR SHARE"}`,
       [digest(token), principal.grant_id],
     );
+    await db.query("SELECT id FROM users WHERE id=$1 FOR SHARE", [
+      principal.user.id,
+    ]);
     // Hold both app policy and membership rows against revocation during a write.
     await db.query("SELECT id FROM oauth_clients WHERE id=$1 FOR SHARE", [
       principal.client.id,

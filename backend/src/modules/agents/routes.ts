@@ -1,3 +1,7 @@
+import {
+  readPluginAiPermission,
+  setPluginAiPermission,
+} from "../plugin/provider-permissions.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
@@ -113,6 +117,20 @@ export async function agentRoutes(app: FastifyInstance) {
       { bySession: true },
     ),
   );
+
+  app.get("/me/agents/:id/ai-permission", async (r, reply) => {
+    reply.header("Cache-Control", "no-store");
+    return readPluginAiPermission((await authenticate(r)).id, idParam(r));
+  });
+  app.put("/me/agents/:id/ai-permission", strictRateLimit, async (r, reply) => {
+    reply.header("Cache-Control", "no-store");
+    return setPluginAiPermission(
+      (await authenticate(r)).id,
+      idParam(r),
+      r.body,
+      r.id,
+    );
+  });
 
   app.get("/me/agents/:id/activity", async (r) => {
     const u = await authenticate(r);

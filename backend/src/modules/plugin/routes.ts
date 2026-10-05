@@ -1,3 +1,5 @@
+import { pluginInferenceInput } from "./provider-policy.js";
+import { enqueuePluginAi, readPluginAiEvents } from "./inference-broker.js";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { env } from "../../config/env.js";
@@ -106,6 +108,96 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
       });
     }
   });
+  app.post(
+    "/plugin/inference",
+    { bodyLimit: 65536 },
+    async (request, reply) => {
+      const input = pluginInferenceInput.safeParse(request.body);
+      if (!input.success || Object.keys(request.query as object).length)
+        return reply.code(400).send({
+          error: "INVALID",
+          message: "Use a new operation ID and bounded text only.",
+        });
+      const live = await settings();
+      const p = request.pluginCaller!.principal;
+      const slot = await limiter.take(
+        p.grant_id!,
+        p.user.id,
+        "heavy",
+        live.agents.agent_limits,
+      );
+      if (!slot.ok)
+        return reply
+          .header("Retry-After", String(slot.retryAfter))
+          .code(429)
+          .send({ error: "LIMITED", message: slot.reason });
+      try {
+        if (live.maintenance.enabled)
+          throw new PluginCallError(403, {
+            error: "READ_ONLY",
+            message: "Workspace AI is paused.",
+          });
+        const result = await pluginWrite(
+          p,
+          request.headers,
+          live,
+          resources,
+          (db) =>
+            enqueuePluginAi(
+              db,
+              p,
+              String(request.headers.authorization),
+              input.data,
+            ),
+        );
+        return reply.code(202).send(result);
+      } catch (error) {
+        return jobRefusal(error, reply);
+      } finally {
+        slot.release();
+      }
+    },
+  );
+  app.get("/plugin/inference/:id/events", async (request, reply) => {
+    const params = jobParams.safeParse(request.params),
+      query = jobQuery.safeParse(request.query);
+    if (!params.success || !query.success)
+      return reply.code(400).send({
+        error: "INVALID",
+        message: "Use a valid request and reconnect cursor.",
+      });
+    const live = await settings(),
+      p = request.pluginCaller!.principal;
+    const slot = await limiter.take(
+      p.grant_id!,
+      p.user.id,
+      "call",
+      live.agents.agent_limits,
+    );
+    if (!slot.ok)
+      return reply
+        .header("Retry-After", String(slot.retryAfter))
+        .code(429)
+        .send({ error: "LIMITED", message: slot.reason });
+    try {
+      const key = await pluginJobCursorKey();
+      return await pluginRead(p, request.headers, live, resources, (db) =>
+        readPluginAiEvents(
+          db,
+          p,
+          params.data.id,
+          resources.plugin!,
+          key,
+          query.data.cursor,
+        ),
+      );
+    } catch (error) {
+      return jobRefusal(error, reply);
+    } finally {
+      slot.release();
+    }
+  });
+
   async function trackResult(request: FastifyRequest, result: ToolResult) {
     const done = result.structuredContent?.done as
       { id?: string }[] | undefined;

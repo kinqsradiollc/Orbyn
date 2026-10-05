@@ -1,3 +1,11 @@
+# Current plugin integration — 5 October 2026
+
+Main7504be66 is integrated, including the narrow settings grid/theme repair and
+stable Agenda resumption fixture. Only historical/current ADR and handoff text
+conflicted; latest current state and both evidence histories are preserved.
+All application source integrates without conflict. Full combined local and CI
+qualification are required before PR203 promotion. Full ADR remains incomplete.
+
 # Current checkpoint and implementation pipeline — 5 October 2026
 
 | Work                        | Confirmed state                                                                                                                                                                                      | Next implementation or acceptance                                                                                                |
@@ -2088,6 +2096,61 @@ source fencing; actual positive OpenAI inference and desktop/mobile visual/nativ
 acceptance. A same-connection snapshot reread is not atomic all-source fencing.
 Full C1–C6/M1/D1/U1 stays active. No main merge, deployment or cleanup yet.
 
+### 2026-10-05 — Plugin durable inference candidate and qualification repairs
+
+CI37287782196 on f271dd0e failed three tests (2881 pass, one existing Tesseract
+skip): two shared-runtime fixtures used leases from a fixed schedule clock,
+and the new owner permission endpoints were absent from the route inventory.
+The clock fixtures now retain the unchanged production lease duration on the
+live chat runner's clock; the owner-only permission routes are classified as
+credential management. No shield assertions or runtime limits were removed.
+
+Candidate work adds the separate managed plugin broker/worker, atomic allowance
+reservation, grant-owned receipts/events and revocation/provider fencing, plus
+matching owner permission controls on desktop/web and mobile. Calls are never
+retried after uncertain dispatch. Expired receipt recovery is a separate
+statement so it cannot invert grant-before-job locking. Provider errors are
+sanitized. Ten new integration cases await CI; local test PostgreSQL remains
+unavailable. Pure regressions pass26/26; workspace types pass. Browser retry was
+rejected by saved permission; no visual verification claimed. Keep P1 and the
+full ADR active until qualification and host/native acceptance are complete.
+
+Owner permission component regressions pass8/8 across desktop/web and mobile
+(/tmp/orbyn-plugin-consent-ui-tests.log): no consent from merely opening settings,
+reviewed provider snapshot and bounded defaults, explicit revocation, rejection
+of invalid output limits, unavailable-provider refusal and sanitized save errors.
+These are interaction fixtures, not screenshot or native runtime acceptance.
+The initial fixture path error was fixed; its failed log was superseded by the
+successful rerun. All workspace typechecks pass in
+/tmp/orbyn-plugin-consent-ui-types.log.
+
+### Plugin managed HTTP qualification follow-up
+
+Added an eleventh integration case using the production managed HTTP adapter
+against a dedicated mock server: exact model/max_tokens512, expected text,
+accepted private result and no second dispatch. It tests more than the injected
+send seam. Backend typecheck passes; database execution still awaits CI. The
+previous goal turn was progress: committed/pushed broker and owner controls,
+34 focused passes, and repaired catalog/lease qualification failures. Current
+0f6f222e CI37290712062 is live; PR199 c8403ea1 has no reported checks yet.
+Native Simulator inspection again timed out -10005. No visual proof claimed.
+
+### Fresh isolated local plugin qualification — 5 October 2026
+
+A read-only Docker inventory found the already-running embedding test PostgreSQL
+healthy on55435 with a persistent volume and ample available space. Created only
+a new isolated database orbyn_plugin_20261005_0940_test and its server-side test
+marker. No engine/container restart, tuning or application database change.
+Initial33-case cohort failed two new fixtures: an impossible duplicate OAuth
+client/resource grant and the wrong expected OpenAI cap field. Corrected the
+second-grant fixture to a separate client and assert max_completion_tokens512
+(and absence of max_tokens), preserving the output cap. Rerun33/33 passes with
+zero skips/failures in /tmp/orbyn-plugin-durable-local-integration-fixed.log.
+This includes owner consent/CAS, eleven broker/worker cases, actual managed HTTP
+transport, plugin service security and complete route inventory. Earlier failed
+log remains /tmp/orbyn-plugin-durable-local-integration.log. Exact-head full
+local/CI qualification and external host/native visual acceptance remain open.
+
 ## Scheduled Agenda authority — in progress, 5 October 2026
 
 The secondary provider worktree now has uncommitted migration237, strict shared
@@ -2472,6 +2535,17 @@ No main merge, production deployment or cleanup. Full C1–C6/M1/D1/U1 remains a
 ### 2026-10-05 — Agenda catalog compatibility and shared-clock qualification repair
 
 CI 37286333130 on 50a92aa2 failed three tests (2927 passed, one existing Tesseract skip). Preserve the legacy internal catalog response as well as the HTTP response: capabilities now require an explicit opt-in argument, and capability assertions exercise that opt-in. Preserve both cross-runtime serialization assertions: fixed schedule fixtures now place their claimed page leases on the live chat runner's wall clock using the unchanged PAGE_RUN_LEASE_MS. No production runtime capacity or lease duration changed. Backend typecheck passed (/tmp/orbyn-agenda-catalog-clock-types.log). Database cases await exact-head CI; local test PostgreSQL remains unavailable. ADR remains incomplete.
+
+### 5 October — Agenda main promotion and plugin integration
+
+PR199 merged as8dcc4bb1 after exact a6a65525 CI37291303840 passed all four
+jobs (2938 pass, zero failures, one existing Tesseract skip) and99 local focused
+passes. Native/visual and positive real-account SIWC acceptance remain open.
+Plugin1f594133 full local run passed2902, failed one generated catalog check,
+with one existing Tesseract skip. Regenerated the catalog and integrated current
+main, preserving both core exports and all historical task evidence. Combined
+route catalog is generated from both sets of credential exclusions. No policy,
+output cap or test assertion is weakened. Fresh combined qualification follows.
 
 ### Scheduled Agenda resumption fixture — 5 October 2026
 
