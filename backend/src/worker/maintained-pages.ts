@@ -55,7 +55,12 @@ export async function processMaintainedPageRun(
   const run =
     options.claimedRun ??
     (await transaction((db) =>
-      claimMaintainedPageRun(db, lane, now(), options.runId),
+      claimMaintainedPageRun(
+        db,
+        lane,
+        options.now ? now() : undefined,
+        options.runId,
+      ),
     ));
   if (!run?.lease_token) return { state: "idle" as const };
   const token = run.lease_token;

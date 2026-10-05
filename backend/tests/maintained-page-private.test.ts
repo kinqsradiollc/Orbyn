@@ -470,6 +470,36 @@ for (const kind of ["source", "provider", "model"] as const) {
   });
 }
 
+test("native page resume uses PostgreSQL precision while injected clocks stay deterministic", async (t) => {
+  const f = await fixture(true);
+  const { claimMaintainedPageRun, releaseMaintainedPageRun } =
+    await import("../src/modules/docs/maintenance-runs.js");
+  const clock = new Date();
+  await pool.query(
+    "UPDATE assistant_page_runs SET retry_after=$2::timestamptz+interval '0.0005 seconds' WHERE id=$1",
+    [f.run.id, clock],
+  );
+  t.mock.timers.enable({ apis: ["Date"], now: clock.getTime() });
+  try {
+    assert.equal(
+      await transaction((db) =>
+        claimMaintainedPageRun(db, "overnight", clock, f.run.id),
+      ),
+      null,
+    );
+    const claimed = await transaction((db) =>
+      claimMaintainedPageRun(db, "overnight", undefined, f.run.id),
+    );
+    assert.ok(claimed?.lease_token);
+    assert.equal(claimed.id, f.run.id);
+    await transaction((db) =>
+      releaseMaintainedPageRun(db, claimed.id, claimed.lease_token!, clock),
+    );
+  } finally {
+    t.mock.timers.reset();
+  }
+});
+
 test("private Overnight page charges only the parent budget and resumes its own undispatched companion", async () => {
   const f = await fixture(true);
   const { complete } = await import("../src/modules/ai/providers/adapters.js");
