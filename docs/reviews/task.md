@@ -1712,3 +1712,14 @@ secondary controls and section paragraph margins corrected. Screenshot:
 with migration 233; native save, narrow layout and mobile acceptance remain open.
 This is a candidate checkpoint, not a main merge or completion of C5/U1. Full
 exact-commit qualification and all remaining ADR requirements still apply.
+
+## Exact-commit qualification follow-up — 5 October 2026
+
+The full local suite on e8c10979 completed with 2,774 passes, one failure and
+no skips/cancellations. The failure was the newly introduced 20px Docs library
+heading, outside the existing six-size type scale. It is corrected to 18px;
+the unchanged neatness suite passes 10/10 without skips. All workspace types
+and production build passed on e8c10979. CI run 37255077796 is still pending
+at this checkpoint, so no green full qualification or main promotion is claimed.
+Logs: `/tmp/orbyn-e8c10979-full-tests.log`,
+`/tmp/orbyn-doc-heading-scale-tests.log`. Requalify the corrected commit.
