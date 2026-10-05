@@ -1,3 +1,22 @@
+## Structured editor adoption pipeline — 6 October 2026
+
+| Order | Implementation                                                                                  | Current state                                                          | Completion evidence required                                                        |
+| ----- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 1     | Negotiate full-format reads in both normal editors; retain page metadata and revision ownership | Shared client/store/renderers implemented; normal editors still legacy | Paired loading, switching, stale-response, failed-read and full-tree assertions     |
+| 2     | Connect source/visual selection, leaf saves, comments and suggestion anchors                    | Shared source ranges and stable-leaf replacement implemented           | Each existing block widget and comment/suggestion path retains ownership            |
+| 3     | Give list tasks stable item identity and preserve task-state projection                         | Legacy task links remain leaf-based                                    | Checked-item import/edit/save/task-status/undo round trips on both apps             |
+| 4     | Adapt legacy writers and collaborative updates                                                  | SQL guard refuses flat writes to structured pages                      | Typed adapters or explicit capability409 before effects; concurrent editors tested  |
+| 5     | Complete imports, exported rendering and actual UI acceptance                                   | Export adapters implemented; editor/import/native matrices open        | Real Word/PDF/Mermaid/source round trips and web/native screenshots without overlap |
+
+Writer audit identified existing flat writes in `service.ts` task extraction and
+`addToPage`, `comments.ts` suggestion acceptance, `structure.ts` page movement,
+`agenda.ts` and `agenda-summary-runs.ts`. The SQL guard protects stored structure,
+but these paths still need adapters or clear capability refusals before broad
+activation; a database refusal alone is not complete UX. Existing web `useDocYjs`
+still seeds and exchanges flat blocks. Do not enable full structured editing with
+that transport or replace the current editors with a reduced source-only screen.
+These are implementation gates, not completed feature claims.
+
 ## Shared structured editor ownership checkpoint — 6 October 2026
 
 The shared API-client `DocContentStore` now owns full-format reads, source and
