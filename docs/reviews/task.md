@@ -1,65 +1,38 @@
 # Authoritative implementation pipeline — 6 October 2026
 
-Main application checkpoint: `59d9f348`, pushed (Docs paragraphs/breaks PR210).
-PR205 account linking, PR206 delivery and PR204 Slack are also merged.
-User deploys main manually; production deployment is unverified.
-Full ADR goal remains active and incomplete.
+Main application checkpoint is `d4cbff9d` (PR211), pushed. Reference titles and
+balanced inline-object privacy are merged after the fresh full local suite passed
+3437/0/1 on `217bc7eb`, terminal0. Final `a34ed83b` only reformats one test; an AST
+comparison confirms unchanged assertions. Application source matches main. Final
+CI37360062404 is still running; earlier integrated `e04f2c57` passed all four jobs.
+The format-only CI failure on217bc7eb is retained, not presented as success.
+PR212 actual-main integration `9f0247df` is pushed, draft:12 focused cases,
+packages/desktop types/build and formatting pass; serial full DB34 and CI are live.
+Word hyperlinks/import and reference-preview privacy remain a candidate;48 focused
+API/parser/privacy checks pass on fresh DB33. Finish full qualification before
+promotion. Browser/native visual acceptance, production deployment and the full
+C1–C6/M1/D1/U1 goal remain incomplete. User deploys manually.
 
-| Order | Work                        | Current state                                                                                                                                               | Next implementation / acceptance                                                                                                                                                                                                                                |
-| ----- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | Teams question replies      | PR207 merged: signed bounded cards, sent-card proofs, encrypted durable receipts, current authority checks and atomic exact-question answers.               | Real tenant and native/web interaction acceptance; approvals stay in Orbyn.                                                                                                                                                                                     |
-| 2     | Docs D1                     | Nested formatting, delimiter editing and safe autolinks merged in PR208; balanced inline links and titles merged in PR209.                                  | Reference-link titles PR211 are in immutable-head full local/CI qualification. Complete remaining container/image/diagram/import/export D1 matrices.                                                                                                            |
-| 3     | Whole-app U1                | Modal settings and shared layout checkpoints on main                                                                                                        | Review and adjust public/signed-in Home, assistant/agent panels, Docs, tasks/views, calendar, projects/teams, lists/study, settings/admin, booking and overlays. Preserve palette and mobile feature parity; prove narrow/collapsed/large-text/keyboard states. |
-| 4     | Agent and provider contract | Independent Background/Overnight runtimes, reflection/ownership, maintained pages, ChatGPT models/defaults and separate plugin execution checkpoints merged | Audit every retained C1–C6/M1/D1/U1 requirement against source/evidence; finish budgets/collaboration/publication and remaining client/runtime gaps. Real-account/tenant/host acceptance stays open until observed.                                             |
-| 5     | Deployment and cleanup      | Qualified checkpoints pushed; root user dirt and related worktrees preserved                                                                                | User deploys. After all relevant work is integrated, audit patch equivalence/unmerged changes and clean only expendable worktrees/branches.                                                                                                                     |
+| Order | Work                     | State                                                                                                 | Next action                                                                                              |
+| ----- | ------------------------ | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| 1     | Docs links and privacy   | PR211 merged; Word relationships and reference-preview repairs pass focused tests                     | Freeze combined Word source, qualify full suite/CI and merge checkpoint                                  |
+| 2     | Docs layout              | PR212 draft at9f0247df; available-width rails stack;12 focused cases pass                             | Complete full qualification, promote; retain visual acceptance gate                                      |
+| 3     | Remaining Docs D1        | Shared Markdown/Mermaid/source/export checkpoints on main                                             | Complete containers, images, footnotes/bookmarks, code/math and diagram-family round-trip matrices       |
+| 4     | Whole-app U1             | Settings modal and responsive checkpoints on main                                                     | Review each web/desktop/mobile page and narrow/collapsed/keyboard/large-text states                      |
+| 5     | Provider/agents C1-C6/M1 | Routing, catalogs, separate plugin and Background/Overnight runtimes, reflection and channels on main | Audit retained budgets/collaboration/shared-publication contract and real account/tenant/host acceptance |
+| 6     | Deployment/cleanup       | User deploys main; character/user work preserved                                                      | Final equivalence audit and cleanup after relevant integration                                           |
 
-PR207 exact `c18f405b`: all four CI37341791063 jobs passed; fresh isolated local
-full suite3211 passes/0 failures/1 existing skip. Main has identical tested tree
-`4c3f19f1f7a8f70a6c1d431eda2401ad59b35496`.
-PR208 exact `4c9edf00`: CI37346372738 all four jobs passed; fresh local full
-suite3383 passes/0 failures/1 existing skip. PR208 merge matches tested tree
-`b7e56186bf9d5e478800def4b143b808f3da7ccb`.
-PR209 exact `4c3dffb4`: all four CI37348529721 jobs passed; fresh local full
-suite3403 passes/0 failures/1 existing skip, terminal exit0, 718822ms.
-Application source matches main; audit/docs-only checkpoint is also retained.
-Log: `/tmp/orbyn-channel-docs-links-4c3dffb4-full.log`; CI:
-`/tmp/orbyn-docs-links-4c3dffb4-ci.log`.
-
-Full log:`/tmp/orbyn-channel-teams-replies-c18f405b-full.log`.
-CI log:`/tmp/orbyn-channel-teams-replies-c18f405b-ci.log`.
-Browser5174 saved Block and Simulator timeout -10005 remain recorded;
-no visual/native completion claim follows. Earlier qualification logs are retained.
-The historical checkpoints below do not supersede this table.
-
-PR210 paragraph/break checkpoint exact `91a3193e` is merged in `59d9f348`.
-All four CI37352661791 jobs passed. Final focused cohort379/379, workspace types,
-owned builds and formatting pass; fresh full local DB22 suite3418/0/1 ended exit0
-in733605ms. Main application source matches the tested candidate; only intervening
-handoff documentation differs. Logs: `/tmp/orbyn-channel-docs-breaks-91a3193e-full.log`
-and `/tmp/orbyn-docs-breaks-91a3193e-ci.log`.
-Actual mobile Inline function is tested with mocked Text primitives; native
-interaction and appearance remain unverified.
-
-Reference-title PR211 is draft, attached and pushed at `e04f2c57`, incorporating
-actual PR210 main without conflicts. Previous qualification308 serial API/editing/
-privacy/component cases and206 pure cases passed. Combined-head workspace types,
-owned packages/backend/web builds and formatting passed. Fresh DB24 full suite
-and CI37355677316 are running; no merge/full completion claim follows yet.
-Logs: `/tmp/orbyn-channel-reference-integrated-full.log` and
-`/tmp/orbyn-reference-integrated-*.log`.
-
-Docs available-width layout repair PR212 is draft, attached and pushed at
-`f72f9f34` in `codex/ui-layout-completion`:
-comments/history/Info stack when app/library panels leave a narrow page; outline
-responds to actual page width. Observer mount/resize/disconnect/fallback and CSS
-wiring pass twelve focused cases. Owned packages, desktop types/build and full
-formatting pass. CI is running; serial full local qualification waits for PR211
-tests to finish. This is not browser/native visual acceptance.
-Word hyperlink relationships/reference resolution/import round trips remain a
-confirmed gap; source/archive evidence and the next repair are recorded in
-[the Word link audit](docs-word-link-audit.md). Preserve reference/image/container
-continuations, diagram families and whole-app layout requirements. Simulator inspection returned timeout -10005; Browser5174
-saved Block remains recorded. User/character files and worktrees are preserved.
+Evidence: `/tmp/orbyn-channel-reference-privacy-full.log` (3437/0/1),
+`/tmp/orbyn-reference-privacy-format-ast-proof.log`,
+`/tmp/orbyn-channel-doc-reference-previews-final.log` (48/48),
+`/tmp/orbyn-doc-container-integrated-focused.log` (12/12),
+`/tmp/orbyn-channel-doc-container-integrated-full.log` (running).
+The Word tests exposed private reference labels in backlink/line previews because
+single-line snippets lacked page definitions. Repairs preserve source-order first
+match, current source visibility, owner/viewer distinctions and target-only privacy
+checks for self-links. Prior failures remain in their logs. Browser5174 saved Block
+and Simulator timeout -10005 remain recorded; no new screenshots are claimed.
+No Docker mutation, production deployment or cleanup occurred.
 
 # Historical implementation pipeline — earlier 6 October 2026
 
