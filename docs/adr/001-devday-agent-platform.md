@@ -3127,10 +3127,10 @@ because its embedded Watch companion requires the missing watchOS26.5 runtime.
 Evidence: `/tmp/orbyn-chatgpt-native-app-build.log`. No runtime was downloaded.
 A separate temporary OrbynPhoneQA project/workspace was generated only under the
 ignored mobile/ios directory, excluding Watch dependency/embedding for phone UI
-verification. Production config/project source was not changed. Its build is
-currently running as session41328, log
-`/tmp/orbyn-chatgpt-native-phone-qa-build.log`; a passing phone QA result would not
-qualify the full release scheme. Specific live state and next actions are saved
+verification. Production config/project source was not changed. Its unsigned build subsequently passed (exit0), followed by a simulator
+ad-hoc signed build (exit0). Logs: `/tmp/orbyn-chatgpt-native-phone-qa-build.log`
+and `/tmp/orbyn-chatgpt-native-phone-qa-signed-build.log`. These phone QA results
+do not qualify the full release scheme. Specific live state and next actions are saved
 in `/tmp/orbyn-native-build-handoff.json`.
 
 Prebuild generated local watch/widget Assets.xcassets and Info.plist files;
@@ -3141,3 +3141,28 @@ inspection of the shared local PostgreSQL restart loop reports an empty
 postmaster.pid lock file; it was not modified under the user's Docker-recovery
 preference. Native installed UI/screenshots/live provider, full scheme and fresh
 database acceptance remain open.
+
+### Installed signed iOS startup evidence — 6 October 2026
+
+The temporary phone QA app at source a786cd93 was installed and opened on the
+existing iOS18.5 narrow simulator. The unsigned build initially showed Expo
+Notifications KEYCHAIN_ACCESS and Orbyn's session-restore error. Rebuilding with
+simulator ad-hoc signing and reinstalling removed both visible startup errors.
+The generated simulated entitlement contains the app identifier; no production
+team/signing configuration was changed. This is startup acceptance only, not
+proof of protected token persistence, native signing, OAuth callback, provider
+inference or physical-device acceptance.
+
+Computer Use opened the installed app, captured signup, then opened and captured
+sign-in without entering credentials, accepting terms or invoking OpenAI.
+Screenshots are retained under `docs/reviews/evidence/chatgpt-native-startup/`.
+The narrow sign-in screen shows its fields, primary action, recovery and legal
+links without an observed overlapping product control in this state. Signup
+requires scrolling; large-text/keyboard and authenticated Settings remain open.
+Native Metro8083 is serving the development build against local API127.0.0.1:8008.
+It is not a web-preview bypass.
+
+Fresh fetch confirms origin/main still29b74ecd. Docker's isolated test database
+container remains Exited255; full DB70 remains failed, and fresh full regression
+is pending. Current disk is about1.1GiB free. No new main promotion, live OAuth,
+account allowance, Android runtime or full ADR completion is claimed.

@@ -4,19 +4,19 @@ Updated 6 October 2026. Goal resumed at the user's request. This is a concise
 status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 [task handoff](task.md) retain the full scope and evidence.
 
-| Area                           | Current state                                                                                                                                                     | Remaining acceptance / next implementation                                                                                                                                        |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Main                           | `origin/main` verified at `29b74ecd`; user deploys manually                                                                                                       | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                   |
-| ChatGPT native                 | Direct local OAuth, protected tokens, model catalog/defaults, signed inference and Settings/foreground activation implemented on `codex/chatgpt-direct-web-oauth` | Installed iOS/Android OAuth/keystore/browser/lifecycle acceptance; account management and truthful plan/usage acceptance                                                          |
-| Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire              | Candidate only; 323 ChatGPT unit tests and all workspace typechecks pass; refresh coordination, revocation and idle saved-account controls implemented; no installed-device claim |
-| ChatGPT hosted web             | No supported direct browser-only implementation established; desktop handoff is not completion                                                                    | Supported authorization and user-controlled runtime; actual popup/callback/provider acceptance without desktop                                                                    |
-| Main integration               | Read-only merge-tree check detected no conflicts; full DB70 run failed after Docker/database loss                                                                 | Restore disk/database, rerun full regression and qualify installed platforms before promotion                                                                                     |
-| Docs D1                        | Structured ownership and Markdown/Mermaid foundations exist; owned editor/offline candidates remain in separate worktrees                                         | Normal editor adoption, remaining flat writers/task identity, collaboration, complete import/render/edit/export/privacy matrices and native visual checks                         |
-| Whole-app UI U1                | Existing settings/assistant/responsive checkpoints plus candidate native ChatGPT controls                                                                         | Review every page and interaction on web/desktop/mobile, collapsed/narrow/panel/large-text states; avoid overlaps and duplicate actions                                           |
-| Providers/plugins/MCP C1–C3/M1 | Separate provider and plugin/backend boundaries remain in scope                                                                                                   | Governing capability/account/budget/usage audit and real host/provider acceptance; keep MCP grants separate                                                                       |
-| Background/Overnight C4–C5     | Separate identities/runtime/reflection foundations recorded in ADR                                                                                                | Collaboration, budgets, maintained/shared/published-page audit and runtime/client acceptance                                                                                      |
-| Channels C6                    | Slack/Teams implementation candidates recorded in ADR                                                                                                             | Real tenant, lifecycle, delivery, exact-question reply and cross-client acceptance                                                                                                |
-| Cleanup                        | Worktrees, root character/user changes preserved                                                                                                                  | Cleanup only after relevant commits are reconciled, merged and qualified                                                                                                          |
+| Area                           | Current state                                                                                                                                                     | Remaining acceptance / next implementation                                                                                                                                                                                       |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Main                           | `origin/main` verified at `29b74ecd`; user deploys manually                                                                                                       | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                  |
+| ChatGPT native                 | Direct local OAuth, protected tokens, model catalog/defaults, signed inference and Settings/foreground activation implemented on `codex/chatgpt-direct-web-oauth` | Installed iOS/Android OAuth/keystore/browser/lifecycle acceptance; account management and truthful plan/usage acceptance                                                                                                         |
+| Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire              | Candidate only; 323 ChatGPT unit tests and all workspace typechecks pass; refresh coordination, revocation and idle saved-account controls implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
+| ChatGPT hosted web             | No supported direct browser-only implementation established; desktop handoff is not completion                                                                    | Supported authorization and user-controlled runtime; actual popup/callback/provider acceptance without desktop                                                                                                                   |
+| Main integration               | Read-only merge-tree check detected no conflicts; full DB70 run failed after Docker/database loss                                                                 | Restore disk/database, rerun full regression and qualify installed platforms before promotion                                                                                                                                    |
+| Docs D1                        | Structured ownership and Markdown/Mermaid foundations exist; owned editor/offline candidates remain in separate worktrees                                         | Normal editor adoption, remaining flat writers/task identity, collaboration, complete import/render/edit/export/privacy matrices and native visual checks                                                                        |
+| Whole-app UI U1                | Existing settings/assistant/responsive checkpoints plus candidate native ChatGPT controls                                                                         | Review every page and interaction on web/desktop/mobile, collapsed/narrow/panel/large-text states; avoid overlaps and duplicate actions                                                                                          |
+| Providers/plugins/MCP C1–C3/M1 | Separate provider and plugin/backend boundaries remain in scope                                                                                                   | Governing capability/account/budget/usage audit and real host/provider acceptance; keep MCP grants separate                                                                                                                      |
+| Background/Overnight C4–C5     | Separate identities/runtime/reflection foundations recorded in ADR                                                                                                | Collaboration, budgets, maintained/shared/published-page audit and runtime/client acceptance                                                                                                                                     |
+| Channels C6                    | Slack/Teams implementation candidates recorded in ADR                                                                                                             | Real tenant, lifecycle, delivery, exact-question reply and cross-client acceptance                                                                                                                                               |
+| Cleanup                        | Worktrees, root character/user changes preserved                                                                                                                  | Cleanup only after relevant commits are reconciled, merged and qualified                                                                                                                                                         |
 
 ## Current evidence
 
@@ -24,9 +24,13 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
   BUILD SUCCEEDED at `/tmp/orbyn-chatgpt-native-module-build.log`.
   Expo prebuild and CocoaPods installation pass; effective module iOS minimum16.4.
 - Full Orbyn scheme **fails** (exit70): embedded Watch companion needs the
-  missing watchOS26.5 runtime. A temporary phone-only QA workspace is building
-  (session41328); it cannot qualify the full release scheme. Handoff:
-  `/tmp/orbyn-native-build-handoff.json`. Installed behavior/screenshots pending.
+  missing watchOS26.5 runtime. Temporary phone-only unsigned and simulator-signed
+  QA builds both pass (exit zero); neither qualifies the full release scheme.
+  Handoff: `/tmp/orbyn-native-build-handoff.json`. Signed app installed and opened;
+  signup/sign-in screenshots retained in `evidence/chatgpt-native-startup/`.
+  The unsigned keychain startup error disappears after simulator signing. This
+  proves startup only; OAuth, protected credential writes, signing and inference
+  remain unverified.
 
 - `/tmp/orbyn-native-account-state-all-final.log`: 323 passed, zero failures/skips,
   terminal exit zero, 22326.398875 ms. Includes idle permission-off/corrupt account
@@ -35,8 +39,8 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
   typechecks exit zero.
 - Expo autolinking discovers the native module on apple and android; JSON evidence
   is `/tmp/orbyn-native-autolink-apple.json` and
-  `/tmp/orbyn-native-autolink-android.json`. No installed-build/screenshot claim.
-- Disk recovered to 4.7 GiB; Docker engine is running but the isolated test
+  `/tmp/orbyn-native-autolink-android.json`. iOS installed startup evidence is recorded above; Android installed acceptance remains open.
+- Disk currently has about 1.1 GiB free; Docker engine is running but the isolated test
   container remains stopped. User was asked to restore it; full rerun is pending.
 
 - `/tmp/orbyn-native-revocation-all-retry.log`: 315 passed, zero failures/skips,
@@ -49,9 +53,9 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 - `/tmp/orbyn-chatgpt-native-full70.log`: frozen `6f04e8c7` regression **failed**,
   3351 passed / 49 failed / zero skips, exit 1, 713288.637375 ms. PostgreSQL
   connections terminated and Docker became unreachable; a new full run is needed.
-- Simulator Computer Use worked after booting the existing QA device. It has
-  Expo Go but no Orbyn development build with the custom native module. The
-  device was shut down as disk space fell below 250 MiB; no installed acceptance.
+- Simulator Computer Use now works with the installed Orbyn QA development
+  build. Earlier Expo Go-only and unsigned-startup observations are superseded
+  for startup, but not for OAuth/storage/inference acceptance.
 
 - `/tmp/orbyn-native-refresh-coordination-all.log`: 304 passed, zero failures/skips,
   terminal exit zero, 18056.099292 ms. Includes simultaneous catalog/inference,
