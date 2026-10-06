@@ -59,6 +59,8 @@ const registration = z
 const retiredRegistration = registration.extend({
   version: z.literal(2),
   grant: z.null(),
+  remoteRevocationConfirmed: z.boolean().optional(),
+  revokedRevision: z.uuid().optional(),
 });
 function decodeRetiredRegistration(value: string | null) {
   if (!value) return null;
@@ -984,18 +986,6 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     const key = await accountKey(userId);
     const original = await SecureStore.getItemAsync(key, protectedOptions);
     check();
-    if (original === null) {
-      const mapping = decodeRetiredRegistration(
-        await SecureStore.getItemAsync(mappingKey(key), protectedOptions),
-      );
-      check();
-      if (nativeChatgptSigningAvailable())
-        await removeNativeChatgptKey(
-          mapping?.signingAlias ?? key.split(".").at(-1)!,
-        );
-      await updateDirectoryStatus(userId, key, "disconnected", check);
-      return;
-    }
     // Corrupt local credentials must still be erasable; do not guess a remote connection ID.
     let saved: ReturnType<typeof decodeRegistration> = null;
     try {
@@ -1004,24 +994,54 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
       throw new Error("ChatGPT account changed. Try again.");
     check();
-    let remoteRevocationFailed = false;
-    if (saved) {
-      try {
-        await revokeChatgptLocalGrant(saved.grant, {
-          fetch: (async (url, init) => {
-            check();
-            return expoFetch(url, init);
-          }) as typeof fetch,
-        });
-      } catch {
-        remoteRevocationFailed = true;
-      }
+    let retainedMapping = decodeRetiredRegistration(
+      await SecureStore.getItemAsync(mappingKey(key), protectedOptions),
+    );
+    check();
+    if (
+      key.includes(".slot.") &&
+      retainedMapping?.connection.id !== key.split(".").at(-1)
+    )
+      retainedMapping = null;
+    const expectedMappingConnection =
+      saved?.connection ?? decodeRetiredRegistration(original)?.connection;
+    const sameMapping =
+      retainedMapping &&
+      (!expectedMappingConnection ||
+        JSON.stringify(retainedMapping.connection) ===
+          JSON.stringify(expectedMappingConnection));
+    const alreadyRevoked =
+      sameMapping &&
+      retainedMapping?.remoteRevocationConfirmed === true &&
+      (!saved || retainedMapping?.revokedRevision === saved.revision);
+    let remoteRevocationFailed =
+      !saved &&
+      Boolean(decodeRetiredRegistration(original) || retainedMapping) &&
+      !alreadyRevoked;
+    if (saved && !alreadyRevoked) {
+      if (!saved.grant.refreshToken) remoteRevocationFailed = true;
+      else
+        try {
+          await revokeChatgptLocalGrant(saved.grant, {
+            fetch: (async (url, init) => {
+              check();
+              return expoFetch(url, init);
+            }) as typeof fetch,
+          });
+        } catch {
+          remoteRevocationFailed = true;
+        }
       check();
       if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
         throw new Error("ChatGPT account changed. Try again.");
       check();
     }
-    const ownedRegistration = saved ?? decodeRetiredRegistration(original);
+    let retained = decodeRetiredRegistration(original);
+    if (original === null) {
+      retained = retainedMapping;
+      check();
+    }
+    const ownedRegistration = saved ?? retained;
     const ownedConnection = ownedRegistration?.connection;
     let mappingSaveFailed = false;
     if (ownedConnection) {
@@ -1033,6 +1053,13 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
             revision: Crypto.randomUUID(),
             connection: ownedConnection,
             grant: null,
+            remoteRevocationConfirmed:
+              !remoteRevocationFailed && Boolean(saved || alreadyRevoked),
+            ...((saved?.revision ?? retained?.revokedRevision)
+              ? {
+                  revokedRevision: saved?.revision ?? retained?.revokedRevision,
+                }
+              : {}),
             ...(ownedRegistration?.signingAlias
               ? { signingAlias: ownedRegistration.signingAlias }
               : {}),
@@ -1048,7 +1075,12 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       check();
     }
     // A provider or server revocation failure must not retain owned local tokens.
-    await SecureStore.deleteItemAsync(key, protectedOptions);
+    let credentialRemovalFailed = false;
+    try {
+      await SecureStore.deleteItemAsync(key, protectedOptions);
+    } catch {
+      credentialRemovalFailed = true;
+    }
     check();
     let keyRemovalFailed = false;
     if (nativeChatgptSigningAvailable()) {
@@ -1063,7 +1095,12 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     }
     let directoryCleanupFailed = false;
     try {
-      await updateDirectoryStatus(userId, key, "disconnected", check);
+      await updateDirectoryStatus(
+        userId,
+        key,
+        credentialRemovalFailed ? "reconnect" : "disconnected",
+        check,
+      );
     } catch {
       directoryCleanupFailed = true;
     }
@@ -1078,6 +1115,9 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       check();
     }
     const warnings = [
+      credentialRemovalFailed
+        ? "Local credentials could not be erased; retry disconnect."
+        : null,
       directoryCleanupFailed
         ? "Saved account status could not be updated; retry cleanup."
         : null,
@@ -1096,7 +1136,9 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     ].filter(Boolean);
     if (warnings.length)
       throw new Error(
-        "ChatGPT was removed from this device. " + warnings.join(" "),
+        (credentialRemovalFailed
+          ? "ChatGPT disconnect is incomplete. "
+          : "ChatGPT was removed from this device. ") + warnings.join(" "),
       );
   } finally {
     disconnecting = false;
@@ -1370,6 +1412,15 @@ export async function readNativeChatgptAccountState(
   if (value === null) return { status: "missing" };
   if (decodeRetiredRegistration(value)) return { status: "reconnect" };
   try {
+    if (
+      directory &&
+      directory.accounts.some(
+        (entry) =>
+          entry.connection.id === JSON.parse(value).connection?.id &&
+          entry.status !== "connected",
+      )
+    )
+      return { status: "unreadable" };
     const saved = decodeRegistration(value);
     return saved
       ? { status: "saved", planUseAllowed: saved.grant.sharingGranted }

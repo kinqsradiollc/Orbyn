@@ -4216,3 +4216,42 @@ C1-C6/M1/D1/U1 acceptance remain open. No main or production promotion is claime
 Final Add/reconnect checkpoint: `/tmp/orbyn-native-add-all-final2.log`,418passed/
 0failed/0skipped,28937.061916ms, exit0. Mobile/backend typechecks, Prettier and
 diff checks pass. Real OAuth/OS/UI and full regression/main qualification remain open.
+
+### Native independent disconnect retry — 6 October 2026
+
+Recovery audit found that native Disconnect returned early after credentials were
+already erased, skipping a retry of failed server cleanup. It now uses the retained
+protected registration mapping for repeated exact signing-key/server/directory
+cleanup. Each cleanup proceeds independently after ownership checks. Credential
+removal failure still attempts key/server cleanup, marks the account unavailable,
+and returns disconnect incomplete rather than credentials removed. Retained active
+credentials behind an unavailable directory entry produce unreadable Settings
+presence, not a healthy saved-account claim.
+
+Token-free reconnect mappings retain OpenAI revocation confirmation and the exact
+credential revision. Failed/unknown confirmation remains guidance on retry after
+tokens are gone; a later reconnect revision cannot inherit an older confirmation.
+A missing refresh token never invents a revocation receipt. Retired grants still
+permit local/owned server cleanup without retrying unusable tokens, while showing
+unconfirmed OpenAI cleanup guidance. A slot mapping with another connection UUID
+cannot be used for that slot's cleanup. No token is added to directory/IPC/logs.
+
+Focused actual-source service cohort88passed/0failed/0skipped,6835.537417ms,
+exit0 at `/tmp/orbyn-native-cleanup-focused-final.log`. Tests cover server retry after
+erasure, key failure while server cleanup runs, credential erase failure with honest
+notice and retry, provider5xx bounded retries with persistent guidance, missing
+refresh tokens and confirmation invalidation after reconnect. Existing repeat-cleanup
+assertion now checks both exact server ID calls, and retired-grant test expects the
+truthful warning. Initial new provider-retry assertion was corrected to the helper's
+existing three bounded attempts; final terminal runs are evidence.
+
+Remaining native recovery work: targeted cleanup for an unavailable account while
+another/no account is active, mapping/read fault handling, persistence/restart and
+real keystore/OAuth acceptance, catalog/default/provider provenance and screenshots.
+The full isolated database rerun and main qualification remain pending. Other ADR
+scope is unchanged; this is a candidate checkpoint, not production completion.
+
+Final cleanup retry cohort: `/tmp/orbyn-native-cleanup-all-final2.log`,424passed/
+0failed/0skipped,29041.735958ms, exit0. Mobile typecheck initially found nullable
+mapping access; optional access fixed it and final mobile/backend types pass.
+Prettier/diff checks pass. Installed/DB/main qualification remains open.

@@ -45,6 +45,8 @@ function mount(
     browserCancel?: boolean;
     revoked?: boolean;
     revokeFailure?: boolean;
+    keyRemovalFailure?: boolean;
+    credentialRemovalFailure?: boolean;
     providerRevokeFailure?: boolean;
     holdCallback?: boolean;
     onRevoke?: () => Promise<void>;
@@ -199,6 +201,11 @@ function mount(
               session.token = "other-session";
           },
           deleteItemAsync: async (key: string) => {
+            if (
+              options.credentialRemovalFailure &&
+              (key.includes(".account.") || key.includes(".slot."))
+            )
+              throw new Error("private-token erase failure");
             storage.delete(key);
             if (options.changeSession === "delete")
               session.token = "other-session";
@@ -379,6 +386,8 @@ function mount(
             assert.match(alias, /^[a-f0-9]{64}$/);
             calls.keyRemoved++;
             removedAliases.push(alias);
+            if (options.keyRemovalFailure)
+              throw new Error("private-key erase failure");
           },
           nativeChatgptCallbackAvailable: () => options.available !== false,
           startNativeChatgptCallback: async (_id: string, value: string) => {
@@ -528,12 +537,13 @@ function mount(
             },
             revokeChatgptConnection: async (id: string) => {
               calls.revoked.push(id);
-              assert.equal(
-                accounts(storage).some(
-                  ([, raw]) => JSON.parse(raw).connection.id === id,
-                ),
-                false,
-              );
+              if (!options.credentialRemovalFailure)
+                assert.equal(
+                  accounts(storage).some(
+                    ([, raw]) => JSON.parse(raw).connection.id === id,
+                  ),
+                  false,
+                );
               if (options.revokeFailure)
                 throw new Error("private-refresh provider outage");
               await options.onRevoke?.();
@@ -767,7 +777,7 @@ test("native disconnect erases protected credentials before revoking exact serve
   );
   await assert.rejects(fixture.models(), /Connect ChatGPT/);
   await fixture.disconnect();
-  assert.equal(fixture.calls.revoked.length, 1);
+  assert.deepEqual(fixture.calls.revoked, [connection.id, connection.id]);
 });
 test("native disconnect cannot retain tokens when server revocation fails", async () => {
   const fixture = mount({ revokeFailure: true });
@@ -1370,7 +1380,10 @@ test("retired native registration can disconnect owned server metadata without r
   await fixture.signIn();
   expireSoon(fixture);
   await assert.rejects(fixture.models(), /Reconnect/);
-  await fixture.disconnect();
+  await assert.rejects(
+    fixture.disconnect(),
+    /OpenAI session revocation could not be confirmed/,
+  );
   assert.equal(accounts(fixture.storage).length, 0);
   assert.equal(fixture.calls.providerRevoked.length, 0);
   assert.deepEqual(fixture.calls.revoked, [connection.id]);
@@ -2104,4 +2117,81 @@ test("native OAuth action is copied before awaits so caller mutation cannot bypa
   await assert.rejects(f.signIn(undefined, action), /selection changed/);
   assert.equal(accounts(f.storage).length, 1);
   assert.equal((await f.savedAccounts()).selected, connection.id);
+});
+test("native repeated disconnect retries failed server cleanup after credential erasure", async () => {
+  const options = { revokeFailure: true };
+  const f = mount(options);
+  await f.signIn();
+  await assert.rejects(f.disconnect(), /Server disconnect/);
+  assert.equal(accounts(f.storage).length, 0);
+  options.revokeFailure = false;
+  await f.disconnect();
+  assert.deepEqual(f.calls.revoked, [connection.id, connection.id]);
+  assert.equal(f.calls.providerRevoked.length, 1);
+});
+test("native signing-key cleanup failure does not skip owned server cleanup", async () => {
+  const f = mount({ signing: true, keyRemovalFailure: true });
+  await f.signIn();
+  await f.prepare();
+  await assert.rejects(f.disconnect(), /signing key could not be erased/);
+  assert.deepEqual(f.calls.revoked, [connection.id]);
+  assert.equal(accounts(f.storage).length, 0);
+  await assert.rejects(f.disconnect(), /signing key could not be erased/);
+  assert.deepEqual(f.calls.revoked, [connection.id, connection.id]);
+});
+test("native credential erase failure still attempts key/server cleanup and never claims removal", async () => {
+  const options = { signing: true, credentialRemovalFailure: false };
+  const f = mount(options);
+  await f.signIn();
+  await f.prepare();
+  options.credentialRemovalFailure = true;
+  await assert.rejects(f.disconnect(), (error) => {
+    assert.match(String(error), /disconnect is incomplete/);
+    assert.doesNotMatch(String(error), /was removed|private-token/);
+    return true;
+  });
+  assert.equal(accounts(f.storage).length, 1);
+  assert.equal(f.calls.keyRemoved, 1);
+  assert.deepEqual(f.calls.revoked, [connection.id]);
+  assert.equal((await f.accountState()).status, "unreadable");
+  options.credentialRemovalFailure = false;
+  await f.disconnect();
+  assert.equal(accounts(f.storage).length, 0);
+  assert.equal(f.calls.providerRevoked.length, 1);
+});
+test("native retry retains unconfirmed OpenAI revocation guidance after local erasure", async () => {
+  const f = mount({ providerRevokeFailure: true });
+  await f.signIn();
+  await assert.rejects(
+    f.disconnect(),
+    /OpenAI session revocation could not be confirmed/,
+  );
+  await assert.rejects(
+    f.disconnect(),
+    /OpenAI session revocation could not be confirmed/,
+  );
+  assert.equal(f.calls.providerRevoked.length, 3);
+  assert.equal(accounts(f.storage).length, 0);
+});
+test("native missing refresh token does not invent an OpenAI revocation confirmation", async () => {
+  const f = mount();
+  await f.signIn();
+  const [key, raw] = accounts(f.storage)[0],
+    saved = JSON.parse(raw);
+  saved.grant.refreshToken = null;
+  f.storage.set(key, JSON.stringify(saved));
+  await assert.rejects(
+    f.disconnect(),
+    /OpenAI session revocation could not be confirmed/,
+  );
+  assert.equal(f.calls.providerRevoked.length, 0);
+  assert.equal(accounts(f.storage).length, 0);
+});
+test("native reconnect revision cannot inherit a prior grant revocation confirmation", async () => {
+  const f = mount();
+  await f.signIn();
+  await f.disconnect();
+  await f.signIn();
+  await f.disconnect();
+  assert.equal(f.calls.providerRevoked.length, 2);
 });
