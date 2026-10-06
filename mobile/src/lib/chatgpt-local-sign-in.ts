@@ -18,6 +18,8 @@ import {
   refreshChatgptLocalGrant,
   createChatgptExecutorSigner,
   createChatgptExecutorLifecycle,
+  ChatgptPlanClient,
+  ChatgptPlanError,
   type ChatgptLocalGrant,
 } from "@orbyn/api-client";
 import {
@@ -547,7 +549,7 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
   }
 }
 
-/** Private native catalog executor; it has no inference capability until the provider adapter is installed. */
+/** Private native executor: OAuth credentials and provider requests stay on this device. */
 export async function createNativeChatgptExecutor(userId: string) {
   if (Platform.OS === "web" || !nativeChatgptSigningAvailable())
     throw new Error(
@@ -643,6 +645,38 @@ export async function createNativeChatgptExecutor(userId: string) {
         .replace(/\//g, "_")
         .replace(/=+$/, ""),
   });
+  const plan = new ChatgptPlanClient({
+    binding,
+    credential: async () => {
+      await live();
+      const record = decodeRegistration(
+        await SecureStore.getItemAsync(key, protectedOptions),
+      );
+      await live();
+      if (
+        !record ||
+        !record.grant.sharingGranted ||
+        record.grant.expiresAt <= Date.now() ||
+        record.connection.id !== connection.id ||
+        record.grant.clientId !== connection.client_id
+      )
+        throw new Error("Reconnect this ChatGPT account before continuing.");
+      return { binding, accessToken: record.grant.accessToken };
+    },
+    fetch: (async (url, init) => {
+      await live();
+      init?.signal?.throwIfAborted();
+      const response = await expoFetch(url, init);
+      try {
+        await live();
+        init?.signal?.throwIfAborted();
+      } catch (error) {
+        await response.body?.cancel().catch(() => {});
+        throw error;
+      }
+      return response;
+    }) as typeof fetch,
+  });
   const runtime = createChatgptExecutorLifecycle({
     binding,
     client,
@@ -650,6 +684,49 @@ export async function createNativeChatgptExecutor(userId: string) {
     requireLiveConnection: live,
     models: async (signal) =>
       (await readNativeChatgptModels(userId, { signal })).models,
+    inference: {
+      client,
+      digest: (message) =>
+        Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, message),
+      complete: async (assignment, signal) => {
+        // Refresh locally and verify identity/scopes before the provider receives any prompt.
+        await readNativeChatgptModels(userId, { signal });
+        await live();
+        let usage: import("@orbyn/core").ChatgptPlanUsage | null = null;
+        try {
+          const text = await plan.complete(
+            { model: assignment.model, ...assignment.payload },
+            {
+              signal,
+              onUsage: (value) => {
+                usage = value;
+              },
+            },
+          );
+          return { status: "completed", text, usage };
+        } catch (error) {
+          if (!(error instanceof ChatgptPlanError)) throw error;
+          return {
+            status: "failed",
+            reason:
+              error.providerCode === "subscription_sharing_user_not_eligible"
+                ? "eligibility"
+                : error.providerCode ===
+                    "subscription_sharing_usage_limit_exceeded"
+                  ? "usage_limit"
+                  : error.providerCode ===
+                      "subscription_sharing_usage_unavailable"
+                    ? "unavailable"
+                    : error.status === 401 || error.status === 403
+                      ? "permission"
+                      : "unknown",
+            phase: error.status === 200 ? "stream" : "admission",
+            http_status: error.status,
+            provider_code: error.providerCode,
+          };
+        }
+      },
+    },
   });
   const handle = {
     userId,
@@ -665,6 +742,7 @@ export async function createNativeChatgptExecutor(userId: string) {
     start: runtime.start,
     heartbeat: runtime.heartbeat,
     refreshCatalog: runtime.refreshCatalog,
+    executeNext: runtime.executeNext,
     close: handle.close,
   };
 }

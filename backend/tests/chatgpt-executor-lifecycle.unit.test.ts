@@ -11,7 +11,10 @@ import {
   chatgptInferenceProofMessage,
 } from "../src/modules/auth/chatgpt-executor-proof.js";
 
-function fixture(tamper?: "enrollment" | "lease" | "receipt" | "proof") {
+function fixture(
+  tamper?: "enrollment" | "lease" | "receipt" | "proof",
+  inferenceEnabled = false,
+) {
   const binding = {
     user_id: randomUUID(),
     connection_id: randomUUID(),
@@ -161,7 +164,10 @@ function fixture(tamper?: "enrollment" | "lease" | "receipt" | "proof") {
         verifyChatgptCatalogProof(publicKey, proof.catalog, proof.signature),
         fingerprint,
       );
-      assert.equal(proof.catalog.capabilities, undefined);
+      assert.deepEqual(
+        proof.catalog.capabilities,
+        inferenceEnabled ? ["plan_inference_v1"] : undefined,
+      );
       catalogs.push(proof.catalog.sequence);
       return {
         executor_id: executorId,
@@ -188,6 +194,7 @@ function fixture(tamper?: "enrollment" | "lease" | "receipt" | "proof") {
     hostId,
     publicKey,
     fingerprint,
+    lease,
     messages,
     heartbeats,
     catalogs,
@@ -311,5 +318,215 @@ test("portable native signer sends only a bounded v2 digest to its OS key for la
     ),
     f.fingerprint,
   );
+  f.runtime.close();
+});
+
+function inferenceFixture() {
+  const f = fixture(undefined, true);
+  let assignment: any = {
+    id: randomUUID(),
+    job_id: randomUUID(),
+    executor_id: f.lease.executor_id,
+    binding: f.binding,
+    enrollment_epoch: 1,
+    lease_epoch: 1,
+    model: "owned-model",
+    nonce: "n".repeat(43),
+    request_hash: "a".repeat(64),
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+    payload: {
+      instructions: "Private task",
+      input: [{ role: "user", content: "Private message" }],
+    },
+  };
+  assignment.request_hash = createHash("sha256")
+    .update(
+      JSON.stringify({
+        binding: assignment.binding,
+        model: assignment.model,
+        payload: assignment.payload,
+        job_id: assignment.job_id,
+      }),
+    )
+    .digest("hex");
+  let complete: (
+    value: any,
+    signal: AbortSignal,
+  ) => Promise<unknown> = async () => ({
+    status: "completed",
+    text: "x".repeat(10000),
+    usage: null,
+  });
+  const publications: any[] = [];
+  let calls = 0;
+  const runtime = createChatgptExecutorLifecycle({
+    binding: f.binding,
+    client: f.client,
+    signer: f.signer,
+    requireLiveConnection: async () => {
+      await f.signer.metadata();
+    },
+    models: async () => [{ slug: "owned-model", display_name: "Owned" }],
+    inference: {
+      digest: async (message) =>
+        createHash("sha256").update(message).digest("hex"),
+      client: {
+        claimChatgptInference: async () => assignment,
+        finishChatgptInference: async (value: any) => {
+          verifyChatgptExecutorProof(
+            f.publicKey,
+            chatgptInferenceProofMessage(value.receipt, value.proof_format),
+            value.signature,
+          );
+          publications.push(value);
+        },
+      },
+      complete: async (value, signal) => {
+        calls++;
+        return complete(value, signal);
+      },
+    },
+  });
+  return {
+    ...f,
+    runtime,
+    assignment,
+    publications,
+    calls: () => calls,
+    setAssignment: (value: any) => {
+      assignment = value;
+    },
+    setComplete: (value: typeof complete) => {
+      complete = value;
+    },
+  };
+}
+test("portable executor signs one assigned large result and keeps heartbeats independent", async () => {
+  const f = inferenceFixture();
+  await f.runtime.start();
+  let resolve!: (value: unknown) => void;
+  f.setComplete(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
+  const pending = f.runtime.executeNext();
+  while (!resolve) await new Promise((done) => setImmediate(done));
+  assert.deepEqual(await f.runtime.executeNext(), { processed: false });
+  await f.runtime.heartbeat();
+  resolve({ status: "completed", text: "x".repeat(10000), usage: null });
+  assert.deepEqual(await pending, { processed: true });
+  assert.equal(f.calls(), 1);
+  assert.equal(f.publications.length, 1);
+  assert.equal(f.publications[0].proof_format, "sha256_v2");
+  f.runtime.close();
+});
+test("portable executor fences foreign, stale, expired and changed-input assignments before disclosure", async () => {
+  for (const field of [
+    "binding",
+    "executor_id",
+    "enrollment_epoch",
+    "lease_epoch",
+    "expires_at",
+    "payload",
+  ] as const) {
+    const f = inferenceFixture();
+    await f.runtime.start();
+    const changed = { ...f.assignment };
+    if (field === "binding")
+      changed.binding = { ...changed.binding, subject: "foreign" };
+    else if (field === "executor_id") changed.executor_id = randomUUID();
+    else if (field === "expires_at")
+      changed.expires_at = new Date(Date.now() - 1).toISOString();
+    else if (field === "payload")
+      changed.payload = { ...changed.payload, instructions: "changed" };
+    else changed[field] = 2;
+    f.setAssignment(changed);
+    await assert.rejects(f.runtime.executeNext());
+    assert.equal(f.calls(), 0);
+    assert.equal(f.publications.length, 0);
+    f.runtime.close();
+  }
+});
+test("close aborts a provider that ignores its signal and late completion cannot publish", async () => {
+  const f = inferenceFixture();
+  await f.runtime.start();
+  let resolve!: (value: unknown) => void;
+  let providerSignal!: AbortSignal;
+  f.setComplete((_, signal) => {
+    providerSignal = signal;
+    return new Promise((done) => {
+      resolve = done;
+    });
+  });
+  const pending = f.runtime.executeNext();
+  while (!resolve) await new Promise((done) => setImmediate(done));
+  f.runtime.close();
+  await assert.rejects(pending, /interrupted/);
+  assert.equal(providerSignal.aborted, true);
+  resolve({ status: "completed", text: "late", usage: null });
+  await new Promise((done) => setImmediate(done));
+  assert.equal(f.publications.length, 0);
+});
+test("connection loss, malformed output and expired lease prevent result publication", async (t) => {
+  for (const mode of ["disconnect", "invalid", "lease"]) {
+    const f = inferenceFixture();
+    await f.runtime.start();
+    f.setComplete(async () => {
+      if (mode === "disconnect") f.disconnect();
+      if (mode === "lease")
+        t.mock.method(Date, "now", () => Date.parse(f.lease.expires_at) + 1);
+      return mode === "invalid"
+        ? { status: "completed", text: 42, usage: null }
+        : { status: "completed", text: "result", usage: null };
+    });
+    await assert.rejects(f.runtime.executeNext());
+    assert.equal(f.publications.length, 0);
+    f.runtime.close();
+    t.mock.restoreAll();
+  }
+});
+test("no assignment does no inference, and catalog-only executors cannot execute", async () => {
+  const f = inferenceFixture();
+  await f.runtime.start();
+  f.setAssignment(null);
+  assert.deepEqual(await f.runtime.executeNext(), { processed: false });
+  assert.equal(f.calls(), 0);
+  f.runtime.close();
+  const catalog = fixture();
+  await catalog.runtime.start();
+  await assert.rejects(catalog.runtime.executeNext(), /unavailable/);
+  catalog.runtime.close();
+});
+
+test("assignment deadline interrupts hung inference without retry or late publication", async () => {
+  const f = inferenceFixture();
+  await f.runtime.start();
+  f.assignment.expires_at = new Date(Date.now() + 100).toISOString();
+  f.setComplete(() => new Promise(() => {}));
+  await assert.rejects(f.runtime.executeNext(), /interrupted/);
+  assert.equal(f.calls(), 1);
+  assert.equal(f.publications.length, 0);
+  f.runtime.close();
+});
+test("explicit sanitized provider failures are signed and unknown transport failures are never retried", async () => {
+  const f = inferenceFixture();
+  await f.runtime.start();
+  f.setComplete(async () => ({
+    status: "failed",
+    reason: "usage_limit",
+    phase: "admission",
+    http_status: 429,
+    provider_code: "subscription_sharing_usage_limit_exceeded",
+  }));
+  assert.deepEqual(await f.runtime.executeNext(), { processed: true });
+  assert.equal(f.publications[0].receipt.result.reason, "usage_limit");
+  f.setComplete(async () => {
+    throw new Error("unknown provider completion");
+  });
+  await assert.rejects(f.runtime.executeNext());
+  assert.equal(f.calls(), 2);
+  assert.equal(f.publications.length, 1);
   f.runtime.close();
 });

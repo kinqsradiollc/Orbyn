@@ -12,6 +12,10 @@ import {
 import ts from "typescript";
 import * as core from "@orbyn/core";
 import * as api from "@orbyn/api-client";
+import {
+  chatgptInferenceProofMessage,
+  verifyChatgptExecutorProof,
+} from "../src/modules/auth/chatgpt-executor-proof.js";
 
 const userId = "fbb2cfcc-7052-407f-9ee5-07a0be261382";
 const connection = {
@@ -48,6 +52,7 @@ function mount(
     failRefreshProof?: boolean;
     onRefresh?: () => Promise<void>;
     signing?: boolean;
+    inference?: "success" | "limit" | "session";
     changeDuringModels?: "session" | "registration";
   } = {},
 ) {
@@ -88,6 +93,8 @@ function mount(
     refreshed: 0,
     keyRemoved: 0,
     catalogs: [] as object[],
+    publications: [] as any[],
+    responses: 0,
     refreshProof: [] as object[],
   };
   let state = "",
@@ -186,6 +193,54 @@ function mount(
                   },
                 ],
               });
+            }
+            if (url === "https://api.openai.com/v1/responses") {
+              calls.responses++;
+              assert.equal(
+                init.headers.Authorization,
+                calls.refreshed
+                  ? "Bearer refreshed-access"
+                  : "Bearer private-access",
+              );
+              const body = JSON.parse(init.body);
+              assert.equal(body.store, false);
+              assert.equal(body.stream, true);
+              assert.equal(body.model, "native-model");
+              assert.equal(body.input[0].content, "Owned private task");
+              if (options.inference === "session")
+                session.token = "other-session";
+              if (options.inference === "limit")
+                return Response.json(
+                  {
+                    error: {
+                      code: "subscription_sharing_usage_limit_exceeded",
+                      message: "private provider detail",
+                    },
+                  },
+                  { status: 429 },
+                );
+              return new Response(
+                "data: " +
+                  JSON.stringify({
+                    type: "response.output_text.delta",
+                    delta: "Actual nonempty fixture answer",
+                  }) +
+                  "\n\n" +
+                  "data: " +
+                  JSON.stringify({
+                    type: "response.completed",
+                    response: {
+                      status: "completed",
+                      usage: {
+                        input_tokens: 4,
+                        output_tokens: 5,
+                        total_tokens: 9,
+                      },
+                    },
+                  }) +
+                  "\n\n",
+                { headers: { "content-type": "text/event-stream" } },
+              );
             }
             assert.equal(
               url,
@@ -340,13 +395,54 @@ function mount(
             renewChatgptExecutorLease: async () => executorLease(),
             publishChatgptModels: async (value: any) => {
               calls.catalogs.push(value.catalog);
-              assert.equal(value.catalog.capabilities, undefined);
+              assert.deepEqual(Array.from(value.catalog.capabilities), [
+                "plan_inference_v1",
+              ]);
               return {
                 executor_id: executorId,
                 lease_epoch: 1,
                 sequence: value.catalog.sequence,
                 published_at: new Date().toISOString(),
               };
+            },
+            claimChatgptInference: async (id: string) => {
+              assert.equal(id, executorId);
+              if (!options.inference) return null;
+              const assignment = {
+                id: randomUUID(),
+                job_id: randomUUID(),
+                executor_id: executorId,
+                binding: executorBinding,
+                enrollment_epoch: 1,
+                lease_epoch: 1,
+                model: "native-model",
+                nonce: "n".repeat(43),
+                request_hash: "",
+                expires_at: new Date(Date.now() + 60000).toISOString(),
+                payload: {
+                  instructions: "Owned instructions",
+                  input: [{ role: "user", content: "Owned private task" }],
+                },
+              };
+              assignment.request_hash = createHash("sha256")
+                .update(
+                  JSON.stringify({
+                    binding: assignment.binding,
+                    model: assignment.model,
+                    payload: assignment.payload,
+                    job_id: assignment.job_id,
+                  }),
+                )
+                .digest("hex");
+              return assignment;
+            },
+            finishChatgptInference: async (value: any) => {
+              verifyChatgptExecutorProof(
+                publicKey,
+                chatgptInferenceProofMessage(value.receipt, value.proof_format),
+                value.signature,
+              );
+              calls.publications.push(value);
             },
             me: async (settings: any) => {
               calls.freshMe = settings.fresh;
@@ -770,4 +866,54 @@ test("native executor refuses web and installed builds without signing support",
     mount({ platform: "web", signing: true }).executor(),
     /executor signing/,
   );
+});
+
+test("actual native factory executes owned inference locally and publishes verified measured completion", async () => {
+  const f = mount({ signing: true, inference: "success" });
+  await f.signIn();
+  expireSoon(f);
+  const runtime = await f.executor();
+  await runtime.start();
+  assert.deepEqual(await runtime.executeNext(), { processed: true });
+  assert.equal(f.calls.refreshed, 1);
+  assert.equal(f.calls.responses, 1);
+  const result = f.calls.publications[0].receipt.result;
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    status: "completed",
+    text: "Actual nonempty fixture answer",
+    usage: { input_tokens: 4, output_tokens: 5, total_tokens: 9 },
+  });
+  assert.equal(f.calls.publications[0].proof_format, "sha256_v2");
+  assert.ok(!JSON.stringify(f.calls.publications).includes("private-access"));
+  runtime.close();
+});
+test("native provider usage rejection publishes sanitized admission failure without retry", async () => {
+  const f = mount({ signing: true, inference: "limit" });
+  await f.signIn();
+  const runtime = await f.executor();
+  await runtime.start();
+  await runtime.executeNext();
+  assert.equal(f.calls.responses, 1);
+  const result = f.calls.publications[0].receipt.result;
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    status: "failed",
+    reason: "usage_limit",
+    phase: "admission",
+    http_status: 429,
+    provider_code: "subscription_sharing_usage_limit_exceeded",
+  });
+  assert.ok(
+    !JSON.stringify(f.calls.publications).includes("private provider detail"),
+  );
+  runtime.close();
+});
+test("native session change during provider transport cannot publish a completion", async () => {
+  const f = mount({ signing: true, inference: "session" });
+  await f.signIn();
+  const runtime = await f.executor();
+  await runtime.start();
+  await assert.rejects(runtime.executeNext());
+  assert.equal(f.calls.responses, 1);
+  assert.equal(f.calls.publications.length, 0);
+  runtime.close();
 });

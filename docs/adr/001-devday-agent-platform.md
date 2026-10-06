@@ -2865,3 +2865,42 @@ activation, browser-only direct connection, multiple accounts, truthful plan
 and usage presentation, fallback controls and full ADR acceptance remain open.
 This checkpoint does not establish a working cross-platform provider or a main
 promotion; the full goal remains active.
+
+## Native assigned inference checkpoint — 6 October 2026
+
+The portable executor now processes one server-owned assignment at a time while
+heartbeat/catalog work stays independent. It checks strict assignment shape,
+exact account/executor/enrollment/lease, expiry and a locally computed payload
+hash before provider disclosure. Completion has a bounded deadline; close or
+cancellation rejects even an uncooperative adapter, and late results cannot
+publish. Ownership and lease are rechecked before signing and publication.
+Unknown transport outcomes are not retried or converted into confirmed admission
+failures. Explicit sanitized provider results use the versioned digest proof.
+Catalog-only runtimes still cannot execute and advertise no inference capability.
+
+The actual native factory now supplies this adapter: protected local tokens,
+local verified refresh, live entitlement catalog and fixed OpenAI Responses SSE
+transport. Tokens never enter result receipts or the shared backend. The existing
+provider client also accepts an exact verified OAuth subject binding; native
+registrations do not invent workspace identifiers. Model/input, store:false and
+stream:true use the existing strict transport; only an observed completed event
+succeeds, measured usage is preserved, and unsupported hard budgets remain
+rejected. No hard-limit capability is advertised. Native callers can executeNext,
+with foreground activation and timers still to be wired into Settings/app state.
+
+Evidence: all289 ChatGPT unit tests pass,0fail/skip,terminal0,19970.117666ms,
+`/tmp/orbyn-native-inference-all-unit.log`; the final focused69 tests include
+additional real-deadline and explicit-failure coverage,0fail/skip,terminal0,
+2661.914125ms, `/tmp/orbyn-native-inference-qualified.log`. Package builds and
+backend/desktop/mobile typechecks terminate0. Actual native factory TypeScript
+runs against mocked OS/provider/API boundaries and yields a nonempty fixture
+answer, measured usage, verified P-256 publication and sanitized quota failure.
+These are not live OpenAI inference or installed iOS/Android acceptance evidence.
+No new HTTP endpoint, migration, dependency or UI activation is introduced here.
+
+Next: activate and stop the native executor with foreground/session/provider
+lifecycle, expose connection/model/provider-choice controls coherently, then
+verify the installed app. Browser-only direct sign-in remains unresolved and
+must not be presented as a desktop handoff fix. Multiple account management,
+truthful plan/usage UI, cross-platform acceptance and the remainder of the full
+C1-C6/M1/D1/U1 goal remain open. No main promotion or deployment is claimed.
