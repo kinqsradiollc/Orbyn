@@ -18,7 +18,9 @@ export function AiProviderChoiceControls({
     } | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState<string | null>(null);
+  const sessionToken = session.get();
   const lifetime = useRef<AbortController | null>(null);
+  const pendingWrite = useRef<AbortController | null>(null);
   const owner = useRef({ userId, token: session.get() });
   owner.current = { userId, token: session.get() };
   const choice =
@@ -39,6 +41,7 @@ export function AiProviderChoiceControls({
       token = session.get();
     lifetime.current?.abort();
     lifetime.current = abort;
+    pendingWrite.current = null;
     setOwnedChoice(null);
     setError(null);
     setBusy(false);
@@ -54,7 +57,7 @@ export function AiProviderChoiceControls({
       },
     );
     return () => abort.abort();
-  }, [userId, reload]);
+  }, [userId, sessionToken, reload]);
   const save = async (
     primary: "default" | "chatgpt",
     fallback: boolean,
@@ -67,12 +70,14 @@ export function AiProviderChoiceControls({
       owner.current.token !== session.get() ||
       ownedChoice?.token !== session.get() ||
       busy ||
+      pendingWrite.current !== null ||
       !active ||
       active.signal.aborted ||
       (primary === "chatgpt" && !selected)
     )
       return;
     const token = session.get();
+    pendingWrite.current = active;
     setBusy(true);
     setError(null);
     try {
@@ -97,6 +102,7 @@ export function AiProviderChoiceControls({
       if (!active.signal.aborted && token === session.get())
         setError(errorText(e));
     } finally {
+      if (pendingWrite.current === active) pendingWrite.current = null;
       if (!active.signal.aborted && token === session.get()) setBusy(false);
     }
   };
