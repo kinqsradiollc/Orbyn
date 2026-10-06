@@ -180,3 +180,32 @@ test("safe plan failures survive routine metadata refresh but clear on the next 
   assert.equal(f.store.snapshot().error, null);
   f.store.close();
 });
+
+test("desktop disconnect notice distinguishes failed erasure from incomplete server/key cleanup", async () => {
+  for (const failures of [
+    ["credentials"],
+    ["signing_key", "server", "selection"],
+  ]) {
+    const f = fixture();
+    await f.store.syncSession("orbyn-session");
+    f.bridge.command = async () => ({
+      state: f.current,
+      remote_revocation_confirmed: true,
+      cleanup_failures: failures,
+    });
+    await f.store.command({
+      action: "disconnect",
+      registrationId: randomUUID(),
+    });
+    const notice = f.store.snapshot().notice!;
+    if (failures.includes("credentials")) {
+      assert.match(notice, /could not be erased/);
+      assert.doesNotMatch(notice, /Credentials removed|Disconnected on/);
+    } else {
+      assert.match(notice, /Credentials removed/);
+      assert.match(notice, /Server disconnect was not confirmed/);
+      assert.match(notice, /Signing key removal failed/);
+    }
+    f.store.close();
+  }
+});

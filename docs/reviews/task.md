@@ -3960,3 +3960,28 @@ executor stop/retained registration/reconnect. The initial focused test's wrong
 expected vault error-code assertion was repaired; only terminal successful runs
 are acceptance evidence. Installed OS/OpenAI acceptance and fresh full database
 qualification remain open. No main/production promotion is claimed.
+
+### Desktop independent disconnect cleanup — 6 October 2026
+
+Desktop Disconnect no longer requires successful credential decryption before
+unconditional local erasure. Locked/corrupt keychain reads leave OpenAI revocation
+unconfirmed but do not stop local cleanup. Credential removal, signing-key removal,
+owned server disconnect and selection clearing are attempted independently, with
+context checks between awaits. Cleanup retains the verified registration mapping
+for later reconnect and drops the in-memory plan grant.
+
+The strict shared disconnect contract now optionally returns a bounded enum-only
+cleanup_failures list (credentials/signing_key/server/selection), preserving older
+responses without this field. No raw storage/server/provider errors are returned.
+The shared desktop store builds a notice from those codes; failed credential erasure
+never produces a credentials-removed/disconnected claim. Remaining cleanup and
+unconfirmed OpenAI revocation have explicit retry/ChatGPT Settings guidance.
+
+Evidence: `/tmp/orbyn-desktop-disconnect-all.log`353passed/0failed/0skipped,
+9138.619083ms, terminal exit0. Packages build and backend/desktop/mobile typechecks,
+CJS syntax, Prettier and diff checks pass. Focused manager/store tests:27passed,
+0failed,1889.039791ms before the final extra credential-erasure test. Real encrypted
+storage tests cover locked keychain cleanup and filesystem signing-key/credential
+erasure failures; fake owned server failure proves other cleanup still runs.
+Store tests prove truthful notices and older-contract compatibility. No installed
+OS/live OpenAI or fresh full database acceptance is claimed; candidate only.

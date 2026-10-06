@@ -165,10 +165,34 @@ export class ChatgptDesktopStore {
         status: "ready",
         connection,
         error: null,
-        notice:
-          disconnect && !disconnect.remote_revocation_confirmed
-            ? "Disconnected on this device. Remote revocation was not confirmed; you can remove Orbyn in ChatGPT Settings."
-            : null,
+        notice: disconnect
+          ? [
+              ...(disconnect.cleanup_failures?.length
+                ? [
+                    disconnect.cleanup_failures.includes("credentials")
+                      ? "Credentials could not be erased. Retry disconnect."
+                      : "Credentials removed from this device.",
+                    ...(disconnect.cleanup_failures.includes("signing_key")
+                      ? ["Signing key removal failed."]
+                      : []),
+                    ...(disconnect.cleanup_failures.includes("server")
+                      ? ["Server disconnect was not confirmed."]
+                      : []),
+                    ...(disconnect.cleanup_failures.includes("selection")
+                      ? ["Account selection could not be cleared."]
+                      : []),
+                    "Retry the incomplete steps.",
+                  ]
+                : []),
+              ...(!disconnect.remote_revocation_confirmed
+                ? [
+                    disconnect.cleanup_failures?.length
+                      ? "OpenAI revocation was not confirmed; remove Orbyn in ChatGPT Settings."
+                      : "Disconnected on this device. Remote revocation was not confirmed; you can remove Orbyn in ChatGPT Settings.",
+                  ]
+                : []),
+            ].join(" ") || null
+          : null,
       });
     } catch (error) {
       if (

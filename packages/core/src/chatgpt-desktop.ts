@@ -189,6 +189,10 @@ export const chatgptDesktopDisconnect = z
   .object({
     state: chatgptDesktopState,
     remote_revocation_confirmed: z.boolean(),
+    cleanup_failures: z
+      .array(z.enum(["credentials", "signing_key", "server", "selection"]))
+      .max(4)
+      .optional(),
   })
   .strict();
 export type ChatgptDesktopState = z.output<typeof chatgptDesktopState>;
