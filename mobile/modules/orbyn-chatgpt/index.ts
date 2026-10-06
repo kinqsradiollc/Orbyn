@@ -1,6 +1,15 @@
 import { requireOptionalNativeModule } from "expo-modules-core";
 
 type OrbynChatgptModule = {
+  keyMetadata(
+    account: string,
+  ): Promise<{ public_key: string; public_key_fingerprint: string }>;
+  signProof(
+    account: string,
+    fingerprint: string,
+    message: string,
+  ): Promise<string>;
+  removeKey(account: string): Promise<void>;
   start(id: string, state: string, timeoutMs: number): Promise<string>;
   wait(id: string): Promise<string>;
   cancel(id: string): Promise<void>;
@@ -35,4 +44,27 @@ export async function waitNativeChatgptCallback(id: string) {
 /** Attempt IDs prevent stale cleanup from cancelling a later authorization. */
 export async function cancelNativeChatgptCallback(id: string) {
   await native?.cancel(id);
+}
+
+/** Public metadata only. Account aliases are derived by the owned runtime, never user-entered. */
+export async function nativeChatgptKeyMetadata(account: string) {
+  if (!native)
+    throw new Error("Native ChatGPT executor signing is unavailable.");
+  return native.keyMetadata(account);
+}
+/** The runtime validates domain, binding, lease and expiry before requesting a signature. */
+export async function signNativeChatgptProof(
+  account: string,
+  fingerprint: string,
+  message: string,
+) {
+  if (!native)
+    throw new Error("Native ChatGPT executor signing is unavailable.");
+  return native.signProof(account, fingerprint, message);
+}
+/** Erase the exact account key; never create a replacement as part of cleanup. */
+export async function removeNativeChatgptKey(account: string) {
+  if (!native)
+    throw new Error("Native ChatGPT executor signing is unavailable.");
+  return native.removeKey(account);
 }

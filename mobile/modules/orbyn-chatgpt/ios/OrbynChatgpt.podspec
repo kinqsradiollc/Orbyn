@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.source = { git: '' }
   s.static_framework = true
   s.dependency 'ExpoModulesCore'
-  s.frameworks = 'Network'
+  s.frameworks = 'Network', 'Security', 'CryptoKit'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'SWIFT_COMPILATION_MODE' => 'wholemodule' }
   s.source_files = '**/*.{h,m,mm,swift,hpp,cpp}'
 end

@@ -124,3 +124,31 @@ test("catalog signatures bind account, executor, lease, sequence and every model
     /executor proof could not be verified/,
   );
 });
+
+test("native P-256 catalog signatures retain account, lease and sequence fencing", () => {
+  const native = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const publicKey = native.publicKey
+    .export({ type: "spki", format: "der" })
+    .toString("base64url");
+  const signature = sign("sha256", Buffer.from(message), {
+    key: native.privateKey,
+    dsaEncoding: "ieee-p1363",
+  }).toString("base64url");
+  assert.match(
+    verifyChatgptCatalogProof(publicKey, catalog, signature),
+    /^[A-Za-z0-9_-]{43}$/,
+  );
+  for (const changed of [
+    { ...catalog, sequence: catalog.sequence + 1 },
+    { ...catalog, lease_epoch: catalog.lease_epoch + 1 },
+    { ...catalog, binding: { ...catalog.binding, subject: "another-account" } },
+    {
+      ...catalog,
+      models: [{ slug: "another-model", display_name: "Other model" }],
+    },
+  ])
+    assert.throws(
+      () => verifyChatgptCatalogProof(publicKey, changed, signature),
+      /could not be verified/,
+    );
+});

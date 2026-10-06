@@ -2747,3 +2747,45 @@ Package builds and backend/desktop/mobile typechecks terminate0. Evidence:
 `/tmp/orbyn-native-chatgpt-refresh-qualified.log`. No live PostgreSQL race,
 installed native app or real provider inference is established by these mocks.
 No migration is added. No main merge or full ADR completion is claimed.
+
+## Native executor key foundation checkpoint — 6 October 2026
+
+The server now accepts canonical P-256 alongside existing Ed25519 public proofs.
+P-256 is required for native OS signing support across the project's older
+Android range: Android documents Ed25519 only fromAPI33 while ECDSA/SHA256 reaches
+older versions. No cryptography dependency or minimum OS increase was introduced.
+Source: https://developer.android.com/reference/java/security/Signature .
+Only prime256v1/uncompressed canonical SPKI and fixed64-byte P1363 signatures are
+accepted; key algorithm is derived by the server. Other curves, private keys,
+encoding aliases and DER signatures remain rejected. The existing Ed25519
+messages and proofs are retained. Migration253 widens only public-key checks in
+executor enrollments/challenges; no identity or lease fences are bypassed.
+
+Native key helpers are implemented: iOS CryptoKit P-256 with protected
+WhenUnlockedThisDeviceOnly Keychain persistence and Android non-exportable
+AndroidKeyStore P-256. Public metadata, bounded domain-prefixed proof signatures
+and exact-key removal are the only bridge methods; private key material never
+crosses the bridge. Sign refuses to create a missing/replaced key and requires
+the expected public fingerprint. Kotlin's strict ASN.1 conversion changes the
+OS ECDSA DER encoding to fixed P1363; it implements no cryptographic primitive.
+Future runtime code must still validate exact domain/body/binding/expiry before
+calling these methods and join key removal/executor stop to disconnect.
+
+Evidence:70 focused pure/JWT/mock route/native tests pass,0 fail/skip,terminal0,
+1827.4845ms; `/tmp/orbyn-chatgpt-native-key-unit.log`. Fresh markedDB67 applied
+migration253 and passed23 connection/enrollment tests,0 fail/skip,terminal0,
+7939.989417ms; `/tmp/orbyn-chatgpt-native-keys-db67.log`. Swift CryptoKit and Java
+P-256 signatures both passed the actual backend verifier via
+`node scripts/verify-chatgpt-native-loopback.mjs swift keys` and `kotlin keys`.
+Kotlin exercised200 randomized DER→P1363 signatures plus malformed encodings;
+Android key helper compiled against cachedSDK36. Swift key helper typechecked
+against the iOS15.1 simulator SDK. Both existing loopback socket fixtures still
+pass. Package builds and backend/desktop/mobile typechecks terminate0.
+
+These checks do not execute AndroidKeyStore or iOS Keychain persistence, compile
+the complete Expo wrappers into an installed app, or validate locked-device,
+reinstall, suspension or OS browser behavior. Executor signing orchestration,
+enrollment/lease/catalog publication/inference, disconnect/key lifecycle,
+multiple account management and provider-choice Settings activation are still
+incomplete. Web-only direct sign-in is still unresolved. No main promotion,
+production deployment or full ADR completion is claimed by this foundation.

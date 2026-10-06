@@ -2,6 +2,7 @@ import ExpoModulesCore
 import Foundation
 
 public class OrbynChatgptModule: Module {
+  private let keys = ChatgptExecutorKey()
   private let lock = NSLock()
   private var current: (id: String, listener: ChatgptLoopback)?
 
@@ -47,6 +48,11 @@ public class OrbynChatgptModule: Module {
       self.lock.unlock()
       if current?.id == id { current?.listener.cancel() }
     }
+    AsyncFunction("keyMetadata") { (account: String) in try self.keys.metadata(account) }
+    AsyncFunction("signProof") { (account: String, fingerprint: String, message: String) in
+      try self.keys.sign(account, fingerprint: fingerprint, message: message)
+    }
+    AsyncFunction("removeKey") { (account: String) in try self.keys.remove(account) }
     OnDestroy {
       self.lock.lock()
       let current = self.current

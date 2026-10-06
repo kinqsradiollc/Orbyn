@@ -3267,6 +3267,17 @@ team_id?, doc_id?, due_at?, time_zone?, dry_run? }`. The page's HTML is cleaned 
 
 ## First-party ChatGPT executor catalogs
 
+Executor keys accept canonical Ed25519 SPKI (44 DER bytes,59 base64url characters)
+or canonical uncompressed P-256 SPKI (91 DER bytes,122 characters). The server
+selects verification from the parsed public key, not a caller-supplied algorithm.
+P-256 signs SHA-256 with a fixed64-byte IEEE P1363 signature; Ed25519 retains its
+existing format. Both signatures use86 canonical base64url characters. Other
+curves, private keys, noncanonical encodings and DER ECDSA signatures are rejected.
+Migration253 expands only the two public-key constraints; message domains,
+identity/session binding, fingerprints, enrollment epochs and lease fencing
+remain enforced.
+
+
 These routes require a live, verified Orbyn app session. Personal API keys and
 MCP/OAuth connector grants cannot use them. Provider access/refresh tokens are
 never accepted or returned. Responses use `Cache-Control: no-store`.

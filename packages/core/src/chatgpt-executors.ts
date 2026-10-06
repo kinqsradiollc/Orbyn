@@ -1,12 +1,12 @@
 import { z } from "zod";
 import { chatgptModel, chatgptModelBinding } from "./chatgpt-models.js";
 
-/** Public Ed25519 SPKI only; binary/algorithm validation belongs to the server. */
+/** Public Ed25519 or P-256 SPKI only; canonical DER/curve validation belongs to the server. */
 export const chatgptExecutorStart = z
   .object({
     connection_id: z.uuid(),
     host_id: z.uuid(),
-    public_key: z.string().regex(/^[A-Za-z0-9_-]{59}$/),
+    public_key: z.string().regex(/^(?:[A-Za-z0-9_-]{59}|[A-Za-z0-9_-]{122})$/),
   })
   .strict();
 

@@ -6,6 +6,7 @@ import expo.modules.kotlin.Promise
 import java.util.UUID
 
 class OrbynChatgptModule : Module() {
+  private val keys = ChatgptExecutorKey()
   private val lock = Any()
   private var current: Pair<String, ChatgptLoopback>? = null
   override fun definition() = ModuleDefinition {
@@ -32,6 +33,9 @@ class OrbynChatgptModule : Module() {
       }
       active?.second?.cancel()
     }
+    AsyncFunction("keyMetadata") { account: String -> keys.metadata(account) }
+    AsyncFunction("signProof") { account: String, fingerprint: String, message: String -> keys.sign(account, fingerprint, message) }
+    AsyncFunction("removeKey") { account: String -> keys.remove(account) }
     OnDestroy {
       val active = synchronized(lock) { val old = current; current = null; old }
       active?.second?.cancel()

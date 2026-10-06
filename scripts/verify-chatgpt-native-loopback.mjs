@@ -4,11 +4,36 @@ import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const mode = process.argv[2];
+const keyCheck = process.argv[3] === "keys";
 if (!["swift", "kotlin"].includes(mode))
   throw new Error("Choose swift or kotlin.");
 const temporary = mkdtempSync(join(tmpdir(), "orbyn-chatgpt-callback-"));
-const run = (command, args) => {
-  const result = spawnSync(command, args, { stdio: "inherit" });
+const run = (command, args, proof = false) => {
+  const result = spawnSync(command, args, {
+    stdio: proof ? ["ignore", "pipe", "inherit"] : "inherit",
+    encoding: "utf8",
+  });
+  if (proof && result.status === 0) {
+    const verify = spawnSync(
+      process.execPath,
+      [
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "-e",
+        `
+      import { readFileSync } from "node:fs";
+      import { verifyChatgptExecutorProof } from "./backend/src/modules/auth/chatgpt-executor-proof.ts";
+      const proof = JSON.parse(readFileSync(0, "utf8"));
+      if (verifyChatgptExecutorProof(proof.public_key, proof.message, proof.signature) !== proof.fingerprint) throw new Error("Native proof mismatch");
+      console.log("Native P-256 signature verified by actual backend verifier.");
+    `,
+      ],
+      { input: result.stdout, stdio: ["pipe", "inherit", "inherit"] },
+    );
+    if (verify.status !== 0)
+      throw new Error("Native proof verification failed.");
+  }
   if (result.error) throw result.error;
   if (result.status !== 0)
     throw new Error(`${command} failed (${result.status}).`);
@@ -18,12 +43,16 @@ try {
     const output = join(temporary, "loopback-check");
     run("xcrun", [
       "swiftc",
-      "mobile/modules/orbyn-chatgpt/ios/ChatgptLoopback.swift",
-      "backend/tests/fixtures/chatgpt-loopback-check.swift",
+      keyCheck
+        ? "mobile/modules/orbyn-chatgpt/ios/ChatgptExecutorKey.swift"
+        : "mobile/modules/orbyn-chatgpt/ios/ChatgptLoopback.swift",
+      keyCheck
+        ? "backend/tests/fixtures/chatgpt-key-check.swift"
+        : "backend/tests/fixtures/chatgpt-loopback-check.swift",
       "-o",
       output,
     ]);
-    run(output, []);
+    run(output, [], keyCheck);
   } else {
     // Reuse the project's cached Kotlin tooling; never install packages or build a whole emulator.
     const base = join(homedir(), ".gradle/caches/modules-2/files-2.1");
@@ -62,17 +91,39 @@ try {
       "-no-stdlib",
       "-no-reflect",
       "-classpath",
-      classpath,
+      keyCheck
+        ? [
+            classpath,
+            join(
+              homedir(),
+              "Library/Android/sdk/platforms/android-36/android.jar",
+            ),
+          ].join(":")
+        : classpath,
       "-d",
       temporary,
-      "mobile/modules/orbyn-chatgpt/android/src/main/java/expo/modules/orbynchatgpt/ChatgptLoopback.kt",
-      "backend/tests/fixtures/chatgpt-loopback-check.kt",
+      ...(keyCheck
+        ? [
+            "mobile/modules/orbyn-chatgpt/android/src/main/java/expo/modules/orbynchatgpt/ChatgptP256Format.kt",
+            "mobile/modules/orbyn-chatgpt/android/src/main/java/expo/modules/orbynchatgpt/ChatgptExecutorKey.kt",
+            "backend/tests/fixtures/chatgpt-key-check.kt",
+          ]
+        : [
+            "mobile/modules/orbyn-chatgpt/android/src/main/java/expo/modules/orbynchatgpt/ChatgptLoopback.kt",
+            "backend/tests/fixtures/chatgpt-loopback-check.kt",
+          ]),
     ]);
-    run(java, [
-      "-cp",
-      [temporary, ...stdlib].join(":"),
-      "expo.modules.orbynchatgpt.Chatgpt_loopback_checkKt",
-    ]);
+    run(
+      java,
+      [
+        "-cp",
+        [temporary, ...stdlib].join(":"),
+        keyCheck
+          ? "expo.modules.orbynchatgpt.Chatgpt_key_checkKt"
+          : "expo.modules.orbynchatgpt.Chatgpt_loopback_checkKt",
+      ],
+      keyCheck,
+    );
   }
 } finally {
   rmSync(temporary, { recursive: true, force: true });
