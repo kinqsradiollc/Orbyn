@@ -70,6 +70,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     () =>
       chatgptForeground.subscribe(() => {
         setLocalRuntime(chatgptForeground.snapshot());
+        setAccountReload((value) => value + 1);
         refresh();
       }),
     [userId],
@@ -179,7 +180,9 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
   };
   const localBusy = connecting || disconnecting;
   const hasLocalAccount =
-    account?.status === "saved" || account?.status === "unreadable";
+    account?.status === "saved" ||
+    account?.status === "unreadable" ||
+    account?.status === "reconnect";
   const busy = state.status === "loading" || state.saving;
   const catalog = state.catalog;
   const models = catalog?.models ?? [];
@@ -242,11 +245,13 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       )}
       {Platform.OS !== "web" && hasLocalAccount && (
         <Text style={shared.small}>
-          {account?.status === "unreadable"
-            ? "Saved connection needs attention. Reconnect or disconnect it."
-            : account?.status === "saved" && !account.planUseAllowed
-              ? "ChatGPT plan use is off. Enable it in ChatGPT Settings, then reconnect."
-              : "Account saved on this device."}
+          {account?.status === "reconnect"
+            ? "This ChatGPT session has ended. Connect again to continue."
+            : account?.status === "unreadable"
+              ? "Saved connection needs attention. Reconnect or disconnect it."
+              : account?.status === "saved" && !account.planUseAllowed
+                ? "ChatGPT plan use is off. Enable it in ChatGPT Settings, then reconnect."
+                : "Account saved on this device."}
         </Text>
       )}
       {Platform.OS !== "web" && localRuntime.userId === userId && (

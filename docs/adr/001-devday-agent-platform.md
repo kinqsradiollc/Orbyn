@@ -3166,3 +3166,37 @@ Fresh fetch confirms origin/main still29b74ecd. Docker's isolated test database
 container remains Exited255; full DB70 remains failed, and fresh full regression
 is pending. Current disk is about1.1GiB free. No new main promotion, live OAuth,
 account allowance, Android runtime or full ADR completion is claimed.
+
+### Confirmed invalid-refresh recovery — 6 October 2026
+
+The shared local token transport now distinguishes confirmed refresh failures
+(invalid_grant, invalid_refresh_token, token_expired, refresh_token_expired,
+refresh_token_invalidated and refresh_token_reused on400/401) from server,
+network, rate-limit and invalid-client failures. Authorization-code errors do
+not invalidate previously saved credentials. Provider detail/token values are
+not exposed through errors.
+
+Native renewal removes access, refresh and ID tokens only after a confirmed
+terminal refresh failure and an exact session/record ownership check. A protected
+version2 record retains only the verified connection/client mapping and revision;
+reconnect reuses that issued client without an erased ID-token hint. Existing
+executors close before more work; retired records cannot supply models/inference.
+Disconnect can still remove the owned server metadata. Settings displays an
+ended-session recovery state and keeps Connect/Disconnect available, refreshing
+local presence when foreground runtime state changes. Temporary failures retain
+the previous protected record; stale session/replacement writes are fenced.
+
+Evidence: `/tmp/orbyn-invalid-refresh-focused-final.log`75passed/0failed,
+3316.155916ms, exit0; final all-ChatGPT suite
+`/tmp/orbyn-invalid-refresh-all-final.log`336passed/0failed/0skipped,
+5881.278917ms, exit0. API-client build plus mobile/backend/desktop typechecks,
+Prettier and diff checks pass. Native source/runtime harness and rendered
+Settings tests cover token removal, mapping reuse, executor stop, server cleanup,
+replacement/session fencing, temporary preservation and visible recovery controls.
+This is candidate implementation acceptance, not live OpenAI or installed-device
+OAuth/recovery acceptance. Full database regression remains pending.
+
+Disk fell to573MiB free during qualification. With no xcodebuild process running,
+only this task's completed728MiB temporary iOS Intermediates directory was removed.
+The installed app, built products, simulated entitlement copy, screenshots and
+logs remain; production/native source and shared Docker data were not changed.

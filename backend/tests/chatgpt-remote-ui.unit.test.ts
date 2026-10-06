@@ -538,3 +538,22 @@ test("native disconnect serializes clicks and cannot restart or show an error in
     false,
   );
 });
+
+test("native Settings shows ended-session recovery with Connect and Disconnect available", async () => {
+  const f = view("mobile", viewState(), "success", {
+    account: { status: "reconnect" },
+  });
+  f.render();
+  await f.flushEffects();
+  const tree = elements(f.render());
+  assert.ok(
+    tree.some((n) => String(n.props.children).includes("session has ended")),
+  );
+  for (const label of ["Connect to ChatGPT", "Disconnect this device"]) {
+    const action = tree.find(
+      (n) => n.type === "SmallAction" && n.props.label === label,
+    );
+    assert.ok(action);
+    assert.equal(action.props.disabled, false);
+  }
+});

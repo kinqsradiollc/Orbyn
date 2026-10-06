@@ -372,3 +372,56 @@ test("local catalog is discarded when credentials expire during its response", a
     checkError("expired"),
   );
 });
+
+for (const code of [
+  "invalid_grant",
+  "invalid_refresh_token",
+  "token_expired",
+  "refresh_token_expired",
+  "refresh_token_invalidated",
+  "refresh_token_reused",
+]) {
+  test(`confirmed ${code} rejects only a refresh grant as unusable`, async () => {
+    const grant = await exchangeChatgptLocalCode(input, {
+      fetch: fetchTokens(),
+      now,
+    });
+    for (const error of [code, { code, message: "fixture-access" }])
+      await assert.rejects(
+        refreshChatgptLocalGrant(grant, {
+          now,
+          fetch: (async () =>
+            Response.json({ error }, { status: 400 })) as typeof fetch,
+        }),
+        checkError("invalid_refresh"),
+      );
+    await assert.rejects(
+      exchangeChatgptLocalCode(input, {
+        now,
+        fetch: (async () =>
+          Response.json({ error: code }, { status: 400 })) as typeof fetch,
+      }),
+      checkError(code === "invalid_grant" ? "expired" : "unavailable"),
+    );
+  });
+}
+test("refresh infrastructure errors and invalid-client failures do not mark a grant unusable", async () => {
+  const grant = await exchangeChatgptLocalCode(input, {
+    fetch: fetchTokens(),
+    now,
+  });
+  for (const [status, code] of [
+    [503, "invalid_grant"],
+    [429, "refresh_token_reused"],
+    [400, "invalid_client"],
+    [401, "unknown_error"],
+  ] as const)
+    await assert.rejects(
+      refreshChatgptLocalGrant(grant, {
+        now,
+        fetch: (async () =>
+          Response.json({ error: code }, { status })) as typeof fetch,
+      }),
+      checkError("unavailable"),
+    );
+});

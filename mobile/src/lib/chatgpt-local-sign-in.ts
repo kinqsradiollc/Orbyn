@@ -21,6 +21,7 @@ import {
   createChatgptExecutorLifecycle,
   ChatgptPlanClient,
   ChatgptPlanError,
+  ChatgptLocalTokenError,
   type ChatgptLocalGrant,
 } from "@orbyn/api-client";
 import {
@@ -47,6 +48,20 @@ const registration = z
     grant: z.unknown(),
   })
   .strict();
+// A confirmed unusable grant retains only the verified registration mapping.
+const retiredRegistration = registration.extend({
+  version: z.literal(2),
+  grant: z.null(),
+});
+function decodeRetiredRegistration(value: string | null) {
+  if (!value) return null;
+  try {
+    const parsed = retiredRegistration.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : null;
+  } catch {
+    return null;
+  }
+}
 let current: {
   id: string;
   controller: AbortController;
@@ -103,7 +118,7 @@ async function accountKey(userId: string): Promise<string> {
   return `orbyn.chatgpt.account.${digest}`;
 }
 function decodeRegistration(value: string | null) {
-  if (!value) return null;
+  if (!value || decodeRetiredRegistration(value)) return null;
   try {
     const saved = registration.parse(JSON.parse(value));
     const grant = parseChatgptLocalGrant(saved.grant);
@@ -167,7 +182,7 @@ export async function signInNativeChatgpt(
     check();
     const original = await SecureStore.getItemAsync(key, protectedOptions);
     const saved = decodeRegistration(original);
-    const returning = saved;
+    const returning = saved ?? decodeRetiredRegistration(original);
     check();
     const challenge = await client.startChatgptConnection(
       returning ? { client_id: returning.connection.client_id } : {},
@@ -204,7 +219,7 @@ export async function signInNativeChatgpt(
       ...(returning
         ? {
             clientId: returning.connection.client_id,
-            idTokenHint: returning.grant.idToken,
+            ...(saved ? { idTokenHint: saved.grant.idToken } : {}),
           }
         : {}),
     };
@@ -317,6 +332,7 @@ export function cancelNativeChatgptSignIn() {
 }
 
 async function renewNativeRegistration(
+  userId: string,
   key: string,
   original: string,
   saved: NonNullable<ReturnType<typeof decodeRegistration>>,
@@ -402,6 +418,29 @@ async function renewNativeRegistration(
       check();
     }
     return { original: installed, saved: { ...saved, revision: id, grant } };
+  } catch (error) {
+    if (
+      error instanceof ChatgptLocalTokenError &&
+      error.code === "invalid_refresh"
+    ) {
+      check();
+      if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+        throw new Error("ChatGPT account changed. Try again.");
+      check();
+      await SecureStore.setItemAsync(
+        key,
+        JSON.stringify({
+          version: 2,
+          revision: id,
+          connection: saved.connection,
+          grant: null,
+        }),
+        protectedOptions,
+      );
+      // Never restore confirmed unusable credentials, including after cancellation.
+      stopExecutors(userId);
+    }
+    throw error;
   } finally {
     signal?.removeEventListener("abort", abort);
     if (current?.id === id) current = null;
@@ -480,6 +519,7 @@ async function readNativeChatgptModelsOwned(
   check();
   if (saved.grant.expiresAt <= Date.now() + 60000) {
     const renewed = await renewNativeRegistration(
+      userId,
       key,
       original!,
       saved,
@@ -572,9 +612,11 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       check();
     }
     let serverDisconnectFailed = false;
-    if (saved) {
+    const ownedConnection =
+      saved?.connection ?? decodeRetiredRegistration(original)?.connection;
+    if (ownedConnection) {
       try {
-        await client.revokeChatgptConnection(saved.connection.id);
+        await client.revokeChatgptConnection(ownedConnection.id);
       } catch {
         serverDisconnectFailed = true;
       }
@@ -816,7 +858,7 @@ export async function hasNativeChatgptRegistration(userId: string) {
 }
 
 export type NativeChatgptAccountState =
-  | { status: "missing" | "unsupported" | "unreadable" }
+  | { status: "missing" | "unsupported" | "unreadable" | "reconnect" }
   | { status: "saved"; planUseAllowed: boolean };
 
 /** Settings presence is independent of executor eligibility; never return protected credentials. */
@@ -843,6 +885,7 @@ export async function readNativeChatgptAccountState(
   const value = await SecureStore.getItemAsync(key, protectedOptions);
   check();
   if (value === null) return { status: "missing" };
+  if (decodeRetiredRegistration(value)) return { status: "reconnect" };
   try {
     const saved = decodeRegistration(value);
     return saved

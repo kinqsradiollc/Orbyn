@@ -52,6 +52,7 @@ function mount(
     refreshIdentity?: object;
     failRefreshProof?: boolean;
     onRefresh?: () => Promise<void>;
+    refreshError?: { status: number; code: string };
     signing?: boolean;
     inference?: "success" | "limit" | "session";
     changeDuringModels?: "session" | "registration";
@@ -261,6 +262,11 @@ function mount(
             if (init.body.get("grant_type") === "refresh_token") {
               calls.refreshed++;
               await options.onRefresh?.();
+              if (options.refreshError)
+                return Response.json(
+                  { error: options.refreshError.code },
+                  { status: options.refreshError.status },
+                );
               return Response.json({
                 ...tokens,
                 access_token: "refreshed-access",
@@ -1213,4 +1219,87 @@ test("native Settings rejects a session replaced while its presence read is in f
   const pending = fixture.accountState();
   fixture.session.token = "replacement-session";
   await assert.rejects(pending, /account changed/);
+});
+
+test("confirmed unusable native refresh clears tokens and keeps the verified reconnect mapping", async () => {
+  const options = {
+    refreshError: { status: 400, code: "refresh_token_reused" },
+  };
+  const fixture = mount(options);
+  await fixture.signIn();
+  expireSoon(fixture);
+  await assert.rejects(fixture.models(), /Reconnect/);
+  const json = accounts(fixture.storage)[0][1];
+  assert.doesNotMatch(json, /private-access|private-refresh|identity-proof/);
+  assert.deepEqual(JSON.parse(json).connection, connection);
+  assert.equal(JSON.parse(json).grant, null);
+  assert.equal((await fixture.accountState()).status, "reconnect");
+  const before = fixture.calls.network;
+  await assert.rejects(fixture.models(), /Connect ChatGPT/);
+  assert.equal(fixture.calls.network, before);
+  await fixture.signIn();
+  const url = new URL(fixture.calls.opened.at(-1)!);
+  assert.equal(url.searchParams.get("client_id"), connection.client_id);
+  assert.equal(url.searchParams.has("id_token_hint"), false);
+  assert.ok(JSON.parse(accounts(fixture.storage)[0][1]).grant.accessToken);
+});
+test("native temporary refresh failure preserves every protected field", async () => {
+  const fixture = mount({
+    refreshError: { status: 503, code: "temporarily_unavailable" },
+  });
+  await fixture.signIn();
+  const original = expireSoon(fixture);
+  await assert.rejects(fixture.models());
+  assert.equal(accounts(fixture.storage)[0][1], original);
+});
+test("confirmed native refresh cannot clear a newer record or another Orbyn session", async () => {
+  for (const replacement of ["record", "session"] as const) {
+    let fixture: ReturnType<typeof mount>;
+    const options = {
+      refreshError: { status: 400, code: "invalid_refresh_token" },
+      onRefresh: async () => {
+        if (replacement === "session")
+          fixture.session.token = "replacement-session";
+        else {
+          const [key, json] = accounts(fixture.storage)[0];
+          fixture.storage.set(
+            key,
+            JSON.stringify({ ...JSON.parse(json), revision: randomUUID() }),
+          );
+        }
+      },
+    };
+    fixture = mount(options);
+    await fixture.signIn();
+    expireSoon(fixture);
+    await assert.rejects(fixture.models(), /changed/);
+    assert.ok(JSON.parse(accounts(fixture.storage)[0][1]).grant.accessToken);
+  }
+});
+
+test("retired native registration can disconnect owned server metadata without retrying dead tokens", async () => {
+  const fixture = mount({
+    refreshError: { status: 400, code: "invalid_grant" },
+  });
+  await fixture.signIn();
+  expireSoon(fixture);
+  await assert.rejects(fixture.models(), /Reconnect/);
+  await fixture.disconnect();
+  assert.equal(accounts(fixture.storage).length, 0);
+  assert.equal(fixture.calls.providerRevoked.length, 0);
+  assert.deepEqual(fixture.calls.revoked, [connection.id]);
+});
+
+test("confirmed unusable refresh closes the existing native executor before another job", async () => {
+  const fixture = mount({
+    signing: true,
+    refreshError: { status: 401, code: "refresh_token_expired" },
+  });
+  await fixture.signIn();
+  const executor = await fixture.executor();
+  await executor.start();
+  expireSoon(fixture);
+  await assert.rejects(fixture.models(), /Reconnect/);
+  await assert.rejects(executor.executeNext());
+  assert.equal(fixture.calls.responses, 0);
 });

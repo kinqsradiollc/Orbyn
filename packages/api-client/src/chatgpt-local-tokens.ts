@@ -27,12 +27,13 @@ const grantSchema = z
 export type ChatgptLocalGrant = z.output<typeof grantSchema>;
 export class ChatgptLocalTokenError extends Error {
   constructor(
-    readonly code: "cancelled" | "expired" | "unavailable" | "invalid",
+    readonly code:
+      "cancelled" | "expired" | "invalid_refresh" | "unavailable" | "invalid",
   ) {
     super(
       code === "cancelled"
         ? "ChatGPT sign-in was cancelled."
-        : code === "expired"
+        : code === "expired" || code === "invalid_refresh"
           ? "Reconnect this ChatGPT account."
           : "ChatGPT sign-in could not be completed. Try again.",
     );
@@ -64,6 +65,7 @@ async function requestJson(
   maxBytes = 262144,
   unauthorizedIsExpired = false,
   emptySuccess = false,
+  refreshRequest = false,
 ): Promise<unknown> {
   const timeout = options.timeoutMs ?? 30000;
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 30000)
@@ -136,13 +138,30 @@ async function requestJson(
       reader.releaseLock();
     }
     const raw = JSON.parse(text);
-    if (!response.ok)
+    if (!response.ok) {
+      const providerCode =
+        typeof raw?.error === "string" ? raw.error : raw?.error?.code;
+      if (
+        refreshRequest &&
+        (response.status === 400 || response.status === 401) &&
+        new Set([
+          "invalid_grant",
+          "invalid_refresh_token",
+          "token_expired",
+          "refresh_token_expired",
+          "refresh_token_invalidated",
+          "refresh_token_reused",
+        ]).has(providerCode)
+      )
+        throw new ChatgptLocalTokenError("invalid_refresh");
       throw new ChatgptLocalTokenError(
         (unauthorizedIsExpired && response.status === 401) ||
-          raw?.error === "invalid_grant"
+          (raw?.error === "invalid_grant" &&
+            (response.status === 400 || response.status === 401))
           ? "expired"
           : "unavailable",
       );
+    }
     if (controller.signal.aborted)
       throw new ChatgptLocalTokenError("cancelled");
     return raw;
@@ -173,6 +192,10 @@ async function requestTokens(
       body: form,
     },
     options,
+    262144,
+    false,
+    false,
+    Boolean(previous),
   );
   try {
     const tokens = z
