@@ -154,6 +154,11 @@ export function AiProviderChoiceControls({
           }
         />
       </View>
+      {!selection && (
+        <Text style={shared.small}>
+          Choose a ready device and default model below.
+        </Text>
+      )}
       {choice?.primary === "chatgpt" && !inspectedIsSaved && (
         <Text style={shared.small}>
           {savedSelection

@@ -151,6 +151,11 @@ export function AiProviderChoiceControls({
             : "ChatGPT"}
         </button>
       </div>
+      {!selection && (
+        <small className="field-hint">
+          Choose a ready device and default model below.
+        </small>
+      )}
       {choice?.primary === "chatgpt" && !inspectedIsSaved && (
         <small className="field-hint">
           {savedSelection

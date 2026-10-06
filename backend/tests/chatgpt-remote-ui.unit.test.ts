@@ -373,9 +373,48 @@ function viewState() {
       models,
       status: "ready",
       preference: { model: "model-99" },
+      capabilities: ["plan_inference_v1"],
       published_at: new Date().toISOString(),
     },
   };
+}
+
+for (const app of ["desktop", "mobile"] as const) {
+  test(`${app} offers only a ready inference catalog with an available default as a provider`, () => {
+    for (const condition of [
+      "ready",
+      "loading",
+      "saving",
+      "offline",
+      "stale",
+      "unavailable",
+      "missing-default",
+      "removed-default",
+      "no-inference",
+      "no-catalog",
+    ] as const) {
+      const state: any = viewState();
+      if (condition === "loading") state.status = "loading";
+      if (condition === "saving") state.saving = true;
+      if (["offline", "stale", "unavailable"].includes(condition))
+        state.catalog.status = condition;
+      if (condition === "missing-default")
+        state.catalog.preference.model = null;
+      if (condition === "removed-default")
+        state.catalog.preference.model = "removed-model";
+      if (condition === "no-inference") state.catalog.capabilities = [];
+      if (condition === "no-catalog") state.catalog = null;
+      const tree = elements(view(app, state).render());
+      const provider = tree.find((n) => n.type === "AiProviderChoiceControls");
+      assert.ok(provider);
+      if (condition === "ready")
+        assert.deepEqual(
+          JSON.parse(JSON.stringify(provider.props.selection)),
+          state.selection,
+        );
+      else assert.equal(provider.props.selection, null, condition);
+    }
+  });
 }
 
 test("web model controls route explicit devices/defaults and preserve a filtered-out default", () => {
