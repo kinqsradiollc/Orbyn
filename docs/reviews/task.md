@@ -4584,3 +4584,29 @@ extraction with explicit owner/list numbering semantics, moved local fragments,
 agenda regeneration and full Docs editor/collaboration/render/edit/export/privacy
 matrices. Full ChatGPT/platform/UI/agents/plugins/channels/integration/cleanup scope
 remains active. Root character/user dirt and native target artifacts preserved.
+
+
+### Home goal progress main checkpoint — 6 October 2026
+
+Home reads complete nested plan nodes for checklist counts and overlays current
+linked task status on both legacy and nested plan steps. Status lookup is batched
+once for visible plans with named task leaves, keyed by document+block identity.
+Project task totals retain priority; unavailable/empty/prose-only plans yield null
+progress. Existing plan visibility and assistant exclusions stay in the query path.
+The main checkpoint contains the read path and shared pure task helper only; nested
+capture/reflection/merge/task-write candidates are not promoted by this checkpoint.
+
+Candidate707a676b committed Home fix;8 Home unit cases pass0failed/0skipped,
+909.636375ms,exit0 at `/tmp/orbyn-home-task-progress-tests.log`. Main7263b45b
+committed and pushed. Main10 focused tests pass0failed/0skipped,910.487709ms,
+exit0 at `/tmp/orbyn-home-task-progress-main-tests.log`; tests use documented
+candidate Darwin esbuild binary because root dependency binary targets another OS.
+Root shared packages build/backend types/format/diff checks pass. No new dependency,
+DB runtime, visual or production deployment acceptance claimed. Main9e22e531→
+7263b45b fast-forward push confirmed; root character/user changes preserved.
+
+Candidate merged origin/main as85ce3340. Import/export overlap in Home/core index
+was resolved by retaining candidate's already tested superset. Staged merge diff
+was empty: candidate source tree unchanged. No unresolved conflicts remain.
+Continue other task projections/editor controls, partial extraction/moved fragments,
+agenda regeneration and full governing C1-C6/M1/D1/U1/runtime/visual/cleanup scope.

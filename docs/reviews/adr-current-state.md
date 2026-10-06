@@ -6,7 +6,7 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 
 | Area                           | Current state                                                                                                                                                     | Remaining acceptance / next implementation                                                                                                                                                                                                                                              |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Main                           | `origin/main` verified at `9e22e531`; user deploys manually                                                                                                       | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                                                                         |
+| Main                           | `origin/main` verified at `7263b45b`; user deploys manually                                                                                                       | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                                                                         |
 | ChatGPT native                 | Direct local OAuth, protected tokens, model catalog/defaults, signed inference and Settings/foreground activation implemented on `codex/chatgpt-direct-web-oauth` | Installed iOS/Android OAuth/keystore/browser/lifecycle acceptance; account management and truthful plan/usage acceptance                                                                                                                                                                |
 | Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire              | Candidate only; 441 ChatGPT unit tests pass; current adapter mobile/backend typechecks pass; refresh coordination, revocation, idle saved-account controls and confirmed invalid-refresh recovery implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
 | ChatGPT hosted web             | No supported direct browser-only implementation established; desktop handoff is not completion                                                                    | Supported authorization and user-controlled runtime; actual popup/callback/provider acceptance without desktop                                                                                                                                                                          |
@@ -19,6 +19,17 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 | Cleanup                        | Worktrees, root character/user changes preserved                                                                                                                  | Cleanup only after relevant commits are reconciled, merged and qualified                                                                                                                                                                                                                |
 
 ## Current evidence
+
+- Main checkpoint `7263b45b` is pushed: Home counts complete nested goal-plan
+  checklists and current linked task status, including reopening. One batched
+  task read covers visible plans and scopes shared block IDs by document. Project
+  task totals retain precedence; missing/prose-only plans do not invent progress.
+  Shared pure task projection and10 relevant main tests pass, as do package builds,
+  backend types and formatting. Candidate8 Home tests pass. No database runtime
+  or visual acceptance is claimed; broader document write changes stay candidate.
+  Main was reconciled into candidate85ce3340; import/export overlap resolved with
+  no source change to the tested candidate tree and no outstanding conflicts.
+
 
 - Nested checklist task creation and versioned read/save synchronization use a
   separate task view, preserving first-paragraph IDs/types and list-item checkbox

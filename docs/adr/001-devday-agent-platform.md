@@ -1,3 +1,13 @@
+## Home goal progress checkpoint on main — 6 October 2026
+
+Main `7263b45b` is pushed. Home counts nested plan checklists and reflects current
+linked task status, with one batched lookup scoped by document identity. Project
+progress keeps precedence.10 relevant main tests, package build/backend types and
+format checks pass;8 candidate Home cases pass. This promotes the read path and
+shared pure projection. Broader Docs writes, database qualification, normal editor
+adoption and full C1-C6/M1/D1/U1 acceptance remain incomplete. Production deployment
+is performed by the user. Candidate main reconciliation has no unresolved conflicts.
+
 ## Nested checklist task synchronization candidate — 6 October 2026
 
 D1 now has a separate task view for nested list-item checkbox metadata. The owning
