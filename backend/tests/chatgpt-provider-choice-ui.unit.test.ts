@@ -35,6 +35,7 @@ async function fixture(app: "desktop" | "mobile") {
     effects: (() => void)[] = [],
     reads = 0;
   let pendingWrite: Promise<unknown> | null = null;
+  let reply: ((value: any) => any) | null = null;
   const state: any[] = [],
     deps: any[] = [],
     cleanups: any[] = [],
@@ -85,7 +86,14 @@ async function fixture(app: "desktop" | "mobile") {
             saveAiProviderChoice: async (v: any) => {
               writes.push(v);
               if (pendingWrite) await pendingWrite;
-              return { ...choice, ...v, version: 2 };
+              const next = {
+                primary: v.primary,
+                connection_id: v.primary === "chatgpt" ? v.connection_id : null,
+                executor_id: v.primary === "chatgpt" ? v.executor_id : null,
+                fallback_to_default: v.fallback_to_default,
+                version: v.expected_version + 1,
+              };
+              return reply ? reply(next) : next;
             },
           },
         };
@@ -114,6 +122,9 @@ async function fixture(app: "desktop" | "mobile") {
     inspected,
     writes,
     reads: () => reads,
+    setReply: (value: (next: any) => any) => {
+      reply = value;
+    },
     holdWrites: (pending: Promise<unknown>) => {
       pendingWrite = pending;
     },
@@ -232,6 +243,125 @@ for (const app of ["desktop", "mobile"] as const) {
     } finally {
       release();
       await Promise.resolve();
+      f.close();
+    }
+  });
+}
+
+for (const app of ["desktop", "mobile"] as const) {
+  test(`${app} mismatched provider receipts invalidate the old revision until reload`, async () => {
+    for (const field of [
+      "connection_id",
+      "executor_id",
+      "fallback_to_default",
+      "version",
+      "primary",
+      "failure",
+    ] as const) {
+      const f = await fixture(app);
+      try {
+        f.render("a");
+        await Promise.resolve();
+        f.setReply((next) => {
+          if (field === "failure") throw new Error("409 conflict");
+          return {
+            ...next,
+            [field]:
+              field === "version"
+                ? 99
+                : field === "primary"
+                  ? "default"
+                  : field === "fallback_to_default"
+                    ? false
+                    : randomUUID(),
+          };
+        });
+        let tree = f.render("a");
+        const toggle = nodes(tree).find((n) =>
+          app === "desktop"
+            ? n.type === "input" && n.props.type === "checkbox"
+            : n.type === "Switch",
+        );
+        if (app === "desktop")
+          toggle.props.onChange({ target: { checked: true } });
+        else toggle.props.onValueChange(true);
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        // Retained pre-render callbacks cannot reuse an unconfirmed version.
+        if (app === "desktop")
+          toggle.props.onChange({ target: { checked: true } });
+        else toggle.props.onValueChange(true);
+        assert.equal(f.writes.length, 1, field);
+        tree = f.render("a");
+        const defaultButton = nodes(tree).find((n) =>
+          app === "desktop"
+            ? n.type === "button" && n.props.children === "Orbyn default"
+            : n.props?.label === "Orbyn default",
+        );
+        assert.equal(defaultButton.props.disabled, true, field);
+        const retainedAction =
+          defaultButton.props.onClick ?? defaultButton.props.onPress;
+        retainedAction();
+        assert.equal(f.writes.length, 1, field);
+        const reload = nodes(tree).find((n) =>
+          app === "desktop"
+            ? n.type === "button" && n.props.children === "Reload provider"
+            : n.props?.label === "Reload provider",
+        );
+        assert.ok(reload, field);
+        (reload.props.onClick ?? reload.props.onPress)();
+        f.render("a");
+        await Promise.resolve();
+        tree = f.render("a");
+        const loaded = nodes(tree).find((n) =>
+          app === "desktop"
+            ? n.type === "button" && n.props.children === "Orbyn default"
+            : n.props?.label === "Orbyn default",
+        );
+        assert.equal(loaded.props.disabled, false, field);
+      } finally {
+        f.close();
+      }
+    }
+  });
+}
+
+for (const app of ["desktop", "mobile"] as const) {
+  test(`${app} confirmed default and ChatGPT receipts remain usable with the next version`, async () => {
+    const f = await fixture(app);
+    try {
+      f.render("a");
+      await Promise.resolve();
+      let tree = f.render("a");
+      let button = nodes(tree).find((n) =>
+        app === "desktop"
+          ? n.type === "button" && n.props.children === "Orbyn default"
+          : n.props?.label === "Orbyn default",
+      );
+      (button.props.onClick ?? button.props.onPress)();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      tree = f.render("a");
+      button = nodes(tree).find((n) =>
+        app === "desktop"
+          ? n.type === "button" && n.props.children === "ChatGPT"
+          : n.props?.label === "ChatGPT",
+      );
+      assert.equal(button.props.disabled, false);
+      (button.props.onClick ?? button.props.onPress)();
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      tree = f.render("a");
+      assert.equal(f.writes.length, 2);
+      assert.equal(f.writes[1].expected_version, 2);
+      assert.equal(f.writes[1].connection_id, f.inspected.connection_id);
+      assert.equal(f.writes[1].executor_id, f.inspected.executor_id);
+      assert.equal(f.writes[1].fallback_to_default, false);
+      const selected = nodes(tree).find((n) =>
+        app === "desktop"
+          ? n.type === "button" && n.props.children === "ChatGPT"
+          : n.props?.label === "ChatGPT · selected",
+      );
+      assert.ok(selected);
+      if (app === "desktop") assert.equal(selected.props["aria-pressed"], true);
+    } finally {
       f.close();
     }
   });
