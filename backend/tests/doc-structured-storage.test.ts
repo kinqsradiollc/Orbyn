@@ -8,6 +8,7 @@ import {
   replaceVersionedDocLeaf,
   HttpError,
   appendDocContainerBlocks,
+  docContainerTaskBlocks,
 } from "@orbyn/core";
 import type { UserRow } from "../src/lib/auth.js";
 const { migrate } = await import("../src/db/migrate.js");
@@ -1142,5 +1143,145 @@ test("merge keeps structured source/target/relink trees and complete history", a
       ])
     ).rows[0].merged_into,
     target,
+  );
+});
+
+test("nested checklist creates one stable task and synchronizes completion without flattening", async () => {
+  const id = await page();
+  const nodes = parseDocContainers(
+    "> - [ ] Open ^open\n> - [x] Finished ^finished\n> - Plain ^plain\n^owner",
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const url = `/docs/${id}/tasks`;
+  const headers = { authorization: `Bearer ${token}` };
+  assert.equal(
+    (await app.inject({ method: "POST", url, payload: {} })).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url,
+        headers: { authorization: `Bearer ${strangerToken}` },
+        payload: {},
+      })
+    ).statusCode,
+    404,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url,
+        headers: { ...headers, "content-type": "application/json" },
+        payload: "{",
+      })
+    ).statusCode,
+    400,
+  );
+  const made = await app.inject({
+    method: "POST",
+    url,
+    headers,
+    payload: { block_ids: ["open", "finished", "plain"] },
+  });
+  assert.equal(made.statusCode, 200, made.body);
+  assert.equal(made.json().created, 1);
+  const task = made.json().items[0];
+  assert.equal(task.title, "Open");
+  const again = await app.inject({ method: "POST", url, headers, payload: {} });
+  assert.equal(again.json().created, 0);
+  const current = await readVersionedDoc(pool, owner, id, [1, 2]);
+  if (current.document.format !== 2) throw new Error("Checklist flattened");
+  assert.deepEqual(
+    docContainerBlocks(current.document.nodes),
+    docContainerBlocks(nodes),
+  );
+  const changed = structuredClone(current.document);
+  const list = (changed.nodes[0] as any).children[0];
+  list.items[0].checked = true;
+  const completed = await transaction((db) =>
+    saveVersionedDoc(
+      db,
+      owner,
+      id,
+      current.version,
+      changed,
+      [1, 2],
+      current.version,
+    ),
+  );
+  assert.equal(
+    (await pool.query("SELECT status FROM items WHERE id=$1", [task.id]))
+      .rows[0].status,
+    "done",
+  );
+  if (completed.document.format !== 2) throw new Error("Checklist flattened");
+  assert.equal(
+    (docContainerTaskBlocks(completed.document.nodes)[0] as any).done,
+    true,
+  );
+  const { setItemStatus } = await import("../src/modules/items/service.js");
+  await transaction((db) => setItemStatus(db, owner, task.id, "todo", 0));
+  const reopened = await readVersionedDoc(pool, owner, id, [1, 2]);
+  if (reopened.document.format !== 2) throw new Error("Checklist flattened");
+  assert.equal(
+    (docContainerTaskBlocks(reopened.document.nodes)[0] as any).done,
+    false,
+  );
+  const stored = (
+    await pool.query("SELECT content,content_nodes FROM docs WHERE id=$1", [id])
+  ).rows[0];
+  assert.deepEqual(stored.content, docContainerBlocks(stored.content_nodes));
+  assert.equal(stored.content_nodes[0].id, "owner");
+});
+
+test("stale nested tick cannot undo a task completion change from elsewhere", async () => {
+  const id = await page();
+  const nodes = parseDocContainers("- [ ] Work ^work", { anchors: true });
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const made = await app.inject({
+    method: "POST",
+    url: `/docs/${id}/tasks`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: {},
+  });
+  assert.equal(made.statusCode, 200, made.body);
+  const before = await readVersionedDoc(pool, owner, id, [1, 2]);
+  const { setItemStatus } = await import("../src/modules/items/service.js");
+  await transaction((db) =>
+    setItemStatus(db, owner, made.json().items[0].id, "done", 100),
+  );
+  const current = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.ok(current.version > before.version);
+  const saved = await transaction((db) =>
+    saveVersionedDoc(
+      db,
+      owner,
+      id,
+      current.version,
+      before.document,
+      [1, 2],
+      before.version,
+    ),
+  );
+  if (saved.document.format !== 2) throw new Error("Checklist flattened");
+  assert.equal(
+    (docContainerTaskBlocks(saved.document.nodes)[0] as any).done,
+    true,
+  );
+  assert.equal(
+    (
+      await pool.query("SELECT status FROM items WHERE id=$1", [
+        made.json().items[0].id,
+      ])
+    ).rows[0].status,
+    "done",
   );
 });

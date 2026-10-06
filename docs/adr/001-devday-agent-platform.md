@@ -1,3 +1,19 @@
+## Nested checklist task synchronization candidate — 6 October 2026
+
+D1 now has a separate task view for nested list-item checkbox metadata. The owning
+first paragraph keeps its stable identity and stored type; task creation and
+versioned read/save apply checkbox state back to that owner. Existing todo leaves
+remain supported. Complete-tree persistence and history still use the guarded
+versioned writer. Task creation requires page write permission before item mutation.
+
+502 Docs unit cases pass; packages/backend types/format checks pass. Two actual
+DB cases for create/duplicate prevention/completion/reopening and stale tick
+protection are added but unrun: local test PostgreSQL55435 returnsECONNREFUSED.
+Candidate only; no main/database/client acceptance claimed. Normal editor controls,
+other task-consuming read projections, partial extraction, local-fragment movement,
+agenda regeneration, full Docs/UI matrices and all C1-C6/M1/D1/U1 gates remain open.
+See [current tracker](../reviews/adr-current-state.md) for current main state.
+
 ## Atomic normal editor save candidate — 6 October 2026
 
 The normal editor now has a strict shared metadata+complete-document contract and

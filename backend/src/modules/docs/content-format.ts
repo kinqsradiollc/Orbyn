@@ -5,6 +5,8 @@ import {
   requireDocContentCapability,
   downgradeDocContent,
   docContainerBlocks,
+  docContainerTaskBlocks,
+  applyDocContainerTaskBlocks,
   projectDocContainers,
   type VersionedDocContent,
   type DocContentFormat,
@@ -71,7 +73,7 @@ export async function readVersionedDoc(
   const leaves =
     content.format === 1
       ? content.blocks
-      : docContainerBlocks(content.nodes, { projected: true });
+      : docContainerTaskBlocks(content.nodes, { projected: true });
   const state = await withTaskState(db, id, leaves);
   const privacy = await linkPrivacy(db, u.id, state);
   const visible = privacy.value(state);
@@ -80,7 +82,7 @@ export async function readVersionedDoc(
       ? { format: 1, blocks: visible }
       : {
           format: 2,
-          nodes: projectDocContainers(content.nodes, () => visible, {
+          nodes: applyDocContainerTaskBlocks(content.nodes, visible, {
             projected: true,
           }),
         };
@@ -132,16 +134,25 @@ export async function saveVersionedDoc(
       ? content.blocks
       : docContainerBlocks(content.nodes, { projected: true });
   const preserved = await keepHiddenLabels(db, id, u.id, leaves);
-  const processed = await syncTicks(db, u, id, preserved, ticksFrom);
-  // Read masks may be longer than storage permits; restore labels first, then enforce exact storage limits.
+  const taskInput =
+    content.format === 1
+      ? preserved
+      : docContainerTaskBlocks(
+          projectDocContainers(content.nodes, () => preserved, {
+            projected: true,
+          }),
+          { projected: true },
+        );
+  const tasks = await syncTicks(db, u, id, taskInput, ticksFrom);
+  // Synthetic task leaves update their checklist owner, never the flat storage projection.
   let stored: VersionedDocContent;
   try {
     stored = parseVersionedDocContent(
       content.format === 1
-        ? { format: 1, blocks: processed }
+        ? { format: 1, blocks: tasks }
         : {
             format: 2,
-            nodes: projectDocContainers(content.nodes, () => processed, {
+            nodes: applyDocContainerTaskBlocks(content.nodes, tasks, {
               projected: true,
             }),
           },
@@ -149,6 +160,8 @@ export async function saveVersionedDoc(
   } catch {
     fail(400, "Document content exceeds its storage limits.");
   }
+  const processed =
+    stored.format === 1 ? stored.blocks : docContainerBlocks(stored.nodes);
   await allowPageFiles(db, u.id, processed);
   await followComments(db, id, processed);
   await followSuggestions(db, id, processed);

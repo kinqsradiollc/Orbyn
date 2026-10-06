@@ -19,6 +19,8 @@ import {
   keepLinkLabels,
   parseVersionedDocContent,
   docContainerBlocks,
+  docContainerTaskBlocks,
+  applyDocContainerTaskBlocks,
   projectDocContainers,
   downgradeDocContent,
   type VersionedDocContent,
@@ -593,13 +595,27 @@ export async function makeLineTasks(
   options: { only?: string[]; projectId?: string | null } = {},
 ): Promise<Item[] | null> {
   const id = doc.id;
+  await requireDoc(db, id, u, "items:write");
+  const row = (
+    await db.query<{
+      content: DocBlock[] | null;
+      content_format: 1 | 2;
+      content_nodes: unknown;
+      version: number;
+    }>(
+      "SELECT content,content_format,content_nodes,version FROM docs WHERE id = $1",
+      [id],
+    )
+  ).rows[0];
+  const document = parseVersionedDocContent(
+    row.content_format === 2
+      ? { format: 2, nodes: row.content_nodes }
+      : { format: 1, blocks: row.content ?? [] },
+  );
   const content =
-    (
-      await db.query<{ content: DocBlock[] | null }>(
-        "SELECT content FROM docs WHERE id = $1",
-        [id],
-      )
-    ).rows[0].content ?? [];
+    document.format === 2
+      ? docContainerTaskBlocks(document.nodes)
+      : document.blocks;
   const only = options.only;
   const wanted = content.filter(
     (b): b is Extract<DocBlock, { type: "todo" }> =>
@@ -668,10 +684,22 @@ export async function makeLineTasks(
       ? { ...b, id: ids.get(b as Extract<DocBlock, { type: "todo" }>) }
       : b,
   );
-  await db.query(
-    "UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now() WHERE id = $1",
-    [id, JSON.stringify(next)],
-  );
+  if (document.format === 2) {
+    const { saveVersionedDoc } = await import("./content-format.js");
+    await saveVersionedDoc(
+      db,
+      u,
+      id,
+      row.version,
+      { format: 2, nodes: applyDocContainerTaskBlocks(document.nodes, next) },
+      [1, 2],
+    );
+  } else {
+    await db.query(
+      "UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now() WHERE id = $1",
+      [id, JSON.stringify(next)],
+    );
+  }
   return out;
 }
 

@@ -4549,3 +4549,38 @@ partial extraction with explicit ownership/list numbering; moved local-fragment
 reference semantics; agenda regeneration; normal editor/collaboration and full
 render/edit/export/privacy matrices. Remaining ChatGPT/platform, UI, agents,
 plugins/channels and final qualification/cleanup scope remains active.
+
+
+### D1 nested checklist task mapping checkpoint — 6 October 2026
+
+Shared task view maps a list item's checked metadata and owning first paragraph
+onto a synthetic todo view. Nested continuation paragraphs, plain items, quote/
+callout/list/code owners and stable IDs remain unchanged. Existing todo leaves are
+supported; returned views detach even anonymous shared caller objects into their
+separate owners. Reapplying task state rejects changed count/type/existing IDs or
+identity assignment to non-task paragraphs, while unnamed task paragraphs may
+receive their new stable task identity. Synthetic todos never enter storage.
+
+readVersionedDoc projects current linked task status and authorized private labels
+back into checkbox owners. saveVersionedDoc restores labels, synchronizes the task
+view using existing ticksFrom/done_version rules, reapplies metadata, then saves
+raw paragraph leaves matching the complete tree and SQL projection guard.
+makeLineTasks creates only open nonempty/unlinked selected checklists, preserves
+or assigns their first-paragraph ID, and saves via the versioned writer. Both route
+and service require items:write before item creation; legacy task creation keeps
+its flat path under the same write authority.
+
+All Docs unit cohort502passed,0failed/0skipped,16859.431041ms,exit0:
+`/tmp/orbyn-doc-tasks-all-unit.log`. Actual service/versioned read/save functions
+execute with mocked DB/ACL/item/task/privacy transports. Shared package build,
+backend typecheck and formatting/diff checks pass. Two real DB cases added to
+`doc-structured-storage.test.ts`: full task lifecycle with untouched owners/raw
+projection and stale checklist ticks preserving externally completed task. NOT run:
+read-only TCP probe of55435 currentlyECONNREFUSED. No Docker engine/container
+altered. No installed UI/main/database acceptance claimed; candidate checkpoint.
+
+Next: audit other task-consuming projections and normal-editor controls, partial
+extraction with explicit owner/list numbering semantics, moved local fragments,
+agenda regeneration and full Docs editor/collaboration/render/edit/export/privacy
+matrices. Full ChatGPT/platform/UI/agents/plugins/channels/integration/cleanup scope
+remains active. Root character/user dirt and native target artifacts preserved.
