@@ -43,6 +43,41 @@ import { migrateNativeChatgptSingleton } from "./chatgpt-account-migration";
 const protectedOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
 };
+// Native storage errors can contain key names or credential details. Never pass
+// them (including Error.cause) into app diagnostics or user-facing recovery.
+async function readProtectedItem(
+  ...args: Parameters<typeof SecureStore.getItemAsync>
+) {
+  try {
+    return await SecureStore.getItemAsync(...args);
+  } catch {
+    throw new Error(
+      "Saved ChatGPT storage could not be read. Unlock this device and retry.",
+    );
+  }
+}
+async function writeProtectedItem(
+  ...args: Parameters<typeof SecureStore.setItemAsync>
+) {
+  try {
+    return await SecureStore.setItemAsync(...args);
+  } catch {
+    throw new Error(
+      "Saved ChatGPT storage could not be updated. Unlock this device and retry.",
+    );
+  }
+}
+async function eraseProtectedItem(
+  ...args: Parameters<typeof SecureStore.deleteItemAsync>
+) {
+  try {
+    return await SecureStore.deleteItemAsync(...args);
+  } catch {
+    throw new Error(
+      "Saved ChatGPT storage could not be erased. Unlock this device and retry.",
+    );
+  }
+}
 const registration = z
   .object({
     version: z.literal(1),
@@ -107,10 +142,10 @@ function base64url(bytes: Uint8Array): string {
 async function hostId(): Promise<string> {
   hostPromise ??= (async () => {
     const key = "orbyn.chatgpt.host.v1";
-    const saved = await SecureStore.getItemAsync(key, protectedOptions);
+    const saved = await readProtectedItem(key, protectedOptions);
     if (saved) return `urn:uuid:${z.uuid().parse(saved)}`;
     const id = Crypto.randomUUID();
-    await SecureStore.setItemAsync(key, id, protectedOptions);
+    await writeProtectedItem(key, id, protectedOptions);
     return `urn:uuid:${id}`;
   })().catch((error) => {
     hostPromise = null;
@@ -498,12 +533,12 @@ export async function signInNativeChatgpt(
     const original =
       action?.kind === "add"
         ? null
-        : await SecureStore.getItemAsync(key, protectedOptions);
+        : await readProtectedItem(key, protectedOptions);
     const saved = decodeRegistration(original);
     let originalMapping =
       action?.kind === "add"
         ? null
-        : await SecureStore.getItemAsync(mappingKey(key), protectedOptions);
+        : await readProtectedItem(mappingKey(key), protectedOptions);
     check();
     const returning =
       action?.kind === "add"
@@ -630,7 +665,7 @@ export async function signInNativeChatgpt(
         throw new Error(
           "This ChatGPT registration already has saved credentials.",
         );
-      originalMapping = await SecureStore.getItemAsync(
+      originalMapping = await readProtectedItem(
         mappingKey(key),
         protectedOptions,
       );
@@ -651,14 +686,14 @@ export async function signInNativeChatgpt(
     check();
     // A competing write cannot silently replace the selected registration.
     if (
-      (await SecureStore.getItemAsync(mappingKey(key), protectedOptions)) !==
+      (await readProtectedItem(mappingKey(key), protectedOptions)) !==
       originalMapping
     )
       throw new Error(
         "ChatGPT registration changed during sign-in. Try again.",
       );
     check();
-    if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+    if ((await readProtectedItem(key, protectedOptions)) !== original)
       throw new Error("ChatGPT account changed during sign-in. Try again.");
     check();
     const installed = JSON.stringify({
@@ -671,19 +706,16 @@ export async function signInNativeChatgpt(
     if (context) {
       if (!(await context.storage.compareAndSwap(key, original, installed)))
         throw new Error("The saved ChatGPT credentials changed. Try again.");
-    } else await SecureStore.setItemAsync(key, installed, protectedOptions);
+    } else await writeProtectedItem(key, installed, protectedOptions);
     if (
       session.token !== token ||
       controller.signal.aborted ||
       current?.id !== id
     ) {
       // Remove only this attempt's record; preserve any newer replacement.
-      if (
-        (await SecureStore.getItemAsync(key, protectedOptions)) === installed
-      ) {
-        if (original === null)
-          await SecureStore.deleteItemAsync(key, protectedOptions);
-        else await SecureStore.setItemAsync(key, original, protectedOptions);
+      if ((await readProtectedItem(key, protectedOptions)) === installed) {
+        if (original === null) await eraseProtectedItem(key, protectedOptions);
+        else await writeProtectedItem(key, original, protectedOptions);
       }
       check();
     }
@@ -702,12 +734,10 @@ export async function signInNativeChatgpt(
         controller.signal.aborted ||
         current?.id !== id
       ) {
-        if (
-          (await SecureStore.getItemAsync(key, protectedOptions)) === installed
-        ) {
+        if ((await readProtectedItem(key, protectedOptions)) === installed) {
           if (original === null)
-            await SecureStore.deleteItemAsync(key, protectedOptions);
-          else await SecureStore.setItemAsync(key, original, protectedOptions);
+            await eraseProtectedItem(key, protectedOptions);
+          else await writeProtectedItem(key, original, protectedOptions);
         }
       }
       throw error;
@@ -806,7 +836,7 @@ async function renewNativeRegistration(
       )
     )
       throw new Error("Reconnect this ChatGPT account.");
-    if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+    if ((await readProtectedItem(key, protectedOptions)) !== original)
       throw new Error("ChatGPT account changed. Try again.");
     check();
     const installed = JSON.stringify({
@@ -816,14 +846,14 @@ async function renewNativeRegistration(
       grant,
       ...(saved.signingAlias ? { signingAlias: saved.signingAlias } : {}),
     });
-    await SecureStore.setItemAsync(key, installed, protectedOptions);
+    await writeProtectedItem(key, installed, protectedOptions);
     if (
       controller.signal.aborted ||
       session.token !== sessionToken ||
       current?.id !== id
     ) {
-      if ((await SecureStore.getItemAsync(key, protectedOptions)) === installed)
-        await SecureStore.setItemAsync(key, original, protectedOptions);
+      if ((await readProtectedItem(key, protectedOptions)) === installed)
+        await writeProtectedItem(key, original, protectedOptions);
       check();
     }
     return { original: installed, saved: { ...saved, revision: id, grant } };
@@ -833,10 +863,10 @@ async function renewNativeRegistration(
       error.code === "invalid_refresh"
     ) {
       check();
-      if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+      if ((await readProtectedItem(key, protectedOptions)) !== original)
         throw new Error("ChatGPT account changed. Try again.");
       check();
-      await SecureStore.setItemAsync(
+      await writeProtectedItem(
         key,
         JSON.stringify({
           version: 2,
@@ -907,7 +937,7 @@ async function readNativeChatgptModelsOwned(
   if (user.id !== userId)
     throw new Error("The signed-in Orbyn account changed.");
   const key = await accountKey(userId);
-  let original = await SecureStore.getItemAsync(key, protectedOptions);
+  let original = await readProtectedItem(key, protectedOptions);
   check();
   const decoded = decodeRegistration(original);
   if (!decoded) throw new Error("Connect ChatGPT before loading models.");
@@ -925,7 +955,7 @@ async function readNativeChatgptModelsOwned(
     )
   )
     throw new Error("Reconnect this ChatGPT account before loading models.");
-  if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+  if ((await readProtectedItem(key, protectedOptions)) !== original)
     throw new Error("ChatGPT account changed. Try again.");
   check();
   if (saved.grant.expiresAt <= Date.now() + 60000) {
@@ -949,7 +979,7 @@ async function readNativeChatgptModelsOwned(
     signal: options.signal,
   });
   check();
-  if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+  if ((await readProtectedItem(key, protectedOptions)) !== original)
     throw new Error("ChatGPT account changed. Try again.");
   check();
   if ((await accountKey(userId)) !== key)
@@ -1023,7 +1053,7 @@ export async function disconnectNativeChatgpt(
       expectedConnection = entry.connection;
       key = context.storage.slotKey(target.connectionId);
     } else key = await accountKey(userId);
-    const original = await SecureStore.getItemAsync(key, protectedOptions);
+    const original = await readProtectedItem(key, protectedOptions);
     check();
     // Corrupt local credentials must still be erasable; do not guess a remote connection ID.
     let saved: ReturnType<typeof decodeRegistration> = null;
@@ -1038,11 +1068,11 @@ export async function disconnectNativeChatgpt(
       JSON.stringify(protectedConnection) !== JSON.stringify(expectedConnection)
     )
       throw new Error("The saved ChatGPT cleanup identity changed.");
-    if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+    if ((await readProtectedItem(key, protectedOptions)) !== original)
       throw new Error("ChatGPT account changed. Try again.");
     check();
     let retainedMapping = decodeRetiredRegistration(
-      await SecureStore.getItemAsync(mappingKey(key), protectedOptions),
+      await readProtectedItem(mappingKey(key), protectedOptions),
     );
     check();
     if (
@@ -1088,7 +1118,7 @@ export async function disconnectNativeChatgpt(
           remoteRevocationFailed = true;
         }
       check();
-      if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+      if ((await readProtectedItem(key, protectedOptions)) !== original)
         throw new Error("ChatGPT account changed. Try again.");
       check();
     }
@@ -1102,7 +1132,7 @@ export async function disconnectNativeChatgpt(
     let mappingSaveFailed = false;
     if (ownedConnection) {
       try {
-        await SecureStore.setItemAsync(
+        await writeProtectedItem(
           mappingKey(key),
           JSON.stringify({
             version: 2,
@@ -1126,14 +1156,14 @@ export async function disconnectNativeChatgpt(
         mappingSaveFailed = true;
       }
       check();
-      if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+      if ((await readProtectedItem(key, protectedOptions)) !== original)
         throw new Error("ChatGPT account changed. Try again.");
       check();
     }
     // A provider or server revocation failure must not retain owned local tokens.
     let credentialRemovalFailed = false;
     try {
-      await SecureStore.deleteItemAsync(key, protectedOptions);
+      await eraseProtectedItem(key, protectedOptions);
     } catch {
       credentialRemovalFailed = true;
     }
@@ -1238,7 +1268,7 @@ export async function createNativeChatgptExecutor(userId: string) {
   const key = await accountKey(userId);
   ownedKey = key;
   const saved = decodeRegistration(
-    await SecureStore.getItemAsync(key, protectedOptions),
+    await readProtectedItem(key, protectedOptions),
   );
   check();
   if (!saved || !saved.grant.sharingGranted)
@@ -1259,7 +1289,7 @@ export async function createNativeChatgptExecutor(userId: string) {
       throw new Error("The selected ChatGPT account changed.");
     check();
     const record = decodeRegistration(
-      await SecureStore.getItemAsync(key, protectedOptions),
+      await readProtectedItem(key, protectedOptions),
     );
     check();
     if (
@@ -1314,7 +1344,7 @@ export async function createNativeChatgptExecutor(userId: string) {
     credential: async () => {
       await live();
       const record = decodeRegistration(
-        await SecureStore.getItemAsync(key, protectedOptions),
+        await readProtectedItem(key, protectedOptions),
       );
       await live();
       if (
@@ -1424,7 +1454,7 @@ export async function hasNativeChatgptRegistration(userId: string) {
   check();
   if (directory && directory.selected === null) return false;
   const saved = decodeRegistration(
-    await SecureStore.getItemAsync(await accountKey(userId), protectedOptions),
+    await readProtectedItem(await accountKey(userId), protectedOptions),
   );
   return Boolean(saved?.grant.sharingGranted);
 }
@@ -1463,7 +1493,13 @@ export async function readNativeChatgptAccountState(
     return { status: "missing" };
   const key = await accountKey(userId);
   check();
-  const value = await SecureStore.getItemAsync(key, protectedOptions);
+  let value: string | null;
+  try {
+    value = await readProtectedItem(key, protectedOptions);
+  } catch {
+    check();
+    return { status: "unreadable" };
+  }
   check();
   if (value === null) return { status: "missing" };
   if (decodeRetiredRegistration(value)) return { status: "reconnect" };

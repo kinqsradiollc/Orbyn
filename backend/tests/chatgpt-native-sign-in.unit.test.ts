@@ -47,6 +47,7 @@ function mount(
     revokeFailure?: boolean;
     keyRemovalFailure?: boolean;
     credentialRemovalFailure?: boolean;
+    onStorageRead?: (key: string) => void;
     providerRevokeFailure?: boolean;
     holdCallback?: boolean;
     onRevoke?: () => Promise<void>;
@@ -186,7 +187,10 @@ function mount(
       if (id === "expo-secure-store")
         return {
           WHEN_UNLOCKED_THIS_DEVICE_ONLY: "protected-device-only",
-          getItemAsync: async (key: string) => storage.get(key) ?? null,
+          getItemAsync: async (key: string) => {
+            options.onStorageRead?.(key);
+            return storage.get(key) ?? null;
+          },
           setItemAsync: async (key: string, value: string, config: any) => {
             assert.equal(config.keychainAccessible, "protected-device-only");
             if (
@@ -2264,4 +2268,62 @@ test("native targeted cleanup rejects a stale menu revision or substituted retir
   );
   assert.equal(f.storage.get(key), JSON.stringify(saved));
   assert.equal(f.calls.revoked.length, 0);
+});
+
+test("native credential read faults remain unknown and cannot authorize execution or destructive cleanup", async () => {
+  let faultKey: string | undefined;
+  const f = mount({
+    signing: true,
+    onStorageRead: (key) => {
+      if (key === faultKey)
+        throw new Error("private-access private-refresh keychain diagnostics");
+    },
+  });
+  await f.signIn();
+  const [key, raw] = accounts(f.storage)[0];
+  faultKey = key;
+  assert.equal((await f.accountState()).status, "unreadable");
+  for (const action of [
+    () => f.models(),
+    () => f.executor(),
+    () => f.disconnect(),
+  ]) {
+    await assert.rejects(action(), (error: Error) => {
+      assert.match(error.message, /storage could not be read/);
+      assert.doesNotMatch(
+        error.stack ?? "",
+        /private-access|private-refresh|keychain diagnostics/,
+      );
+      assert.equal(error.cause, undefined);
+      return true;
+    });
+  }
+  assert.equal(f.storage.get(key), raw);
+  assert.deepEqual(f.removedAliases, []);
+  assert.deepEqual(f.calls.revoked, []);
+  assert.deepEqual(f.calls.providerRevoked, []);
+  faultKey = undefined;
+  assert.equal((await f.accountState()).status, "saved");
+  await f.disconnect();
+  assert.equal(accounts(f.storage).length, 0);
+});
+test("native unreadable reconnect mapping does not become an empty registration or erase credentials", async () => {
+  let failMapping = false;
+  const f = mount({
+    onStorageRead: (key) => {
+      if (failMapping && key.includes(".registration."))
+        throw new Error("private-refresh mapping diagnostics");
+    },
+  });
+  await f.signIn();
+  const [key, raw] = accounts(f.storage)[0];
+  failMapping = true;
+  await assert.rejects(f.disconnect(), /storage could not be read/);
+  await assert.rejects(f.signIn(), /storage could not be read/);
+  assert.equal(f.storage.get(key), raw);
+  assert.deepEqual(f.calls.revoked, []);
+  assert.deepEqual(f.calls.providerRevoked, []);
+  failMapping = false;
+  await f.disconnect();
+  assert.equal(accounts(f.storage).length, 0);
 });

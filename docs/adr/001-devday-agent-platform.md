@@ -3554,3 +3554,13 @@ terminal0; mobile/backend types and formatting/diff checks pass. Detailed cases
 and logs are in `docs/reviews/task.md`, Native targeted cleanup. This is a candidate
 checkpoint; real OS/OAuth, authenticated UI screenshots, read-fault/default/provider
 acceptance, fresh full DB and main qualification remain open. Full scope unchanged.
+
+### Native protected read-fault checkpoint — 6 October 2026
+
+Protected storage failures are sanitized before diagnostics. Failed credential
+reads remain unreadable rather than missing; execution and cleanup reject without
+inventing identity or removal. Retry after storage becomes readable is covered.
+Final ChatGPT unit cohort429passed/0failed/0skipped,26675.095583ms, exit0;
+mobile typecheck and formatting/diff checks pass. See task handoff for exact tests
+and logs. Candidate only: model/default/provider provenance, real OS/OAuth/UI,
+full database and main promotion remain open. Full ADR scope is unchanged.

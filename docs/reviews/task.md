@@ -4283,3 +4283,34 @@ identity/revision reach the service. Real iOS/Android protected-store, authentic
 menu layout/large-text/screenshots and OAuth remain pending. Next finish read-fault
 handling and catalog/default/provider provenance; full DB and main promotion gates
 remain open. Other C1-C6/M1/D1/U1 requirements are unchanged.
+
+### Native protected read-fault recovery — 6 October 2026
+
+Service direct SecureStore calls now use fixed sanitized read/write/erase errors
+without the native cause. This includes host identity, retained registration,
+refresh, credential reads and cleanup paths. Native adapter failures were already
+sanitized. Settings credential read failure returns unreadable after checking the
+captured owner/session, not missing. Execution/reconnect/cleanup cannot treat an
+unreadable credential or mapping as null, guess another identity, or claim removal.
+Explicit cleanup remains retryable once storage can be read; a destructive erase
+without observing the owned record would bypass the existing identity/revision
+checks, so it is not attempted on a read fault.
+
+Actual-source tests inject credential and retained-mapping read failures containing
+private diagnostic markers. They assert no raw Error.cause/stack disclosure,
+no inference/revocation/key erasure or credential loss, truthful unreadable status,
+and successful recovery after read permission returns. Focused final92passed,
+0failed/0skipped,6538.646333ms exit0 at
+`/tmp/orbyn-native-read-fault-focused-final.log`. Full ChatGPT final429passed,
+0failed/0skipped,26675.095583ms exit0 at
+`/tmp/orbyn-native-read-fault-all-final.log`. Mobile typecheck exit0 at
+`/tmp/orbyn-native-read-fault-mobile-types.log`. Formatting and diff checks pass.
+The initial focused test compared VM-realm objects; corrected to assert the exact
+status scalar. Final checks use the corrected harness.
+
+Read-only Docker check still shows orbyn-embedding-test-20261001 exited255;
+disk1.7GiB. Docker remains under user recovery control. No main merge, real OAuth,
+paid inference or authenticated native/web UI acceptance is claimed. Next audit
+model/catalog/default/provider identity across explicit device-account switching.
+Full C1-C6/M1/D1/U1 scope, native OS acceptance, full DB71 and main qualification
+remain open; root character/user changes and other worktrees remain preserved.
