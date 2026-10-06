@@ -4514,3 +4514,38 @@ Still open: makeLineTasks and structure.writeLines flat writers, nested checklis
 identity/task mapping, agenda regeneration flat writes, normal-editor adoption,
 CRDT/collaboration and full D1 render/edit/export/privacy matrices. Other full ADR
 requirements remain open. Candidate checkpoint only until database qualification.
+
+
+### D1 full-tree page merge checkpoint — 6 October 2026
+
+mergeDocContents merges complete typed documents; mixed formats promote to2,
+legacy-only documents remain1. Quote/callout/list/checklist/code/Mermaid ownership
+is retained. Source leaf AND container ID collisions rename deterministically;
+fresh IDs cannot collide with any existing destination or later source identity.
+Only blank root paragraphs are omitted; nested empty owners/blank children remain.
+Inputs are detached/validated and invalid content cannot silently flatten.
+
+mergePages keeps sorted locks, space/ACL/exact revision checks, file access,
+comment/suggestion/task transfer and trash semantics. Target writes and inbound
+link rewrites now use saveVersionedDoc with complete trees/current revisions.
+Relinked nested pages retain their owners instead of updating only the projection.
+Final target version comes from the saved page even if it was also relinked; its
+notification is emitted once at that final version. Existing local fragment links
+in moved content still need an ownership-aware remapping audit; do not count
+full anchor/reference acceptance complete from collision IDs alone.
+
+75 focused unit tests pass,0failed/0skipped,3764.527166ms,exit0:
+`/tmp/orbyn-doc-merge-regression.log`. Includes actual mergePages function with
+mock DB/ACL/transfers/saves, all mixed-format combinations, collision generation,
+complete nested relink content, 403/409/422 prewrite rejection. Shared package
+build/backend types/format/diff checks pass. Added actual database merge regression
+for nested source/target/relink trees, renamed reference and complete history to
+`doc-structured-storage.test.ts`; NOT run while Docker/database unavailable.
+Candidate only; no database/client/main acceptance claimed. origin/main refreshed
+and remains9e22e531. Root character/user dirt and native generated targets preserved.
+
+Next D1 steps: nested task/checklist identity plus task-state projection and saves;
+partial extraction with explicit ownership/list numbering; moved local-fragment
+reference semantics; agenda regeneration; normal editor/collaboration and full
+render/edit/export/privacy matrices. Remaining ChatGPT/platform, UI, agents,
+plugins/channels and final qualification/cleanup scope remains active.

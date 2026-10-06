@@ -1078,3 +1078,69 @@ test("unsupported or unauthorized append cannot mutate a structured page", async
   assert.equal(current.version, 2);
   assert.deepEqual(current.document, { format: 2, nodes });
 });
+
+test("merge keeps structured source/target/relink trees and complete history", async () => {
+  const source = await page(),
+    target = await page(owner, [
+      { type: "paragraph", id: "shared", text: "Target" },
+    ]);
+  const nodes = parseDocContainers(
+    "> Moved words ^shared\n>\n> - Child ^child\n^owner",
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, source, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const pointer = await page();
+  const pointerNodes = parseDocContainers(
+    `> [Read](orbyn://doc/${source}#shared) ^ref\n^pointer-owner`,
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(
+      db,
+      owner,
+      pointer,
+      1,
+      { format: 2, nodes: pointerNodes },
+      [1, 2],
+    ),
+  );
+  const response = await app.inject({
+    method: "POST",
+    url: `/docs/${source}/merge`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { into: target, version: 2 },
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  const result = await readVersionedDoc(pool, owner, target, [1, 2]);
+  if (result.document.format !== 2) throw new Error("Merged tree flattened");
+  const moved = result.document.nodes.at(-1) as any;
+  assert.equal(moved.kind, "quote");
+  assert.equal(moved.id, "owner");
+  assert.notEqual(moved.children[0].block.id, "shared");
+  assert.equal(moved.children[1].kind, "list");
+  const linked = await readVersionedDoc(pool, owner, pointer, [1, 2]);
+  if (linked.document.format !== 2) throw new Error("Relinked tree flattened");
+  assert.equal((linked.document.nodes[0] as any).id, "pointer-owner");
+  assert.equal(
+    (linked.document.nodes[0] as any).children[0].block.text,
+    `[Read](orbyn://doc/${target}#${moved.children[0].block.id})`,
+  );
+  const history = (
+    await pool.query(
+      "SELECT content_format,content_nodes FROM doc_versions WHERE doc_id=$1 AND version=2",
+      [pointer],
+    )
+  ).rows[0];
+  assert.equal(history.content_format, 2);
+  assert.deepEqual(history.content_nodes, pointerNodes);
+  assert.equal(
+    (
+      await pool.query("SELECT merged_into,deleted_at FROM docs WHERE id=$1", [
+        source,
+      ])
+    ).rows[0].merged_into,
+    target,
+  );
+});

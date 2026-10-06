@@ -2,6 +2,10 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   aliasesInput,
+  mergeDocContents,
+  parseVersionedDocContent,
+  docContainerBlocks,
+  type VersionedDocContent,
   blockPlainText,
   blockText,
   docAnchorInput,
@@ -51,6 +55,7 @@ import {
   VISIBLE,
   withTaskState,
 } from "./service.js";
+import { saveVersionedDoc } from "./content-format.js";
 import { actAs } from "../../lib/actor.js";
 import { writableOwned } from "../../lib/visibility.js";
 
@@ -322,54 +327,56 @@ export async function mergePages(
       id: string;
       title: string;
       content: DocBlock[] | null;
-    }>("SELECT id, title, content FROM docs WHERE id = ANY ($1::uuid[])", [
-      [id, body.into],
-    ])
+      content_format: 1 | 2;
+      content_nodes: unknown;
+    }>(
+      "SELECT id, title, content, content_format, content_nodes FROM docs WHERE id = ANY ($1::uuid[])",
+      [[id, body.into]],
+    )
   ).rows;
   const source = rows.find((x) => x.id === id)!;
   const target = rows.find((x) => x.id === body.into)!;
-  const taken = new Set(
-    (target.content ?? []).flatMap((x) => (x.id ? [x.id] : [])),
+  const stored = (row: typeof source): VersionedDocContent =>
+    parseVersionedDocContent(
+      row.content_format === 2
+        ? { format: 2, nodes: row.content_nodes }
+        : { format: 1, blocks: row.content ?? [] },
+    );
+  const sourceDocument = stored(source);
+  const { document: merged, renamed: rename } = mergeDocContents(
+    stored(target),
+    sourceDocument,
+    source.title,
+    newBlockId,
   );
-  // A line whose name the other page already uses gets a new one.
-  const rename = new Map<string, string>();
-  const lines = (source.content ?? [])
-    .filter((x) => !(x.type === "paragraph" && !x.text.trim()))
-    .map((x) => {
-      if (!x.id || !taken.has(x.id)) return x;
-      const fresh = newBlockId();
-      rename.set(x.id, fresh);
-      return { ...x, id: fresh };
-    });
-  const heading: DocBlock[] =
-    source.title.trim() && lines[0]?.type !== "heading"
-      ? [
-          {
-            type: "heading",
-            level: 2,
-            id: newBlockId(),
-            text: source.title.trim(),
-          },
-        ]
-      : [];
-  const merged = [...(target.content ?? []), ...heading, ...lines];
+  const sourceLines =
+    sourceDocument.format === 2
+      ? docContainerBlocks(sourceDocument.nodes)
+      : sourceDocument.blocks;
   // Checked before the source goes to Trash, while it still shows them.
-  await allowPageFiles(db, u.id, lines);
+  await allowPageFiles(db, u.id, sourceLines);
   await carryLines(
     db,
     id,
     body.into,
-    (source.content ?? []).flatMap((x) => (x.id ? [x.id] : [])),
+    sourceLines.flatMap((x) => (x.id ? [x.id] : [])),
     rename,
-    filesOf(source.content ?? []),
+    filesOf(sourceLines),
   );
-  const version = await writeLines(db, u, body.into, merged, always);
+  if (always) await snapshot(db, body.into, u.id, true);
+  await saveVersionedDoc(db, u, body.into, into.version, merged, [1, 2]);
   // Links to the merged page, in pages you can change, now open the
   // other, and a link to one of its lines to that line under its new
   // name if it had to be renamed. Each page keeps its history.
   const linking = (
-    await db.query<{ id: string; content: DocBlock[] | null }>(
-      `SELECT d.id, d.content FROM docs d
+    await db.query<{
+      id: string;
+      content: DocBlock[] | null;
+      content_format: 1 | 2;
+      content_nodes: unknown;
+      version: number;
+    }>(
+      `SELECT d.id, d.content, d.content_format, d.content_nodes, d.version FROM docs d
             WHERE d.id IN (
                     SELECT l.source_id FROM object_links l
                      WHERE l.source_kind = 'doc' AND l.link_kind = 'link'
@@ -388,23 +395,27 @@ export async function mergePages(
   );
   const rewritten: { id: string; version: number }[] = [];
   for (const p of linking) {
-    const before = JSON.stringify(p.content ?? []);
+    const original: VersionedDocContent = parseVersionedDocContent(
+      p.content_format === 2
+        ? { format: 2, nodes: p.content_nodes }
+        : { format: 1, blocks: p.content ?? [] },
+    );
+    const before = JSON.stringify(original);
     const after = before.replace(
       pointer,
       (_all, line?: string) =>
         `orbyn://doc/${body.into}${line ? `#${rename.get(line) ?? line}` : ""}`,
     );
     if (after === before) continue;
-    await snapshot(db, p.id, u.id);
-    rewritten.push(
-      (
-        await db.query<{ id: string; version: number }>(
-          `UPDATE docs SET content = $2::jsonb, version = version + 1,
-                 updated_at = now() WHERE id = $1 RETURNING id, version`,
-          [p.id, after],
-        )
-      ).rows[0],
+    const saved = await saveVersionedDoc(
+      db,
+      u,
+      p.id,
+      p.version,
+      JSON.parse(after),
+      [1, 2],
     );
+    rewritten.push({ id: p.id, version: saved.version });
   }
   await db.query(
     `UPDATE docs SET deleted_at = now(), deleted_by = $2, merged_into = $3
@@ -413,7 +424,8 @@ export async function mergePages(
   );
   await noteTrash(db, id, u.id, true);
   await searchTrash(db, id, true);
-  return { version, rewritten, doc: await readDoc(db, body.into, u.id) };
+  const doc = await readDoc(db, body.into, u.id);
+  return { version: doc.version, rewritten, doc };
 }
 
 /**
@@ -653,7 +665,8 @@ export async function docStructureRoutes(app: FastifyInstance) {
     await announceDocChange(pool, id, body.version, "merge", { trashed: true });
     await announceDocChange(pool, body.into, out.version, "merge");
     for (const p of out.rewritten)
-      await announceDocChange(pool, p.id, p.version, "merge").catch(() => {});
+      if (p.id !== body.into)
+        await announceDocChange(pool, p.id, p.version, "merge").catch(() => {});
     return { doc: out.doc, relinked: out.rewritten.length };
   });
 
