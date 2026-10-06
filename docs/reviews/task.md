@@ -3501,3 +3501,48 @@ enrollment/lease/catalog publication/inference, disconnect/key lifecycle,
 multiple account management and provider-choice Settings activation are still
 incomplete. Web-only direct sign-in is still unresolved. No main promotion,
 production deployment or full ADR completion is claimed by this foundation.
+
+## Native enrollment/lease/catalog lifecycle checkpoint — 6 October 2026
+
+A portable runtime-owned signer validates the exact enrollment and lease domain,
+body, host, account, public fingerprint, epochs, nonce and expiry before asking
+native keystores for proof. Catalog signatures use the canonical bounded digest.
+Live ownership is rechecked after every asynchronous key/proof operation; close
+and exact-key revocation permanently stop the signer. No private-key method is
+exported to views. The shared lifecycle enrolls the device, validates the returned
+registration, claims the expected next lease, serializes monotonic heartbeats and
+model publication, verifies receipts and aborts queued/in-flight work on close.
+Its timer/listeners are disposed on every operation. It deliberately does not
+advertise inference capability before a working inference adapter exists.
+
+The actual native factory wires this lifecycle to protected credentials, native
+keys, installation host, fresh exact-account server metadata and live local model
+reads. Creating a replacement invalidates older/pending runtimes. Sign-in and
+disconnect close owned executors; disconnect removes the local signing key after
+erasing credentials and still attempts server revocation on key-removal failure.
+A callback-only older installed build cannot claim executor signing support.
+The factory is not yet activated in Settings, does not run a background timer,
+and currently publishes catalogs only; inference/foreground lifecycle and account
+management remain required before it is a usable provider.
+
+Final qualification:79 focused tests pass,0 fail/skip,terminal0,2048.425667ms.
+Actual portable P-256 proofs are checked by the backend verifier; native factory
+checks run actual TypeScript with mocked OS/provider/API boundaries. Initial tests
+returned an extra expiry field outside the strict catalog receipt contract; the
+new fixture was corrected to the real contract without loosening validation.
+Evidence: `/tmp/orbyn-chatgpt-native-lifecycle-qualified.log`. Package builds,
+backend/desktop/mobile typechecks, owned formatting and diff checks terminate0.
+No installed OS app, full DB suite or live provider inference is claimed.
+
+New prerequisite for inference: existing `chatgptInferenceReceiptMessage` embeds
+the complete result, while `verifyChatgptExecutorProof` limits message input to
+2048 characters. A valid4000-character completed receipt produced4597 message
+bytes and its otherwise-valid Ed25519 signature was rejected by the actual
+verifier. Native signing also intentionally bounds proof messages to2048 bytes.
+Implement a versioned canonical digest receipt shared by server/desktop/native,
+retaining explicit legacy verification where bounded, before inference activation.
+Do not claim native execution complete from enrollment/catalog evidence.
+
+No main promotion or production deployment is claimed. Web-only direct sign-in,
+actual installed-device acceptance, multiple accounts, usable provider choice and
+fallback UI remain open, as do the rest of full C1-C6/M1/D1/U1.

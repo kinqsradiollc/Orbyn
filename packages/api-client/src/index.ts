@@ -55,3 +55,7 @@ export { DocContentStore } from "./doc-content-store.js";
 export type { DocContentEditorState } from "./doc-content-store.js";
 
 export * from "./chatgpt-local-tokens.js";
+
+export * from "./chatgpt-executor-signer.js";
+
+export * from "./chatgpt-executor-lifecycle.js";

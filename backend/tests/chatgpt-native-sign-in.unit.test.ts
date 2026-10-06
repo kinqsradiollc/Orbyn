@@ -2,7 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
-import { randomBytes, randomUUID, createHash } from "node:crypto";
+import {
+  randomBytes,
+  randomUUID,
+  createHash,
+  generateKeyPairSync,
+  sign,
+} from "node:crypto";
 import ts from "typescript";
 import * as core from "@orbyn/core";
 import * as api from "@orbyn/api-client";
@@ -41,10 +47,34 @@ function mount(
     refreshIdentity?: object;
     failRefreshProof?: boolean;
     onRefresh?: () => Promise<void>;
+    signing?: boolean;
     changeDuringModels?: "session" | "registration";
   } = {},
 ) {
   const storage = new Map<string, string>();
+  const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const publicKey = pair.publicKey
+    .export({ type: "spki", format: "der" })
+    .toString("base64url");
+  const fingerprint = createHash("sha256")
+    .update(Buffer.from(publicKey, "base64url"))
+    .digest("base64url");
+  const executorId = randomUUID();
+  const executorBinding = {
+    user_id: userId,
+    connection_id: connection.id,
+    issuer: connection.issuer,
+    subject: connection.subject,
+    client_id: connection.client_id,
+  };
+  let executorHost = "";
+  const executorLease = () => ({
+    executor_id: executorId,
+    binding: executorBinding,
+    enrollment_epoch: 1,
+    lease_epoch: 1,
+    expires_at: new Date(Date.now() + 60000).toISOString(),
+  });
   const session = { token: "owned-session" };
   const calls = {
     network: 0,
@@ -56,6 +86,8 @@ function mount(
     freshMe: false,
     revoked: [] as string[],
     refreshed: 0,
+    keyRemoved: 0,
+    catalogs: [] as object[],
     refreshProof: [] as object[],
   };
   let state = "",
@@ -197,6 +229,30 @@ function mount(
         };
       if (id === "../../modules/orbyn-chatgpt")
         return {
+          nativeChatgptSigningAvailable: () => options.signing === true,
+          nativeChatgptKeyMetadata: async (alias: string) => {
+            assert.match(alias, /^[a-f0-9]{64}$/);
+            return {
+              public_key: publicKey,
+              public_key_fingerprint: fingerprint,
+            };
+          },
+          signNativeChatgptProof: async (
+            alias: string,
+            expected: string,
+            message: string,
+          ) => {
+            assert.match(alias, /^[a-f0-9]{64}$/);
+            assert.equal(expected, fingerprint);
+            return sign("sha256", Buffer.from(message), {
+              key: pair.privateKey,
+              dsaEncoding: "ieee-p1363",
+            }).toString("base64url");
+          },
+          removeNativeChatgptKey: async (alias: string) => {
+            assert.match(alias, /^[a-f0-9]{64}$/);
+            calls.keyRemoved++;
+          },
           nativeChatgptCallbackAvailable: () => options.available !== false,
           startNativeChatgptCallback: async (_id: string, value: string) => {
             calls.started++;
@@ -230,6 +286,68 @@ function mount(
         return {
           client: {
             baseUrl: "https://orbyn.example/api",
+            beginChatgptExecutor: async (input: any) => {
+              executorHost = input.host_id;
+              const id = randomUUID();
+              return {
+                id,
+                binding: executorBinding,
+                host_id: executorHost,
+                public_key_fingerprint: fingerprint,
+                expires_at: new Date(Date.now() + 60000).toISOString(),
+                proof_message: JSON.stringify([
+                  "orbyn:executor:enroll:v1",
+                  id,
+                  randomUUID(),
+                  executorBinding,
+                  executorHost,
+                  fingerprint,
+                  0,
+                  null,
+                  "n".repeat(43),
+                ]),
+              };
+            },
+            finishChatgptExecutor: async () => ({
+              id: executorId,
+              binding: executorBinding,
+              host_id: executorHost,
+              public_key_fingerprint: fingerprint,
+              enrollment_epoch: 1,
+            }),
+            beginChatgptExecutorLease: async () => {
+              const id = randomUUID();
+              return {
+                id,
+                executor_id: executorId,
+                binding: executorBinding,
+                enrollment_epoch: 1,
+                expected_lease_epoch: 0,
+                expires_at: new Date(Date.now() + 60000).toISOString(),
+                proof_message: JSON.stringify([
+                  "orbyn:executor:lease-claim:v1",
+                  id,
+                  randomUUID(),
+                  executorBinding,
+                  executorId,
+                  1,
+                  0,
+                  "n".repeat(43),
+                ]),
+              };
+            },
+            finishChatgptExecutorLease: async () => executorLease(),
+            renewChatgptExecutorLease: async () => executorLease(),
+            publishChatgptModels: async (value: any) => {
+              calls.catalogs.push(value.catalog);
+              assert.equal(value.catalog.capabilities, undefined);
+              return {
+                executor_id: executorId,
+                lease_epoch: 1,
+                sequence: value.catalog.sequence,
+                published_at: new Date().toISOString(),
+              };
+            },
             me: async (settings: any) => {
               calls.freshMe = settings.fresh;
               return { id: options.me ?? userId };
@@ -269,6 +387,7 @@ function mount(
     signIn: (input = userId) => exports.signInNativeChatgpt(input),
     cancel: () => exports.cancelNativeChatgptSignIn(),
     disconnect: (input = userId) => exports.disconnectNativeChatgpt(input),
+    executor: (input = userId) => exports.createNativeChatgptExecutor(input),
     models: (input = userId, signal?: AbortSignal) =>
       exports.readNativeChatgptModels(input, { signal }),
     storage,
@@ -621,4 +740,34 @@ test("session changes during refreshed secure write restore only the prior regis
   options.changeSession = "store";
   await assert.rejects(fixture.models(), /changed/);
   assert.equal(accounts(fixture.storage)[0][1], original);
+});
+
+test("actual native executor factory publishes local account models and disconnect closes it and removes its key", async () => {
+  const fixture = mount({ signing: true });
+  await fixture.signIn();
+  const runtime = await fixture.executor();
+  const started = await runtime.start();
+  assert.equal(started.selection.connection_id, connection.id);
+  assert.equal(fixture.calls.catalogs.length, 1);
+  await runtime.heartbeat();
+  await fixture.disconnect();
+  assert.equal(fixture.calls.keyRemoved, 1);
+  await assert.rejects(runtime.heartbeat());
+});
+test("native executor replacement and reconnect invalidate an older runtime", async () => {
+  const fixture = mount({ signing: true });
+  await fixture.signIn();
+  const older = await fixture.executor();
+  const replacement = await fixture.executor();
+  await assert.rejects(older.start());
+  await replacement.start();
+  await fixture.signIn();
+  await assert.rejects(replacement.heartbeat());
+});
+test("native executor refuses web and installed builds without signing support", async () => {
+  await assert.rejects(mount().executor(), /executor signing/);
+  await assert.rejects(
+    mount({ platform: "web", signing: true }).executor(),
+    /executor signing/,
+  );
 });

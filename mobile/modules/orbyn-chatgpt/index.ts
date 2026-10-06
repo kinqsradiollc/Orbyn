@@ -19,6 +19,12 @@ const native = requireOptionalNativeModule<OrbynChatgptModule>("OrbynChatgpt");
 /** Native builds own their callback; web/Expo Go must not silently delegate to a laptop. */
 export const nativeChatgptCallbackAvailable = () => native !== null;
 
+/** Older installed callback-only builds cannot advertise native executor support. */
+export const nativeChatgptSigningAvailable = () =>
+  typeof native?.keyMetadata === "function" &&
+  typeof native?.signProof === "function" &&
+  typeof native?.removeKey === "function";
+
 /** Start before opening authorization. The returned callback is ephemeral and device-local. */
 export async function startNativeChatgptCallback(
   id: string,

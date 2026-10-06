@@ -16,6 +16,8 @@ import {
   parseChatgptLocalGrant,
   readChatgptLocalModels,
   refreshChatgptLocalGrant,
+  createChatgptExecutorSigner,
+  createChatgptExecutorLifecycle,
   type ChatgptLocalGrant,
 } from "@orbyn/api-client";
 import {
@@ -23,6 +25,10 @@ import {
   nativeChatgptCallbackAvailable,
   startNativeChatgptCallback,
   waitNativeChatgptCallback,
+  nativeChatgptSigningAvailable,
+  nativeChatgptKeyMetadata,
+  signNativeChatgptProof,
+  removeNativeChatgptKey,
 } from "../../modules/orbyn-chatgpt";
 import { client } from "./api";
 import { session } from "./session";
@@ -44,6 +50,13 @@ let current: {
   finished: Promise<void>;
 } | null = null;
 let disconnecting = false;
+const executorRequests = new Map<string, symbol>();
+const executors = new Set<{ userId: string; close: () => void }>();
+function stopExecutors(userId: string) {
+  executorRequests.delete(userId);
+  for (const executor of executors)
+    if (executor.userId === userId) executor.close();
+}
 let hostPromise: Promise<string> | null = null;
 let browserOwner: string | null = null;
 
@@ -117,6 +130,7 @@ export async function signInNativeChatgpt(
   const finished = new Promise<void>((resolve) => {
     finish = resolve;
   });
+  stopExecutors(userId);
   current = { id, controller, finished };
   const abort = () => controller.abort();
   options.signal?.addEventListener("abort", abort, { once: true });
@@ -472,6 +486,7 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
   const token = session.token;
   if (!token) throw new Error("Sign in to Orbyn before disconnecting ChatGPT.");
   disconnecting = true;
+  stopExecutors(userId);
   try {
     const attempt = current;
     attempt?.controller.abort();
@@ -488,7 +503,11 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     const key = await accountKey(userId);
     const original = await SecureStore.getItemAsync(key, protectedOptions);
     check();
-    if (original === null) return;
+    if (original === null) {
+      if (nativeChatgptSigningAvailable())
+        await removeNativeChatgptKey(key.split(".").at(-1)!);
+      return;
+    }
     // Corrupt local credentials must still be erasable; do not guess a remote connection ID.
     let saved: ReturnType<typeof decodeRegistration> = null;
     try {
@@ -500,6 +519,15 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     // Once ownership is checked, a revocation failure must not retain local tokens.
     await SecureStore.deleteItemAsync(key, protectedOptions);
     check();
+    let keyRemovalFailed = false;
+    if (nativeChatgptSigningAvailable()) {
+      try {
+        await removeNativeChatgptKey(key.split(".").at(-1)!);
+      } catch {
+        keyRemovalFailed = true;
+      }
+      check();
+    }
     if (saved) {
       try {
         await client.revokeChatgptConnection(saved.connection.id);
@@ -510,7 +538,133 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       }
       check();
     }
+    if (keyRemovalFailed)
+      throw new Error(
+        "ChatGPT credentials were removed. This device's signing key could not be erased; retry disconnect.",
+      );
   } finally {
     disconnecting = false;
   }
+}
+
+/** Private native catalog executor; it has no inference capability until the provider adapter is installed. */
+export async function createNativeChatgptExecutor(userId: string) {
+  if (Platform.OS === "web" || !nativeChatgptSigningAvailable())
+    throw new Error(
+      "This build does not include native ChatGPT executor signing.",
+    );
+  const token = session.token;
+  if (!token) throw new Error("Sign in to Orbyn before connecting ChatGPT.");
+  stopExecutors(userId);
+  const request = Symbol();
+  executorRequests.set(userId, request);
+  const check = () => {
+    if (
+      session.token !== token ||
+      current ||
+      disconnecting ||
+      executorRequests.get(userId) !== request
+    )
+      throw new Error(
+        "The Orbyn session or ChatGPT connection changed. Try again.",
+      );
+  };
+  check();
+  const user = await client.me({ fresh: true });
+  check();
+  if (user.id !== userId)
+    throw new Error("The signed-in Orbyn account changed.");
+  const key = await accountKey(userId);
+  const saved = decodeRegistration(
+    await SecureStore.getItemAsync(key, protectedOptions),
+  );
+  check();
+  if (!saved || !saved.grant.sharingGranted)
+    throw new Error("Connect ChatGPT plan usage first.");
+  const connection = saved.connection;
+  const host = (await hostId()).replace(/^urn:uuid:/, "");
+  check();
+  const binding = {
+    user_id: userId,
+    connection_id: connection.id,
+    issuer: connection.issuer,
+    subject: connection.subject,
+    client_id: connection.client_id,
+  };
+  const live = async () => {
+    check();
+    const record = decodeRegistration(
+      await SecureStore.getItemAsync(key, protectedOptions),
+    );
+    check();
+    if (
+      !record ||
+      !record.grant.sharingGranted ||
+      record.connection.id !== connection.id ||
+      record.connection.client_id !== connection.client_id ||
+      record.connection.subject !== connection.subject ||
+      record.connection.issuer !== connection.issuer
+    )
+      throw new Error("The ChatGPT account changed. Reconnect it.");
+    const rows = await client.chatgptConnections();
+    check();
+    if (
+      !rows.some(
+        (row) =>
+          row.id === connection.id &&
+          row.client_id === connection.client_id &&
+          row.subject === connection.subject &&
+          row.issuer === connection.issuer,
+      )
+    )
+      throw new Error("The ChatGPT connection is no longer available.");
+  };
+  await live();
+  const alias = key.split(".").at(-1)!;
+  const signer = createChatgptExecutorSigner({
+    binding,
+    hostId: host,
+    requireLiveConnection: live,
+    keys: {
+      metadata: () => nativeChatgptKeyMetadata(alias),
+      sign: (fingerprint, message) =>
+        signNativeChatgptProof(alias, fingerprint, message),
+      remove: () => removeNativeChatgptKey(alias),
+    },
+    digest: async (message) =>
+      (
+        await Crypto.digestStringAsync(
+          Crypto.CryptoDigestAlgorithm.SHA256,
+          message,
+          { encoding: Crypto.CryptoEncoding.BASE64 },
+        )
+      )
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/, ""),
+  });
+  const runtime = createChatgptExecutorLifecycle({
+    binding,
+    client,
+    signer,
+    requireLiveConnection: live,
+    models: async (signal) =>
+      (await readNativeChatgptModels(userId, { signal })).models,
+  });
+  const handle = {
+    userId,
+    close: () => {
+      runtime.close();
+      executors.delete(handle);
+      if (executorRequests.get(userId) === request)
+        executorRequests.delete(userId);
+    },
+  };
+  executors.add(handle);
+  return {
+    start: runtime.start,
+    heartbeat: runtime.heartbeat,
+    refreshCatalog: runtime.refreshCatalog,
+    close: handle.close,
+  };
 }
