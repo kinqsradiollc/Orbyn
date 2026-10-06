@@ -50,6 +50,9 @@ let current: {
   id: string;
   controller: AbortController;
   finished: Promise<void>;
+  mode: "sign-in" | "refresh";
+  key?: string;
+  sessionToken?: string;
 } | null = null;
 let disconnecting = false;
 const executorRequests = new Map<string, symbol>();
@@ -133,7 +136,7 @@ export async function signInNativeChatgpt(
     finish = resolve;
   });
   stopExecutors(userId);
-  current = { id, controller, finished };
+  current = { id, controller, finished, mode: "sign-in" };
   const abort = () => controller.abort();
   options.signal?.addEventListener("abort", abort, { once: true });
   if (options.signal?.aborted) abort();
@@ -327,7 +330,7 @@ async function renewNativeRegistration(
   const finished = new Promise<void>((resolve) => {
     finish = resolve;
   });
-  current = { id, controller, finished };
+  current = { id, controller, finished, mode: "refresh", key, sessionToken };
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted) abort();
@@ -405,8 +408,28 @@ async function renewNativeRegistration(
   }
 }
 
+let modelReads: Promise<unknown> = Promise.resolve();
+/** Serialize local credential renewal; queued calls retain their original session and cancellation fence. */
+export function readNativeChatgptModels(
+  userId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<{ connection: ChatgptConnection; models: ChatgptModel[] }> {
+  const token = session.token;
+  const result = modelReads
+    .catch(() => {})
+    .then(() => {
+      if (options.signal?.aborted || session.token !== token)
+        throw new Error(
+          "The Orbyn session or ChatGPT connection changed. Try again.",
+        );
+      return readNativeChatgptModelsOwned(userId, options);
+    });
+  modelReads = result.catch(() => {});
+  return result;
+}
+
 /** Read only this native account's current catalog; never publish credentials or silently switch accounts. */
-export async function readNativeChatgptModels(
+async function readNativeChatgptModelsOwned(
   userId: string,
   options: { signal?: AbortSignal } = {},
 ): Promise<{ connection: ChatgptConnection; models: ChatgptModel[] }> {
@@ -560,10 +583,17 @@ export async function createNativeChatgptExecutor(userId: string) {
   stopExecutors(userId);
   const request = Symbol();
   executorRequests.set(userId, request);
+  let ownedKey: string | undefined;
   const check = () => {
     if (
       session.token !== token ||
-      current ||
+      (current &&
+        !(
+          current.mode === "refresh" &&
+          ownedKey &&
+          current.key === ownedKey &&
+          current.sessionToken === token
+        )) ||
       disconnecting ||
       executorRequests.get(userId) !== request
     )
@@ -577,6 +607,7 @@ export async function createNativeChatgptExecutor(userId: string) {
   if (user.id !== userId)
     throw new Error("The signed-in Orbyn account changed.");
   const key = await accountKey(userId);
+  ownedKey = key;
   const saved = decodeRegistration(
     await SecureStore.getItemAsync(key, protectedOptions),
   );

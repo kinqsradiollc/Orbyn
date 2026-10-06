@@ -2985,3 +2985,36 @@ https://developers.openai.com/siwc/website
 https://openai.com/policies/sign-in-with-chatgpt-terms/
 
 Goal stays active. No main promotion or production deployment is claimed here.
+
+## Native refresh coordination — 6 October 2026
+
+Same-account model reads now serialize local credential renewal and retain their
+original Orbyn session/cancellation fence while queued. Parallel catalog/inference
+requests cannot rotate the same refresh token twice or overwrite a newer protected
+revision. The native action record distinguishes sign-in from verified refresh;
+an already-owned executor may keep renewing its lease during refresh only when
+the exact protected account key and captured Orbyn session match. New sign-in,
+foreign session/account, disconnect, scope reduction and failed identity/CAS
+checks remain fenced. No arbitrary current action is allowed through.
+
+Tests execute actual native service/factory TypeScript with mocked OS/provider/API
+boundaries. Two catalog reads share one verified rotation; a heartbeat succeeds
+while the owned refresh is blocked; simultaneous catalog/inference work completes
+with one rotation and a verified signed nonempty result; changed-session and
+cancelled queued reads never adopt replacement credentials; disconnect aborts
+shared refresh and no queued request restores or uses credentials afterward.
+
+Qualification:304 ChatGPT unit tests pass,0fail/skip,terminal0,18056.099292ms,
+`/tmp/orbyn-native-refresh-coordination-all.log`. Initial focused37 tests passed,
+0fail/skip,1569.394083ms, `/tmp/orbyn-native-refresh-coordination.log`; final cohort
+adds simultaneous inference/catalog and queued-disconnect cases. Package builds
+and backend/desktop/mobile typechecks terminate0,
+`/tmp/orbyn-native-refresh-coordination-types.log`. No HTTP/schema/dependency or
+UI-layout change is introduced. Protected rotation, verified identity, strict
+sharing scopes and fixed provider transport remain intact.
+
+This closes the identified current-action concurrency defect in the candidate;
+it does not prove installed-device OAuth/keystore/suspension, real OpenAI usage,
+multiple accounts, hosted browser-only connection, production readiness or the
+full ADR. Main qualification/promotion and all remaining full-scope acceptance
+still need work. Keep docs/reviews/adr-current-state.md updated per checkpoint.

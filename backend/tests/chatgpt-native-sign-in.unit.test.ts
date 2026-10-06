@@ -917,3 +917,182 @@ test("native session change during provider transport cannot publish a completio
   assert.equal(f.calls.publications.length, 0);
   runtime.close();
 });
+
+test("concurrent native catalog reads share one verified token rotation and use the new grant", async () => {
+  let entered!: (value?: unknown) => void, release!: (value?: unknown) => void;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const f = mount({
+    onRefresh: async () => {
+      entered();
+      await blocked;
+    },
+    refreshedId: true,
+  });
+  await f.signIn();
+  expireSoon(f);
+  const first = f.models();
+  await started;
+  const second = f.models();
+  release();
+  const results = await Promise.all([first, second]);
+  assert.equal(results.length, 2);
+  assert.equal(f.calls.refreshed, 1);
+  assert.equal(f.calls.refreshProof.length, 1);
+  assert.equal(
+    JSON.parse(accounts(f.storage)[0][1]).grant.accessToken,
+    "refreshed-access",
+  );
+});
+test("an owned executor heartbeat stays live during its verified refresh but new sign-in is fenced", async () => {
+  let entered!: (value?: unknown) => void, release!: (value?: unknown) => void;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const f = mount({
+    signing: true,
+    onRefresh: async () => {
+      entered();
+      await blocked;
+    },
+  });
+  await f.signIn();
+  const runtime = await f.executor();
+  await runtime.start();
+  expireSoon(f);
+  const models = f.models();
+  await started;
+  await runtime.heartbeat();
+  await assert.rejects(f.signIn(), /current ChatGPT action/);
+  release();
+  await models;
+  await runtime.heartbeat();
+  runtime.close();
+});
+test("queued native catalog reads cannot adopt a replacement Orbyn session", async () => {
+  let entered!: (value?: unknown) => void, release!: (value?: unknown) => void;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const f = mount({
+    onRefresh: async () => {
+      entered();
+      await blocked;
+    },
+  });
+  await f.signIn();
+  expireSoon(f);
+  const first = f.models();
+  const rejectedFirst = assert.rejects(first);
+  await started;
+  const second = f.models();
+  const rejectedSecond = assert.rejects(
+    second,
+    /session or ChatGPT connection changed/,
+  );
+  f.session.token = "replacement-session";
+  release();
+  await Promise.all([rejectedFirst, rejectedSecond]);
+  assert.equal(f.calls.refreshed, 1);
+  assert.equal(f.calls.refreshProof.length, 0);
+});
+test("cancelled queued catalog work never performs another provider request", async () => {
+  let entered!: (value?: unknown) => void, release!: (value?: unknown) => void;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const f = mount({
+    onRefresh: async () => {
+      entered();
+      await blocked;
+    },
+  });
+  await f.signIn();
+  expireSoon(f);
+  const first = f.models();
+  await started;
+  const controller = new AbortController();
+  const second = f.models(undefined, controller.signal);
+  const rejected = assert.rejects(second);
+  controller.abort();
+  release();
+  await first;
+  const count = f.calls.network;
+  await rejected;
+  assert.equal(f.calls.network, count);
+});
+
+test("simultaneous native catalog and inference work share refresh without stopping the executor", async () => {
+  let entered!: (value?: unknown) => void, release!: (value?: unknown) => void;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const f = mount({
+    signing: true,
+    inference: "success",
+    onRefresh: async () => {
+      entered();
+      await blocked;
+    },
+  });
+  await f.signIn();
+  const runtime = await f.executor();
+  await runtime.start();
+  expireSoon(f);
+  const catalog = runtime.refreshCatalog();
+  await started;
+  const inference = runtime.executeNext();
+  release();
+  await Promise.all([catalog, inference]);
+  await runtime.heartbeat();
+  assert.equal(f.calls.refreshed, 1);
+  assert.equal(f.calls.responses, 1);
+  assert.equal(f.calls.catalogs.length, 2);
+  assert.equal(f.calls.publications.length, 1);
+  runtime.close();
+});
+test("disconnect aborts shared refresh and prevents queued work from restoring or using credentials", async () => {
+  let entered!: (value?: unknown) => void, release!: (value?: unknown) => void;
+  const started = new Promise((resolve) => {
+    entered = resolve;
+  });
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const f = mount({
+    onRefresh: async () => {
+      entered();
+      await blocked;
+    },
+  });
+  await f.signIn();
+  expireSoon(f);
+  const first = f.models();
+  const rejectedFirst = assert.rejects(first);
+  await started;
+  const second = f.models();
+  const rejectedSecond = assert.rejects(second);
+  await f.disconnect();
+  await Promise.all([rejectedFirst, rejectedSecond]);
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(accounts(f.storage).length, 0);
+  assert.equal(f.calls.refreshed, 1);
+  assert.equal(f.calls.refreshProof.length, 0);
+});
