@@ -55,7 +55,8 @@ test("legacy web handoff remains explicit while native Settings uses local sign-
     ),
     "utf8",
   );
-  assert.match(native, /await signInNativeChatgpt\(userId\)/);
+  assert.match(native, /await signInNativeChatgpt\(userId, \{/);
+  assert.match(native, /await prepareNativeChatgptAccounts\(userId, \{/);
   assert.match(native, /chatgptForeground\.restart\(\)/);
   assert.doesNotMatch(
     native,

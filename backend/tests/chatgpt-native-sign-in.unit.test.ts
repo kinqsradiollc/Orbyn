@@ -55,12 +55,15 @@ function mount(
     refreshError?: { status: number; code: string };
     failMappingStore?: boolean;
     onFinish?: () => void;
+    onDirectoryWrite?: () => void;
     signing?: boolean;
     inference?: "success" | "limit" | "session";
     changeDuringModels?: "session" | "registration";
   } = {},
 ) {
   const storage = new Map<string, string>();
+  const signingAliases: string[] = [],
+    removedAliases: string[] = [];
   const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
   const publicKey = pair.publicKey
     .export({ type: "spki", format: "der" })
@@ -127,7 +130,35 @@ function mount(
     TextDecoder,
     setTimeout,
     clearTimeout,
-    require(id: string) {
+    require: function moduleRequire(id: string): any {
+      if (
+        [
+          "./chatgpt-protected-store",
+          "./chatgpt-account-directory",
+          "./chatgpt-account-migration",
+        ].includes(id)
+      ) {
+        const nested: any = {};
+        runInNewContext(
+          ts.transpileModule(
+            readFileSync(
+              new URL(
+                `../../mobile/src/lib/${id.slice(2)}.ts`,
+                import.meta.url,
+              ),
+              "utf8",
+            ),
+            {
+              compilerOptions: {
+                module: ts.ModuleKind.CommonJS,
+                target: ts.ScriptTarget.ES2022,
+              },
+            },
+          ).outputText,
+          { exports: nested, URL, Promise, Map, Set, require: moduleRequire },
+        );
+        return nested;
+      }
       if (id === "@orbyn/core") return core;
       if (id === "@orbyn/api-client") return api;
       if (id === "zod") return { z };
@@ -155,9 +186,14 @@ function mount(
           getItemAsync: async (key: string) => storage.get(key) ?? null,
           setItemAsync: async (key: string, value: string, config: any) => {
             assert.equal(config.keychainAccessible, "protected-device-only");
-            if (options.failMappingStore && key.includes(".registration."))
+            if (
+              options.failMappingStore &&
+              (key.includes(".registration.") ||
+                key.includes(".slot-registration."))
+            )
               throw new Error("private-access storage failure");
             storage.set(key, value);
+            if (key.includes(".directory.")) options.onDirectoryWrite?.();
             if (options.changeSession === "store" && key.includes(".account."))
               session.token = "other-session";
           },
@@ -308,6 +344,7 @@ function mount(
           nativeChatgptSigningAvailable: () => options.signing === true,
           nativeChatgptKeyMetadata: async (alias: string) => {
             assert.match(alias, /^[a-f0-9]{64}$/);
+            signingAliases.push(alias);
             return {
               public_key: publicKey,
               public_key_fingerprint: fingerprint,
@@ -328,6 +365,7 @@ function mount(
           removeNativeChatgptKey: async (alias: string) => {
             assert.match(alias, /^[a-f0-9]{64}$/);
             calls.keyRemoved++;
+            removedAliases.push(alias);
           },
           nativeChatgptCallbackAvailable: () => options.available !== false,
           startNativeChatgptCallback: async (_id: string, value: string) => {
@@ -502,6 +540,8 @@ function mount(
     },
   });
   return {
+    prepare: (input = userId, signal?: AbortSignal) =>
+      exports.prepareNativeChatgptAccounts(input, { signal }),
     signIn: (input = userId) => exports.signInNativeChatgpt(input),
     cancel: () => exports.cancelNativeChatgptSignIn(),
     accountState: (input = userId, signal?: AbortSignal) =>
@@ -511,13 +551,17 @@ function mount(
     models: (input = userId, signal?: AbortSignal) =>
       exports.readNativeChatgptModels(input, { signal }),
     storage,
+    signingAliases,
+    removedAliases,
     session,
     calls,
   };
 }
 import { z } from "zod";
 const accounts = (storage: Map<string, string>) =>
-  [...storage].filter(([key]) => key.includes(".account."));
+  [...storage].filter(
+    ([key]) => key.includes(".account.") || key.includes(".slot."),
+  );
 
 test("actual native sign-in service authorizes locally, verifies only ID proof remotely and stores protected credentials", async () => {
   const fixture = mount();
@@ -1376,4 +1420,215 @@ test("native reconnect rejects a disconnected mapping replaced during authorizat
   await assert.rejects(fixture.signIn(), /registration changed/);
   assert.equal(accounts(fixture.storage).length, 0);
   assert.equal(fixture.storage.get(key), replacement);
+});
+
+const migratedAlias = "e".repeat(64);
+function attachMigratedAlias(f: ReturnType<typeof mount>) {
+  const [key, raw] = accounts(f.storage)[0];
+  f.storage.set(
+    key,
+    JSON.stringify({ ...JSON.parse(raw), signingAlias: migratedAlias }),
+  );
+}
+test("migrated native credentials use their retained signing key and disconnect removes that key", async () => {
+  const f = mount({ signing: true });
+  await f.signIn();
+  attachMigratedAlias(f);
+  const runtime = await f.executor();
+  await runtime.start();
+  assert.ok(f.signingAliases.length > 0);
+  assert.equal(
+    f.signingAliases.every((alias) => alias === migratedAlias),
+    true,
+  );
+  await f.disconnect();
+  assert.deepEqual(f.removedAliases, [migratedAlias]);
+  runtime.close();
+});
+test("migrated signing alias survives verified token rotation and terminal retirement", async () => {
+  for (const terminal of [false, true]) {
+    const f = mount(
+      terminal
+        ? { refreshError: { status: 400, code: "invalid_grant" } }
+        : { refreshedId: true },
+    );
+    await f.signIn();
+    attachMigratedAlias(f);
+    expireSoon(f);
+    if (terminal) await assert.rejects(f.models(), /Reconnect/);
+    else await f.models();
+    const saved = JSON.parse(accounts(f.storage)[0][1]);
+    assert.equal(saved.signingAlias, migratedAlias);
+    assert.equal(saved.version, terminal ? 2 : 1);
+  }
+});
+test("migrated alias persists through disconnect mapping and reconnect", async () => {
+  const f = mount({ signing: true });
+  await f.signIn();
+  attachMigratedAlias(f);
+  await f.disconnect();
+  const mapping = [...f.storage].find(([key]) =>
+    key.includes(".registration."),
+  )!;
+  assert.equal(JSON.parse(mapping[1]).signingAlias, migratedAlias);
+  await f.signIn();
+  assert.equal(
+    JSON.parse(accounts(f.storage)[0][1]).signingAlias,
+    migratedAlias,
+  );
+});
+test("invalid signing aliases cannot be used to select a native key", async () => {
+  const f = mount({ signing: true });
+  await f.signIn();
+  const [key, raw] = accounts(f.storage)[0];
+  f.storage.set(
+    key,
+    JSON.stringify({
+      ...JSON.parse(raw),
+      signingAlias: "private-invalid-alias",
+    }),
+  );
+  await assert.rejects(f.executor(), /saved ChatGPT connection is unavailable/);
+  assert.equal(f.signingAliases.length, 0);
+});
+test("executor rejects a signing alias replaced during its lifetime", async () => {
+  const f = mount({ signing: true });
+  await f.signIn();
+  attachMigratedAlias(f);
+  const runtime = await f.executor();
+  await runtime.start();
+  const [key, raw] = accounts(f.storage)[0];
+  f.storage.set(
+    key,
+    JSON.stringify({ ...JSON.parse(raw), signingAlias: "f".repeat(64) }),
+  );
+  await assert.rejects(runtime.heartbeat(), /account changed/);
+  runtime.close();
+});
+test("native service migrates its singleton and continues models, signing, disconnect and reconnect in that slot", async () => {
+  const f = mount({ signing: true });
+  await f.signIn();
+  const [oldKey, oldRaw] = accounts(f.storage)[0];
+  const before = JSON.parse(oldRaw),
+    state = await f.prepare();
+  assert.equal(state.selected, connection.id);
+  assert.equal(f.storage.has(oldKey), false);
+  const [slot, raw] = accounts(f.storage)[0];
+  assert.match(slot, /\.slot\./);
+  const migrated = JSON.parse(raw);
+  assert.deepEqual(migrated.grant, before.grant);
+  assert.equal(migrated.signingAlias, oldKey.split(".").at(-1));
+  await f.models();
+  const runtime = await f.executor();
+  await runtime.start();
+  assert.equal(
+    f.signingAliases.every((alias) => alias === migrated.signingAlias),
+    true,
+  );
+  await f.disconnect();
+  assert.equal(f.storage.has(slot), false);
+  let directory = JSON.parse(
+    [...f.storage].find(([key]) => key.includes(".directory."))![1],
+  );
+  assert.equal(directory.selected, null);
+  assert.equal(directory.accounts[0].status, "disconnected");
+  const mapping = [...f.storage].find(([key]) =>
+    key.includes(".slot-registration."),
+  )!;
+  assert.equal(JSON.parse(mapping[1]).signingAlias, migrated.signingAlias);
+  await f.signIn();
+  directory = JSON.parse(
+    [...f.storage].find(([key]) => key.includes(".directory."))![1],
+  );
+  assert.equal(directory.selected, connection.id);
+  assert.equal(directory.accounts[0].status, "connected");
+  assert.equal(
+    JSON.parse(f.storage.get(slot)!).signingAlias,
+    migrated.signingAlias,
+  );
+  runtime.close();
+});
+test("native migration preserves terminal reconnect metadata and exact alias", async () => {
+  const f = mount({ refreshError: { status: 400, code: "invalid_grant" } });
+  await f.signIn();
+  attachMigratedAlias(f);
+  expireSoon(f);
+  await assert.rejects(f.models(), /Reconnect/);
+  const state = await f.prepare();
+  assert.equal(state.selected, null);
+  assert.equal(state.accounts[0].status, "reconnect");
+  assert.equal((await f.accountState()).status, "reconnect");
+  await f.signIn();
+  assert.equal(
+    JSON.parse(accounts(f.storage)[0][1]).signingAlias,
+    migratedAlias,
+  );
+});
+test("migrated invalid refresh retires exact directory entry without exposing credentials", async () => {
+  const f = mount({ refreshError: { status: 400, code: "invalid_grant" } });
+  await f.signIn();
+  await f.prepare();
+  expireSoon(f);
+  await assert.rejects(f.models(), /Reconnect/);
+  const directory = JSON.parse(
+    [...f.storage].find(([key]) => key.includes(".directory."))![1],
+  );
+  assert.equal(directory.selected, null);
+  assert.equal(directory.accounts[0].status, "reconnect");
+  assert.equal(JSON.parse(accounts(f.storage)[0][1]).grant, null);
+  assert.doesNotMatch(
+    JSON.stringify(directory),
+    /private-access|private-refresh|private-id/,
+  );
+});
+test("native migration interruption blocks execution until original cleanup resumes", async () => {
+  const f = mount({ changeSession: "delete", signing: true });
+  await f.signIn();
+  await assert.rejects(f.prepare(), /session changed/);
+  f.session.token = "orbyn-session";
+  await assert.rejects(f.executor(), /Finish migrating/);
+  // The deliberate fault repeats on every erase; interrupted cleanup cannot claim success.
+  await assert.rejects(f.prepare(), /session changed/);
+  assert.equal(
+    [...f.storage].filter(([key]) => key.includes(".account.")).length,
+    1,
+  );
+});
+test("native migration validates live Orbyn ownership and cancellation before changing credentials", async () => {
+  const f = mount();
+  await f.signIn();
+  const before = [...f.storage];
+  await assert.rejects(f.prepare(randomUUID()), /account changed/);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(f.prepare(undefined, controller.signal), /cancelled/);
+  assert.deepEqual([...f.storage], before);
+});
+test("migrated disconnected account can repeat exact signing-key cleanup from its token-free mapping", async () => {
+  const f = mount({ signing: true });
+  await f.signIn();
+  attachMigratedAlias(f);
+  await f.prepare();
+  await f.disconnect();
+  await f.disconnect();
+  assert.deepEqual(f.removedAliases, [migratedAlias, migratedAlias]);
+});
+test("session replacement during reconnect directory publication rolls back the new credential slot", async () => {
+  let replace = false;
+  const f = mount({
+    onDirectoryWrite: () => {
+      if (replace) f.session.token = "replacement-session";
+    },
+  });
+  await f.signIn();
+  await f.prepare();
+  await f.disconnect();
+  replace = true;
+  await assert.rejects(f.signIn(), /directory is unavailable|session changed/);
+  assert.equal(accounts(f.storage).length, 0);
+  const directory = JSON.parse(
+    [...f.storage].find(([key]) => key.includes(".directory."))![1],
+  );
+  assert.equal(directory.selected, null);
+  assert.equal(directory.accounts[0].status, "disconnected");
 });

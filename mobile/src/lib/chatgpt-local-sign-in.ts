@@ -36,6 +36,9 @@ import {
 } from "../../modules/orbyn-chatgpt";
 import { client } from "./api";
 import { session } from "./session";
+import { createNativeChatgptProtectedStore } from "./chatgpt-protected-store";
+import { createNativeChatgptAccountDirectory } from "./chatgpt-account-directory";
+import { migrateNativeChatgptSingleton } from "./chatgpt-account-migration";
 
 const protectedOptions = {
   keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
@@ -46,6 +49,10 @@ const registration = z
     revision: z.uuid(),
     connection: chatgptConnection,
     grant: z.unknown(),
+    signingAlias: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/)
+      .optional(),
   })
   .strict();
 // A confirmed unusable grant retains only the verified registration mapping.
@@ -66,7 +73,7 @@ let current: {
   id: string;
   controller: AbortController;
   finished: Promise<void>;
-  mode: "sign-in" | "refresh";
+  mode: "sign-in" | "refresh" | "migration";
   key?: string;
   sessionToken?: string;
 } | null = null;
@@ -109,16 +116,136 @@ async function hostId(): Promise<string> {
   });
   return hostPromise;
 }
+async function accountStorage(
+  userId: string,
+  checkOwner: () => void | Promise<void>,
+) {
+  const owner = { apiBaseUrl: client.baseUrl, userId };
+  const storage = await createNativeChatgptProtectedStore({
+    owner,
+    checkOwner,
+  });
+  const directory = createNativeChatgptAccountDirectory({
+    owner,
+    checkOwner,
+    storage,
+    revision: Crypto.randomUUID,
+    digest: (value) =>
+      Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, value),
+  });
+  return { storage, directory };
+}
 async function accountKey(userId: string): Promise<string> {
-  z.uuid().parse(userId);
-  const digest = await Crypto.digestStringAsync(
-    Crypto.CryptoDigestAlgorithm.SHA256,
-    JSON.stringify([client.baseUrl, userId]),
+  const token = session.token;
+  const check = () => {
+    if (!token || session.token !== token)
+      throw new Error("The Orbyn session changed. Try again.");
+  };
+  const { storage, directory } = await accountStorage(userId, check);
+  const state = await directory.read();
+  check();
+  if (state === null) return storage.legacyKey;
+  // A published-but-unfinished migration must never authorize a second credential copy.
+  if ((await storage.read(storage.legacyKey)) !== null)
+    throw new Error(
+      "Finish migrating the saved ChatGPT account before using it.",
+    );
+  check();
+  const entry = state.selected
+    ? state.accounts.find(
+        (entry) =>
+          entry.connection.id === state.selected &&
+          entry.status === "connected",
+      )
+    : state.accounts.length === 1 && state.accounts[0].status !== "connected"
+      ? state.accounts[0]
+      : null;
+  if (!entry) throw new Error("Choose a saved ChatGPT account first.");
+  return storage.slotKey(entry.connection.id);
+}
+/** Explicit protected migration; caller can refresh Settings after completion. Never starts OAuth or inference. */
+export async function prepareNativeChatgptAccounts(
+  userId: string,
+  options: { signal?: AbortSignal } = {},
+) {
+  if (Platform.OS === "web" || !nativeChatgptCallbackAvailable())
+    throw new Error(
+      "This build does not include native ChatGPT authorization.",
+    );
+  if (current || disconnecting)
+    throw new Error("Finish or cancel the current ChatGPT action first.");
+  const token = session.token,
+    id = Crypto.randomUUID(),
+    controller = new AbortController();
+  if (!token) throw new Error("Sign in to Orbyn before managing ChatGPT.");
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  current = { id, controller, finished, mode: "migration" };
+  stopExecutors(userId);
+  const abort = () => controller.abort();
+  options.signal?.addEventListener("abort", abort, { once: true });
+  if (options.signal?.aborted) abort();
+  const check = () => {
+    if (
+      session.token !== token ||
+      controller.signal.aborted ||
+      current?.id !== id
+    )
+      throw new Error(
+        "The Orbyn session changed or account migration was cancelled.",
+      );
+  };
+  try {
+    check();
+    const user = await client.me({ fresh: true, signal: controller.signal });
+    check();
+    if (user.id !== userId)
+      throw new Error("The signed-in Orbyn account changed.");
+    const context = await accountStorage(userId, check);
+    check();
+    return await migrateNativeChatgptSingleton({
+      ...context,
+      checkOwner: check,
+    });
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
+    if (current?.id === id) current = null;
+    finish();
+  }
+}
+async function updateDirectoryStatus(
+  userId: string,
+  key: string,
+  next: "connected" | "reconnect" | "disconnected",
+  check: () => void,
+) {
+  if (!key.includes(".slot.")) return;
+  const { storage, directory } = await accountStorage(userId, check);
+  const state = await directory.read();
+  check();
+  const entry = state?.accounts.find(
+    (entry) => storage.slotKey(entry.connection.id) === key,
   );
-  return `orbyn.chatgpt.account.${digest}`;
+  if (!state || !entry)
+    throw new Error("The saved ChatGPT account changed. Try again.");
+  if (next === "connected") {
+    if (state.selected === entry.connection.id && entry.status === "connected")
+      return;
+    if (state.selected !== null && state.selected !== entry.connection.id)
+      throw new Error("The selected ChatGPT account changed. Try again.");
+    const updated = await directory.add(entry.connection, state.revision);
+    check();
+    await directory.select(entry.connection.id, updated.revision);
+  } else
+    await directory.markUnavailable(entry.connection.id, next, state.revision);
+  check();
 }
 function mappingKey(key: string) {
-  return key.replace(".account.", ".registration.");
+  return key.includes(".slot.")
+    ? key.replace(".slot.", ".slot-registration.")
+    : key.replace(".account.", ".registration.");
 }
 function decodeRegistration(value: string | null) {
   if (!value || decodeRetiredRegistration(value)) return null;
@@ -309,6 +436,9 @@ export async function signInNativeChatgpt(
       revision: id,
       connection,
       grant,
+      ...(returning?.signingAlias
+        ? { signingAlias: returning.signingAlias }
+        : {}),
     });
     await SecureStore.setItemAsync(key, installed, protectedOptions);
     if (
@@ -325,6 +455,25 @@ export async function signInNativeChatgpt(
         else await SecureStore.setItemAsync(key, original, protectedOptions);
       }
       check();
+    }
+    try {
+      await updateDirectoryStatus(userId, key, "connected", check);
+    } catch (error) {
+      // Metadata publication is also an awaited ownership boundary.
+      if (
+        session.token !== token ||
+        controller.signal.aborted ||
+        current?.id !== id
+      ) {
+        if (
+          (await SecureStore.getItemAsync(key, protectedOptions)) === installed
+        ) {
+          if (original === null)
+            await SecureStore.deleteItemAsync(key, protectedOptions);
+          else await SecureStore.setItemAsync(key, original, protectedOptions);
+        }
+      }
+      throw error;
     }
     return { connection, sharingGranted: grant.sharingGranted };
   } finally {
@@ -425,6 +574,7 @@ async function renewNativeRegistration(
       revision: id,
       connection: saved.connection,
       grant,
+      ...(saved.signingAlias ? { signingAlias: saved.signingAlias } : {}),
     });
     await SecureStore.setItemAsync(key, installed, protectedOptions);
     if (
@@ -453,11 +603,13 @@ async function renewNativeRegistration(
           revision: id,
           connection: saved.connection,
           grant: null,
+          ...(saved.signingAlias ? { signingAlias: saved.signingAlias } : {}),
         }),
         protectedOptions,
       );
       // Never restore confirmed unusable credentials, including after cancellation.
       stopExecutors(userId);
+      await updateDirectoryStatus(userId, key, "reconnect", check);
     }
     throw error;
   } finally {
@@ -549,6 +701,9 @@ async function readNativeChatgptModelsOwned(
     saved = renewed.saved;
     check();
   }
+  if ((await accountKey(userId)) !== key)
+    throw new Error("The selected ChatGPT account changed.");
+  check();
   const models = await readChatgptLocalModels(saved.grant, {
     fetch: expoFetch as unknown as typeof fetch,
     signal: options.signal,
@@ -556,6 +711,9 @@ async function readNativeChatgptModelsOwned(
   check();
   if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
     throw new Error("ChatGPT account changed. Try again.");
+  check();
+  if ((await accountKey(userId)) !== key)
+    throw new Error("The selected ChatGPT account changed.");
   check();
   return { connection: saved.connection, models };
 }
@@ -589,8 +747,15 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     const original = await SecureStore.getItemAsync(key, protectedOptions);
     check();
     if (original === null) {
+      const mapping = decodeRetiredRegistration(
+        await SecureStore.getItemAsync(mappingKey(key), protectedOptions),
+      );
+      check();
       if (nativeChatgptSigningAvailable())
-        await removeNativeChatgptKey(key.split(".").at(-1)!);
+        await removeNativeChatgptKey(
+          mapping?.signingAlias ?? key.split(".").at(-1)!,
+        );
+      await updateDirectoryStatus(userId, key, "disconnected", check);
       return;
     }
     // Corrupt local credentials must still be erasable; do not guess a remote connection ID.
@@ -618,8 +783,8 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
         throw new Error("ChatGPT account changed. Try again.");
       check();
     }
-    const ownedConnection =
-      saved?.connection ?? decodeRetiredRegistration(original)?.connection;
+    const ownedRegistration = saved ?? decodeRetiredRegistration(original);
+    const ownedConnection = ownedRegistration?.connection;
     let mappingSaveFailed = false;
     if (ownedConnection) {
       try {
@@ -630,6 +795,9 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
             revision: Crypto.randomUUID(),
             connection: ownedConnection,
             grant: null,
+            ...(ownedRegistration?.signingAlias
+              ? { signingAlias: ownedRegistration.signingAlias }
+              : {}),
           }),
           protectedOptions,
         );
@@ -647,12 +815,21 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     let keyRemovalFailed = false;
     if (nativeChatgptSigningAvailable()) {
       try {
-        await removeNativeChatgptKey(key.split(".").at(-1)!);
+        await removeNativeChatgptKey(
+          ownedRegistration?.signingAlias ?? key.split(".").at(-1)!,
+        );
       } catch {
         keyRemovalFailed = true;
       }
       check();
     }
+    let directoryCleanupFailed = false;
+    try {
+      await updateDirectoryStatus(userId, key, "disconnected", check);
+    } catch {
+      directoryCleanupFailed = true;
+    }
+    check();
     let serverDisconnectFailed = false;
     if (ownedConnection) {
       try {
@@ -663,6 +840,9 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       check();
     }
     const warnings = [
+      directoryCleanupFailed
+        ? "Saved account status could not be updated; retry cleanup."
+        : null,
       mappingSaveFailed
         ? "The registration could not be saved for reconnect; a new registration may be required."
         : null,
@@ -739,6 +919,9 @@ export async function createNativeChatgptExecutor(userId: string) {
   };
   const live = async () => {
     check();
+    if ((await accountKey(userId)) !== key)
+      throw new Error("The selected ChatGPT account changed.");
+    check();
     const record = decodeRegistration(
       await SecureStore.getItemAsync(key, protectedOptions),
     );
@@ -749,7 +932,8 @@ export async function createNativeChatgptExecutor(userId: string) {
       record.connection.id !== connection.id ||
       record.connection.client_id !== connection.client_id ||
       record.connection.subject !== connection.subject ||
-      record.connection.issuer !== connection.issuer
+      record.connection.issuer !== connection.issuer ||
+      record.signingAlias !== saved.signingAlias
     )
       throw new Error("The ChatGPT account changed. Reconnect it.");
     const rows = await client.chatgptConnections();
@@ -766,7 +950,7 @@ export async function createNativeChatgptExecutor(userId: string) {
       throw new Error("The ChatGPT connection is no longer available.");
   };
   await live();
-  const alias = key.split(".").at(-1)!;
+  const alias = saved.signingAlias ?? key.split(".").at(-1)!;
   const signer = createChatgptExecutorSigner({
     binding,
     hostId: host,

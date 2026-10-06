@@ -144,7 +144,11 @@ function view(
   app: "desktop" | "mobile",
   state: any,
   connectOutcome: "success" | "cancel" | "failure" = "success",
-  nativeOptions: { account?: object; disconnect?: () => Promise<void> } = {},
+  nativeOptions: {
+    account?: object;
+    disconnect?: () => Promise<void>;
+    prepare?: () => Promise<void>;
+  } = {},
 ) {
   let slot = 0;
   const values: any[] = [];
@@ -229,6 +233,14 @@ function view(
         };
       if (id.endsWith("/lib/chatgpt-local-sign-in"))
         return {
+          prepareNativeChatgptAccounts: async (
+            _: string,
+            options: { signal: AbortSignal },
+          ) => {
+            localCalls.push("prepare");
+            assert.ok(options.signal instanceof AbortSignal);
+            await nativeOptions.prepare?.();
+          },
           signInNativeChatgpt: async () => {
             localCalls.push("sign-in");
             if (connectOutcome !== "success")
@@ -426,7 +438,13 @@ test("native Connect invokes local sign-in and resumes the app-owned executor wi
   assert.equal(action.props.disabled, false);
   action.props.onPress();
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(f.localCalls, ["suspend", "sign-in", "restart"]);
+  assert.deepEqual(f.localCalls, [
+    "suspend",
+    "prepare",
+    "sign-in",
+    "prepare",
+    "restart",
+  ]);
 });
 
 test("failed or cancelled native reconnect restores the previous executor without repeating sign-in", async () => {
@@ -437,7 +455,12 @@ test("failed or cancelled native reconnect restores the previous executor withou
     );
     action.props.onPress();
     await new Promise((resolve) => setImmediate(resolve));
-    assert.deepEqual(f.localCalls, ["suspend", "sign-in", "restart"]);
+    assert.deepEqual(f.localCalls, [
+      "suspend",
+      "prepare",
+      "sign-in",
+      "restart",
+    ]);
     assert.equal(
       elements(f.render()).find(
         (n) =>
@@ -556,4 +579,41 @@ test("native Settings shows ended-session recovery with Connect and Disconnect a
     assert.ok(action);
     assert.equal(action.props.disabled, false);
   }
+});
+test("native Settings never starts OAuth when protected migration fails", async () => {
+  const f = view("mobile", viewState(), "success", {
+    prepare: async () => {
+      throw new Error("migration failed");
+    },
+  });
+  const action = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+  );
+  action.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, ["suspend", "prepare", "restart"]);
+  assert.ok(
+    elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
+  );
+});
+test("native Settings does not authorize or restart an old owner after migration awaits", async () => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = view("mobile", viewState(), "success", { prepare: () => pending });
+  const action = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+  );
+  action.props.onPress();
+  action.props.onPress();
+  f.setToken("new-owner-session");
+  f.render();
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, ["suspend", "prepare"]);
+  assert.equal(
+    elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
+    false,
+  );
 });

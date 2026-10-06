@@ -3373,3 +3373,49 @@ retired mapping, unrelated directory, conflicting/newer credentials, malformed
 record and session replacement. Mobile/backend typechecks pass. These are not
 OS protected-store, real OAuth or runtime account-picker acceptance. Full main/
 database/platform gates and the full ADR scope remain open.
+
+### Native slot runtime integration — 6 October 2026
+
+Protected migration is now callable through the native sign-in service under an
+exclusive migration lifetime: fresh Orbyn identity check, exact session/cancellation
+fencing, executor stop and serialized sign-in/refresh/disconnect exclusion. Settings
+Connect suspends the foreground runtime, migrates a prior singleton before OAuth,
+passes its cancellation signal to sign-in, then migrates a newly created singleton
+before restarting the executor. Session replacement cannot start old-owner OAuth
+or restart an old-owner runtime. This supersedes the previous not-activated note
+for this explicit Connect path; it is not a complete account picker.
+
+The service resolves a populated directory's exact selected registration slot,
+blocks execution while legacy cleanup is unfinished, and never selects a first
+connected account implicitly. A sole unavailable mapping remains addressable for
+reconnect/cleanup. Migrated records retain the existing signingAlias through
+verified refresh, terminal retirement, disconnect mapping and reconnect. Executor
+liveness rejects signing-alias or directory selection replacement; model results
+are checked against the selected slot before/after transport. Exact slot cleanup
+updates directory status and reports incomplete status writes. Repeated disconnected
+cleanup uses the token-free mapping's exact signing alias. Publication ownership
+failure rolls back only this attempt's new credentials.
+
+Actual service tests compose the real protected adapter/directory/migration with
+controlled native storage: migration to model loading/signing/disconnect/reconnect,
+retired migration, migrated terminal-refresh directory status, unfinished cleanup
+execution rejection, wrong-owner/cancelled preparation, repeat exact key cleanup,
+invalid/replaced signing aliases and session replacement during publication. Actual
+Settings component tests cover the preparation order, cancellation signal, migration
+failure preventing OAuth and replacement-session fencing. Native service focused
+cohort:68passed/0failed/0skipped,4791.332417ms, exit0 at
+`/tmp/orbyn-native-slot-final-focused.log`. Earlier combined service/UI cohort85passed,
+zero failures/skips,4588.117958ms at `/tmp/orbyn-native-slot-integration-focused.log`.
+Final full ChatGPT/typecheck results are recorded in the tracker.
+
+Remaining: explicit Add account vs reconnect, per-registration selection/switching
+and fresh-grant/live-identity gates, directory/picker UI, account-bound catalogs and
+defaults, multiple-account cleanup/recovery and actual iOS/Android protected-store/
+OAuth/lifecycle/screenshots. Immutable queued provider snapshots remain unchanged;
+no managed fallback is enabled implicitly. Main/full DB/platform qualification and
+all other C1-C6/M1/D1/U1 requirements stay open.
+
+Final slot integration evidence: `/tmp/orbyn-native-slot-integration-all-final.log`
+400passed/0failed/0skipped,27014.848583ms, terminal0. Mobile/backend typechecks,
+Prettier and diff checks pass. These do not prove real protected-store/OAuth or
+full database acceptance. No main promotion or completed multi-account UI claimed.

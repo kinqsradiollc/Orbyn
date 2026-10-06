@@ -21,6 +21,7 @@ import { session } from "../../lib/session";
 import { errorText } from "../../lib/errors";
 import {
   signInNativeChatgpt,
+  prepareNativeChatgptAccounts,
   disconnectNativeChatgpt,
   cancelNativeChatgptSignIn,
   readNativeChatgptAccountState,
@@ -122,12 +123,18 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     setConnectError(null);
     try {
       chatgptForeground.suspend();
-      const connected = await signInNativeChatgpt(userId);
+      await prepareNativeChatgptAccounts(userId, { signal: controller.signal });
+      if (controller.signal.aborted || !owned()) return;
+      const connected = await signInNativeChatgpt(userId, {
+        signal: controller.signal,
+      });
       if (controller.signal.aborted || !owned()) return;
       if (!connected.sharingGranted)
         throw new Error(
           "Enable ChatGPT plan usage when connecting this account.",
         );
+      await prepareNativeChatgptAccounts(userId, { signal: controller.signal });
+      if (controller.signal.aborted || !owned()) return;
       refresh();
       setAccountReload((n) => n + 1);
     } catch (error) {
