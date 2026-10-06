@@ -3576,3 +3576,15 @@ cohort430passed/0failed/0skipped,28700.67175ms,exit0; package build and mobile/
 desktop types pass. See task handoff for baseline/final logs. Candidate only;
 real OAuth/installed acceptance, full database/main qualification and complete
 model/default/provider audit remain pending. Original full scope is retained.
+
+### Provider settings recovery promoted to main — 6 October 2026
+
+Web/desktop and mobile provider controls now reload on same-user session changes
+and serialize rapid writes before rerender. Existing saved-device/fallback semantics
+are preserved. Baseline tests reproduce both faults on both clients; candidate
+ChatGPT434passed/0failed/0skipped and both client types pass. Scoped main checkpoint
+7c693b48 is pushed; candidate reconciled main without conflicts. Main focused tests,
+shared package build and desktop types pass; mobile types pass with temporary
+same-version WebView declaration mapping, while normal local installation remains
+incomplete. No production deployment or native OAuth qualification is claimed.
+Detailed logs and limitations are in task handoff; full ADR scope remains open.

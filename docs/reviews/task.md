@@ -4340,3 +4340,37 @@ pending. These lifecycle/native service files do not yet exist on main, so the
 checkpoint depends on the broader candidate qualification; no main promotion.
 Continue model/default/provider audit, then full database/installed acceptance.
 Full ADR scope and preserved root/character/other worktrees remain unchanged.
+
+### Provider session/duplicate-write checkpoint promoted to main — 6 October 2026
+
+Actual-source provider UI tests reproduced on desktop and mobile: same-user token
+rotation did not rerun the provider effect, leaving controls unavailable, and
+repeated actions before rerender sent two CAS writes. Effect now depends on the
+rendered token; a ref holds a single write per owner/lifetime. Effect resets the
+lock after aborting prior ownership; old finally only clears its exact controller.
+Fallback still mutates the saved provider, not the merely inspected device.
+
+Baseline `/tmp/orbyn-provider-session-baseline.log`:4existing passed,4new failed.
+Focused final `/tmp/orbyn-provider-session-focused.log`:8passed,0failed/0skipped,
+797.624209ms,exit0. Full candidate `/tmp/orbyn-provider-session-all.log`:
+434passed/0failed/0skipped,27480.8195ms,exit0. Candidate mobile/desktop types pass
+at `/tmp/orbyn-provider-session-{mobile,desktop}-types.log`.
+Three affected files matched main before the patch. Candidate code commitb06bc884
+was cherry-picked as main7c693b48, pushed, and origin/main merged into candidate
+without conflicts. Root character/mobile/app.json and all other preexisting dirt
+remain preserved. No broad native OAuth promotion or production deploy occurred.
+
+Main focused8passed/0failed/0skipped,767.644292ms exit0:
+`/tmp/orbyn-provider-main-focused-final.log`. Initial root esbuild binary targeted
+another OS; final test used ESBUILD_BINARY_PATH pointing to the existing candidate
+Darwin binary, without installing/mutating dependencies. Root shared-package build
+repaired stale generated exports: `/tmp/orbyn-provider-main-packages.log`,exit0.
+Desktop types final `/tmp/orbyn-provider-main-desktop-types-final.log`,exit0.
+Normal main mobile types still fail because declared react-native-webview13.16.1
+is missing locally. A /tmp-only tsconfig maps precisely that module to the existing
+candidate13.16.1 declarations; main mobile sources then typecheck exit0 at
+`/tmp/orbyn-provider-main-mobile-types-mapped.log`. This is type evidence, not
+restored native installation, rendered UI or general DB/runtime qualification.
+
+Continue remaining account/catalog/default provenance and installed acceptance;
+full database, native candidate promotion and original C1-C6/M1/D1/U1 scope open.
