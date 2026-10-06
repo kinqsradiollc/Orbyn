@@ -51,7 +51,7 @@ final class ChatgptExecutorKey {
     let key = try key(account, create: false)
     guard Self.metadata(key.publicKey)["public_key_fingerprint"] == fingerprint,
           message.utf8.count >= 32, message.utf8.count <= 2048,
-          (message.hasPrefix("orbyn:executor:catalog:v1\n") || message.hasPrefix("[\"orbyn:executor:")) else { throw Failure.unavailable }
+          (message.hasPrefix("orbyn:executor:catalog:v1\n") || message.hasPrefix("orbyn:executor:inference-result:v2\n") || message.hasPrefix("[\"orbyn:executor:")) else { throw Failure.unavailable }
     return Self.encode(try key.signature(for: Data(message.utf8)).rawRepresentation)
   }
   func remove(_ account: String) throws {

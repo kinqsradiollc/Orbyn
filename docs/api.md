@@ -73,13 +73,13 @@ use them. Identity verification is a backend foundation, not a complete OAuth or
 plan-inference flow. Clients must implement their eligible provider flow before
 offering a sign-in control.
 
-| Method | Path                                 | Body / result                                                                                                                                                      |
-| ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| POST   | `/ai/connections/chatgpt/challenges` | `{client_id?: string}` → `{id, nonce, expires_at}`. Omit the issued client ID for initial dynamic registration. Never send the `dynamic_agent_client` placeholder. |
-| POST   | `/ai/connections/chatgpt/complete`   | `{challenge_id, client_id, id_token}` → `{id, issuer, subject, client_id}` after signature/issuer/audience/nonce verification.                                     |
-| POST | `/ai/connections/chatgpt/refresh-identity` | `{connection_id, id_token}` → unchanged `{id, issuer, subject, client_id}`. Verifies a replacement refresh identity against an existing live owned registration; cannot create, revive or relink it. Never accepts access/refresh tokens. |
-| GET    | `/ai/connections/chatgpt`            | Active connections with `{id, issuer, subject, client_id, verified_at}`.                                                                                           |
-| DELETE | `/ai/connections/chatgpt/:id`        | Owner-only disconnect, `204`. Also consumes that owner's pending challenges so an old callback cannot reconnect.                                                   |
+| Method | Path                                       | Body / result                                                                                                                                                                                                                             |
+| ------ | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| POST   | `/ai/connections/chatgpt/challenges`       | `{client_id?: string}` → `{id, nonce, expires_at}`. Omit the issued client ID for initial dynamic registration. Never send the `dynamic_agent_client` placeholder.                                                                        |
+| POST   | `/ai/connections/chatgpt/complete`         | `{challenge_id, client_id, id_token}` → `{id, issuer, subject, client_id}` after signature/issuer/audience/nonce verification.                                                                                                            |
+| POST   | `/ai/connections/chatgpt/refresh-identity` | `{connection_id, id_token}` → unchanged `{id, issuer, subject, client_id}`. Verifies a replacement refresh identity against an existing live owned registration; cannot create, revive or relink it. Never accepts access/refresh tokens. |
+| GET    | `/ai/connections/chatgpt`                  | Active connections with `{id, issuer, subject, client_id, verified_at}`.                                                                                                                                                                  |
+| DELETE | `/ai/connections/chatgpt/:id`              | Owner-only disconnect, `204`. Also consumes that owner's pending challenges so an old callback cannot reconnect.                                                                                                                          |
 
 Challenge ownership includes the exact Orbyn session. Challenges expire after ten
 minutes and can be consumed once; at most five unconsumed, unexpired challenges
@@ -3277,7 +3277,6 @@ Migration253 expands only the two public-key constraints; message domains,
 identity/session binding, fingerprints, enrollment epochs and lease fencing
 remain enforced.
 
-
 These routes require a live, verified Orbyn app session. Personal API keys and
 MCP/OAuth connector grants cannot use them. Provider access/refresh tokens are
 never accepted or returned. Responses use `Cache-Control: no-store`.
@@ -3342,6 +3341,14 @@ Personal API keys, MCP grants and plugin credentials cannot read or change them.
 | POST   | `/ai/connections/chatgpt/inference/claim`  | Exact enrolled session claims one authorized runner assignment using `executor_id`.                                                               |
 | POST   | `/ai/connections/chatgpt/inference/result` | Publish the device-signed completion/failure receipt for that captured assignment.                                                                |
 | GET    | `/ai/connections/chatgpt/usage`            | Owner-only completed-request measurements from the last 30 days, with at most ten recent records. No query parameters.                            |
+
+Inference result publications accept `{receipt, signature, proof_format?}`.
+New clients set `proof_format: "sha256_v2"` and sign
+`orbyn:executor:inference-result:v2\n` followed by the base64url SHA-256 digest
+of the shared strict canonical receipt input. Every receipt field is covered.
+An omitted format selects only the exact bounded legacy message; unknown formats
+are rejected and verification never falls back between formats. Compatible
+backend deployment must precede updated clients.
 
 Only the internal assistant runner queues prompt input. Assignments capture the
 current provider-choice revision, model, executor and lease generation; provider,

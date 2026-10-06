@@ -9,6 +9,9 @@ import {
   chatgptExecutorCatalog,
   chatgptCatalogSigningInput,
   CHATGPT_CATALOG_SIGNATURE_DOMAIN,
+  chatgptInferenceReceipt,
+  chatgptInferenceSigningInput,
+  CHATGPT_INFERENCE_SIGNATURE_DOMAIN,
   type ChatgptModelBinding,
 } from "@orbyn/core";
 
@@ -156,6 +159,23 @@ export function createChatgptExecutorSigner(options: {
         catalog,
         signature: await proof(
           `${CHATGPT_CATALOG_SIGNATURE_DOMAIN}\n${digest}`,
+        ),
+      };
+    },
+    async signInference(value: unknown) {
+      const receipt = chatgptInferenceReceipt.parse(value);
+      if (!same(receipt.binding))
+        throw new Error("The inference account changed.");
+      const digest = await options.digest(
+        chatgptInferenceSigningInput(receipt),
+      );
+      if (!/^[A-Za-z0-9_-]{43}$/.test(digest))
+        throw new Error("The inference receipt digest is invalid.");
+      return {
+        receipt,
+        proof_format: "sha256_v2" as const,
+        signature: await proof(
+          `${CHATGPT_INFERENCE_SIGNATURE_DOMAIN}\n${digest}`,
         ),
       };
     },

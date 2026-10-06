@@ -2834,3 +2834,34 @@ Do not claim native execution complete from enrollment/catalog evidence.
 No main promotion or production deployment is claimed. Web-only direct sign-in,
 actual installed-device acceptance, multiple accounts, usable provider choice and
 fallback UI remain open, as do the rest of full C1-C6/M1/D1/U1.
+
+## Versioned inference result proofs — 6 October 2026
+
+The oversized signed-result defect is corrected in the candidate branch. New
+clients publish `proof_format: sha256_v2` and sign a domain-separated SHA-256
+digest of the strict canonical receipt. All identity, assignment, epoch, model,
+nonce, request hash, result and measured usage fields remain covered. The proof
+message stays below 128 bytes even for a one-million-character result. Desktop
+and portable native signers use the same contract; native bridge guards accept
+its explicit domain. The backend retains exact bounded legacy verification when
+no format is supplied, rejects unknown formats, and does not silently downgrade.
+Deploy the compatible backend before updated clients. No database migration is
+needed for this wire-format change.
+
+Fresh marked DB69 passed all 17 broker tests, zero failures/skips, terminal zero,
+11382.407583ms, including large-result publication for Ed25519 and P-256.
+Evidence: `/tmp/orbyn-chatgpt-inference-db69.log`. The first DB68 run caught a
+wrong provider-version argument in the new test fixture; the fixture was fixed
+without relaxing production checks. Sixteen focused proof/signer/lifecycle tests
+pass, zero failures/skips, 1348.592458ms; `/tmp/orbyn-inference-v2-unit.log`.
+All 280 ChatGPT unit tests pass, zero failures/skips, terminal zero,
+19585.486166ms; `/tmp/orbyn-chatgpt-v2-all-unit.log`.
+Package builds and backend/desktop/mobile typechecks pass. Existing actual Swift
+and Java P-256 proof fixtures pass the backend verifier. This does not verify
+installed native keystores, browser sign-in, live provider inference or UI.
+
+Native inference polling/execution and foreground lifecycle are next. Settings
+activation, browser-only direct connection, multiple accounts, truthful plan
+and usage presentation, fallback controls and full ADR acceptance remain open.
+This checkpoint does not establish a working cross-platform provider or a main
+promotion; the full goal remains active.

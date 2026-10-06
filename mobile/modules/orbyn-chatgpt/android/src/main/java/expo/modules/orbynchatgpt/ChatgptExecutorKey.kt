@@ -36,7 +36,7 @@ class ChatgptExecutorKey {
   }
   @Synchronized fun sign(account: String, fingerprint: String, message: String): String {
     val bytes = message.toByteArray(Charsets.UTF_8)
-    require(bytes.size in 32..2048 && (message.startsWith("orbyn:executor:catalog:v1\n") || message.startsWith("[\"orbyn:executor:")))
+    require(bytes.size in 32..2048 && (message.startsWith("orbyn:executor:catalog:v1\n") || message.startsWith("orbyn:executor:inference-result:v2\n") || message.startsWith("[\"orbyn:executor:")))
     val alias = alias(account)
     val store = store()
     require(metadata(store, alias)["public_key_fingerprint"] == fingerprint)

@@ -4,7 +4,6 @@ import {
   chatgptInferenceInput,
   chatgptInferenceAssignment,
   chatgptInferencePublication,
-  chatgptInferenceReceiptMessage,
   chatgptInferenceResult,
   fail,
   type ChatgptInferenceAssignment,
@@ -13,7 +12,10 @@ import { transaction, type Db } from "../../db/pool.js";
 import { encryptSecret, decryptSecret } from "../../lib/secrets.js";
 import { requireLiveSession } from "./chatgpt-connections.js";
 import { readChatgptCatalogLocked } from "./chatgpt-model-catalog.js";
-import { verifyChatgptExecutorProof } from "./chatgpt-executor-proof.js";
+import {
+  verifyChatgptExecutorProof,
+  chatgptInferenceProofMessage,
+} from "./chatgpt-executor-proof.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import {
   readAiProviderChoice,
@@ -599,7 +601,7 @@ export async function finishChatgptInference(session: Session, value: unknown) {
     try {
       verifyChatgptExecutorProof(
         selected.row.public_key,
-        chatgptInferenceReceiptMessage(r),
+        chatgptInferenceProofMessage(r, publication.proof_format),
         publication.signature,
       );
     } catch {

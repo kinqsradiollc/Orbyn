@@ -8,6 +8,7 @@ import {
 import {
   verifyChatgptExecutorProof,
   verifyChatgptCatalogProof,
+  chatgptInferenceProofMessage,
 } from "../src/modules/auth/chatgpt-executor-proof.js";
 
 function fixture(tamper?: "enrollment" | "lease" | "receipt" | "proof") {
@@ -185,6 +186,8 @@ function fixture(tamper?: "enrollment" | "lease" | "receipt" | "proof") {
     client,
     binding,
     hostId,
+    publicKey,
+    fingerprint,
     messages,
     heartbeats,
     catalogs,
@@ -283,4 +286,30 @@ test("closing during a queued proof rejects the result and cannot complete enrol
   await rejected;
   assert.equal(f.messages.length, 0);
   assert.equal(f.catalogs.length, 0);
+});
+
+test("portable native signer sends only a bounded v2 digest to its OS key for large inference", async () => {
+  const f = fixture();
+  const signed = await f.signer.signInference({
+    request_id: randomUUID(),
+    executor_id: randomUUID(),
+    binding: f.binding,
+    enrollment_epoch: 1,
+    lease_epoch: 1,
+    model: "fixture-model",
+    nonce: "n".repeat(43),
+    request_hash: "a".repeat(64),
+    result: { status: "completed", text: "x".repeat(10000), usage: null },
+  });
+  assert.equal(signed.proof_format, "sha256_v2");
+  assert.ok(Buffer.byteLength(f.messages[0]) < 128);
+  assert.equal(
+    verifyChatgptExecutorProof(
+      f.publicKey,
+      chatgptInferenceProofMessage(signed.receipt, signed.proof_format),
+      signed.signature,
+    ),
+    f.fingerprint,
+  );
+  f.runtime.close();
 });

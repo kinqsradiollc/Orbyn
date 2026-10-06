@@ -7,6 +7,9 @@ import {
 import {
   chatgptCatalogSigningInput,
   CHATGPT_CATALOG_SIGNATURE_DOMAIN,
+  chatgptInferenceReceiptMessage,
+  chatgptInferenceSigningInput,
+  CHATGPT_INFERENCE_SIGNATURE_DOMAIN,
 } from "@orbyn/core";
 
 const invalid = () => new Error("The executor proof could not be verified.");
@@ -104,4 +107,14 @@ export function verifyChatgptExecutorProof(
   } catch {
     throw invalid();
   }
+}
+
+/** Explicit version prevents a digest proof being treated as a legacy raw-message proof. */
+export function chatgptInferenceProofMessage(
+  receipt: unknown,
+  format?: "sha256_v2",
+): string {
+  if (format === undefined) return chatgptInferenceReceiptMessage(receipt);
+  if (format !== "sha256_v2") throw invalid();
+  return `${CHATGPT_INFERENCE_SIGNATURE_DOMAIN}\n${createHash("sha256").update(chatgptInferenceSigningInput(receipt), "utf8").digest("base64url")}`;
 }
