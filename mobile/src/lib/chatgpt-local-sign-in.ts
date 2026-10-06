@@ -37,7 +37,12 @@ const registration = z
     grant: z.unknown(),
   })
   .strict();
-let current: { id: string; controller: AbortController } | null = null;
+let current: {
+  id: string;
+  controller: AbortController;
+  finished: Promise<void>;
+} | null = null;
+let disconnecting = false;
 let hostPromise: Promise<string> | null = null;
 let browserOwner: string | null = null;
 
@@ -101,13 +106,17 @@ export async function signInNativeChatgpt(
     throw new Error(
       "This build does not include native ChatGPT authorization.",
     );
-  if (current)
-    throw new Error("Finish or cancel the current ChatGPT sign-in first.");
+  if (current || disconnecting)
+    throw new Error("Finish or cancel the current ChatGPT action first.");
   const id = Crypto.randomUUID(),
     controller = new AbortController();
   const token = session.token;
   if (!token) throw new Error("Sign in to Orbyn before connecting ChatGPT.");
-  current = { id, controller };
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  current = { id, controller, finished };
   const abort = () => controller.abort();
   options.signal?.addEventListener("abort", abort, { once: true });
   if (options.signal?.aborted) abort();
@@ -277,6 +286,7 @@ export async function signInNativeChatgpt(
       }
     }
     if (current?.id === id) current = null;
+    finish();
   }
 }
 
@@ -297,7 +307,12 @@ export async function readNativeChatgptModels(
   const token = session.token;
   if (!token) throw new Error("Sign in to Orbyn before connecting ChatGPT.");
   const check = () => {
-    if (options.signal?.aborted || session.token !== token || current)
+    if (
+      options.signal?.aborted ||
+      session.token !== token ||
+      current ||
+      disconnecting
+    )
       throw new Error(
         "The Orbyn session or ChatGPT connection changed. Try again.",
       );
@@ -337,4 +352,58 @@ export async function readNativeChatgptModels(
     throw new Error("ChatGPT account changed. Try again.");
   check();
   return { connection: saved.connection, models };
+}
+
+/** Disconnect this native account: cancel sign-in, erase local credentials and revoke server metadata. */
+export async function disconnectNativeChatgpt(userId: string): Promise<void> {
+  if (Platform.OS === "web" || !nativeChatgptCallbackAvailable())
+    throw new Error(
+      "This build does not include native ChatGPT authorization.",
+    );
+  if (disconnecting)
+    throw new Error("ChatGPT disconnect is already in progress.");
+  const token = session.token;
+  if (!token) throw new Error("Sign in to Orbyn before disconnecting ChatGPT.");
+  disconnecting = true;
+  try {
+    const attempt = current;
+    attempt?.controller.abort();
+    await attempt?.finished;
+    const check = () => {
+      if (session.token !== token)
+        throw new Error("The signed-in Orbyn account changed.");
+    };
+    check();
+    const user = await client.me({ fresh: true });
+    check();
+    if (user.id !== userId)
+      throw new Error("The signed-in Orbyn account changed.");
+    const key = await accountKey(userId);
+    const original = await SecureStore.getItemAsync(key, protectedOptions);
+    check();
+    if (original === null) return;
+    // Corrupt local credentials must still be erasable; do not guess a remote connection ID.
+    let saved: ReturnType<typeof decodeRegistration> = null;
+    try {
+      saved = decodeRegistration(original);
+    } catch {}
+    if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+      throw new Error("ChatGPT account changed. Try again.");
+    check();
+    // Once ownership is checked, a revocation failure must not retain local tokens.
+    await SecureStore.deleteItemAsync(key, protectedOptions);
+    check();
+    if (saved) {
+      try {
+        await client.revokeChatgptConnection(saved.connection.id);
+      } catch {
+        throw new Error(
+          "ChatGPT was removed from this device. Server disconnect could not be confirmed; retry from connected accounts.",
+        );
+      }
+      check();
+    }
+  } finally {
+    disconnecting = false;
+  }
 }

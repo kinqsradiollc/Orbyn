@@ -30,10 +30,13 @@ function mount(
     scopes?: string;
     callback?: "wrong" | "denied";
     identity?: object;
-    changeSession?: "finish" | "store";
+    changeSession?: "finish" | "store" | "delete";
     me?: string;
     browserCancel?: boolean;
     revoked?: boolean;
+    revokeFailure?: boolean;
+    holdCallback?: boolean;
+    onRevoke?: () => Promise<void>;
     changeDuringModels?: "session" | "registration";
   } = {},
 ) {
@@ -47,6 +50,7 @@ function mount(
     opened: [] as string[],
     dismissed: 0,
     freshMe: false,
+    revoked: [] as string[],
   };
   let state = "",
     redirect = "http://127.0.0.1:1455/auth/callback";
@@ -107,6 +111,8 @@ function mount(
           },
           deleteItemAsync: async (key: string) => {
             storage.delete(key);
+            if (options.changeSession === "delete")
+              session.token = "other-session";
           },
         };
       if (id === "expo/fetch")
@@ -174,7 +180,7 @@ function mount(
             return redirect;
           },
           waitNativeChatgptCallback: async () => {
-            if (options.browserCancel)
+            if (options.browserCancel || options.holdCallback)
               return new Promise((_resolve, reject) => {
                 rejectWait = reject;
               });
@@ -204,6 +210,13 @@ function mount(
               calls.freshMe = settings.fresh;
               return { id: options.me ?? userId };
             },
+            revokeChatgptConnection: async (id: string) => {
+              calls.revoked.push(id);
+              assert.equal(accounts(storage).length, 0);
+              if (options.revokeFailure)
+                throw new Error("private-refresh provider outage");
+              await options.onRevoke?.();
+            },
             chatgptConnections: async () =>
               options.revoked ? [] : [connection],
             startChatgptConnection: async () => ({
@@ -225,6 +238,7 @@ function mount(
   return {
     signIn: (input = userId) => exports.signInNativeChatgpt(input),
     cancel: () => exports.cancelNativeChatgptSignIn(),
+    disconnect: (input = userId) => exports.disconnectNativeChatgpt(input),
     models: (input = userId, signal?: AbortSignal) =>
       exports.readNativeChatgptModels(input, { signal }),
     storage,
@@ -389,4 +403,96 @@ test("native models reject missing registration, wrong owner, cancellation and w
   await assert.rejects(fixture.models(randomUUID()), /account changed/);
   await assert.rejects(fixture.models(userId, AbortSignal.abort()), /changed/);
   await assert.rejects(mount({ platform: "web" }).models(), /native ChatGPT/);
+});
+
+test("native disconnect erases protected credentials before revoking exact server identity", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  await fixture.disconnect();
+  assert.equal(accounts(fixture.storage).length, 0);
+  assert.deepEqual(fixture.calls.revoked, [connection.id]);
+  assert.equal(
+    [...fixture.storage.keys()].some((key) => key.includes(".host.")),
+    true,
+  );
+  await assert.rejects(fixture.models(), /Connect ChatGPT/);
+  await fixture.disconnect();
+  assert.equal(fixture.calls.revoked.length, 1);
+});
+test("native disconnect cannot retain tokens when server revocation fails", async () => {
+  const fixture = mount({ revokeFailure: true });
+  await fixture.signIn();
+  await assert.rejects(fixture.disconnect(), (error: unknown) => {
+    assert.match(String(error), /removed from this device/);
+    assert.doesNotMatch(String(error), /private-refresh/);
+    return true;
+  });
+  assert.equal(accounts(fixture.storage).length, 0);
+});
+test("corrupted native registrations can be erased without guessing a server connection", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  const [key] = accounts(fixture.storage)[0];
+  fixture.storage.set(key, "private-access invalid record");
+  await fixture.disconnect();
+  assert.equal(accounts(fixture.storage).length, 0);
+  assert.equal(fixture.calls.revoked.length, 0);
+});
+test("disconnect rejects a foreign Orbyn owner and web without deleting credentials", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  await assert.rejects(fixture.disconnect(randomUUID()), /account changed/);
+  assert.equal(accounts(fixture.storage).length, 1);
+  assert.equal(fixture.calls.revoked.length, 0);
+  await assert.rejects(
+    mount({ platform: "web" }).disconnect(),
+    /native ChatGPT/,
+  );
+});
+test("disconnect serializes against sign-in and another disconnect", async () => {
+  let entered!: () => void;
+  const reached = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const fixture = mount({
+    onRevoke: async () => {
+      entered();
+      await blocked;
+    },
+  });
+  await fixture.signIn();
+  const disconnect = fixture.disconnect();
+  await reached;
+  await assert.rejects(fixture.signIn(), /current ChatGPT action/);
+  await assert.rejects(fixture.disconnect(), /already in progress/);
+  await assert.rejects(fixture.models(), /changed/);
+  release();
+  await disconnect;
+  await fixture.signIn();
+  assert.equal(accounts(fixture.storage).length, 1);
+});
+test("disconnect cancels and awaits an active callback before reading local credentials", async () => {
+  const fixture = mount({ holdCallback: true });
+  const signIn = fixture.signIn();
+  const rejected = assert.rejects(signIn);
+  // Wait for the actual source service's listener to start, not an arbitrary delay.
+  for (let index = 0; index < 100 && fixture.calls.started === 0; index++)
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.equal(fixture.calls.started, 1);
+  await fixture.disconnect();
+  await rejected;
+  assert.equal(accounts(fixture.storage).length, 0);
+  assert.equal(fixture.calls.revoked.length, 0);
+});
+
+test("session change during local removal prevents revoking through another session", async () => {
+  const fixture = mount({ changeSession: "delete" });
+  await fixture.signIn();
+  await assert.rejects(fixture.disconnect(), /account changed/);
+  assert.equal(accounts(fixture.storage).length, 0);
+  assert.equal(fixture.calls.revoked.length, 0);
 });

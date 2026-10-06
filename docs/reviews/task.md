@@ -3399,3 +3399,32 @@ inference, provider choice/fallback UI, actual iOS/Android lifecycle acceptance,
 and a supported direct web connection. The native service is not yet wired into
 Settings; a catalog foundation is not a completed usable provider. Main is not
 changed by this candidate. Full C1-C6/M1/D1/U1 remains active.
+
+## Native disconnect lifecycle checkpoint — 6 October 2026
+
+The selected native registration can now be disconnected through the service.
+Disconnect locks out competing sign-ins and model reads, aborts and awaits an
+active callback attempt, verifies the current Orbyn owner, erases the exact
+protected local record and then revokes its exact server connection. A server
+revocation failure reports that local removal succeeded but remote revocation
+is unconfirmed. Corrupt records are erasable without guessing a connection ID;
+the installation host identity is retained. Session changes during deletion
+prevent server calls through the replacement session. In-flight model reads
+cannot publish after the local record changes. Fresh `/me` ownership verification
+is still required before local deletion: this is not yet an offline disconnect
+facility or multi-profile account manager. Future native executor shutdown/key
+removal must join this lifecycle before provider activation.
+
+Final focused callback/token/model/sign-in/disconnect/client result:46 pass,
+0 fail/skip,terminal0,1462.095667ms. Backend and mobile typechecks terminate0.
+Evidence: `/tmp/orbyn-native-chatgpt-disconnect-all.log`. These are actual-source
+VM checks with mocked native store/browser/API boundaries; they do not establish
+installed OS keychain, browser or executor behavior. No Settings activation,
+main merge, production deployment or full ADR completion is claimed.
+
+Next ChatGPT-first work remains refreshed identity/rotation, native executor
+cryptography and enrollment/lease/inference, multiple local registrations,
+provider choice/fallback, installed-device acceptance, and the unresolved direct
+web sign-in path. Existing Ed25519 server proofs must retain their ownership and
+fencing guarantees when mobile signing is added. Do not equate native primitive
+availability with support on every Android version.
