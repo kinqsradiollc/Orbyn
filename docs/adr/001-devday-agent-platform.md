@@ -3273,3 +3273,45 @@ storage tests cover locked keychain cleanup and filesystem signing-key/credentia
 erasure failures; fake owned server failure proves other cleanup still runs.
 Store tests prove truthful notices and older-contract compatibility. No installed
 OS/live OpenAI or fresh full database acceptance is claimed; candidate only.
+
+### Native account directory foundation — 6 October 2026
+
+`mobile/src/lib/chatgpt-account-directory.ts` implements the metadata directory
+needed for separate saved native registrations. It binds every record to the exact
+configured API URL and Orbyn UUID, uses a hashed storage namespace, requires a new
+revision and atomic protected-store compare-and-swap, and fences owner changes
+before/after awaits. Connected/disconnected/reconnect status, explicit selected
+connection, duplicate registration/identity rejection, fresh-revision enforcement,
+bounded100-account/262KiB records and sanitized persistence failures are tested.
+Snapshots are detached copies. No token, grant, scope or model authority lives in
+this directory; account metadata cannot authorize inference. Configured HTTP(S)
+API namespaces are accepted without credentials/query/hash; API transport policy
+remains the client's responsibility, including local native development.
+
+This is a foundation checkpoint, not shipped multi-account selection. The module
+is not wired to native SecureStore or Settings yet. Required continuation:
+
+1. Implement the protected owner queue/CAS adapter and per-registration credential
+   slots; migrate the existing active record without losing tokens/host/client IDs.
+2. Separate Add account from reconnect. Verify a new grant before preserving the
+   previous slot and committing its selected directory revision.
+3. Switch only after checking the exact current Orbyn session, selected slot, live
+   verified server identity and fresh grant. Stop the previous executor and fence
+   old callbacks/refreshes before activation. Never choose a first account silently.
+4. Integrate disconnect/terminal-refresh cleanup for the exact slot and directory
+   status, preserving other accounts and registration mappings; report incomplete
+   erasure. Directory status must never replace credential verification.
+5. Add native account selection UI and account-specific catalog/default controls.
+   Preserve immutable queued-job provider snapshots and explicit managed fallback;
+   an account switch must not retarget existing work.
+6. Qualify actual iOS/Android protected storage, OAuth/browser lifecycle, switching,
+   persistence/recovery, narrow/large-text UI and default/provider provenance.
+
+Evidence: `/tmp/orbyn-native-directory-all-final2.log`364passed/0failed/0skipped,
+5854.532208ms, exit0. Eleven source-module tests cover directory isolation,
+selection races, retirement/reconnect metadata, duplicate/substituted bindings,
+foreign-owner hash collision, malformed/credential-bearing records, bounded
+records, digest/CAS faults and reused revisions. Mobile/backend typechecks and
+Prettier/diff checks pass. These use controlled storage adapters and prove no
+installed protected-store behavior. Full database and main qualification remain
+pending; other C1-C6/M1/D1/U1 requirements are unchanged.
