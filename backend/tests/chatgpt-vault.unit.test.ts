@@ -514,3 +514,52 @@ test("callback nonce survives code exchange and verified identity selects the en
     await f.cleanup();
   }
 });
+
+test("observed vault revocation preserves newer reconnects and erases matching credentials", async () => {
+  const f = await fixture();
+  try {
+    const first = await f.vault.write(binding, credentials, null);
+    const second = await f.vault.write(
+      binding,
+      { ...credentials, accessToken: "newer-token" },
+      first,
+    );
+    await assert.rejects(
+      f.vault.revokeObserved(binding, first),
+      status("STORAGE_CONFLICT"),
+    );
+    assert.equal(
+      (await f.vault.read(binding)).credentials.accessToken,
+      "newer-token",
+    );
+    await f.vault.revokeObserved(binding, second);
+    assert.equal((await f.vault.read(binding)).credentials, null);
+  } finally {
+    await f.cleanup();
+  }
+});
+
+test("observed vault removal is cancelled if its owner stops during keychain read", async () => {
+  const f = await fixture();
+  try {
+    const revision = await f.vault.write(binding, credentials, null);
+    const controller = new AbortController();
+    const decrypt = f.provider.decryptStringAsync;
+    f.provider.decryptStringAsync = async (bytes: Buffer) => {
+      const result = await decrypt(bytes);
+      controller.abort();
+      return result;
+    };
+    await assert.rejects(
+      f.vault.revokeObserved(binding, revision, { signal: controller.signal }),
+    );
+    f.provider.decryptStringAsync = decrypt;
+    assert.equal((await f.vault.read(binding)).revision, revision);
+    assert.equal(
+      (await f.vault.read(binding)).credentials.accessToken,
+      credentials.accessToken,
+    );
+  } finally {
+    await f.cleanup();
+  }
+});

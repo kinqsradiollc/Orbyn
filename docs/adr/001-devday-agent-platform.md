@@ -3221,3 +3221,30 @@ pass. Focused source/runtime tests verify issued-client reuse, token-free mappin
 foreign-owner isolation, concurrent mapping rejection and save-failure cleanup.
 Installed/live provider acceptance, multi-account selection and full database
 qualification remain open. No production/main promotion is claimed.
+
+### Desktop confirmed terminal-refresh recovery — 6 October 2026
+
+Desktop token renewal now recognizes the same documented terminal grant errors
+as native on400/401, including structured error.code replies. Server/rate-limit
+and invalid-client errors do not erase credentials. The encrypted singleton
+vault gained revokeObserved: removal requires the observed credential revision,
+unchanged vault epoch and a live cancellation signal after the keychain read.
+A newer reconnect survives an old refresh failure; ordinary explicit revoke
+keeps its existing unconditional removal semantics.
+
+The credential resolver clears only the confirmed unusable observed record,
+then notifies the selected model/manager lifetime. The manager drops its plan
+grant cache/catalog, stops executor/model/signer/timers and leaves the verified
+registration visible for reconnect. Other selections/owners are fenced. No
+credential or provider error body crosses IPC. Existing reconnect reuses the
+issued registration and restores its catalog/defaults after new verification.
+
+Evidence: `/tmp/orbyn-desktop-terminal-refresh-all-final2.log`348passed/0failed/
+0skipped,5534.425542ms, exit0. Backend/desktop typechecks, all five modified CJS
+syntax checks, Prettier and diff checks pass. Tests include real encrypted-vault
+conditional erase/newer-revision preservation, cancellation during keychain read,
+terminal-vs-temporary OAuth replies, resolver ownership and composed manager
+executor stop/retained registration/reconnect. The initial focused test's wrong
+expected vault error-code assertion was repaired; only terminal successful runs
+are acceptance evidence. Installed OS/OpenAI acceptance and fresh full database
+qualification remain open. No main/production promotion is claimed.

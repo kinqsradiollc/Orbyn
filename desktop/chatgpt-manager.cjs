@@ -265,6 +265,15 @@ async function createChatgptManager({
       vault,
       requireLiveConnection: live,
       fetch,
+      onInvalidated: () => {
+        if (ctx !== context || ctx.active?.models !== models) return;
+        ctx.grants.delete(registrationId);
+        ctx.error =
+          "This ChatGPT session has ended. Connect again to continue.";
+        stopActive(ctx);
+        ctx.lastCatalog = null;
+        notify();
+      },
       preferenceStore: {
         read: async (_binding, signal) => {
           await live();

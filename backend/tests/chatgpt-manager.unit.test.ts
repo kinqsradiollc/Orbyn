@@ -920,3 +920,52 @@ test("desktop request watcher recovers from a poll failure and stops after logou
     await f.cleanup();
   }
 });
+
+test("manager stops the selected executor and retains reconnect mapping after terminal refresh", async () => {
+  const f = await fixture();
+  let terminal = true;
+  const manager = await create({
+    ...f.options,
+    signIn: async (input: any) => {
+      const result = await f.options.signIn(input);
+      if (terminal) {
+        const saved = await input.vault.read(result.binding);
+        await input.vault.write(
+          result.binding,
+          { ...saved.credentials, expiresAt: Date.now() + 1000 },
+          saved.revision,
+        );
+      }
+      return result;
+    },
+    fetch: async (url: string, init: RequestInit) => {
+      if (url === "https://auth.openai.com/api/accounts/oauth/token")
+        return Response.json(
+          { error: "refresh_token_reused" },
+          { status: 400 },
+        );
+      return f.options.fetch(url, init);
+    },
+  });
+  try {
+    await manager.setSession("account-a");
+    await assert.rejects(manager.connect());
+    const state = await manager.snapshot();
+    assert.equal(state.status, "unavailable");
+    assert.equal(state.connections.length, 1);
+    assert.equal(state.connections[0].sharing_granted, null);
+    assert.equal(state.selection.executor, undefined);
+    assert.equal(state.catalog, null);
+    assert.equal(f.calls(), 0);
+    terminal = false;
+    const restored = await manager.reconnect(
+      state.connections[0].registration_id,
+    );
+    assert.equal(restored.connections.length, 1);
+    assert.equal(restored.connections[0].sharing_granted, true);
+    assert.equal(restored.catalog.status, "ready");
+  } finally {
+    manager.close();
+    await f.cleanup();
+  }
+});
