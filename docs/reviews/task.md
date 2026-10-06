@@ -4027,3 +4027,31 @@ records, digest/CAS faults and reused revisions. Mobile/backend typechecks and
 Prettier/diff checks pass. These use controlled storage adapters and prove no
 installed protected-store behavior. Full database and main qualification remain
 pending; other C1-C6/M1/D1/U1 requirements are unchanged.
+
+### Native protected account storage adapter — 6 October 2026
+
+`mobile/src/lib/chatgpt-protected-store.ts` adds device-only protected storage
+namespaced to the exact API URL and Orbyn user. Reads and compare-and-swap writes
+share a per-key queue across adapter instances in this JavaScript runtime. Keys
+are restricted to that owner's directory or a UUID registration slot. Native
+errors and invalid owner inputs are sanitized; values are bounded by actual
+UTF-8 bytes. Exact captured-session checks fence every awaited operation.
+
+A late session change rolls back only the value written by that operation while
+holding the queue; an external replacement survives. A native write that commits
+before rejecting is also conditionally rolled back. Failed rollback reports
+uncertain storage rather than success. This is not a cross-process lock or an
+installed-keystore proof, and it is not wired into the native picker yet.
+
+Evidence: 13 actual-source adapter tests pass, zero failures/skips, terminal0,
+736.704542ms at `/tmp/orbyn-protected-store-focused-final.log`. Mobile and backend
+typechecks pass. Full ChatGPT unit cohort evidence is recorded in the tracker.
+Next: per-registration credential migration, explicit Add/reconnect/switch,
+executor and refresh fencing, exact-slot retirement and native account UI.
+Existing protected singleton credentials remain untouched by this checkpoint.
+Full database, installed OAuth/storage/inference and main qualification stay open.
+
+Final adapter checkpoint cohort: `/tmp/orbyn-protected-store-all-final.log`,
+377passed/0failed/0skipped,27124.4235ms, exit0. Formatting/diff checks pass.
+Read-only merge-tree with fetched main29b74ecd reports no conflicts; this does
+not replace the remaining qualification gates.
