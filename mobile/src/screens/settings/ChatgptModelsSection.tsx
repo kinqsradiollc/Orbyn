@@ -28,6 +28,7 @@ import {
   readNativeChatgptAccounts,
   selectNativeChatgptAccount,
   type NativeChatgptAccountState,
+  type NativeChatgptConnectAction,
 } from "../../lib/chatgpt-local-sign-in";
 import type { NativeChatgptDirectorySnapshot } from "../../lib/chatgpt-account-directory";
 import { chatgptForeground } from "../../lib/chatgpt-foreground";
@@ -123,7 +124,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       }
     };
   }, [userId, token]);
-  const connect = async () => {
+  const connect = async (requested?: NativeChatgptConnectAction) => {
     if (
       connecting ||
       disconnecting ||
@@ -146,8 +147,18 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       chatgptForeground.suspend();
       await prepareNativeChatgptAccounts(userId, { signal: controller.signal });
       if (controller.signal.aborted || !owned()) return;
+      const action =
+        requested ??
+        (savedAccounts?.selected
+          ? {
+              kind: "reconnect" as const,
+              connectionId: savedAccounts.selected,
+              expectedRevision: savedAccounts.revision,
+            }
+          : undefined);
       const connected = await signInNativeChatgpt(userId, {
         signal: controller.signal,
+        action,
       });
       if (controller.signal.aborted || !owned()) return;
       if (!connected.sharingGranted)
@@ -284,23 +295,27 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
             ? "Update Orbyn to connect ChatGPT on this device."
             : "Connect your account in the browser. ChatGPT work runs while this app is open."}
       </Text>
-      <SmallAction
-        label={
-          Platform.OS === "web"
-            ? "Browser connection unavailable"
-            : connecting
-              ? "Connecting…"
-              : "Connect to ChatGPT"
-        }
-        disabled={
-          !userId ||
-          !token ||
-          localBusy ||
-          account?.status === "unsupported" ||
-          Platform.OS === "web"
-        }
-        onPress={() => void connect()}
-      />
+      {(!savedAccounts || savedAccounts.selected !== null) && (
+        <SmallAction
+          label={
+            Platform.OS === "web"
+              ? "Browser connection unavailable"
+              : connecting
+                ? "Connecting…"
+                : savedAccounts?.selected
+                  ? "Reconnect current account"
+                  : "Connect to ChatGPT"
+          }
+          disabled={
+            !userId ||
+            !token ||
+            localBusy ||
+            account?.status === "unsupported" ||
+            Platform.OS === "web"
+          }
+          onPress={() => void connect()}
+        />
+      )}
       {connecting && (
         <SmallAction
           label="Cancel"
@@ -368,20 +383,44 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
               {savedAccounts.accounts.map((entry, index) => (
                 <SmallAction
                   key={entry.connection.id}
-                  label={`Account ${index + 1}${entry.connection.id === savedAccounts.selected ? " · current" : entry.status !== "connected" ? " · reconnect needed" : ""}`}
-                  disabled={
-                    localBusy ||
-                    entry.connection.id === savedAccounts.selected ||
+                  label={
                     entry.status !== "connected"
+                      ? `Reconnect account ${index + 1}`
+                      : `Account ${index + 1}${entry.connection.id === savedAccounts.selected ? " · current" : ""}`
+                  }
+                  disabled={
+                    localBusy || entry.connection.id === savedAccounts.selected
                   }
                   onPress={() =>
-                    void choose(entry.connection.id, savedAccounts.revision)
+                    entry.status === "connected"
+                      ? void choose(entry.connection.id, savedAccounts.revision)
+                      : void connect({
+                          kind: "reconnect",
+                          connectionId: entry.connection.id,
+                          expectedRevision: savedAccounts.revision,
+                        })
                   }
                 />
               ))}
             </ScrollView>
           </View>
         )}
+      {Platform.OS !== "web" && savedAccounts && (
+        <SmallAction
+          label="Add ChatGPT account"
+          disabled={
+            localBusy ||
+            savedAccounts.accounts.length >= 100 ||
+            account?.status === "unsupported"
+          }
+          onPress={() =>
+            void connect({
+              kind: "add",
+              expectedRevision: savedAccounts.revision,
+            })
+          }
+        />
+      )}
       {choosing && (
         <SmallAction
           label="Cancel switch"

@@ -193,6 +193,23 @@ export function createNativeChatgptAccountDirectory(options: {
         } else value.accounts.push({ connection, status: "connected" });
       });
     },
+    /** Publish a freshly verified registration and its explicit selection in one revision. */
+    connectAndSelect(input: ChatgptConnection, expected: string | null) {
+      const connection = chatgptConnection.parse(input);
+      return mutate(expected, (value) => {
+        const existing = value.accounts.find(
+          (entry) => entry.connection.id === connection.id,
+        );
+        if (existing) {
+          if (
+            JSON.stringify(existing.connection) !== JSON.stringify(connection)
+          )
+            throw conflict();
+          existing.status = "connected";
+        } else value.accounts.push({ connection, status: "connected" });
+        value.selected = connection.id;
+      });
+    },
     /** Caller must first verify the selected slot's current credentials and live server identity. */
     select(id: string, expected: string) {
       z.uuid().parse(id);

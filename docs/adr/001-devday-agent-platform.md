@@ -3461,3 +3461,46 @@ acceptance. All other C1-C6/M1/D1/U1 work remains in scope.
 Final picker checkpoint: `/tmp/orbyn-native-picker-all-final2.log`,409passed/
 0failed/0skipped,26543.954292ms, exit0. Mobile/backend typechecks, Prettier and
 diff checks pass. Native UI visual acceptance remains pending; no main promotion.
+
+### Native Add account and targeted reconnect — 6 October 2026
+
+The service now accepts strictly parsed/copied Add or Reconnect actions with the
+picker's expected revision. Add uses dynamic registration without an old client
+or ID-token hint, rejects an existing slot/registration, saves a distinct protected
+slot with a per-registration signing alias and atomically publishes that account
+and its explicit selection. Existing credentials remain unchanged. Targeted
+Reconnect resolves exactly the requested protected active/retired mapping, verifies
+it against directory identity before OAuth and reuses its issued client and signing
+alias. A new verified grant must match the expected account. No plan permission,
+stale revision, missing/substituted mapping or conflicting publication can silently
+replace another account. Failed publication conditionally removes/restores only the
+attempted credential record. Caller action mutation cannot change the copied revision.
+
+Settings wires Add and targeted Reconnect separately from selection. The list stays
+readable/selectable with no active account after disconnect; it does not implicitly
+choose the first remaining profile. Disconnecting one of multiple accounts preserves
+other slots and uses only the active account's provider token/key/server ID. The
+redundant primary Connect control is hidden for an unselected populated directory;
+its rows and Add action remain. Connected selection is local to this device; managed
+provider preference and immutable queued-job snapshots are not changed.
+
+Focused actual-source service/UI cohort103passed/0failed/0skipped,5603.173ms,
+exit0 at `/tmp/orbyn-native-add-focused-final.log`; final service cohort82passed,
+zero failures/skips,5453.417625ms at `/tmp/orbyn-native-add-service-final.log` includes
+caller mutation protection. Tests compose verified-grant fixtures with real native
+service/directory/adapter code: distinct clients, prior-slot preservation, targeted
+retired account behind another active selection, stale/duplicate/mismatched paths,
+multi-account disconnect, publication conflict rollback and denied plan use. No
+real OpenAI token or OS credential operation is established by controlled fixtures.
+
+Disk recovered to2.4GiB and Docker CLI is now responsive. The isolated test container
+orbyn-embedding-test-20261001 is still Exited255, observed read-only; user recovery
+control is preserved. Fresh full regression remains pending. Next audit remaining
+multi-account persistence/recovery, exact cleanup under failure, catalog/default/
+provider provenance, real iOS/Android OAuth/keystore and narrow/large-text screenshots.
+Hosted browser-only connection, truthful tier/allowance availability and all other
+C1-C6/M1/D1/U1 acceptance remain open. No main or production promotion is claimed.
+
+Final Add/reconnect checkpoint: `/tmp/orbyn-native-add-all-final2.log`,418passed/
+0failed/0skipped,28937.061916ms, exit0. Mobile/backend typechecks, Prettier and
+diff checks pass. Real OAuth/OS/UI and full regression/main qualification remain open.

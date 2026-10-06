@@ -157,6 +157,7 @@ function view(
   const saved: (string | null)[] = [];
   const selected: unknown[] = [];
   const localCalls: string[] = [];
+  const connectActions: unknown[] = [];
   const effects: (() => void | (() => void))[] = [];
   let sessionToken = "fixture-session";
   const source =
@@ -243,7 +244,11 @@ function view(
             assert.ok(options.signal instanceof AbortSignal);
             await nativeOptions.prepare?.();
           },
-          signInNativeChatgpt: async () => {
+          signInNativeChatgpt: async (
+            _: string,
+            options: { signal: AbortSignal; action?: unknown },
+          ) => {
+            connectActions.push(options.action);
             localCalls.push("sign-in");
             if (connectOutcome !== "success")
               throw new Error(
@@ -323,6 +328,7 @@ function view(
     saved,
     selected,
     localCalls,
+    connectActions,
     setToken: (value: string) => {
       sessionToken = value;
     },
@@ -639,7 +645,7 @@ const pickerAccounts = {
     { connection: { id: "account-three" }, status: "reconnect" },
   ],
 };
-test("native saved account picker binds explicit choice to displayed revision and keeps unavailable entries disabled", async () => {
+test("native saved account picker binds explicit choices and reconnects to the displayed revision", async () => {
   const f = view("mobile", viewState(), "success", {
     accounts: pickerAccounts,
   });
@@ -658,12 +664,10 @@ test("native saved account picker binds explicit choice to displayed revision an
     (n) => n.type === "SmallAction" && n.props.label === "Account 2",
   );
   const unavailable = nodes.find(
-    (n) =>
-      n.type === "SmallAction" &&
-      n.props.label === "Account 3 · reconnect needed",
+    (n) => n.type === "SmallAction" && n.props.label === "Reconnect account 3",
   );
   assert.equal(current.props.disabled, true);
-  assert.equal(unavailable.props.disabled, true);
+  assert.equal(unavailable.props.disabled, false);
   assert.equal(choice.props.disabled, false);
   choice.props.onPress();
   await new Promise((resolve) => setImmediate(resolve));
@@ -731,4 +735,31 @@ test("failed native selection resumes preserved runtime and reports an owned err
   assert.ok(
     elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
   );
+});
+test("native Settings distinguishes Add from a targeted unavailable-account reconnect", async () => {
+  for (const action of ["add", "reconnect"] as const) {
+    const f = view("mobile", viewState(), "success", {
+      accounts: pickerAccounts,
+    });
+    f.render();
+    await f.flushEffects();
+    const label =
+      action === "add" ? "Add ChatGPT account" : "Reconnect account 3";
+    const button = elements(f.render()).find(
+      (n) => n.type === "SmallAction" && n.props.label === label,
+    );
+    assert.equal(button.props.disabled, false);
+    button.props.onPress();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(f.connectActions[0])),
+      action === "add"
+        ? { kind: "add", expectedRevision: "picker-revision" }
+        : {
+            kind: "reconnect",
+            connectionId: "account-three",
+            expectedRevision: "picker-revision",
+          },
+    );
+  }
 });

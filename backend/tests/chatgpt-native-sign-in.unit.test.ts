@@ -288,9 +288,18 @@ function mount(
             }
             if (url === "https://auth.openai.com/api/accounts/oauth/revoke") {
               calls.providerRevoked.push(init.body.get("token"));
-              assert.equal(init.body.get("client_id"), connection.client_id);
+              assert.equal(
+                init.body.get("client_id"),
+                (options.connection?.() ?? connection).client_id,
+              );
               assert.equal(init.body.get("token_type_hint"), "refresh_token");
-              assert.equal(accounts(storage).length, 1);
+              assert.ok(
+                accounts(storage).some(
+                  ([, raw]) =>
+                    JSON.parse(raw).grant?.refreshToken ===
+                    init.body.get("token"),
+                ),
+              );
               return new Response(null, {
                 status: options.providerRevokeFailure ? 503 : 200,
               });
@@ -299,7 +308,10 @@ function mount(
               url,
               "https://auth.openai.com/api/accounts/oauth/token",
             );
-            assert.equal(init.body.get("client_id"), "oaiapp_fixture");
+            assert.equal(
+              init.body.get("client_id"),
+              (options.connection?.() ?? connection).client_id,
+            );
             if (init.body.get("grant_type") === "refresh_token") {
               calls.refreshed++;
               await options.onRefresh?.();
@@ -385,7 +397,7 @@ function mount(
               new URLSearchParams({
                 state: options.callback === "wrong" ? "wrong" : state,
                 code: "fixture-code",
-                client_id: "oaiapp_fixture",
+                client_id: (options.connection?.() ?? connection).client_id,
                 ...(options.callback === "denied"
                   ? { error: "access_denied" }
                   : {}),
@@ -516,7 +528,12 @@ function mount(
             },
             revokeChatgptConnection: async (id: string) => {
               calls.revoked.push(id);
-              assert.equal(accounts(storage).length, 0);
+              assert.equal(
+                accounts(storage).some(
+                  ([, raw]) => JSON.parse(raw).connection.id === id,
+                ),
+                false,
+              );
               if (options.revokeFailure)
                 throw new Error("private-refresh provider outage");
               await options.onRevoke?.();
@@ -538,7 +555,10 @@ function mount(
               options.onFinish?.();
               if (options.changeSession === "finish")
                 session.token = "other-session";
-              return { ...connection, ...options.identity };
+              return {
+                ...(options.connection?.() ?? connection),
+                ...options.identity,
+              };
             },
           },
         };
@@ -558,7 +578,8 @@ function mount(
       }),
     prepare: (input = userId, signal?: AbortSignal) =>
       exports.prepareNativeChatgptAccounts(input, { signal }),
-    signIn: (input = userId) => exports.signInNativeChatgpt(input),
+    signIn: (input = userId, action?: unknown) =>
+      exports.signInNativeChatgpt(input, { action }),
     cancel: () => exports.cancelNativeChatgptSignIn(),
     accountState: (input = userId, signal?: AbortSignal) =>
       exports.readNativeChatgptAccountState(input, { signal }),
@@ -1824,4 +1845,263 @@ test("native switch stops the previous executor and rejects plan-use-off target 
   await assert.rejects(runtime.heartbeat());
   assert.equal((await f.savedAccounts()).selected, connection.id);
   runtime.close();
+});
+test("native Add account uses dynamic registration and preserves the existing selected credentials", async () => {
+  const target = {
+    ...connection,
+    id: randomUUID(),
+    subject: "second-subject",
+    client_id: "oaiapp_second",
+  };
+  let currentConnection = connection;
+  const f = mount({
+    signing: true,
+    connection: () => currentConnection,
+    liveConnections: [connection, target],
+  });
+  await f.signIn();
+  await f.prepare();
+  const [oldKey, oldRaw] = accounts(f.storage)[0];
+  const before = await f.savedAccounts();
+  currentConnection = target;
+  await f.signIn(undefined, { kind: "add", expectedRevision: before.revision });
+  const after = await f.savedAccounts();
+  assert.equal(after.accounts.length, 2);
+  assert.equal(after.selected, target.id);
+  assert.equal(f.storage.get(oldKey), oldRaw);
+  assert.equal(accounts(f.storage).length, 2);
+  const url = new URL(f.calls.opened.at(-1)!);
+  assert.equal(url.searchParams.get("client_id"), "dynamic_agent_client");
+  assert.equal(url.searchParams.has("id_token_hint"), false);
+  const newSaved = JSON.parse(
+    accounts(f.storage).find(
+      ([, raw]) => JSON.parse(raw).connection.id === target.id,
+    )![1],
+  );
+  assert.match(newSaved.signingAlias, /^[a-f0-9]{64}$/);
+  assert.notEqual(newSaved.signingAlias, JSON.parse(oldRaw).signingAlias);
+});
+test("native targeted reconnect reuses the unavailable registration while another account is active", async () => {
+  const target = {
+    ...connection,
+    id: randomUUID(),
+    subject: "second-subject",
+    client_id: "oaiapp_second",
+  };
+  let currentConnection = connection;
+  const f = mount({
+    signing: true,
+    connection: () => currentConnection,
+    liveConnections: [connection, target],
+  });
+  await f.signIn();
+  await f.prepare();
+  const before = await f.savedAccounts();
+  currentConnection = target;
+  await f.signIn(undefined, { kind: "add", expectedRevision: before.revision });
+  const [targetKey, targetRaw] = accounts(f.storage).find(
+    ([, raw]) => JSON.parse(raw).connection.id === target.id,
+  )!;
+  const selected = await f.savedAccounts();
+  currentConnection = connection;
+  await f.chooseAccount(connection.id, selected.revision);
+  const [directoryKey, directoryRaw] = [...f.storage].find(([key]) =>
+    key.includes(".directory."),
+  )!;
+  const directory = JSON.parse(directoryRaw);
+  directory.accounts.find(
+    (entry: any) => entry.connection.id === target.id,
+  ).status = "reconnect";
+  directory.revision = randomUUID();
+  f.storage.set(directoryKey, JSON.stringify(directory));
+  const retired = {
+    ...JSON.parse(targetRaw),
+    version: 2,
+    revision: randomUUID(),
+    grant: null,
+  };
+  f.storage.set(targetKey, JSON.stringify(retired));
+  const old = [...accounts(f.storage)].find(
+    ([, raw]) => JSON.parse(raw).connection.id === connection.id,
+  )!;
+  currentConnection = target;
+  await f.signIn(undefined, {
+    kind: "reconnect",
+    connectionId: target.id,
+    expectedRevision: directory.revision,
+  });
+  assert.equal((await f.savedAccounts()).selected, target.id);
+  assert.equal(f.storage.get(old[0]), old[1]);
+  const url = new URL(f.calls.opened.at(-1)!);
+  assert.equal(url.searchParams.get("client_id"), target.client_id);
+  assert.equal(url.searchParams.has("id_token_hint"), false);
+  assert.equal(
+    JSON.parse(f.storage.get(targetKey)!).signingAlias,
+    retired.signingAlias,
+  );
+});
+test("native Add rejects a stale revision and duplicate existing registration without overwriting slots", async () => {
+  const f = mount({ signing: true });
+  await f.signIn();
+  await f.prepare();
+  const before = await f.savedAccounts(),
+    original = [...f.storage];
+  const calls = f.calls.started;
+  await assert.rejects(
+    f.signIn(undefined, { kind: "add", expectedRevision: randomUUID() }),
+    /selection changed/,
+  );
+  assert.equal(f.calls.started, calls);
+  await assert.rejects(
+    f.signIn(undefined, { kind: "add", expectedRevision: before.revision }),
+    /already saved/,
+  );
+  assert.deepEqual([...f.storage], original);
+});
+test("native explicit reconnect refuses a mismatched protected registration before opening OAuth", async () => {
+  const f = mount({ signing: true });
+  await f.signIn();
+  await f.prepare();
+  const before = await f.savedAccounts();
+  const [key, raw] = accounts(f.storage)[0],
+    parsed = JSON.parse(raw);
+  parsed.connection.subject = "substituted";
+  f.storage.set(key, JSON.stringify(parsed));
+  const count = f.calls.opened.length;
+  await assert.rejects(
+    f.signIn(undefined, {
+      kind: "reconnect",
+      connectionId: connection.id,
+      expectedRevision: before.revision,
+    }),
+    /registration is unavailable/,
+  );
+  assert.equal(f.calls.opened.length, count);
+});
+test("disconnecting one of multiple native accounts preserves other slots and a usable unselected picker", async () => {
+  const target = {
+    ...connection,
+    id: randomUUID(),
+    subject: "second-subject",
+    client_id: "oaiapp_second",
+  };
+  let currentConnection = connection;
+  const f = mount({
+    signing: true,
+    connection: () => currentConnection,
+    liveConnections: [connection, target],
+  });
+  await f.signIn();
+  await f.prepare();
+  const [oldKey, oldRaw] = accounts(f.storage)[0],
+    before = await f.savedAccounts();
+  currentConnection = target;
+  await f.signIn(undefined, { kind: "add", expectedRevision: before.revision });
+  await f.disconnect();
+  assert.equal(f.storage.get(oldKey), oldRaw);
+  assert.equal(accounts(f.storage).length, 1);
+  assert.equal((await f.accountState()).status, "missing");
+  const after = await f.savedAccounts();
+  assert.equal(after.accounts.length, 2);
+  assert.equal(after.selected, null);
+  currentConnection = connection;
+  await f.chooseAccount(connection.id, after.revision);
+  assert.equal((await f.savedAccounts()).selected, connection.id);
+});
+test("native Add directory conflict removes only the attempted new slot and preserves a newer selection revision", async () => {
+  const target = {
+    ...connection,
+    id: randomUUID(),
+    subject: "second-subject",
+    client_id: "oaiapp_second",
+  };
+  let currentConnection = connection,
+    change = false,
+    newRevision = "";
+  const f = mount({
+    connection: () => currentConnection,
+    onFinish: () => {
+      if (change) {
+        const [key, raw] = [...f.storage].find(([key]) =>
+          key.includes(".directory."),
+        )!;
+        const state = JSON.parse(raw);
+        state.revision = newRevision = randomUUID();
+        f.storage.set(key, JSON.stringify(state));
+      }
+    },
+  });
+  await f.signIn();
+  await f.prepare();
+  const [oldKey, oldRaw] = accounts(f.storage)[0],
+    before = await f.savedAccounts();
+  currentConnection = target;
+  change = true;
+  await assert.rejects(
+    f.signIn(undefined, { kind: "add", expectedRevision: before.revision }),
+    /selection changed/,
+  );
+  assert.equal(accounts(f.storage).length, 1);
+  assert.equal(f.storage.get(oldKey), oldRaw);
+  const after = await f.savedAccounts();
+  assert.equal(after.revision, newRevision);
+  assert.equal(after.selected, connection.id);
+});
+test("native Add denied plan permission preserves the selected account without fallback or new credentials", async () => {
+  const target = {
+    ...connection,
+    id: randomUUID(),
+    subject: "second-subject",
+    client_id: "oaiapp_second",
+  };
+  let currentConnection = connection;
+  const options: { connection: () => typeof connection; scopes?: string } = {
+    connection: () => currentConnection,
+  };
+  const f = mount(options);
+  await f.signIn();
+  await f.prepare();
+  const before = await f.savedAccounts(),
+    original = [...f.storage];
+  currentConnection = target;
+  options.scopes = "openid resource.invoke";
+  await assert.rejects(
+    f.signIn(undefined, { kind: "add", expectedRevision: before.revision }),
+    /Enable ChatGPT plan usage/,
+  );
+  assert.deepEqual([...f.storage], original);
+  assert.equal((await f.savedAccounts()).selected, connection.id);
+});
+test("native OAuth action is copied before awaits so caller mutation cannot bypass its displayed revision", async () => {
+  const target = {
+    ...connection,
+    id: randomUUID(),
+    subject: "second-subject",
+    client_id: "oaiapp_second",
+  };
+  let currentConnection = connection,
+    mutate = false;
+  const action = { kind: "add" as const, expectedRevision: "" };
+  const f = mount({
+    connection: () => currentConnection,
+    onFinish: () => {
+      if (mutate) {
+        const [key, raw] = [...f.storage].find(([key]) =>
+          key.includes(".directory."),
+        )!;
+        const state = JSON.parse(raw);
+        state.revision = randomUUID();
+        action.expectedRevision = state.revision;
+        f.storage.set(key, JSON.stringify(state));
+      }
+    },
+  });
+  await f.signIn();
+  await f.prepare();
+  action.expectedRevision = (await f.savedAccounts()).revision;
+  currentConnection = target;
+  mutate = true;
+  await assert.rejects(f.signIn(undefined, action), /selection changed/);
+  assert.equal(accounts(f.storage).length, 1);
+  assert.equal((await f.savedAccounts()).selected, connection.id);
 });

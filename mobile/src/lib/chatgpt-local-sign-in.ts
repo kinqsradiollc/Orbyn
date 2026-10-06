@@ -394,10 +394,26 @@ function decodeRegistration(value: string | null) {
   }
 }
 
+const connectAction = z.discriminatedUnion("kind", [
+  z
+    .object({ kind: z.literal("add"), expectedRevision: z.uuid().nullable() })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("reconnect"),
+      connectionId: z.uuid(),
+      expectedRevision: z.uuid(),
+    })
+    .strict(),
+]);
+export type NativeChatgptConnectAction =
+  | { kind: "add"; expectedRevision: string | null }
+  | { kind: "reconnect"; connectionId: string; expectedRevision: string };
+
 /** Native-only authorization; access/refresh credentials stay in this device's protected store. */
 export async function signInNativeChatgpt(
   userId: string,
-  options: { signal?: AbortSignal } = {},
+  options: { signal?: AbortSignal; action?: NativeChatgptConnectAction } = {},
 ): Promise<{ connection: ChatgptConnection; sharingGranted: boolean }> {
   if (Platform.OS === "web" || !nativeChatgptCallbackAvailable())
     throw new Error(
@@ -405,6 +421,15 @@ export async function signInNativeChatgpt(
     );
   if (current || disconnecting)
     throw new Error("Finish or cancel the current ChatGPT action first.");
+  let action: NativeChatgptConnectAction | undefined;
+  try {
+    action =
+      options.action === undefined
+        ? undefined
+        : connectAction.parse(options.action);
+  } catch {
+    throw new Error("The saved ChatGPT account action is invalid.");
+  }
   const id = Crypto.randomUUID(),
     controller = new AbortController();
   const token = session.token;
@@ -439,20 +464,60 @@ export async function signInNativeChatgpt(
     check();
     if (user.id !== userId)
       throw new Error("The signed-in Orbyn account changed.");
-    const key = await accountKey(userId),
-      host = await hostId();
+    const context = action ? await accountStorage(userId, check) : null;
+    const before = context ? await context.directory.read() : null;
     check();
-    const original = await SecureStore.getItemAsync(key, protectedOptions);
+    if (
+      action &&
+      ((before?.revision ?? null) !== action.expectedRevision ||
+        (await context!.storage.read(context!.storage.legacyKey)) !== null)
+    )
+      throw new Error(
+        "The saved ChatGPT account selection changed. Finish migration and try again.",
+      );
+    if (action?.kind === "add" && (before?.accounts.length ?? 0) >= 100)
+      throw new Error("The saved ChatGPT account limit was reached.");
+    const target =
+      action?.kind === "reconnect"
+        ? before?.accounts.find(
+            (entry) => entry.connection.id === action.connectionId,
+          )
+        : null;
+    if (action?.kind === "reconnect" && !target)
+      throw new Error("The saved ChatGPT registration is unavailable.");
+    let key =
+      action?.kind === "reconnect"
+        ? context!.storage.slotKey(action.connectionId)
+        : action?.kind === "add"
+          ? context!.storage.legacyKey
+          : await accountKey(userId);
+    const host = await hostId();
+    check();
+    const original =
+      action?.kind === "add"
+        ? null
+        : await SecureStore.getItemAsync(key, protectedOptions);
     const saved = decodeRegistration(original);
-    const originalMapping = await SecureStore.getItemAsync(
-      mappingKey(key),
-      protectedOptions,
-    );
+    let originalMapping =
+      action?.kind === "add"
+        ? null
+        : await SecureStore.getItemAsync(mappingKey(key), protectedOptions);
     check();
     const returning =
-      saved ??
-      decodeRetiredRegistration(original) ??
-      decodeRetiredRegistration(originalMapping);
+      action?.kind === "add"
+        ? null
+        : (saved ??
+          decodeRetiredRegistration(original) ??
+          decodeRetiredRegistration(originalMapping));
+    if (
+      target &&
+      (!returning ||
+        JSON.stringify(returning.connection) !==
+          JSON.stringify(target.connection))
+    )
+      throw new Error(
+        "The saved ChatGPT registration is unavailable. Add a new account.",
+      );
     check();
     const challenge = await client.startChatgptConnection(
       returning ? { client_id: returning.connection.client_id } : {},
@@ -551,6 +616,37 @@ export async function signInNativeChatgpt(
       throw new Error(
         "Enable ChatGPT plan usage before connecting this provider.",
       );
+    if (action?.kind === "add") {
+      if (
+        before?.accounts.some((entry) => entry.connection.id === connection.id)
+      )
+        throw new Error(
+          "This registration is already saved. Reconnect that account.",
+        );
+      key = context!.storage.slotKey(connection.id);
+      if ((await context!.storage.read(key)) !== null)
+        throw new Error(
+          "This ChatGPT registration already has saved credentials.",
+        );
+      originalMapping = await SecureStore.getItemAsync(
+        mappingKey(key),
+        protectedOptions,
+      );
+      if (originalMapping !== null)
+        throw new Error(
+          "This registration is already saved. Reconnect that account.",
+        );
+      check();
+    }
+    const signingAlias =
+      returning?.signingAlias ??
+      (action
+        ? await Crypto.digestStringAsync(
+            Crypto.CryptoDigestAlgorithm.SHA256,
+            JSON.stringify([client.baseUrl, userId, connection.id]),
+          )
+        : undefined);
+    check();
     // A competing write cannot silently replace the selected registration.
     if (
       (await SecureStore.getItemAsync(mappingKey(key), protectedOptions)) !==
@@ -568,11 +664,12 @@ export async function signInNativeChatgpt(
       revision: id,
       connection,
       grant,
-      ...(returning?.signingAlias
-        ? { signingAlias: returning.signingAlias }
-        : {}),
+      ...(signingAlias ? { signingAlias } : {}),
     });
-    await SecureStore.setItemAsync(key, installed, protectedOptions);
+    if (context) {
+      if (!(await context.storage.compareAndSwap(key, original, installed)))
+        throw new Error("The saved ChatGPT credentials changed. Try again.");
+    } else await SecureStore.setItemAsync(key, installed, protectedOptions);
     if (
       session.token !== token ||
       controller.signal.aborted ||
@@ -589,10 +686,16 @@ export async function signInNativeChatgpt(
       check();
     }
     try {
-      await updateDirectoryStatus(userId, key, "connected", check);
+      if (action)
+        await context!.directory.connectAndSelect(
+          connection,
+          action.expectedRevision,
+        );
+      else await updateDirectoryStatus(userId, key, "connected", check);
     } catch (error) {
       // Metadata publication is also an awaited ownership boundary.
       if (
+        action ||
         session.token !== token ||
         controller.signal.aborted ||
         current?.id !== id
@@ -1213,6 +1316,15 @@ export async function createNativeChatgptExecutor(userId: string) {
 /** Local presence only; executor creation separately verifies the live server identity. */
 export async function hasNativeChatgptRegistration(userId: string) {
   if (Platform.OS === "web" || !nativeChatgptSigningAvailable()) return false;
+  const token = session.token;
+  if (!token) return false;
+  const check = () => {
+    if (session.token !== token) throw new Error("The Orbyn session changed.");
+  };
+  const context = await accountStorage(userId, check);
+  const directory = await context.directory.read();
+  check();
+  if (directory && directory.selected === null) return false;
   const saved = decodeRegistration(
     await SecureStore.getItemAsync(await accountKey(userId), protectedOptions),
   );
@@ -1242,6 +1354,15 @@ export async function readNativeChatgptAccountState(
   check();
   if (user.id !== userId)
     throw new Error("The signed-in Orbyn account changed.");
+  const context = await accountStorage(userId, check);
+  const directory = await context.directory.read();
+  check();
+  if (
+    directory &&
+    directory.selected === null &&
+    directory.accounts.length !== 1
+  )
+    return { status: "missing" };
   const key = await accountKey(userId);
   check();
   const value = await SecureStore.getItemAsync(key, protectedOptions);
