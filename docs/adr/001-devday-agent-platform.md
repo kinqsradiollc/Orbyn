@@ -2637,3 +2637,13 @@ pooling, invented provider approval flag, blind custom-scheme launch or false
 
 This correction records an implementation gap, not a shipped fix. No code or
 real-account acceptance was completed by the documentation change.
+
+#### Native callback implementation candidate
+
+A device-local iOS/Android Expo callback module and shared OSS authorization/
+callback contracts are implemented on `codex/chatgpt-direct-web-oauth`. Real
+loopback socket fixtures pass on macOS/JVM, and Swift compiles against the iOS
+simulator SDK. This proves the callback primitives only. Native OS browser
+lifecycle, protected token lifecycle, provider executor and settings integration,
+installed native builds and real-account acceptance remain incomplete. The
+hosted web requirement remains open; no desktop handoff is relabeled direct.

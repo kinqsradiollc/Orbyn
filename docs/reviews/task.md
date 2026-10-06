@@ -3287,3 +3287,41 @@ claim that a popup, hosted identity-only OAuth or changed copy resolves the
 user's ChatGPT-plan requirement. Main application remains869a8005; this is a
 documentation correction only. Full Docs offline candidate0ee17ce5 remains
 unpromoted; its specific full-suite session56698 was confirmed live on resumption.
+
+### Native ChatGPT callback candidate — 6 October 2026
+
+Branch `codex/chatgpt-direct-web-oauth` now has an unactivated local Expo module
+for both iOS and Android. Swift Network and JVM ServerSocket listeners bind only
+127.0.0.1 with an ephemeral port, enforce exact callback path/Host/state,
+duplicate-parameter and Origin/body rejection, bounded headers/read lifetime,
+one-use delivery, timeout/cancel and attempt-owned cleanup. No provider secrets
+are stored or logged. Core native/local authorization and callback contracts use
+initial dynamic registration, Orbyn naming, returned issued-client identity,
+PKCE/nonce and exact URI; no pre-issued client or workspace API key is required.
+
+Native listener fixtures are real socket checks against the exact Swift and
+Kotlin classes, run on this Mac/JVM (not an iPhone/Android app). They cover wrong
+state, duplicate parameters, Origin, valid callback, replay, cancellation and
+expiry. `node scripts/verify-chatgpt-native-loopback.mjs swift` and `... kotlin`
+both pass. Swift additionally typechecks for arm64 iOS simulator SDK.7 core
+contract cases and package builds/mobile types pass. Expo module wrappers have
+not yet been built into an app or exercised on-device. No UI activation or full
+ChatGPT/native completion is claimed.
+
+Next: OS authorization browser lifecycle (including iOS suspension), protected
+local token exchange/verification/refresh, native executor/signing, models and
+one-button UI integration; native build and real authorization acceptance.
+Hosted browser-only connection remains unmet. Do not ship a Connect button that
+only establishes identity while provider execution still requires a laptop.
+
+The unchanged offline Docs candidate0ee17ce5 full suite finished successfully:
+3622 pass,0 fail,1 existing skip,817079.239ms,terminal exit0. Evidence:
+`/tmp/orbyn-channel-offline-editor-full66.log`. It remains unpromoted while the
+user's ChatGPT-first priority is active.
+
+Final callback-candidate checks: backend, desktop and mobile typechecks pass;
+package builds and owned Prettier/diff checks pass. Expo autolinking resolves
+OrbynChatgpt on both apple/android (metadata proof only, not native wrapper build).
+Repeated Swift/Kotlin real-socket fixtures pass after tightening raw callback
+path validation and one-callback acceptance. No chargeable provider request or
+UI sign-in was performed.
