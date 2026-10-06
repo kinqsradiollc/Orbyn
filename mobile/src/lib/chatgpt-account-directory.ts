@@ -164,6 +164,19 @@ export function createNativeChatgptAccountDirectory(options: {
       const { value } = await load();
       return value ? snapshot(value) : null;
     },
+    /** One-time import of an existing protected singleton; never replace a populated directory. */
+    importSingleton(
+      input: ChatgptConnection,
+      nextStatus: "connected" | "reconnect",
+    ) {
+      const connection = chatgptConnection.parse(input);
+      if (nextStatus !== "connected" && nextStatus !== "reconnect")
+        throw invalid();
+      return mutate(null, (value) => {
+        value.accounts = [{ connection, status: nextStatus }];
+        value.selected = nextStatus === "connected" ? connection.id : null;
+      });
+    },
     /** Register only after identity/grant verification; this does not activate inference. */
     add(input: ChatgptConnection, expected: string | null) {
       const connection = chatgptConnection.parse(input);

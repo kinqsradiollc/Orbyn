@@ -3343,3 +3343,33 @@ Final adapter checkpoint cohort: `/tmp/orbyn-protected-store-all-final.log`,
 377passed/0failed/0skipped,27124.4235ms, exit0. Formatting/diff checks pass.
 Read-only merge-tree with fetched main29b74ecd reports no conflicts; this does
 not replace the remaining qualification gates.
+
+### Resumable native singleton migration — 6 October 2026
+
+The protected adapter now exposes the exact legacy owner key under its shared
+queue. A one-time directory import records the existing connected selection or
+an unselected reconnect mapping atomically. `chatgpt-account-migration.ts` parses
+the protected record/grant/client binding, preserves tokens and registration,
+and stores the existing native signing alias in the new registration slot.
+It refuses an unrelated populated directory or a conflicting slot. Original
+credentials are removed only after matching directory publication; exact CAS
+preserves a competing singleton write. Interrupted publication/erasure can resume
+with the same staged slot and directory. Late session changes are fenced.
+
+This migration API is **not activated** in local-sign-in or Settings. Caller must
+first stop executors and serialize sign-in/refresh/disconnect. New slot records
+carry signingAlias; integration must teach runtime decoding, refresh, retirement
+and disconnect to retain/use it before enabling migration. Pending cleanup must
+block activation, and an unexpected legacy/slot conflict must remain fail-closed.
+A process stop can leave both the old record and its staged protected slot until
+cleanup resumes; do not claim credential erasure or allow a separate runtime then.
+No new account/first-account auto-selection is introduced.
+
+Evidence: `/tmp/orbyn-account-migration-focused.log`9passed/0failed/0skipped,
+1075.01575ms, exit0. `/tmp/orbyn-account-migration-all.log`386passed/0failed/
+0skipped,25715.282458ms, exit0. Actual source modules are composed with controlled
+protected storage, including interruption at directory publication/legacy erase,
+retired mapping, unrelated directory, conflicting/newer credentials, malformed
+record and session replacement. Mobile/backend typechecks pass. These are not
+OS protected-store, real OAuth or runtime account-picker acceptance. Full main/
+database/platform gates and the full ADR scope remain open.

@@ -70,21 +70,29 @@ export async function createNativeChatgptProtectedStore(options: {
   const native = options.secureStore ?? SecureStore;
   await guard();
   let digest: string;
+  let legacyDigest: string;
   try {
     digest = await Crypto.digestStringAsync(
       Crypto.CryptoDigestAlgorithm.SHA256,
       JSON.stringify(owner),
     );
+    legacyDigest = await Crypto.digestStringAsync(
+      Crypto.CryptoDigestAlgorithm.SHA256,
+      JSON.stringify([owner.apiBaseUrl, owner.userId]),
+    );
   } catch {
     throw unavailable();
   }
   await guard();
-  if (!/^[a-f0-9]{64}$/.test(digest)) throw unavailable();
+  if (!/^[a-f0-9]{64}$/.test(digest) || !/^[a-f0-9]{64}$/.test(legacyDigest))
+    throw unavailable();
+  const legacyKey = `orbyn.chatgpt.account.${legacyDigest}`;
   const directoryKey = `orbyn.chatgpt.directory.${digest}`;
   const slotPrefix = `orbyn.chatgpt.slot.${digest}.`;
   const validateKey = (key: string) => {
     if (
       key !== directoryKey &&
+      key !== legacyKey &&
       !(
         key.startsWith(slotPrefix) &&
         z.uuid().safeParse(key.slice(slotPrefix.length)).success
@@ -116,6 +124,7 @@ export async function createNativeChatgptProtectedStore(options: {
   };
   return {
     directoryKey,
+    legacyKey,
     slotKey(connectionId: string) {
       return slotPrefix + z.uuid().parse(connectionId);
     },

@@ -8,7 +8,7 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Main                           | `origin/main` verified at `29b74ecd`; user deploys manually                                                                                                       | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                                                      |
 | ChatGPT native                 | Direct local OAuth, protected tokens, model catalog/defaults, signed inference and Settings/foreground activation implemented on `codex/chatgpt-direct-web-oauth` | Installed iOS/Android OAuth/keystore/browser/lifecycle acceptance; account management and truthful plan/usage acceptance                                                                                                                                             |
-| Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire              | Candidate only; 377 ChatGPT unit tests pass; current adapter mobile/backend typechecks pass; refresh coordination, revocation, idle saved-account controls and confirmed invalid-refresh recovery implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
+| Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire              | Candidate only; 386 ChatGPT unit tests pass; current adapter mobile/backend typechecks pass; refresh coordination, revocation, idle saved-account controls and confirmed invalid-refresh recovery implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
 | ChatGPT hosted web             | No supported direct browser-only implementation established; desktop handoff is not completion                                                                    | Supported authorization and user-controlled runtime; actual popup/callback/provider acceptance without desktop                                                                                                                                                       |
 | Main integration               | Read-only merge-tree check detected no conflicts; full DB70 run failed after Docker/database loss                                                                 | Restore disk/database, rerun full regression and qualify installed platforms before promotion                                                                                                                                                                        |
 | Docs D1                        | Structured ownership and Markdown/Mermaid foundations exist; owned editor/offline candidates remain in separate worktrees                                         | Normal editor adoption, remaining flat writers/task identity, collaboration, complete import/render/edit/export/privacy matrices and native visual checks                                                                                                            |
@@ -19,6 +19,13 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 | Cleanup                        | Worktrees, root character/user changes preserved                                                                                                                  | Cleanup only after relevant commits are reconciled, merged and qualified                                                                                                                                                                                             |
 
 ## Current evidence
+
+- Resumable singleton migration composes directory and protected slots; it retains
+  the native signing alias and removes the original only after exact directory
+  publication. Nine focused cases pass. Final ChatGPT cohort:386 passed/zero
+  failures/skips,25715.282458ms, exit0 at `/tmp/orbyn-account-migration-all.log`.
+  Mobile/backend typechecks pass. **Not activated**: runtime decoding, alias
+  retention, exclusive action ownership, switching and picker remain to wire.
 
 - Protected account storage adapter implemented with device-only options, owner
   namespaces, shared in-process per-key queues, conditional rollback and UTF-8
@@ -82,9 +89,9 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 - Expo autolinking discovers the native module on apple and android; JSON evidence
   is `/tmp/orbyn-native-autolink-apple.json` and
   `/tmp/orbyn-native-autolink-android.json`. iOS installed startup evidence is recorded above; Android installed acceptance remains open.
-- Disk last observed at about 677 MiB free. The latest read-only Docker query
-  is unresponsive; the isolated test container was last observed stopped. Current
-  Docker health is unconfirmed; the user controls recovery. Full rerun is pending.
+- Disk last observed at about 935 MiB free. The previous read-only Docker query
+  finished with daemon-unreachable exit1. The user controls Docker recovery; the
+  full isolated database rerun remains pending.
 
 - `/tmp/orbyn-native-revocation-all-retry.log`: 315 passed, zero failures/skips,
   terminal exit zero, 20750.7235 ms. First attempt exited 7 without final summary;
