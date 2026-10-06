@@ -1,3 +1,18 @@
+## Qualified structural/native editor checkpoint — 6 October 2026
+
+Main is now869a8005, fast-forwarded and pushed with the exact fixed DB65 application
+source. Full regression passed3,611 tests, zero failures and one existing skip,
+terminal0,817364ms. Explicit structural operations and the native complete-page
+callback/folding/layout contract are now on main. This does not finish normal
+editor widget activation, stable task-item identity, CRDT or visual/native acceptance.
+
+The newer complete-format offline recovery checkpoint0ee17ce5 remains outside
+main, with81 focused tests, all workspace types and package/backend/web builds
+passing. Its unchanged source is frozen for fresh fullDB66 in the independent
+qualification checkout; inspect that terminal result before promotion. Full
+C1-C6/M1/D1/U1 stays active. The user deploys main manually; preserve character
+and user files and perform no final cleanup yet.
+
 ## Qualified normal editor transport checkpoint — 6 October 2026
 
 Main is now `aea0c50c`, fast-forwarded and pushed with unchanged application source
