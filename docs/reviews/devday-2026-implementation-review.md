@@ -1,3 +1,30 @@
+## Structural editor operations and regression follow-up — 6 October 2026
+
+The normal editor transport candidate `aea0c50c` remains outside main. Its first
+full DB61 run finished with 3,579 passes, 13 failures and one existing skip
+(6,807,357ms). Rendering timeouts and time-sensitive channel/Study/rate-limit
+assertions are preserved in `/tmp/orbyn-channel-normal-editor-aea0c50c-full.log`.
+All affected files subsequently passed on fresh DB62/63: 57 plus 22 tests, zero
+failures. This does not establish a passing full regression. The unchanged frozen
+candidate is running again on fresh DB64 with an awake-only-for-run process;
+no application promotion is claimed until its terminal result is inspected.
+
+In the separate activation checkout, explicit tree operations now insert, remove
+and move nodes, split list continuations and change task-item check state. They
+retain container IDs, callout/list metadata and authored empty owners. Moves
+resolve both owners before indexes shift and reject descendant cycles. Invalid
+IDs, positions, tree budgets and stored text bounds refuse without mutating the
+accepted document. Legacy operations remain format1; nested insertion requires
+an explicit upgrade. Shared editor commands also fence page identity, revision
+and exact draft ownership, including identical content on another page.
+
+The pure operation/store/source/format cohort passes 42/42. Final workspace
+qualification and a scoped commit follow. This is an editor prerequisite, not
+normal editor activation, stable task-item identity or collaboration completion.
+Next complete the existing editor widgets' owned loading/saving/selection and
+structural commands on both clients, then task identity, offline/CRDT and legacy
+writers. The full C1-C6/M1/D1/U1 goal remains active; no final cleanup or deploy.
+
 ## Qualified shared editor and suggestion checkpoint — 6 October 2026
 
 Main is now `4ddba094`, fast-forwarded and pushed with application source matching

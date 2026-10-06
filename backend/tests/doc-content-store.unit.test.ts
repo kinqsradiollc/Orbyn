@@ -22,6 +22,63 @@ const deferred = <T>() => {
   return { promise, resolve };
 };
 
+test("a delayed structural command refuses shifted ownership and retains the current tree", async () => {
+  const store = new DocContentStore({
+    getDocContent: async () => read(),
+    updateDocContent: async () => read(),
+  });
+  await store.open(id);
+  const original = store.state.draft!;
+  const owner = { ...store.state.read!, document: original };
+  store.changeStructure(owner, {
+    kind: "insert",
+    owner: [0],
+    index: 0,
+    node: {
+      kind: "block",
+      block: { type: "paragraph", id: "new", text: "Inserted" },
+    },
+  });
+  const next = store.state.draft;
+  assert.notDeepEqual(next, original);
+  store.changeStructure(owner, { kind: "remove", path: [0, 0] });
+  assert.equal(store.state.draft, next);
+  assert.ok(store.state.error);
+  assert.equal(store.state.dirty, true);
+});
+
+test("structural typing during an optimistic save survives the response and uses its new revision", async () => {
+  const saved = deferred<ReturnType<typeof read>>();
+  let sent = document;
+  const store = new DocContentStore({
+    getDocContent: async () => read(),
+    updateDocContent: async (_id, _version, content) => {
+      sent = content as typeof document;
+      return saved.promise;
+    },
+  });
+  await store.open(id);
+  store.changeLeaf("words", { type: "paragraph", id: "words", text: "First" });
+  const saving = store.save();
+  store.changeStructure(
+    { ...store.state.read!, document: store.state.draft! },
+    {
+      kind: "insert",
+      owner: [0],
+      index: 1,
+      node: {
+        kind: "block",
+        block: { type: "paragraph", id: "continued", text: "Second" },
+      },
+    },
+  );
+  saved.resolve(read(id, 2, sent));
+  await saving;
+  assert.equal(store.state.read?.version, 2);
+  assert.equal(store.state.dirty, true);
+  assert.match(versionedDocSource(store.state.draft), /Second/);
+});
+
 test("a delayed read cannot reopen the previous page or clear its successor", async () => {
   const old = deferred<ReturnType<typeof read>>();
   const store = new DocContentStore({
@@ -180,4 +237,37 @@ test("unsupported Markdown representation keeps every visual node available", as
   assert.equal(store.state.source, null);
   assert.ok(store.state.error);
   assert.deepEqual(store.state.draft, unsupported);
+});
+
+test("structural commands cannot cross pages with identical content", async () => {
+  const store = new DocContentStore({
+    getDocContent: async (value) => read(value),
+    updateDocContent: async () => read(),
+  });
+  await store.open(id);
+  const owner = store.state.read!;
+  await store.open(other);
+  const next = store.state.draft;
+  store.changeStructure(owner, { kind: "remove", path: [0, 0] });
+  assert.equal(store.state.read?.id, other);
+  assert.equal(store.state.draft, next);
+  assert.equal(store.state.dirty, false);
+  assert.ok(store.state.error);
+});
+
+test("structural commands fence new revisions with unchanged content", async () => {
+  let revision = 1;
+  const store = new DocContentStore({
+    getDocContent: async () => read(id, revision),
+    updateDocContent: async () => read(),
+  });
+  await store.open(id);
+  const owner = store.state.read!;
+  revision++;
+  await store.refresh();
+  const next = store.state.draft;
+  store.changeStructure(owner, { kind: "remove", path: [0, 0] });
+  assert.equal(store.state.read?.version, 2);
+  assert.equal(store.state.draft, next);
+  assert.ok(store.state.error);
 });

@@ -4,6 +4,8 @@ import {
   versionedDocRead,
   versionedDocContentKey,
   replaceVersionedDocLeaf,
+  applyDocContentOperation,
+  type DocContentOperation,
   type DocBlock,
   type VersionedDocRead,
   type VersionedDocContent,
@@ -134,6 +136,39 @@ export class DocContentStore {
       } catch {
         // Visual ownership is valid even when Markdown cannot represent it exactly.
       }
+      this.publish({ draft, source, dirty: true, error: null });
+    } catch (error) {
+      this.publish({ error });
+    }
+  }
+  /** Apply explicit ownership changes; delayed widget commands cannot target shifted paths. */
+  changeStructure(expected: VersionedDocRead, operation: DocContentOperation) {
+    if (!this.value.draft || this.value.conflict) return;
+    if (this.value.source !== null && this.value.error) return;
+    try {
+      if (
+        !this.value.read ||
+        expected.id.toLowerCase() !== this.value.read.id.toLowerCase() ||
+        expected.version !== this.value.read.version
+      )
+        throw new Error(
+          "The document owner changed while the structural edit was being prepared.",
+        );
+      const draft = applyDocContentOperation(
+        this.value.draft,
+        expected.document,
+        operation,
+        {
+          projected: true,
+        },
+      );
+      let source: string | null = null;
+      try {
+        source = versionedDocSource(draft, { projected: true });
+      } catch {
+        // Structural ownership can be valid without an exact Markdown representation.
+      }
+      ++this.edit;
       this.publish({ draft, source, dirty: true, error: null });
     } catch (error) {
       this.publish({ error });

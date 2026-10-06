@@ -136,3 +136,4 @@ export * from "./plugin-ai.js";
 export * from "./agenda-permission.js";
 
 export * from "./doc-versioned-source.js";
+export * from "./doc-content-operations.js";
