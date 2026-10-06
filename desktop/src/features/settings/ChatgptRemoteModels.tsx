@@ -96,6 +96,11 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
       .includes(query.trim().toLowerCase()),
   );
   const available = state.status === "ready" && catalog?.status === "ready";
+  const providerReady =
+    available &&
+    !busy &&
+    Boolean(catalog?.capabilities?.includes("plan_inference_v1")) &&
+    models.some((model) => model.slug === catalog?.preference.model);
   const missing =
     catalog?.preference.model &&
     !models.some((m) => m.slug === catalog.preference.model);
@@ -104,7 +109,7 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
       <AiProviderChoiceControls
         userId={userId}
         selection={
-          state.selection
+          providerReady && state.selection
             ? {
                 connection_id: state.selection.connection_id,
                 executor_id: state.selection.executor_id,

@@ -106,13 +106,18 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       .includes(query.trim().toLowerCase()),
   );
   const available = state.status === "ready" && catalog?.status === "ready";
+  const providerReady =
+    available &&
+    !busy &&
+    Boolean(catalog?.capabilities?.includes("plan_inference_v1")) &&
+    models.some((model) => model.slug === catalog?.preference.model);
   const selected = models.find((m) => m.slug === catalog?.preference.model);
   return (
     <SettingsSection title="AI connections & models">
       <AiProviderChoiceControls
         userId={userId}
         selection={
-          state.selection
+          providerReady && state.selection
             ? {
                 connection_id: state.selection.connection_id,
                 executor_id: state.selection.executor_id,
