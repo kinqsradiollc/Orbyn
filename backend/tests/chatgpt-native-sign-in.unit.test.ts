@@ -53,6 +53,8 @@ function mount(
     failRefreshProof?: boolean;
     onRefresh?: () => Promise<void>;
     refreshError?: { status: number; code: string };
+    failMappingStore?: boolean;
+    onFinish?: () => void;
     signing?: boolean;
     inference?: "success" | "limit" | "session";
     changeDuringModels?: "session" | "registration";
@@ -153,6 +155,8 @@ function mount(
           getItemAsync: async (key: string) => storage.get(key) ?? null,
           setItemAsync: async (key: string, value: string, config: any) => {
             assert.equal(config.keychainAccessible, "protected-device-only");
+            if (options.failMappingStore && key.includes(".registration."))
+              throw new Error("private-access storage failure");
             storage.set(key, value);
             if (options.changeSession === "store" && key.includes(".account."))
               session.token = "other-session";
@@ -487,6 +491,7 @@ function mount(
             }),
             finishChatgptConnection: async (proof: any) => {
               calls.proof.push(proof);
+              options.onFinish?.();
               if (options.changeSession === "finish")
                 session.token = "other-session";
               return { ...connection, ...options.identity };
@@ -1302,4 +1307,73 @@ test("confirmed unusable refresh closes the existing native executor before anot
   await assert.rejects(fixture.models(), /Reconnect/);
   await assert.rejects(executor.executeNext());
   assert.equal(fixture.calls.responses, 0);
+});
+
+test("native disconnect retains a protected token-free issued mapping for reconnect", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  await fixture.disconnect();
+  assert.equal(accounts(fixture.storage).length, 0);
+  const entries = [...fixture.storage].filter(([key]) =>
+    key.includes(".registration."),
+  );
+  assert.equal(entries.length, 1);
+  assert.deepEqual(JSON.parse(entries[0][1]).connection, connection);
+  assert.equal(JSON.parse(entries[0][1]).grant, null);
+  assert.doesNotMatch(
+    entries[0][1],
+    /private-access|private-refresh|identity-proof/,
+  );
+  assert.equal((await fixture.accountState()).status, "missing");
+  await fixture.signIn();
+  const url = new URL(fixture.calls.opened.at(-1)!);
+  assert.equal(url.searchParams.get("client_id"), connection.client_id);
+  assert.equal(url.searchParams.has("id_token_hint"), false);
+});
+
+test("native reconnect cannot adopt another Orbyn owner's disconnected mapping", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  await fixture.disconnect();
+  const [key, json] = [...fixture.storage].find(([key]) =>
+    key.includes(".registration."),
+  )!;
+  fixture.storage.delete(key);
+  fixture.storage.set("orbyn.chatgpt.registration.foreign-owner", json);
+  await fixture.signIn();
+  assert.equal(
+    new URL(fixture.calls.opened.at(-1)!).searchParams.get("client_id"),
+    "dynamic_agent_client",
+  );
+});
+
+test("native mapping storage failure never prevents credential erasure or server disconnect", async () => {
+  const fixture = mount({ failMappingStore: true });
+  await fixture.signIn();
+  await assert.rejects(fixture.disconnect(), (error: unknown) => {
+    assert.match(String(error), /registration could not be saved/);
+    assert.doesNotMatch(String(error), /private-access|private-refresh/);
+    return true;
+  });
+  assert.equal(accounts(fixture.storage).length, 0);
+  assert.deepEqual(fixture.calls.revoked, [connection.id]);
+  assert.deepEqual(fixture.calls.providerRevoked, ["private-refresh"]);
+});
+test("native reconnect rejects a disconnected mapping replaced during authorization", async () => {
+  let fixture: ReturnType<typeof mount>;
+  const options: { onFinish?: () => void } = {};
+  fixture = mount(options);
+  await fixture.signIn();
+  await fixture.disconnect();
+  const [key, json] = [...fixture.storage].find(([key]) =>
+    key.includes(".registration."),
+  )!;
+  const replacement = JSON.stringify({
+    ...JSON.parse(json),
+    revision: randomUUID(),
+  });
+  options.onFinish = () => fixture.storage.set(key, replacement);
+  await assert.rejects(fixture.signIn(), /registration changed/);
+  assert.equal(accounts(fixture.storage).length, 0);
+  assert.equal(fixture.storage.get(key), replacement);
 });

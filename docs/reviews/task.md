@@ -3912,3 +3912,24 @@ Disk fell to573MiB free during qualification. With no xcodebuild process running
 only this task's completed728MiB temporary iOS Intermediates directory was removed.
 The installed app, built products, simulated entitlement copy, screenshots and
 logs remain; production/native source and shared Docker data were not changed.
+
+### Native disconnected registration retention — 6 October 2026
+
+Native Disconnect now retains a separate protected, token-free mapping keyed by
+the exact API base URL and Orbyn user while erasing the active credential record.
+Only the verified issuer/subject/issued client/connection and a fresh revision
+are retained; access, refresh and ID tokens are excluded. The stable host remains
+on this device. A later Connect reuses the issued client and verifies the same
+account through a new session-owned challenge; no erased ID-token hint is sent.
+A competing mapping change during authorization rejects installation.
+Disconnected mappings do not report an active local provider, supply a model
+catalog or authorize inference. Corrupt credentials do not create guessed remote
+mappings. Mapping-save failure still erases credentials/revokes owned server
+metadata and returns a sanitized warning that new registration may be needed.
+
+Evidence: `/tmp/orbyn-registration-retention-all.log`340passed/0failed/0skipped,
+7102.076334ms, terminal exit0. Mobile/backend typechecks and Prettier/diff checks
+pass. Focused source/runtime tests verify issued-client reuse, token-free mapping,
+foreign-owner isolation, concurrent mapping rejection and save-failure cleanup.
+Installed/live provider acceptance, multi-account selection and full database
+qualification remain open. No production/main promotion is claimed.

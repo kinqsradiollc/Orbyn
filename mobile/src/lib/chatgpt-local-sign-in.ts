@@ -117,6 +117,9 @@ async function accountKey(userId: string): Promise<string> {
   );
   return `orbyn.chatgpt.account.${digest}`;
 }
+function mappingKey(key: string) {
+  return key.replace(".account.", ".registration.");
+}
 function decodeRegistration(value: string | null) {
   if (!value || decodeRetiredRegistration(value)) return null;
   try {
@@ -182,7 +185,15 @@ export async function signInNativeChatgpt(
     check();
     const original = await SecureStore.getItemAsync(key, protectedOptions);
     const saved = decodeRegistration(original);
-    const returning = saved ?? decodeRetiredRegistration(original);
+    const originalMapping = await SecureStore.getItemAsync(
+      mappingKey(key),
+      protectedOptions,
+    );
+    check();
+    const returning =
+      saved ??
+      decodeRetiredRegistration(original) ??
+      decodeRetiredRegistration(originalMapping);
     check();
     const challenge = await client.startChatgptConnection(
       returning ? { client_id: returning.connection.client_id } : {},
@@ -282,6 +293,14 @@ export async function signInNativeChatgpt(
         "Enable ChatGPT plan usage before connecting this provider.",
       );
     // A competing write cannot silently replace the selected registration.
+    if (
+      (await SecureStore.getItemAsync(mappingKey(key), protectedOptions)) !==
+      originalMapping
+    )
+      throw new Error(
+        "ChatGPT registration changed during sign-in. Try again.",
+      );
+    check();
     if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
       throw new Error("ChatGPT account changed during sign-in. Try again.");
     check();
@@ -599,6 +618,29 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
         throw new Error("ChatGPT account changed. Try again.");
       check();
     }
+    const ownedConnection =
+      saved?.connection ?? decodeRetiredRegistration(original)?.connection;
+    let mappingSaveFailed = false;
+    if (ownedConnection) {
+      try {
+        await SecureStore.setItemAsync(
+          mappingKey(key),
+          JSON.stringify({
+            version: 2,
+            revision: Crypto.randomUUID(),
+            connection: ownedConnection,
+            grant: null,
+          }),
+          protectedOptions,
+        );
+      } catch {
+        mappingSaveFailed = true;
+      }
+      check();
+      if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+        throw new Error("ChatGPT account changed. Try again.");
+      check();
+    }
     // A provider or server revocation failure must not retain owned local tokens.
     await SecureStore.deleteItemAsync(key, protectedOptions);
     check();
@@ -612,8 +654,6 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       check();
     }
     let serverDisconnectFailed = false;
-    const ownedConnection =
-      saved?.connection ?? decodeRetiredRegistration(original)?.connection;
     if (ownedConnection) {
       try {
         await client.revokeChatgptConnection(ownedConnection.id);
@@ -623,6 +663,9 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       check();
     }
     const warnings = [
+      mappingSaveFailed
+        ? "The registration could not be saved for reconnect; a new registration may be required."
+        : null,
       remoteRevocationFailed
         ? "OpenAI session revocation could not be confirmed; disconnect Orbyn in ChatGPT Settings → Usage."
         : null,
