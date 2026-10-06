@@ -1,3 +1,16 @@
+## Nested editor control contract — 6 October 2026
+
+Candidate renderers now pass each leaf's exact ownership path to existing widgets.
+Nested checkbox controls emit an explicit check-item operation with the rendered
+node snapshot; the owner can reject stale events using applyDocContentOperation.
+Read-only controls remain disabled, and native checkboxes expose checked/disabled
+accessibility state.11 focused renderer/operation tests and desktop/mobile types
+pass. This is not normal-editor activation: neither normal editor yet consumes
+these renderers or the complete-format save path. Next: authoritative document
+state, explicit structural commands, save/reconcile/offline and collaboration
+integration on both clients. Visual/installed acceptance remains open.
+Main remains7263b45b; no main promotion or production deployment in this step.
+
 ## Qualified structural/native editor checkpoint — 6 October 2026
 
 Main is now869a8005, fast-forwarded and pushed with the exact fixed DB65 application

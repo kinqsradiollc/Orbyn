@@ -8,6 +8,7 @@ import {
   footnoteTexts,
   type DocContainerNode,
   type DocBlock,
+  type DocContentOperation,
 } from "@orbyn/core";
 import { DocBody } from "./DocBody";
 import { FootnoteContext } from "./footnotes";
@@ -18,10 +19,20 @@ import { colors, fonts } from "../../theme";
 export function DocContainerBody({
   nodes,
   renderLeaf,
+  onOperation,
 }: {
   nodes: readonly DocContainerNode[];
   /** Existing editor widgets receive their complete-page leaf position. */
-  renderLeaf?: (block: DocBlock, index: number) => React.ReactNode;
+  renderLeaf?: (
+    block: DocBlock,
+    index: number,
+    path: number[],
+  ) => React.ReactNode;
+  /** The owner applies this operation against these exact rendered nodes. */
+  onOperation?: (
+    operation: DocContentOperation,
+    expectedNodes: readonly DocContainerNode[],
+  ) => void;
 }) {
   const blocks = useMemo(
     () => docContainerBlocks(nodes, { projected: true }),
@@ -51,7 +62,7 @@ export function DocContainerBody({
         if (renderLeaf)
           return (
             <React.Fragment key={key}>
-              {renderLeaf(node.block, position)}
+              {renderLeaf(node.block, position, here)}
             </React.Fragment>
           );
         return (
@@ -100,27 +111,61 @@ export function DocContainerBody({
                 paddingVertical: 4,
               }}
             >
-              <Text
-                accessibilityLabel={
-                  item.checked === undefined
-                    ? undefined
-                    : item.checked
-                      ? "Completed checklist item"
-                      : "Incomplete checklist item"
-                }
+              <View
                 style={{
                   maxWidth: "35%",
-                  color: colors.text,
-                  fontFamily: fonts.regular,
+                  flexDirection: "row",
+                  alignItems: "flex-start",
                 }}
               >
-                {node.ordered
-                  ? `${node.start + itemIndex}${node.delimiter}`
-                  : item.checked === undefined
-                    ? "•"
-                    : ""}
-                {item.checked === undefined ? "" : item.checked ? " ☑" : " ☐"}
-              </Text>
+                {(node.ordered || item.checked === undefined) && (
+                  <Text
+                    style={{ color: colors.text, fontFamily: fonts.regular }}
+                  >
+                    {node.ordered
+                      ? `${node.start + itemIndex}${node.delimiter}`
+                      : "•"}
+                  </Text>
+                )}
+                {item.checked !== undefined && (
+                  <Pressable
+                    accessibilityRole="checkbox"
+                    accessibilityLabel="Checklist item"
+                    accessibilityState={{
+                      checked: item.checked,
+                      disabled: !onOperation,
+                    }}
+                    disabled={!onOperation}
+                    onPress={
+                      onOperation
+                        ? () =>
+                            onOperation(
+                              {
+                                kind: "check-item",
+                                list: here,
+                                item: itemIndex,
+                                checked: !item.checked,
+                              },
+                              nodes,
+                            )
+                        : undefined
+                    }
+                    hitSlop={5}
+                    style={{
+                      minWidth: 34,
+                      minHeight: 34,
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text
+                      style={{ color: colors.text, fontFamily: fonts.regular }}
+                    >
+                      {item.checked ? "☑" : "☐"}
+                    </Text>
+                  </Pressable>
+                )}
+              </View>
               <View style={{ flex: 1, minWidth: 0 }}>
                 {render(item.children, [...here, itemIndex])}
               </View>
