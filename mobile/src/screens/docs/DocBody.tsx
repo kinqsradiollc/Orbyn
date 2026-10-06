@@ -38,6 +38,7 @@ export function DocBody({
   content,
   pageContent,
   pageIndex,
+  layoutOffset = 0,
   tasks,
   onToggleTodo,
   editing = null,
@@ -68,6 +69,8 @@ export function DocBody({
   /** Full structured page context when this body renders one owned child. */
   pageContent?: DocBlock[];
   pageIndex?: number;
+  /** Cumulative parent offset when this body renders a nested child. */
+  layoutOffset?: number;
   /** The checklist lines tied to a task, by id; only these say "task". */
   tasks?: ReadonlySet<string>;
   /** Stretches of each line carrying a remark, to tint the words they name. */
@@ -126,6 +129,16 @@ export function DocBody({
   /** Open a table's cells to edit. */
   onEditTable?: (index: number) => void;
 }) {
+  const offset = pageIndex ?? 0;
+  const wholePage = pageContent ?? content;
+  if (
+    !Number.isSafeInteger(offset) ||
+    offset < 0 ||
+    offset + content.length > wholePage.length ||
+    !Number.isFinite(layoutOffset)
+  )
+    throw new Error("Invalid owned document body position.");
+  const position = (index: number) => offset + index;
   /**
    * Wrap a line so tapping it opens it, and hang its remarks underneath —
    * a phone has no margin, so under the line is as beside it as it gets.
@@ -142,8 +155,8 @@ export function DocBody({
     const targetLayout =
       id === targetBlockId || onLineLayout
         ? (event: { nativeEvent: { layout: { y: number } } }) => {
-            const y = event.nativeEvent.layout.y;
-            onLineLayout?.(index, y);
+            const y = layoutOffset + event.nativeEvent.layout.y;
+            onLineLayout?.(position(index), y);
             if (id === targetBlockId) onTargetLayout?.(y);
           }
         : undefined;
@@ -194,7 +207,7 @@ export function DocBody({
     const was = lastTap.current;
     if (was && was.index === index && now - was.at < 320) {
       lastTap.current = null;
-      onDoubleTapBlock?.(index);
+      onDoubleTapBlock?.(position(index));
     } else lastTap.current = { index, at: now };
   };
   /** A line being read: a double tap edits it (EDT-10). */
@@ -205,7 +218,8 @@ export function DocBody({
         onPress={() => readerTap(index)}
         accessibilityActions={[{ name: "activate", label: "Edit this line" }]}
         onAccessibilityAction={(e) => {
-          if (e.nativeEvent.actionName === "activate") onDoubleTapBlock(index);
+          if (e.nativeEvent.actionName === "activate")
+            onDoubleTapBlock(position(index));
         }}
         accessibilityHint="Double-tap to edit this line"
       >
@@ -221,7 +235,7 @@ export function DocBody({
       index,
       onEditBlock ? (
         <Pressable
-          onPress={() => onEditBlock(index)}
+          onPress={() => onEditBlock(position(index))}
           style={({ pressed }) => [
             styles.line,
             // An empty line draws nothing, so it came out 4pt tall and no
@@ -253,7 +267,7 @@ export function DocBody({
       onEditBlock ? (
         <Pressable
           quiet
-          onLongPress={() => onEditBlock(index)}
+          onLongPress={() => onEditBlock(position(index))}
           delayLongPress={450}
           accessibilityHint="Touch and hold to edit this line"
         >
@@ -265,14 +279,11 @@ export function DocBody({
     );
 
   // Numbers count through each list, and nested items step in.
-  const layout =
-    pageContent && pageIndex !== undefined
-      ? [listLayout(pageContent)[pageIndex]]
-      : listLayout(content);
+  const layout = listLayout(wholePage).slice(offset, offset + content.length);
   const hidden = folds?.size
-    ? foldedLines(content, folds)
+    ? foldedLines(wholePage, folds).slice(offset, offset + content.length)
     : content.map(() => false);
-  const notes = footnoteNumbers(pageContent ?? content);
+  const notes = footnoteNumbers(wholePage);
   const inset = (index: number) =>
     layout[index].depth ? { marginLeft: layout[index].depth * NEST } : null;
 
@@ -280,10 +291,10 @@ export function DocBody({
     <View style={styles.body}>
       {content.map((block, index) => {
         // Under a folded heading.
-        if (hidden[index] && index !== editing) return null;
+        if (hidden[index] && position(index) !== editing) return null;
         // The open line shows the Markdown behind it, so the shorthand that
         // made a heading or a checkbox is there to change.
-        if (index === editing)
+        if (position(index) === editing)
           return (
             <View key={index} style={[styles.editing, inset(index)]}>
               <TextInput
@@ -313,7 +324,7 @@ export function DocBody({
             const foldable =
               !!block.id &&
               !!onToggleFold &&
-              (folded || canFold(content, index));
+              (folded || canFold(wholePage, position(index)));
             const heading = line(
               index,
               <Text
@@ -360,12 +371,16 @@ export function DocBody({
               index,
               <Pressable
                 quiet
-                onLongPress={onEditBlock ? () => onEditBlock(index) : undefined}
+                onLongPress={
+                  onEditBlock ? () => onEditBlock(position(index)) : undefined
+                }
                 delayLongPress={450}
               >
                 <TableView
                   text={block.text}
-                  onEdit={onEditTable ? () => onEditTable(index) : undefined}
+                  onEdit={
+                    onEditTable ? () => onEditTable(position(index)) : undefined
+                  }
                 />
               </Pressable>,
             );
@@ -375,7 +390,9 @@ export function DocBody({
               <ImageBlock
                 block={block}
                 onChange={
-                  onReplace ? (next) => onReplace(index, next) : undefined
+                  onReplace
+                    ? (next) => onReplace(position(index), next)
+                    : undefined
                 }
               />,
             );
@@ -426,7 +443,7 @@ export function DocBody({
                 {/* A checkbox, as on task rows and on the web: a switch reads
                     as a setting, and is twice the size of a line. */}
                 <Pressable
-                  onPress={() => onToggleTodo?.(index)}
+                  onPress={() => onToggleTodo?.(position(index))}
                   disabled={!onToggleTodo}
                   hitSlop={12}
                   accessibilityRole="checkbox"
@@ -454,7 +471,7 @@ export function DocBody({
                   ]}
                   onPress={
                     onEditBlock
-                      ? () => onEditBlock(index)
+                      ? () => onEditBlock(position(index))
                       : onDoubleTapBlock
                         ? () => readerTap(index)
                         : undefined
@@ -497,7 +514,7 @@ export function DocBody({
             if (block.lang === EMBED_LANG)
               return held(
                 index,
-                <EmbedBlock text={block.text} pageBlocks={content} />,
+                <EmbedBlock text={block.text} pageBlocks={wholePage} />,
               );
             if (isDiagram(block))
               return held(index, <DiagramView text={block.text} />);
