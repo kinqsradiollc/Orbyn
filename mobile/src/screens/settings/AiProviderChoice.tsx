@@ -83,8 +83,9 @@ export function AiProviderChoiceControls({
     pendingWrite.current = active;
     setBusy(true);
     setError(null);
+    let confirmed = false;
     try {
-      const next = await client.saveAiProviderChoice(
+      const input =
         primary === "default"
           ? {
               primary,
@@ -93,19 +94,36 @@ export function AiProviderChoiceControls({
             }
           : {
               primary,
-              ...selected,
+              ...selected!,
               fallback_to_default: fallback,
               expected_version: choice.version,
-            },
-        active.signal,
-      );
+            };
+      const next = await client.saveAiProviderChoice(input, active.signal);
+      if (
+        next.primary !== input.primary ||
+        next.fallback_to_default !== input.fallback_to_default ||
+        next.version !== input.expected_version + 1 ||
+        next.connection_id !==
+          (input.primary === "chatgpt" ? input.connection_id : null) ||
+        next.executor_id !==
+          (input.primary === "chatgpt" ? input.executor_id : null)
+      )
+        throw new Error(
+          "Provider save could not be confirmed. Reload and try again.",
+        );
+      confirmed = true;
       if (!active.signal.aborted && token === session.token)
         setOwnedChoice({ userId, token, value: next });
     } catch (e) {
-      if (!active.signal.aborted && token === session.token)
+      if (!active.signal.aborted && token === session.token) {
+        // A conflict or mismatched receipt cannot authorize another write with this version.
+        setOwnedChoice(null);
         setError(errorText(e));
+      }
     } finally {
-      if (pendingWrite.current === active) pendingWrite.current = null;
+      // Keep an unconfirmed revision fenced until explicit reload replaces this lifetime.
+      if (confirmed && pendingWrite.current === active)
+        pendingWrite.current = null;
       if (!active.signal.aborted && token === session.token) setBusy(false);
     }
   };
