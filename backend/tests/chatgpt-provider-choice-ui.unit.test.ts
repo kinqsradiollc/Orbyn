@@ -32,7 +32,9 @@ async function fixture(app: "desktop" | "mobile") {
   };
   let cursor = 0,
     token = "a-token",
-    effects: (() => void)[] = [];
+    effects: (() => void)[] = [],
+    reads = 0;
+  let pendingWrite: Promise<unknown> | null = null;
   const state: any[] = [],
     deps: any[] = [],
     cleanups: any[] = [],
@@ -76,9 +78,13 @@ async function fixture(app: "desktop" | "mobile") {
       if (id.endsWith("/api"))
         return {
           client: {
-            aiProviderChoice: async () => choice,
+            aiProviderChoice: async () => {
+              reads++;
+              return choice;
+            },
             saveAiProviderChoice: async (v: any) => {
               writes.push(v);
+              if (pendingWrite) await pendingWrite;
               return { ...choice, ...v, version: 2 };
             },
           },
@@ -107,6 +113,10 @@ async function fixture(app: "desktop" | "mobile") {
     saved,
     inspected,
     writes,
+    reads: () => reads,
+    holdWrites: (pending: Promise<unknown>) => {
+      pendingWrite = pending;
+    },
     setToken: (v: string) => {
       token = v;
     },
@@ -171,6 +181,57 @@ for (const app of ["desktop", "mobile"] as const) {
       action();
       assert.equal(f.writes.length, 0);
     } finally {
+      f.close();
+    }
+  });
+}
+
+for (const app of ["desktop", "mobile"] as const) {
+  test(`${app} reloads provider choice on a new session for the same user`, async () => {
+    const f = await fixture(app);
+    try {
+      f.render("same-user");
+      await Promise.resolve();
+      assert.equal(f.reads(), 1);
+      f.setToken("new-session");
+      f.render("same-user");
+      await Promise.resolve();
+      assert.equal(f.reads(), 2);
+      const tree = f.render("same-user");
+      const button = nodes(tree).find((n) =>
+        app === "desktop"
+          ? n.type === "button" && n.props.children === "Orbyn default"
+          : n.props?.label === "Orbyn default",
+      );
+      assert.equal(button.props.disabled, false);
+    } finally {
+      f.close();
+    }
+  });
+  test(`${app} serializes provider mutations before React rerenders`, async () => {
+    const f = await fixture(app);
+    let release!: () => void;
+    f.holdWrites(
+      new Promise<void>((resolve) => {
+        release = resolve;
+      }),
+    );
+    try {
+      f.render("a");
+      await Promise.resolve();
+      const tree = f.render("a");
+      const button = nodes(tree).find((n) =>
+        app === "desktop"
+          ? n.type === "button" && n.props.children === "Orbyn default"
+          : n.props?.label === "Orbyn default",
+      );
+      const action = button.props.onClick ?? button.props.onPress;
+      action();
+      action();
+      assert.equal(f.writes.length, 1);
+    } finally {
+      release();
+      await Promise.resolve();
       f.close();
     }
   });
