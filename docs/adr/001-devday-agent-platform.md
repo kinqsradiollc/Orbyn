@@ -3564,3 +3564,15 @@ Final ChatGPT unit cohort429passed/0failed/0skipped,26675.095583ms, exit0;
 mobile typecheck and formatting/diff checks pass. See task handoff for exact tests
 and logs. Candidate only: model/default/provider provenance, real OS/OAuth/UI,
 full database and main promotion remain open. Full ADR scope is unchanged.
+
+### Native inference cancellation compatibility — 6 October 2026
+
+Runtime audit reproduced a React Native TypeError in ChatGPT executor startup:
+AbortSignal.throwIfAborted is absent. The existing portable helper now guards
+shared executor, provider request/stream and native transport cancellation.
+Actual native factory with React Native signals completes mocked inference and
+rejects pre-cancelled work without a second provider request. Full ChatGPT unit
+cohort430passed/0failed/0skipped,28700.67175ms,exit0; package build and mobile/
+desktop types pass. See task handoff for baseline/final logs. Candidate only;
+real OAuth/installed acceptance, full database/main qualification and complete
+model/default/provider audit remain pending. Original full scope is retained.

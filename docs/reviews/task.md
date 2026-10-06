@@ -4314,3 +4314,29 @@ paid inference or authenticated native/web UI acceptance is claimed. Next audit
 model/catalog/default/provider identity across explicit device-account switching.
 Full C1-C6/M1/D1/U1 scope, native OS acceptance, full DB71 and main qualification
 remain open; root character/user changes and other worktrees remain preserved.
+
+### Native portable cancellation checkpoint — 6 October 2026
+
+Model/default/provider audit found a concrete runtime gap: shared executor
+lifecycle and plan provider transport/SSE reader, plus native provider wrapper,
+still invoked AbortSignal.throwIfAborted directly. React Native abort-controller
+has no such method. Existing remote model controller already used the portable
+helper; this patch applies it across actual native inference paths and exports
+that helper through api-client for the app dependency boundary.
+
+Actual native factory test switches global and VM AbortController to the installed
+React Native implementation. Baseline reproduced TypeError at lifecycle live57:
+`/tmp/orbyn-native-abort-baseline.log`, exit1. Final targeted test completes signed
+mocked inference with measured usage, then proves pre-cancelled work publishes/
+sends no additional provider request. It restores the global controller in finally.
+`/tmp/orbyn-native-abort-focused.log`:1passed/0failed/0skipped,1074.636083ms,exit0.
+Full ChatGPT cohort430passed/0failed/0skipped,28700.67175ms,exit0 at
+`/tmp/orbyn-native-abort-all.log`. Package build exit0:
+`/tmp/orbyn-native-abort-package-build.log`; mobile/desktop typechecks exit0:
+`/tmp/orbyn-native-abort-mobile-types.log`,
+`/tmp/orbyn-native-abort-desktop-types.log`. Formatting/diff checks pass.
+No new dependency or provider call. Installed iOS/Android and real OAuth remain
+pending. These lifecycle/native service files do not yet exist on main, so the
+checkpoint depends on the broader candidate qualification; no main promotion.
+Continue model/default/provider audit, then full database/installed acceptance.
+Full ADR scope and preserved root/character/other worktrees remain unchanged.

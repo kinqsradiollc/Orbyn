@@ -1,3 +1,4 @@
+import { throwIfAborted } from "./abort.js";
 import {
   chatgptModel,
   chatgptModelBinding,
@@ -150,7 +151,7 @@ export class ChatgptPlanClient {
     }
     if (!accessToken.trim())
       throw new Error("Sign in to ChatGPT before continuing.");
-    signal?.throwIfAborted();
+    throwIfAborted(signal);
     const response = await (this.options.fetch ?? fetch)(
       `https://api.openai.com/v1/${path}`,
       {
@@ -333,7 +334,7 @@ export class ChatgptPlanClient {
     };
     try {
       while (!completed) {
-        signal.throwIfAborted();
+        throwIfAborted(signal);
         const part = await reader.read();
         if (part.done) break;
         bytes += part.value.byteLength;

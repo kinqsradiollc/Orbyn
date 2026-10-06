@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
+import { createRequire } from "node:module";
 import {
   randomBytes,
   randomUUID,
@@ -2326,4 +2327,39 @@ test("native unreadable reconnect mapping does not become an empty registration 
   failMapping = false;
   await f.disconnect();
   assert.equal(accounts(f.storage).length, 0);
+});
+
+test("actual native inference and cancellation work with React Native AbortController", async () => {
+  const mobileRequire = createRequire(
+    new URL("../../mobile/package.json", import.meta.url),
+  );
+  const nativeRequire = createRequire(
+    mobileRequire.resolve("react-native/package.json"),
+  );
+  const { AbortController: NativeAbortController } =
+    nativeRequire("abort-controller");
+  const original = globalThis.AbortController;
+  let runtime: any;
+  globalThis.AbortController = NativeAbortController;
+  try {
+    assert.equal(
+      typeof new NativeAbortController().signal.throwIfAborted,
+      "undefined",
+    );
+    const f = mount({ signing: true, inference: "success" });
+    await f.signIn();
+    runtime = await f.executor();
+    await runtime.start();
+    assert.deepEqual(await runtime.executeNext(), { processed: true });
+    assert.equal(f.calls.responses, 1);
+    assert.equal(f.calls.publications[0].receipt.result.status, "completed");
+    const cancelled = new NativeAbortController();
+    cancelled.abort();
+    await assert.rejects(runtime.executeNext(cancelled.signal));
+    assert.equal(f.calls.responses, 1);
+    assert.equal(f.calls.publications.length, 1);
+  } finally {
+    runtime?.close();
+    globalThis.AbortController = original;
+  }
 });

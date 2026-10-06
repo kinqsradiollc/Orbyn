@@ -1,3 +1,4 @@
+export { throwIfAborted } from "./abort.js";
 export { OrbynClient, isAbortError } from "./client.js";
 export type {
   OrbynClientOptions,

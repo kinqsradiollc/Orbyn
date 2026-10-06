@@ -12,6 +12,7 @@ import {
   type ChatgptModel,
 } from "@orbyn/core";
 import {
+  throwIfAborted,
   exchangeChatgptLocalCode,
   parseChatgptLocalGrant,
   readChatgptLocalModels,
@@ -1359,11 +1360,11 @@ export async function createNativeChatgptExecutor(userId: string) {
     },
     fetch: (async (url, init) => {
       await live();
-      init?.signal?.throwIfAborted();
+      throwIfAborted(init?.signal ?? undefined);
       const response = await expoFetch(url, init);
       try {
         await live();
-        init?.signal?.throwIfAborted();
+        throwIfAborted(init?.signal ?? undefined);
       } catch (error) {
         await response.body?.cancel().catch(() => {});
         throw error;

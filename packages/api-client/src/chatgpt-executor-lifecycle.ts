@@ -1,3 +1,4 @@
+import { throwIfAborted } from "./abort.js";
 import {
   chatgptModelBinding,
   chatgptExecutorEnrolled,
@@ -54,10 +55,10 @@ export function createChatgptExecutorLifecycle(options: {
   const same = (value: unknown) =>
     JSON.stringify(value) === JSON.stringify(binding);
   const live = async (signal: AbortSignal) => {
-    signal.throwIfAborted();
+    throwIfAborted(signal);
     if (closed) throw new Error("The ChatGPT executor was stopped.");
     await options.requireLiveConnection();
-    signal.throwIfAborted();
+    throwIfAborted(signal);
     if (closed) throw new Error("The ChatGPT executor was stopped.");
   };
   const ordered = <T>(
@@ -144,7 +145,7 @@ export function createChatgptExecutorLifecycle(options: {
     const timer = setTimeout(abort, timeout);
     let rejectAbort: (() => void) | undefined;
     try {
-      controller.signal.throwIfAborted();
+      throwIfAborted(controller.signal);
       const cancelled = new Promise<never>((_, reject) => {
         rejectAbort = () =>
           reject(new Error("The inference operation was interrupted."));
