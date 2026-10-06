@@ -4374,3 +4374,39 @@ restored native installation, rendered UI or general DB/runtime qualification.
 
 Continue remaining account/catalog/default provenance and installed acceptance;
 full database, native candidate promotion and original C1-C6/M1/D1/U1 scope open.
+
+### Exact provider-save receipt and invalidated-version fence — 6 October 2026
+
+Both provider controls previously accepted any structurally valid save reply as
+confirmation and retained failed/conflicting CAS versions. They now copy requested
+fields before transport and require matching primary, connection, executor,
+fallback plus expected_version+1. Unconfirmed/error replies clear owned choice
+and preserve the per-lifetime write fence until explicit reload. This prevents
+retained pre-render callbacks from reusing a failed version. A confirmed receipt
+releases the fence and advances the next write's version normally. Owner/session
+and saved-device fallback semantics remain unchanged.
+
+Controlled actual-source tests cover wrong connection/executor/fallback/version/
+primary and transport failure, invalidated old handlers before/after rerender,
+explicit reload recovery, and valid default→ChatGPT saves using the next version.
+Fixture now returns schema-accurate default replies with null account/device and
+no request-only expected_version field. Baseline mismatch tests fail on both apps.
+Final focused12passed/0failed/0skipped,866.820917ms exit0:
+`/tmp/orbyn-provider-receipt-focused-final2.log`. Final candidate ChatGPT438passed,
+0failed/0skipped,28197.421208ms,exit0:
+`/tmp/orbyn-provider-receipt-all-final2.log`. Mobile/desktop types final exit0 at
+`/tmp/orbyn-provider-receipt-{mobile,desktop}-types-final.log`.
+
+Scoped code commit4943bf3e cherry-picked as mainbaf9e56c, pushed; candidate merged
+origin/main without conflict. Main focused12passed/0failed/0skipped,935.970083ms,
+exit0 at `/tmp/orbyn-provider-receipt-main-focused.log`; test reused existing Darwin
+esbuild binary via env, no dependency installation. Main desktop types exit0 at
+`/tmp/orbyn-provider-receipt-main-desktop-types.log`. Main mobile types exit0 at
+`/tmp/orbyn-provider-receipt-main-mobile-types-mapped.log` using the existing /tmp
+mapping to installed same-version WebView declarations; normal local package
+installation remains incomplete. No deployment, UI screenshot or general runtime
+qualification is claimed. Existing root character/user dirt preserved.
+
+Next finish remaining account/catalog/default provenance and actual installed
+acceptance; broader native candidate/full DB/main qualification and complete
+C1-C6/M1/D1/U1 ADR scope remain open.

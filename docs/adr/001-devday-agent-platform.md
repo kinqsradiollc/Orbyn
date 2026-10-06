@@ -3588,3 +3588,14 @@ shared package build and desktop types pass; mobile types pass with temporary
 same-version WebView declaration mapping, while normal local installation remains
 incomplete. No production deployment or native OAuth qualification is claimed.
 Detailed logs and limitations are in task handoff; full ADR scope remains open.
+
+### Provider-save confirmation checkpoint on main — 6 October 2026
+
+Provider controls now verify reply identity/device/primary/fallback and exact next
+version, invalidate failed/conflicting revisions and fence retained callbacks until
+reload. Both apps test mismatched receipts, recovery and valid sequential saves.
+Scoped checkpointbaf9e56c pushed to main; candidate reconciled main without conflict.
+Candidate ChatGPT438unit tests pass; main focused12pass, desktop types and mobile
+types with documented existing WebView mapping pass. Detailed baseline/final logs
+and qualification limits are in task handoff. Full native OAuth/OS/UI, database and
+remaining ADR acceptance stay open; no production deployment is claimed.
