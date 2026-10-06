@@ -148,6 +148,8 @@ function view(
     account?: object;
     disconnect?: () => Promise<void>;
     prepare?: () => Promise<void>;
+    accounts?: object;
+    choose?: () => Promise<void>;
   } = {},
 ) {
   let slot = 0;
@@ -248,6 +250,17 @@ function view(
                 connectOutcome === "cancel" ? "Cancelled" : "Unavailable",
               );
             return { sharingGranted: true };
+          },
+          readNativeChatgptAccounts: async () => nativeOptions.accounts ?? null,
+          selectNativeChatgptAccount: async (
+            _: string,
+            id: string,
+            revision: string,
+            options: { signal: AbortSignal },
+          ) => {
+            localCalls.push(`choose:${id}:${revision}`);
+            assert.ok(options.signal instanceof AbortSignal);
+            await nativeOptions.choose?.();
           },
           readNativeChatgptAccountState: async () =>
             nativeOptions.account ?? { status: "missing" },
@@ -615,5 +628,107 @@ test("native Settings does not authorize or restart an old owner after migration
   assert.equal(
     elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
     false,
+  );
+});
+const pickerAccounts = {
+  revision: "picker-revision",
+  selected: "account-one",
+  accounts: [
+    { connection: { id: "account-one" }, status: "connected" },
+    { connection: { id: "account-two" }, status: "connected" },
+    { connection: { id: "account-three" }, status: "reconnect" },
+  ],
+};
+test("native saved account picker binds explicit choice to displayed revision and keeps unavailable entries disabled", async () => {
+  const f = view("mobile", viewState(), "success", {
+    accounts: pickerAccounts,
+  });
+  f.render();
+  await f.flushEffects();
+  const nodes = elements(f.render());
+  const scroll = nodes.find(
+    (n) => n.type === "ScrollView" && n.props.style?.maxHeight === 200,
+  );
+  assert.equal(scroll.props.contentContainerStyle.gap, 10);
+  assert.equal(scroll.props.contentContainerStyle.paddingVertical, 5);
+  const current = nodes.find(
+    (n) => n.type === "SmallAction" && n.props.label === "Account 1 · current",
+  );
+  const choice = nodes.find(
+    (n) => n.type === "SmallAction" && n.props.label === "Account 2",
+  );
+  const unavailable = nodes.find(
+    (n) =>
+      n.type === "SmallAction" &&
+      n.props.label === "Account 3 · reconnect needed",
+  );
+  assert.equal(current.props.disabled, true);
+  assert.equal(unavailable.props.disabled, true);
+  assert.equal(choice.props.disabled, false);
+  choice.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, [
+    "suspend",
+    "choose:account-two:picker-revision",
+    "restart",
+  ]);
+});
+test("native picker fences repeated clicks and old-owner completion during selection", async () => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = view("mobile", viewState(), "success", {
+    accounts: pickerAccounts,
+    choose: () => pending,
+  });
+  f.render();
+  await f.flushEffects();
+  const choice = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Account 2",
+  );
+  choice.props.onPress();
+  choice.props.onPress();
+  assert.ok(
+    elements(f.render()).some(
+      (n) => n.type === "SmallAction" && n.props.label === "Cancel switch",
+    ),
+  );
+  f.setToken("replacement-session");
+  f.render();
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, [
+    "suspend",
+    "choose:account-two:picker-revision",
+  ]);
+  assert.equal(
+    elements(f.render()).some((n) =>
+      String(n.props.label).startsWith("Account "),
+    ),
+    false,
+  );
+});
+test("failed native selection resumes preserved runtime and reports an owned error", async () => {
+  const f = view("mobile", viewState(), "success", {
+    accounts: pickerAccounts,
+    choose: async () => {
+      throw new Error("failed");
+    },
+  });
+  f.render();
+  await f.flushEffects();
+  const choice = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Account 2",
+  );
+  choice.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, [
+    "suspend",
+    "choose:account-two:picker-revision",
+    "restart",
+  ]);
+  assert.ok(
+    elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
   );
 });

@@ -25,8 +25,11 @@ import {
   disconnectNativeChatgpt,
   cancelNativeChatgptSignIn,
   readNativeChatgptAccountState,
+  readNativeChatgptAccounts,
+  selectNativeChatgptAccount,
   type NativeChatgptAccountState,
 } from "../../lib/chatgpt-local-sign-in";
+import type { NativeChatgptDirectorySnapshot } from "../../lib/chatgpt-account-directory";
 import { chatgptForeground } from "../../lib/chatgpt-foreground";
 import { SettingsSection } from "./SettingsSection";
 
@@ -42,6 +45,16 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     value: NativeChatgptAccountState;
   } | null>(null);
   const [accountReload, setAccountReload] = useState(0);
+  const [directory, setDirectory] = useState<{
+    userId: string;
+    token: string;
+    value: NativeChatgptDirectorySnapshot | null;
+  } | null>(null);
+  const savedAccounts =
+    directory?.userId === userId && directory.token === token
+      ? directory.value
+      : null;
+
   const account =
     localAccount?.userId === userId && localAccount.token === token
       ? localAccount.value
@@ -50,16 +63,21 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     const controller = new AbortController();
     if (Platform.OS === "web" || !userId || !token)
       return () => controller.abort();
-    void readNativeChatgptAccountState(userId, {
-      signal: controller.signal,
-    }).then(
-      (value) => {
-        if (!controller.signal.aborted && token === session.token)
+    void Promise.all([
+      readNativeChatgptAccountState(userId, { signal: controller.signal }),
+      readNativeChatgptAccounts(userId, { signal: controller.signal }),
+    ]).then(
+      ([value, accounts]) => {
+        if (!controller.signal.aborted && token === session.token) {
           setLocalAccount({ userId, token, value });
+          setDirectory({ userId, token, value: accounts });
+        }
       },
       () => {
-        if (!controller.signal.aborted && token === session.token)
+        if (!controller.signal.aborted && token === session.token) {
           setLocalAccount(null);
+          setDirectory(null);
+        }
       },
     );
     return () => controller.abort();
@@ -79,6 +97,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
   const [query, setQuery] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
+  const [choosing, setChoosing] = useState(false);
   const [ownedError, setOwnedError] = useState<{
     userId: string;
     token: string | null;
@@ -94,6 +113,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
   useEffect(() => {
     setConnecting(false);
     setDisconnecting(false);
+    setChoosing(false);
     setConnectError(null);
     return () => {
       if (lifetime.current) {
@@ -107,6 +127,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     if (
       connecting ||
       disconnecting ||
+      choosing ||
       lifetime.current ||
       owner.current.userId !== userId ||
       owner.current.token !== token ||
@@ -153,6 +174,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     if (
       connecting ||
       disconnecting ||
+      choosing ||
       lifetime.current ||
       owner.current.userId !== userId ||
       owner.current.token !== token ||
@@ -185,7 +207,46 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       }
     }
   };
-  const localBusy = connecting || disconnecting;
+  const choose = async (connectionId: string, revision: string) => {
+    if (
+      connecting ||
+      disconnecting ||
+      choosing ||
+      lifetime.current ||
+      owner.current.userId !== userId ||
+      owner.current.token !== token ||
+      session.token !== token
+    )
+      return;
+    const controller = new AbortController();
+    lifetime.current = controller;
+    const live = () =>
+      !controller.signal.aborted &&
+      owner.current.userId === userId &&
+      owner.current.token === token &&
+      session.token === token;
+    setChoosing(true);
+    setConnectError(null);
+    chatgptForeground.suspend();
+    try {
+      await selectNativeChatgptAccount(userId, connectionId, revision, {
+        signal: controller.signal,
+      });
+      if (live()) {
+        refresh();
+        setAccountReload((n) => n + 1);
+      }
+    } catch (error) {
+      if (live()) setConnectError(errorText(error));
+    } finally {
+      if (live()) chatgptForeground.restart();
+      if (lifetime.current === controller) {
+        lifetime.current = null;
+        setChoosing(false);
+      }
+    }
+  };
+  const localBusy = connecting || disconnecting || choosing;
   const hasLocalAccount =
     account?.status === "saved" ||
     account?.status === "unreadable" ||
@@ -295,6 +356,42 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
             onPress={() => void disconnect()}
           />
         )}
+      {Platform.OS !== "web" &&
+        savedAccounts &&
+        savedAccounts.accounts.length > 0 && (
+          <View>
+            <Text style={shared.small}>Accounts on this device</Text>
+            <ScrollView
+              style={{ maxHeight: 200 }}
+              contentContainerStyle={{ gap: 10, paddingVertical: 5 }}
+            >
+              {savedAccounts.accounts.map((entry, index) => (
+                <SmallAction
+                  key={entry.connection.id}
+                  label={`Account ${index + 1}${entry.connection.id === savedAccounts.selected ? " · current" : entry.status !== "connected" ? " · reconnect needed" : ""}`}
+                  disabled={
+                    localBusy ||
+                    entry.connection.id === savedAccounts.selected ||
+                    entry.status !== "connected"
+                  }
+                  onPress={() =>
+                    void choose(entry.connection.id, savedAccounts.revision)
+                  }
+                />
+              ))}
+            </ScrollView>
+          </View>
+        )}
+      {choosing && (
+        <SmallAction
+          label="Cancel switch"
+          disabled={false}
+          onPress={() => {
+            lifetime.current?.abort();
+            cancelNativeChatgptSignIn();
+          }}
+        />
+      )}
       {connectError && (
         <Text accessibilityRole="alert" style={shared.small}>
           {connectError}

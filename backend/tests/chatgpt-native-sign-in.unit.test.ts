@@ -56,6 +56,7 @@ function mount(
     failMappingStore?: boolean;
     onFinish?: () => void;
     onDirectoryWrite?: () => void;
+    liveConnections?: (typeof connection)[];
     signing?: boolean;
     inference?: "success" | "limit" | "session";
     changeDuringModels?: "session" | "registration";
@@ -521,7 +522,12 @@ function mount(
               await options.onRevoke?.();
             },
             chatgptConnections: async () =>
-              options.revoked ? [] : [connection],
+              options.revoked
+                ? []
+                : (options.liveConnections ?? [connection]).map((row) => ({
+                    ...row,
+                    verified_at: new Date().toISOString(),
+                  })),
             startChatgptConnection: async () => ({
               id: randomUUID(),
               nonce: "n".repeat(43),
@@ -540,6 +546,16 @@ function mount(
     },
   });
   return {
+    savedAccounts: (input = userId, signal?: AbortSignal) =>
+      exports.readNativeChatgptAccounts(input, { signal }),
+    chooseAccount: (
+      connectionId: string,
+      revision: string,
+      signal?: AbortSignal,
+    ) =>
+      exports.selectNativeChatgptAccount(userId, connectionId, revision, {
+        signal,
+      }),
     prepare: (input = userId, signal?: AbortSignal) =>
       exports.prepareNativeChatgptAccounts(input, { signal }),
     signIn: (input = userId) => exports.signInNativeChatgpt(input),
@@ -1631,4 +1647,181 @@ test("session replacement during reconnect directory publication rolls back the 
   );
   assert.equal(directory.selected, null);
   assert.equal(directory.accounts[0].status, "disconnected");
+});
+function secondSavedAccount(
+  f: ReturnType<typeof mount>,
+  target: typeof connection,
+) {
+  const [key, raw] = accounts(f.storage)[0],
+    saved = JSON.parse(raw);
+  const slot = key.slice(0, key.lastIndexOf(".") + 1) + target.id;
+  const grant = { ...saved.grant, clientId: target.client_id };
+  f.storage.set(
+    slot,
+    JSON.stringify({
+      ...saved,
+      revision: randomUUID(),
+      connection: target,
+      grant,
+      signingAlias: "b".repeat(64),
+    }),
+  );
+  const [directoryKey, directoryRaw] = [...f.storage].find(([key]) =>
+    key.includes(".directory."),
+  )!;
+  const state = JSON.parse(directoryRaw);
+  state.revision = randomUUID();
+  state.accounts.push({ connection: target, status: "connected" });
+  f.storage.set(directoryKey, JSON.stringify(state));
+  return { slot, revision: state.revision };
+}
+test("native explicit account switch verifies live identity and preserves the previous slot", async () => {
+  const target = {
+    ...connection,
+    id: randomUUID(),
+    subject: "other-subject",
+    client_id: "oaiapp_other",
+  };
+  const f = mount({ signing: true, liveConnections: [connection, target] });
+  await f.signIn();
+  await f.prepare();
+  const [oldKey, oldRaw] = accounts(f.storage)[0],
+    second = secondSavedAccount(f, target);
+  const next = await f.chooseAccount(target.id, second.revision);
+  assert.equal(next.selected, target.id);
+  assert.equal(f.storage.get(oldKey), oldRaw);
+  assert.equal((await f.models()).connection.id, target.id);
+  assert.doesNotMatch(
+    JSON.stringify(await f.savedAccounts()),
+    /private-access|private-refresh|grant|signingAlias/,
+  );
+});
+test("native account switch rejects stale cards, substituted identities and missing grants", async () => {
+  const target = {
+    ...connection,
+    id: randomUUID(),
+    subject: "other-subject",
+    client_id: "oaiapp_other",
+  };
+  for (const failure of [
+    "revision",
+    "identity",
+    "missing",
+    "revoked",
+  ] as const) {
+    const f = mount({
+      signing: true,
+      liveConnections:
+        failure === "revoked" ? [connection] : [connection, target],
+    });
+    await f.signIn();
+    await f.prepare();
+    const second = secondSavedAccount(f, target);
+    if (failure === "missing") f.storage.delete(second.slot);
+    if (failure === "identity") {
+      const saved = JSON.parse(f.storage.get(second.slot)!);
+      saved.connection.subject = "substitution";
+      f.storage.set(second.slot, JSON.stringify(saved));
+    }
+    await assert.rejects(
+      f.chooseAccount(
+        target.id,
+        failure === "revision" ? randomUUID() : second.revision,
+      ),
+      /selection changed|Reconnect/,
+    );
+    assert.equal((await f.savedAccounts()).selected, connection.id);
+  }
+});
+test("native switch refreshes an expiring selected grant before changing directory selection", async () => {
+  const f = mount({ signing: true });
+  await f.signIn();
+  await f.prepare();
+  expireSoon(f);
+  const before = await f.savedAccounts();
+  await f.chooseAccount(connection.id, before.revision);
+  assert.equal(f.calls.refreshed, 1);
+  assert.equal(
+    JSON.parse(accounts(f.storage)[0][1]).grant.accessToken,
+    "refreshed-access",
+  );
+});
+test("confirmed invalid refresh during switching never activates the retired account", async () => {
+  const f = mount({
+    signing: true,
+    refreshError: { status: 400, code: "invalid_grant" },
+  });
+  await f.signIn();
+  await f.prepare();
+  expireSoon(f);
+  const before = await f.savedAccounts();
+  await assert.rejects(
+    f.chooseAccount(connection.id, before.revision),
+    /Reconnect/,
+  );
+  const after = await f.savedAccounts();
+  assert.equal(after.selected, null);
+  assert.equal(after.accounts[0].status, "reconnect");
+});
+test("switching has one exclusive cancellable lifetime while a refresh is in flight", async () => {
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    }),
+    wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+  const f = mount({
+    signing: true,
+    onRefresh: async () => {
+      entered();
+      await wait;
+    },
+  });
+  await f.signIn();
+  await f.prepare();
+  expireSoon(f);
+  const before = await f.savedAccounts(),
+    controller = new AbortController();
+  const switching = f.chooseAccount(
+    connection.id,
+    before.revision,
+    controller.signal,
+  );
+  const rejected = assert.rejects(
+    switching,
+    /selection changed|session or ChatGPT|sign-in was cancelled/,
+  );
+  await started;
+  await assert.rejects(f.signIn(), /current ChatGPT action/);
+  await assert.rejects(f.prepare(), /current ChatGPT action/);
+  controller.abort();
+  release();
+  await rejected;
+  assert.equal((await f.savedAccounts()).revision, before.revision);
+});
+test("native switch stops the previous executor and rejects plan-use-off target credentials", async () => {
+  const target = {
+    ...connection,
+    id: randomUUID(),
+    subject: "other-subject",
+    client_id: "oaiapp_other",
+  };
+  const f = mount({ signing: true, liveConnections: [connection, target] });
+  await f.signIn();
+  await f.prepare();
+  const runtime = await f.executor();
+  await runtime.start();
+  const second = secondSavedAccount(f, target);
+  const saved = JSON.parse(f.storage.get(second.slot)!);
+  saved.grant.scopes = ["openid"];
+  saved.grant.sharingGranted = false;
+  f.storage.set(second.slot, JSON.stringify(saved));
+  await assert.rejects(
+    f.chooseAccount(target.id, second.revision),
+    /Enable ChatGPT plan usage/,
+  );
+  await assert.rejects(runtime.heartbeat());
+  assert.equal((await f.savedAccounts()).selected, connection.id);
+  runtime.close();
 });

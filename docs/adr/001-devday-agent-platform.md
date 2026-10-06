@@ -3419,3 +3419,45 @@ Final slot integration evidence: `/tmp/orbyn-native-slot-integration-all-final.l
 400passed/0failed/0skipped,27014.848583ms, terminal0. Mobile/backend typechecks,
 Prettier and diff checks pass. These do not prove real protected-store/OAuth or
 full database acceptance. No main promotion or completed multi-account UI claimed.
+
+### Native saved-account switch and picker — 6 October 2026
+
+The native service now exposes owner-verified directory metadata and explicit
+selection by connection UUID plus the displayed directory revision. Switching
+uses one exclusive cancellable lifetime, stops the prior executor, refuses
+unfinished singleton cleanup, validates slot/metadata identity and the live owned
+server registration, refreshes an expiring grant under the same parent lifetime,
+and requires ChatGPT plan-use permission before CAS selection. Confirmed invalid
+refresh retires the target; temporary failures preserve selection/credentials.
+Old provider snapshots are not changed and no managed fallback is enabled.
+
+Settings displays a bounded local saved-account list with clear current/reconnect
+states, captured revision selection, click serialization, cancellation, errors and
+preserved-runtime restart. Its caption explicitly says Accounts on this device;
+this does not change the workspace provider preference. Row spacing accounts for
+existing control hit slop. Unavailable entries are disabled, not guessed active.
+The normal model/default controls remain separately bound to their chosen remote
+executor/catalog; full cross-account default acceptance is still required.
+
+Focused actual-source service/component cohort passes95tests/0failed/0skipped,
+5179.718583ms at `/tmp/orbyn-native-picker-focused-final.log`. Service tests include
+multiple protected fixture slots, previous-slot preservation, live server rows with
+verified_at metadata, wrong/stale identity/revision/missing grants, expiring refresh,
+terminal retirement, cancelled parent lifetime and plan-use-off target/prior executor
+stop. Component tests cover captured selection revision, unavailable entries,
+repeated clicks, cancellation state, old-owner completion and owned error recovery.
+The first switch test run failed only on an incorrect expected cancellation message;
+it now asserts the actual cancellation branch. Terminal final cohort is acceptance.
+
+Computer Use inspected the actual Simulator, still signed out at Sign in; startup
+observation/screenshot saved under `/tmp/orbyn-native-picker-evidence/`. Authenticated
+picker narrow/large-text/keyboard screenshots are NOT established. No real grant or
+credential entry/consent occurred. Android remains unverified. Add another account
+and reconnect a specifically chosen unavailable account are not implemented yet;
+multiple-account fixtures do not prove those provisioning paths. Next complete those
+paths, then qualify model/default provenance, real OS/OAuth and full database/main
+acceptance. All other C1-C6/M1/D1/U1 work remains in scope.
+
+Final picker checkpoint: `/tmp/orbyn-native-picker-all-final2.log`,409passed/
+0failed/0skipped,26543.954292ms, exit0. Mobile/backend typechecks, Prettier and
+diff checks pass. Native UI visual acceptance remains pending; no main promotion.

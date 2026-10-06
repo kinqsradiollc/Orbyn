@@ -73,7 +73,7 @@ let current: {
   id: string;
   controller: AbortController;
   finished: Promise<void>;
-  mode: "sign-in" | "refresh" | "migration";
+  mode: "sign-in" | "refresh" | "migration" | "switch";
   key?: string;
   sessionToken?: string;
 } | null = null;
@@ -209,6 +209,138 @@ export async function prepareNativeChatgptAccounts(
       ...context,
       checkOwner: check,
     });
+  } finally {
+    options.signal?.removeEventListener("abort", abort);
+    if (current?.id === id) current = null;
+    finish();
+  }
+}
+/** Settings metadata only. Every selection still requires protected credentials and live identity verification. */
+export async function readNativeChatgptAccounts(
+  userId: string,
+  options: { signal?: AbortSignal } = {},
+) {
+  if (Platform.OS === "web" || !nativeChatgptCallbackAvailable()) return null;
+  const token = session.token;
+  const check = () => {
+    if (!token || session.token !== token || options.signal?.aborted)
+      throw new Error("The Orbyn session changed. Try again.");
+  };
+  check();
+  const user = await client.me({ fresh: true, signal: options.signal });
+  check();
+  if (user.id !== userId)
+    throw new Error("The signed-in Orbyn account changed.");
+  const { directory } = await accountStorage(userId, check);
+  const state = await directory.read();
+  check();
+  return state;
+}
+/** Activate only an explicitly selected protected registration, after fresh grant/live-identity checks. */
+export async function selectNativeChatgptAccount(
+  userId: string,
+  connectionId: string,
+  expectedRevision: string,
+  options: { signal?: AbortSignal } = {},
+) {
+  z.uuid().parse(connectionId);
+  z.uuid().parse(expectedRevision);
+  if (Platform.OS === "web" || !nativeChatgptSigningAvailable())
+    throw new Error(
+      "This build does not include native ChatGPT executor signing.",
+    );
+  if (current || disconnecting)
+    throw new Error("Finish or cancel the current ChatGPT action first.");
+  const token = session.token,
+    id = Crypto.randomUUID(),
+    controller = new AbortController();
+  if (!token) throw new Error("Sign in to Orbyn before managing ChatGPT.");
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  current = { id, controller, finished, mode: "switch" };
+  stopExecutors(userId);
+  const abort = () => controller.abort();
+  options.signal?.addEventListener("abort", abort, { once: true });
+  if (options.signal?.aborted) abort();
+  const check = () => {
+    if (
+      session.token !== token ||
+      controller.signal.aborted ||
+      current?.id !== id
+    )
+      throw new Error(
+        "The Orbyn session or ChatGPT selection changed. Try again.",
+      );
+  };
+  try {
+    check();
+    const user = await client.me({ fresh: true, signal: controller.signal });
+    check();
+    if (user.id !== userId)
+      throw new Error("The signed-in Orbyn account changed.");
+    const { storage, directory } = await accountStorage(userId, check);
+    check();
+    if ((await storage.read(storage.legacyKey)) !== null)
+      throw new Error(
+        "Finish migrating the saved ChatGPT account before switching it.",
+      );
+    const before = await directory.read();
+    check();
+    const entry = before?.accounts.find(
+      (entry) =>
+        entry.connection.id === connectionId && entry.status === "connected",
+    );
+    if (!before || before.revision !== expectedRevision || !entry)
+      throw new Error(
+        "The saved ChatGPT account selection changed. Try again.",
+      );
+    const key = storage.slotKey(connectionId);
+    let original = await storage.read(key);
+    check();
+    let saved = decodeRegistration(original);
+    if (
+      !saved ||
+      JSON.stringify(saved.connection) !== JSON.stringify(entry.connection)
+    )
+      throw new Error("Reconnect this ChatGPT account before selecting it.");
+    const live = async () => {
+      const rows = await client.chatgptConnections(controller.signal);
+      check();
+      if (
+        !rows.some(
+          (row) =>
+            row.id === entry.connection.id &&
+            row.issuer === entry.connection.issuer &&
+            row.subject === entry.connection.subject &&
+            row.client_id === entry.connection.client_id,
+        )
+      )
+        throw new Error("Reconnect this ChatGPT account before selecting it.");
+    };
+    await live();
+    if (saved.grant.expiresAt <= Date.now() + 60000) {
+      const refreshed = await renewNativeRegistration(
+        userId,
+        key,
+        original!,
+        saved,
+        token,
+        controller.signal,
+        { id, check },
+      );
+      original = refreshed.original;
+      saved = refreshed.saved;
+      check();
+    }
+    if (!saved.grant.sharingGranted || saved.grant.expiresAt <= Date.now())
+      throw new Error("Enable ChatGPT plan usage and reconnect this account.");
+    await live();
+    if ((await storage.read(key)) !== original)
+      throw new Error("The saved ChatGPT account changed. Try again.");
+    check();
+    return await directory.select(connectionId, expectedRevision);
   } finally {
     options.signal?.removeEventListener("abort", abort);
     if (current?.id === id) current = null;
@@ -506,20 +638,23 @@ async function renewNativeRegistration(
   saved: NonNullable<ReturnType<typeof decodeRegistration>>,
   sessionToken: string,
   signal?: AbortSignal,
+  parent?: { id: string; check: () => void },
 ) {
-  if (current || disconnecting)
+  if ((current && current.id !== parent?.id) || disconnecting)
     throw new Error("Finish the current ChatGPT action first.");
-  const id = Crypto.randomUUID(),
+  const id = parent?.id ?? Crypto.randomUUID(),
     controller = new AbortController();
   let finish!: () => void;
   const finished = new Promise<void>((resolve) => {
     finish = resolve;
   });
-  current = { id, controller, finished, mode: "refresh", key, sessionToken };
+  if (!parent)
+    current = { id, controller, finished, mode: "refresh", key, sessionToken };
   const abort = () => controller.abort();
   signal?.addEventListener("abort", abort, { once: true });
   if (signal?.aborted) abort();
   const check = () => {
+    parent?.check();
     if (
       controller.signal.aborted ||
       session.token !== sessionToken ||
@@ -614,7 +749,7 @@ async function renewNativeRegistration(
     throw error;
   } finally {
     signal?.removeEventListener("abort", abort);
-    if (current?.id === id) current = null;
+    if (!parent && current?.id === id) current = null;
     finish();
   }
 }
