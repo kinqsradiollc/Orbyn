@@ -2598,3 +2598,42 @@ lock connection instead of requiring a second pool checkout. Current focused
 channel/sweep/cold cases pass; full immutable qualification, CI and promotion
 remain required. See [Teams evidence](../reviews/evidence/teams-agent-channels.md).
 This does not close C6, D1, U1 or the full ADR scope.
+
+### ChatGPT connection correction — 6 October 2026
+
+**User requirement:** one-button ChatGPT-plan authorization from web, desktop,
+iOS and Android; web/mobile must not silently wait for an open desktop app.
+No pre-issued client ID, client secret or workspace API key is required for
+initial OSS dynamic registration. This supersedes the earlier claim that a
+website client ID is the prerequisite for the user's requested OSS flow.
+
+The current web/mobile implementation is a desktop handoff, not direct sign-in:
+`ChatgptRemoteModels` and `ChatgptModelsSection` create a connect-request and poll
+until the desktop runtime claims it. Neither opens provider authorization itself.
+Changing its label or opening an unbacked popup does not fulfill this requirement.
+
+Authoritative sources inspected on 6 October 2026:
+
+- [OSS registration and sign-in](https://developers.openai.com/siwc/token-sharing-open-source/sign-in): initial `dynamic_agent_client`, a stable `ext_agent_host_id`, fresh state/nonce/PKCE, a listening HTTP callback on `127.0.0.1`, then the issued client ID for exchange and future authorization.
+- [SIWC Terms, 29 September 2026](https://openai.com/policies/sign-in-with-chatgpt-terms/): persistent authentication tokens must remain local and under the user's control; requests originate from the user's local runtime or a remote runtime only that user controls.
+- [Quickstart](https://developers.openai.com/siwc/quickstart) and [website identity flow](https://developers.openai.com/siwc/website): registered website identity sign-in is a separate flow and does not itself prove ChatGPT-plan authorization.
+- [Self-hosted VMs](https://developers.openai.com/siwc/token-sharing-open-source/self-hosted-vms): the browser's loopback callback reaches its local device, not the remote server. This is not a documented direct browser OAuth callback.
+- [SDK cookbook](https://developers.openai.com/cookbook/articles/sign-in-with-chatgpt): its React button invokes the local main-process SDK; the example does not demonstrate browser-only dynamic registration.
+
+| Surface                             | Required implementation                                                                                                                                                                                                           | Completion evidence still needed                                                                                                                                                           |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Desktop                             | Keep direct OSS authorization, local protected credentials, returned issued-client binding and user-plan inference.                                                                                                               | Real completed eligible inference; existing quota failures are not success or plan-tier evidence.                                                                                          |
+| Native iOS/Android                  | Own local callback listener, system authorization browser, protected local credential lifecycle and native executor. Do not require a laptop or reuse its registration implicitly.                                                | Built native modules, callback/cancel/restart tests, secure storage, ownership and real device/simulator end-to-end acceptance. Expo Go alone cannot prove a custom native listener works. |
+| Hosted web/mobile web               | Find a supported direct authorization/runtime mechanism that fulfills the user's no-desktop requirement. Browser JavaScript cannot bind an HTTP listening socket, so a popup alone cannot implement the documented loopback flow. | Official supported browser mechanism, callback completion and user-controlled token/runtime proof. This remains unmet; do not substitute a desktop queue and call it complete.             |
+| User-controlled self-hosted runtime | May be investigated as an additional option using the documented VM procedure.                                                                                                                                                    | Explicit runtime ownership and credential handling; it does not automatically close the hosted-web requirement.                                                                            |
+
+Implementation order: direct native runtime and common authorization lifecycle;
+resolve hosted-browser transport against official supported mechanisms; unify
+one-button feedback, models/defaults, explicit fallback and usage controls; then
+real cross-platform acceptance. Keep MCP/plugin grants separate. Preserve the
+original complete ADR scope. No server-side persistent SIWC token store, account
+pooling, invented provider approval flag, blind custom-scheme launch or false
+"Connected" state is an acceptable shortcut.
+
+This correction records an implementation gap, not a shipped fix. No code or
+real-account acceptance was completed by the documentation change.

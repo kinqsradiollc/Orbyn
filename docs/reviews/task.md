@@ -3269,3 +3269,21 @@ codex/agent-teams-replies.132 integrated channel checks,20 sweep/reply checks,
 existing sweep connection reuse repair are included. Full immutable suite/CI
 remain next; real tenant and native/browser acceptance remain open. Main remains
 28059ed1. No production deployment or cleanup is claimed.
+
+### ChatGPT reprioritized — 6 October 2026
+
+User explicitly moved direct ChatGPT connection ahead of Docs. Fresh source and
+OpenAI source inspection confirms the current web/mobile controls only queue a
+desktop request. Initial OSS registration needs no pre-issued client ID; the
+actual browser-only gap is the required local loopback listener and supported
+user-controlled credential/runtime mechanism. Terms inspected at the user's
+request require persistent SIWC tokens local and under user control. No hosted
+credential-storage implementation was retained. See the new ADR connection
+correction for exact sources, platform requirements and remaining gates.
+
+Next work: native callback/secure credential/executor implementation independent
+of desktop, while investigating an official browser-only transport. Do not
+claim that a popup, hosted identity-only OAuth or changed copy resolves the
+user's ChatGPT-plan requirement. Main application remains869a8005; this is a
+documentation correction only. Full Docs offline candidate0ee17ce5 remains
+unpromoted; its specific full-suite session56698 was confirmed live on resumption.
