@@ -4,6 +4,8 @@ import {
   appendReflection,
   appendDocContainerSection,
   docContainerSectionBlocks,
+  docContainerTaskBlocks,
+  parseVersionedDocContent,
   REFLECTION_HEADING,
   localDateKey,
   reflectionInput,
@@ -85,8 +87,13 @@ async function goalsFor(
          FROM projects p WHERE p.id = ANY ($1::uuid[])`,
       [projects],
     ),
-    db.query<{ id: string; content: DocBlock[] | null }>(
-      `SELECT d.id, d.content FROM docs d
+    db.query<{
+      id: string;
+      content: DocBlock[] | null;
+      content_format: 1 | 2;
+      content_nodes: unknown;
+    }>(
+      `SELECT d.id, d.content, d.content_format, d.content_nodes FROM docs d
         WHERE d.id = ANY ($2::uuid[]) AND ${docVisibleTo("$1")}`,
       [userId, plans],
     ),
@@ -98,7 +105,48 @@ async function goalsFor(
     ),
   ]);
   const byProject = new Map(counts.rows.map((r) => [r.id, r]));
-  const byPlan = new Map(planDocs.rows.map((r) => [r.id, ticks(r.content)]));
+  const planLeaves = new Map(
+    planDocs.rows.map((row) => {
+      if (row.content_format !== 2) return [row.id, row.content ?? []] as const;
+      const content = parseVersionedDocContent({
+        format: 2,
+        nodes: row.content_nodes,
+      });
+      if (content.format !== 2) throw new Error("Invalid nested goal plan.");
+      return [row.id, docContainerTaskBlocks(content.nodes)] as const;
+    }),
+  );
+  const linkedPlans = [...planLeaves]
+    .filter(([, leaves]) =>
+      leaves.some((block) => block.type === "todo" && block.id),
+    )
+    .map(([id]) => id);
+  const linked = linkedPlans.length
+    ? (
+        await db.query<{ doc_id: string; block_id: string; status: string }>(
+          `SELECT l.doc_id,l.block_id,i.status FROM doc_task_links l JOIN items i ON i.id=l.item_id
+      WHERE l.doc_id=ANY($1::uuid[])`,
+          [linkedPlans],
+        )
+      ).rows
+    : [];
+  const taskState = new Map<string, Map<string, boolean>>();
+  for (const row of linked) {
+    if (!taskState.has(row.doc_id)) taskState.set(row.doc_id, new Map());
+    taskState.get(row.doc_id)!.set(row.block_id, row.status === "done");
+  }
+  const byPlan = new Map(
+    [...planLeaves].map(([id, leaves]) => [
+      id,
+      ticks(
+        leaves.map((block) =>
+          block.type === "todo" && block.id && taskState.get(id)?.has(block.id)
+            ? { ...block, done: taskState.get(id)!.get(block.id)! }
+            : block,
+        ),
+      ),
+    ]),
+  );
   const lastCheckin = new Map(latest.rows.map((r) => [r.goal_id, r]));
   const monday = addDays(today, -((weekdayOf(today) + 6) % 7));
   return goals.map((g) => {
