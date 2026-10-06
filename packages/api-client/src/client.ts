@@ -60,6 +60,7 @@ import {
   type ChatgptCatalogSelection,
   type ChatgptCatalogDefaultUpdate,
   chatgptConnectionStart,
+  chatgptConnectionRefreshIdentity,
   chatgptConnectionFinish,
   chatgptConnectionChallenge,
   chatgptConnection,
@@ -1796,6 +1797,24 @@ export class OrbynClient {
         fresh: true,
       }),
     );
+  }
+
+  /** Verify replacement identity only; access/refresh credentials are never sent. */
+  async verifyChatgptRefreshIdentity(
+    input: { connection_id: string; id_token: string },
+    signal?: AbortSignal,
+  ) {
+    const value = chatgptConnectionRefreshIdentity.parse(input);
+    const result = chatgptConnection.parse(
+      await this.request<unknown>("/ai/connections/chatgpt/refresh-identity", {
+        method: "POST",
+        body: value,
+        signal,
+      }),
+    );
+    if (result.id !== value.connection_id)
+      throw new Error("The ChatGPT registration changed.");
+    return result;
   }
 
   async chatgptConnections(signal?: AbortSignal) {

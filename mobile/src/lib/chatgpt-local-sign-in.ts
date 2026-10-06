@@ -15,6 +15,7 @@ import {
   exchangeChatgptLocalCode,
   parseChatgptLocalGrant,
   readChatgptLocalModels,
+  refreshChatgptLocalGrant,
   type ChatgptLocalGrant,
 } from "@orbyn/api-client";
 import {
@@ -295,6 +296,99 @@ export function cancelNativeChatgptSignIn() {
   current?.controller.abort();
 }
 
+async function renewNativeRegistration(
+  key: string,
+  original: string,
+  saved: NonNullable<ReturnType<typeof decodeRegistration>>,
+  sessionToken: string,
+  signal?: AbortSignal,
+) {
+  if (current || disconnecting)
+    throw new Error("Finish the current ChatGPT action first.");
+  const id = Crypto.randomUUID(),
+    controller = new AbortController();
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  current = { id, controller, finished };
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  if (signal?.aborted) abort();
+  const check = () => {
+    if (
+      controller.signal.aborted ||
+      session.token !== sessionToken ||
+      current?.id !== id
+    )
+      throw new Error(
+        "The Orbyn session or ChatGPT connection changed. Try again.",
+      );
+  };
+  try {
+    check();
+    const grant = await refreshChatgptLocalGrant(saved.grant, {
+      fetch: expoFetch as unknown as typeof fetch,
+      signal: controller.signal,
+    });
+    check();
+    if (grant.idToken !== saved.grant.idToken) {
+      const identity = await client.verifyChatgptRefreshIdentity(
+        {
+          connection_id: saved.connection.id,
+          id_token: grant.idToken,
+        },
+        controller.signal,
+      );
+      check();
+      if (
+        identity.id !== saved.connection.id ||
+        identity.client_id !== saved.connection.client_id ||
+        identity.subject !== saved.connection.subject ||
+        identity.issuer !== saved.connection.issuer
+      )
+        throw new Error("The refreshed ChatGPT account changed. Reconnect.");
+    }
+    // Even omitted identity tokens require a still-live owned server connection.
+    const live = await client.chatgptConnections(controller.signal);
+    check();
+    if (
+      !live.some(
+        (row) =>
+          row.id === saved.connection.id &&
+          row.client_id === saved.connection.client_id &&
+          row.subject === saved.connection.subject &&
+          row.issuer === saved.connection.issuer,
+      )
+    )
+      throw new Error("Reconnect this ChatGPT account.");
+    if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+      throw new Error("ChatGPT account changed. Try again.");
+    check();
+    const installed = JSON.stringify({
+      version: 1,
+      revision: id,
+      connection: saved.connection,
+      grant,
+    });
+    await SecureStore.setItemAsync(key, installed, protectedOptions);
+    if (
+      controller.signal.aborted ||
+      session.token !== sessionToken ||
+      current?.id !== id
+    ) {
+      if ((await SecureStore.getItemAsync(key, protectedOptions)) === installed)
+        await SecureStore.setItemAsync(key, original, protectedOptions);
+      check();
+    }
+    return { original: installed, saved: { ...saved, revision: id, grant } };
+  } finally {
+    signal?.removeEventListener("abort", abort);
+    if (current?.id === id) current = null;
+    finish();
+  }
+}
+
 /** Read only this native account's current catalog; never publish credentials or silently switch accounts. */
 export async function readNativeChatgptModels(
   userId: string,
@@ -323,10 +417,11 @@ export async function readNativeChatgptModels(
   if (user.id !== userId)
     throw new Error("The signed-in Orbyn account changed.");
   const key = await accountKey(userId);
-  const original = await SecureStore.getItemAsync(key, protectedOptions);
+  let original = await SecureStore.getItemAsync(key, protectedOptions);
   check();
-  const saved = decodeRegistration(original);
-  if (!saved) throw new Error("Connect ChatGPT before loading models.");
+  const decoded = decodeRegistration(original);
+  if (!decoded) throw new Error("Connect ChatGPT before loading models.");
+  let saved = decoded;
   // Revoked or replaced server identity cannot authorize a stored local token.
   const connections = await client.chatgptConnections(options.signal);
   check();
@@ -343,6 +438,18 @@ export async function readNativeChatgptModels(
   if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
     throw new Error("ChatGPT account changed. Try again.");
   check();
+  if (saved.grant.expiresAt <= Date.now() + 60000) {
+    const renewed = await renewNativeRegistration(
+      key,
+      original!,
+      saved,
+      token,
+      options.signal,
+    );
+    original = renewed.original;
+    saved = renewed.saved;
+    check();
+  }
   const models = await readChatgptLocalModels(saved.grant, {
     fetch: expoFetch as unknown as typeof fetch,
     signal: options.signal,

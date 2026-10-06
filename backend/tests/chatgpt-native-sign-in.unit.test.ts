@@ -37,6 +37,10 @@ function mount(
     revokeFailure?: boolean;
     holdCallback?: boolean;
     onRevoke?: () => Promise<void>;
+    refreshedId?: boolean;
+    refreshIdentity?: object;
+    failRefreshProof?: boolean;
+    onRefresh?: () => Promise<void>;
     changeDuringModels?: "session" | "registration";
   } = {},
 ) {
@@ -51,6 +55,8 @@ function mount(
     dismissed: 0,
     freshMe: false,
     revoked: [] as string[],
+    refreshed: 0,
+    refreshProof: [] as object[],
   };
   let state = "",
     redirect = "http://127.0.0.1:1455/auth/callback";
@@ -120,7 +126,12 @@ function mount(
           fetch: async (url: string, init: any) => {
             calls.network++;
             if (url === "https://api.openai.com/v1/models") {
-              assert.equal(init.headers.Authorization, "Bearer private-access");
+              assert.equal(
+                init.headers.Authorization,
+                calls.refreshed
+                  ? "Bearer refreshed-access"
+                  : "Bearer private-access",
+              );
               if (options.changeDuringModels === "session")
                 session.token = "other-session";
               if (options.changeDuringModels === "registration") {
@@ -149,6 +160,19 @@ function mount(
               "https://auth.openai.com/api/accounts/oauth/token",
             );
             assert.equal(init.body.get("client_id"), "oaiapp_fixture");
+            if (init.body.get("grant_type") === "refresh_token") {
+              calls.refreshed++;
+              await options.onRefresh?.();
+              return Response.json({
+                ...tokens,
+                access_token: "refreshed-access",
+                refresh_token: "refreshed-refresh",
+                id_token: options.refreshedId
+                  ? "refreshed-identity"
+                  : tokens.id_token,
+                scope: options.scopes ?? tokens.scope,
+              });
+            }
             return Response.json({
               ...tokens,
               scope: options.scopes ?? tokens.scope,
@@ -209,6 +233,12 @@ function mount(
             me: async (settings: any) => {
               calls.freshMe = settings.fresh;
               return { id: options.me ?? userId };
+            },
+            verifyChatgptRefreshIdentity: async (input: object) => {
+              calls.refreshProof.push(input);
+              if (options.failRefreshProof)
+                throw new Error("Invalid identity proof");
+              return { ...connection, ...options.refreshIdentity };
             },
             revokeChatgptConnection: async (id: string) => {
               calls.revoked.push(id);
@@ -495,4 +525,100 @@ test("session change during local removal prevents revoking through another sess
   await assert.rejects(fixture.disconnect(), /account changed/);
   assert.equal(accounts(fixture.storage).length, 0);
   assert.equal(fixture.calls.revoked.length, 0);
+});
+
+function expireSoon(fixture: ReturnType<typeof mount>) {
+  const [key, json] = accounts(fixture.storage)[0];
+  const saved = JSON.parse(json);
+  saved.grant.expiresAt = Date.now() + 1000;
+  fixture.storage.set(key, JSON.stringify(saved));
+  return fixture.storage.get(key);
+}
+test("native near-expiry model discovery rotates local tokens after verifying changed identity", async () => {
+  const fixture = mount({ refreshedId: true });
+  await fixture.signIn();
+  expireSoon(fixture);
+  await fixture.models();
+  assert.equal(fixture.calls.refreshed, 1);
+  assert.deepEqual(JSON.parse(JSON.stringify(fixture.calls.refreshProof)), [
+    { connection_id: connection.id, id_token: "refreshed-identity" },
+  ]);
+  const saved = JSON.parse(accounts(fixture.storage)[0][1]);
+  assert.equal(saved.grant.accessToken, "refreshed-access");
+  assert.equal(saved.grant.refreshToken, "refreshed-refresh");
+  await fixture.models();
+  assert.equal(fixture.calls.refreshed, 1);
+});
+test("unchanged refresh identity needs no new sign-in proof but retains the original account", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  expireSoon(fixture);
+  await fixture.models();
+  assert.equal(fixture.calls.refreshProof.length, 0);
+  assert.equal(fixture.calls.refreshed, 1);
+  assert.deepEqual(
+    JSON.parse(accounts(fixture.storage)[0][1]).connection,
+    connection,
+  );
+});
+test("altered or unverified refreshed identity never rotates protected credentials", async () => {
+  for (const options of [
+    { refreshedId: true, refreshIdentity: { subject: "foreign-subject" } },
+    { refreshedId: true, failRefreshProof: true },
+  ]) {
+    const fixture = mount(options);
+    await fixture.signIn();
+    const original = expireSoon(fixture);
+    await assert.rejects(fixture.models());
+    assert.equal(accounts(fixture.storage)[0][1], original);
+  }
+});
+test("refresh scope reduction persists rotated tokens but cannot request a model catalog", async () => {
+  const options: { scopes?: string } = {};
+  const fixture = mount(options);
+  await fixture.signIn();
+  expireSoon(fixture);
+  options.scopes = "openid offline_access";
+  const before = fixture.calls.network;
+  await assert.rejects(fixture.models());
+  assert.equal(fixture.calls.network, before + 1);
+  const saved = JSON.parse(accounts(fixture.storage)[0][1]);
+  assert.equal(saved.grant.sharingGranted, false);
+  assert.equal(saved.grant.refreshToken, "refreshed-refresh");
+});
+
+test("disconnect aborts pending refresh and cannot reinstall credentials afterward", async () => {
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const fixture = mount({
+    onRefresh: async () => {
+      entered();
+      await pending;
+    },
+  });
+  await fixture.signIn();
+  expireSoon(fixture);
+  const models = fixture.models();
+  const rejected = assert.rejects(models);
+  await started;
+  await fixture.disconnect();
+  await rejected;
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.equal(accounts(fixture.storage).length, 0);
+  assert.equal(fixture.calls.refreshProof.length, 0);
+});
+test("session changes during refreshed secure write restore only the prior registration", async () => {
+  const options: { changeSession?: "finish" | "store" } = {};
+  const fixture = mount(options);
+  await fixture.signIn();
+  const original = expireSoon(fixture);
+  options.changeSession = "store";
+  await assert.rejects(fixture.models(), /changed/);
+  assert.equal(accounts(fixture.storage)[0][1], original);
 });

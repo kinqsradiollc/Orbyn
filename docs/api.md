@@ -77,12 +77,13 @@ offering a sign-in control.
 | ------ | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | POST   | `/ai/connections/chatgpt/challenges` | `{client_id?: string}` → `{id, nonce, expires_at}`. Omit the issued client ID for initial dynamic registration. Never send the `dynamic_agent_client` placeholder. |
 | POST   | `/ai/connections/chatgpt/complete`   | `{challenge_id, client_id, id_token}` → `{id, issuer, subject, client_id}` after signature/issuer/audience/nonce verification.                                     |
+| POST | `/ai/connections/chatgpt/refresh-identity` | `{connection_id, id_token}` → unchanged `{id, issuer, subject, client_id}`. Verifies a replacement refresh identity against an existing live owned registration; cannot create, revive or relink it. Never accepts access/refresh tokens. |
 | GET    | `/ai/connections/chatgpt`            | Active connections with `{id, issuer, subject, client_id, verified_at}`.                                                                                           |
 | DELETE | `/ai/connections/chatgpt/:id`        | Owner-only disconnect, `204`. Also consumes that owner's pending challenges so an old callback cannot reconnect.                                                   |
 
 Challenge ownership includes the exact Orbyn session. Challenges expire after ten
 minutes and can be consumed once; at most five unconsumed, unexpired challenges
-may exist per user. Challenge start, completion and disconnect allow ten requests
+may exist per user. Challenge start, completion, refresh identity verification and disconnect allow ten requests
 per minute per address. A verified registration cannot be silently linked to a
 second Orbyn account. These routes return `Cache-Control: no-store` and bypass the
 general 24-hour idempotency response cache so every operation checks its current

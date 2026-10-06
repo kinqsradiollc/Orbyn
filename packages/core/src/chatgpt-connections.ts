@@ -14,6 +14,13 @@ export const chatgptConnectionFinish = z
     id_token: z.string().min(1).max(65_536),
   })
   .strict();
+/** Identity proof for a refresh of an existing connection; never creates or relinks one. */
+export const chatgptConnectionRefreshIdentity = z
+  .object({
+    connection_id: z.uuid(),
+    id_token: z.string().min(1).max(65536),
+  })
+  .strict();
 export const chatgptConnectionChallenge = z
   .object({
     id: z.uuid(),

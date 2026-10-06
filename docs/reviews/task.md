@@ -3428,3 +3428,34 @@ provider choice/fallback, installed-device acceptance, and the unresolved direct
 web sign-in path. Existing Ed25519 server proofs must retain their ownership and
 fencing guarantees when mobile signing is added. Do not equate native primitive
 availability with support on every Android version.
+
+## Native refresh identity and rotation checkpoint — 6 October 2026
+
+Near-expiry native model reads now refresh through OpenAI locally. An unchanged
+retained ID token keeps the original verified identity; a replaced ID token must
+pass signature/issuer/audience/expiry/age/subject verification against the exact
+existing owned registration before any protected rotation. The new first-party
+`POST /ai/connections/chatgpt/refresh-identity` accepts only connection ID and ID
+proof. It checks live user/session/registration before and after remote signature
+verification, makes no writes and cannot create, revive or relink an account.
+Access and refresh tokens never reach this endpoint. Strict session-only auth,
+input filtering, rate limiting, no-store responses and sanitized errors apply.
+
+Local refresh serializes with sign-in/disconnect and fences protected writes.
+Disconnect aborts and awaits pending refresh; late provider responses cannot
+reinstall erased credentials. Session changes during secure writes restore only
+the prior unchanged record. Reduced plan scopes retain rotating credentials but
+cannot authorize model discovery. This service still holds one selected local
+registration and requires live Orbyn ownership; multiple accounts and offline
+management are not finished. Native executor shutdown/signing/inference and
+Settings activation remain required.
+
+Final focused result:63 pass,0 fail/skip,terminal0,1539.659584ms. This includes
+real JWT signature/claim tests plus mocked route/DB/native lifecycle boundaries.
+Initial qualification caught TypeScript nullable closure errors and a cross-VM
+prototype comparison in a new test; immutable narrowing and serialized exact
+proof comparison fixed those without changing existing production assertions.
+Package builds and backend/desktop/mobile typechecks terminate0. Evidence:
+`/tmp/orbyn-native-chatgpt-refresh-qualified.log`. No live PostgreSQL race,
+installed native app or real provider inference is established by these mocks.
+No migration is added. No main merge or full ADR completion is claimed.
