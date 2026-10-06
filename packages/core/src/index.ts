@@ -147,3 +147,5 @@ export * from "./doc-page-merge.js";
 export * from "./doc-container-tasks.js";
 
 export * from "./doc-content-merge.js";
+
+export * from "./doc-content-extract.js";

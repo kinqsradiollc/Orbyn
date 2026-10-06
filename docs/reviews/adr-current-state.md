@@ -20,6 +20,20 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 
 ## Current evidence
 
+## Complete-content extraction candidate — 6 October 2026
+
+Move-to-new-page now reads complete source ownership, retains quote/list wrappers
+around selected leaves, leaves one link at the first selected position and saves
+through the versioned writer. Checklist state follows the original task line;
+continuations do not become duplicate tasks. New pages insert matching complete
+nodes and leaf projections in the same transaction before comment/task/file
+transfers. Stale selections are refused.31 focused extraction/merge/task/offline
+tests, shared package build and backend types pass. A database extraction/history
+regression is added but unrun while the test database is unavailable. Candidate
+only; normal editor activation, link-fragment relocation and full D1 acceptance
+remain open. Main remains7263b45b; no deployment or visual acceptance claimed.
+
+
 ## Nested checklist recovery — 6 October 2026
 
 Complete-document revision merging now combines independent nested checkbox ticks

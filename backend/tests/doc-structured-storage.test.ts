@@ -1285,3 +1285,51 @@ test("stale nested tick cannot undo a task completion change from elsewhere", as
     "done",
   );
 });
+
+test("extract keeps nested task ownership and complete source history", async () => {
+  const id = await page();
+  const nodes = parseDocContainers(
+    "> - [x] Task ^task\n>\n>   Continuation ^continuation\n> - Other ^other",
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const response = await app.inject({
+    method: "POST",
+    url: `/docs/${id}/extract`,
+    headers: { authorization: `Bearer ${token}` },
+    payload: { version: 2, block_ids: ["task"], title: "Moved task" },
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  const destination = response.json().doc.id;
+  const moved = await readVersionedDoc(pool, owner, destination, [1, 2]);
+  const remaining = await readVersionedDoc(pool, owner, id, [1, 2]);
+  if (moved.document.format !== 2 || remaining.document.format !== 2)
+    throw new Error("Extraction flattened ownership");
+  assert.deepEqual(
+    docContainerTaskBlocks(moved.document.nodes)
+      .filter((b) => b.type === "todo")
+      .map((b) => b.id),
+    ["task"],
+  );
+  assert.equal(
+    docContainerTaskBlocks(remaining.document.nodes).filter(
+      (b) => b.type === "todo",
+    ).length,
+    0,
+  );
+  assert.ok(
+    docContainerBlocks(remaining.document.nodes).some(
+      (b) => b.id === "continuation",
+    ),
+  );
+  const history = (
+    await pool.query(
+      "SELECT content_nodes FROM doc_versions WHERE doc_id=$1 AND version=2",
+      [id],
+    )
+  ).rows[0];
+  assert.deepEqual(history.content_nodes, nodes);
+  assert.equal(remaining.version, 3);
+});
