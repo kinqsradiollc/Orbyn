@@ -1,7 +1,11 @@
 # Architecture
 
-Orbyn is a set of backend services, two client apps and PostgreSQL. The clients never talk to the
-database or to AI providers directly; everything goes through the gateway.
+Orbyn is a set of backend services, two client apps and PostgreSQL. App data and managed AI
+requests go through the gateway; clients never connect to the database. Personal ChatGPT
+inference is a separate device-owned path: the credential-owning desktop or native executor
+calls OpenAI directly and publishes account-bound signed catalogs/results to Orbyn. OAuth
+access and refresh credentials remain in protected local storage. This path is separate from
+MCP and plugin grants; hosted browser-only authorization remains unresolved in the candidate.
 
 ```
  web / Electron ─┐                  ┌─► api ─────┐

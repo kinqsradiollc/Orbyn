@@ -3657,3 +3657,43 @@ remaining C1-C6/M1/D1/U1 scope: provider/account/usage/fallback acceptance, sepa
 plugin backend integration and MCP, Background/Overnight collaboration/reflection,
 whole-app UI and modal/settings parity, full owned Docs Markdown/Mermaid workflows,
 maintained/shared/published pages, Slack/Teams, qualification and final cleanup.
+
+## Resumed native recovery checkpoint — 6 October 2026
+
+The user resumed the goal and requested regular current-state reporting. A concise
+tracker now lives in docs/reviews/adr-current-state.md; it preserves all original
+C1-C6/M1/D1/U1 requirements and separates candidate, qualification, main and deployment.
+
+Code review found two native activation defects: failed/cancelled reconnect left
+preserved credentials without an active executor; and the catalog expired after
+five minutes while only the lease was renewed. Settings now resumes the existing
+local executor in finally (for the same Orbyn session only), without repeating
+OAuth. The foreground scheduler refreshes catalogs every two minutes alongside
+independent claim/heartbeat timers; suspension/error/owner changes clear all three.
+The architecture introduction now distinguishes managed gateway calls from the
+personal device-owned direct-provider path.
+
+Qualification:298 ChatGPT unit tests pass,0fail/skip,terminal0,20081.157709ms,
+`/tmp/orbyn-native-recovery-all-unit.log`; focused16 pass,0fail/skip,1306.056458ms,
+`/tmp/orbyn-native-recovery-focused.log`. Packages and all workspace typechecks
+exit0, `/tmp/orbyn-native-recovery-typecheck.log`. No DB/schema change. Fetched
+origin/main remains29b74ecd; read-only merge-tree against the previous candidate
+head succeeds without conflicts. Final commit must be rechecked before promotion.
+
+Simulator Computer Use still times out (-10005); simctl showed no booted device.
+Only2.9GiB disk space was available, so no large native prebuild/build was started.
+Actual installed OAuth/keystore, screenshot and live inference acceptance remain
+open. Concurrent catalog/inference renewal also needs review: the native service
+currently rejects overlapping current actions conservatively; do not claim seamless
+refresh until this is exercised and coordinated.
+
+Official OSS docs rechecked6October still specify dynamic_agent_client without a
+pre-issued client secret/partner key and an HTTP127.0.0.1 callback. Website docs
+separately describe identity registration and do not establish a hosted dynamic
+plan-runtime flow. Hosted web remains unmet; no desktop handoff relabeling or remote
+persistent-token storage is added. Sources:
+https://developers.openai.com/siwc/token-sharing-open-source/sign-in
+https://developers.openai.com/siwc/website
+https://openai.com/policies/sign-in-with-chatgpt-terms/
+
+Goal stays active. No main promotion or production deployment is claimed here.

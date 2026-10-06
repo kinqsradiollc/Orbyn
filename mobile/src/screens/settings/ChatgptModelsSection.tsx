@@ -69,12 +69,13 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         throw new Error(
           "Enable ChatGPT plan usage when connecting this account.",
         );
-      chatgptForeground.restart();
       refresh();
     } catch (error) {
       if (!controller.signal.aborted && token === session.token)
         setConnectError(errorText(error));
     } finally {
+      // Cancellation can preserve the previous local grant; restore its executor without another OAuth attempt.
+      if (token === session.token) chatgptForeground.restart();
       if (lifetime.current === controller) {
         lifetime.current = null;
         setConnecting(false);

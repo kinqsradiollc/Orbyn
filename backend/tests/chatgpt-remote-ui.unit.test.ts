@@ -140,7 +140,11 @@ test("ChatGPT models are discoverable in both settings search indexes", () => {
     );
 });
 
-function view(app: "desktop" | "mobile", state: any) {
+function view(
+  app: "desktop" | "mobile",
+  state: any,
+  connectOutcome: "success" | "cancel" | "failure" = "success",
+) {
   let slot = 0;
   const values: any[] = [];
   const saved: (string | null)[] = [];
@@ -219,6 +223,10 @@ function view(app: "desktop" | "mobile", state: any) {
         return {
           signInNativeChatgpt: async () => {
             localCalls.push("sign-in");
+            if (connectOutcome !== "success")
+              throw new Error(
+                connectOutcome === "cancel" ? "Cancelled" : "Unavailable",
+              );
             return { sharingGranted: true };
           },
           disconnectNativeChatgpt: async () => {},
@@ -393,4 +401,23 @@ test("native Connect invokes local sign-in and resumes the app-owned executor wi
   action.props.onPress();
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(f.localCalls, ["suspend", "sign-in", "restart"]);
+});
+
+test("failed or cancelled native reconnect restores the previous executor without repeating sign-in", async () => {
+  for (const outcome of ["cancel", "failure"] as const) {
+    const f = view("mobile", viewState(), outcome);
+    const action = elements(f.render()).find(
+      (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+    );
+    action.props.onPress();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(f.localCalls, ["suspend", "sign-in", "restart"]);
+    assert.equal(
+      elements(f.render()).find(
+        (n) =>
+          n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+      ).props.disabled,
+      false,
+    );
+  }
 });

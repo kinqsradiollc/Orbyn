@@ -23,6 +23,9 @@ function fixture() {
       events.push("heartbeat");
       if (fail) throw new Error("failure");
     },
+    refreshCatalog: async () => {
+      events.push("catalog");
+    },
     executeNext: async () => {
       events.push("inference");
     },
@@ -73,8 +76,9 @@ test("foreground lifecycle starts once and runs independent lease and claim time
   assert.deepEqual(f.events, ["start"]);
   await f.tick(25000);
   await f.tick(10000);
-  assert.deepEqual(f.events, ["start", "heartbeat", "inference"]);
-  assert.equal(f.scheduled.size, 2);
+  await f.tick(120000);
+  assert.deepEqual(f.events, ["start", "heartbeat", "inference", "catalog"]);
+  assert.equal(f.scheduled.size, 3);
   assert.ok(!JSON.stringify(f.runtime.snapshot()).includes("private-session"));
   f.runtime.close();
 });

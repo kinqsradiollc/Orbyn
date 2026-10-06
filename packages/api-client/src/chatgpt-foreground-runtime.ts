@@ -6,6 +6,7 @@ export function createChatgptForegroundRuntime(options: {
       signal?: AbortSignal,
     ) => Promise<{ selection: { connection_id: string; executor_id: string } }>;
     heartbeat: (signal?: AbortSignal) => Promise<unknown>;
+    refreshCatalog: (signal?: AbortSignal) => Promise<unknown>;
     executeNext: (signal?: AbortSignal) => Promise<unknown>;
     close: () => void;
   }>;
@@ -98,6 +99,8 @@ export function createChatgptForegroundRuntime(options: {
       // Claim and heartbeat timers are separate; model work cannot starve lease renewal.
       queue(() => runtime!.heartbeat(signal), 25000);
       queue(() => runtime!.executeNext(signal), 10000);
+      // Server catalogs expire after five minutes even when the lease stays alive.
+      queue(() => runtime!.refreshCatalog(signal), 120000);
     } catch {
       runtime?.close();
       if (live()) {
