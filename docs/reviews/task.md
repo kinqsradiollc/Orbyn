@@ -3616,3 +3616,44 @@ verify the installed app. Browser-only direct sign-in remains unresolved and
 must not be presented as a desktop handoff fix. Multiple account management,
 truthful plan/usage UI, cross-platform acceptance and the remainder of the full
 C1-C6/M1/D1/U1 goal remain open. No main promotion or deployment is claimed.
+
+## Native foreground and Settings activation — 6 October 2026
+
+Native Settings now invokes the local OAuth sign-in service directly rather than
+queueing a desktop handoff. It exposes cancellation, runtime status, retry and
+local disconnect while keeping account-bound model/default/provider controls.
+The mobile-web build explicitly says direct browser connection is unavailable;
+it no longer presents the native Connect action as a working hosted connection.
+The desktop web handoff remains an unresolved separate path, not a completed fix.
+
+A single app-owned foreground controller survives Settings dismissal. The root
+binds it to the verified user/session, legal gate and native AppState. Suspension,
+sign-out, owner changes and close abort the executor and remove all scheduled
+work. Late asynchronous startup cannot reactivate a replaced owner. Separate
+25-second heartbeat and 10-second claim timers avoid starving lease renewal;
+terminal errors stop all timers and require retry or a later foreground entry.
+No protected registration means no executor or periodic work. Session tokens stay
+private to controller ownership checks and are excluded from status snapshots.
+
+Qualification:297 ChatGPT unit tests pass,0fail/skip,terminal0,19897.700959ms;
+`/tmp/orbyn-native-foreground-final-unit.log`. Scheduler tests cover startup,
+independent timers, suspension/sign-out, stale factory completion, terminal error
+and missing registration. The actual Settings render fixture invokes native
+Connect and verifies local sign-in/resume without a desktop request. Previous
+handoff-only UI fixture assertions were updated to the new intended behavior;
+model filtering/offline/save coverage remains. Package builds and all three app
+workspace typechecks pass; `/tmp/orbyn-native-foreground-final-typecheck.log`.
+Formatting and diff checks pass. No database/schema/HTTP change was introduced.
+
+Computer Use inspection of Simulator returned server timeout -10005. No installed
+native build, OS OAuth callback/keystore, screenshot/layout acceptance, real
+OpenAI inference or production readiness is claimed. This candidate stays on
+codex/chatgpt-direct-web-oauth pending installed-platform acceptance and an
+integration/main review. It is not yet on main or deployed.
+
+The user requested pausing after this step. Resume from installed iOS/Android
+acceptance and direct browser connection research/implementation. Preserve all
+remaining C1-C6/M1/D1/U1 scope: provider/account/usage/fallback acceptance, separate
+plugin backend integration and MCP, Background/Overnight collaboration/reflection,
+whole-app UI and modal/settings parity, full owned Docs Markdown/Mermaid workflows,
+maintained/shared/published pages, Slack/Teams, qualification and final cleanup.

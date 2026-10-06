@@ -50,6 +50,7 @@ import { Icon } from "../components/Icon";
 import { ItemEditor, type Editing } from "../components/ItemEditor";
 import { MaintenanceBanner } from "../components/MaintenanceBanner";
 import { TabBar } from "../components/TabBar";
+import { useChatgptForeground } from "../hooks/useChatgptForeground";
 import { useAssistant } from "../hooks/useAssistant";
 import { usePlanner } from "../hooks/usePlanner";
 import { client } from "../lib/api";
@@ -402,6 +403,10 @@ export function RootScreen() {
     !!token &&
     !(user && !user.email_verified) &&
     !(user && legal && user.terms_version !== legal.terms_version);
+  useChatgptForeground(
+    inApp && legal ? (user?.id ?? "") : "",
+    inApp && legal ? (token ?? "") : "",
+  );
   useAppLinks(inApp, (link) => openLink.current?.(link));
   // How many suggestions wait in Review, read again whenever it changes.
   useEffect(() => {

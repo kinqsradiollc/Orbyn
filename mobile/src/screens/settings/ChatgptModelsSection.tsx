@@ -1,10 +1,11 @@
 import { AgendaPrivateSettings } from "./AgendaPrivateSettings";
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
-import { CHATGPT_USAGE_URL, chatgptConnectFeedback } from "@orbyn/core";
+import { CHATGPT_USAGE_URL } from "@orbyn/core";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
+  Platform,
   Linking,
   ScrollView,
   Text,
@@ -16,24 +17,40 @@ import { useChatgptRemote } from "../../hooks/useChatgptRemote";
 import { SmallAction } from "../../components/SmallAction";
 import { colors } from "../../theme";
 import { shared } from "../../styles";
-import { client } from "../../lib/api";
 import { session } from "../../lib/session";
 import { errorText } from "../../lib/errors";
+import {
+  signInNativeChatgpt,
+  disconnectNativeChatgpt,
+  cancelNativeChatgptSignIn,
+} from "../../lib/chatgpt-local-sign-in";
+import { chatgptForeground } from "../../lib/chatgpt-foreground";
 import { SettingsSection } from "./SettingsSection";
 
 /** Native and mobile web manage the same owned catalogs and account-bound defaults. */
 export function ChatgptModelsSection({ userId }: { userId: string }) {
   const { state, refresh, select, save } = useChatgptRemote(userId);
+  const [localRuntime, setLocalRuntime] = useState(
+    chatgptForeground.snapshot(),
+  );
+  useEffect(
+    () =>
+      chatgptForeground.subscribe(() => {
+        setLocalRuntime(chatgptForeground.snapshot());
+        refresh();
+      }),
+    [userId],
+  );
   const [query, setQuery] = useState("");
   const [connecting, setConnecting] = useState(false);
-  const [connectFeedback, setConnectFeedback] = useState(
-    chatgptConnectFeedback("starting"),
-  );
   const [connectError, setConnectError] = useState<string | null>(null);
   const lifetime = useRef<AbortController | null>(null);
   useEffect(
     () => () => {
-      lifetime.current?.abort();
+      if (lifetime.current) {
+        lifetime.current.abort();
+        cancelNativeChatgptSignIn();
+      }
     },
     [userId],
   );
@@ -44,57 +61,24 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
     const token = session.token;
     setConnecting(true);
     setConnectError(null);
-    setConnectFeedback(chatgptConnectFeedback("starting"));
     try {
-      const request = await client.startChatgptConnectRequest(
-        controller.signal,
-      );
+      chatgptForeground.suspend();
+      const connected = await signInNativeChatgpt(userId);
       if (controller.signal.aborted || token !== session.token) return;
-      const requestedAt = Date.now();
-      setConnectFeedback(chatgptConnectFeedback("pending"));
-      while (
-        !controller.signal.aborted &&
-        token === session.token &&
-        Date.now() < Date.parse(request.expires_at)
-      ) {
-        await new Promise<void>((resolve) => {
-          const cancel = () => {
-            clearTimeout(timer);
-            resolve();
-          };
-          const timer = setTimeout(() => {
-            controller.signal.removeEventListener("abort", cancel);
-            resolve();
-          }, 3000);
-          controller.signal.addEventListener("abort", cancel, { once: true });
-          if (controller.signal.aborted) cancel();
-        });
-        if (controller.signal.aborted || token !== session.token) return;
-        const next = await client.chatgptConnectRequest(
-          request.id,
-          controller.signal,
+      if (!connected.sharingGranted)
+        throw new Error(
+          "Enable ChatGPT plan usage when connecting this account.",
         );
-        if (controller.signal.aborted || token !== session.token) return;
-        if (next.state === "pending" || next.state === "claimed")
-          setConnectFeedback(
-            chatgptConnectFeedback(next.state, Date.now() - requestedAt),
-          );
-        if (next.state === "completed") {
-          refresh();
-          return;
-        }
-        if (next.state === "failed" || next.state === "expired")
-          throw new Error(
-            "ChatGPT sign-in did not finish. Try connecting again.",
-          );
-      }
-      if (!controller.signal.aborted && token === session.token)
-        throw new Error("ChatGPT sign-in expired. Try connecting again.");
+      chatgptForeground.restart();
+      refresh();
     } catch (error) {
       if (!controller.signal.aborted && token === session.token)
         setConnectError(errorText(error));
     } finally {
-      if (lifetime.current === controller) setConnecting(false);
+      if (lifetime.current === controller) {
+        lifetime.current = null;
+        setConnecting(false);
+      }
     }
   };
   const busy = state.status === "loading" || state.saving;
@@ -124,17 +108,67 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       <AgendaPrivateSettings userId={userId} />
       <Text style={shared.body}>ChatGPT</Text>
       <Text style={shared.small}>
-        Requires Orbyn desktop open and signed into the same Orbyn account.
+        {Platform.OS === "web"
+          ? "Direct browser connection is not available yet."
+          : "Connect your account in the browser. ChatGPT work runs while this app is open."}
       </Text>
       <SmallAction
-        label={connecting ? connectFeedback.label : "Connect to ChatGPT"}
-        disabled={!userId || connecting}
+        label={
+          Platform.OS === "web"
+            ? "Browser connection unavailable"
+            : connecting
+              ? "Connecting…"
+              : "Connect to ChatGPT"
+        }
+        disabled={!userId || connecting || Platform.OS === "web"}
         onPress={() => void connect()}
       />
       {connecting && (
-        <Text accessibilityLiveRegion="polite" style={shared.small}>
-          {connectFeedback.message}
-        </Text>
+        <SmallAction
+          label="Cancel"
+          disabled={false}
+          onPress={() => {
+            lifetime.current?.abort();
+            cancelNativeChatgptSignIn();
+          }}
+        />
+      )}
+      {Platform.OS !== "web" && localRuntime.userId === userId && (
+        <>
+          <Text accessibilityLiveRegion="polite" style={shared.small}>
+            {localRuntime.status === "ready"
+              ? "This device is ready."
+              : localRuntime.status === "starting"
+                ? "Preparing this device…"
+                : localRuntime.status === "paused"
+                  ? "Work paused."
+                  : localRuntime.status === "error"
+                    ? "Reconnect this device to resume work."
+                    : "No local ChatGPT connection."}
+          </Text>
+          {localRuntime.status === "error" && (
+            <SmallAction
+              label="Retry connection"
+              disabled={connecting}
+              onPress={() => chatgptForeground.restart()}
+            />
+          )}
+          {localRuntime.status !== "idle" && (
+            <SmallAction
+              label="Disconnect this device"
+              disabled={connecting}
+              onPress={() => {
+                chatgptForeground.suspend();
+                void disconnectNativeChatgpt(userId)
+                  .then(() => {
+                    chatgptForeground.restart();
+                    refresh();
+                  })
+                  .catch((error) => setConnectError(errorText(error)));
+              }}
+            />
+          )}
+        </>
       )}
       {connectError && (
         <Text accessibilityRole="alert" style={shared.small}>
@@ -232,7 +266,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
               : catalog.status === "offline"
                 ? "This device is offline. Reconnect it before choosing a model."
                 : catalog.status === "stale"
-                  ? "Refresh the catalog from this device’s desktop app."
+                  ? "Refresh the catalog from the connected device."
                   : "This device has not published a model catalog."}
           </Text>
           <Text style={shared.body}>

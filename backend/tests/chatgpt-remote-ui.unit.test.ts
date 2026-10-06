@@ -145,6 +145,7 @@ function view(app: "desktop" | "mobile", state: any) {
   const values: any[] = [];
   const saved: (string | null)[] = [];
   const selected: unknown[] = [];
+  const localCalls: string[] = [];
   const source =
     app === "desktop"
       ? "desktop/src/features/settings/ChatgptRemoteModels.tsx"
@@ -164,6 +165,7 @@ function view(app: "desktop" | "mobile", state: any) {
   const jsx = (type: unknown, props: unknown) => ({ type, props });
   runInNewContext(compiled, {
     exports,
+    AbortController,
     require(id: string) {
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx };
       if (id === "react")
@@ -213,13 +215,42 @@ function view(app: "desktop" | "mobile", state: any) {
             select: (selection: unknown) => selected.push(selection),
           }),
         };
+      if (id.endsWith("/lib/chatgpt-local-sign-in"))
+        return {
+          signInNativeChatgpt: async () => {
+            localCalls.push("sign-in");
+            return { sharingGranted: true };
+          },
+          disconnectNativeChatgpt: async () => {},
+          cancelNativeChatgptSignIn: () => {},
+        };
+      if (id.endsWith("/lib/chatgpt-foreground"))
+        return {
+          chatgptForeground: {
+            snapshot: () => ({
+              userId: "person",
+              status: "idle",
+              selection: null,
+            }),
+            subscribe: () => () => {},
+            suspend: () => {
+              localCalls.push("suspend");
+            },
+            restart: () => {
+              localCalls.push("restart");
+            },
+          },
+        };
       if (id === "react-native")
-        return Object.fromEntries(
-          ["ScrollView", "Text", "TextInput", "View"].map((name) => [
-            name,
-            name,
-          ]),
-        );
+        return {
+          Platform: { OS: "ios" },
+          ...Object.fromEntries(
+            ["ScrollView", "Text", "TextInput", "View"].map((name) => [
+              name,
+              name,
+            ]),
+          ),
+        };
       if (id.endsWith("/motion")) return { Pressable: "Pressable" };
       if (id.endsWith("/Select")) return { Select: "Select" };
       if (id.endsWith("/SmallAction")) return { SmallAction: "SmallAction" };
@@ -241,7 +272,7 @@ function view(app: "desktop" | "mobile", state: any) {
       app === "desktop" ? "ChatgptRemoteModels" : "ChatgptModelsSection"
     ]({ userId: "person" });
   };
-  return { render, saved, selected };
+  return { render, saved, selected, localCalls };
 }
 function elements(node: any): any[] {
   if (Array.isArray(node)) return node.flatMap(elements);
@@ -351,3 +382,15 @@ for (const app of ["desktop", "mobile"] as const) {
     }
   });
 }
+
+test("native Connect invokes local sign-in and resumes the app-owned executor without desktop handoff", async () => {
+  const f = view("mobile", viewState());
+  const action = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+  );
+  assert.ok(action);
+  assert.equal(action.props.disabled, false);
+  action.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, ["suspend", "sign-in", "restart"]);
+});

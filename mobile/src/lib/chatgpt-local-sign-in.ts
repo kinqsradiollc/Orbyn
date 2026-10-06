@@ -746,3 +746,12 @@ export async function createNativeChatgptExecutor(userId: string) {
     close: handle.close,
   };
 }
+
+/** Local presence only; executor creation separately verifies the live server identity. */
+export async function hasNativeChatgptRegistration(userId: string) {
+  if (Platform.OS === "web" || !nativeChatgptSigningAvailable()) return false;
+  const saved = decodeRegistration(
+    await SecureStore.getItemAsync(await accountKey(userId), protectedOptions),
+  );
+  return Boolean(saved?.grant.sharingGranted);
+}
