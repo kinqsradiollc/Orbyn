@@ -3610,3 +3610,13 @@ selection. Main checkpoint9e22e531 pushed and candidate reconciled without confl
 Candidate440ChatGPTunit tests pass; main23focused pass and client types pass with
 documented main mobile WebView mapping. Evidence and limits are in task handoff;
 visual/real OAuth/native/full database and complete ADR acceptance remain open.
+
+### Native compound account-switch provenance acceptance test — 6 October 2026
+
+Actual service/executor composition now tests distinct account tokens/enrollments,
+old in-flight cancellation, preserved credential slots/signing aliases, replacement
+catalog and signed receipt binding, and late old response exclusion. Focused94 and
+full ChatGPT441unit tests pass,zero failures/skips. Candidate test-only evidence;
+no real OAuth/OS/DB qualification or broad native main promotion. Source audit
+reconfirmed immutable provider-choice and durable request/model authority guards.
+Full ADR scope remains open; detailed evidence and runtime blockers are in handoff.

@@ -63,6 +63,8 @@ function mount(
     liveConnections?: (typeof connection)[];
     signing?: boolean;
     inference?: "success" | "limit" | "session";
+    providerToken?: () => string;
+    onResponses?: () => Promise<void>;
     changeDuringModels?: "session" | "registration";
   } = {},
 ) {
@@ -76,8 +78,8 @@ function mount(
   const fingerprint = createHash("sha256")
     .update(Buffer.from(publicKey, "base64url"))
     .digest("base64url");
-  const executorId = randomUUID();
-  const executorBinding = {
+  let executorId = randomUUID();
+  let executorBinding = {
     user_id: userId,
     connection_id: connection.id,
     issuer: connection.issuer,
@@ -108,6 +110,8 @@ function mount(
     catalogs: [] as object[],
     publications: [] as any[],
     responses: 0,
+    modelTokens: [] as string[],
+    responseTokens: [] as string[],
     refreshProof: [] as object[],
   };
   let state = "",
@@ -221,11 +225,14 @@ function mount(
           fetch: async (url: string, init: any) => {
             calls.network++;
             if (url === "https://api.openai.com/v1/models") {
+              calls.modelTokens.push(init.headers.Authorization);
               assert.equal(
                 init.headers.Authorization,
-                calls.refreshed
-                  ? "Bearer refreshed-access"
-                  : "Bearer private-access",
+                options.providerToken
+                  ? `Bearer ${options.providerToken()}`
+                  : calls.refreshed
+                    ? "Bearer refreshed-access"
+                    : "Bearer private-access",
               );
               if (options.changeDuringModels === "session")
                 session.token = "other-session";
@@ -254,10 +261,14 @@ function mount(
               calls.responses++;
               assert.equal(
                 init.headers.Authorization,
-                calls.refreshed
-                  ? "Bearer refreshed-access"
-                  : "Bearer private-access",
+                options.providerToken
+                  ? `Bearer ${options.providerToken()}`
+                  : calls.refreshed
+                    ? "Bearer refreshed-access"
+                    : "Bearer private-access",
               );
+              calls.responseTokens.push(init.headers.Authorization);
+              await options.onResponses?.();
               const body = JSON.parse(init.body);
               assert.equal(body.store, false);
               assert.equal(body.stream, true);
@@ -428,6 +439,18 @@ function mount(
           client: {
             baseUrl: "https://orbyn.example/api",
             beginChatgptExecutor: async (input: any) => {
+              const owned = (options.liveConnections ?? [connection]).find(
+                (row) => row.id === input.connection_id,
+              );
+              assert.ok(owned, "enrollment must use an owned connection");
+              executorId = randomUUID();
+              executorBinding = {
+                user_id: userId,
+                connection_id: owned.id,
+                issuer: owned.issuer,
+                subject: owned.subject,
+                client_id: owned.client_id,
+              };
               executorHost = input.host_id;
               const id = randomUUID();
               return {
@@ -2361,5 +2384,99 @@ test("actual native inference and cancellation work with React Native AbortContr
   } finally {
     runtime?.close();
     globalThis.AbortController = original;
+  }
+});
+
+test("native account switch fences old in-flight inference and binds the replacement to its own credential and catalog", async () => {
+  const other = {
+    ...connection,
+    id: randomUUID(),
+    subject: "other-subject",
+    client_id: "oaiapp_other",
+  };
+  let expectedToken = "private-access",
+    entered!: () => void,
+    release!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const blocked = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let firstRequest = true;
+  const f = mount({
+    signing: true,
+    inference: "success",
+    liveConnections: [connection, other],
+    providerToken: () => expectedToken,
+    onResponses: async () => {
+      if (firstRequest) {
+        firstRequest = false;
+        entered();
+        await blocked;
+      }
+    },
+  });
+  let older: any, replacement: any;
+  try {
+    await f.signIn();
+    await f.prepare();
+    const [originalKey, originalRaw] = accounts(f.storage)[0];
+    const target = secondSavedAccount(f, other);
+    const record = JSON.parse(f.storage.get(target.slot)!);
+    record.grant.accessToken = "private-other-access";
+    f.storage.set(target.slot, JSON.stringify(record));
+    older = await f.executor();
+    const oldStart = await older.start();
+    const work = older.executeNext();
+    const interrupted = assert.rejects(work);
+    await started;
+    await f.chooseAccount(other.id, target.revision);
+    expectedToken = "private-other-access";
+    await interrupted;
+    await assert.rejects(older.heartbeat());
+    assert.equal(f.calls.publications.length, 0);
+    assert.equal(f.storage.get(originalKey), originalRaw);
+    const before = f.calls.responses;
+    await assert.rejects(older.executeNext());
+    assert.equal(f.calls.responses, before);
+    replacement = await f.executor();
+    const newStart = await replacement.start();
+    assert.equal(newStart.selection.connection_id, other.id);
+    assert.notEqual(
+      newStart.selection.executor_id,
+      oldStart.selection.executor_id,
+    );
+    const catalog: any = f.calls.catalogs.at(-1);
+    assert.equal(catalog.binding.connection_id, other.id);
+    assert.equal(catalog.binding.subject, other.subject);
+    assert.equal(catalog.binding.client_id, other.client_id);
+    assert.equal(f.calls.modelTokens.at(-1), "Bearer private-other-access");
+    assert.deepEqual(await replacement.executeNext(), { processed: true });
+    assert.equal(f.calls.publications.length, 1);
+    const receipt = f.calls.publications[0].receipt;
+    assert.equal(receipt.binding.connection_id, other.id);
+    assert.equal(receipt.executor_id, newStart.selection.executor_id);
+    assert.deepEqual(f.calls.responseTokens, [
+      "Bearer private-access",
+      "Bearer private-other-access",
+    ]);
+    release();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(
+      f.calls.publications.length,
+      1,
+      "late old response cannot publish into the new profile",
+    );
+    assert.equal(f.storage.get(originalKey), originalRaw);
+    assert.deepEqual(
+      f.removedAliases,
+      [],
+      "switching preserves both accounts' signing keys",
+    );
+  } finally {
+    release();
+    older?.close();
+    replacement?.close();
   }
 });

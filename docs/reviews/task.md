@@ -4448,3 +4448,39 @@ request or native runtime qualification is claimed.
 Remaining model/default/native switching acceptance, installed platform UI/runtime,
 full database/native candidate main promotion and complete C1-C6/M1/D1/U1 scope
 remain open. Continue runtime account-switch provenance verification next.
+
+### Compound native account-switch provenance evidence — 6 October 2026
+
+Actual native factory test uses two protected profile slots with distinct OAuth
+access tokens, verified connection/client/subject bindings and signing aliases.
+The simulated server enrolls the requested owned connection and issues distinct
+executor IDs. First inference provider transport is deliberately held without
+honouring abort. Switching accounts rejects the old in-flight execution; old
+heartbeat/execute cannot run or send a second prompt. Original slot/key remains.
+Replacement startup publishes only the target identity's catalog; inference sends
+only target token, signs target account/executor receipt, and emits one completion.
+Releasing the late old response cannot publish into the replacement profile.
+
+Fixture added optional transport/token hooks and records model/response headers;
+no logs contain real credentials, and all tokens/transports are test-only. Existing
+94 native service tests pass,0failed/0skipped,6797.027ms,exit0 at
+`/tmp/orbyn-native-switch-provenance-focused.log`. Full ChatGPT441passed,
+0failed/0skipped,27263.063333ms,exit0 at
+`/tmp/orbyn-native-switch-provenance-all.log`. Formatting/diff checks pass. No
+runtime change or installed acceptance is claimed; test depends on native candidate
+files absent from main and stays on candidate.
+
+Server read-only audit reconfirmed assertJobAiProviderChoice compares immutable
+enqueue-time choice to current authority; queueChatgptInference checks expected
+model against live catalog and reuses existing operation only after binding/payload/
+job hash validation. This is source evidence, not a new DB regression pass.
+Latest Docker ps query remained unresponsive after repeated polls of its specific
+live handle58636. Its own CLI process19538 was terminated only after confirming
+command identity; session ended143. No engine/container changed. Disk1.7GiB.
+
+Unit/runtime composition account-switch provenance is now covered. Remaining
+actual OS/OAuth/UI, remote/default cross-device DB acceptance and full database/
+native main promotion still open; original C1-C6/M1/D1/U1 scope remains intact.
+Next review other unfinished source paths while runtime acceptance is unavailable,
+starting with D1 flat writers and normal-editor ownership adoption; do not treat
+that review as completion of blocked ChatGPT acceptance.
