@@ -1,3 +1,13 @@
+## Nested checklist recovery — 6 October 2026
+
+Complete-document revision merging now combines independent nested checkbox ticks
+and named-leaf text edits, including native offline replay. Checkbox presence,
+owner order and container metadata remain structural; overlapping text and
+ambiguous empty-item changes retain conflict review.33 focused controls, operations,
+task and offline replay tests pass; shared packages build and backend types pass.
+Candidate only. Normal editor adoption/save/collaboration and installed/visual
+acceptance remain unfinished. Main stays7263b45b; no deployment is claimed.
+
 ## Nested editor control contract — 6 October 2026
 
 Candidate renderers now pass each leaf's exact ownership path to existing widgets.
