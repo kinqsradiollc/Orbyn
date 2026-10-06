@@ -13,6 +13,39 @@ qualification checkout; inspect that terminal result before promotion. Full
 C1-C6/M1/D1/U1 stays active. The user deploys main manually; preserve character
 and user files and perform no final cleanup yet.
 
+## Complete-format offline recovery candidate — 6 October 2026
+
+Historical checkpoint imported from0ee17ce5. Main and running-session references
+below are superseded by the current ADR tracker and task handoff.
+
+Offline page saves can now retain their complete current and base document trees.
+Native replay uses the owned normal editor read and atomic metadata/tree save,
+including the original task-tick baseline; it never falls back to a flat writer.
+Different legacy/full-format queued protocols remain separate entries rather than
+throwing away the later edit during coalescing. Cached trees must match their flat
+projection, and pending overlays update both representations together.
+
+The shared three-way merge retains unchanged containers while merging disjoint
+stable-ID leaf edits. Single-sided structural changes and identical echoes retain
+all ownership. Overlapping edits, concurrently changed ownership, unnamed leaves
+in two changed copies, mismatched page identities/projections/revisions and title
+conflicts refuse for review; complete local/current/base data remain available.
+This conservative conflict boundary does not complete CRDT or the recovery UI.
+Normal editor widget activation, stable task-item identity and collaboration stay
+required; existing legacy page merging continues unchanged.
+
+The combined pure cohort passes81/81, including actual native outbox execution,
+network interruption, cache corruption, mixed queues and existing legacy cases.
+One interim assertion compared a VM-created options object's prototype with a host
+object; the final test checks its exact keys and original ticksFrom value instead.
+No application behavior was relaxed. All workspace types and package/backend/production web builds pass. Owned
+formatting is checked before commit; fixed-head full regression remains required
+before main promotion.
+Main staysf7a2e2b6(applicationaea0c50c). Frozen structural/native candidate869a8005
+continues fullDB65 independently; do not edit its checkout or start a second DB
+suite while session76468 lives. Full C1-C6/M1/D1/U1 stays active, with no deploy,
+release, visual/native completion or final cleanup claim.
+
 ## Qualified normal editor transport checkpoint — 6 October 2026
 
 Main is now `aea0c50c`, fast-forwarded and pushed with unchanged application source
