@@ -137,3 +137,4 @@ export * from "./agenda-permission.js";
 
 export * from "./doc-versioned-source.js";
 export * from "./doc-content-operations.js";
+export * from "./doc-content-merge.js";

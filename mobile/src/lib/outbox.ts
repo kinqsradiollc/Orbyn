@@ -164,16 +164,28 @@ async function perform(op: OutboxOp, key: string): Promise<unknown> {
     case "booking.note":
       return client.once(key, () => client.setBookingNote(op.id, op.note));
     case "doc.save": {
-      // The page as it is now: sent as it stands if it hasn't moved on,
-      // merged line by line if it has (SHR-03).
-      const now = await client.getDoc(op.save.id);
+      // Read current authority before replay; complete-format edits retain
+      // their nested owner while legacy edits keep their existing merge path.
+      const now = op.save.document
+        ? await client.getDocForEditor(op.save.id)
+        : await client.getDoc(op.save.id);
       const next = resolvePageSave(op.save, now);
       const saved = await client.once(key, () =>
-        client.updateDoc(op.save.id, {
-          title: next.title,
-          content: next.content,
-          version: next.version,
-        }),
+        next.document
+          ? client.updateDocForEditor(
+              op.save.id,
+              {
+                title: next.title,
+                document: next.document,
+                version: next.version,
+              },
+              { ticksFrom: op.save.base.version },
+            )
+          : client.updateDoc(op.save.id, {
+              title: next.title,
+              content: next.content,
+              version: next.version,
+            }),
       );
       void rememberPage(saved);
       return saved;
