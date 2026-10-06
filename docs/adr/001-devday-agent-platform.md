@@ -3599,3 +3599,14 @@ Candidate ChatGPT438unit tests pass; main focused12pass, desktop types and mobil
 types with documented existing WebView mapping pass. Detailed baseline/final logs
 and qualification limits are in task handoff. Full native OAuth/OS/UI, database and
 remaining ADR acceptance stay open; no production deployment is claimed.
+
+### Catalog readiness and provider-choice UX on main — 6 October 2026
+
+Web/desktop and mobile only offer a provider selection when its catalog is ready,
+not saving, has plan inference capability, and retains an available default model.
+Loading/offline/stale/unavailable/no-default states remain inspectable without
+sending a predictably invalid provider save. Concise guidance explains the next
+selection. Main checkpoint9e22e531 pushed and candidate reconciled without conflict.
+Candidate440ChatGPTunit tests pass; main23focused pass and client types pass with
+documented main mobile WebView mapping. Evidence and limits are in task handoff;
+visual/real OAuth/native/full database and complete ADR acceptance remain open.

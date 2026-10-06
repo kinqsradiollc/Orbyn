@@ -4410,3 +4410,41 @@ qualification is claimed. Existing root character/user dirt preserved.
 Next finish remaining account/catalog/default provenance and actual installed
 acceptance; broader native candidate/full DB/main qualification and complete
 C1-C6/M1/D1/U1 ADR scope remain open.
+
+### Ready catalog/default required before provider selection — 6 October 2026
+
+Backend saveAiProviderChoice requires ready live catalog, available selected model
+and plan_inference_v1. UI previously passed any inspected selection to Provider
+controls even during loading, saving or unavailable model/device states. This
+predictably caused a rejected save and invalidated provider UI. Both remote model
+surfaces now forward selection only with ready state, no model save in progress,
+inference capability, and a default still in catalog. Existing saved-provider
+fallback controls remain independent; browsing/switching local accounts does not
+retarget workspace provider or queued snapshots. A short hint explains missing
+selection without implying browser-only OAuth completion.
+
+Actual-source tests cover ready/loading/saving/offline/stale/unavailable, absent/
+removed default, missing inference capability and missing catalog on both clients.
+Baseline `/tmp/orbyn-provider-readiness-baseline-final.log` reproduced loading
+selection forwarded on both apps. Test fixture now declares inference capability.
+Final focused37passed/0failed/0skipped,1311.527458ms,exit0:
+`/tmp/orbyn-provider-readiness-focused-final.log`. Full candidate440passed,
+0failed/0skipped,29169.215833ms,exit0:
+`/tmp/orbyn-provider-readiness-all.log`. Both candidate client types pass at
+`/tmp/orbyn-provider-readiness-{mobile,desktop}-types.log`.
+
+Scoped code patch checked/applied cleanly to main; only readiness test additions
+were transferred into its existing harness, preserving native candidate-only tests.
+Test block placed beside existing catalog tests in both branches to avoid an append
+collision with native candidate tests. Main checkpoint9e22e531 committed/pushed;
+candidate merged main without conflict. Main focused23passed/0failed/0skipped,
+1123.04275ms,exit0 at `/tmp/orbyn-provider-readiness-main-focused-final.log`.
+Main desktop types exit0 `/tmp/orbyn-provider-readiness-main-desktop-types.log`;
+main mobile types exit0 `/tmp/orbyn-provider-readiness-main-mobile-types-mapped.log`
+using documented /tmp WebView13.16.1 mapping. Existing root character/user dirt
+preserved. No production deployment, authenticated screenshot, OAuth/provider
+request or native runtime qualification is claimed.
+
+Remaining model/default/native switching acceptance, installed platform UI/runtime,
+full database/native candidate main promotion and complete C1-C6/M1/D1/U1 scope
+remain open. Continue runtime account-switch provenance verification next.
