@@ -20,6 +20,14 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 
 ## Current evidence
 
+- Real iOS OrbynChatgpt target build **passes**, terminal exit zero and
+  BUILD SUCCEEDED at `/tmp/orbyn-chatgpt-native-module-build.log`.
+  Expo prebuild and CocoaPods installation pass; effective module iOS minimum16.4.
+- Full Orbyn scheme **fails** (exit70): embedded Watch companion needs the
+  missing watchOS26.5 runtime. A temporary phone-only QA workspace is building
+  (session41328); it cannot qualify the full release scheme. Handoff:
+  `/tmp/orbyn-native-build-handoff.json`. Installed behavior/screenshots pending.
+
 - `/tmp/orbyn-native-account-state-all-final.log`: 323 passed, zero failures/skips,
   terminal exit zero, 22326.398875 ms. Includes idle permission-off/corrupt account
   removal, stale UI callbacks, repeated actions and in-flight session replacement.

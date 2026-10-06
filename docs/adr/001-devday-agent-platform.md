@@ -3108,3 +3108,36 @@ atDB70 and requires a fresh database run. No production/main promotion is claime
 Multiple saved native accounts/workspaces, installed device and browser-only
 connection acceptance, truthful account allowance UI and the full C1–C6/M1/D1/U1
 scope remain open.
+
+### Actual iOS native module build evidence — 6 October 2026
+
+At application source checkpoint a786cd93, existing Expo prebuild completed for
+ios with --no-install and preserved react/react-native dependency versions;
+package.json was unchanged. CocoaPods resolved the app's existing native graph,
+including OrbynChatgpt1.0.0. Expo adjusted its effective minimum iOS deployment
+target to16.4, matching ExpoModulesCore. Native OrbynChatgpt compiled successfully
+against the real Expo/iOS dependencies: xcodebuild target build exit0 and
+BUILD SUCCEEDED in `/tmp/orbyn-chatgpt-native-module-build.log`.
+This supersedes fixture-only compilation for module build acceptance, but proves
+neither installed OS keychain/OAuth behavior nor Android native compilation.
+
+Full Orbyn app scheme remains unqualified: the initial destination/architecture
+argument combination was rejected, and the corrected invocation exited70
+because its embedded Watch companion requires the missing watchOS26.5 runtime.
+Evidence: `/tmp/orbyn-chatgpt-native-app-build.log`. No runtime was downloaded.
+A separate temporary OrbynPhoneQA project/workspace was generated only under the
+ignored mobile/ios directory, excluding Watch dependency/embedding for phone UI
+verification. Production config/project source was not changed. Its build is
+currently running as session41328, log
+`/tmp/orbyn-chatgpt-native-phone-qa-build.log`; a passing phone QA result would not
+qualify the full release scheme. Specific live state and next actions are saved
+in `/tmp/orbyn-native-build-handoff.json`.
+
+Prebuild generated local watch/widget Assets.xcassets and Info.plist files;
+these are unstaged build artifacts, not character source changes. Root user and
+character changes remain untouched. Full DB70 regression is still failed;
+Docker engine is back but the isolated test container remains stopped. Read-only
+inspection of the shared local PostgreSQL restart loop reports an empty
+postmaster.pid lock file; it was not modified under the user's Docker-recovery
+preference. Native installed UI/screenshots/live provider, full scheme and fresh
+database acceptance remain open.
