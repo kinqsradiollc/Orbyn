@@ -3543,3 +3543,14 @@ Final cleanup retry cohort: `/tmp/orbyn-native-cleanup-all-final2.log`,424passed
 0failed/0skipped,29041.735958ms, exit0. Mobile typecheck initially found nullable
 mapping access; optional access fixed it and final mobile/backend types pass.
 Prettier/diff checks pass. Installed/DB/main qualification remains open.
+
+### Native targeted account cleanup checkpoint — 6 October 2026
+
+Specific saved-account cleanup is now revision-bound and exposed through the
+account MoreMenu. Fresh owner/slot/active-or-retired identity checks reject stale
+or substituted targets. Inactive cleanup/retry preserves active credentials and
+selection. Full ChatGPT unit cohort427passed/0failed/0skipped,31658.248708ms,
+terminal0; mobile/backend types and formatting/diff checks pass. Detailed cases
+and logs are in `docs/reviews/task.md`, Native targeted cleanup. This is a candidate
+checkpoint; real OS/OAuth, authenticated UI screenshots, read-fault/default/provider
+acceptance, fresh full DB and main qualification remain open. Full scope unchanged.

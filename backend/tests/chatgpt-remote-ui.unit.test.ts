@@ -158,6 +158,7 @@ function view(
   const selected: unknown[] = [];
   const localCalls: string[] = [];
   const connectActions: unknown[] = [];
+  const cleanupTargets: unknown[] = [];
   const effects: (() => void | (() => void))[] = [];
   let sessionToken = "fixture-session";
   const source =
@@ -269,7 +270,11 @@ function view(
           },
           readNativeChatgptAccountState: async () =>
             nativeOptions.account ?? { status: "missing" },
-          disconnectNativeChatgpt: async () => {
+          disconnectNativeChatgpt: async (
+            _: string,
+            options: { target?: unknown },
+          ) => {
+            cleanupTargets.push(options.target);
             localCalls.push("disconnect");
             await nativeOptions.disconnect?.();
           },
@@ -305,6 +310,7 @@ function view(
       if (id.endsWith("/motion")) return { Pressable: "Pressable" };
       if (id.endsWith("/Select")) return { Select: "Select" };
       if (id.endsWith("/SmallAction")) return { SmallAction: "SmallAction" };
+      if (id.endsWith("/MoreMenu")) return { MoreMenu: "MoreMenu" };
       if (id.endsWith("/SettingsSection"))
         return { SettingsSection: "SettingsSection" };
       if (id === "./AiProviderChoice")
@@ -329,6 +335,7 @@ function view(
     selected,
     localCalls,
     connectActions,
+    cleanupTargets,
     setToken: (value: string) => {
       sessionToken = value;
     },
@@ -655,8 +662,8 @@ test("native saved account picker binds explicit choices and reconnects to the d
   const scroll = nodes.find(
     (n) => n.type === "ScrollView" && n.props.style?.maxHeight === 200,
   );
-  assert.equal(scroll.props.contentContainerStyle.gap, 10);
-  assert.equal(scroll.props.contentContainerStyle.paddingVertical, 5);
+  assert.equal(scroll.props.contentContainerStyle.gap, 16);
+  assert.equal(scroll.props.contentContainerStyle.paddingVertical, 8);
   const current = nodes.find(
     (n) => n.type === "SmallAction" && n.props.label === "Account 1 · current",
   );
@@ -762,4 +769,23 @@ test("native Settings distinguishes Add from a targeted unavailable-account reco
           },
     );
   }
+});
+test("native account menu binds rare cleanup to its displayed identity and revision", async () => {
+  const f = view("mobile", viewState(), "success", {
+    accounts: pickerAccounts,
+  });
+  f.render();
+  await f.flushEffects();
+  const menu = elements(f.render()).find(
+    (n) => n.type === "MoreMenu" && n.props.label === "Account 3 options",
+  );
+  assert.equal(menu.props.actions[0].label, "Disconnect account");
+  assert.equal(menu.props.actions[0].destructive, true);
+  menu.props.actions[0].onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(JSON.parse(JSON.stringify(f.cleanupTargets[0])), {
+    connectionId: "account-three",
+    expectedRevision: "picker-revision",
+  });
+  assert.deepEqual(f.localCalls, ["suspend", "disconnect", "restart"]);
 });

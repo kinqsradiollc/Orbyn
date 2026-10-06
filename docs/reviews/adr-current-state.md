@@ -8,7 +8,7 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Main                           | `origin/main` verified at `29b74ecd`; user deploys manually                                                                                                       | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                                                      |
 | ChatGPT native                 | Direct local OAuth, protected tokens, model catalog/defaults, signed inference and Settings/foreground activation implemented on `codex/chatgpt-direct-web-oauth` | Installed iOS/Android OAuth/keystore/browser/lifecycle acceptance; account management and truthful plan/usage acceptance                                                                                                                                             |
-| Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire              | Candidate only; 424 ChatGPT unit tests pass; current adapter mobile/backend typechecks pass; refresh coordination, revocation, idle saved-account controls and confirmed invalid-refresh recovery implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
+| Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire              | Candidate only; 427 ChatGPT unit tests pass; current adapter mobile/backend typechecks pass; refresh coordination, revocation, idle saved-account controls and confirmed invalid-refresh recovery implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
 | ChatGPT hosted web             | No supported direct browser-only implementation established; desktop handoff is not completion                                                                    | Supported authorization and user-controlled runtime; actual popup/callback/provider acceptance without desktop                                                                                                                                                       |
 | Main integration               | Read-only merge-tree check detected no conflicts; full DB70 run failed after Docker/database loss                                                                 | Restore disk/database, rerun full regression and qualify installed platforms before promotion                                                                                                                                                                        |
 | Docs D1                        | Structured ownership and Markdown/Mermaid foundations exist; owned editor/offline candidates remain in separate worktrees                                         | Normal editor adoption, remaining flat writers/task identity, collaboration, complete import/render/edit/export/privacy matrices and native visual checks                                                                                                            |
@@ -19,6 +19,19 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 | Cleanup                        | Worktrees, root character/user changes preserved                                                                                                                  | Cleanup only after relevant commits are reconciled, merged and qualified                                                                                                                                                                                             |
 
 ## Current evidence
+
+- Targeted inactive/unavailable account cleanup is wired into service and account
+  MoreMenu. Strict copied ID/revision, fresh owner and protected identity checks
+  preserve other active credentials/selection and reject stale/substituted targets.
+  Full `/tmp/orbyn-native-target-cleanup-all.log`:427passed/0failed/0skipped,
+  31658.248708ms, exit0. Mobile/backend types and formatting/diff checks pass.
+  Read-fault handling, defaults/provider provenance, real OS/OAuth/UI and full DB/
+  main qualification remain open; complete ADR scope is retained.
+
+## Earlier checkpoint evidence
+
+The entries below preserve their original verification scope. Remaining work may
+have been superseded by the current state above; none proves whole-goal completion.
 
 - Native Disconnect now retries exact server/key cleanup after credential erasure
   and continues independent cleanup on an erase failure without claiming removal.

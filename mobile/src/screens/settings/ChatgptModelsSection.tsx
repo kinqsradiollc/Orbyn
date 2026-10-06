@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { Pressable } from "../../motion";
 import { useChatgptRemote } from "../../hooks/useChatgptRemote";
+import { MoreMenu } from "../../components/MoreMenu";
 import { SmallAction } from "../../components/SmallAction";
 import { colors } from "../../theme";
 import { shared } from "../../styles";
@@ -29,6 +30,7 @@ import {
   selectNativeChatgptAccount,
   type NativeChatgptAccountState,
   type NativeChatgptConnectAction,
+  type NativeChatgptDisconnectTarget,
 } from "../../lib/chatgpt-local-sign-in";
 import type { NativeChatgptDirectorySnapshot } from "../../lib/chatgpt-account-directory";
 import { chatgptForeground } from "../../lib/chatgpt-foreground";
@@ -181,7 +183,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       }
     }
   };
-  const disconnect = async () => {
+  const disconnect = async (target?: NativeChatgptDisconnectTarget) => {
     if (
       connecting ||
       disconnecting ||
@@ -203,7 +205,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       session.token === token;
     chatgptForeground.suspend();
     try {
-      await disconnectNativeChatgpt(userId);
+      await disconnectNativeChatgpt(userId, { target });
     } catch (error) {
       if (live()) setConnectError(errorText(error));
     } finally {
@@ -378,29 +380,63 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
             <Text style={shared.small}>Accounts on this device</Text>
             <ScrollView
               style={{ maxHeight: 200 }}
-              contentContainerStyle={{ gap: 10, paddingVertical: 5 }}
+              contentContainerStyle={{ gap: 16, paddingVertical: 8 }}
             >
               {savedAccounts.accounts.map((entry, index) => (
-                <SmallAction
+                <View
                   key={entry.connection.id}
-                  label={
-                    entry.status !== "connected"
-                      ? `Reconnect account ${index + 1}`
-                      : `Account ${index + 1}${entry.connection.id === savedAccounts.selected ? " · current" : ""}`
-                  }
-                  disabled={
-                    localBusy || entry.connection.id === savedAccounts.selected
-                  }
-                  onPress={() =>
-                    entry.status === "connected"
-                      ? void choose(entry.connection.id, savedAccounts.revision)
-                      : void connect({
-                          kind: "reconnect",
-                          connectionId: entry.connection.id,
-                          expectedRevision: savedAccounts.revision,
-                        })
-                  }
-                />
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 16,
+                  }}
+                >
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <SmallAction
+                      label={
+                        entry.status !== "connected"
+                          ? `Reconnect account ${index + 1}`
+                          : `Account ${index + 1}${entry.connection.id === savedAccounts.selected ? " · current" : ""}`
+                      }
+                      disabled={
+                        localBusy ||
+                        entry.connection.id === savedAccounts.selected
+                      }
+                      onPress={() =>
+                        entry.status === "connected"
+                          ? void choose(
+                              entry.connection.id,
+                              savedAccounts.revision,
+                            )
+                          : void connect({
+                              kind: "reconnect",
+                              connectionId: entry.connection.id,
+                              expectedRevision: savedAccounts.revision,
+                            })
+                      }
+                    />
+                  </View>
+                  <MoreMenu
+                    label={`Account ${index + 1} options`}
+                    title={`Account ${index + 1}`}
+                    disabled={localBusy}
+                    actions={[
+                      {
+                        label:
+                          entry.status === "disconnected"
+                            ? "Retry cleanup"
+                            : "Disconnect account",
+                        destructive: true,
+                        disabled: localBusy,
+                        onPress: () =>
+                          void disconnect({
+                            connectionId: entry.connection.id,
+                            expectedRevision: savedAccounts.revision,
+                          }),
+                      },
+                    ]}
+                  />
+                </View>
               ))}
             </ScrollView>
           </View>

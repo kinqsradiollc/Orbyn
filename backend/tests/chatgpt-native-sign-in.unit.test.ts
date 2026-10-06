@@ -593,7 +593,8 @@ function mount(
     cancel: () => exports.cancelNativeChatgptSignIn(),
     accountState: (input = userId, signal?: AbortSignal) =>
       exports.readNativeChatgptAccountState(input, { signal }),
-    disconnect: (input = userId) => exports.disconnectNativeChatgpt(input),
+    disconnect: (input = userId, target?: unknown) =>
+      exports.disconnectNativeChatgpt(input, { target }),
     executor: (input = userId) => exports.createNativeChatgptExecutor(input),
     models: (input = userId, signal?: AbortSignal) =>
       exports.readNativeChatgptModels(input, { signal }),
@@ -2194,4 +2195,73 @@ test("native reconnect revision cannot inherit a prior grant revocation confirma
   await f.signIn();
   await f.disconnect();
   assert.equal(f.calls.providerRevoked.length, 2);
+});
+test("native targeted cleanup removes an inactive account without changing the selected profile or its credentials", async () => {
+  const other = {
+    ...connection,
+    id: randomUUID(),
+    subject: "other-subject",
+    client_id: "oaiapp_other",
+  };
+  let currentConnection = connection;
+  const f = mount({
+    signing: true,
+    connection: () => currentConnection,
+    liveConnections: [connection, other],
+  });
+  await f.signIn();
+  await f.prepare();
+  let before = await f.savedAccounts();
+  currentConnection = other;
+  await f.signIn(undefined, { kind: "add", expectedRevision: before.revision });
+  before = await f.savedAccounts();
+  currentConnection = connection;
+  await f.chooseAccount(connection.id, before.revision);
+  const [selectedKey, selectedRaw] = accounts(f.storage).find(
+    ([, raw]) => JSON.parse(raw).connection.id === connection.id,
+  )!;
+  before = await f.savedAccounts();
+  currentConnection = other;
+  await f.disconnect(undefined, {
+    connectionId: other.id,
+    expectedRevision: before.revision,
+  });
+  assert.equal(f.storage.get(selectedKey), selectedRaw);
+  assert.equal((await f.savedAccounts()).selected, connection.id);
+  assert.deepEqual(f.calls.revoked, [other.id]);
+  const next = await f.savedAccounts();
+  await f.disconnect(undefined, {
+    connectionId: other.id,
+    expectedRevision: next.revision,
+  });
+  assert.deepEqual(f.calls.revoked, [other.id, other.id]);
+});
+test("native targeted cleanup rejects a stale menu revision or substituted retired identity before erasure", async () => {
+  const f = mount();
+  await f.signIn();
+  await f.prepare();
+  const before = await f.savedAccounts();
+  await assert.rejects(
+    f.disconnect(undefined, {
+      connectionId: connection.id,
+      expectedRevision: randomUUID(),
+    }),
+    /cleanup selection changed/,
+  );
+  assert.equal(accounts(f.storage).length, 1);
+  const [key, raw] = accounts(f.storage)[0],
+    saved = JSON.parse(raw);
+  saved.version = 2;
+  saved.grant = null;
+  saved.connection.subject = "substitution";
+  f.storage.set(key, JSON.stringify(saved));
+  await assert.rejects(
+    f.disconnect(undefined, {
+      connectionId: connection.id,
+      expectedRevision: before.revision,
+    }),
+    /cleanup identity changed/,
+  );
+  assert.equal(f.storage.get(key), JSON.stringify(saved));
+  assert.equal(f.calls.revoked.length, 0);
 });

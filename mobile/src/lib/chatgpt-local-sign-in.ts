@@ -959,7 +959,27 @@ async function readNativeChatgptModelsOwned(
 }
 
 /** Disconnect this native account: cancel sign-in, erase local credentials and revoke server metadata. */
-export async function disconnectNativeChatgpt(userId: string): Promise<void> {
+export type NativeChatgptDisconnectTarget = {
+  connectionId: string;
+  expectedRevision: string;
+};
+/** Disconnect the displayed saved registration; preserve all other credential slots and selections. */
+export async function disconnectNativeChatgpt(
+  userId: string,
+  options: { target?: NativeChatgptDisconnectTarget } = {},
+): Promise<void> {
+  let target: NativeChatgptDisconnectTarget | undefined;
+  try {
+    target =
+      options.target === undefined
+        ? undefined
+        : z
+            .object({ connectionId: z.uuid(), expectedRevision: z.uuid() })
+            .strict()
+            .parse(options.target);
+  } catch {
+    throw new Error("The saved ChatGPT cleanup action is invalid.");
+  }
   if (Platform.OS === "web" || !nativeChatgptCallbackAvailable())
     throw new Error(
       "This build does not include native ChatGPT authorization.",
@@ -983,7 +1003,26 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     check();
     if (user.id !== userId)
       throw new Error("The signed-in Orbyn account changed.");
-    const key = await accountKey(userId);
+    let expectedConnection: ChatgptConnection | null = null;
+    let key: string;
+    if (target) {
+      const context = await accountStorage(userId, check);
+      if ((await context.storage.read(context.storage.legacyKey)) !== null)
+        throw new Error(
+          "Finish migrating the saved ChatGPT account before cleanup.",
+        );
+      const state = await context.directory.read();
+      check();
+      const entry = state?.accounts.find(
+        (entry) => entry.connection.id === target.connectionId,
+      );
+      if (!state || state.revision !== target.expectedRevision || !entry)
+        throw new Error(
+          "The saved ChatGPT cleanup selection changed. Try again.",
+        );
+      expectedConnection = entry.connection;
+      key = context.storage.slotKey(target.connectionId);
+    } else key = await accountKey(userId);
     const original = await SecureStore.getItemAsync(key, protectedOptions);
     check();
     // Corrupt local credentials must still be erasable; do not guess a remote connection ID.
@@ -991,6 +1030,14 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     try {
       saved = decodeRegistration(original);
     } catch {}
+    const protectedConnection =
+      saved?.connection ?? decodeRetiredRegistration(original)?.connection;
+    if (
+      protectedConnection &&
+      expectedConnection &&
+      JSON.stringify(protectedConnection) !== JSON.stringify(expectedConnection)
+    )
+      throw new Error("The saved ChatGPT cleanup identity changed.");
     if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
       throw new Error("ChatGPT account changed. Try again.");
     check();
@@ -1003,6 +1050,13 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       retainedMapping?.connection.id !== key.split(".").at(-1)
     )
       retainedMapping = null;
+    if (
+      retainedMapping &&
+      expectedConnection &&
+      JSON.stringify(retainedMapping.connection) !==
+        JSON.stringify(expectedConnection)
+    )
+      throw new Error("The saved ChatGPT cleanup identity changed.");
     const expectedMappingConnection =
       saved?.connection ?? decodeRetiredRegistration(original)?.connection;
     const sameMapping =
@@ -1013,7 +1067,9 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     const alreadyRevoked =
       sameMapping &&
       retainedMapping?.remoteRevocationConfirmed === true &&
-      (!saved || retainedMapping?.revokedRevision === saved.revision);
+      (saved
+        ? retainedMapping?.revokedRevision === saved.revision
+        : original === null);
     let remoteRevocationFailed =
       !saved &&
       Boolean(decodeRetiredRegistration(original) || retainedMapping) &&
@@ -1037,7 +1093,7 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       check();
     }
     let retained = decodeRetiredRegistration(original);
-    if (original === null) {
+    if (!saved && !retained) {
       retained = retainedMapping;
       check();
     }

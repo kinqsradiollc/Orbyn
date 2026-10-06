@@ -4255,3 +4255,31 @@ Final cleanup retry cohort: `/tmp/orbyn-native-cleanup-all-final2.log`,424passed
 0failed/0skipped,29041.735958ms, exit0. Mobile typecheck initially found nullable
 mapping access; optional access fixed it and final mobile/backend types pass.
 Prettier/diff checks pass. Installed/DB/main qualification remains open.
+
+### Native targeted cleanup — 6 October 2026
+
+Disconnect accepts a strictly copied connection UUID and displayed directory
+revision. After fresh owner verification it resolves only that protected slot,
+rejects incomplete migration/stale menus/unknown entries and checks active or
+retired identity against the displayed registration before erasure. Inactive
+cleanup preserves another active account's credentials and selected directory ID.
+A matching token-free mapping can recover cleanup of a corrupt record; unknown
+identity never authorizes a guessed server connection. Confirmation from an old
+mapping is not accepted for an unreadable nonempty credential record.
+
+Settings exposes cleanup/retry through each account's MoreMenu. Rows reserve gap16
+and vertical padding8 for the existing control hit areas; rare cleanup adds no
+permanent button row. The same owner/action lifetime and runtime recovery apply.
+Service/component cohort113passed/0failed/0skipped,6751.285084ms, exit0 at
+`/tmp/orbyn-native-target-cleanup-focused.log`. Full ChatGPT cohort427passed,
+zero failures/skips,31658.248708ms, exit0 at
+`/tmp/orbyn-native-target-cleanup-all.log`. Mobile/backend types and formatting/diff
+checks pass. Baseline UI failures were the test harness's missing MoreMenu mock;
+the final actual Settings action contract is exercised through its props.
+
+Tests prove inactive-account cleanup and retry preserve active credentials/selection,
+stale revision and substituted retired identity reject before erase, and menu
+identity/revision reach the service. Real iOS/Android protected-store, authenticated
+menu layout/large-text/screenshots and OAuth remain pending. Next finish read-fault
+handling and catalog/default/provider provenance; full DB and main promotion gates
+remain open. Other C1-C6/M1/D1/U1 requirements are unchanged.
