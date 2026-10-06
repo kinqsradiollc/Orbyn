@@ -1,3 +1,26 @@
+## Qualified normal editor transport checkpoint — 6 October 2026
+
+Main is now `aea0c50c`, fast-forwarded and pushed with unchanged application source
+from the fixed DB64 run. The normal GET/PUT editor contract negotiates full content,
+validates exact authorized leaf projection and saves title/metadata plus nested
+ownership in one optimistic revision. Legacy writes cannot flatten a nested page.
+Full fresh DB64 passed 3,592 tests, zero failures and one existing skip, terminal0,
+824134ms. DB61's earlier 13 failures remain recorded; all affected files passed
+79 fresh DB62/63 tests before the unchanged full rerun. No assertions or production
+code were relaxed to obtain the full passing result. No production deploy or
+completed normal-editor UI activation is claimed. The user deploys main manually.
+
+The independent editor integration branch has structural operations committed as
+`f21069bb`, 42 focused tests and all workspace typechecks passing. New native
+owned-body fixes correctly route edit/task/table/image/accessibility callbacks to
+complete-page indexes, retain full-page folding/embed context and accept explicit
+cumulative parent layout offsets. Their six actual-component contract cases and
+combined 48-case pure cohort pass; all workspace types pass. These follow-ups are
+not yet on main. Native Simulator inspection again timed out with tool -10005;
+no native screenshot/visual acceptance is claimed. Preserve every existing widget,
+comments, undo, task links, offline recovery and collaboration during activation.
+All C1-C6/M1/D1/U1 gates stay active; no final cleanup or release.
+
 ## Atomic normal editor save candidate — 6 October 2026
 
 The normal editor now has a strict shared metadata+complete-document contract and
