@@ -1141,8 +1141,8 @@ export class OrbynClient {
   }
 
   // ---- profile ----
-  me() {
-    return this.request<User>("/me");
+  me(options: Pick<RequestOptions, "fresh" | "signal"> = {}) {
+    return this.request<User>("/me", options);
   }
   updatePreferences(input: { email_reminders: boolean }) {
     return this.request<User>("/me", { method: "PUT", body: input });

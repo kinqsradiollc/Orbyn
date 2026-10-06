@@ -2647,3 +2647,14 @@ simulator SDK. This proves the callback primitives only. Native OS browser
 lifecycle, protected token lifecycle, provider executor and settings integration,
 installed native builds and real-account acceptance remain incomplete. The
 hosted web requirement remains open; no desktop handoff is relabeled direct.
+
+#### Native sign-in and local-token lifecycle candidate
+
+The candidate native service now runs its own callback/browser/exchange path,
+verifies first-party ownership and the backend's exact nonce-bound ID proof,
+and installs credentials only in device-protected storage. Portable token
+exchange/refresh and cancellation tests pass; a returned scope is permission,
+not plan-tier or account-wide quota evidence. Settings remain unactivated until
+native build/browser acceptance, renewable verified credentials, native executor
+and model/provider integration are complete. Candidate tests/mock secure storage
+are not a claim of installed native or full cross-platform completion.

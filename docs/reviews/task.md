@@ -3325,3 +3325,48 @@ OrbynChatgpt on both apple/android (metadata proof only, not native wrapper buil
 Repeated Swift/Kotlin real-socket fixtures pass after tightening raw callback
 path validation and one-callback acceptance. No chargeable provider request or
 UI sign-in was performed.
+
+### Native ChatGPT sign-in lifecycle candidate — 6 October 2026
+
+The native-only sign-in service now starts its own listener, opens the existing
+OS browser adapter, validates the exact callback/issued registration, exchanges
+locally and sends only the short-lived ID proof to the existing session-bound
+backend verifier. It checks the current Orbyn user with a fresh cancellable
+`/me` read, fences session changes and concurrent attempts, and installs the
+verified grant in WHEN_UNLOCKED_THIS_DEVICE_ONLY secure storage. A cancelled
+secure replacement restores its own previous record without removing another
+replacement. Invalid local records are retained and diagnostics exclude their
+contents. Initial/reconnect host identity is stable. No browser storage fallback
+or desktop queue is used by this service.
+
+Portable exchange/refresh preserve rotating credentials together, honor actual
+returned scopes, reject escalation and unknown/invalid token replies, bound
+stream reads and request lifetime, cancel late responses even if fetch ignores
+abort, and sanitize provider errors. The helper returns an unverified grant;
+callers must verify identity before installation/use. Native initial sign-in uses
+the existing backend signature/issuer/audience/nonce verifier. Refresh helpers
+are not activated in the native runtime yet: changed refreshed identity must be
+verified before a stored credential rotation is allowed.
+
+28 focused pure/actual-source VM checks pass across callback contracts, token
+transport and native sign-in orchestration. They include wrong/denied callback,
+missing plan scopes, altered verified identity, session changes during proof and
+secure write, restoration of a previous account, concurrent attempts, corrupted
+local records and native browser cancellation. These mocks do not prove a real
+OS authorization browser, secure-store installation or provider request.
+
+Still required before settings activation/promotion: native build and actual
+browser/callback lifecycle (including suspension/custom-tab return), refreshed
+identity verification, disconnect/profile management, private native executor
+signing/enrollment/lease/model publication/inference and provider-choice UI.
+The service currently retains one selected local registration; multi-profile
+management remains incomplete. Web-only direct connection remains unmet. This
+candidate has no new endpoint or migration; `/me` gained optional fresh/signal
+options while retaining existing default callers.
+
+Final lifecycle-candidate qualification:30 combined checks (including existing
+connection-client contracts) pass,0 fail/skip. Backend, desktop and mobile
+current-source typechecks all terminate0; package builds, owned formatting and
+diff checks pass. Evidence: `/tmp/orbyn-chatgpt-local-sign-in-client-tests.log`.
+No full DB suite, installed native app or real provider inference is claimed
+for this lifecycle candidate. Main application stays869a8005.
