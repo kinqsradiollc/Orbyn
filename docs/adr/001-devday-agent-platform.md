@@ -1,3 +1,13 @@
+## Complete-document offline recovery integrated — 6 October 2026
+
+Working candidate6aa74747 includes owned-editor offline checkpoint0ee17ce5. Native
+replay retains complete trees, current/base identity and original task-tick baseline;
+conflicting ownership edits remain available for review. Whole-page concatenation
+and three-way revision merging now have separate modules.55 focused integration
+tests and all workspace typechecks pass; shared package build/formatting pass.
+Normal editor controls, recovery UI, installed visual acceptance and combined
+runtime qualification remain open. Main remains7263b45b; full ADR remains active.
+
 ## Home goal progress checkpoint on main — 6 October 2026
 
 Main `7263b45b` is pushed. Home counts nested plan checklists and reflects current

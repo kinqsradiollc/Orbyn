@@ -4643,3 +4643,36 @@ was resolved by retaining candidate's already tested superset. Staged merge diff
 was empty: candidate source tree unchanged. No unresolved conflicts remain.
 Continue other task projections/editor controls, partial extraction/moved fragments,
 agenda regeneration and full governing C1-C6/M1/D1/U1/runtime/visual/cleanup scope.
+
+
+### Owned-editor offline branch integration — 6 October 2026
+
+Inspected all attached Git worktrees and confirmed owned-editor branch contributed
+one unintegrated commit0ee17ce5. Main working candidate now includes it via6aa74747.
+Resolved filename collision by renaming whole-page merge helper todoc-page-merge.ts
+in15bda51a; offline three-way merge retainsdoc-content-merge.ts. Existing barrel
+exports preserve both APIs. Merge conflict resolution retained both historical
+handoffs and all shared exports; stale imported runtime/main references are marked
+historical. No outstanding conflicts remain and no worktree was removed.
+
+Offline cached/current/base documents retain complete ownership and matching flat
+projections. Mixed legacy/complete queued protocols remain separate. Native replay
+reads current owned document, merges disjoint named leaf edits when ownership is
+unchanged, writes complete metadata/tree atomically with original tick baseline,
+and preserves complete edits for review on ownership/title conflicts. No silent
+flat fallback. Existing legacy replay remains covered. Normal editor source is
+still using flat controls; getDocForEditor/updateDocForEditor calls currently appear
+in native outbox only. Therefore this is recovery infrastructure, not full normal
+editor activation or verified user-facing conflict recovery.
+
+Current integration55tests passed,0failed/0skipped,3104.722167ms,exit0:
+`/tmp/orbyn-owned-offline-integration-tests.log` (offline content/replay, d4c,
+legacy cache, whole-page merge and task mapping). Shared packages build; desktop,
+mobile and backend typechecks and owned formatting/diff checks pass. Source changes
+justify rerunning this focused integration cohort; previous fullDB66 evidence is
+historical and not claimed as a new combined DB pass. No new dependency, production
+release or installed visual/native acceptance. Main remains7263b45b.
+
+Next: activate complete ownership in both normal editors and their save/recovery
+flows, including task controls; continue partial extraction, reference movement,
+agenda generation and full C1-C6/M1/D1/U1/runtime/visual/cleanup acceptance.
