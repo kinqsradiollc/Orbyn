@@ -493,6 +493,8 @@ function mount(
   return {
     signIn: (input = userId) => exports.signInNativeChatgpt(input),
     cancel: () => exports.cancelNativeChatgptSignIn(),
+    accountState: (input = userId, signal?: AbortSignal) =>
+      exports.readNativeChatgptAccountState(input, { signal }),
     disconnect: (input = userId) => exports.disconnectNativeChatgpt(input),
     executor: (input = userId) => exports.createNativeChatgptExecutor(input),
     models: (input = userId, signal?: AbortSignal) =>
@@ -1157,4 +1159,58 @@ test("disconnect revokes the latest rotated refresh token", async () => {
   await fixture.models();
   await fixture.disconnect();
   assert.deepEqual(fixture.calls.providerRevoked, ["refreshed-refresh"]);
+});
+
+test("native Settings presence reports saved permission loss without returning credentials", async () => {
+  const fixture = mount();
+  assert.equal((await fixture.accountState()).status, "missing");
+  await fixture.signIn();
+  const [key, value] = accounts(fixture.storage)[0];
+  const saved = JSON.parse(value);
+  saved.grant.scopes = ["openid", "offline_access"];
+  saved.grant.sharingGranted = false;
+  fixture.storage.set(key, JSON.stringify(saved));
+  const metadata = await fixture.accountState();
+  assert.deepEqual(JSON.parse(JSON.stringify(metadata)), {
+    status: "saved",
+    planUseAllowed: false,
+  });
+  assert.doesNotMatch(
+    JSON.stringify(metadata),
+    /private-access|private-refresh|identity-proof|fixture-subject/,
+  );
+});
+test("native Settings can expose an erasable corrupt record without trusting its identity", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  const [key] = accounts(fixture.storage)[0];
+  fixture.storage.set(key, "private-access corrupt");
+  assert.equal((await fixture.accountState()).status, "unreadable");
+  await fixture.disconnect();
+  assert.equal((await fixture.accountState()).status, "missing");
+});
+test("native Settings presence rejects foreign owners, cancellation and session replacement", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  await assert.rejects(fixture.accountState(randomUUID()), /account changed/);
+  const controller = new AbortController();
+  controller.abort();
+  await assert.rejects(
+    fixture.accountState(userId, controller.signal),
+    /cancelled/,
+  );
+  fixture.session.token = "";
+  await assert.rejects(fixture.accountState(), /account changed/);
+  assert.equal(
+    (await mount({ platform: "web" }).accountState()).status,
+    "unsupported",
+  );
+});
+
+test("native Settings rejects a session replaced while its presence read is in flight", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  const pending = fixture.accountState();
+  fixture.session.token = "replacement-session";
+  await assert.rejects(pending, /account changed/);
 });

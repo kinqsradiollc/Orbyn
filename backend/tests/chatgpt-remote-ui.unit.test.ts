@@ -144,12 +144,15 @@ function view(
   app: "desktop" | "mobile",
   state: any,
   connectOutcome: "success" | "cancel" | "failure" = "success",
+  nativeOptions: { account?: object; disconnect?: () => Promise<void> } = {},
 ) {
   let slot = 0;
   const values: any[] = [];
   const saved: (string | null)[] = [];
   const selected: unknown[] = [];
   const localCalls: string[] = [];
+  const effects: (() => void | (() => void))[] = [];
+  let sessionToken = "fixture-session";
   const source =
     app === "desktop"
       ? "desktop/src/features/settings/ChatgptRemoteModels.tsx"
@@ -193,7 +196,7 @@ function view(
             if (!(index in values)) values[index] = { current: initial };
             return values[index];
           },
-          useEffect: () => {},
+          useEffect: (fn: () => void | (() => void)) => effects.push(fn),
         };
       if (id === "@orbyn/core") return core;
       if (id.endsWith("/lib/api"))
@@ -206,7 +209,12 @@ function view(
         };
       if (id.endsWith("/lib/session"))
         return {
-          session: { get: () => "fixture-session", token: "fixture-session" },
+          session: {
+            get: () => sessionToken,
+            get token() {
+              return sessionToken;
+            },
+          },
         };
       if (id.endsWith("/lib/errors"))
         return { errorText: () => "Fixture error" };
@@ -229,7 +237,12 @@ function view(
               );
             return { sharingGranted: true };
           },
-          disconnectNativeChatgpt: async () => {},
+          readNativeChatgptAccountState: async () =>
+            nativeOptions.account ?? { status: "missing" },
+          disconnectNativeChatgpt: async () => {
+            localCalls.push("disconnect");
+            await nativeOptions.disconnect?.();
+          },
           cancelNativeChatgptSignIn: () => {},
         };
       if (id.endsWith("/lib/chatgpt-foreground"))
@@ -274,13 +287,26 @@ function view(
       throw new Error(`Unexpected module ${id}`);
     },
   });
-  const render = () => {
+  const render = (userId = "person") => {
     slot = 0;
     return exports[
       app === "desktop" ? "ChatgptRemoteModels" : "ChatgptModelsSection"
-    ]({ userId: "person" });
+    ]({ userId });
   };
-  return { render, saved, selected, localCalls };
+  return {
+    render,
+    saved,
+    selected,
+    localCalls,
+    setToken: (value: string) => {
+      sessionToken = value;
+    },
+    flushEffects: async () => {
+      const cleanup = effects.splice(0).map((fn) => fn());
+      await new Promise((resolve) => setImmediate(resolve));
+      return () => cleanup.forEach((fn) => fn?.());
+    },
+  };
 }
 function elements(node: any): any[] {
   if (Array.isArray(node)) return node.flatMap(elements);
@@ -420,4 +446,95 @@ test("failed or cancelled native reconnect restores the previous executor withou
       false,
     );
   }
+});
+
+test("native Settings keeps Disconnect available when saved plan permission is off and executor idle", async () => {
+  const f = view("mobile", viewState(), "success", {
+    account: { status: "saved", planUseAllowed: false },
+  });
+  f.render();
+  await f.flushEffects();
+  const tree = elements(f.render());
+  const action = tree.find(
+    (n) =>
+      n.type === "SmallAction" && n.props.label === "Disconnect this device",
+  );
+  assert.ok(action);
+  assert.equal(action.props.disabled, false);
+  assert.ok(
+    tree.some((n) =>
+      String(n.props.children).includes("ChatGPT plan use is off"),
+    ),
+  );
+  action.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, ["suspend", "disconnect", "restart"]);
+});
+test("native Settings permits removal of a saved corrupt record", async () => {
+  const f = view("mobile", viewState(), "success", {
+    account: { status: "unreadable" },
+  });
+  f.render();
+  await f.flushEffects();
+  assert.ok(
+    elements(f.render()).some(
+      (n) =>
+        n.type === "SmallAction" && n.props.label === "Disconnect this device",
+    ),
+  );
+});
+test("native Settings rejects retained disconnect callbacks after owner or session changes", async () => {
+  for (const change of ["owner", "token"]) {
+    const f = view("mobile", viewState(), "success", {
+      account: { status: "saved", planUseAllowed: true },
+    });
+    f.render();
+    await f.flushEffects();
+    const action = elements(f.render()).find(
+      (n) =>
+        n.type === "SmallAction" && n.props.label === "Disconnect this device",
+    );
+    if (change === "token") f.setToken("new-session");
+    const next = elements(
+      f.render(change === "owner" ? "new-person" : "person"),
+    );
+    assert.equal(
+      next.some(
+        (n) =>
+          n.type === "SmallAction" &&
+          n.props.label === "Disconnect this device",
+      ),
+      false,
+    );
+    action.props.onPress();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(f.localCalls, []);
+  }
+});
+test("native disconnect serializes clicks and cannot restart or show an error in a replacement session", async () => {
+  let reject!: (error: Error) => void;
+  const pending = new Promise<void>((_resolve, fail) => {
+    reject = fail;
+  });
+  const f = view("mobile", viewState(), "success", {
+    account: { status: "saved", planUseAllowed: true },
+    disconnect: () => pending,
+  });
+  f.render();
+  await f.flushEffects();
+  const action = elements(f.render()).find(
+    (n) =>
+      n.type === "SmallAction" && n.props.label === "Disconnect this device",
+  );
+  action.props.onPress();
+  action.props.onPress();
+  f.setToken("replacement-session");
+  f.render();
+  reject(new Error("old-owner failure"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, ["suspend", "disconnect"]);
+  assert.equal(
+    elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
+    false,
+  );
 });

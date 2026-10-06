@@ -814,3 +814,41 @@ export async function hasNativeChatgptRegistration(userId: string) {
   );
   return Boolean(saved?.grant.sharingGranted);
 }
+
+export type NativeChatgptAccountState =
+  | { status: "missing" | "unsupported" | "unreadable" }
+  | { status: "saved"; planUseAllowed: boolean };
+
+/** Settings presence is independent of executor eligibility; never return protected credentials. */
+export async function readNativeChatgptAccountState(
+  userId: string,
+  options: { signal?: AbortSignal } = {},
+): Promise<NativeChatgptAccountState> {
+  const token = session.token;
+  const check = () => {
+    if (!token || session.token !== token || options.signal?.aborted)
+      throw new Error(
+        "The signed-in Orbyn account changed or the request was cancelled.",
+      );
+  };
+  check();
+  if (Platform.OS === "web" || !nativeChatgptCallbackAvailable())
+    return { status: "unsupported" };
+  const user = await client.me({ fresh: true, signal: options.signal });
+  check();
+  if (user.id !== userId)
+    throw new Error("The signed-in Orbyn account changed.");
+  const key = await accountKey(userId);
+  check();
+  const value = await SecureStore.getItemAsync(key, protectedOptions);
+  check();
+  if (value === null) return { status: "missing" };
+  try {
+    const saved = decodeRegistration(value);
+    return saved
+      ? { status: "saved", planUseAllowed: saved.grant.sharingGranted }
+      : { status: "unreadable" };
+  } catch {
+    return { status: "unreadable" };
+  }
+}

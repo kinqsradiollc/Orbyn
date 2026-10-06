@@ -23,6 +23,8 @@ import {
   signInNativeChatgpt,
   disconnectNativeChatgpt,
   cancelNativeChatgptSignIn,
+  readNativeChatgptAccountState,
+  type NativeChatgptAccountState,
 } from "../../lib/chatgpt-local-sign-in";
 import { chatgptForeground } from "../../lib/chatgpt-foreground";
 import { SettingsSection } from "./SettingsSection";
@@ -30,6 +32,37 @@ import { SettingsSection } from "./SettingsSection";
 /** Native and mobile web manage the same owned catalogs and account-bound defaults. */
 export function ChatgptModelsSection({ userId }: { userId: string }) {
   const { state, refresh, select, save } = useChatgptRemote(userId);
+  const token = session.token;
+  const owner = useRef({ userId, token });
+  owner.current = { userId, token };
+  const [localAccount, setLocalAccount] = useState<{
+    userId: string;
+    token: string | null;
+    value: NativeChatgptAccountState;
+  } | null>(null);
+  const [accountReload, setAccountReload] = useState(0);
+  const account =
+    localAccount?.userId === userId && localAccount.token === token
+      ? localAccount.value
+      : null;
+  useEffect(() => {
+    const controller = new AbortController();
+    if (Platform.OS === "web" || !userId || !token)
+      return () => controller.abort();
+    void readNativeChatgptAccountState(userId, {
+      signal: controller.signal,
+    }).then(
+      (value) => {
+        if (!controller.signal.aborted && token === session.token)
+          setLocalAccount({ userId, token, value });
+      },
+      () => {
+        if (!controller.signal.aborted && token === session.token)
+          setLocalAccount(null);
+      },
+    );
+    return () => controller.abort();
+  }, [userId, token, accountReload]);
   const [localRuntime, setLocalRuntime] = useState(
     chatgptForeground.snapshot(),
   );
@@ -43,45 +76,110 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
   );
   const [query, setQuery] = useState("");
   const [connecting, setConnecting] = useState(false);
-  const [connectError, setConnectError] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [ownedError, setOwnedError] = useState<{
+    userId: string;
+    token: string | null;
+    text: string;
+  } | null>(null);
+  const connectError =
+    ownedError?.userId === userId && ownedError.token === token
+      ? ownedError.text
+      : null;
+  const setConnectError = (text: string | null) =>
+    setOwnedError(text ? { userId, token, text } : null);
   const lifetime = useRef<AbortController | null>(null);
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    setConnecting(false);
+    setDisconnecting(false);
+    setConnectError(null);
+    return () => {
       if (lifetime.current) {
         lifetime.current.abort();
         cancelNativeChatgptSignIn();
+        lifetime.current = null;
       }
-    },
-    [userId],
-  );
+    };
+  }, [userId, token]);
   const connect = async () => {
+    if (
+      connecting ||
+      disconnecting ||
+      lifetime.current ||
+      owner.current.userId !== userId ||
+      owner.current.token !== token ||
+      session.token !== token
+    )
+      return;
     const controller = new AbortController();
-    lifetime.current?.abort();
     lifetime.current = controller;
-    const token = session.token;
+    const owned = () =>
+      owner.current.userId === userId &&
+      owner.current.token === token &&
+      token === session.token;
     setConnecting(true);
     setConnectError(null);
     try {
       chatgptForeground.suspend();
       const connected = await signInNativeChatgpt(userId);
-      if (controller.signal.aborted || token !== session.token) return;
+      if (controller.signal.aborted || !owned()) return;
       if (!connected.sharingGranted)
         throw new Error(
           "Enable ChatGPT plan usage when connecting this account.",
         );
       refresh();
+      setAccountReload((n) => n + 1);
     } catch (error) {
-      if (!controller.signal.aborted && token === session.token)
+      if (!controller.signal.aborted && owned())
         setConnectError(errorText(error));
     } finally {
       // Cancellation can preserve the previous local grant; restore its executor without another OAuth attempt.
-      if (token === session.token) chatgptForeground.restart();
+      if (owned()) chatgptForeground.restart();
       if (lifetime.current === controller) {
         lifetime.current = null;
         setConnecting(false);
       }
     }
   };
+  const disconnect = async () => {
+    if (
+      connecting ||
+      disconnecting ||
+      lifetime.current ||
+      owner.current.userId !== userId ||
+      owner.current.token !== token ||
+      session.token !== token
+    )
+      return;
+    const controller = new AbortController();
+    lifetime.current = controller;
+    setDisconnecting(true);
+    setConnectError(null);
+    const live = () =>
+      !controller.signal.aborted &&
+      owner.current.userId === userId &&
+      owner.current.token === token &&
+      session.token === token;
+    chatgptForeground.suspend();
+    try {
+      await disconnectNativeChatgpt(userId);
+    } catch (error) {
+      if (live()) setConnectError(errorText(error));
+    } finally {
+      if (live()) {
+        chatgptForeground.restart();
+        refresh();
+        setAccountReload((n) => n + 1);
+      }
+      if (lifetime.current === controller) {
+        lifetime.current = null;
+        setDisconnecting(false);
+      }
+    }
+  };
+  const localBusy = connecting || disconnecting;
+  const hasLocalAccount =
+    account?.status === "saved" || account?.status === "unreadable";
   const busy = state.status === "loading" || state.saving;
   const catalog = state.catalog;
   const models = catalog?.models ?? [];
@@ -111,7 +209,9 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       <Text style={shared.small}>
         {Platform.OS === "web"
           ? "Direct browser connection is not available yet."
-          : "Connect your account in the browser. ChatGPT work runs while this app is open."}
+          : account?.status === "unsupported"
+            ? "Update Orbyn to connect ChatGPT on this device."
+            : "Connect your account in the browser. ChatGPT work runs while this app is open."}
       </Text>
       <SmallAction
         label={
@@ -121,7 +221,13 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
               ? "Connecting…"
               : "Connect to ChatGPT"
         }
-        disabled={!userId || connecting || Platform.OS === "web"}
+        disabled={
+          !userId ||
+          !token ||
+          localBusy ||
+          account?.status === "unsupported" ||
+          Platform.OS === "web"
+        }
         onPress={() => void connect()}
       />
       {connecting && (
@@ -134,6 +240,15 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
           }}
         />
       )}
+      {Platform.OS !== "web" && hasLocalAccount && (
+        <Text style={shared.small}>
+          {account?.status === "unreadable"
+            ? "Saved connection needs attention. Reconnect or disconnect it."
+            : account?.status === "saved" && !account.planUseAllowed
+              ? "ChatGPT plan use is off. Enable it in ChatGPT Settings, then reconnect."
+              : "Account saved on this device."}
+        </Text>
+      )}
       {Platform.OS !== "web" && localRuntime.userId === userId && (
         <>
           <Text accessibilityLiveRegion="polite" style={shared.small}>
@@ -145,32 +260,29 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
                   ? "Work paused."
                   : localRuntime.status === "error"
                     ? "Reconnect this device to resume work."
-                    : "No local ChatGPT connection."}
+                    : hasLocalAccount
+                      ? "This device is not running ChatGPT work."
+                      : "No local ChatGPT connection."}
           </Text>
           {localRuntime.status === "error" && (
             <SmallAction
               label="Retry connection"
-              disabled={connecting}
+              disabled={localBusy}
               onPress={() => chatgptForeground.restart()}
-            />
-          )}
-          {localRuntime.status !== "idle" && (
-            <SmallAction
-              label="Disconnect this device"
-              disabled={connecting}
-              onPress={() => {
-                chatgptForeground.suspend();
-                void disconnectNativeChatgpt(userId)
-                  .then(() => {
-                    chatgptForeground.restart();
-                    refresh();
-                  })
-                  .catch((error) => setConnectError(errorText(error)));
-              }}
             />
           )}
         </>
       )}
+      {Platform.OS !== "web" &&
+        (hasLocalAccount ||
+          (localRuntime.userId === userId &&
+            localRuntime.status !== "idle")) && (
+          <SmallAction
+            label={disconnecting ? "Disconnecting…" : "Disconnect this device"}
+            disabled={localBusy}
+            onPress={() => void disconnect()}
+          />
+        )}
       {connectError && (
         <Text accessibilityRole="alert" style={shared.small}>
           {connectError}

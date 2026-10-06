@@ -3779,3 +3779,44 @@ lifecycle and live provider acceptance remain unverified. Browser-only hosted
 ChatGPT connection remains unresolved. Main promotion, multiple-account
 management, truthful plan/usage acceptance and all C1–C6/M1/D1/U1 scope remain
 open; no ADR completion or production deployment is claimed.
+
+### Native saved-account controls and ownership checkpoint — 6 October 2026
+
+Native Settings previously hid Disconnect when the foreground executor was idle,
+including after a refresh reduced plan-use permissions. Saved credentials and
+executor eligibility now have separate representations. A native-only presence
+read verifies the captured Orbyn session/owner, reads the exact protected account
+record, and returns only missing/unsupported/unreadable/saved status plus the
+plan-use permission flag. It returns no tokens, identity proof or subject. A
+corrupt record remains removable without trusting its claimed identity.
+
+Settings keeps Disconnect available for saved or unreadable records even while
+the executor is idle. Permission-off state directs users to ChatGPT Settings
+before reauthorization. Builds without the callback module disable Connect with
+an update explanation. Actions serialize through their live controller, reject
+retained callbacks after user/token replacement, scope errors to the originating
+owner/session, and do not restart or refresh a replacement account when a late
+disconnect finishes. Failed disconnect still reloads local presence and remote
+metadata for the same owner, preserving the unconfirmed-revocation warning.
+
+Qualification: all323 ChatGPT unit tests pass, zero failures/skips, terminal
+zero, 22326.398875 ms in `/tmp/orbyn-native-account-state-all-final.log`. The
+initial focused source run had61 passed/0fail/skip,4421.285166ms; the final cohort
+adds in-flight presence/session replacement coverage. Mobile/backend/desktop
+typechecks all exit zero in `/tmp/orbyn-native-account-state-types-final.log`.
+The redundant old abort call was removed after the new serialization guard made
+it unreachable; final tests/typechecks include that correction.
+
+Existing Expo autolinking commands resolve OrbynChatgptModule for apple and
+expo.modules.orbynchatgpt.OrbynChatgptModule for android, terminal zero. Evidence
+is `/tmp/orbyn-native-autolink-apple.json` and
+`/tmp/orbyn-native-autolink-android.json`. This is packaging discovery, not a
+native build/install, OS keystore/OAuth acceptance or visual screenshot proof.
+
+Disk recovered to4.7GiB during the turn. Docker engine is running, but the isolated
+orbyn-embedding-test-20261001 container is stopped; the user was asked to start it
+under their earlier Docker-recovery preference. Full regression remains failed
+atDB70 and requires a fresh database run. No production/main promotion is claimed.
+Multiple saved native accounts/workspaces, installed device and browser-only
+connection acceptance, truthful account allowance UI and the full C1–C6/M1/D1/U1
+scope remain open.
