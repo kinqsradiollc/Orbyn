@@ -950,22 +950,55 @@ export async function snapshot(
  * gets the page's lines and gives back the page with the new ones in. The
  * state before is kept for history as any save's is, and open editors are
  * told, so a page open on another device takes the lines in. 404 for a
- * page the person can't see, 403 for one they may only read.
+ * page the person can't see, 403 for one they may only read. Nested pages
+ * require an explicit structured callback and use the versioned writer; their
+ * legacy leaf projection is never passed to the flat callback.
  */
 export async function addToPage(
   u: UserRow,
   docId: string,
   place: (content: DocBlock[]) => DocBlock[],
+  placeStructured?: (
+    document: Extract<VersionedDocContent, { format: 2 }>,
+  ) => Extract<VersionedDocContent, { format: 2 }>,
 ): Promise<{ id: string; title: string; version: number }> {
   const saved = await transaction(async (db) => {
     await actAs(db, u.id);
     await requireDoc(db, docId, u, "items:write");
-    const current = (
-      await db.query<{ content: DocBlock[] | null }>(
-        "SELECT content FROM docs WHERE id = $1",
+    const row = (
+      await db.query<{
+        content: DocBlock[] | null;
+        content_format: 1 | 2;
+        content_nodes: unknown;
+        version: number;
+      }>(
+        "SELECT content,content_format,content_nodes,version FROM docs WHERE id = $1",
         [docId],
       )
-    ).rows[0].content;
+    ).rows[0];
+    if (row.content_format === 2) {
+      if (!placeStructured)
+        fail(409, "This action requires nested document support.");
+      const document = parseVersionedDocContent({
+        format: 2,
+        nodes: row.content_nodes,
+      });
+      if (document.format !== 2) fail(400, "Invalid nested document content.");
+      const next = placeStructured(document);
+      if (next.format !== 2)
+        fail(400, "Nested content cannot be flattened by this action.");
+      const { saveVersionedDoc } = await import("./content-format.js");
+      const saved = await saveVersionedDoc(
+        db,
+        u,
+        docId,
+        row.version,
+        next,
+        [1, 2],
+      );
+      return { id: saved.id, title: saved.title, version: saved.version };
+    }
+    const current = row.content;
     await snapshot(db, docId, u.id);
     return (
       await db.query<{ id: string; title: string; version: number }>(

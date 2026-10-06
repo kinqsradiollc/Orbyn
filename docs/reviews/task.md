@@ -4484,3 +4484,33 @@ native main promotion still open; original C1-C6/M1/D1/U1 scope remains intact.
 Next review other unfinished source paths while runtime acceptance is unavailable,
 starting with D1 flat writers and normal-editor ownership adoption; do not treat
 that review as completion of blocked ChatGPT acceptance.
+
+
+### D1 structured capture/reflection append checkpoint — 6 October 2026
+
+Added explicit root/section append helpers. Existing quote/callout/list/checklist/
+code/Mermaid owners and stable identities remain intact; only a sole empty root
+paragraph is replaced. Root sections never infer destinations or boundaries from
+nested headings; occupied nested reserved IDs keep their owner, and the new root
+section is unnamed. Helpers validate detached trees and reject invalid/colliding
+additions without mutating callers.
+
+addToPage dispatches nested pages through saveVersionedDoc under the existing
+write lock and exact revision; unsupported flat callbacks fail409. Capture page/
+agenda and Home reflection provide explicit structured callbacks. Home GET and
+reflection POST use readVersionedDoc under visibility/privacy projection, and
+read the root-owned Reflection section. Response content comes from authorized
+reread rather than raw write callbacks. Legacy flat append behavior remains.
+
+Shared package build and backend typecheck pass.63 focused unit regressions pass,
+0failed/0skipped,2864.591958ms,exit0 at
+`/tmp/orbyn-doc-root-append-regression.log`; actual service/route functions execute
+with mocked DB/ACL/event transports. Added two actual database regression cases
+for complete-tree/history persistence and unsupported/unauthorized nonmutation to
+`doc-structured-storage.test.ts`; these are NOT run while Docker remains unavailable.
+No runtime database acceptance, client visual acceptance or main promotion claimed.
+
+Still open: makeLineTasks and structure.writeLines flat writers, nested checklist
+identity/task mapping, agenda regeneration flat writes, normal-editor adoption,
+CRDT/collaboration and full D1 render/edit/export/privacy matrices. Other full ADR
+requirements remain open. Candidate checkpoint only until database qualification.
