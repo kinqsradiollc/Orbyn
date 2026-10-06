@@ -63,6 +63,7 @@ async function requestJson(
   options: Transport,
   maxBytes = 262144,
   unauthorizedIsExpired = false,
+  emptySuccess = false,
 ): Promise<unknown> {
   const timeout = options.timeoutMs ?? 30000;
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 30000)
@@ -99,6 +100,14 @@ async function requestJson(
     if (controller.signal.aborted) {
       await response.body?.cancel();
       throw new ChatgptLocalTokenError("cancelled");
+    }
+    if (emptySuccess) {
+      void response.body?.cancel().catch(() => {});
+      if (response.status !== 200)
+        throw new ChatgptLocalTokenError("unavailable");
+      if (controller.signal.aborted)
+        throw new ChatgptLocalTokenError("cancelled");
+      return null;
     }
     if (!response.body) throw new ChatgptLocalTokenError("unavailable");
     const reader = response.body.getReader();
@@ -294,4 +303,64 @@ export async function refreshChatgptLocalGrant(
   if (result.scopes.some((value) => !previous.scopes.includes(value)))
     throw new ChatgptLocalTokenError("invalid");
   return result;
+}
+
+/** End this registration's renewable OpenAI session locally; never send credentials to Orbyn. */
+export async function revokeChatgptLocalGrant(
+  input: ChatgptLocalGrant,
+  options: Transport = {},
+): Promise<void> {
+  const grant = parseChatgptLocalGrant(input);
+  if (options.signal?.aborted) throw new ChatgptLocalTokenError("cancelled");
+  if (!grant.refreshToken) return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let retryable = false;
+    const transport = (async (url, init) => {
+      try {
+        const response = await (options.fetch ?? fetch)(url, init);
+        retryable = response.status >= 500 && response.status <= 599;
+        return response;
+      } catch (error) {
+        retryable = true;
+        throw error;
+      }
+    }) as typeof fetch;
+    try {
+      await requestJson(
+        "https://auth.openai.com/api/accounts/oauth/revoke",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({
+            client_id: grant.clientId,
+            token: grant.refreshToken,
+            token_type_hint: "refresh_token",
+          }),
+        },
+        { ...options, fetch: transport, timeoutMs: options.timeoutMs ?? 5000 },
+        262144,
+        false,
+        true,
+      );
+      return;
+    } catch (error) {
+      if (options.signal?.aborted || !retryable || attempt === 2) throw error;
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => {
+          clearTimeout(timer);
+          options.signal?.removeEventListener("abort", abort);
+          reject(new ChatgptLocalTokenError("cancelled"));
+        };
+        const timer = setTimeout(
+          () => {
+            options.signal?.removeEventListener("abort", abort);
+            resolve();
+          },
+          250 * 2 ** attempt,
+        );
+        options.signal?.addEventListener("abort", abort, { once: true });
+        if (options.signal?.aborted) abort();
+      });
+    }
+  }
 }

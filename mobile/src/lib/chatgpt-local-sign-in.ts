@@ -16,6 +16,7 @@ import {
   parseChatgptLocalGrant,
   readChatgptLocalModels,
   refreshChatgptLocalGrant,
+  revokeChatgptLocalGrant,
   createChatgptExecutorSigner,
   createChatgptExecutorLifecycle,
   ChatgptPlanClient,
@@ -541,7 +542,24 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
     if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
       throw new Error("ChatGPT account changed. Try again.");
     check();
-    // Once ownership is checked, a revocation failure must not retain local tokens.
+    let remoteRevocationFailed = false;
+    if (saved) {
+      try {
+        await revokeChatgptLocalGrant(saved.grant, {
+          fetch: (async (url, init) => {
+            check();
+            return expoFetch(url, init);
+          }) as typeof fetch,
+        });
+      } catch {
+        remoteRevocationFailed = true;
+      }
+      check();
+      if ((await SecureStore.getItemAsync(key, protectedOptions)) !== original)
+        throw new Error("ChatGPT account changed. Try again.");
+      check();
+    }
+    // A provider or server revocation failure must not retain owned local tokens.
     await SecureStore.deleteItemAsync(key, protectedOptions);
     check();
     let keyRemovalFailed = false;
@@ -553,19 +571,29 @@ export async function disconnectNativeChatgpt(userId: string): Promise<void> {
       }
       check();
     }
+    let serverDisconnectFailed = false;
     if (saved) {
       try {
         await client.revokeChatgptConnection(saved.connection.id);
       } catch {
-        throw new Error(
-          "ChatGPT was removed from this device. Server disconnect could not be confirmed; retry from connected accounts.",
-        );
+        serverDisconnectFailed = true;
       }
       check();
     }
-    if (keyRemovalFailed)
+    const warnings = [
+      remoteRevocationFailed
+        ? "OpenAI session revocation could not be confirmed; disconnect Orbyn in ChatGPT Settings → Usage."
+        : null,
+      serverDisconnectFailed
+        ? "Server disconnect could not be confirmed; retry from connected accounts."
+        : null,
+      keyRemovalFailed
+        ? "This device's signing key could not be erased; retry disconnect."
+        : null,
+    ].filter(Boolean);
+    if (warnings.length)
       throw new Error(
-        "ChatGPT credentials were removed. This device's signing key could not be erased; retry disconnect.",
+        "ChatGPT was removed from this device. " + warnings.join(" "),
       );
   } finally {
     disconnecting = false;

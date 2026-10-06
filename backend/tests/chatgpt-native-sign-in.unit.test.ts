@@ -45,6 +45,7 @@ function mount(
     browserCancel?: boolean;
     revoked?: boolean;
     revokeFailure?: boolean;
+    providerRevokeFailure?: boolean;
     holdCallback?: boolean;
     onRevoke?: () => Promise<void>;
     refreshedId?: boolean;
@@ -90,6 +91,7 @@ function mount(
     dismissed: 0,
     freshMe: false,
     revoked: [] as string[],
+    providerRevoked: [] as string[],
     refreshed: 0,
     keyRemoved: 0,
     catalogs: [] as object[],
@@ -241,6 +243,15 @@ function mount(
                   "\n\n",
                 { headers: { "content-type": "text/event-stream" } },
               );
+            }
+            if (url === "https://auth.openai.com/api/accounts/oauth/revoke") {
+              calls.providerRevoked.push(init.body.get("token"));
+              assert.equal(init.body.get("client_id"), connection.client_id);
+              assert.equal(init.body.get("token_type_hint"), "refresh_token");
+              assert.equal(accounts(storage).length, 1);
+              return new Response(null, {
+                status: options.providerRevokeFailure ? 503 : 200,
+              });
             }
             assert.equal(
               url,
@@ -1095,4 +1106,55 @@ test("disconnect aborts shared refresh and prevents queued work from restoring o
   assert.equal(accounts(f.storage).length, 0);
   assert.equal(f.calls.refreshed, 1);
   assert.equal(f.calls.refreshProof.length, 0);
+});
+
+test("native disconnect revokes the selected renewable OpenAI session before erasing it", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  await fixture.disconnect();
+  assert.deepEqual(fixture.calls.providerRevoked, ["private-refresh"]);
+  assert.deepEqual(fixture.calls.revoked, [connection.id]);
+  assert.equal(accounts(fixture.storage).length, 0);
+});
+test("native disconnect clears local and server state when OpenAI revocation is unconfirmed", async () => {
+  const fixture = mount({ providerRevokeFailure: true });
+  await fixture.signIn();
+  await assert.rejects(fixture.disconnect(), (error: unknown) => {
+    assert.match(
+      String(error),
+      /OpenAI session revocation could not be confirmed/,
+    );
+    assert.doesNotMatch(String(error), /private-refresh|private-access/);
+    return true;
+  });
+  assert.equal(fixture.calls.providerRevoked.length, 3);
+  assert.deepEqual(fixture.calls.revoked, [connection.id]);
+  assert.equal(accounts(fixture.storage).length, 0);
+});
+
+test("disconnect reports both provider and server failures after clearing local credentials", async () => {
+  const fixture = mount({ providerRevokeFailure: true, revokeFailure: true });
+  await fixture.signIn();
+  await assert.rejects(fixture.disconnect(), (error: unknown) => {
+    assert.match(
+      String(error),
+      /OpenAI session revocation could not be confirmed/,
+    );
+    assert.match(String(error), /Server disconnect could not be confirmed/);
+    assert.doesNotMatch(String(error), /private-refresh|private-access/);
+    return true;
+  });
+  assert.equal(accounts(fixture.storage).length, 0);
+});
+test("disconnect revokes the latest rotated refresh token", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  const [key, value] = accounts(fixture.storage)[0];
+  const saved = JSON.parse(value);
+  saved.grant.expiresAt = Date.now() + 30000;
+  saved.grant.savedAt = Date.now() - 30000;
+  fixture.storage.set(key, JSON.stringify(saved));
+  await fixture.models();
+  await fixture.disconnect();
+  assert.deepEqual(fixture.calls.providerRevoked, ["refreshed-refresh"]);
 });

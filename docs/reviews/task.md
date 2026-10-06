@@ -3730,3 +3730,52 @@ it does not prove installed-device OAuth/keystore/suspension, real OpenAI usage,
 multiple accounts, hosted browser-only connection, production readiness or the
 full ADR. Main qualification/promotion and all remaining full-scope acceptance
 still need work. Keep docs/reviews/adr-current-state.md updated per checkpoint.
+
+### Native OpenAI session revocation checkpoint — 6 October 2026
+
+The native disconnect path previously erased protected tokens and revoked Orbyn
+metadata without attempting to end the renewable OpenAI session. It now calls
+OpenAI's published revocation endpoint directly from the credential-owning
+native device with the exact issued client ID and latest rotating refresh token.
+No access/refresh token is sent to Orbyn. The shared transport accepts the empty
+HTTP 200 success response, rejects redirects/other statuses, bounds requests to
+five seconds by default, and retries network/5xx failures at most three times
+with bounded backoff. Cancellation and late/uncooperative fetches are fenced.
+
+Native disconnect stops executors and joins pending OAuth/refresh first. It
+attempts provider revocation before erasing the unchanged owned protected
+record, then still removes local credentials and attempts key/server removal
+when provider revocation fails. Sanitized warnings identify unconfirmed OpenAI
+revocation, Orbyn metadata removal and signing-key removal independently. An
+OpenAI failure directs the user to ChatGPT Settings → Usage. Desktop already has
+its own provider revocation path; this checkpoint fixes the native gap.
+
+Evidence: `/tmp/orbyn-native-revocation-focused.log` has 50 passed, zero failures
+or skips, terminal zero, 4547.22475 ms. The complete ChatGPT unit rerun has 315
+passed, zero failures/skips, terminal zero, 20750.7235 ms at
+`/tmp/orbyn-native-revocation-all-retry.log`. The first cohort attempt exited 7
+without a terminal TAP summary and is not counted as passing. API-client build
+and backend/desktop/mobile typechecks all exit zero in
+`/tmp/orbyn-native-revocation-types.log`.
+
+Full DB70 regression was run against frozen source `6f04e8c7` before this fix.
+It ended exit 1: 3351 passed, 49 failed, zero skips, 713288.637375 ms in
+`/tmp/orbyn-chatgpt-native-full70.log`. Failures began with PostgreSQL connection
+termination, followed by ECONNREFUSED after the Docker daemon became unreachable.
+This is failed qualification, not a passing full regression. Disk fell below
+250 MiB; only the simulator booted for this turn was shut down. Docker was not
+restarted or modified. A fresh full run remains required after disk/database
+recovery. The earlier run's terminal state is saved in
+`/tmp/orbyn-chatgpt-native70-handoff.json`.
+
+Official source: [Accounts and sessions](https://developers.openai.com/siwc/token-sharing-open-source/profiles-and-sessions),
+with the revocation endpoint checked against OpenAI's public OIDC discovery.
+The token reference describes opaque authentication metadata, not a documented
+subscription-tier or remaining-allowance field. Do not infer a paid tier or
+quota from model visibility or granted scopes.
+
+This is a candidate checkpoint. Installed iOS/Android OAuth, keystore, browser
+lifecycle and live provider acceptance remain unverified. Browser-only hosted
+ChatGPT connection remains unresolved. Main promotion, multiple-account
+management, truthful plan/usage acceptance and all C1–C6/M1/D1/U1 scope remain
+open; no ADR completion or production deployment is claimed.
