@@ -2658,3 +2658,32 @@ not plan-tier or account-wide quota evidence. Settings remain unactivated until
 native build/browser acceptance, renewable verified credentials, native executor
 and model/provider integration are complete. Candidate tests/mock secure storage
 are not a claim of installed native or full cross-platform completion.
+
+## Native local model discovery checkpoint — 6 October 2026
+
+The native sign-in candidate now reads the selected registration's live OpenAI
+`/v1/models` catalog directly with its protected local access token. It requires
+an eligible, unexpired grant, a fresh matching Orbyn owner and a still-live exact
+server identity. Session, sign-in or protected-registration changes discard
+late responses. Only connection metadata and displayable models are returned;
+access/refresh tokens remain private. The catalog neither runs inference nor
+proves a plan tier or remaining quota. No curated/managed model fallback is
+substituted. Expired grants currently require reconnect; refreshed identity
+verification and safe rotation remain pending.
+
+The portable model transport shares bounded JSON reads, deadline/cancellation,
+no redirects/cookies/cache and sanitized errors with the token transport.
+Existing token error semantics are retained; a model endpoint 401 requires
+reconnect. The first regression run caught an unintended token 401 classification
+change; it was corrected in implementation without changing prior assertions.
+Final focused result:39 pass,0 fail/skip,terminal0,1175.4565ms. Evidence:
+`/tmp/orbyn-chatgpt-native-models-tests.log`. Package builds and backend/desktop/mobile typechecks
+pass (all terminal0). No real provider request, native installed-build acceptance, settings
+activation or full DB regression is claimed.
+
+Remaining ChatGPT-first work: refreshed identity/local rotation, disconnect and
+multi-profile ownership, native executor signing/enrollment/lease/catalog and
+inference, provider choice/fallback UI, actual iOS/Android lifecycle acceptance,
+and a supported direct web connection. The native service is not yet wired into
+Settings; a catalog foundation is not a completed usable provider. Main is not
+changed by this candidate. Full C1-C6/M1/D1/U1 remains active.

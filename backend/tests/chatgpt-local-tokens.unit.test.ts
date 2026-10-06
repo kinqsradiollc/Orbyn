@@ -5,6 +5,7 @@ import {
   refreshChatgptLocalGrant,
   parseChatgptLocalGrant,
   ChatgptLocalTokenError,
+  readChatgptLocalModels,
 } from "@orbyn/api-client";
 
 const input = {
@@ -257,4 +258,117 @@ test("deadline rejects even an uncooperative fetch and closes a late response", 
   );
   await new Promise<void>((yes) => setImmediate(yes));
   assert.equal(cancelled, true);
+});
+
+test("local model discovery uses only the grant token and preserves visible catalog choices", async () => {
+  const grant = await exchangeChatgptLocalCode(input, {
+    fetch: fetchTokens(),
+    now,
+  });
+  const models = await readChatgptLocalModels(grant, {
+    now,
+    fetch: (async (url, init) => {
+      assert.equal(String(url), "https://api.openai.com/v1/models");
+      assert.equal(init!.method, "GET");
+      assert.equal(init!.body, undefined);
+      assert.equal(init!.redirect, "error");
+      assert.equal(init!.cache, "no-store");
+      assert.equal(init!.credentials, "omit");
+      assert.equal(
+        new Headers(init!.headers).get("Authorization"),
+        "Bearer fixture-access",
+      );
+      return Response.json({
+        models: [
+          { slug: "available", display_name: "Available", visibility: "list" },
+          { slug: "hidden", display_name: "Hidden", visibility: "hidden" },
+        ],
+      });
+    }) as typeof fetch,
+  });
+  assert.deepEqual(models, [{ slug: "available", display_name: "Available" }]);
+});
+test("local catalog rejects expired or ungranted credentials before any request", async () => {
+  const grant = await exchangeChatgptLocalCode(input, {
+    fetch: fetchTokens(),
+    now,
+  });
+  let requests = 0;
+  const fetcher = (async () => {
+    requests++;
+    return Response.json({ models: [] });
+  }) as typeof fetch;
+  await assert.rejects(
+    readChatgptLocalModels(grant, {
+      now: () => grant.expiresAt,
+      fetch: fetcher,
+    }),
+    checkError("expired"),
+  );
+  await assert.rejects(
+    readChatgptLocalModels(
+      { ...grant, scopes: ["openid"], sharingGranted: false },
+      { now, fetch: fetcher },
+    ),
+    checkError("unavailable"),
+  );
+  assert.equal(requests, 0);
+});
+test("local model discovery sanitizes malformed and denied provider replies", async () => {
+  const grant = await exchangeChatgptLocalCode(input, {
+    fetch: fetchTokens(),
+    now,
+  });
+  for (const response of [
+    Response.json({ error: { message: "fixture-access" } }, { status: 403 }),
+    Response.json({ error: "fixture-access" }, { status: 429 }),
+    Response.json({ data: [{ id: "not-a-plan-catalog" }] }),
+    Response.json({ models: [{ slug: "bad", visibility: "list" }] }),
+    new Response("fixture-access"),
+  ])
+    await assert.rejects(
+      readChatgptLocalModels(grant, {
+        now,
+        fetch: (async () => response) as typeof fetch,
+      }),
+      checkError("unavailable"),
+    );
+  await assert.rejects(
+    readChatgptLocalModels(grant, {
+      now,
+      fetch: (async () => Response.json({}, { status: 401 })) as typeof fetch,
+    }),
+    checkError("expired"),
+  );
+});
+test("local model request deadline cancels a transport that ignores abort", async () => {
+  const grant = await exchangeChatgptLocalCode(input, {
+    fetch: fetchTokens(),
+    now,
+  });
+  await assert.rejects(
+    readChatgptLocalModels(grant, {
+      now,
+      timeoutMs: 5,
+      fetch: (() => new Promise(() => {})) as typeof fetch,
+    }),
+    checkError("cancelled"),
+  );
+});
+test("local catalog is discarded when credentials expire during its response", async () => {
+  const grant = await exchangeChatgptLocalCode(input, {
+    fetch: fetchTokens(),
+    now,
+  });
+  let time = now();
+  await assert.rejects(
+    readChatgptLocalModels(grant, {
+      now: () => time,
+      fetch: (async () => {
+        time = grant.expiresAt;
+        return Response.json({ models: [] });
+      }) as typeof fetch,
+    }),
+    checkError("expired"),
+  );
 });

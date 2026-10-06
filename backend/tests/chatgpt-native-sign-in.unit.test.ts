@@ -33,6 +33,8 @@ function mount(
     changeSession?: "finish" | "store";
     me?: string;
     browserCancel?: boolean;
+    revoked?: boolean;
+    changeDuringModels?: "session" | "registration";
   } = {},
 ) {
   const storage = new Map<string, string>();
@@ -111,6 +113,31 @@ function mount(
         return {
           fetch: async (url: string, init: any) => {
             calls.network++;
+            if (url === "https://api.openai.com/v1/models") {
+              assert.equal(init.headers.Authorization, "Bearer private-access");
+              if (options.changeDuringModels === "session")
+                session.token = "other-session";
+              if (options.changeDuringModels === "registration") {
+                for (const [key, value] of storage)
+                  if (key.includes(".account."))
+                    storage.set(
+                      key,
+                      JSON.stringify({
+                        ...JSON.parse(value),
+                        revision: randomUUID(),
+                      }),
+                    );
+              }
+              return Response.json({
+                models: [
+                  {
+                    slug: "native-model",
+                    display_name: "Native model",
+                    visibility: "list",
+                  },
+                ],
+              });
+            }
             assert.equal(
               url,
               "https://auth.openai.com/api/accounts/oauth/token",
@@ -177,6 +204,8 @@ function mount(
               calls.freshMe = settings.fresh;
               return { id: options.me ?? userId };
             },
+            chatgptConnections: async () =>
+              options.revoked ? [] : [connection],
             startChatgptConnection: async () => ({
               id: randomUUID(),
               nonce: "n".repeat(43),
@@ -196,6 +225,8 @@ function mount(
   return {
     signIn: (input = userId) => exports.signInNativeChatgpt(input),
     cancel: () => exports.cancelNativeChatgptSignIn(),
+    models: (input = userId, signal?: AbortSignal) =>
+      exports.readNativeChatgptModels(input, { signal }),
     storage,
     session,
     calls,
@@ -325,4 +356,37 @@ test("corrupt protected records are preserved and never copied into diagnostic e
     );
   });
   assert.equal(fixture.storage.get(key), corrupt);
+});
+
+test("native models use only a protected, currently owned and live connection", async () => {
+  const fixture = mount();
+  await fixture.signIn();
+  const result = await fixture.models();
+  assert.deepEqual(JSON.parse(JSON.stringify(result)), {
+    connection,
+    models: [{ slug: "native-model", display_name: "Native model" }],
+  });
+  assert.equal(JSON.stringify(result).includes("private-access"), false);
+});
+test("native model discovery rejects revoked server identity before requesting models", async () => {
+  const fixture = mount({ revoked: true });
+  await fixture.signIn();
+  const before = fixture.calls.network;
+  await assert.rejects(fixture.models(), /Reconnect/);
+  assert.equal(fixture.calls.network, before);
+});
+test("native models discard late results after session or protected registration changes", async () => {
+  for (const changeDuringModels of ["session", "registration"] as const) {
+    const fixture = mount({ changeDuringModels });
+    await fixture.signIn();
+    await assert.rejects(fixture.models(), /changed/);
+  }
+});
+test("native models reject missing registration, wrong owner, cancellation and web runtime", async () => {
+  await assert.rejects(mount().models(), /Connect ChatGPT/);
+  const fixture = mount();
+  await fixture.signIn();
+  await assert.rejects(fixture.models(randomUUID()), /account changed/);
+  await assert.rejects(fixture.models(userId, AbortSignal.abort()), /changed/);
+  await assert.rejects(mount({ platform: "web" }).models(), /native ChatGPT/);
 });

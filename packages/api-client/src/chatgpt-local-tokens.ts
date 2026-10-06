@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { chatgptLoopbackUri, chatgptModelBinding } from "@orbyn/core";
+import {
+  chatgptLoopbackUri,
+  chatgptModelBinding,
+  parseChatgptModels,
+  type ChatgptModel,
+} from "@orbyn/core";
 
 const token = z
   .string()
@@ -52,12 +57,13 @@ type Transport = {
   timeoutMs?: number;
   now?: () => number;
 };
-async function requestTokens(
-  form: URLSearchParams,
-  clientId: string,
+async function requestJson(
+  url: string,
+  init: RequestInit,
   options: Transport,
-  previous?: ChatgptLocalGrant,
-): Promise<ChatgptLocalGrant> {
+  maxBytes = 262144,
+  unauthorizedIsExpired = false,
+): Promise<unknown> {
   const timeout = options.timeoutMs ?? 30000;
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > 30000)
     throw new ChatgptLocalTokenError("invalid");
@@ -69,21 +75,13 @@ async function requestTokens(
   try {
     if (controller.signal.aborted)
       throw new ChatgptLocalTokenError("cancelled");
-    const pending = (options.fetch ?? fetch)(
-      "https://auth.openai.com/api/accounts/oauth/token",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          Accept: "application/json",
-        },
-        body: form,
-        redirect: "error",
-        credentials: "omit",
-        cache: "no-store",
-        signal: controller.signal,
-      },
-    );
+    const pending = (options.fetch ?? fetch)(url, {
+      ...init,
+      redirect: "error",
+      credentials: "omit",
+      cache: "no-store",
+      signal: controller.signal,
+    });
     const response = await new Promise<Response>((resolve, reject) => {
       const cancelled = () => reject(new ChatgptLocalTokenError("cancelled"));
       controller.signal.addEventListener("abort", cancelled, { once: true });
@@ -117,7 +115,7 @@ async function requestTokens(
         const { done, value } = await reader.read();
         if (done) break;
         size += value.byteLength;
-        if (size > 262144) throw new ChatgptLocalTokenError("unavailable");
+        if (size > maxBytes) throw new ChatgptLocalTokenError("unavailable");
         text += decoder.decode(value, { stream: true });
         if (controller.signal.aborted)
           throw new ChatgptLocalTokenError("cancelled");
@@ -131,8 +129,43 @@ async function requestTokens(
     const raw = JSON.parse(text);
     if (!response.ok)
       throw new ChatgptLocalTokenError(
-        raw?.error === "invalid_grant" ? "expired" : "unavailable",
+        (unauthorizedIsExpired && response.status === 401) ||
+          raw?.error === "invalid_grant"
+          ? "expired"
+          : "unavailable",
       );
+    if (controller.signal.aborted)
+      throw new ChatgptLocalTokenError("cancelled");
+    return raw;
+  } catch (error) {
+    if (error instanceof ChatgptLocalTokenError) throw error;
+    throw new ChatgptLocalTokenError(
+      controller.signal.aborted ? "cancelled" : "unavailable",
+    );
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", abort);
+  }
+}
+async function requestTokens(
+  form: URLSearchParams,
+  clientId: string,
+  options: Transport,
+  previous?: ChatgptLocalGrant,
+): Promise<ChatgptLocalGrant> {
+  const raw = await requestJson(
+    "https://auth.openai.com/api/accounts/oauth/token",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "application/json",
+      },
+      body: form,
+    },
+    options,
+  );
+  try {
     const tokens = z
       .object({
         access_token: token,
@@ -156,8 +189,7 @@ async function requestTokens(
         ? previous!.scopes
         : [...new Set(tokens.scope.trim().split(/ +/).filter(Boolean))];
     const savedAt = (options.now ?? Date.now)();
-    if (controller.signal.aborted)
-      throw new ChatgptLocalTokenError("cancelled");
+    if (options.signal?.aborted) throw new ChatgptLocalTokenError("cancelled");
     return parseChatgptLocalGrant({
       clientId,
       accessToken: tokens.access_token,
@@ -172,12 +204,38 @@ async function requestTokens(
     });
   } catch (error) {
     if (error instanceof ChatgptLocalTokenError) throw error;
-    throw new ChatgptLocalTokenError(
-      controller.signal.aborted ? "cancelled" : "unavailable",
-    );
-  } finally {
-    clearTimeout(timer);
-    options.signal?.removeEventListener("abort", abort);
+    throw new ChatgptLocalTokenError("unavailable");
+  }
+}
+
+/** Discover models using an already identity-verified local grant; no inference or quota probe. */
+export async function readChatgptLocalModels(
+  input: ChatgptLocalGrant,
+  options: Transport = {},
+): Promise<ChatgptModel[]> {
+  const grant = parseChatgptLocalGrant(input);
+  if (!grant.sharingGranted) throw new ChatgptLocalTokenError("unavailable");
+  if (grant.expiresAt <= (options.now ?? Date.now)())
+    throw new ChatgptLocalTokenError("expired");
+  const raw = await requestJson(
+    "https://api.openai.com/v1/models",
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${grant.accessToken}`,
+        Accept: "application/json",
+      },
+    },
+    options,
+    2 * 1024 * 1024,
+    true,
+  );
+  if (grant.expiresAt <= (options.now ?? Date.now)())
+    throw new ChatgptLocalTokenError("expired");
+  try {
+    return parseChatgptModels(raw);
+  } catch {
+    throw new ChatgptLocalTokenError("unavailable");
   }
 }
 
