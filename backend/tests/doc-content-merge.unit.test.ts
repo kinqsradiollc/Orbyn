@@ -122,3 +122,74 @@ test("unknown structured fields fail instead of silently flattening", () => {
     ),
   );
 });
+
+test("merged nested local links follow renamed leaves, preserving titles and literal examples", () => {
+  const source: VersionedDocContent = {
+    format: 2,
+    nodes: parseDocContainers(
+      '> ## Source ^leaf\n> [read](#leaf "Title") and `[literal](#leaf)` and \\[escaped](#leaf) ^links\n>\n> [ref]: <#leaf> "Reference title"\n>\n> ```md\n> [code](#leaf)\n> ```',
+      { anchors: true },
+    ),
+  };
+  const before = structuredClone(source);
+  const result = mergeDocContents(flat("Target"), source, "", ids());
+  const blocks =
+    result.document.format === 2
+      ? docContainerBlocks(result.document.nodes)
+      : result.document.blocks;
+  const id = result.renamed.get("leaf")!;
+  const link = blocks.find((b) => b.id === "links")!;
+  assert.equal(
+    "text" in link && link.text,
+    `[read](#${id} "Title") and \`[literal](#leaf)\` and \\[escaped](#leaf)`,
+  );
+  assert.ok(
+    blocks.some(
+      (b) => "text" in b && b.text === `[ref]: <#${id}> "Reference title"`,
+    ),
+  );
+  assert.ok(
+    blocks.some((b) => b.type === "code" && b.text === "[code](#leaf)"),
+  );
+  assert.deepEqual(source, before);
+});
+
+test("heading slugs and exported positions resolve to source headings after merge", () => {
+  const target: VersionedDocContent = {
+    format: 1,
+    blocks: [{ type: "heading", level: 1, text: "Heading" }],
+  };
+  const source: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", text: "[slug](#heading) [position](#h-1)" },
+      { type: "heading", level: 2, text: "Heading" },
+    ],
+  };
+  const result = mergeDocContents(target, source, "Source page", ids());
+  if (result.document.format !== 1) throw new Error("Wrong format");
+  const heading = result.document.blocks.at(-1)!;
+  assert.ok(heading.id);
+  assert.equal(
+    (result.document.blocks[2] as any).text,
+    `[slug](#${heading.id}) [position](#${heading.id})`,
+  );
+  assert.equal(target.blocks[0].id, undefined);
+});
+
+test("named empty leaves survive merge and keep their fragment destinations", () => {
+  const source: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", id: "empty", text: "" },
+      { type: "paragraph", text: "[empty](#empty) [missing](#missing)" },
+    ],
+  };
+  const result = mergeDocContents(flat("Target"), source, "", ids());
+  if (result.document.format !== 1) throw new Error("Wrong format");
+  assert.ok(result.document.blocks.some((b) => b.id === "empty"));
+  assert.equal(
+    (result.document.blocks.at(-1) as any).text,
+    "[empty](#empty) [missing](#missing)",
+  );
+});

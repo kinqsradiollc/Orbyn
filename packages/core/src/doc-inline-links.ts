@@ -5,6 +5,8 @@ export type DocInlineLink = {
   labelStart: number;
   labelEnd: number;
   href: string;
+  hrefStart: number;
+  hrefEnd: number;
   title?: string;
   image: boolean;
 };
@@ -89,6 +91,8 @@ export function docInlineLinks(
       labelStart: start + 1,
       labelEnd: close,
       href: unescape(source.slice(hrefStart, hrefEnd)),
+      hrefStart,
+      hrefEnd,
       ...(title !== undefined ? { title } : {}),
       image,
     });

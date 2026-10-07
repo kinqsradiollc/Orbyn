@@ -1086,7 +1086,7 @@ test("merge keeps structured source/target/relink trees and complete history", a
       { type: "paragraph", id: "shared", text: "Target" },
     ]);
   const nodes = parseDocContainers(
-    "> Moved words ^shared\n>\n> - Child ^child\n^owner",
+    "> Moved words [local](#shared) ^shared\n>\n> - Child ^child\n^owner",
     { anchors: true },
   );
   await transaction((db) =>
@@ -1120,6 +1120,10 @@ test("merge keeps structured source/target/relink trees and complete history", a
   assert.equal(moved.kind, "quote");
   assert.equal(moved.id, "owner");
   assert.notEqual(moved.children[0].block.id, "shared");
+  assert.equal(
+    moved.children[0].block.text,
+    `Moved words [local](#${moved.children[0].block.id})`,
+  );
   assert.equal(moved.children[1].kind, "list");
   const linked = await readVersionedDoc(pool, owner, pointer, [1, 2]);
   if (linked.document.format !== 2) throw new Error("Relinked tree flattened");

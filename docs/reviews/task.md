@@ -1,3 +1,17 @@
+## Merged-page local link repair — 7 October 2026
+
+Candidate page merging resolves source-local links before concatenation, updates
+renamed target IDs and gives referenced headings stable IDs when their slug or
+exported h-N position would change. Inline labels/titles and reference definition
+source are retained; escaped examples, inline/fenced code and raw HTML stay
+literal. Named empty leaves remain present so their anchors are not removed.
+Fresh qualification:527 Docs unit tests passed, zero failures/skips (23,352ms),
+shared packages built and backend typecheck passed. The database merge regression
+now checks a moved local link, but test PostgreSQL55435 still refuses connections.
+Reference-label namespace collisions, extraction cross-page fragments, normal
+editor integration and installed/visual acceptance remain open. Candidate only;
+main remains7263b45b and production deployment is not confirmed.
+
 ## Complete-content extraction candidate — 6 October 2026
 
 Move-to-new-page now reads complete source ownership, retains quote/list wrappers
