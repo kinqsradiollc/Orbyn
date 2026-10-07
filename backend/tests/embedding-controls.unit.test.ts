@@ -36,6 +36,7 @@ function fixture(
   overrides: object = {},
   reject = false,
   providerOverrides: object = {},
+  discoveryOverrides: object = {},
 ) {
   const effects: { fn: () => void; deps: unknown[] }[] = [];
   const setters: [number, unknown][] = [];
@@ -77,6 +78,18 @@ function fixture(
     exports: {} as Record<string, any>,
     require: (path: string) => {
       if (path === "react") return hooks;
+      // Catalog lifecycle is tested through the real hook in its own suite.
+      // This component harness isolates consent/setup and UI event wiring.
+      if (path.endsWith("/hooks/useEmbeddingModelCatalog"))
+        return {
+          useEmbeddingModelCatalog: () => ({
+            loading: false,
+            catalog: undefined,
+            error: undefined,
+            load: () => calls.push("catalog-load"),
+            ...discoveryOverrides,
+          }),
+        };
       if (path.endsWith("/lib/api"))
         return {
           client: {
@@ -295,5 +308,72 @@ for (const mobile of [false, true]) {
     assert.match(text, /Next retry due/);
     assert.match(text, /measuring service is offline/);
     assert.match(text, /4 pages measured; 3 pages waiting/);
+  });
+}
+
+for (const mobile of [false, true]) {
+  const platform = mobile ? "mobile" : "web";
+  test(`${platform} catalog loading neither grants consent nor changes semantic settings`, () => {
+    const view = fixture(mobile);
+    const control = view.elements.find((node) =>
+      mobile
+        ? node.props.title === "Load embedding model catalog"
+        : node.type === "button" &&
+          node.props.children === "Load embedding model catalog",
+    );
+    assert.ok(control);
+    if (mobile) control.props.onPress();
+    else control.props.onClick();
+    assert.deepEqual(view.calls, ["catalog-load"]);
+    assert.equal(view.setters.length, 0);
+  });
+  test(`${platform} loading catalog prevents duplicate requests and displays loading`, () => {
+    const view = fixture(mobile, {}, false, {}, { loading: true });
+    const control = view.elements.find((node) =>
+      mobile
+        ? node.props.title === "Loading models…"
+        : node.type === "button" && node.props.children === "Loading models…",
+    );
+    assert.ok(control);
+    assert.equal(control.props.disabled, true);
+  });
+  for (const kind of ["manual", "unclassified", "embedding"]) {
+    test(`${platform} ${kind} catalog is labelled honestly without granting consent`, () => {
+      const view = fixture(
+        mobile,
+        {},
+        false,
+        {},
+        { catalog: { models: [], catalog_kind: kind } },
+      );
+      const html = renderToStaticMarkup(view.tree);
+      assert.match(
+        html,
+        kind === "manual"
+          ? /Type the deployment or model name manually/
+          : kind === "unclassified"
+            ? /Embedding support is checked when you validate/
+            : /Dimensions are checked when you validate/,
+      );
+      assert.deepEqual(view.calls, []);
+      assert.equal(view.setters.length, 0);
+    });
+  }
+  test(`${platform} catalog failure is visible and keeps the typed model`, () => {
+    const view = fixture(
+      mobile,
+      {},
+      false,
+      {},
+      { error: "Fixture catalog unavailable" },
+    );
+    const html = renderToStaticMarkup(view.tree);
+    assert.match(html, /Fixture catalog unavailable/);
+    assert.ok(
+      view.elements.some(
+        (node) => node.props.value === settings.embedding_model,
+      ),
+    );
+    assert.deepEqual(view.calls, []);
   });
 }

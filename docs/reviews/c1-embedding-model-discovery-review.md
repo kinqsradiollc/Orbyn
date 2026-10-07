@@ -52,8 +52,28 @@ Generic generation catalogs are never presented as proof of embedding support.
 - Final workspace typecheck and backend build pass (exit0):
   `/tmp/orbyn-c1-embedding-discovery-final-types-20261008.log` and
   `/tmp/orbyn-c1-embedding-discovery-backend-build-20261008.log`.
-- Web build, frozen full regression and original web/mobile screenshots are
-  pending. Chrome is currently unavailable to the Visual Check session.
+- Web build passes (exit0):
+  `/tmp/orbyn-c1-embedding-discovery-web-build-20261008.log`.
+- Frozen combined source5466bc1c full regression terminated with exit7, without
+  a final TAP summary. Its log records18 old component-harness failures resolving
+  the new hook import, and stops during the native page clock test. It is not a
+  full-suite pass: `/tmp/orbyn-c1-embedding-discovery-full-20261008.log`.
+- After authoritative termination, the existing component harness was updated to
+  isolate discovery imports; the real hook remains independently tested. Twelve
+  added component cases cover loading, read-only actions, failure/manual drafts
+  and honest catalog labels. Corrected combined cohort154/154 passes with zero
+  failures/skips/cancellations:
+  `/tmp/orbyn-c1-embedding-discovery-corrected-cohort-20261008.log`.
+- The complete native-page diagnostic file independently passes10/10, zero
+  failures/skips/cancellations:
+  `/tmp/orbyn-c1-embedding-discovery-native-clock-diagnostic-20261008.log`.
+  The earlier exit7 cause remains unconfirmed; disk fell below500MiB and a full
+  rerun awaits recovered space. No failed source was changed while its run was live.
+- The human restored Chrome control. Visual Check is capturing the corrected
+  mobile and new embedding UI; root has not accepted any new originals yet.
+- Same-origin candidate previews return web/API200. An authenticated inert
+  embedding catalog returns250 unclassified models, matching recipient revision;
+  semantic search remainsOFF. This uses only the local inert server, not a vendor.
 
 No live vendor credential, embedding document upload, production deployment,
 installed-native acceptance or full C1 completion is claimed.
