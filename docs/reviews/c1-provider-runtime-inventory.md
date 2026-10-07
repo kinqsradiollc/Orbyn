@@ -175,9 +175,26 @@ fixture does not prove Together catalog decoding.
   documents an account management path, not evidence that its saved inference
   `/inference/v1/models` endpoint works. Keep that inference catalog unverified;
   absence in this page alone is not proof it is unsupported.
-- [Nebius Swagger](https://api.studio.nebius.com/docs) returned no readable schema
-  through the documentation tool. Its catalog remains a source/fixture contract,
-  not verified API documentation.
+- [Nebius's public OpenAPI specification](https://api.tokenfactory.nebius.com/openapi.json)
+  was retrieved with normal TLS verification. It documents `/v1/models` with a
+  `data` array and `/v1/embeddings` with indexed vectors and token usage.
+  Snapshot: `/tmp/orbyn-c1-nebius-openapi-20261008.json`. This verifies the new
+  Token Factory API contract, not availability of Orbyn's saved legacy Studio
+  hostname or an authorized live model call.
+- [DeepInfra chat](https://docs.deepinfra.com/chat/overview) documents the saved
+  `/v1/openai` compatible base; its
+  [embedding reference](https://docs.deepinfra.com/apis/embeddings) documents
+  `/embeddings` with string-array input and float output. Selected model,
+  dimensions and runtime behavior remain unverified. The documented explicit
+  `encoding_format: "float"` example alone does not prove omission is a bug.
+- [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility)
+  documents `/v1/models` and `/v1/embeddings` at the configured local base.
+  Loaded model, dimensions and local runtime acceptance remain open.
+- [Perplexity's documentation index](https://docs.perplexity.ai/llms.txt) links
+  distinct Router and Agent model catalogs. The linked model reference pages
+  were not readable through the documentation tool. This is not evidence that
+  Orbyn's saved Sonar catalog works or that it is unsupported; resolve the
+  specific saved endpoint and protocol before changing it.
 
 Public OpenCode metadata GET returned86 ID records with only id/object/created/
 owned_by fields. It supplies no per-model transport hint to fix mixed endpoint
