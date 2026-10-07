@@ -1,3 +1,21 @@
+## Source-event revision guard — 7 October 2026
+
+A retained Source/Preview input handler could send an older buffer against a
+newer remote page: both web and native component regressions reproduce one
+accepted overwrite where zero was expected. Each external source reconciliation
+now advances an input epoch. An event from the previous epoch retains its text
+with an explicit Restore action and cannot reach the owner's save callback.
+Normal typing and delayed own echoes keep their existing behavior.
+
+The main source-view, source-map and source-edit cohort passes33/33, zero failures/
+skips (2074ms), after the two regressions fail on the original code. Desktop
+TypeScript and scoped formatting pass. The normal main mobile typecheck still
+fails because its local installation lacks the declared react-native-webview;
+a temporary configuration resolving the already-installed13.16.1 package's
+public declarations passes. No dependency or user configuration was changed.
+This checkpoint changes revision safety, not layout. Browser screenshots and
+native runtime acceptance remain unverified; full C1-C6/M1/D1/U1 stays open.
+
 ## Complete Source/Preview ownership contract — 7 October 2026
 
 Both client source panes now accept a complete VersionedDocContent and a matching

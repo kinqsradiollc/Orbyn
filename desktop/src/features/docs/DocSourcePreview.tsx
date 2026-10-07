@@ -70,6 +70,8 @@ export function DocSourcePreview({
   // Recognize every own block echo without retaining old document snapshots.
   const acceptedBlocks = useRef(new WeakSet<object>([owner]));
   const mustRestore = useRef(false);
+  // Retained browser/native input handlers must not rebase an older buffer
+  // onto ownership adopted from another editor.
   const sourceEpoch = useRef(0);
   const renderedEpoch = sourceEpoch.current;
   useEffect(() => {
