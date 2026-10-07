@@ -23,13 +23,19 @@ runInNewContext(
   {
     exports,
     React,
-    require: () => ({
-      CalendarCog: icon,
-      Plug: icon,
-      ShieldCheck: icon,
-      Tags: icon,
-      UserRound: icon,
-    }),
+    require: (name: string) =>
+      name === "../../components/Select"
+        ? {
+            Select: ({ children }: { children: React.ReactNode }) =>
+              React.createElement("div", null, children),
+          }
+        : {
+            CalendarCog: icon,
+            Plug: icon,
+            ShieldCheck: icon,
+            Tags: icon,
+            UserRound: icon,
+          },
   },
 );
 
@@ -46,10 +52,7 @@ test("settings categories render named buttons and only the active category is c
     );
     assert.match(html, /aria-label="Settings categories"/);
     assert.equal((html.match(/aria-current="page"/g) ?? []).length, 1);
-    assert.match(
-      html,
-      new RegExp(`id="settings-category-${selected}" aria-current="page"`),
-    );
+    assert.match(html, new RegExp(`id="settings-category-${selected}"`));
     assert.equal((html.match(/type="button"/g) ?? []).length, 5);
     assert.equal(
       (html.match(/aria-controls="settings-content"/g) ?? []).length,
@@ -64,7 +67,8 @@ test("each category action selects its own destination without changing settings
     selected: "account",
     onSelect: (id: string) => selected.push(id),
   });
-  for (const button of tree.props.children) button.props.onClick();
+  for (const button of tree.props.children[2].props.children)
+    button.props.onClick();
   assert.deepEqual(selected, [
     "account",
     "planning",
@@ -93,7 +97,7 @@ test("settings search still selects the tab and opens the matching section", () 
   assert.match(view, /aria-labelledby=\{"settings-category-" \+ tab\}/);
 });
 
-test("settings workspace constrains content and wraps category actions on narrow screens", () => {
+test("settings workspace constrains content and uses one compact picker on phone screens", () => {
   const css = readFileSync(
     new URL(
       "../../desktop/src/features/settings/settings.css",
@@ -105,8 +109,50 @@ test("settings workspace constrains content and wraps category actions on narrow
   assert.match(css, /\.settings-content \{\s*min-width: 0/);
   assert.match(
     css,
-    /\.settings-navigation \{\s*display: flex;\s*flex-wrap: wrap/,
+    /\.settings-navigation-wide \{\s*display: flex;\s*flex-wrap: wrap/,
   );
+  assert.match(
+    css,
+    /@media \(max-width: 600px\) \{\s*\.settings-navigation-wide \{\s*display: none/,
+  );
+  assert.match(
+    css,
+    /\.settings-navigation-compact \{\s*display: block;\s*min-width: 0/,
+  );
+});
+
+test("compact settings picker shares the guarded category action and rejects unknown destinations", () => {
+  const chosen: string[] = [];
+  const tree = exports.SettingsNavigation({
+    selected: "connections",
+    onSelect: (id: string) => chosen.push(id),
+  });
+  const picker = tree.props.children[1].props.children;
+  assert.equal(picker.props.value, "connections");
+  assert.equal(picker.props["aria-label"], "Settings category");
+  for (const id of [
+    "account",
+    "planning",
+    "tags",
+    "connections",
+    "privacy",
+    "unknown",
+  ]) {
+    picker.props.onChange({ target: { value: id } });
+  }
+  assert.deepEqual(chosen, [
+    "account",
+    "planning",
+    "tags",
+    "connections",
+    "privacy",
+  ]);
+  const html = renderToStaticMarkup(tree);
+  assert.equal(
+    (html.match(/id="settings-category-connections"/g) ?? []).length,
+    1,
+  );
+  assert.match(html, /id="settings-category-connections">Connections/);
 });
 
 function settingsFixture() {

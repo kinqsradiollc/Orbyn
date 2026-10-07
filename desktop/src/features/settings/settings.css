@@ -17,11 +17,14 @@
 .settings-sidebar .settings-search-field {
   padding-inline: 10px;
 }
-.settings-navigation {
+.settings-navigation-compact {
+  display: none;
+}
+.settings-navigation-wide {
   display: grid;
   gap: 4px;
 }
-.settings-navigation button {
+.settings-category-button {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -34,17 +37,17 @@
   font-size: 13px;
   text-align: left;
 }
-.settings-navigation button svg {
+.settings-category-button svg {
   flex: none;
 }
-.settings-navigation button span {
+.settings-category-button span {
   overflow-wrap: anywhere;
 }
-.settings-navigation button:hover {
+.settings-category-button:hover {
   background: var(--color-hover);
   color: var(--color-text);
 }
-.settings-navigation button[aria-current="page"] {
+.settings-category-button[aria-current="page"] {
   background: var(--color-selected);
   color: var(--color-accentText);
   font-weight: 500;
@@ -61,13 +64,25 @@
     grid-template-columns: minmax(0, 1fr);
     gap: 16px;
   }
-  .settings-navigation {
+  .settings-navigation-wide {
     display: flex;
     flex-wrap: wrap;
     gap: 4px;
   }
   .settings-sidebar .settings-search {
     max-width: none;
+  }
+}
+@media (max-width: 600px) {
+  .settings-navigation-wide {
+    display: none;
+  }
+  .settings-navigation-compact {
+    display: block;
+    min-width: 0;
+  }
+  .settings-navigation-compact .select {
+    width: 100%;
   }
 }
 .settings-card h2 {

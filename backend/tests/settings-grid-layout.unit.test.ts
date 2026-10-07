@@ -8,7 +8,13 @@ const cssUrl = new URL(
 );
 
 /** Evaluate the relevant class rules in source order, including media nesting. */
-function gridColumns(css: string, width: number, pairs = false) {
+function gridColumns(
+  css: string,
+  width: number,
+  pairs = false,
+  property = "grid-template-columns",
+  className = "",
+) {
   let result = "";
   let specificity = -1;
   function visit(source: string, enabled: boolean) {
@@ -31,11 +37,16 @@ function gridColumns(css: string, width: number, pairs = false) {
         continue;
       }
       if (!enabled) continue;
-      const value = /grid-template-columns:\s*([^;]+);/.exec(body)?.[1].trim();
+      const value = new RegExp(property + ":\\s*([^;]+);")
+        .exec(body)?.[1]
+        .trim();
       if (!value) continue;
       for (const part of selector.split(",").map((item) => item.trim())) {
-        const score =
-          part === ".settings-grid"
+        const score = className
+          ? part === "." + className
+            ? 1
+            : -1
+          : part === ".settings-grid"
             ? 1
             : pairs && part === ".settings-grid.settings-pairs"
               ? 2
@@ -80,4 +91,29 @@ test("settings field and secret surfaces use existing theme tokens", async () =>
   for (const token of ["surface", "surfaceMuted", "text", "border", "muted"]) {
     assert.ok(css.includes(`var(--color-${token})`));
   }
+});
+
+test("phone settings expose exactly one navigation control through the final CSS cascade", async () => {
+  const css = await readFile(cssUrl, "utf8");
+  const display = (width: number, name: string, source = css) =>
+    gridColumns(source, width, false, "display", name);
+  for (const width of [320, 390, 560, 600]) {
+    assert.equal(display(width, "settings-navigation-wide"), "none");
+    assert.equal(display(width, "settings-navigation-compact"), "block");
+  }
+  for (const width of [601, 900]) {
+    assert.equal(display(width, "settings-navigation-wide"), "flex");
+    assert.equal(display(width, "settings-navigation-compact"), "none");
+  }
+  assert.equal(display(1280, "settings-navigation-wide"), "grid");
+  assert.equal(display(1280, "settings-navigation-compact"), "none");
+  assert.equal(
+    display(
+      320,
+      "settings-navigation-wide",
+      css + "\n.settings-navigation-wide { display: grid; }",
+    ),
+    "grid",
+    "the evaluator must detect later regressions rather than merely finding the media rule",
+  );
 });
