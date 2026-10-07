@@ -1,3 +1,21 @@
+## Complete editor save-session state — 7 October 2026
+
+A shared immutable editor session now keeps the full saved baseline separate
+from the current owned draft. Explicit rich-leaf commands and Source edits check
+the exact draft; serialized save tickets detach complete content at dispatch.
+Receipts require the same page, one revision advance and the sent content format.
+Newer typing/titles survive an in-flight save; server checklist ticks merge against
+the sent tree. Remote disjoint leaf changes merge within unchanged owners;
+overlapping ownership/title changes refuse while retaining the complete draft.
+Wrong-page, old, duplicate, conflicting same-revision and flattened receipts
+cannot silently replace the editor state.
+
+The session/operation/versioned-source cohort passes36/36, zero failures/skips
+(457ms), and shared package builds pass. This is a candidate foundation, not normal
+widget activation or runtime acceptance: desktop and mobile editor loaders,
+serialized callbacks, task services and structural commands still require wiring.
+The previously recorded full3939 run does not cover this new session module.
+
 ## Page task creation authority — 7 October 2026
 
 The task-creation entry point now requires write permission before inspecting

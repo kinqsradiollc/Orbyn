@@ -23,6 +23,7 @@ export * from "./docs.js";
 export * from "./doc-containers.js";
 export * from "./doc-content-format.js";
 export * from "./doc-editor-contract.js";
+export * from "./doc-editor-session.js";
 export * from "./doc-crdt.js";
 export * from "./doc-editing.js";
 export * from "./paste.js";
