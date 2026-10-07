@@ -291,3 +291,87 @@ test("compatible catalogs do not inherit Anthropic cursor semantics", async () =
     },
   );
 });
+
+test("Together accepts its native array catalog with stable IDs and no metadata leakage", async () => {
+  await withCatalog(
+    [
+      { id: "b", type: "chat", display_name: "Display" },
+      { id: "a", type: "embedding" },
+      { id: "b" },
+    ],
+    async () =>
+      assert.deepEqual(await listModels({ ...connection, kind: "together" }), [
+        "a",
+        "b",
+      ]),
+  );
+  await withCatalog([], async () =>
+    assert.deepEqual(await listModels({ ...connection, kind: "together" }), []),
+  );
+});
+
+for (const entry of [
+  null,
+  [],
+  "a",
+  {},
+  { name: "a" },
+  { id: 42 },
+  { id: "" },
+  { id: "a\n" },
+  { id: "x".repeat(513) },
+]) {
+  test(`Together rejects malformed array record ${JSON.stringify(entry).slice(0, 60)}`, async () => {
+    await withCatalog([{ id: "valid-first" }, entry], async () => {
+      await assert.rejects(
+        listModels({ ...connection, kind: "together" }),
+        (error: unknown) =>
+          error instanceof ProviderError && error.reason === "invalid_catalog",
+      );
+    });
+  });
+}
+
+test("Together catalog preserves object/error contracts and bounded records", async () => {
+  await withCatalog({ data: [{ id: "a" }] }, async () =>
+    assert.deepEqual(await listModels({ ...connection, kind: "together" }), [
+      "a",
+    ]),
+  );
+  await withCatalog({ error: { message: connection.apiKey } }, async () => {
+    await assert.rejects(
+      listModels({ ...connection, kind: "together" }),
+      (error: unknown) => {
+        assert.ok(error instanceof ProviderError);
+        assert.equal(error.reason, "error_envelope");
+        assert.ok(!error.message.includes(connection.apiKey));
+        return true;
+      },
+    );
+  });
+  await withCatalog(
+    Array.from({ length: 100_001 }, () => ({ id: "a" })),
+    async () => {
+      await assert.rejects(
+        listModels({ ...connection, kind: "together" }),
+        (error: unknown) =>
+          error instanceof ProviderError && error.reason === "invalid_catalog",
+      );
+    },
+  );
+});
+
+test("array normalization is specific to Together's compatible protocol", async () => {
+  await withCatalog([{ id: "a" }], async () => {
+    for (const ai of [
+      connection,
+      { ...connection, kind: "openai" },
+      { ...connection, kind: "together", format: "anthropic" as const },
+    ])
+      await assert.rejects(
+        listModels(ai),
+        (error: unknown) =>
+          error instanceof ProviderError && error.reason === "invalid_catalog",
+      );
+  });
+});

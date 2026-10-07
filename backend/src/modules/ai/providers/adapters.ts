@@ -139,7 +139,7 @@ export const attemptMsFor = (ai: Pick<ResolvedAi, "local" | "baseUrl">) =>
   ai.local || isPrivateUrl(ai.baseUrl) ? 300_000 : 60_000;
 
 export type Connection = Pick<ResolvedAi, "format" | "apiKey" | "baseUrl"> &
-  Partial<Pick<ResolvedAi, "local" | "defaultApiKey">>;
+  Partial<Pick<ResolvedAi, "kind" | "local" | "defaultApiKey">>;
 
 export function headers(ai: Connection): Record<string, string> {
   // Anthropic's native API and Azure use their own key headers.
@@ -489,7 +489,13 @@ export async function listModels(ai: Connection): Promise<string[]> {
       signal,
       ai.apiKey,
     );
-    const body = await json<unknown>(response);
+    const raw = await json<unknown>(response);
+    // Together's native catalog is an array of model records. Normalize only
+    // its compatible protocol; all records still use the common validation.
+    const body =
+      ai.kind === "together" && ai.format === "openai" && Array.isArray(raw)
+        ? { data: raw }
+        : raw;
     if (!body || typeof body !== "object" || Array.isArray(body))
       throw invalid();
     throwIfErrorEnvelope(body, ai.apiKey);

@@ -163,10 +163,12 @@ for (const kind of expectedKinds) {
         });
         return Response.json(
           url.pathname.endsWith("/models")
-            ? {
-                data: [{ id: "fixture-model" }],
-                ...(kind === "anthropic" ? { has_more: false } : {}),
-              }
+            ? kind === "together"
+              ? [{ id: "fixture-model", type: "chat" }]
+              : {
+                  data: [{ id: "fixture-model" }],
+                  ...(kind === "anthropic" ? { has_more: false } : {}),
+                }
             : { data: [{ index: 0, embedding: [1, 0, 0] }] },
         );
       },

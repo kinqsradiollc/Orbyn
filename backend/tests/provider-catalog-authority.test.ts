@@ -16,6 +16,7 @@ let held: ServerResponse | undefined;
 let arrived: (() => void) | undefined;
 let calls = 0;
 let paginated = false;
+let catalogReply: unknown;
 const server = createServer((req, res) => {
   calls++;
   if (paginated && !req.url?.includes("after_id=")) {
@@ -32,7 +33,9 @@ const server = createServer((req, res) => {
   const reply = () => {
     if (res.writableEnded) return;
     res.writeHead(200, { "Content-Type": "application/json" });
-    res.end(JSON.stringify({ data: [{ id: `${req.url}-model` }] }));
+    res.end(
+      JSON.stringify(catalogReply ?? { data: [{ id: `${req.url}-model` }] }),
+    );
   };
   if (hold) {
     held = res;
@@ -63,7 +66,7 @@ function call(
 }
 async function create(
   name = "Catalog fixture",
-  kind: "openai" | "anthropic" = "openai",
+  kind: "openai" | "anthropic" | "together" = "openai",
 ) {
   const response = await call("POST", "/ai/providers", {
     kind,
@@ -293,4 +296,74 @@ test("paginated Anthropic catalog retains authority checks through the last page
   assert.equal(result.statusCode, 409, result.body);
   assert.ok(!result.body.includes("first-model"));
   assert.ok(!result.body.includes("obsolete-last-model"));
+});
+
+test("saved Together connection decodes its array catalog without changing configuration", async () => {
+  const p = await create("Together catalog", "together");
+  catalogReply = [
+    { id: "b", type: "chat" },
+    { id: "a", type: "embedding" },
+    { id: "b" },
+  ];
+  try {
+    const before = calls;
+    const result = await call("POST", `/ai/providers/${p.id}/models`, {
+      expected_revision: p.controls_revision,
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    assert.deepEqual(result.json().models, ["a", "b"]);
+    assert.equal(result.json().provider_revision, p.controls_revision);
+    assert.equal(calls - before, 1);
+    const saved = (
+      await pool.query(
+        "SELECT kind,base_url,generation_revision::text FROM ai_providers WHERE id=$1",
+        [p.id],
+      )
+    ).rows[0];
+    assert.equal(saved.kind, "together");
+    assert.equal(saved.base_url, `${base}/original`);
+    assert.equal(saved.generation_revision, p.controls_revision);
+    catalogReply = [{ id: "partial" }, { id: 42 }];
+    const invalid = await call("POST", `/ai/providers/${p.id}/models`, {});
+    assert.equal(invalid.statusCode, 502, invalid.body);
+    assert.ok(!invalid.body.includes("partial"));
+  } finally {
+    catalogReply = undefined;
+  }
+});
+
+test("saved Together array catalog is rejected if its connection changes in flight", async () => {
+  const p = await create("Together authority", "together");
+  hold = true;
+  const received = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  const pending = call("POST", `/ai/providers/${p.id}/models`, {
+    expected_revision: p.controls_revision,
+  });
+  try {
+    await Promise.race([
+      received,
+      new Promise((_resolve, reject) =>
+        setTimeout(
+          () => reject(new Error("Together fixture not called")),
+          5000,
+        ).unref(),
+      ),
+    ]);
+    assert.equal(
+      (await call("PUT", `/ai/providers/${p.id}`, { enabled: false }))
+        .statusCode,
+      200,
+    );
+  } finally {
+    hold = false;
+    arrived = undefined;
+    held?.writeHead(200, { "Content-Type": "application/json" });
+    held?.end(JSON.stringify([{ id: "obsolete-together-model" }]));
+    held = undefined;
+  }
+  const result = await pending;
+  assert.equal(result.statusCode, 409, result.body);
+  assert.ok(!result.body.includes("obsolete-together-model"));
 });
