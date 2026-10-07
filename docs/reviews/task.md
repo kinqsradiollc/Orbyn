@@ -1,3 +1,16 @@
+## Full regression result and corrected candidate — 7 October 2026
+
+The frozen candidate e6ae3511 full run terminated with3933 tests:3932 passed,
+1 failed,0 skipped (895654ms). Its only failure was the stale generated MCP
+catalog after the new credential-route classification. The catalog/directory/
+route inventory correction passes21/21 independently. The ownership-preserving
+leaf-edit checkpoint passes24/24 plus shared package builds/backend types.
+Both checkpoints are now fast-forwarded into the primary integration candidate
+at08462c19 without conflicts. A fresh full run of that corrected application
+checkpoint is required; this previous run remains failed and its evidence is
+not relabelled. Main remains64e905f5; native/browser acceptance and the full
+C1-C6/M1/D1/U1 scope remain unfinished.
+
 ## Browser preview requirement and catalog reconciliation — 7 October 2026
 
 UI acceptance now explicitly requires the web/desktop browser preview and the
