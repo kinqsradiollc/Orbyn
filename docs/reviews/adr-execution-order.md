@@ -12,11 +12,16 @@ then commit and integrate a production-ready scope into main. Do not describe
 candidate-only or unverified behavior as shipped. A failing or incomplete gate
 keeps that checkpoint open. External gates remain explicit and do not erase scope.
 
-Orbyn Visual Check owns browser review. Its authoritative findings file is:
-`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/review-tracking.md`.
-Request one checkpoint at a time. Findings, steps, screenshots and untested limits
-go in that Markdown file; messages contain only a short file-path handoff or a
-blocking finding. This session owns implementation, qualification and integration.
+Orbyn Visual Check captures screenshots only. Request one checkpoint at a time,
+with the page, UI state, viewport and theme to capture. Its Markdown handoff lists
+image paths, URLs, viewport sizes, themes and actions needed to reach each state;
+messages contain a short file-path handoff or a capture blocker. Do not ask that
+session to analyze layouts, compare designs or write findings.
+
+This session inspects the saved images, diagnoses issues and records findings in
+the checkpoint ledger. It owns implementation, qualification and integration.
+Existing visual reports remain historical evidence. The current capture manifest
+is `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/review-tracking.md`.
 
 ## Canonical top-down delivery queue
 

@@ -80,7 +80,8 @@ The preview API crashed with ENOSPC and Docker stopped. Only our disposable PG
 was restarted; tmpfs erased preview fixtures/sessions. Preview DB/migrations/admin
 were recreated with the same protected credentials. Combined API session20199
 returns health200; Vite5174 session71601 and Expo8083 session58254 remain owned
-previews. Independent Orbyn Visual Check owns browser screenshots and reports.
+previews. Orbyn Visual Check captures browser screenshots and a concise path/state manifest;
+this session inspects the images and records findings.
 QA003/004/007 are accepted for inspected default-name/layout/navigation states;
 long custom names remain untested. QA006 task management and redundant dismissal
 controls are the next UI repair. QA005 method-aware capture shows OPTIONS+GET,

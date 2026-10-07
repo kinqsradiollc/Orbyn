@@ -36,7 +36,8 @@ C4/D1, C5, C6, then final U1 acceptance and cleanup. Main37dc1259 records this
 order. C1 contract/provider qualification is active; normal Docs activation is
 queued under C4. Retain its existing foundation and audit, but do not implement
 out of order. QA-006 is a completed scoped checkpoint, not a closed ADR stage.
-Use adr-execution-order.md for exact stage exit conditions and reviewer report.
+Use adr-execution-order.md for exact stage exit conditions and the capture-only
+visual handoff. This session inspects screenshots and records findings.
 
 ## Historical stage transition — 7 October 2026
 
@@ -71,7 +72,8 @@ Follow [ADR execution order](adr-execution-order.md), completing one checkpoint
 before starting another. Active checkpoint is QA-006 task-panel controls. Its
 corrected focused suite passes 5/5; web visual review passed and refreshed mobile
 review is assigned to Orbyn Visual Check. Expo8083 restarted as session28773.
-The reviewer writes findings to its Markdown report and sends short handoffs only.
+For future checks, that session captures screenshots and sends a concise manifest;
+this session performs the inspection and records findings.
 Next is normal Docs editor ownership activation, then the complete D1 matrix.
 No whole-ADR completion or production deployment is claimed.
 
@@ -90,7 +92,8 @@ The preview API crashed with ENOSPC and Docker stopped. Only our disposable PG
 was restarted; tmpfs erased preview fixtures/sessions. Preview DB/migrations/admin
 were recreated with the same protected credentials. Combined API session20199
 returns health200; Vite5174 session71601 and Expo8083 session58254 remain owned
-previews. Independent Orbyn Visual Check owns browser screenshots and reports.
+previews. Orbyn Visual Check captures browser screenshots and a concise path/state manifest;
+this session inspects the images and records findings.
 QA003/004/007 are accepted for inspected default-name/layout/navigation states;
 long custom names remain untested. QA006 task management and redundant dismissal
 controls are the next UI repair. QA005 method-aware capture shows OPTIONS+GET,
