@@ -43,14 +43,13 @@ dependency, production incident or user priority, documenting the reason first.
 - Frozen candidate `400ee67e`: 3,939 tests passed, zero failures/skips.
 - Newer candidate `5523afe1`: full run finished with 3,969 passes, zero
   failures/skips, terminal exit zero (783008ms). Log:
-  `/tmp/orbyn-adr-full-5523afe1-20261007.log`. It excludes uncommitted QA-006.
+  `/tmp/orbyn-adr-full-5523afe1-20261007.log`. It predates QA-006, subsequently committed to main3844b5c8.
 - QA-006's initial two failures were test-harness extraction failures: JSX was
   wrapped in a parenthesized expression. The corrected harness executes the same
   product guards/callbacks; all five cases pass in the ownership worktree.
 - Browser QA then exposed the existing native Alert web no-op. Task cancellation
   now uses Orbyn's cross-platform confirmation helper. Expanded checkpoint checks
-  pass 26/26 on the candidate and main working tree; refreshed browser recheck is
-  pending. Mobile typecheck passes. Promoted as main3844b5c8 after the recorded recheck.
+  pass 26/26 on the candidate and main working tree; refreshed browser recheck passed. Mobile typecheck passes. Promoted as main3844b5c8 after the recorded recheck.
 - Browser review is not installed OAuth/keystore/native keyboard acceptance.
 - Voice, computer-use product features and the speculative Decisions adapter
   remain excluded. MCP grants remain separate from ChatGPT provider credentials.

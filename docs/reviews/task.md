@@ -1,3 +1,17 @@
+## Stage 1 complete; stage 2 active — 7 October 2026
+
+Main/origin/main3844b5c8 contains the task-panel product checkpoint; main1aaa2d1e
+records the ordered stage transition. Candidate includes both without conflicts.
+Focused checks pass26/26 on candidate and main; types/build/format pass as scoped.
+QA-006 browser review accepts web390/1280 and mobile390/320. App-owned mobile-web
+confirmation keeps full consequences visible; Keep task preserves To do/0% after
+reload. Native alerts remain native; installed native confirmation is unverified.
+The reviewer Markdown report is authoritative for exact screenshots and limits.
+Next active stage is normal Docs editor ownership activation. Do not begin other
+product scopes until its exit conditions pass or a documented dependency requires
+ordering a prerequisite. Full frozen5523afe1 regression passes3969/3969; later
+task-panel changes have their own focused/browser evidence.
+
 ## Task-panel qualification and full regression — 7 October 2026
 
 Frozen candidate5523afe1 full run is terminal green:3969 passes, zero failures/

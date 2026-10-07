@@ -21,6 +21,16 @@ status index; [ordered execution queue](adr-execution-order.md),
 
 ## Current evidence
 
+## Current stage — normal Docs editor activation
+
+Task checkpoint is on main3844b5c8, followed by ordered-plan main1aaa2d1e.
+Both are integrated into candidate without conflicts. Task/Home/navigation
+cohort26/26 passes on both; browser review accepts safe Keep task dismissal and
+confirmation containment at mobile390/320. The full frozen5523afe1 run passes
+3969/3969; it excludes the later task patch. Stage1 is closed for its scoped
+browser repair. Stage2 normal Docs editor ownership is active; full D1/U1 and
+native/provider/channel/host acceptance remain open.
+
 ## Latest qualification — 7 October 2026
 
 Frozen candidate5523afe1 full regression passed3969/3969, zero failures/skips,
