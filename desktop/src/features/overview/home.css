@@ -315,6 +315,7 @@
   margin: 8px 8px 0;
 }
 .home-companions-card {
+  container-type: inline-size;
   min-width: 0;
   padding: 20px;
   margin-bottom: 24px;
@@ -385,8 +386,8 @@
 }
 .home-companions-lanes article {
   display: grid;
-  grid-template-columns: minmax(90px, 120px) minmax(0, 1fr);
-  align-items: baseline;
+  grid-template-columns: minmax(160px, 200px) minmax(0, 1fr);
+  align-items: center;
   gap: 6px 16px;
   min-width: 0;
 }
@@ -450,9 +451,15 @@
   min-width: 0;
 }
 .home-agent-identity strong {
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 .home-agent-identity small {
   color: var(--color-muted);
   font-size: 11px;
+}
+
+@container (max-width: 420px) {
+  .home-companions-lanes article {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

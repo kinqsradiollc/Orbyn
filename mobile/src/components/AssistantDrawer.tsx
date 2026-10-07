@@ -305,7 +305,7 @@ export function AssistantDrawer({
             {onSettings && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`${agentName} settings`}
+                accessibilityLabel="Settings"
                 onPress={onSettings}
                 style={({ pressed }) => [
                   s.round,

@@ -183,6 +183,24 @@ function guideAction(node: React.ReactNode): (() => void) | undefined {
 }
 for (const mobile of [false, true]) {
   const platform = mobile ? "native" : "web";
+  test(`${platform} Home omits duplicate default roles and retains custom identity roles`, async () => {
+    const view = fixture(mobile);
+    const defaultTree = renderToStaticMarkup(view.first);
+    // The fixture Character renders its accessible name once; the visible
+    // heading adds one more. There must not be a third identical role subtitle.
+    assert.equal((defaultTree.match(/Background/g) ?? []).length, 2);
+    assert.equal((defaultTree.match(/Overnight/g) ?? []).length, 2);
+    await view.resolve({ name: "Background" });
+    assert.equal(
+      (renderToStaticMarkup(view.render()).match(/Background/g) ?? []).length,
+      2,
+    );
+    view.update({ name: "Garden" });
+    const customized = renderToStaticMarkup(view.render());
+    assert.equal((customized.match(/Garden/g) ?? []).length, 2);
+    assert.equal((customized.match(/Background/g) ?? []).length, 1);
+    view.cleanup();
+  });
   test(`${platform} Home describes results and morning review without fabricated activity`, () => {
     const view = fixture(mobile);
     const compact = renderToStaticMarkup(view.first);

@@ -120,7 +120,11 @@ export function HomeCompanions({
                       agent.name === "Background" ? "background" : "overnight"
                     ]?.name ?? agent.name}
                   </strong>
-                  <small>{agent.name}</small>
+                  {(identities[
+                    agent.name === "Background" ? "background" : "overnight"
+                  ]?.name ?? agent.name) !== agent.name && (
+                    <small>{agent.name}</small>
+                  )}
                 </div>
               </div>
               <p>{agent.brief}</p>
