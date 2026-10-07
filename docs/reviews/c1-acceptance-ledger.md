@@ -681,6 +681,14 @@ multi-provider matrix and C2/M1-C6/D1/U1 remain required; no final cleanup.
 
 ## Generation-control/embedding revision correction
 
+Main-based freeze66f7a5f2 independently passes29/29 focused checks on a fresh
+marked database and backend typecheck. Full regression is running as session88045;
+log `/tmp/orbyn-adr-full-main-66f7a5f2-20261007.log`. Earlier3722/3722 results
+predate this correction; no new terminal full pass or main promotion claimed.
+Preview255→256 upgrade and a repeated migration preserve all three provider
+embedding/generation revision pairs. Log:
+`/tmp/orbyn-c1-256-preview-upgrade-20261007.log`. No provider network calls.
+
 Source audit found migration218 bumps embedding_revision on every provider UPDATE.
 Reproduction changed only high reasoning/explicit caching and invalidated the prior
 embedding binding (revision6 to7). New regression failed6/7 before the fix; log

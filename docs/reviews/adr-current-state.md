@@ -19,6 +19,15 @@ User deploys main manually; deployment is unconfirmed. No entire ADR stage is cl
 
 ## Current follow-up — embedding consent preservation
 
+Release freeze66f7a5f2 passes29/29 focused checks on a fresh marked database,
+zero failures/skips, and backend typecheck. Exact-main full regression is now
+running as session88045 on `orbyn_full_main_66f7a5f2_test`; log
+`/tmp/orbyn-adr-full-main-66f7a5f2-20261007.log`. No terminal result claimed.
+Local preview upgrades255→256 and repeats successfully without changing any of
+the three providers' embedding/generation revisions. No external requests made.
+Evidence: `/tmp/orbyn-c1-256-preview-upgrade-20261007.log` and
+`/tmp/orbyn-main-c1-66f7a5f2-focused-20261007.log`.
+
 The controls audit reproduced generation-only edits invalidating embedding consent
 because migration218 increments its provider revision on every update. Migration256
 and regression correct that boundary without reviving previously invalidated
