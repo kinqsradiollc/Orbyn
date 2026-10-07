@@ -84,6 +84,8 @@ export function ActionSheet({
   title,
   actions,
   onClose,
+  cancelLabel = "Cancel",
+  message,
 }: {
   visible: boolean;
   /** What the menu is for, read out to screen readers. */
@@ -92,6 +94,10 @@ export function ActionSheet({
   title?: string;
   actions: MoreAction[];
   onClose: () => void;
+  /** A clearer dismissal verb for confirmation sheets, e.g. Keep task. */
+  cancelLabel?: string;
+  /** Full explanation for a confirmation, wrapped within the scrolling sheet. */
+  message?: string;
 }) {
   const insets = useSafeAreaInsets();
   const chosen = useRef<(() => void) | null>(null);
@@ -140,6 +146,7 @@ export function ActionSheet({
             )}
           </View>
           <ScrollView style={s.actionList} keyboardShouldPersistTaps="handled">
+            {!!message && <Text style={s.message}>{message}</Text>}
             {shown.map((a) => (
               <Pressable
                 key={a.label}
@@ -186,7 +193,7 @@ export function ActionSheet({
               pressed && { backgroundColor: colors.surfaceMuted },
             ]}
           >
-            <Text style={[s.itemText, s.cancel]}>Cancel</Text>
+            <Text style={[s.itemText, s.cancel]}>{cancelLabel}</Text>
           </Pressable>
         </Animated.View>
       </View>
@@ -241,6 +248,13 @@ const s = themed(() =>
       color: colors.muted,
     },
     actionList: { flexShrink: 1, minHeight: 0 },
+    message: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      fontFamily: fonts.regular,
+      fontSize: 14,
+      color: colors.textSoft,
+    },
     // Rows share a minimum height; long labels wrap with room on every side.
     item: {
       minHeight: controls.tap + 8,

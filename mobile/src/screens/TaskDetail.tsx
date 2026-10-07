@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   Animated,
   Linking,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -48,6 +48,7 @@ import { SessionsPanel } from "../components/SessionsPanel";
 import { HeaderButton, Sheet, sheetStyles } from "../components/Sheet";
 import { ActionSheet } from "../components/MoreMenu";
 import { copyLink, shareLink } from "../lib/share";
+import { confirmAction } from "../lib/confirm";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
@@ -91,6 +92,12 @@ const NOTE_LINE = 21;
 const STATUS_CHOICES: Status[] = [...statusOrder, "cancelled"];
 /** A task, its subtasks and theirs: the server's limit. */
 const MAX_LEVELS = 3;
+
+type CancelAction = {
+  id: string;
+  disabled: boolean;
+  onPress: () => void;
+};
 
 const PRIORITY = themed<
   Record<Priority, { bg: string; fg: string; label: string }>
@@ -165,6 +172,9 @@ export function TaskDetail({
 }) {
   /** The ⋯ in the header: sharing the task's link. */
   const [menu, setMenu] = useState(false);
+  const [cancelAction, setCancelAction] = useState<CancelAction | null>(null);
+  const currentCancelAction = useRef(cancelAction);
+  currentCancelAction.current = cancelAction;
   /** Whether this task is starred (NAV-07), read when its menu opens. */
   const [starred, setStarred] = useState(false);
   useEffect(() => {
@@ -213,6 +223,7 @@ export function TaskDetail({
           onOpenProject={onOpenProject}
           onAskTask={onAskTask}
           onOpenPage={onOpenPage}
+          onCancelReady={setCancelAction}
         />
       )}
       <CelebrationHost />
@@ -246,6 +257,21 @@ export function TaskDetail({
                 );
               },
             },
+            ...(cancelAction?.id === item.id
+              ? [
+                  {
+                    label: "Cancel task",
+                    icon: "x" as const,
+                    destructive: true,
+                    disabled: cancelAction.disabled,
+                    onPress: () => {
+                      const latest = currentCancelAction.current;
+                      if (latest?.id === item.id && !latest.disabled)
+                        latest.onPress();
+                    },
+                  },
+                ]
+              : []),
           ]}
           onClose={() => setMenu(false)}
         />
@@ -326,6 +352,7 @@ function Body({
   onOpenProject,
   onAskTask,
   onOpenPage,
+  onCancelReady,
 }: {
   seed: Item;
   items: Item[];
@@ -340,6 +367,7 @@ function Body({
   onOpenProject?: (id: string) => void;
   onAskTask?: (item: Item) => void;
   onOpenPage?: (id: string, blockId?: string | null) => void;
+  onCancelReady: (action: CancelAction | null) => void;
 }) {
   const [newSubtask, setNewSubtask] = useState("");
   /** The task above, when it isn't among the loaded items. */
@@ -348,6 +376,7 @@ function Body({
   const [context, setContext] = useState<ItemContext | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
   const [newStep, setNewStep] = useState("");
   const [note, setNote] = useState("");
   const [noteStatus, setNoteStatus] = useState<Status | null>(null);
@@ -543,21 +572,41 @@ function Body({
       setBusy(false);
     }
   };
-  const cancelTask = () =>
-    Alert.alert(
+  const cancelTask = () => {
+    if (Platform.OS === "web") {
+      setCancelConfirmId(item.id);
+      return;
+    }
+    confirmAction(
       "Cancel this task?",
       subtasks.length
         ? "It leaves your plans and its sessions are removed. Its subtasks stay as they are. You can reopen it later."
         : "It leaves your plans and its sessions are removed. You can reopen it later.",
-      [
-        { text: "Keep it", style: "cancel" },
-        {
-          text: "Cancel task",
-          style: "destructive",
-          onPress: () => setStatus("cancelled"),
-        },
-      ],
+      "Cancel task",
+      () => setStatus("cancelled"),
     );
+  };
+  const cancelTaskRef = useRef(cancelTask);
+  cancelTaskRef.current = cancelTask;
+  const canCancel = item.kind === "task" && !readOnly && !isClosed(item.status);
+  const confirmCancellation = useRef(() => {});
+  confirmCancellation.current = () => {
+    if (cancelConfirmId === item.id && canCancel && !busy)
+      setStatus("cancelled");
+    setCancelConfirmId(null);
+  };
+  useEffect(() => {
+    onCancelReady(
+      canCancel
+        ? {
+            id: item.id,
+            disabled: busy,
+            onPress: () => cancelTaskRef.current(),
+          }
+        : null,
+    );
+    return () => onCancelReady(null);
+  }, [item.id, canCancel, busy, onCancelReady]);
 
   /**
    * Run a change; the server answers with the fresh detail. Offline, a
@@ -1310,15 +1359,6 @@ function Body({
                 onPress={() => onOpenNote(item, true)}
               />
             )}
-          {item.kind === "task" && !readOnly && !isClosed(item.status) && (
-            <Button
-              destructive
-              title="Cancel task"
-              icon="x"
-              disabled={busy}
-              onPress={cancelTask}
-            />
-          )}
         </View>
       </ScrollView>
       {/* Fixed under the scrolling detail, and above the keyboard. */}
@@ -1382,6 +1422,26 @@ function Body({
           </View>
         </View>
       )}
+      <ActionSheet
+        visible={cancelConfirmId === item.id && canCancel}
+        label="Cancel task confirmation"
+        title="Cancel this task?"
+        message={
+          subtasks.length
+            ? "It leaves your plans and its sessions are removed. Its subtasks stay as they are. You can reopen it later."
+            : "It leaves your plans and its sessions are removed. You can reopen it later."
+        }
+        cancelLabel="Keep task"
+        actions={[
+          {
+            label: "Cancel task",
+            destructive: true,
+            disabled: busy,
+            onPress: () => confirmCancellation.current(),
+          },
+        ]}
+        onClose={() => setCancelConfirmId(null)}
+      />
     </View>
   );
 }
