@@ -1802,3 +1802,22 @@ and repeated-migration case1/1:
 `/tmp/orbyn-c1-discovery-upgrade-20261008.log`.
 These are actual PostgreSQL/local HTTP fixtures. They neither qualify a vendor
 account nor close the recipient-redirect defect discovered afterward.
+
+## Frozen d498febd full regression — terminal result
+
+The fresh corrected stock suite finished4226/4227, one failure, zero skips or
+cancellations, exit1,809877.996125ms. The sole failure is the new
+`POST /ai/providers/:id/embedding-models` route missing from the capability
+inventory. It is an administrator-only action, matching the adjacent provider
+catalog/test routes; the proposed inventory correction excludes it as `admin`.
+The actual authorization/in-flight catalog tests pass independently. Log:
+`/tmp/orbyn-c1-discovery-corrected-full-20261008.log`.
+
+The earlier aborted source5466bc1c and this terminal d498febd result remain
+separate. Neither is a full pass. Both the missing inventory entry and the
+independently reproduced redirect defect must be corrected and requalified.
+The isolated redirect proposal passes16/16 after correcting a test predicate
+from nonexistent `code` to the real ProviderError `reason`; the original failed
+proposal-harness log is retained. The proposal has not yet changed product
+source. The sole concrete key-forwarding reproduction remains the inert
+Anthropic302 cross-origin sentinel receipt.

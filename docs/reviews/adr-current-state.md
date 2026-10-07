@@ -86,7 +86,9 @@ backend/web builds pass. Frozen full regression5466bc1c terminated early with ex
 summary;18 existing component-harness imports failed. Test-only correction
 15301fbd passes the expanded154/154 cohort; the isolated native-clock file passes
 10/10. Disk space recovered to1.7GiB. Corrected source d498febd now has a fresh
-full regression running on its own marked test database; no full pass or main
+full regression finished4226/4227, one missing administrator-route inventory
+classification (exit1), zero skips/cancellations. Its own marked test database
+and log are retained; no full pass or main
 feature delivery is claimed. Both previews now serve that
 candidate on the existing5174/8083 origins. Authenticated inert catalog loading
 returns250 candidates, matching revision, with semantic search stillOFF.
