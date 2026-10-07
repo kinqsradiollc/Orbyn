@@ -3734,3 +3734,21 @@ input[type="number"]::-webkit-outer-spin-button {
   display: block;
   overflow-wrap: anywhere;
 }
+
+/* Search belongs to the open picker, separate from its listbox options. */
+.select-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 4px;
+  background: var(--color-surface);
+}
+.select-search > input {
+  width: 100%;
+  min-width: 0;
+}
+.select-summary {
+  padding: 8px 9px;
+  color: var(--color-textSoft);
+  font-size: var(--control-fs);
+}

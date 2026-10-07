@@ -19,7 +19,7 @@ import { Field } from "../components/Field";
 import { Disclosure } from "../components/Disclosure";
 import { Icon } from "../components/Icon";
 import { Pill } from "../components/Pill";
-import { Segmented } from "../components/Segmented";
+import { ProviderPicker } from "../components/ProviderPicker";
 import { SmallAction } from "../components/SmallAction";
 import { MoreMenu } from "../components/MoreMenu";
 import { confirmAction } from "../lib/confirm";
@@ -31,11 +31,6 @@ import { shared } from "../styles";
 type Act = (fn: () => Promise<void>) => Promise<void>;
 type FormState = { mode: "new" } | { mode: "edit"; provider: AiProvider };
 
-const CLOUD_KINDS = AI_PROVIDER_KINDS.filter((k) => !AI_PROVIDERS[k].local);
-const LOCAL_KINDS = AI_PROVIDER_KINDS.filter((k) => AI_PROVIDERS[k].local);
-/** Kinds offered in the picker, plus `current` so a saved provider still shows. */
-const offered = (kinds: readonly AiProviderKind[], current: AiProviderKind) =>
-  kinds.filter((k) => AI_PROVIDERS[k].pickerVisible || k === current);
 const KIND_LABELS = Object.fromEntries(
   AI_PROVIDER_KINDS.map((k) => [k, AI_PROVIDERS[k].label]),
 ) as Record<AiProviderKind, string>;
@@ -652,28 +647,7 @@ function ProviderForm({
       {editing ? (
         <Text style={[shared.body, s.input]}>{def.label}</Text>
       ) : (
-        <>
-          <Text style={[shared.small, s.group]}>Cloud</Text>
-          <Segmented
-            wrap
-            accessibilityLabel="Cloud providers"
-            options={offered(CLOUD_KINDS, kind)}
-            labels={KIND_LABELS}
-            value={kind}
-            onChange={chooseKind}
-            disabled={busy}
-          />
-          <Text style={[shared.small, s.group, s.groupGap]}>Local</Text>
-          <Segmented
-            wrap
-            accessibilityLabel="Local providers"
-            options={offered(LOCAL_KINDS, kind)}
-            labels={KIND_LABELS}
-            value={kind}
-            onChange={chooseKind}
-            disabled={busy}
-          />
-        </>
+        <ProviderPicker value={kind} onChange={chooseKind} disabled={busy} />
       )}
       <Text style={[shared.small, s.hint]}>{def.hint}</Text>
 

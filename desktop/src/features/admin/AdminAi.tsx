@@ -429,6 +429,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                       <div className="ai-model">
                         {choices && choices.length > 0 && (
                           <Select
+                            searchable
                             aria-label={`Loaded models for ${p.name}`}
                             value={choices.includes(model) ? model : ""}
                             onChange={(e) =>
@@ -744,6 +745,8 @@ function ProviderForm({
         <label className="wide">
           Provider
           <Select
+            searchable
+            aria-label="Providers"
             value={kind}
             disabled={!!existing}
             onChange={(e) => changeKind(e.target.value as AiProviderKind)}

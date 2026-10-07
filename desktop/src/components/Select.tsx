@@ -1,3 +1,4 @@
+import { filterChoices } from "@orbyn/core";
 import { createPortal } from "react-dom";
 import {
   Children,
@@ -26,6 +27,8 @@ type Props = {
   /** `<option>` elements, exactly as a native select would take them. */
   children: ReactNode;
   disabled?: boolean;
+  /** Search large catalogs without changing the selected value. */
+  searchable?: boolean;
   required?: boolean;
   id?: string;
   name?: string;
@@ -85,6 +88,7 @@ export function Select({
   onChange,
   children,
   disabled,
+  searchable = false,
   required,
   id,
   name,
@@ -102,6 +106,25 @@ export function Select({
   const chosen = options.find((o) => o.value === current);
 
   const [open, setOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const filtered = searchable ? filterChoices(options, searchQuery) : options;
+  const visible = searchable ? filtered.slice(0, 100) : filtered;
+  if (
+    searchable &&
+    !searchQuery.trim() &&
+    chosen &&
+    !visible.includes(chosen)
+  ) {
+    if (visible.length >= 100) visible.pop();
+    visible.push(chosen);
+  }
+  useEffect(() => {
+    if (!open) setSearchQuery("");
+  }, [open]);
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
+
   const [active, setActive] = useState(0);
   const [above, setAbove] = useState(false);
   /** Where the list sits: it's drawn on top of the page (a portal), so a
@@ -120,7 +143,7 @@ export function Select({
   // Open at the current choice, so the arrows carry on from where you are.
   useEffect(() => {
     if (!open) return;
-    const at = options.findIndex((o) => o.value === current);
+    const at = visible.findIndex((o) => o.value === current);
     setActive(at < 0 ? 0 : at);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -132,16 +155,24 @@ export function Select({
       if (!wrap.current) return;
       const box = wrap.current.getBoundingClientRect();
       const height = list.current?.offsetHeight ?? 0;
+      const width = Math.min(
+        box.width,
+        480,
+        Math.max(0, window.innerWidth - 16),
+      );
       const up =
         box.bottom + height + 8 > window.innerHeight && box.top > height + 8;
       setAbove(up);
       setPlace({
-        left: Math.min(
-          box.left,
-          Math.max(8, window.innerWidth - 16 - box.width),
+        left: Math.max(8, Math.min(box.left, window.innerWidth - 8 - width)),
+        top: Math.max(
+          8,
+          Math.min(
+            up ? box.top - height - 4 : box.bottom + 4,
+            window.innerHeight - height - 8,
+          ),
         ),
-        top: up ? box.top - height - 4 : box.bottom + 4,
-        width: box.width,
+        width,
       });
     };
     measure();
@@ -154,7 +185,7 @@ export function Select({
       window.removeEventListener("scroll", measure, true);
       window.removeEventListener("resize", measure);
     };
-  }, [open]);
+  }, [open, searchQuery, visible.length]);
 
   useEffect(() => {
     if (!open) return;
@@ -175,7 +206,7 @@ export function Select({
   }, [open, active]);
 
   const choose = (option: Option) => {
-    if (option.disabled) return;
+    if (disabled || option.disabled) return;
     if (value === undefined) setOwn(option.value);
     onChange?.({ target: { value: option.value } });
     setOpen(false);
@@ -184,9 +215,9 @@ export function Select({
 
   const step = (by: number) => {
     let next = active;
-    for (let i = 0; i < options.length; i++) {
-      next = (next + by + options.length) % options.length;
-      if (!options[next].disabled) break;
+    for (let i = 0; i < visible.length; i++) {
+      next = (next + by + visible.length) % visible.length;
+      if (!visible[next].disabled) break;
     }
     setActive(next);
   };
@@ -198,7 +229,7 @@ export function Select({
       text: now - typed.current.at > 900 ? key : typed.current.text + key,
       at: now,
     };
-    const at = options.findIndex(
+    const at = (open ? visible : options).findIndex(
       (o) =>
         !o.disabled &&
         o.label.toLowerCase().startsWith(typed.current.text.toLowerCase()),
@@ -208,27 +239,33 @@ export function Select({
     else choose(options[at]);
   };
 
-  const onKey = (e: React.KeyboardEvent) => {
+  const onKey = (e: React.KeyboardEvent, editing = false) => {
+    if (disabled) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       if (!open) setOpen(true);
       else step(e.key === "ArrowDown" ? 1 : -1);
     } else if (e.key === "Home" || e.key === "End") {
-      if (!open) return;
+      if (!open || editing) return;
       e.preventDefault();
-      setActive(e.key === "Home" ? 0 : options.length - 1);
-    } else if (e.key === "Enter" || e.key === " ") {
+      const indexes = visible
+        .map((o, i) => (o.disabled ? -1 : i))
+        .filter((i) => i >= 0);
+      setActive((e.key === "Home" ? indexes[0] : indexes.at(-1)) ?? -1);
+    } else if (e.key === "Enter" || (e.key === " " && !editing)) {
       e.preventDefault();
-      if (open && options[active]) choose(options[active]);
+      if (open && visible[active]) choose(visible[active]);
       else setOpen(true);
     } else if (e.key === "Escape") {
       if (!open) return;
       e.preventDefault();
       e.stopPropagation();
       setOpen(false);
+      button.current?.focus();
     } else if (e.key === "Tab") {
+      if (editing) button.current?.focus();
       setOpen(false);
-    } else if (e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
+    } else if (!editing && e.key.length === 1 && !e.metaKey && !e.ctrlKey) {
       typeahead(e.key);
     }
   };
@@ -250,6 +287,9 @@ export function Select({
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
+        aria-activedescendant={
+          open && visible[active] ? `${listId}-option-${active}` : undefined
+        }
         aria-required={required}
         aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
@@ -267,10 +307,7 @@ export function Select({
         createPortal(
           <div
             ref={list}
-            id={listId}
             className={"select-list is-floating" + (above ? " is-above" : "")}
-            role="listbox"
-            aria-label={ariaLabel}
             tabIndex={-1}
             style={
               place
@@ -278,26 +315,65 @@ export function Select({
                 : { visibility: "hidden" }
             }
           >
-            {options.map((o, i) => (
-              <div
-                key={o.value + i}
-                role="option"
-                aria-selected={o.value === current}
-                aria-disabled={o.disabled}
-                data-active={i === active || undefined}
-                className={
-                  "select-option" +
-                  (i === active ? " is-active" : "") +
-                  (o.disabled ? " is-disabled" : "")
-                }
-                onMouseEnter={() => !o.disabled && setActive(i)}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => choose(o)}
-              >
-                <span>{o.label}</span>
-                {o.value === current && <Check size={14} aria-hidden="true" />}
+            {searchable && (
+              <div className="select-search">
+                <input
+                  autoFocus
+                  aria-label={`Search ${ariaLabel ?? title ?? "options"}`}
+                  placeholder="Search…"
+                  role="combobox"
+                  aria-expanded={true}
+                  aria-autocomplete="list"
+                  aria-controls={listId}
+                  aria-activedescendant={
+                    visible[active] ? `${listId}-option-${active}` : undefined
+                  }
+                  value={searchQuery}
+                  maxLength={256}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setActive(0);
+                  }}
+                  onKeyDown={(e) => onKey(e, true)}
+                />
               </div>
-            ))}
+            )}
+            <div id={listId} role="listbox" aria-label={ariaLabel}>
+              {visible.map((o, i) => (
+                <div
+                  key={o.value + i}
+                  id={`${listId}-option-${i}`}
+                  role="option"
+                  aria-selected={o.value === current}
+                  aria-disabled={o.disabled}
+                  data-active={i === active || undefined}
+                  className={
+                    "select-option" +
+                    (i === active ? " is-active" : "") +
+                    (o.disabled ? " is-disabled" : "")
+                  }
+                  onMouseEnter={() => !o.disabled && setActive(i)}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => choose(o)}
+                >
+                  <span>{o.label}</span>
+                  {o.value === current && (
+                    <Check size={14} aria-hidden="true" />
+                  )}
+                </div>
+              ))}
+            </div>
+            {searchable && !visible.length && (
+              <div className="select-summary" role="status">
+                No matches
+              </div>
+            )}
+            {searchable && filtered.length > visible.length && (
+              <div className="select-summary" role="status">
+                Showing {visible.length} of {filtered.length}. Search to narrow
+                the list.
+              </div>
+            )}
           </div>,
           document.body,
         )}
