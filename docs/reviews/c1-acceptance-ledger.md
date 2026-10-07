@@ -1000,3 +1000,29 @@ pushed to main as `43fa8f57` on8October2026. Root mobile/app.json SHA1 remains
 `dacd602172347441f2fd92f16d8772b3ba1ef7a8`; unrelated tracked/untracked changes
 are preserved. Production deployment is unconfirmed. Next active implementation
 checkpoint is persistent indexing failure/retry status within C1.
+
+## Indexing failure/retry checkpoint — qualification in progress, 8 October 2026
+
+Source freeze `d77c1b76` is committed on the qualification branch, not main.
+Migration257 adds bounded, sanitized per-page failure state independently of
+pgvector. Failed attempts back off from60seconds to a maximum1hour; other due
+pages continue. Success and failure acknowledgements both recheck the exact
+configuration/provider revision, document version, visibility and queue identity
+under the same transaction lock order. Admin and both clients expose the current
+failed-page count and earliest retry due; stale/off configurations hide those
+fields. Deployment must replace the measuring worker: older workers do not
+honour the new backoff.
+
+Final focused cohort:47/47, zero failures, skips or cancellations, exit0.
+Log: `/tmp/orbyn-c1-embedding-retry-final-shield-20261008.log`. This covers
+poison-page progress/recovery, exponential delay/cap, changed documents,
+configuration/provider/project/team fences, compiled-process restart persistence,
+repeated migration preservation, safe diagnostics, auth/permissions/parsing/rate
+limits and both rendered client status components. Shared/backend builds and
+desktop/mobile types passed independently.
+
+Fresh stock PostgreSQL full regression is running as session52257, log
+`/tmp/orbyn-c1-retry-full-20261008.log`; no terminal result claimed yet.
+Actual active/error browser visual acceptance and remaining migration rollout
+checks are still required before promotion. Prior consent qualification does not
+qualify this newer source. Full C1 and the full ADR remain incomplete.

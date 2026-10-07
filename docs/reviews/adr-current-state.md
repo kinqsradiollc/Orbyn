@@ -11,6 +11,7 @@ The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.
 The C1 catalog checkpoint is merged and pushed to main as `8ab6c822`; provider controls and manual-model preservation were inspected in web/mobile browser captures.
 The reviewed embedding-consent checkpoint is merged and pushed as `43fa8f57`.
+The next C1 indexing failure/retry checkpoint is committed locally as `d77c1b76`: focused47/47 pass; fresh full regression and active/error visual acceptance remain pending.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 
