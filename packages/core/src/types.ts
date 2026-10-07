@@ -629,6 +629,9 @@ export type AiModelList = {
   provider_revision?: string;
 };
 export type AiTestResult = {
+  /** Exact saved connection and model tested; older servers may omit them. */
+  provider_revision?: string;
+  model?: string;
   usage?: AiModelUsage;
   ok: boolean;
   latency_ms: number | null;

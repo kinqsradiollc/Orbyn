@@ -1111,9 +1111,9 @@ export const aiCatalogInput = z
   })
   .strict();
 
-export const aiTestInput = z
-  .object({ model: z.string().trim().max(200).optional() })
-  .strict();
+export const aiTestInput = aiCatalogInput.extend({
+  model: z.string().trim().max(200).optional(),
+});
 
 /** A checklist step on a task. */
 export const stepInput = z

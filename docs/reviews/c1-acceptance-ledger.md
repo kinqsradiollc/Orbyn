@@ -1,5 +1,32 @@
 # C1 acceptance ledger
 
+## Credential-test authority candidate — 8 October 2026
+
+An actual local HTTP fixture reproduced a saved provider changing while its
+credential test was in flight: the old response still reported a successful
+connection. Before correction0/1; after correction1/1. The protected test route
+now fences dispatch and accepted results to the saved generation, and binds both
+positive and negative receipts to that generation and model. Both clients reject
+stale/missing receipts and hide results when the model draft changes. An empty
+model or missing displayed generation disables testing. Legacy API calls remain
+accepted; new clients require the explicit receipt before displaying a result.
+
+Focused route/control cohort49/49 and client callback/render/API cohort27/27 pass,
+zero failures/skips/cancellations. Workspace typechecks and backend/web builds
+pass. Logs: `/tmp/orbyn-c1-credential-authority-cohort-20261008.log`,
+`/tmp/orbyn-c1-probe-client-cohort-20261008.log`,
+`/tmp/orbyn-c1-credential-types-20261008.log`,
+`/tmp/orbyn-c1-credential-backend-build-20261008.log`,
+`/tmp/orbyn-c1-credential-web-build-20261008.log`.
+Full regression, current browser interaction captures and main delivery remain
+pending. Visual Check has the capture-only handoff; the saved permission/native
+capture refusal remains unresolved. No live provider, installed-native or full
+C1 completion is claimed. The user requested a pause after completing C1, before C2.
+
+The corrected embedding CI job112913998033 in run37656656011 is confirmed
+successful. Exact remote test log count is not yet inspected because the overall
+run is still in progress; the matching local cohort is53/53.
+
 ## Embedding CI prerequisite correction — 8 October 2026
 
 Remote run37655804028 embedding job112910042159 finished52/53, one failure.

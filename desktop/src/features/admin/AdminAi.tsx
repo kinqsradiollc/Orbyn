@@ -140,7 +140,9 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       if (
         !dataRef.current?.providers.some(
           (current) =>
-            current.id === p.id && current.updated_at === p.updated_at,
+            current.id === p.id &&
+            current.updated_at === p.updated_at &&
+            current.controls_revision === p.controls_revision,
         )
       )
         return;
@@ -149,16 +151,26 @@ export function AdminAi({ busy, revision, act, report }: Props) {
 
   const test = (p: AiProvider) =>
     void act(async () => {
+      const requestedModel = modelFor(p).trim();
+      if (!requestedModel || !p.controls_revision) return;
       setTests(({ [p.id]: _, ...rest }) => rest);
       const result = await client.testAiProvider(
         p.id,
-        modelFor(p).trim() || undefined,
+        requestedModel,
+        p.controls_revision,
       );
       if (
         !dataRef.current?.providers.some(
           (current) =>
-            current.id === p.id && current.updated_at === p.updated_at,
+            current.id === p.id &&
+            current.updated_at === p.updated_at &&
+            current.controls_revision === p.controls_revision,
         )
+      )
+        return;
+      if (
+        result.provider_revision !== p.controls_revision ||
+        result.model !== requestedModel
       )
         return;
       setTests((t) => ({ ...t, [p.id]: result }));
@@ -364,7 +376,12 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                 const model = modelFor(p);
                 const choices = loaded[p.id];
                 const listId = `ai-models-${p.id}`;
-                const result = tests[p.id];
+                const result =
+                  p.controls_revision &&
+                  tests[p.id]?.provider_revision === p.controls_revision &&
+                  tests[p.id]?.model === model.trim()
+                    ? tests[p.id]
+                    : undefined;
                 return (
                   <tr
                     key={p.id}
@@ -514,7 +531,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                     <td className="row-actions ai-provider-actions">
                       <button
                         className="link-button"
-                        disabled={busy}
+                        disabled={busy || !model.trim() || !p.controls_revision}
                         onClick={() => test(p)}
                       >
                         Test connection

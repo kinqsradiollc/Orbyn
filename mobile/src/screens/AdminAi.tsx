@@ -346,14 +346,18 @@ function ProviderRow({
 
   const providerRevision = useRef<string | null>(p.updated_at);
   providerRevision.current = p.updated_at;
+  const providerGeneration = useRef<string | null>(p.controls_revision ?? null);
+  providerGeneration.current = p.controls_revision ?? null;
   useEffect(() => {
     providerRevision.current = p.updated_at;
+    providerGeneration.current = p.controls_revision ?? null;
     setTest(null);
     setModels(null);
     return () => {
       providerRevision.current = null;
+      providerGeneration.current = null;
     };
-  }, [p.updated_at]);
+  }, [p.updated_at, p.controls_revision]);
   const list = models ?? def.suggestedModels;
   const typed = model.trim();
   const query = typed.toLowerCase();
@@ -470,19 +474,22 @@ function ProviderRow({
               )}
             </>
           )}
-          {test && (
-            <Text
-              accessibilityLiveRegion="polite"
-              style={[
-                s.testText,
-                { color: test.ok ? colors.accent : colors.danger },
-              ]}
-            >
-              {test.message}
-              {test.latency_ms !== null ? ` · ${test.latency_ms} ms` : ""}
-              {test.usage ? `\n${aiUsageSummary(test.usage)}` : ""}
-            </Text>
-          )}
+          {test &&
+            p.controls_revision &&
+            test.provider_revision === p.controls_revision &&
+            test.model === typed && (
+              <Text
+                accessibilityLiveRegion="polite"
+                style={[
+                  s.testText,
+                  { color: test.ok ? colors.accent : colors.danger },
+                ]}
+              >
+                {test.message}
+                {test.latency_ms !== null ? ` · ${test.latency_ms} ms` : ""}
+                {test.usage ? `\n${aiUsageSummary(test.usage)}` : ""}
+              </Text>
+            )}
           <AiModelControls
             provider={p}
             model={typed}
@@ -500,7 +507,10 @@ function ProviderRow({
                       p.id,
                       p.controls_revision,
                     );
-                    if (providerRevision.current === p.updated_at)
+                    if (
+                      providerRevision.current === p.updated_at &&
+                      providerGeneration.current === p.controls_revision
+                    )
                       setModels(result.models);
                   })
                 }
@@ -508,15 +518,22 @@ function ProviderRow({
             )}
             <SmallAction
               label="Test connection"
-              disabled={busy}
+              disabled={busy || !typed || !p.controls_revision}
               onPress={() =>
                 act(async () => {
+                  if (!typed || !p.controls_revision) return;
                   setTest(null);
                   const result = await client.testAiProvider(
                     p.id,
-                    typed || undefined,
+                    typed,
+                    p.controls_revision,
                   );
-                  if (providerRevision.current === p.updated_at)
+                  if (
+                    providerRevision.current === p.updated_at &&
+                    providerGeneration.current === p.controls_revision &&
+                    result.provider_revision === p.controls_revision &&
+                    result.model === typed
+                  )
                     setTest(result);
                 })
               }

@@ -427,12 +427,26 @@ export async function aiAdminRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const d = aiTestInput.parse(r.body ?? {});
     const row = await providerRow(id);
+    const revision = String(row.generation_revision);
+    if (d.expected_revision && d.expected_revision !== revision)
+      fail(409, "The provider changed. Refresh connections and try again.");
+    const assertCurrent = async () => {
+      const current = (
+        await query<{ generation_revision: string }>(
+          "SELECT generation_revision::text FROM ai_providers WHERE id=$1",
+          [id],
+        )
+      ).rows[0];
+      if (!current || current.generation_revision !== revision)
+        fail(409, "The provider changed. Refresh connections and try again.");
+    };
     const settings = await currentSettings();
     const model =
       d.model || (settings.provider_id === id ? settings.model : "");
     if (!model) fail(422, "Choose a model to test.");
     const target = await connection(row, model);
     target.cacheScope = actor.id;
+    target.assertAuthority = assertCurrent;
     let usage: AiModelUsage | undefined;
     target.recordUsage = async (observed) => {
       usage = observed;
@@ -450,13 +464,22 @@ export async function aiAdminRoutes(app: FastifyInstance) {
       const latency = Date.now() - started;
       return {
         ok: true,
+        provider_revision: revision,
+        model,
         latency_ms: latency,
         message: `Connected. ${model} replied in ${latency} ms.`,
         ...(usage ? { usage } : {}),
       };
     } catch (error) {
       if (!(error instanceof ProviderError)) throw error;
-      return { ok: false, latency_ms: null, message: error.message };
+      await assertCurrent();
+      return {
+        ok: false,
+        latency_ms: null,
+        message: error.message,
+        provider_revision: revision,
+        model,
+      };
     }
   });
 

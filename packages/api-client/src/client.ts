@@ -4999,10 +4999,13 @@ export class OrbynClient {
       body: expectedRevision ? { expected_revision: expectedRevision } : {},
     });
   }
-  testAiProvider(id: string, model?: string) {
+  testAiProvider(id: string, model?: string, expectedRevision?: string) {
     return this.request<AiTestResult>(`/ai/providers/${id}/test`, {
       method: "POST",
-      body: model ? { model } : {},
+      body: {
+        ...(model ? { model } : {}),
+        ...(expectedRevision ? { expected_revision: expectedRevision } : {}),
+      },
     });
   }
   /**

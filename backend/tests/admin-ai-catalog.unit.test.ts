@@ -40,13 +40,22 @@ function webCallback(name: string) {
   assert.ok(expression);
   return expression;
 }
-for (const scenario of ["current", "revised", "deleted"] as const) {
+for (const scenario of [
+  "current",
+  "revised",
+  "deleted",
+  "same-timestamp",
+] as const) {
   test(`web catalog ${scenario} preserves model choice and rejects stale results`, async () => {
     let pending: Promise<void> | undefined;
     let resolve!: (result: { models: string[] }) => void;
     let catalogs: Record<string, string[]> = {};
     let changes = 0;
-    const dataRef = { current: { providers: [{ id: "p", updated_at: "v1" }] } };
+    const dataRef = {
+      current: {
+        providers: [{ id: "p", updated_at: "v1", controls_revision: "7" }],
+      },
+    };
     const loadModels = evaluate(webCallback("loadModels"), {
       act: (fn: () => Promise<void>) => {
         pending = fn();
@@ -71,6 +80,8 @@ for (const scenario of ["current", "revised", "deleted"] as const) {
     loadModels({ id: "p", updated_at: "v1", controls_revision: "7" });
     if (scenario === "revised") dataRef.current.providers[0].updated_at = "v2";
     if (scenario === "deleted") dataRef.current.providers = [];
+    if (scenario === "same-timestamp")
+      dataRef.current.providers[0].controls_revision = "8";
     resolve({ models: ["first-other-model"] });
     await pending;
     assert.equal(changes, 0);
@@ -117,7 +128,12 @@ function mobileCallback(label: string) {
   assert.ok(expression);
   return expression;
 }
-for (const scenario of ["current", "revised", "unmounted"] as const) {
+for (const scenario of [
+  "current",
+  "revised",
+  "unmounted",
+  "same-timestamp",
+] as const) {
   test(`mobile catalog ${scenario} preserves model choice and rejects stale results`, async () => {
     let resolve!: (result: { models: string[] }) => void;
     let pending: Promise<void> | undefined;
@@ -138,10 +154,13 @@ for (const scenario of ["current", "revised", "unmounted"] as const) {
       },
       p: { id: "p", updated_at: "v1", controls_revision: "7" },
       providerRevision,
+      providerGeneration: {
+        current: scenario === "same-timestamp" ? "8" : "7",
+      },
       setModels: () => calls++,
     });
     callback();
-    if (scenario !== "current")
+    if (scenario === "revised" || scenario === "unmounted")
       providerRevision.current = scenario === "unmounted" ? null : "v2";
     resolve({ models: ["first-other-model"] });
     await pending;
