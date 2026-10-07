@@ -15,9 +15,9 @@ The C1 indexing failure/retry checkpoint and its inference/deployment/UI prerequ
 The pagination/inventory checkpoint is merged and pushed as `07edbcc5`: full3806/3806, separate inventory61/61.
 Anthropic JSON fallback is merged and pushed as `eb493433`: full3880/3880,
 focused145/145, backend build and compiled loop pass.
-Together catalog repair is qualified `8d83fb01`: adapter46/46, route cohort63/63,
+Together catalog repair is merged and pushed as `22f24742`: adapter46/46, route cohort63/63,
 inventory61/61, backend build and compiled check pass. Full frozen regression
-passes3894/3894, zero failures/skips/cancellations, exit0. Main integration follows.
+passes3894/3894, zero failures/skips/cancellations, exit0.
 Next: OpenCode selected-model transport repair, then remaining provider/embedding/cache gates.
 Wider embedding/native/full-stage acceptance remains open.
 Production deployment is unconfirmed; the user deploys main manually.

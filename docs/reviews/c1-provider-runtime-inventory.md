@@ -21,7 +21,7 @@ Definitions: `packages/core/src/aiProviders.ts`; resolution:
 | lmstudio          | Compatible /models, local key handling     | Chat Completions                            | Compatible probe required         |
 | ollama            | Compatible /models, local key handling     | Chat Completions                            | Compatible probe required         |
 | deepseek          | Compatible /models; hidden from add picker | Chat Completions                            | Compatible probe required         |
-| together          | /models, native array normalized locally   | Chat Completions                            | Compatible probe required         |
+| together          | /models, native array normalized           | Chat Completions                            | Compatible probe required         |
 | fireworks         | Compatible /models                         | Chat Completions                            | Compatible probe required         |
 | mistral           | Compatible /models                         | Chat Completions                            | Compatible probe required         |
 | xai               | Compatible /models                         | Chat Completions                            | Compatible probe required         |
@@ -146,12 +146,12 @@ all top-level arrays before inspecting their IDs. A Together-kind fixture using
 that documented shape reproduces `ProviderError: invalid model catalog`.
 Log: `/tmp/orbyn-c1-together-catalog-before-20261008.log`.
 
-Local `8d83fb01` normalizes Together's explicit array contract without accepting
+Checkpoint `22f24742` on main normalizes Together's explicit array contract without accepting
 arrays for every provider. Common ID validation, error redaction and revision
 fencing remain. Adapter46/46 and route cohort63/63 pass, including an actual
 saved Together connection and in-flight mutation409. All20 inventory61/61 now
 uses the vendor's array shape. Full frozen regression passes3894/3894,
-zero failures/skips/cancellations, exit0,764252ms; main integration follows.
+zero failures/skips/cancellations, exit0,764252ms; merged and pushed as `22f24742`.
 These fixtures do not establish a live saved-host model call.
 
 ## Additional endpoint evidence
