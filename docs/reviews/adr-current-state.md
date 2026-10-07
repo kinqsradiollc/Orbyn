@@ -21,7 +21,15 @@ status index; [ordered execution queue](adr-execution-order.md),
 
 ## Current evidence
 
-## Current stage — normal Docs editor activation
+## Current stage — C1 contracts, canonical top-down order
+
+Main37dc1259 records the user's top-down order: C1 → C2/M1 → C3 → C4/D1 → C5 →
+C6, with U1/mobile parity within each checkpoint and a final whole-app matrix.
+C1 provider/connection contract audit and qualification is active. Docs normal
+editor activation stays queued under C4. Existing task checkpoint and candidate
+foundations remain retained; no canonical stage is declared complete from them.
+
+## Historical stage transition — normal Docs editor activation
 
 Task checkpoint is on main3844b5c8, followed by ordered-plan main1aaa2d1e.
 Both are integrated into candidate without conflicts. Task/Home/navigation

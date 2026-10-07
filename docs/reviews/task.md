@@ -1,4 +1,13 @@
-## Stage 1 complete; stage 2 active — 7 October 2026
+## Canonical top-down continuation — 7 October 2026
+
+User direction supersedes the Docs-first continuation: follow C1, C2/M1, C3,
+C4/D1, C5, C6, then final U1 acceptance and cleanup. Main37dc1259 records this
+order. C1 contract/provider qualification is active; normal Docs activation is
+queued under C4. Retain its existing foundation and audit, but do not implement
+out of order. QA-006 is a completed scoped checkpoint, not a closed ADR stage.
+Use adr-execution-order.md for exact stage exit conditions and reviewer report.
+
+## Historical stage transition — 7 October 2026
 
 Main/origin/main3844b5c8 contains the task-panel product checkpoint; main1aaa2d1e
 records the ordered stage transition. Candidate includes both without conflicts.
