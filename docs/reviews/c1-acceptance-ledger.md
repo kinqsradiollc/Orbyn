@@ -1890,3 +1890,13 @@ records until the capture session is quiescent and both phases complete.
 Fresh candidateab01bcc8 full session75238 remains live. Product source frozen.
 Current mainc79e7496 vs candidateab01bcc8 merge-tree dry run exits0/no conflicts,
 treeff2bd44df7090597430b922badd1940e6d06dcb0; revalidate actual refs before merge.
+
+Root inspected the first current positive-usage originals (privacy-safe modal
+crops) at web1280×1000 Light/Dark under
+/Users/anhdang/.codex/visualizations/2026/10/08/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-026-c1-usage-positive-2026-10-08/.
+The two-response/window line, all five expected counters and observed-only/
+ChatGPT-plan exclusion are visible and contained in those two states.
+Narrow/mobile captures remain live and are not accepted by inference.
+Overflow switch is prepared at /tmp/orbyn-c1-usage-overflow-fixture-20261008.mjs,
+not executed. It verifies fixture ownership and alters only the two tracked
+input counters after capture quiescence; original records must be cleaned at end.
