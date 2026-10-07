@@ -36,6 +36,7 @@ provider credentials remain separate.
 | Embedding consent correction | Migration256 preserves acceptance when only reasoningEffort/cacheMode/cacheRetention changes. Endpoint/key/API-version/enablement changes still invalidate it; old invalidated consent is not revived. | Refreshed full regression. |
 | Latest focused qualification | Fresh main-based database: 29/29 passed, zero skips/failures. Backend typecheck passed. | Does not replace full regression or real provider calls. |
 | Upgrade qualification | Local preview255→256 and a repeat pass; all three providers' embedding/generation revision pairs preserved. | No production deployment claimed. |
+| pgvector integration | 12/12 separate integration checks pass: accepted consent/no-op/generation edits, real connection changes and validation races, measured search/document/policy fences, Azure storage, pre218 legacy cleanup and late extension installation. | Local provider fixtures; real provider/UI/reindex acceptance remains required. |
 | Earlier full regression | Exact-main `c082d93e`: 3722/3722 passed, zero skips/failures, terminal exit0. | Predates migration256; cannot qualify the latest correction. |
 | Refreshed full regression | Frozen `66f7a5f2`, marked `orbyn_full_main_66f7a5f2_test`, live session88045. | Inspect terminal result; no passing result claimed yet. |
 | Visual review | Chrome original JPEG capture calibration accepted; one dark390 cache-menu state accepted. | Signed-in controls/actions/usage screenshots across web/mobile/themes; local updated Terms confirmation pending. |
@@ -47,6 +48,10 @@ Logs:
 - `/tmp/orbyn-main-c1-66f7a5f2-focused-20261007.log`
 - `/tmp/orbyn-main-c1-66f7a5f2-types-20261007.log`
 - `/tmp/orbyn-c1-256-preview-upgrade-20261007.log`
+- `/tmp/orbyn_vector_256_matrix_test-20261007.log` (9/9)
+- `/tmp/orbyn-vector-256-azure-storage-20261007.log` (1/1)
+- `/tmp/orbyn_vector_256_upgrade_test-20261007.log` (1/1)
+- `/tmp/orbyn-256-late-extension-20261007.log` (1/1)
 - `/tmp/orbyn-adr-full-main-66f7a5f2-20261007.log` (live; no terminal pass)
 
 ## Next actions

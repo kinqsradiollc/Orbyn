@@ -681,6 +681,35 @@ multi-provider matrix and C2/M1-C6/D1/U1 remain required; no final cleanup.
 
 ## Generation-control/embedding revision correction
 
+### Separate pgvector integration qualification
+
+An existing pgvector16 image ran in the owned tmpfs fixture
+`orbyn-c1-vector-qualification-20261007`, loopback55437; no image download or
+user-container/engine restart. It was removed after all12 checks completed;
+evidence logs remain. Integration files are outside npm test's
+`tests/*.test.ts` selection and therefore require explicit qualification.
+The initial setup run reproduced two stale assertions (3 passed/2 failed):
+`options=options` was incorrectly used to simulate connection changes. Log:
+`/tmp/orbyn-c1-256-vector-setup-repro-20261007.log`.
+
+Test-only7934c26b replaces those changes with actual apiVersion edits and proves
+no-op/generation-only updates preserve consent and measured search. Separate
+schema/setup tests pass9/9, Azure indexed vector storage/cosine search1/1,
+pre218 legacy consent/vector cleanup1/1, and late extension installation1/1.
+Late installation restores a fresh stock17 fixture into vector16, preserves
+recorded migration history, queues the existing page and grants no consent.
+Only pg_dump's unsupported PG17 SET transaction_timeout statement is removed
+for that test-server restore; application schema/data is preserved.
+
+Logs: `/tmp/orbyn_vector_256_matrix_test-20261007.log`,
+`/tmp/orbyn-vector-256-azure-storage-20261007.log`,
+`/tmp/orbyn_vector_256_upgrade_test-20261007.log`,
+`/tmp/orbyn-256-late-extension-20261007.log`. All12 pass with zero skips/failures;
+provider HTTP traffic uses local fixtures, not a real external account. Both
+changed files pass scoped formatting. Product source and normal full-suite files
+remain unchanged from66f7a5f2; its live regression is not restarted for these
+separately executed integration tests/documentation. No full C1 acceptance claimed.
+
 Main-based freeze66f7a5f2 independently passes29/29 focused checks on a fresh
 marked database and backend typecheck. Full regression is running as session88045;
 log `/tmp/orbyn-adr-full-main-66f7a5f2-20261007.log`. Earlier3722/3722 results
