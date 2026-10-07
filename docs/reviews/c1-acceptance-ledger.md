@@ -1,5 +1,19 @@
 # C1 acceptance ledger
 
+## Embedding CI prerequisite correction — 8 October 2026
+
+Remote run37655804028 embedding job112910042159 finished52/53, one failure.
+The retry fixture launches actual compiled code in a separate process; the new
+CI job built only shared packages, so `backend/dist/db/pool.js` was absent.
+This is a missing CI build prerequisite, not a skipped test or backend defect.
+The failure log is `/tmp/orbyn-c1-embedding-ci-remote-failure-20261008.log`.
+
+Add `npm run build -w backend` before the vector cohort. Current backend build
+passes and the matching cohort passes53/53, zero failures/skips/cancellations:
+`/tmp/orbyn-c1-embedding-ci-build-fix-20261008.log`,
+`/tmp/orbyn-c1-embedding-ci-build-fixed-20261008.log`. Product source is unchanged.
+Scoped formatting/diff checks pass; corrected remote-job acceptance is pending.
+
 ## Embedding access races and continuous qualification — 8 October 2026
 
 Six new real pgvector/local-HTTP fixtures verify that semantic query results are

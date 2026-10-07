@@ -25,7 +25,9 @@ passes4044/4044 with zero failures/skips, workspace types/web build and separate
 pgvector47/47 pass. Main and origin matched after fast-forward/push.
 Embedding access-race and dedicated CI coverage is merged/published as
 `c5dcc19c`:6/6 new checks and combined53/53 locally, zero skips, with unchanged
-backend source. The remote CI result remains unverified.
+backend source. Remote CI initially52/53 failed because the new job omitted
+the backend build required by the compiled-process fixture. The prerequisite
+correction passes build and53/53 locally; corrected remote acceptance is pending.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.

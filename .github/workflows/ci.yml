@@ -63,6 +63,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build:packages
+      - run: npm run build -w backend
       - name: Mark the disposable vector database and install its extension
         run: |
           psql "$TEST_DATABASE_URL" -c "ALTER DATABASE orbyn_embedding_test SET orbyn.environment TO 'test'"
