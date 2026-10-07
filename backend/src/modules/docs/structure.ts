@@ -242,7 +242,11 @@ export async function extractLines(
     id: newBlockId(),
     text: linkMarkdown({ kind: "doc", id: newId }, title),
   };
-  const split = extractDocContent(document, body.block_ids, link);
+  const split = extractDocContent(document, body.block_ids, link, {
+    sourceId: id,
+    destinationId: newId,
+    freshId: newBlockId,
+  });
   const rest =
     split.source.format === 2
       ? docContainerBlocks(split.source.nodes)
@@ -256,7 +260,11 @@ export async function extractLines(
       u.id,
       current.team_id,
       title,
-      JSON.stringify(moved),
+      JSON.stringify(
+        split.extracted.format === 2
+          ? docContainerBlocks(split.extracted.nodes)
+          : split.extracted.blocks,
+      ),
       source.project_id,
       source.folder_id,
       split.extracted.format,

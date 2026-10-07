@@ -20,6 +20,22 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 
 ## Current evidence
 
+## Extraction fragment relocation — 7 October 2026
+
+Extraction now receives source/destination identities and relocates local and
+explicit source-page block links on both resulting pages. Retained anonymous
+headings acquire stable IDs when referenced; original heading slugs/exported
+positions are resolved before splitting. Unknown fragments and code examples
+remain authored source. Generated IDs cannot collide with stored container/leaf
+or navigation-link identities. Destination inserts use the rewritten projection
+alongside complete nodes.56 focused extraction/merge/reference/balanced-link tests
+pass (zero failures/skips,714ms), packages build/backend types/format checks pass.
+The DB extraction regression now checks a retained link following its moved task;
+DB acceptance remains unrun. Candidate only. Reference/footnote dependencies across
+extraction, wider app-link forms, normal editor activation and visual/runtime
+qualification remain open. Main remains7263b45b; full ADR goal stays active.
+
+
 ## Unresolved-reference merge preservation — 7 October 2026
 
 Merges preserve rendered unresolved reference text on both pages by escaping only

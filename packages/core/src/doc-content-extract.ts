@@ -1,5 +1,12 @@
+import { docFragmentIndex, docLinkDestination } from "./doc-navigation.js";
+import { linkHref, parseObjectHref } from "./links.js";
+import { rewriteDocBlockLinks } from "./doc-link-rewrite.js";
 import type { DocBlock } from "./docs.js";
-import { docContainerBlocks, type DocContainerNode } from "./doc-containers.js";
+import {
+  docContainerBlocks,
+  visitDocContainers,
+  type DocContainerNode,
+} from "./doc-containers.js";
 import {
   parseVersionedDocContent,
   type VersionedDocContent,
@@ -10,10 +17,19 @@ export function extractDocContent(
   value: VersionedDocContent,
   ids: readonly string[],
   link: DocBlock,
+  context: { sourceId: string; destinationId: string; freshId: () => string },
 ): {
   source: VersionedDocContent;
   extracted: VersionedDocContent;
 } {
+  const sourceId = context.sourceId.toLowerCase(),
+    destinationId = context.destinationId.toLowerCase();
+  if (
+    sourceId === destinationId ||
+    !parseObjectHref(linkHref({ kind: "doc", id: sourceId })) ||
+    !parseObjectHref(linkHref({ kind: "doc", id: destinationId }))
+  )
+    throw new Error("Invalid extraction page identity.");
   const document = parseVersionedDocContent(value);
   const wanted = new Set(ids);
   const leaves =
@@ -27,6 +43,7 @@ export function extractDocContent(
   );
   if (!found.size || found.size !== wanted.size)
     throw new Error("Selected document lines changed.");
+  const originalAnchors = leaves.map((block) => ({ ...block }));
   let linked = false;
   const walk = (
     nodes: readonly DocContainerNode[],
@@ -102,6 +119,73 @@ export function extractDocContent(
       ? document.nodes
       : document.blocks.map((block) => ({ kind: "block", block })),
   );
+  const occupied = new Set<string>(link.id ? [link.id] : []);
+  visitDocContainers(
+    document.format === 2
+      ? document.nodes
+      : document.blocks.map((block) => ({ kind: "block", block })),
+    (node) => {
+      const id = node.kind === "block" ? node.block.id : node.id;
+      if (id) occupied.add(id);
+    },
+  );
+  const fresh = () => {
+    const id = context.freshId();
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(id) || occupied.has(id))
+      throw new Error(
+        "Generated extraction anchor is invalid or already used.",
+      );
+    occupied.add(id);
+    return id;
+  };
+  const relocate = (nodes: DocContainerNode[], pageId: string) => {
+    const replacements = new Map<DocBlock, DocBlock>();
+    visitDocContainers(nodes, (node) => {
+      if (node.kind !== "block" || node.block === link) return;
+      replacements.set(
+        node.block,
+        rewriteDocBlockLinks(node.block, (href) => {
+          const local = docLinkDestination(href, null);
+          const explicit = parseObjectHref(href);
+          const fragment =
+            local?.kind === "fragment"
+              ? local.fragment
+              : explicit?.kind === "doc" &&
+                  explicit.id.toLowerCase() === sourceId
+                ? explicit.block
+                : undefined;
+          if (!fragment) return href;
+          const index = docFragmentIndex(originalAnchors, fragment);
+          if (index === null) return href;
+          const target = leaves[index];
+          const targetPage =
+            target.id && wanted.has(target.id) ? destinationId : sourceId;
+          if (!target.id) target.id = fresh();
+          return local?.kind === "fragment" && targetPage === pageId
+            ? `#${target.id}`
+            : linkHref({ kind: "doc", id: targetPage, block: target.id });
+        }),
+      );
+    });
+    return replacements;
+  };
+  // Plan both sides before replacing leaves: a moved link can name a later
+  // anonymous heading retained on the source page.
+  const keptLinks = relocate(result.kept, sourceId),
+    movedLinks = relocate(result.moved, destinationId);
+  for (const [nodes, replacements] of [
+    [result.kept, keptLinks],
+    [result.moved, movedLinks],
+  ] as const) {
+    visitDocContainers(nodes, (node) => {
+      if (node.kind !== "block" || !replacements.has(node.block)) return;
+      const original = node.block;
+      node.block = {
+        ...replacements.get(original)!,
+        ...(original.id ? { id: original.id } : {}),
+      };
+    });
+  }
   const content = (nodes: DocContainerNode[]) =>
     parseVersionedDocContent(
       document.format === 2

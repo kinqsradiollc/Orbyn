@@ -1293,7 +1293,7 @@ test("stale nested tick cannot undo a task completion change from elsewhere", as
 test("extract keeps nested task ownership and complete source history", async () => {
   const id = await page();
   const nodes = parseDocContainers(
-    "> - [x] Task ^task\n>\n>   Continuation ^continuation\n> - Other ^other",
+    "> - [x] Task [self](#task) ^task\n>\n>   Continuation [task](#task) ^continuation\n> - Other ^other",
     { anchors: true },
   );
   await transaction((db) =>
@@ -1327,6 +1327,13 @@ test("extract keeps nested task ownership and complete source history", async ()
     docContainerBlocks(remaining.document.nodes).some(
       (b) => b.id === "continuation",
     ),
+  );
+  const continuation = docContainerBlocks(remaining.document.nodes).find(
+    (b) => b.id === "continuation",
+  )!;
+  assert.equal(
+    "text" in continuation && continuation.text,
+    `Continuation [task](orbyn://doc/${destination}#task)`,
   );
   const history = (
     await pool.query(
