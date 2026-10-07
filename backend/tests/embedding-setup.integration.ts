@@ -187,6 +187,15 @@ test("setup validates an explicit provider independently of chat and requires re
   await pool.query("UPDATE ai_providers SET options=options WHERE id=$1", [
     providerId,
   ]);
+  assert.equal(
+    (await call(accounts[0].token, "GET")).json().settings.semantic_search,
+    true,
+    "a no-op connection update preserves accepted embedding consent",
+  );
+  await pool.query(
+    'UPDATE ai_providers SET options=options || \'{"apiVersion":"fixture-v2"}\'::jsonb WHERE id=$1',
+    [providerId],
+  );
   const invalidated = (await call(accounts[0].token, "GET")).json().settings;
   assert.equal(invalidated.semantic_search, false);
   assert.equal(invalidated.embedding_needs_validation, true);
@@ -208,9 +217,10 @@ test("a provider edit during validation cannot commit stale consent", async () =
     accept: true,
   });
   await arrival;
-  await pool.query("UPDATE ai_providers SET options=options WHERE id=$1", [
-    providerId,
-  ]);
+  await pool.query(
+    'UPDATE ai_providers SET options=options || \'{"apiVersion":"fixture-v3"}\'::jsonb WHERE id=$1',
+    [providerId],
+  );
   release!();
   const response = await setup;
   assert.equal(response.statusCode, 409, response.body);

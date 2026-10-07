@@ -275,10 +275,23 @@ test("measuring uses the independent provider and discards an answer for an edit
       1,
       "new edit can subsequently be measured",
     );
-    const beforeRevision = requested.length;
     await pool.query("UPDATE ai_providers SET options=options WHERE id=$1", [
       embedding,
     ]);
+    await pool.query(
+      'UPDATE ai_providers SET options=options || \'{"reasoningEffort":"high","cacheMode":"explicit"}\'::jsonb WHERE id=$1',
+      [embedding],
+    );
+    assert.equal(
+      (await nearest(userId!, "passage")).length > 0,
+      true,
+      "no-op and generation-only edits preserve measured embedding search",
+    );
+    const beforeRevision = requested.length;
+    await pool.query(
+      'UPDATE ai_providers SET options=options || \'{"apiVersion":"fixture-v2"}\'::jsonb WHERE id=$1',
+      [embedding],
+    );
     assert.deepEqual(
       await nearest(userId!, "passage"),
       [],
