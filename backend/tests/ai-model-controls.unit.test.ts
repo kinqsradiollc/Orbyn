@@ -539,3 +539,57 @@ test("private ChatGPT transport never acquires managed compatible usage", async 
   );
   assert.equal(observations, 0);
 });
+
+for (const kind of ["openai-compatible", "azure"] as const) {
+  test(`${kind} native tool steps retain usage before tool parsing`, async (t) => {
+    const observations: any[] = [];
+    t.mock.method(globalThis, "fetch", async () =>
+      Response.json({
+        id: "chatcmpl-native-fixture",
+        usage: { prompt_tokens: 50, completion_tokens: 10 },
+        choices: [
+          {
+            message: {
+              tool_calls: [
+                {
+                  id: "call-fixture",
+                  function: { name: "finish", arguments: "{}" },
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    );
+    const result = await step(
+      {
+        ...ai,
+        kind,
+        format: kind === "azure" ? "azure" : "openai",
+        requestFormat: undefined,
+        model: "fixture",
+        baseUrl: "https://fixture.invalid/v1",
+        options: { apiVersion: "fixture-version" },
+        recordUsage: async (...args) => {
+          observations.push(args);
+        },
+      },
+      messages,
+      [],
+      { mode: "native", toolsAllowed: true, signal: AbortSignal.timeout(1000) },
+    );
+    assert.equal(result.toolCalls[0].id, "call-fixture");
+    assert.deepEqual(observations, [
+      [
+        {
+          input_tokens: 50,
+          output_tokens: 10,
+          reasoning_tokens: null,
+          cached_input_tokens: null,
+          cache_write_tokens: null,
+        },
+        "chatcmpl-native-fixture",
+      ],
+    ]);
+  });
+}

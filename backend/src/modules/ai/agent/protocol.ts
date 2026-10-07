@@ -2,6 +2,7 @@ import { aiModelControlError } from "@orbyn/core";
 import {
   responsesControls,
   readOpenAiUsage,
+  readChatCompletionUsage,
 } from "../providers/model-controls.js";
 import type { ResolvedAi } from "../providers/adapters.js";
 import {
@@ -326,9 +327,12 @@ async function openAiStep(
   };
   const body = await json<{
     error?: unknown;
+    usage?: unknown;
+    id?: unknown;
     choices?: { message?: Msg; delta?: Msg; finish_reason?: string }[];
   }>(response);
   throwIfErrorEnvelope(body, ai.apiKey);
+  await ai.recordUsage?.(readChatCompletionUsage(body.usage), body.id);
   const choice = body.choices?.[0];
   if (!choice)
     throw new ProviderError("no_choices", "The provider returned no answer.");

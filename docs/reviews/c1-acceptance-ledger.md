@@ -1,6 +1,44 @@
 # C1 acceptance ledger
 
-## Current terminal qualification — migration256 controls freeze
+## Matilda steering and compatible usage correction — 7 October 2026
+
+The user configured an enabled Matilda (Maincode) provider and selected `matilda`
+in the local preview. Existing fixed admin Test succeeded863ms before this
+correction, but no usage was returned because the compatible adapter discarded it.
+The scoped correction normalizes Chat Completions usage through the existing
+nonnegative safe-integer/subset guards, records response identity and preserves
+missing counters as unknown. Error envelopes do not create observations; truncated
+answers retain reported usage. Authority checks and private ChatGPT transport
+isolation remain intact. Schema source: [OpenAI Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+
+Backend build passes. Focused normalization/adapter tests pass29/29; log
+`/tmp/orbyn-c1-compatible-usage-focused-20261007.log`. Rebuilt single-process API8008
+preserves the preview DB/config and user-selected provider. One fixed OK/ping
+Matilda probe succeeds815ms and returns provider-reported input0, output0,
+reasoning0, cached input0, cache writes unknown. Evidence:
+`/tmp/orbyn-c1-matilda-live-usage-20261007.json`. These zero counters do not establish
+measured cost, cache savings, general quality or ChatGPT-plan entitlement. No
+workspace content was sent. The OpenAI-specific cache benchmark cannot qualify
+Matilda cache controls. New adapter product code needs refreshed full regression;
+prior66f7a5f2 result remains valid only for its previous freeze.
+
+Root inspected QA016 original images: wide/light desktop controls through Save,
+provider management menu and zero-usage Settings are readable without observed
+overlap in those captured states. Mobile390x197 shows scaled desktop content and
+is rejected for requested390x844 acceptance. Visual Check was instructed to
+correct capture viewport and capture narrow/dark/mobile states; capture-only
+manifest workflow remains. User explicitly authorized disposable local QA Terms
+acceptance and same-account sign-in. No entire C1/UI stage acceptance claimed.
+
+Follow-up audit extends the same usage mapping to compatible/Azure native-tool
+steps; Matilda JSON steps already delegate to complete(). Focused checks pass31/31
+in `/tmp/orbyn-c1-compatible-native-usage-focused-20261007.log`; backend rebuild
+passes. Initial full run `/tmp/orbyn-adr-full-main-d9621ac7-20261007.log` failed
+because TEST_DATABASE_URL was omitted. It is terminal and provides no product
+qualification. The corrected run must explicitly set both test/app URLs to the
+fresh marked fixture; no preview database is used.
+
+## Historical qualification — migration256 controls freeze
 
 ### Current visual-gate revalidation
 
@@ -769,33 +807,3 @@ embedding validation cohort passes29/29, zero failures/skips,7292ms; no provider
 network calls. Log `/tmp/orbyn-c1-embedding-controls-matrix-20261007.log`.
 Prior mainc082d93e3722/3722 full pass predates this correction. Fresh exact-main
 qualification is required; no promotion or complete C1 stage claimed.
-
-## Matilda steering and compatible usage correction — 7 October 2026
-
-The user configured an enabled Matilda (Maincode) provider and selected `matilda`
-in the local preview. Existing fixed admin Test succeeded863ms before this
-correction, but no usage was returned because the compatible adapter discarded it.
-The scoped correction normalizes Chat Completions usage through the existing
-nonnegative safe-integer/subset guards, records response identity and preserves
-missing counters as unknown. Error envelopes do not create observations; truncated
-answers retain reported usage. Authority checks and private ChatGPT transport
-isolation remain intact. Schema source: [OpenAI Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
-
-Backend build passes. Focused normalization/adapter tests pass29/29; log
-`/tmp/orbyn-c1-compatible-usage-focused-20261007.log`. Rebuilt single-process API8008
-preserves the preview DB/config and user-selected provider. One fixed OK/ping
-Matilda probe succeeds815ms and returns provider-reported input0, output0,
-reasoning0, cached input0, cache writes unknown. Evidence:
-`/tmp/orbyn-c1-matilda-live-usage-20261007.json`. These zero counters do not establish
-measured cost, cache savings, general quality or ChatGPT-plan entitlement. No
-workspace content was sent. The OpenAI-specific cache benchmark cannot qualify
-Matilda cache controls. New adapter product code needs refreshed full regression;
-prior66f7a5f2 result remains valid only for its previous freeze.
-
-Root inspected QA016 original images: wide/light desktop controls through Save,
-provider management menu and zero-usage Settings are readable without observed
-overlap in those captured states. Mobile390x197 shows scaled desktop content and
-is rejected for requested390x844 acceptance. Visual Check was instructed to
-correct capture viewport and capture narrow/dark/mobile states; capture-only
-manifest workflow remains. User explicitly authorized disposable local QA Terms
-acceptance and same-account sign-in. No entire C1/UI stage acceptance claimed.
