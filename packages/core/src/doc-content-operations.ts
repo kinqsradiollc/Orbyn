@@ -1,6 +1,7 @@
 import type { DocBlock } from "./docs.js";
 import {
   DOC_CONTAINER_LIMITS,
+  visitDocContainers,
   type DocContainerNode,
 } from "./doc-containers.js";
 import {
@@ -14,6 +15,8 @@ import type { DocContentValidationOptions } from "./doc-content-leaves.js";
 /** Child-owner paths use the same node/item indexes as visitDocContainers. */
 export type DocContentOperation =
   | { kind: "insert"; owner: number[]; index: number; node: DocContainerNode }
+  | { kind: "replace-leaf"; path: number[]; block: DocBlock }
+  | { kind: "splice-leaf"; path: number[]; nodes: DocContainerNode[] }
   | { kind: "remove"; path: number[] }
   | { kind: "move"; path: number[]; owner: number[]; index: number }
   | { kind: "split-item"; list: number[]; item: number; at: number }
@@ -93,6 +96,28 @@ export function applyDocContentOperation(
     const nodes = children(operation.owner);
     index(operation.index, nodes.length, true);
     nodes.splice(operation.index, 0, operation.node);
+  } else if (
+    operation.kind === "replace-leaf" ||
+    operation.kind === "splice-leaf"
+  ) {
+    const target = located(operation.path);
+    if (target.node.kind !== "block")
+      refuse("A leaf edit cannot replace its owning container.");
+    const replacement: DocContainerNode[] =
+      operation.kind === "replace-leaf"
+        ? [{ kind: "block", block: operation.block }]
+        : operation.nodes;
+    let first: DocBlock | undefined;
+    visitDocContainers(replacement, (node) => {
+      if (node.kind === "block" && !first) first = node.block;
+    });
+    if (!first)
+      refuse("Deleting a leaf requires an explicit remove operation.");
+    if (target.node.block.id && first.id !== target.node.block.id)
+      refuse("The first edited leaf must retain its existing identity.");
+    // Parsed multiline input replaces this exact leaf within its existing
+    // child owner; unrelated wrappers, list markers and task states survive.
+    target.nodes.splice(target.at, 1, ...replacement);
   } else if (operation.kind === "remove") {
     const target = located(operation.path);
     target.nodes.splice(target.at, 1);

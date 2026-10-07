@@ -1,3 +1,22 @@
+## Owned leaf-edit checkpoint — 7 October 2026
+
+Explicit replace-leaf and splice-leaf operations now edit an exact rendered path
+against the accepted complete-document snapshot. Named leaves retain their first
+identity; parsed multiline fragments stay inside the existing child owner. Quote,
+list, marker, checkbox and unrelated empty-owner metadata remain intact. Full-tree
+validation refuses stale snapshots, duplicate identities, implicit deletion,
+malformed/cyclic/oversized trees and excess combined depth. Returned trees do not
+retain mutable replacement aliases; legacy documents require an explicit upgrade
+before introducing containers.
+
+The focused operations, controls and versioned-source suites pass24/24 with zero
+failures/skips (935ms); shared package builds and backend typecheck pass. This is an editor prerequisite,
+not normal-editor activation. Existing rich widgets still need complete-document
+loading/saving, exact-path leaf and structural commands, source/history/recovery,
+task ticks and collaboration integration on web/desktop/mobile. This checkpoint
+is on codex/docs-owned-editor-activation; main remains64e905f5. The frozen broader
+candidate's full database run remains live and is not a green-suite claim.
+
 ## Full regression repair and main reconciliation — 7 October 2026
 
 Main is now64e905f5, pushed:00270b91 fixes complete-tree line naming and64e905f5
