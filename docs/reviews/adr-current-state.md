@@ -27,6 +27,29 @@ Wider embedding/native/full-stage acceptance remains open.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 
+## C1 completion gates
+
+This is the current C1 checklist; historical ledger rows describe earlier source.
+A passing fixture or sampled view does not close its named external/native gate.
+
+| C1 requirement                           | Implemented / qualified evidence                                                                                         | Open acceptance                                                                                                      |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| Managed, BYO and personal authority      | Immutable job choice, private/managed isolation and explicit fallback/provenance checkpoints on main                     | Complete entry-point/recovery matrix and actual permitted provider acceptance                                        |
+| Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Both-client management and credential-testing interaction matrix                                                     |
+| Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching                       |
+| Generation wire formats                  | Main native Responses and Messages recovery, compatible/Azure/Matilda fixtures                                           | Zen candidate full regression/main integration; broader actual supported-model qualification                         |
+| Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Permitted OpenAI cache/latency/cost/quality benchmark; unsupported models remain explicit                            |
+| Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | Positive/overflow/error client states; no inferred billing or plan entitlement                                       |
+| Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted embedding connection and full operational/client matrix                                                |
+| Vector dimensions and replacement        | Flexible pgvector storage,3072-dimension Azure fixture, replacement/requeue and old-result rejection                     | Broader authorized model/dimension runtime matrix                                                                    |
+| Consent/document/visibility races        | Pre-click/in-flight provider, A→B→A, edits, disable, keep-out and queue-revision tests                                   | Remaining ownership/permission/recovery acceptance                                                                   |
+| Migration and worker deployment          | Legacy upgrade, late extension, idempotence and profile lifecycle checks                                                 | Wider mixed-version/operational acceptance; production deployment is user-owned                                      |
+| Indexing failure/status/retry            | Sanitized persistent backoff, newer-work fencing and healthy-page progress on maind4da3d41                               | Real enabled/error/loading client interactions and native review                                                     |
+| Responsive and native clients            | Scoped web wide/narrow, mobile browser390 and earlier controls/zero-usage samples reviewed                               | Unresolved QA026320px capture discrepancy, both themes, large text/keyboard/overlays and installed-native acceptance |
+
+Finish these gates, record final C1 evidence and main delivery, then pause with the
+remaining ADR table. C2/M1 stays queued until the user resumes after that pause.
+
 ## Full retained scope
 
 ✓ means a named checkpoint is implemented/qualified; ✗ means remaining work.
