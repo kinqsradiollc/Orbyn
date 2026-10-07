@@ -98,3 +98,23 @@ Full-modal containment is not accepted; root requested verified same-tab1280
 Dark-v2 if identity is uncertain. Remaining overflow capture review is open.
 Disk free fell to260MiB; the earlier space-recovery request remains pending.
 No heavy build, API restart or fixture cleanup occurred during the live batch.
+
+### Recovery fixture qualification — local HTTP only
+
+The prepared temporary gateway passes an actual inert local HTTP check:
+forward normal routes, hold only GET /ai/usage, release the held request as503
+with the fixture error and correct origin header, return immediate503 in error
+mode, and return the unchanged upstream response after pass mode is restored.
+Receipt /tmp/orbyn-c1-usage-network-fixture-test-20261008.log exits0; counters
+/tmp/orbyn-c1-usage-network-test-counts-20261008.json show3forwarded/1held/
+2failed/0forwardErrors. Owned test listener/stub were stopped by the harness.
+No credentials, production endpoint, provider calls or preview API were used.
+This validates test infrastructure, not client loading/error screenshots.
+
+Current overflow Light original now has2560×2158 PNG dimensions and root
+inspected contained modal/counters; the original path was replaced, so prior
+1728-width evidence must be treated as superseded, not preserved by that path.
+Dark's current original remains right-edge clipped. Root requested separately
+named replacements and same-tab ID/viewport/DPR/pixel metadata. Full viewport
+acceptance remains open until that provenance is verified. Disk recovered from
+260MiB to526MiB but remains too low for heavy builds.
