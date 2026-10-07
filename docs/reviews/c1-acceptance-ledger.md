@@ -26,8 +26,10 @@ Logs: `/tmp/orbyn-c1-zen-transport-before-20261008.log`,
 `/tmp/orbyn-c1-zen-expanded-cohort-20261008.log`,
 `/tmp/orbyn-c1-zen-final-build-20261008.log`,
 `/tmp/orbyn-c1-zen-compiled-20261008.log`.
-Full frozen regression is running as session13419 on a fresh marked database:
-`/tmp/orbyn-c1-zen-full-20261008.log`. No terminal pass or main delivery claimed.
+Full frozen regression13419 is terminal exit0 on a fresh marked database:
+4044/4044 passed, zero failures/skips/cancellations,847821ms.
+`/tmp/orbyn-c1-zen-full-20261008.log`. Subsequent edits are documentation only.
+Scoped formatting and diff checks pass; main integration is pending.
 No live vendor inference, UI change, production deploy or complete C1 acceptance.
 
 The user requests a pause after **all C1 acceptance**, before C2/M1. Remaining

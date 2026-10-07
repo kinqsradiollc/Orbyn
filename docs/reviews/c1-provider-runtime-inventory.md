@@ -251,10 +251,10 @@ and three compiled actual durable-loop cases pass. Gemini uses Orbyn's JSON
 agent tool protocol rather than native Google function calls. Native content
 usage/authority/abort/truncation and malformed response checks are covered.
 Current-source pgvector setup/schema/retry/storage/client cohort47/47 also passes
-on a fresh marked database; it is independent of the still-running full stock
-regression13419. Logs and source freeze are in the C1 acceptance ledger.
-No live Zen inference or main delivery is claimed until the terminal regression
-and integration receipt are recorded.
+on a fresh marked database; it is independent of full stock regression13419,
+which is now terminal4044/4044, zero failures/skips/cancellations and exit0. Logs and source freeze are in the C1 acceptance ledger.
+No live Zen inference or main delivery is claimed until the integration receipt
+is recorded.
 
 ## Remaining qualification
 
