@@ -1140,3 +1140,15 @@ Final current-source backend/web/mobile typechecks all exit0. Logs:
 and checkpoint docs pass scoped Prettier; the full candidate diff passes
 `git diff --check`. These gates do not substitute for the still-live full
 regression14318 or the requested real Admin capture handoff.
+
+Corrected full regression14318 is now terminal exit0:3786/3786 passed, zero
+failures/skips/cancellations,800227ms. Log:
+`/tmp/orbyn-c1-retry-full-corrected-20261008.log`. This includes the actual Agenda
+lock-order race plus job-authority guards on corrected backend freezea1a1d773.
+The later deployment helpers/tests remain independently qualified6/6 plus the
+isolated Compose lifecycle proof; no combined full3789 count is claimed.
+
+Authenticated compiled preview Admin /ai/providers returns200 with semantic
+search still OFF; active retry fields are absent rather than invented zero counts.
+Only local auth/read endpoints were called; credentials/token were not printed.
+Real Admin capture review remains the final requested handoff before main delivery.
