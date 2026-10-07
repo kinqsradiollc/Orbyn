@@ -1,6 +1,6 @@
 # C1 acceptance ledger
 
-## Anthropic JSON fallback — qualified 8 October 2026
+## Anthropic JSON fallback — merged 8 October 2026
 
 Actual durable-loop reproduction requested `/messages` then `/chat/completions`
 and failed404 after native tools were rejected. Initial targeted suite5pass/5fail
@@ -21,8 +21,9 @@ Full regression on frozen `d09fa409`, session80296, is terminal exit0:
 3880/3880, zero failures/skips/cancellations,756874ms. Fresh marked test
 database; log: `/tmp/orbyn-c1-anthropic-json-full-20261008.log`.
 Scoped source formatting and diff checks pass. Subsequent changes only update
-documentation. Main integration follows this qualification; no live Anthropic
-request, UI change or full C1 completion is claimed.
+documentation. Fast-forward merged and pushed as `eb493433`; primary checkout's
+unrelated changes and mobile/app.json hash were preserved. No live Anthropic
+request, UI change, production deployment or full C1 completion is claimed.
 
 ## Anthropic pagination and saved-provider inventory — merged 8 October 2026
 
