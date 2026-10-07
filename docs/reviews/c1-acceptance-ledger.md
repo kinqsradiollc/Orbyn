@@ -1066,3 +1066,35 @@ a fallback serif font; they are excluded from typography acceptance. The
 temporary fixture now loads App's actual Manrope/DM Sans set and theme provider;
 Visual Check has been asked for refreshed mobile originals. No product font
 change or real provider/consent action was performed.
+
+### Corrected inference prerequisite and scoped retry layout acceptance
+
+Original full regression52257 is terminal:3782passed,1failed,0skipped/cancelled,
+exit1,824911ms. Its only failure is the recorded Agenda lock cycle; no full pass
+is claimed. Correction `a1a1d773` serializes job authority with `FOR UPDATE OF j`
+before any request-row lock. It preserves all source, lease and provider-choice
+guards; no external request occurs under these locks.
+
+The actual guard unit reproduction changes1/2 before to2/2 after. A controlled
+real Agenda publication holds a competing SHARE job lock and probes the request
+row with NOWAIT: the old order fails, the corrected order keeps the request
+unlocked until job authority is obtained, then the signed completion succeeds.
+Logs: `/tmp/orbyn-c1-inference-lock-race-before-20261008.log`,
+`/tmp/orbyn-c1-inference-lock-race-after-20261008.log`. Broader Agenda/inference/
+lease/provider-route cohort44/44 passes, zero skips/failures; backend build passes.
+Log: `/tmp/orbyn-c1-inference-lock-matrix-20261008.log`.
+
+Corrected source freeze `a1a1d773` now has a fresh full regression running as
+session14318, log `/tmp/orbyn-c1-retry-full-corrected-20261008.log`. Do not restart
+or claim main qualification before that process is terminal.
+
+Root inspected both QA024 mobile font recaptures plus the accepted wide/narrow
+web originals. Retry/offline text and disabled controls fit all sampled viewports
+without overlap. The refreshed mobile samples use the real App fonts/theme;
+earlier serif originals remain excluded from typography acceptance. Accept only
+component containment with labelled synthetic state. Real settings-route, broader
+UI and installed-native acceptance remain open within C1/U1. Manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-024-mobile-font-recapture-manifest.md`.
+Owned temporary fixture routes were removed after capture; mobile/index.ts was
+restored exactly, with scoped status components/types retained in the preview.
+Fixture sources are archived at `/tmp/orbyn-c1-retry-visual-fixtures-20261008`.
