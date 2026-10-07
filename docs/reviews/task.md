@@ -1,3 +1,13 @@
+## Ordered continuation — 7 October 2026
+
+Follow [ADR execution order](adr-execution-order.md), completing one checkpoint
+before starting another. Active checkpoint is QA-006 task-panel controls. Its
+corrected focused suite passes 5/5; web visual review passed and refreshed mobile
+review is assigned to Orbyn Visual Check. Expo8083 restarted as session28773.
+The reviewer writes findings to its Markdown report and sends short handoffs only.
+Next is normal Docs editor ownership activation, then the complete D1 matrix.
+No whole-ADR completion or production deployment is claimed.
+
 ## Current handoff — 7 October 2026, Home/Settings checkpoint
 
 Main/origin/main43c448c4 contains the independently browser-reviewed Home label/
