@@ -94,6 +94,12 @@ The actual durable `runAgent()` loop independently reproduces the same first
 Messages request → wrong compatible request →404, with an inert tool and no DB
 reads/writes: `/tmp/orbyn-c1-anthropic-json-loop-before-20261008.log`.
 
+A prepared10-case fallback suite currently has5pass/5fail. Failures cover wire
+shape/usage, actual durable-loop recovery, resumed history, truncation and
+post-response authority. HTTP400/401/403/429/500 sanitization already passes.
+Log: `/tmp/orbyn-c1-anthropic-json-suite-before-20261008.log`.
+Prepared fixture stays outside the running source freeze until promotion.
+
 Fix after the current pagination checkpoint is qualified/promoted: preserve
 Anthropic Messages authentication/system/conversation shape for text JSON
 fallback, parse the same JSON tool protocol and retain native usage accounting,
@@ -111,6 +117,20 @@ fallback repaired from the61 passing starting-mode tests.
   documents its compatible model endpoint. Its [developer overview](https://lmstudio.ai/docs/developer)
   lists compatible chat/Responses/embedding support. Loaded models, server auth,
   local network reachability and model-specific tools require runtime validation.
+- [Gemini compatibility](https://ai.google.dev/gemini-api/docs/openai) documents
+  the saved `/v1beta/openai` base, Bearer auth, model listing and embeddings.
+  Reasoning mappings vary by model and require separate control qualification.
+- OpenRouter documents its [generation catalog](https://openrouter.ai/docs/api/api-reference/models/get-models),
+  [embedding catalog](https://openrouter.ai/docs/api/api-reference/embeddings/list-embeddings-models)
+  and [embedding requests](https://openrouter.ai/docs/api/api-reference/embeddings/create-embeddings).
+  Embedding discovery uses a distinct `/embeddings/models` path. Orbyn currently
+  lets the admin type the embedding model; do not use its generation catalog as
+  proof of embedding choices.
+- [OpenCode Zen](https://opencode.ai/docs/zen) documents the saved `/zen/v1/models`
+  path, but lists model-dependent inference endpoints. Orbyn currently chooses
+  a compatible protocol for the entire connection. Review that mismatch after
+  the Anthropic fallback checkpoint; starting-mode fixtures do not prove that
+  every Zen model accepts Chat Completions.
 - [Matilda documentation](https://maincode.com/docs) is a documentation landing
   page, not sufficient evidence for all endpoints/options. Keep its existing
   fixed live baseline separate; do not infer embedding support from the brand
