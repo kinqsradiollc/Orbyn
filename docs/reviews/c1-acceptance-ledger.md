@@ -174,3 +174,40 @@ Keep task dismissal with the existing task still To do. This qualifies the share
 message font correction for these mobile-browser states, not native keyboard,
 large-text or all-theme behavior. Screenshots and manifest:
 `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-012-capture-manifest.md`.
+
+## Next C1 checkpoint: complete managed dispatch authority
+
+Implement this after the Responses checkpoint qualifies and is promoted. The
+confirmed model-retarget reproduction remains unresolved. Source inspection also
+identifies adjacent entry points that must participate in the same contract:
+
+| Path | Existing boundary | Required repair/acceptance |
+| --- | --- | --- |
+| Agent and first-party feature jobs (`user-choice.ts`, `feature-call.ts`, `agenda-call.ts`) | Immutable personal provider choice; default/fallback still resolves current managed settings | Credential-free immutable enqueue snapshot of managed provider identity, model and monotonic authority revision; validate live snapshot before dispatch, after response and on recovery. |
+| Explicit ChatGPT fallback (`user-choice.ts`) | Consent and durable operation reservation prevent unapproved fallback/retry | Resolve only the captured managed fallback; configuration changes cannot silently select a different model/provider. Preserve cached known results and reject uncertain completion. |
+| Default Agenda summary (`agenda-brief.ts`) | Source and personal-choice checks surround direct managed completion | Compose those checks with managed provider authority; do not overwrite its guard. Prove revocation during awaited work yields no usable completion. |
+| Recording transcription (`recording.ts`) | Checks source and personal choice, but calls `transcribe` directly with resolved managed credentials | Fence managed provider/key/options/enabled state around transcription and all awaited source reads. Preserve text-plan/audio capability separation. |
+| Hosted maintained pages (`maintenance-model.ts`, `maintenance-runs.ts`, `maintained-pages.ts`) | Hosted model_origin captures personal-choice version; worker later hashes current provider/model and fences that hash | Capture managed identity at enqueue as well as during dispatch; do not infer an old queued run's original model from current settings. Retain page authority, source/lease and budget guards. |
+| Plugin inference (`plugin/inference-broker.ts`) | Independent managed permission already captures provider/model/revision and checks live rows under locks | Preserve the separate broker and authority; reuse a shared managed identity primitive without converting MCP/plugin permission into personal provider consent. |
+
+Configuration identity must include a monotonic managed-selection revision, so
+switching model A→B→A still invalidates old work. Provider credential, endpoint,
+options, kind, enable/disable and deletion changes must invalidate the captured
+connection. Never persist keys/tokens/secret hashes in job snapshots, backfill a
+legacy job with invented enqueue evidence or make unrelated embedding/night-budget
+changes silently alter the generation model.
+
+Regression matrix: unchanged managed request succeeds; owner/personal choice
+mismatch fails; model/provider change before first dispatch and after checkpoint
+fails; A→B→A fails; provider disable/delete/key/endpoint/options edit fails; valid
+explicit fallback uses captured model; no consent produces zero managed calls;
+unknown prior completion is not retried; legacy missing capture fails closed;
+queued-with-no-provider cannot later adopt a newly configured provider. Cover
+actual trigger insertion/immutability, source and managed-setting races, durable
+before/after-tool recovery, direct Agenda/audio and hosted page paths. Existing
+plugin permission and independent embedding suites must remain passing.
+
+This table is an implementation/verification plan derived from current source;
+its adjacent rows are audit gaps, not claimed runtime reproductions or fixes.
+Mainc2476119 contains only the qualified typography checkpoint. The Responses
+working-tree integration remains uncommitted until the live full run finishes.
