@@ -15,7 +15,10 @@ The C1 indexing failure/retry checkpoint and its inference/deployment/UI prerequ
 The pagination/inventory checkpoint is merged and pushed as `07edbcc5`: full3806/3806, separate inventory61/61.
 Anthropic JSON fallback is merged and pushed as `eb493433`: full3880/3880,
 focused145/145, backend build and compiled loop pass.
-Next within C1: Together catalog repair, then remaining provider/embedding/cache gates. Wider embedding/native/full-stage acceptance remains open.
+Together catalog repair is local `8d83fb01`: adapter46/46, route cohort63/63,
+inventory61/61, backend build and compiled check pass. Full regression is running;
+main promotion pending. Then remaining provider/embedding/cache gates.
+Wider embedding/native/full-stage acceptance remains open.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 

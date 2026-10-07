@@ -1,5 +1,25 @@
 # C1 acceptance ledger
 
+## Together array catalog — local checkpoint 8 October 2026
+
+Frozen source `8d83fb01` normalizes Together's documented top-level array only
+for its saved kind and compatible protocol. Common ID validation, bounded
+record count, error redaction, sorting/deduplication and revision fencing remain.
+Initial adapter reproduction45pass/1fail; repaired46/46. Saved-provider route
+cohort63/63 includes a real saved Together row, unchanged configuration,
+malformed partial catalog rejection and in-flight connection mutation409.
+Independent all20-kind inventory61/61 now uses Together's array response.
+Backend build and compiled adapter check pass; no live vendor call or UI change.
+
+Logs: `/tmp/orbyn-c1-together-unit-before-20261008.log`,
+`/tmp/orbyn-c1-together-unit-after-20261008.log`,
+`/tmp/orbyn-c1-together-cohort-20261008.log`,
+`/tmp/orbyn-c1-together-inventory-20261008.log`,
+`/tmp/orbyn-c1-together-build-20261008.log`,
+`/tmp/orbyn-c1-together-compiled-20261008.log`.
+Full regression is running as session23362 on a fresh marked database:
+`/tmp/orbyn-c1-together-full-20261008.log`. Main promotion pending.
+
 ## Anthropic JSON fallback — merged 8 October 2026
 
 Actual durable-loop reproduction requested `/messages` then `/chat/completions`

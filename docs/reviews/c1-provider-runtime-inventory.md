@@ -148,11 +148,12 @@ all top-level arrays before inspecting their IDs. A Together-kind fixture using
 that documented shape reproduces `ProviderError: invalid model catalog`.
 Log: `/tmp/orbyn-c1-together-catalog-before-20261008.log`.
 
-After the current Anthropic JSON checkpoint: normalize Together's explicit array
-contract without accepting malformed arrays for every provider. Preserve ID
-validation, error redaction, manual-model behavior and revision fencing. Include
-an actual saved Together connection route fixture. A broad compatible-object
-fixture does not prove Together catalog decoding.
+Local `8d83fb01` normalizes Together's explicit array contract without accepting
+arrays for every provider. Common ID validation, error redaction and revision
+fencing remain. Adapter46/46 and route cohort63/63 pass, including an actual
+saved Together connection and in-flight mutation409. All20 inventory61/61 now
+uses the vendor's array shape. Full qualification/main promotion remain pending;
+these fixtures do not establish a live saved-host model call.
 
 ## Additional endpoint evidence
 
