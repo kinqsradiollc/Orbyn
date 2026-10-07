@@ -21,6 +21,22 @@ status index; [ordered execution queue](adr-execution-order.md),
 
 ## Current evidence
 
+### Active C1 candidate: managed Responses agent tools
+
+The candidate fixes the gap between the managed Responses completion adapter and
+the native agent's chat-only tool path. Selected models, function call/output
+identity and encrypted reasoning context survive serialized loop checkpoints.
+Focused checks pass 38/38; backend typecheck/build pass. Recovery tests simulate
+interruptions before/after a tool result and resume without repeated provider/tool
+work. Log: /tmp/orbyn-c1-responses-boundaries-20261007.log. Private-plan isolation
+passes without managed network traffic; legacy/current model routing fixtures pass.
+
+Not integrated to main; real provider inference and model capability compatibility
+remain unverified. This does not close C1. Next: qualify the provider selector and
+private-plan boundary, then reconcile all C1 caching, model, multi-provider and
+embedding requirements before C2/M1. No browser/native acceptance is inferred from
+backend fixture tests.
+
 ## Current stage — C1 contracts, canonical top-down order
 
 Main37dc1259 records the user's top-down order: C1 → C2/M1 → C3 → C4/D1 → C5 →

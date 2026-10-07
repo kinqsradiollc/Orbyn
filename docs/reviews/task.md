@@ -1,3 +1,34 @@
+## Active C1 checkpoint — managed Responses tools, 7 October 2026
+
+The managed completion adapter already selected Responses, but the native agent
+tool protocol always sent chat completions. The candidate now applies the same
+provider selector to agent tools, preserves the selected model, pairs function
+outputs by call_id, and retains bounded encrypted reasoning context in serialized
+agent checkpoints. Invalid/incomplete/unknown or multiple tool calls are refused;
+custom compatible and Azure endpoints retain their chat protocol.
+
+Focused protocol/graph/output-limit/wire checks pass 38/38 with no skips (942ms),
+log /tmp/orbyn-c1-responses-boundaries-20261007.log. Backend typecheck/build pass. Recovery
+tests interrupt the checkpoint callback before and after the tool result, then
+resume a JSON-serialized checkpoint: one provider tool request and one tool
+execution across both invocations. This is deterministic restart-boundary proof,
+not a killed production process or real provider inference. No UI changed.
+
+The private-plan JSON transport isolation check passes without a managed network
+request. Existing selection is retained for legacy and current GPT/o-series
+models; the official data-controls endpoint/model table includes legacy GPT-3.5
+and GPT-4 on Responses as well as current models. Request fixtures prove routing,
+not live model availability. Reference:
+https://developers.openai.com/api/docs/guides/your-data#api-endpoint-tool-and-model-support.
+
+This is candidate work, not yet main or a completed C1 stage. Before promotion,
+qualify the frozen combined regression and reconcile the complete C1 acceptance rows.
+Retain explicit gaps for reasoning/cache controls and evaluation, multiple
+providers, embedding consent/configuration/reindex races, and runtime evidence.
+Only then continue to C2/M1; Docs remains queued at C4. The governing queue is
+adr-execution-order.md. The protocol reference is OpenAI's official function
+calling guide: https://developers.openai.com/api/docs/guides/function-calling.
+
 ## Canonical top-down continuation — 7 October 2026
 
 User direction supersedes the Docs-first continuation: follow C1, C2/M1, C3,

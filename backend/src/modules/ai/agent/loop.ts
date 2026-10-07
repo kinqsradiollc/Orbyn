@@ -397,7 +397,9 @@ export async function runAgent(
                 signal,
               });
         const replyBytes = Buffer.byteLength(
-          result.text + JSON.stringify(result.toolCalls),
+          result.responseItems
+            ? JSON.stringify(result.responseItems)
+            : result.text + JSON.stringify(result.toolCalls),
         );
         if (replyBytes > replyReserve * 4)
           throw new Error(
@@ -627,6 +629,9 @@ export async function runAgent(
         role: "assistant",
         content: result.text,
         tool_calls: calls,
+        ...(result.responseItems
+          ? { responseItems: result.responseItems }
+          : {}),
       });
       pendingProvider = undefined;
       await checkpoint();
@@ -640,6 +645,12 @@ export async function runAgent(
     // An empty reply (Matilda sometimes sends `{"tool_calls": [], "answer": null}`)
     // gets one nudge, whether or not tools ran first.
     if (!text && guards-- > 0 && !last) {
+      if (result.responseItems?.length)
+        messages.push({
+          role: "assistant",
+          content: "",
+          responseItems: result.responseItems,
+        });
       messages.push({ role: "user", content: EMPTY_ANSWER_NOTE });
       pendingProvider = undefined;
       await checkpoint();
@@ -653,7 +664,13 @@ export async function runAgent(
       guards-- > 0 &&
       !last
     ) {
-      messages.push({ role: "assistant", content: text });
+      messages.push({
+        role: "assistant",
+        content: text,
+        ...(result.responseItems
+          ? { responseItems: result.responseItems }
+          : {}),
+      });
       messages.push({ role: "user", content: PROMISED_TOOLS_NOTE });
       pendingProvider = undefined;
       await checkpoint();
