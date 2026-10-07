@@ -3,6 +3,7 @@ import { Check, Circle, ChevronDown } from "lucide-react";
 import { AI_PROVIDERS, type AiProvider, type AiSettings } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { client } from "../../lib/api";
+import { useEmbeddingModelCatalog } from "../../hooks/useEmbeddingModelCatalog";
 
 /**
  * Search by meaning's own setup, apart from the assistant: off by default.
@@ -39,6 +40,7 @@ export function SemanticSetup({
     settings?.embedding_generation,
   ]);
   const selected = providers.find((provider) => provider.id === providerId);
+  const discovery = useEmbeddingModelCatalog(selected);
   useEffect(() => {
     setAccept(false);
   }, [selected?.id, selected?.embedding_revision, selected?.enabled]);
@@ -186,7 +188,7 @@ export function SemanticSetup({
             Embedding provider
             <Select
               value={providerId}
-              disabled={busy || !settings.semantic_possible}
+              disabled={busy}
               onChange={(event) => {
                 setProviderId(event.target.value);
                 setModel("");
@@ -213,13 +215,76 @@ export function SemanticSetup({
               value={model}
               maxLength={200}
               placeholder="text-embedding-3-small"
-              disabled={!ready}
+              disabled={
+                busy || !selected?.enabled || !selected.embedding_revision
+              }
               onChange={(e) => {
                 setModel(e.target.value);
                 setAccept(false);
               }}
             />
           </label>
+          <button
+            type="button"
+            className="secondary"
+            disabled={
+              busy ||
+              discovery.loading ||
+              !selected?.enabled ||
+              !selected.embedding_revision
+            }
+            onClick={() => void discovery.load()}
+          >
+            {discovery.loading
+              ? "Loading models…"
+              : "Load embedding model catalog"}
+          </button>
+          {discovery.error && (
+            <p role="alert" className="muted">
+              {discovery.error}
+            </p>
+          )}
+          {discovery.catalog && (
+            <>
+              <p className="muted">
+                {discovery.catalog.catalog_kind === "manual"
+                  ? "Type the deployment or model name manually."
+                  : discovery.catalog.catalog_kind === "unclassified"
+                    ? "Provider models. Embedding support is checked when you validate."
+                    : "Embedding models. Dimensions are checked when you validate."}
+              </p>
+              {discovery.catalog.models.length > 0 ? (
+                <label>
+                  Choose a catalog model
+                  <Select
+                    searchable
+                    value={model}
+                    disabled={busy}
+                    onChange={(event) => {
+                      setModel(event.target.value);
+                      setAccept(false);
+                    }}
+                  >
+                    <option value="">Choose a model</option>
+                    {model && !discovery.catalog.models.includes(model) && (
+                      <option value={model}>{model} (manual)</option>
+                    )}
+                    {discovery.catalog.models.map((id) => (
+                      <option key={id} value={id}>
+                        {id}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              ) : (
+                discovery.catalog.catalog_kind !== "manual" && (
+                  <p className="muted">
+                    No models returned. You can type a model manually.
+                  </p>
+                )
+              )}
+            </>
+          )}
           <label className="check-line">
             <input
               type="checkbox"

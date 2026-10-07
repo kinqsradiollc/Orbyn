@@ -531,6 +531,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "DELETE /ai/providers/:id": "admin",
   "PUT /ai/providers/:id": "admin",
   "POST /ai/providers/:id/models": "admin",
+  "POST /ai/providers/:id/embedding-models": "admin",
   "POST /ai/providers/:id/test": "admin",
   "PUT /ai/settings": "admin",
   "PUT /ai/settings/semantic": "admin",

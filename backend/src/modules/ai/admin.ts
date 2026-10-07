@@ -29,6 +29,7 @@ import {
   complete,
   embed,
   listModels,
+  listEmbeddingModels,
   ProviderError,
 } from "./providers/adapters.js";
 import { assertProviderUrl } from "./providers/network.js";
@@ -416,6 +417,41 @@ export async function aiAdminRoutes(app: FastifyInstance) {
       if (!current || current.generation_revision !== revision)
         fail(409, "The provider changed. Refresh connections and try again.");
       return { models, provider_revision: revision };
+    } catch (error) {
+      if (error instanceof ProviderError) fail(502, error.message);
+      throw error;
+    }
+  });
+
+  app.post("/ai/providers/:id/embedding-models", strictRateLimit, async (r) => {
+    await authorize(r, "ai:manage");
+    const input = aiCatalogInput.parse(r.body ?? {});
+    if (!input.expected_revision)
+      fail(400, "Refresh connections before loading embedding models.");
+    const row = await providerRow(idParam(r));
+    const revision = String(row.embedding_revision);
+    if (input.expected_revision !== revision)
+      fail(
+        409,
+        "The embedding provider changed. Refresh connections and try again.",
+      );
+    if (!row.enabled)
+      fail(409, "Enable the embedding provider before loading models.");
+    const target = await connection(row, "", "embedding");
+    try {
+      const catalog = await listEmbeddingModels(target);
+      const current = (
+        await query<{ embedding_revision: string }>(
+          "SELECT embedding_revision::text FROM ai_providers WHERE id=$1",
+          [row.id],
+        )
+      ).rows[0];
+      if (!current || current.embedding_revision !== revision)
+        fail(
+          409,
+          "The embedding provider changed. Refresh connections and try again.",
+        );
+      return { ...catalog, provider_revision: revision };
     } catch (error) {
       if (error instanceof ProviderError) fail(502, error.message);
       throw error;

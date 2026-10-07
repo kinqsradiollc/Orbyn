@@ -3606,6 +3606,23 @@ Legacy requests with `{}` retain the post-fetch revision guard. Catalog refresh
 never selects or saves a default model. Azure deployments remain explicit manual
 entries when catalog discovery is unsupported.
 
+`POST /ai/providers/:id/embedding-models` (`ai:manage`) requires
+`{ "expected_revision": "<displayed embedding_revision>" }`. Missing revision
+returns 400; malformed revision returns 422. This uses the independent embedding
+revision, not generation controls. Disabled, revised or deleted providers return
+409 before dispatch or after the catalog request. Success returns
+`{ models, provider_revision, catalog_kind }`, where `catalog_kind` is
+`embedding`, `unclassified` or `manual`. The exact native OpenRouter endpoint
+uses its embedding catalog; other discovered catalogs remain unclassified.
+Azure and native Anthropic use manual entry. Discovery never selects a default,
+saves settings, grants indexing consent or sends page contents. Users may retain
+an unlisted manual model; embedding support is verified during validation.
+
+Provider HTTP transport rejects redirects, including same-origin redirects,
+and cancels redirect response bodies. Administrators must save the final base
+endpoint. Credentials and request contents are not forwarded to a redirect;
+errors do not expose its Location or body.
+
 Authenticated `GET /ai/usage` returns owner-only `{window_days:30, enabled,
 requests, usage:{input_tokens,output_tokens,reasoning_tokens,cached_input_tokens,
 cache_write_tokens}}`. It covers reported responses of saved assistant jobs using

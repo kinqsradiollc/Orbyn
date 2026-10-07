@@ -8,6 +8,7 @@ import { Disclosure } from "../components/Disclosure";
 import { Icon } from "../components/Icon";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
+import { useEmbeddingModelCatalog } from "../hooks/useEmbeddingModelCatalog";
 
 /**
  * Search by meaning's own setup in the admin console (as on the web): off
@@ -49,6 +50,14 @@ export function SemanticSetup({
       provider.enabled && AI_PROVIDERS[provider.kind].format !== "anthropic",
   );
   const selected = eligible.find((provider) => provider.id === providerId);
+  const discovery = useEmbeddingModelCatalog(selected);
+  const [catalogSearch, setCatalogSearch] = useState("");
+  useEffect(() => {
+    setCatalogSearch("");
+  }, [selected?.id, selected?.embedding_revision]);
+  const matches = (discovery.catalog?.models ?? []).filter((id) =>
+    id.toLowerCase().includes(catalogSearch.trim().toLowerCase()),
+  );
   useEffect(() => {
     setAccept(false);
   }, [selected?.id, selected?.embedding_revision, selected?.enabled]);
@@ -195,7 +204,7 @@ export function SemanticSetup({
             )}
             value={providerId}
             accessibilityLabel="Embedding provider"
-            disabled={busy || !settings.semantic_possible}
+            disabled={busy}
             onChange={(next) => {
               setProviderId(next);
               setModel("");
@@ -211,7 +220,9 @@ export function SemanticSetup({
           <TextInput
             style={shared.input}
             value={model}
-            editable={ready}
+            editable={
+              !busy && !!selected?.enabled && !!selected.embedding_revision
+            }
             maxLength={200}
             placeholder="Model that measures text"
             placeholderTextColor={colors.faint}
@@ -221,6 +232,83 @@ export function SemanticSetup({
               setAccept(false);
             }}
           />
+          <Button
+            title={
+              discovery.loading
+                ? "Loading models…"
+                : "Load embedding model catalog"
+            }
+            disabled={
+              busy ||
+              discovery.loading ||
+              !selected?.enabled ||
+              !selected.embedding_revision
+            }
+            onPress={() => void discovery.load()}
+          />
+          {discovery.error && (
+            <Text accessibilityRole="alert" style={shared.small}>
+              {discovery.error}
+            </Text>
+          )}
+          {discovery.catalog && (
+            <>
+              <Text style={shared.small}>
+                {discovery.catalog.catalog_kind === "manual"
+                  ? "Type the deployment or model name manually."
+                  : discovery.catalog.catalog_kind === "unclassified"
+                    ? "Provider models. Embedding support is checked when you validate."
+                    : "Embedding models. Dimensions are checked when you validate."}
+              </Text>
+              {discovery.catalog.models.length > 0 ? (
+                <>
+                  <TextInput
+                    style={shared.input}
+                    value={catalogSearch}
+                    onChangeText={setCatalogSearch}
+                    placeholder="Search catalog models"
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="Search embedding catalog models"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {matches.length > 0 && (
+                    <Segmented
+                      wrap
+                      options={matches.slice(0, 40)}
+                      value={model}
+                      labels={Object.fromEntries(
+                        matches.slice(0, 40).map((id) => [id, id]),
+                      )}
+                      accessibilityLabel="Embedding catalog models"
+                      disabled={busy}
+                      onChange={(next) => {
+                        setModel(next);
+                        setAccept(false);
+                      }}
+                    />
+                  )}
+                  {!matches.length && (
+                    <Text style={shared.small}>
+                      No matching models. You can keep the typed value.
+                    </Text>
+                  )}
+                  {matches.length > 40 && (
+                    <Text style={shared.small}>
+                      Showing 40 of {matches.length}. Search to narrow the
+                      catalog.
+                    </Text>
+                  )}
+                </>
+              ) : (
+                discovery.catalog.catalog_kind !== "manual" && (
+                  <Text style={shared.small}>
+                    No models returned. You can type a model manually.
+                  </Text>
+                )
+              )}
+            </>
+          )}
           <View style={s.accept}>
             <Text style={[shared.small, { flex: 1 }]}>
               I understand that the words of every page (except projects and
