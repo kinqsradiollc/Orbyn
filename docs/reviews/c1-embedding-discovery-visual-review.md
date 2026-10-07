@@ -99,3 +99,31 @@ Wide/narrow Dark, true zero-result search, exact249 dropdown interaction and the
 open/collapsed navigation originals remain pending. Mobile acceptance above is
 unchanged because81e807ee did not change mobile UI. Complete C1/U1 acceptance is
 not established by these samples.
+
+## Completed81e807ee scoped browser batch — root acceptance
+
+Root inspected all remaining originals from the81e807ee folder and its manifest:
+wide1280 Light/Dark true-zero search, narrow320 Light/Dark true-zero and
+selected249, wide Dark selected249, and wide/narrow Light open-dropdown
+exact249 search. The latter shows a single matching final catalog option while
+the underlying manual model remains preserved. Both themes' zero-result captures
+show No matches with manual-unlisted-model unchanged. The secondary catalog
+action and these controls fit horizontally. The narrow open navigation is an
+overlay over content; closed navigation restores the main surface. These images
+do not establish keyboard/focus dismissal, full navigation behavior or native
+acceptance. Dropdowns intentionally overlay underlying controls while open.
+
+The manifest distinguishes closed selected-model captures from actual search,
+panel crops from narrow originals, and the earlier mislabeled matching-manual
+image from genuine zero results. No whole-stage C1/U1 completion is inferred.
+Light was restored and drafts cleared by the capture session. Runtime product
+remains81e807ee; candidateHEADab01bcc8 adds only documentation.
+
+After capture quiescence, root deleted only the exact inert18089 provider via
+its authenticated admin API. Receipt /tmp/orbyn-c1-ui-fixture-cleanup-20261008.json
+confirms204, original four provider IDs retained and saved AI settings unchanged.
+The verified owned fixture process41586 was stopped. Cumulative server counts
+are catalog16/completion3/unknown0, retained at
+/tmp/orbyn-c1-ui-inert-provider-counts-20261008.json; these include earlier fixture
+checks, not vendor traffic. The current capture batch performed no Test/Use/
+validation/indexing. Preview servers and the original providers remain running.

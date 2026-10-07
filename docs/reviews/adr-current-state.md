@@ -277,3 +277,18 @@ scoped browser states. The catalog action uses the expected secondary styling.
 Exact-search interaction and the completed capture manifest remain pending.
 Candidate product is still local and unpromoted; no whole ADR stage completes.
 Continue C1 retained gates, then pause before C2 as requested.
+
+### Scoped visual acceptance and corrected full run
+
+Root has completed81e807ee scoped web catalog review: wide/narrow last249
+search, true-zero/manual preservation in both themes and corrected secondary
+styling. Mobile's accepted d498febd presentation remains unchanged. Keyboard,
+full-surface/native and wider C1 acceptance remain open. The temporary inert
+provider was removed via API with four original rows and AI settings unchanged;
+its owned server is stopped. No vendor calls or indexing occurred in the batch.
+
+Fresh full regression for candidateab01bcc8 is live on the distinct marked
+orbyn_c1_catalog_final_20261008_test database, tool session75238. Log:
+/tmp/orbyn-c1-catalog-final-full-20261008.log. Keep product frozen until terminal;
+do not infer a passing full result from current progress. Feature promotion waits
+for its terminal evidence. Continue remaining C1 gates before the requested pause.
