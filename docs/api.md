@@ -1402,16 +1402,44 @@ creates nothing; the word search above carries on alone, which is how the worksp
 Swapping the image to `pgvector/pgvector:pg17` and re-running migrations creates the tables; nothing
 else changes.
 
-Turning it on is its own setup, `PUT /ai/settings/semantic` (`ai:manage`) with
-`{ "on": true, "embedding_model": "…", "accept": true }`: it needs `pgvector` (`409` without it), a
-connected provider (`409`), a model that measures text (`422`) and the admin's agreement that every
-page is sent to the provider to be measured (`422` without `accept`). `{ "on": false }` turns it off
-and **forgets every measurement**. `PUT /ai/settings` no longer turns it on (`422`). `GET /ai/settings`
-reports `semantic_search`, `semantic_possible` (whether this database could), `embedding_model`,
-`semantic_accepted_at` and `measure_running` (whether the measuring service reported in lately).
-It stays off until asked for because measuring a page means **sending its words to whichever AI
-provider is configured**, which is a decision for whoever runs the workspace rather than a default.
-Pages in projects kept out of the assistant are never measured.
+Turning it on is its own setup, `PUT /ai/settings/semantic` (`ai:manage`):
+
+```json
+{
+  "on": true,
+  "embedding_provider_id": "<provider UUID>",
+  "embedding_model": "<embedding model or deployment>",
+  "expected_generation": "<settings embedding_generation UUID>",
+  "expected_provider_revision": "<provider embedding_revision decimal string>",
+  "accept": true
+}
+```
+
+Use the independent `embedding_revision` from `GET /ai/providers`, not the
+provider's generation `controls_revision`. Missing/stale reviewed revisions or
+settings generations return409 before any provider probe. The enabled provider
+must support embeddings; the fixed non-personal validation probe verifies vector
+dimensions. Missing model/acceptance or invalid provider output returns422.
+Provider/settings changes during validation return409 and do not replace consent
+or existing vectors. No database locks span the network probe.
+
+Setup requires pgvector (`409` without it). Acceptance applies to the explicitly
+selected embedding destination, independent of chat settings. Eligible page text
+is sent only after the validated configuration is committed. Projects/teams kept
+out of the assistant and trashed pages are excluded. A provider connection change
+invalidates accepted consent until revalidated; generation-only controls preserve
+it. Revalidation changes configuration generation, clears old measurements and
+queues eligible pages. Mixed-version legacy workers remain disabled.
+
+`{ "on": false, "expected_generation": "<current UUID>" }` turns it off and
+**forgets every measurement**; the generation is optional for legacy turn-off
+requests. `PUT /ai/settings` cannot turn it on (`422`). Settings responses include
+`semantic_search`, `semantic_possible`, `embedding_provider_id`, `embedding_model`,
+`embedding_dimensions`, `embedding_generation`, `embedding_needs_validation`,
+`embedding_pending_pages`, `embedding_indexed_pages`, `semantic_accepted_at` and
+`measure_running`. Counts are available only for an accepted active configuration;
+worker heartbeat reports liveness, not successful indexing. Persisted failure/retry
+status remains a tracked implementation requirement.
 
 Once on, editing a page queues it; the **measuring service** (`node dist/services/measure.js`,
 Compose `measure`, profile `semantic`, never the reminder loop) measures its lines a minute at a time,
@@ -3558,6 +3586,14 @@ update accepts optional `expected_revision` from the returned exact `controls_re
 revision returns 409 without changing the provider. Model/provider selection and
 controls validation use one transaction. Provider test may return observed `usage`
 counters; missing measurements remain null.
+
+`POST /ai/providers/:id/models` (`ai:manage`) accepts
+`{ "expected_revision": "<displayed controls_revision>" }`. A stale revision
+returns409 before dispatch; any connection-generation change or deletion during
+the catalog request also returns409. Success returns `{ models, provider_revision }`.
+Legacy requests with `{}` retain the post-fetch revision guard. Catalog refresh
+never selects or saves a default model. Azure deployments remain explicit manual
+entries when catalog discovery is unsupported.
 
 Authenticated `GET /ai/usage` returns owner-only `{window_days:30, enabled,
 requests, usage:{input_tokens,output_tokens,reasoning_tokens,cached_input_tokens,
