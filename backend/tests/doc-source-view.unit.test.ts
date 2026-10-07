@@ -647,3 +647,28 @@ test("web source errors keep the dialog mounted and Escape observes the latest v
   assert.equal(render.focused(), 1);
   assert.equal(render.listeners.has("keydown"), false);
 });
+
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} stale source events cannot overwrite a newer remote revision`, () => {
+    const render = fixture(native, true);
+    const original = core.parseDoc("Original ^line", { anchors: true });
+    const tree = render(original);
+    const input = find(
+      tree,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    const external = core.parseDoc("Remote revision ^line", { anchors: true });
+    render(external);
+    const text = "Late typing on original ^line";
+    if (native) input.onChangeText(text);
+    else input.onChange({ currentTarget: { value: text } });
+    assert.equal(
+      render.edits.length,
+      0,
+      "the retained input belongs to the older revision",
+    );
+    assert.match(renderToStaticMarkup(render(external)), /has not been saved/);
+  });
+}

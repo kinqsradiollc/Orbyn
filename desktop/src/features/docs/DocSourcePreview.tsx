@@ -52,12 +52,17 @@ export function DocSourcePreview({
   // Recognize every own block echo without retaining old document snapshots.
   const acceptedBlocks = useRef(new WeakSet<DocBlock[]>([blocks]));
   const mustRestore = useRef(false);
+  // Retained browser/native input handlers must not rebase an older buffer
+  // onto ownership adopted from another editor.
+  const sourceEpoch = useRef(0);
+  const renderedEpoch = sourceEpoch.current;
   useEffect(() => {
     if (
       acceptedBlocks.current.has(blocks) ||
       canonical.source === acceptedSource.current
     )
       return;
+    sourceEpoch.current++;
     if (sourceError) {
       mustRestore.current = true;
       setSourceError(
@@ -82,6 +87,12 @@ export function DocSourcePreview({
     if (!onSourceChange || mustRestore.current) return;
     setSourceText(text);
     try {
+      if (renderedEpoch !== sourceEpoch.current) {
+        mustRestore.current = true;
+        throw new Error(
+          "The document changed before this source edit could be applied. Restore the current document before continuing.",
+        );
+      }
       const next = onSourceChange(text, ownerBlocks.current);
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
