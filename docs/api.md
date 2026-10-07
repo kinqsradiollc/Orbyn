@@ -3562,7 +3562,11 @@ counters; missing measurements remain null.
 Authenticated `GET /ai/usage` returns owner-only `{window_days:30, enabled,
 requests, usage:{input_tokens,output_tokens,reasoning_tokens,cached_input_tokens,
 cache_write_tokens}}`. It covers reported responses of saved assistant jobs using
-Orbyn's configured Responses provider, including explicitly consented fallback.
+Orbyn's configured managed provider, including explicitly consented fallback.
+Responses, compatible Chat Completions (direct/native/JSON) and Anthropic
+Messages retain reported usage. Claude's uncached input, cache-read and
+cache-write counters are added to normalize total input only when all are
+present and valid; incomplete or overflowing totals stay unknown.
 Responses with a repeated provider response identifier deduplicate within that
 job/provider/model. Anonymous response identifiers cannot establish equivalence.
 Reported incomplete responses are counted even though their output is rejected.

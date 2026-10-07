@@ -109,6 +109,42 @@ provider text through Admin navigation, and narrow light menu stays within viewp
 Remaining dark/narrow usage,320 lower controls and refreshed provider sheet
 captures stay explicit. No installed-native or whole-stage acceptance claimed.
 
+## Controls/usage checkpoint ready for main — final qualification
+
+Full backend regression for adapter freeze bf3dfef1 is terminal green3736/3736,
+zero failures/cancellations/skips, exit0,901157ms; session79617 is closed. Log:
+`/tmp/orbyn-adr-full-main-bf3dfef1-20261007.log`. Current backend module source
+is byte-identical to that freeze. Later changes add a separately executed
+provider-menu test, mobile management/confirmations, pinned-header CSS and
+privacy/API wording. Final47/47 focused legal/version/management/adapter checks
+pass with zero skips/failures in
+`/tmp/orbyn-c1-final-privacy-ui-focused-20261007.log`. Shared packages rebuild
+passes; previously recorded both-client types and web build pass.
+
+User-selected Matilda fixed baseline passes6/6 exact-marker/arithmetic/state
+checks with latency899,526,794,776,715,519ms. Evidence:
+`/tmp/orbyn-c1-matilda-baseline-20261007.json`. It sends fixed non-personal text,
+not workspace data. Provider reports zero input/output/reasoning/cache-read
+counters and unknown cache writes. This establishes those six output checks
+and latency only; no general model quality, costs/cache savings, plan/billing or
+OpenAI cache-control qualification is claimed.
+
+Root inspected refreshed QA018 web390 Light/Dark pinned-header/menu images,
+Dark Settings full usage, mobile320/390 Light/Dark management sheets and lower
+controls. Captured controls/actions/zero-usage text remain within the viewport;
+header no longer shows provider text through it, mobile rare actions live in a
+contained sheet, and the invalid-icon crash no longer reproduces after refresh.
+The zero-usage and observed fixture API paths are qualified; installed-native,
+positive/overflow/error visual matrices and general whole-app acceptance remain
+open in retained C1/U1 scope. The Matilda baseline does not waive OpenAI cache
+economics or the remaining multi-provider/embedding stage requirements.
+
+Privacy wording now explicitly distinguishes changed embedding connection/model/
+credential/transport (renewed consent) from chat-only reasoning/cache settings
+(consent preserved by migration256). API docs reflect all managed response
+formats and Claude's disjoint input counters. Scope is ready for main promotion
+as a tested implementation checkpoint; entire C1 stage remains incomplete.
+
 ## Historical qualification — migration256 controls freeze
 
 ### Current visual-gate revalidation
