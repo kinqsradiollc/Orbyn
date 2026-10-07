@@ -1571,3 +1571,25 @@ Actual compiled public catalog adapter checks independently pass for DeepInfra
 (181 unique sorted models) and ZenMux (201). This used no credential, paid
 inference or private content. Receipt:
 `/tmp/orbyn-c1-public-catalog-live-20261008.json`.
+
+### Corrected picker qualification — terminal
+
+Frozen product/test source693066d5 passes full4155/4155, zero failures/skips/
+cancellations, exit0,791435.589833ms. Terminal session49949, log
+`/tmp/orbyn-c1-picker-corrected-full-20261008.log`. No rerun of the failed freeze
+is presented as passing. Scoped73/73, Teams23/23, workspace types and web/backend
+builds remain separate supporting receipts.
+
+Root inspected corrected narrow originals, including empty and cleared search in
+both web themes, Tab focus to Name, mobile320/390 empty/filtered controls and
+the scrolled bottom showing Nebius fully reachable. A documented full-page
+same-browser attempt now returns1280px width; Visual Check retained only a
+credential-safe1280×480 crop. Root inspected this crop's form/popup positioning;
+it is not retained full-surface or complete-list/native acceptance. Manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-026-C1-picker-correction-693066d589bb703dd5f63cd431abbb0fc0765e13-capture-manifest.md`.
+The corrected picker/test harness checkpoint is qualified for main integration.
+C1's remaining live-provider/cache/embedding and client/native gates stay open.
+
+Three task-created, terminal disposable stock test databases were retired after
+checking their test marker and zero sessions. Active corrected-full and preview
+databases, logs, user Docker containers and unrelated work remain preserved.

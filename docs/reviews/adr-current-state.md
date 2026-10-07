@@ -55,7 +55,12 @@ browser capture review were started. That initial full run finished4141/4153,
 Root also confirmed empty-popup clipping at320px. Corrected local source54f53b8c
 and test-only693066d5 pass corrected73/73 and Teams23/23, workspace typechecks
 and web build. Fresh full regression and corrected browser recaptures are now
-pending. Main remains0c407a0a. C1 remains active; no premature pause or C2 work.
+completed: full4155/4155, zero failures/skips/cancellations, exit0,791435ms.
+Root inspected corrected web320 Light/Dark and mobile320/390 originals, keyboard
+return-to-Name, lower-list reachability and a credential-safe1280px wide crop.
+That crop is not full-surface acceptance; native keyboard/installed clients remain
+open. Picker and test-lifecycle correction are qualified for scoped main delivery.
+Main delivery receipt follows. C1 remains active; no premature pause or C2 work.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.
