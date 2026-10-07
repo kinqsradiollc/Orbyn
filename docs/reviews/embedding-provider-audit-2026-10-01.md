@@ -251,8 +251,7 @@ Source is frozen at candidate `d4cd4273`; documentation may advance separately.
 The corrected frozen full regression completed3781/3781, zero failures,
 cancellations or skips, exit0,900795ms (terminal session87929). Later commits
 change documentation only. QA022 web wide/narrow and mobile320/390 OFF controls were inspected and
-contained. Web production build passes. Qualified for scoped main promotion;
-wholeC1 completion remains unclaimed.
+contained. Web production build passes. Merged and pushed as43fa8f57; wholeC1 completion remains unclaimed.
 
 ### Additional rollout checks — 8 October 2026
 
@@ -323,3 +322,6 @@ Capture-only manifest: `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d
 Root inspected all accepted web/mobile originals; agent design findings are not
 used as acceptance. Enabled/error/native and whole-page quality remain open.
 Web production build log: `/tmp/orbyn-c1-embedding-web-build-20261008.log` (exit0).
+
+Main delivery: `43fa8f57` includes the reviewed-revision fix and qualification docs.
+No production deployment is verified. Continue failure/retry checkpoint next.

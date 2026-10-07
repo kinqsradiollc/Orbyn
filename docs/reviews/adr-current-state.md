@@ -10,6 +10,7 @@ Detailed qualification and historical failures remain in
 The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.
 The C1 catalog checkpoint is merged and pushed to main as `8ab6c822`; provider controls and manual-model preservation were inspected in web/mobile browser captures.
+The reviewed embedding-consent checkpoint is merged and pushed as `43fa8f57`.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 
@@ -63,7 +64,7 @@ Acceptance comes from this session's image inspection, not the capture session's
    Shared/backend builds and both client types pass. Full frozen regression completed as session87929:3781/3781, zero failures/skips/cancellations, exit0.
    Root inspected QA022 web wide/narrow and mobile320/390 OFF controls; manifest
    confirms source/viewport metadata. Web production build passes. Scoped main
-   promotion follows; wider enabled/error/native matrix stays open.
+   promotion completed43fa8f57; wider enabled/error/native matrix stays open.
 3. Next: implement persistent sanitized indexing failure/retry status and isolate
    failed pages so healthy queued pages proceed; follow the embedding audit order.
    Complete the remaining embedding consent/validation/reindex/search/client matrix.

@@ -12,7 +12,7 @@ Shared/backend builds and both client types pass. Full frozen run87929 passes
 QA022 wide/narrow web and mobile320/390 OFF controls. The capture-only manifest
 confirms source/viewport/zoom; root inspected every accepted original. Controls
 are contained, prerequisite labels accurate and consent/validation disabled.
-Web production build passes (terminal46430). Qualified for scoped main promotion;
+Web production build passes (terminal46430). Merged/pushed as43fa8f57;
 no enabled/error/native or wholeC1 acceptance is claimed.
 See [the embedding audit](embedding-provider-audit-2026-10-01.md) for matrix,
 logs, failed harness commands and rollout behavior. WholeC1 remains open.
@@ -994,3 +994,9 @@ and pre-CORS mobile offline states are historical harness evidence, not current
 product findings. No provider/consent/inference action was performed for captures.
 Full3781/3781, focused48 plus independent stock20, upgrade/late-install1/1 each,
 shared/backend/web builds and client types qualify the reviewed-revision fix.
+
+Delivery receipt: reviewed embedding-consent checkpoint merged by fast-forward and
+pushed to main as `43fa8f57` on8October2026. Root mobile/app.json SHA1 remains
+`dacd602172347441f2fd92f16d8772b3ba1ef7a8`; unrelated tracked/untracked changes
+are preserved. Production deployment is unconfirmed. Next active implementation
+checkpoint is persistent indexing failure/retry status within C1.
