@@ -35,6 +35,14 @@ C1 runtime/client/embedding/cache gates are retained rather than waived.
 
 ### Additional Zen qualification and visual boundary
 
+Current web production build passes:
+`/tmp/orbyn-c1-zen-web-build-20261008.log`. Current-source pgvector cohort47/47
+passes with zero failures/skips on a fresh marked database, including setup,
+schema/revision/keep-out races, retry fences, Azure storage/search, vector
+validation and web/mobile callbacks. Log:
+`/tmp/orbyn-c1-zen-embedding-current-20261008.log`. This separately executed
+cohort is not added to the full stock regression count.
+
 Current workspace typechecks pass for shared packages, backend, desktop and
 mobile: `/tmp/orbyn-c1-zen-workspace-types-20261008.log`. Public Zen catalog
 snapshot86 IDs is independently compared with118 reviewed metadata records:

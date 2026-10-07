@@ -235,6 +235,27 @@ would therefore leave it on Chat Completions. The next repair must preserve that
 existing OpenAI default behavior while introducing an explicit, qualified
 gateway transport selection; changing only the provider definition is inadequate.
 
+## Frozen Zen selected-model correction
+
+Candidate `890d42ce` replaces connection-wide Chat Completions with exact reviewed
+model assignments for Responses, Messages and native Google content. It preserves
+the saved endpoint and auth, and leaves catalog/embedding resolution independent.
+The metadata fixture118 IDs is sourced from Models.dev's OpenCode entry and the
+SDK mapping used by OpenCode; it is not fetched at runtime. The public Zen
+catalog snapshot86 IDs has84 reviewed assignments; its two Jev IDs require a
+custom transport and are rejected explicitly. Unknown IDs retain the existing
+compatible path and are not asserted to have native or live certification.
+
+Focused protocol/provider cohort335/335, workspace typechecks, backend/web builds
+and three compiled actual durable-loop cases pass. Gemini uses Orbyn's JSON
+agent tool protocol rather than native Google function calls. Native content
+usage/authority/abort/truncation and malformed response checks are covered.
+Current-source pgvector setup/schema/retry/storage/client cohort47/47 also passes
+on a fresh marked database; it is independent of the still-running full stock
+regression13419. Logs and source freeze are in the C1 acceptance ledger.
+No live Zen inference or main delivery is claimed until the terminal regression
+and integration receipt are recorded.
+
 ## Remaining qualification
 
 - Verify public endpoint/catalog availability and model-specific controls against
