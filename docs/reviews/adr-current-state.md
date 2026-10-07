@@ -23,6 +23,8 @@ OpenCode selected-model transport source `890d42ce` is merged and pushed as
 backend build and three compiled durable-loop protocol cases pass. Full regression
 passes4044/4044 with zero failures/skips, workspace types/web build and separate
 pgvector47/47 pass. Main and origin matched after fast-forward/push.
+Embedding access-race and dedicated CI coverage is qualified locally:6/6 new
+checks and combined53/53, zero skips, with unchanged backend source.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.

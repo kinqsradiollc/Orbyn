@@ -40,6 +40,43 @@ jobs:
       - run: npm test -w backend
         env:
           TEST_DATABASE_URL: postgres://orbyn:orbyn-test@localhost:5432/orbyn_test
+  embedding:
+    runs-on: ubuntu-latest
+    env:
+      TEST_DATABASE_URL: postgres://orbyn:orbyn-test@localhost:5432/orbyn_embedding_test
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: orbyn
+          POSTGRES_PASSWORD: orbyn-test
+          POSTGRES_DB: orbyn_embedding_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U orbyn -d orbyn_embedding_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:packages
+      - name: Mark the disposable vector database and install its extension
+        run: |
+          psql "$TEST_DATABASE_URL" -c "ALTER DATABASE orbyn_embedding_test SET orbyn.environment TO 'test'"
+          psql "$TEST_DATABASE_URL" -c "CREATE EXTENSION IF NOT EXISTS vector"
+      - name: Verify embedding configuration, storage, retries and access races
+        run: >-
+          npx tsx --test --test-concurrency=1
+          backend/tests/embedding-access-races.integration.ts
+          backend/tests/embedding-schema.integration.ts
+          backend/tests/embedding-setup.integration.ts
+          backend/tests/embedding-retry.integration.ts
+          backend/tests/embedding-pgvector.integration.ts
+          backend/tests/embedding-vectors.unit.test.ts
+          backend/tests/embedding-controls.unit.test.ts
   mobile:
     runs-on: ubuntu-latest
     steps:

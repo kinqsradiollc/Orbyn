@@ -1,5 +1,30 @@
 # C1 acceptance ledger
 
+## Embedding access races and continuous qualification — 8 October 2026
+
+Six new real pgvector/local-HTTP fixtures verify that semantic query results are
+withheld after in-flight team membership revocation, team keep-out and private
+ownership transfer. Measuring does not store responses after Trash, document
+hard deletion or embedding-provider deletion. Trash intentionally removes queued
+work; restoring requeues the page and subsequent measuring succeeds. Each fixture
+asserts the intended mutation actually ran exactly once and that the recipient
+handler succeeded, preventing a failed mutation/HTTP500 from faking a pass.
+
+Initial result5/6 exposed an incorrect test expectation that Trash retains its
+queue row, contradicted by migration218. Corrected fixture6/6 passes without a
+product-source change. Logs: `/tmp/orbyn-c1-embedding-access-races-20261008.log`,
+`/tmp/orbyn-c1-embedding-access-races-corrected-20261008.log`.
+
+Regular CI used stock PostgreSQL and did not execute the separate pgvector
+integration files. The dedicated embedding job now marks an isolated PG16/vector
+database and explicitly runs configuration/schema, storage/search, retries,
+access-race, vector validation and client callback checks. Its matching local
+cohort passes53/53, zero failures/skips/cancellations on a fresh marked database:
+`/tmp/orbyn-c1-embedding-ci-cohort-20261008.log`. Scoped formatting and diff checks
+pass. The remote GitHub job itself is not yet observed. This test/workflow-only
+checkpoint does not change backend source or add its count to the terminal
+4044/4044 stock regression; no live provider, UI/native or full C1 completion.
+
 ## Zen selected-model transport — frozen candidate 8 October 2026
 
 Candidate `890d42ce` resolves reviewed Zen model IDs through Responses, native
