@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import {
   parseDocContainers,
   versionedDocSourceMap,
+  versionedDocLeafSourceMap,
+  docSourceBlockAt,
   versionedDocSourceAt,
   applyVersionedDocSource,
   versionedDocSource,
@@ -191,5 +193,36 @@ test("visual leaf edits retain all list ownership and reject missing/ambiguous/r
         { type: "paragraph", id: "same", text: "C" },
       ),
     /ambiguous/,
+  );
+});
+
+test("owned source-pane geometry indexes leaves without losing their enclosing Markdown", () => {
+  const full = versionedDocSourceMap(document);
+  const map = versionedDocLeafSourceMap(document);
+  assert.equal(map.source, full.source);
+  assert.equal(map.ranges.length, 3);
+  assert.deepEqual(
+    map.ranges.map((range) => range.blockIndex),
+    [0, 1, 2],
+  );
+  assert.deepEqual(
+    map.ranges.map((range) => range.blockId),
+    ["heading", "words", undefined],
+  );
+  for (const text of ["Heading", "Words", "code();"]) {
+    const at = map.source.indexOf(text);
+    assert.equal(
+      docSourceBlockAt(map, at)?.blockIndex,
+      versionedDocSourceAt(full, at)?.blockIndex,
+    );
+  }
+  const crlf = map.source.replaceAll("\n", "\r\n");
+  const raw = versionedDocLeafSourceMap(document, crlf);
+  assert.equal(raw.source, crlf);
+  assert.equal(docSourceBlockAt(raw, crlf.indexOf("Words"))?.blockId, "words");
+  assert.throws(
+    () =>
+      versionedDocLeafSourceMap(document, map.source.replace("Words", "Other")),
+    /do not match/,
   );
 });

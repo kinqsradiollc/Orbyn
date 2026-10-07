@@ -4,6 +4,9 @@ import {
   docFragmentIndex,
   parseAppLink,
   docSourceMap,
+  versionedDocLeafSourceMap,
+  docContainerBlocks,
+  type VersionedDocContent,
   docSourceBlockAt,
   docReferenceLinks,
   footnoteNumbers,
@@ -15,12 +18,15 @@ import { Button } from "../../components/Button";
 import { shared } from "../../styles";
 import { colors, fonts, radii } from "../../theme";
 import { DocBody } from "./DocBody";
+import { DocContainerBody } from "./DocContainerBody";
 import { FootnoteContext } from "./footnotes";
 import { DocNavigationContext } from "./doc-navigation";
 
 /** Source and preview delegate edits to the existing editor and its save path. */
 export function DocSourcePreview({
-  blocks,
+  blocks: flatBlocks,
+  document: ownedDocument,
+  onDocumentSourceChange,
   docId,
   onAppLink,
   report,
@@ -29,6 +35,12 @@ export function DocSourcePreview({
   saveStatus,
 }: {
   blocks: DocBlock[];
+  /** Complete ownership is authoritative when supplied by the normal editor. */
+  document?: VersionedDocContent;
+  onDocumentSourceChange?: (
+    source: string,
+    expected: VersionedDocContent,
+  ) => VersionedDocContent;
   docId: string;
   onAppLink: (url: string) => void;
   report: (error: unknown) => void;
@@ -44,24 +56,38 @@ export function DocSourcePreview({
   >();
   const scroll = useRef<ScrollView>(null);
   const sourceInput = useRef<TextInput>(null);
-  const canonical = useMemo(() => docSourceMap(blocks), [blocks]);
+  const owner = ownedDocument ?? flatBlocks;
+  const editable = ownedDocument ? !!onDocumentSourceChange : !!onSourceChange;
+  const sourceMap = (value: VersionedDocContent | DocBlock[], raw?: string) =>
+    Array.isArray(value)
+      ? docSourceMap(value, raw)
+      : versionedDocLeafSourceMap(value, raw, { projected: true });
+  const canonical = useMemo(() => sourceMap(owner), [owner]);
   // This buffer retains typed whitespace while the owning editor holds the
   // parsed blocks and the only save/revision path. External reconciliations
   // replace it; echoes of our own parsed source do not move the caret.
   const [sourceText, setSourceText] = useState(canonical.source);
   const [sourceError, setSourceError] = useState("");
   const acceptedSource = useRef(canonical.source);
-  const ownerBlocks = useRef(blocks);
+  const ownerBlocks = useRef<VersionedDocContent | DocBlock[]>(owner);
   // React can commit an older edit after a newer native text event arrived.
   // Recognize every own block echo without retaining old document snapshots.
-  const acceptedBlocks = useRef(new WeakSet<DocBlock[]>([blocks]));
+  const acceptedBlocks = useRef(new WeakSet<object>([owner]));
   const mustRestore = useRef(false);
+  const sourceEpoch = useRef(0);
+  const renderedEpoch = sourceEpoch.current;
   useEffect(() => {
-    if (
-      acceptedBlocks.current.has(blocks) ||
-      canonical.source === acceptedSource.current
-    )
+    if (acceptedBlocks.current.has(owner)) return;
+    const previousOwner = ownerBlocks.current;
+    const sameFormat = Array.isArray(owner)
+      ? Array.isArray(previousOwner)
+      : !Array.isArray(previousOwner) && owner.format === previousOwner.format;
+    if (sameFormat && canonical.source === acceptedSource.current) {
+      ownerBlocks.current = owner;
+      acceptedBlocks.current.add(owner);
       return;
+    }
+    sourceEpoch.current++;
     if (sourceError) {
       mustRestore.current = true;
       setSourceError(
@@ -70,27 +96,56 @@ export function DocSourcePreview({
       return;
     }
     acceptedSource.current = canonical.source;
-    ownerBlocks.current = blocks;
-    acceptedBlocks.current.add(blocks);
+    ownerBlocks.current = owner;
+    acceptedBlocks.current.add(owner);
     setSourceText(canonical.source);
     setSourceError("");
-  }, [blocks, canonical.source]);
-  const map = useMemo(
+  }, [owner, canonical.source]);
+  // A delayed own echo renders the newest accepted owner, not an older tree
+  // beside a newer input buffer. External ownership renders its own canonical
+  // map until the reconciliation effect restores the corresponding buffer.
+  const previewOwner = acceptedBlocks.current.has(owner)
+    ? ownerBlocks.current
+    : owner;
+  const blocks = useMemo(
     () =>
-      onSourceChange && !sourceError
-        ? docSourceMap(blocks, sourceText)
-        : canonical,
-    [blocks, canonical, sourceText, sourceError, onSourceChange],
+      Array.isArray(previewOwner)
+        ? previewOwner
+        : previewOwner.format === 1
+          ? previewOwner.blocks
+          : docContainerBlocks(previewOwner.nodes, { projected: true }),
+    [previewOwner],
   );
+  const previewCanonical = useMemo(
+    () => sourceMap(previewOwner),
+    [previewOwner],
+  );
+  const map = useMemo(() => {
+    if (!editable || sourceError) return previewCanonical;
+    try {
+      return sourceMap(previewOwner, sourceText);
+    } catch {
+      return previewCanonical;
+    }
+  }, [previewOwner, previewCanonical, sourceText, sourceError, editable]);
   const changeSource = (text: string) => {
-    if (!onSourceChange || mustRestore.current) return;
+    if (!editable || mustRestore.current) return;
     setSourceSelection(undefined);
     setSourceText(text);
     try {
-      const next = onSourceChange(text, ownerBlocks.current);
+      if (renderedEpoch !== sourceEpoch.current) {
+        mustRestore.current = true;
+        throw new Error(
+          "The document changed before this source edit could be applied. Restore the current document before continuing.",
+        );
+      }
+      const expected = ownerBlocks.current;
+      const next = Array.isArray(expected)
+        ? onSourceChange!(text, expected)
+        : onDocumentSourceChange!(text, expected);
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
-      acceptedSource.current = docSourceMap(next).source;
+      acceptedSource.current = sourceMap(next).source;
       setSourceError("");
     } catch (error) {
       setSourceError(
@@ -106,8 +161,8 @@ export function DocSourcePreview({
   const revertSource = () => {
     mustRestore.current = false;
     acceptedSource.current = canonical.source;
-    ownerBlocks.current = blocks;
-    acceptedBlocks.current.add(blocks);
+    ownerBlocks.current = owner;
+    acceptedBlocks.current.add(owner);
     setSourceText(canonical.source);
     setSourceError("");
   };
@@ -119,6 +174,7 @@ export function DocSourcePreview({
     }),
     [blocks],
   );
+  const previewRoot = useRef<View>(null);
   const positions = useMemo(() => new Map<number, number>(), [blocks]);
   const blockId = blocks[selected]?.id;
   const selectedRange = map.ranges[selected];
@@ -177,7 +233,7 @@ export function DocSourcePreview({
             </View>
           )}
           <Text style={shared.small}>
-            {onSourceChange
+            {editable
               ? "Edit Markdown here. Source and preview share the same document. Keep block anchors to preserve comments and task links."
               : "Current document, including unsaved edits. Source editing is available in Editing mode."}
           </Text>
@@ -202,13 +258,13 @@ export function DocSourcePreview({
         {sourceVisible ? (
           <TextInput
             accessibilityLabel="Markdown source"
-            value={onSourceChange ? sourceText : map.source}
-            editable={!!onSourceChange}
-            onChangeText={onSourceChange ? changeSource : undefined}
+            value={editable ? sourceText : map.source}
+            editable={editable}
+            onChangeText={editable ? changeSource : undefined}
             ref={sourceInput}
-            selection={onSourceChange ? undefined : sourceSelection}
+            selection={editable ? undefined : sourceSelection}
             onLayout={() => {
-              if (onSourceChange && sourceSelection) {
+              if (editable && sourceSelection) {
                 sourceInput.current?.setNativeProps({
                   selection: sourceSelection,
                 });
@@ -217,7 +273,7 @@ export function DocSourcePreview({
             }}
             multiline
             scrollEnabled
-            showSoftInputOnFocus={!!onSourceChange}
+            showSoftInputOnFocus={editable}
             style={{
               flex: 1,
               textAlignVertical: "top",
@@ -254,18 +310,66 @@ export function DocSourcePreview({
           >
             <DocNavigationContext.Provider value={navigation}>
               <FootnoteContext.Provider value={notes}>
-                <DocBody
-                  content={blocks}
-                  targetBlockId={blockId}
-                  onLineLayout={(index, y) => positions.set(index, y)}
-                  flash={blockId ?? null}
-                  onTargetLayout={(y) =>
-                    scroll.current?.scrollTo({
-                      y: Math.max(0, y - 12),
-                      animated: false,
-                    })
-                  }
-                />
+                {!Array.isArray(previewOwner) && previewOwner.format === 2 ? (
+                  <View ref={previewRoot}>
+                    <DocContainerBody
+                      nodes={previewOwner.nodes}
+                      renderLeaf={(block, index) => {
+                        let leaf: View | null = null;
+                        const measure = () => {
+                          const current = () =>
+                            previewOwner === ownerBlocks.current &&
+                            renderedEpoch === sourceEpoch.current;
+                          if (!previewRoot.current || !current()) return;
+                          leaf?.measureLayout(
+                            previewRoot.current,
+                            (_x, y) => {
+                              if (!current()) return;
+                              positions.set(index, y);
+                              if (index === selected)
+                                scroll.current?.scrollTo({
+                                  y: Math.max(0, y - 12),
+                                  animated: false,
+                                });
+                            },
+                            () => {},
+                          );
+                        };
+                        return (
+                          <View
+                            key={block.id ?? index}
+                            ref={(node) => {
+                              leaf = node;
+                            }}
+                            onLayout={measure}
+                          >
+                            <DocBody
+                              content={[block]}
+                              pageContent={blocks}
+                              pageIndex={index}
+                              targetBlockId={blockId}
+                              flash={blockId ?? null}
+                              onTargetLayout={measure}
+                            />
+                          </View>
+                        );
+                      }}
+                    />
+                  </View>
+                ) : (
+                  <DocBody
+                    content={blocks}
+                    targetBlockId={blockId}
+                    onLineLayout={(index, y) => positions.set(index, y)}
+                    flash={blockId ?? null}
+                    onTargetLayout={(y) =>
+                      scroll.current?.scrollTo({
+                        y: Math.max(0, y - 12),
+                        animated: false,
+                      })
+                    }
+                  />
+                )}
               </FootnoteContext.Provider>
             </DocNavigationContext.Provider>
           </ScrollView>

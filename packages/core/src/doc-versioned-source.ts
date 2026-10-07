@@ -13,6 +13,7 @@ import {
   type VersionedDocContent,
 } from "./doc-content-format.js";
 import type { DocContentValidationOptions } from "./doc-content-leaves.js";
+import type { DocSourceMap } from "./doc-source.js";
 
 export type VersionedDocSourceRange = {
   path: number[];
@@ -28,6 +29,29 @@ export type VersionedDocSourceMap = {
   source: string;
   ranges: VersionedDocSourceRange[];
 };
+
+/** Leaf geometry for existing source panes, derived from complete ownership rather than flat serialization. */
+export function versionedDocLeafSourceMap(
+  value: unknown,
+  rawSource?: string,
+  options: DocContentValidationOptions = {},
+): DocSourceMap {
+  const map = versionedDocSourceMap(value, rawSource, options);
+  return {
+    source: map.source,
+    ranges: map.ranges
+      .filter((range) => range.kind === "block")
+      .map((range) => ({
+        blockIndex: range.blockIndex!,
+        ...(range.id ? { blockId: range.id } : {}),
+        start: range.start,
+        end: range.end,
+        startLine: range.startLine,
+        endLine: range.endLine,
+      }))
+      .sort((a, b) => a.blockIndex - b.blockIndex),
+  };
+}
 
 /** Map exact full ownership to source; mismatched source never maps onto another preview. */
 export function versionedDocSourceMap(

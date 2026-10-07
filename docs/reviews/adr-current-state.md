@@ -20,6 +20,27 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 
 ## Current evidence
 
+## Complete Source/Preview ownership contract — 7 October 2026
+
+Both client source panes now accept a complete VersionedDocContent and a matching
+owner callback. Owned source uses validated full-tree leaf geometry; nested
+previews reuse existing rich widgets inside their quote/list owners and keep
+page-wide references and footnotes. Native source remains a TextInput inside a
+Sheet; nested layout measurements resolve against the preview root and ignore
+retired owners. A flat callback cannot edit owned content. Identical source across
+an explicit ownership-format change still adopts the new complete owner.
+
+Delayed own echoes show the newest accepted tree and typed buffer. External
+reconciliation fences retained input events, preserves unaccepted typing for
+review and never maps unmatched source onto a different preview. Both-platform
+component regressions cover complete ownership, readonly callbacks, changed
+formats, delayed echoes and stale handlers; shared geometry checks cover exact
+leaf order, anchors, CRLF and mismatched source refusal. The source/view/edit/
+versioned-source/control cohort passes51/51, zero failures/skips (1293ms); shared
+packages and both client typechecks pass. This is candidate only: normal editor
+loading/saving and rich structural-command activation remain unfinished. No
+browser screenshot or installed-native acceptance is claimed.
+
 ## Full regression result and corrected candidate — 7 October 2026
 
 The frozen candidate e6ae3511 full run terminated with3933 tests:3932 passed,

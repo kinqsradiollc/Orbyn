@@ -4,6 +4,9 @@ import {
   docFragmentIndex,
   parseAppLink,
   docSourceMap,
+  versionedDocLeafSourceMap,
+  docContainerBlocks,
+  type VersionedDocContent,
   docSourceBlockAt,
   docSourcePosition,
   docSourceLineAt,
@@ -17,10 +20,13 @@ import { BlockView } from "./DocBlocks";
 import { FootnoteContext } from "./RichBlocks";
 import { DocNavigationContext } from "./doc-navigation";
 import "./doc-source.css";
+import { DocContainerView } from "./DocContainerView";
 
 /** Source editing delegates to the owning editor; this view never saves a revision. */
 export function DocSourcePreview({
-  blocks,
+  blocks: flatBlocks,
+  document: ownedDocument,
+  onDocumentSourceChange,
   docId,
   onAppLink,
   onClose,
@@ -28,6 +34,12 @@ export function DocSourcePreview({
   saveStatus,
 }: {
   blocks: DocBlock[];
+  /** Complete ownership is authoritative when supplied by the normal editor. */
+  document?: VersionedDocContent;
+  onDocumentSourceChange?: (
+    source: string,
+    expected: VersionedDocContent,
+  ) => VersionedDocContent;
   docId: string;
   onAppLink: (url: string) => void;
   onClose: () => void;
@@ -40,24 +52,38 @@ export function DocSourcePreview({
   const preview = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState(0);
   const expectedScroll = useRef<{ source?: number; preview?: number }>({});
-  const canonical = useMemo(() => docSourceMap(blocks), [blocks]);
+  const owner = ownedDocument ?? flatBlocks;
+  const editable = ownedDocument ? !!onDocumentSourceChange : !!onSourceChange;
+  const sourceMap = (value: VersionedDocContent | DocBlock[], raw?: string) =>
+    Array.isArray(value)
+      ? docSourceMap(value, raw)
+      : versionedDocLeafSourceMap(value, raw, { projected: true });
+  const canonical = useMemo(() => sourceMap(owner), [owner]);
   // This buffer retains typed whitespace while the owning editor holds the
   // parsed blocks and the only save/revision path. External reconciliations
   // replace it; echoes of our own parsed source do not move the caret.
   const [sourceText, setSourceText] = useState(canonical.source);
   const [sourceError, setSourceError] = useState("");
   const acceptedSource = useRef(canonical.source);
-  const ownerBlocks = useRef(blocks);
+  const ownerBlocks = useRef<VersionedDocContent | DocBlock[]>(owner);
   // React can commit an older edit after a newer native text event arrived.
   // Recognize every own block echo without retaining old document snapshots.
-  const acceptedBlocks = useRef(new WeakSet<DocBlock[]>([blocks]));
+  const acceptedBlocks = useRef(new WeakSet<object>([owner]));
   const mustRestore = useRef(false);
+  const sourceEpoch = useRef(0);
+  const renderedEpoch = sourceEpoch.current;
   useEffect(() => {
-    if (
-      acceptedBlocks.current.has(blocks) ||
-      canonical.source === acceptedSource.current
-    )
+    if (acceptedBlocks.current.has(owner)) return;
+    const previousOwner = ownerBlocks.current;
+    const sameFormat = Array.isArray(owner)
+      ? Array.isArray(previousOwner)
+      : !Array.isArray(previousOwner) && owner.format === previousOwner.format;
+    if (sameFormat && canonical.source === acceptedSource.current) {
+      ownerBlocks.current = owner;
+      acceptedBlocks.current.add(owner);
       return;
+    }
+    sourceEpoch.current++;
     if (sourceError) {
       mustRestore.current = true;
       setSourceError(
@@ -66,26 +92,55 @@ export function DocSourcePreview({
       return;
     }
     acceptedSource.current = canonical.source;
-    ownerBlocks.current = blocks;
-    acceptedBlocks.current.add(blocks);
+    ownerBlocks.current = owner;
+    acceptedBlocks.current.add(owner);
     setSourceText(canonical.source);
     setSourceError("");
-  }, [blocks, canonical.source]);
-  const map = useMemo(
+  }, [owner, canonical.source]);
+  // A delayed own echo renders the newest accepted owner, not an older tree
+  // beside a newer input buffer. External ownership renders its own canonical
+  // map until the reconciliation effect restores the corresponding buffer.
+  const previewOwner = acceptedBlocks.current.has(owner)
+    ? ownerBlocks.current
+    : owner;
+  const blocks = useMemo(
     () =>
-      onSourceChange && !sourceError
-        ? docSourceMap(blocks, sourceText)
-        : canonical,
-    [blocks, canonical, sourceText, sourceError, onSourceChange],
+      Array.isArray(previewOwner)
+        ? previewOwner
+        : previewOwner.format === 1
+          ? previewOwner.blocks
+          : docContainerBlocks(previewOwner.nodes, { projected: true }),
+    [previewOwner],
   );
+  const previewCanonical = useMemo(
+    () => sourceMap(previewOwner),
+    [previewOwner],
+  );
+  const map = useMemo(() => {
+    if (!editable || sourceError) return previewCanonical;
+    try {
+      return sourceMap(previewOwner, sourceText);
+    } catch {
+      return previewCanonical;
+    }
+  }, [previewOwner, previewCanonical, sourceText, sourceError, editable]);
   const changeSource = (text: string) => {
-    if (!onSourceChange || mustRestore.current) return;
+    if (!editable || mustRestore.current) return;
     setSourceText(text);
     try {
-      const next = onSourceChange(text, ownerBlocks.current);
+      if (renderedEpoch !== sourceEpoch.current) {
+        mustRestore.current = true;
+        throw new Error(
+          "The document changed before this source edit could be applied. Restore the current document before continuing.",
+        );
+      }
+      const expected = ownerBlocks.current;
+      const next = Array.isArray(expected)
+        ? onSourceChange!(text, expected)
+        : onDocumentSourceChange!(text, expected);
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
-      acceptedSource.current = docSourceMap(next).source;
+      acceptedSource.current = sourceMap(next).source;
       setSourceError("");
     } catch (error) {
       setSourceError(
@@ -105,8 +160,8 @@ export function DocSourcePreview({
   const revertSource = () => {
     mustRestore.current = false;
     acceptedSource.current = canonical.source;
-    ownerBlocks.current = blocks;
-    acceptedBlocks.current.add(blocks);
+    ownerBlocks.current = owner;
+    acceptedBlocks.current.add(owner);
     setSourceText(canonical.source);
     setSourceError("");
   };
@@ -232,6 +287,26 @@ export function DocSourcePreview({
     }
     setSelected(index);
   };
+  const renderLeaf = (block: DocBlock, index: number) => (
+    <div
+      key={block.id ?? index}
+      data-source-index={index}
+      className={selected === index ? "is-selected" : ""}
+    >
+      <button
+        className="text-button doc-source-jump"
+        onClick={() => select(index)}
+      >
+        Source lines {map.ranges[index].startLine}–{map.ranges[index].endLine}
+      </button>
+      <BlockView
+        block={block}
+        pageBlocks={blocks}
+        number={layout[index].number}
+        depth={layout[index].depth}
+      />
+    </div>
+  );
   return (
     <dialog
       ref={dialog}
@@ -254,7 +329,7 @@ export function DocSourcePreview({
         </button>
       </div>
       <p className="muted">
-        {onSourceChange
+        {editable
           ? "Edit Markdown here. Source and preview use the same document and save status. Keep block anchors to preserve comments and task links."
           : "This is the current document, including unsaved edits. Source editing is available in Editing mode."}
       </p>
@@ -275,10 +350,10 @@ export function DocSourcePreview({
         <textarea
           ref={source}
           aria-label="Markdown source"
-          readOnly={!onSourceChange}
-          value={onSourceChange ? sourceText : map.source}
+          readOnly={!editable}
+          value={editable ? sourceText : map.source}
           onChange={
-            onSourceChange
+            editable
               ? (event) => changeSource(event.currentTarget.value)
               : undefined
           }
@@ -301,27 +376,14 @@ export function DocSourcePreview({
         >
           <DocNavigationContext.Provider value={navigation}>
             <FootnoteContext.Provider value={notes}>
-              {blocks.map((block, index) => (
-                <div
-                  key={block.id ?? index}
-                  data-source-index={index}
-                  className={selected === index ? "is-selected" : ""}
-                >
-                  <button
-                    className="text-button doc-source-jump"
-                    onClick={() => select(index)}
-                  >
-                    Source lines {map.ranges[index].startLine}–
-                    {map.ranges[index].endLine}
-                  </button>
-                  <BlockView
-                    block={block}
-                    pageBlocks={blocks}
-                    number={layout[index].number}
-                    depth={layout[index].depth}
-                  />
-                </div>
-              ))}
+              {!Array.isArray(previewOwner) && previewOwner.format === 2 ? (
+                <DocContainerView
+                  nodes={previewOwner.nodes}
+                  renderLeaf={renderLeaf}
+                />
+              ) : (
+                blocks.map(renderLeaf)
+              )}
             </FootnoteContext.Provider>
           </DocNavigationContext.Provider>
         </div>

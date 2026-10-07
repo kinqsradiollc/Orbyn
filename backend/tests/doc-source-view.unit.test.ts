@@ -7,7 +7,7 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as core from "@orbyn/core";
 
-function fixture(native: boolean, editable = false) {
+function fixture(native: boolean, editable = false, ownedEditable = true) {
   const states: unknown[] = [];
   let at = 0,
     refAt = 0;
@@ -59,6 +59,8 @@ function fixture(native: boolean, editable = false) {
     "@orbyn/core": core,
     "lucide-react": { X: () => null },
     "./doc-source.css": {},
+    "./DocContainerView": { DocContainerView: "owned-preview" },
+    "./DocContainerBody": { DocContainerBody: "owned-preview" },
     "./DocBlocks": {
       BlockView: ({ block }: { block: core.DocBlock }) =>
         React.createElement(
@@ -116,12 +118,35 @@ function fixture(native: boolean, editable = false) {
   const edits: core.DocBlock[][] = [];
   const ownedBlocks = new WeakSet<core.DocBlock[]>();
   let currentBlocks: core.DocBlock[];
-  const render = (blocks: core.DocBlock[]) => {
+  let currentDocument: core.VersionedDocContent;
+  const ownedDocuments = new WeakSet<core.VersionedDocContent>();
+  const documentEdits: core.VersionedDocContent[] = [];
+  const render = (
+    blocks: core.DocBlock[],
+    document?: core.VersionedDocContent,
+  ) => {
+    if (document && !ownedDocuments.has(document)) currentDocument = document;
     if (!ownedBlocks.has(blocks)) currentBlocks = blocks;
     at = 0;
     refAt = 0;
     return exports.DocSourcePreview({
       blocks,
+      document,
+      onDocumentSourceChange:
+        editable && document && ownedEditable
+          ? (text: string, expected: core.VersionedDocContent) => {
+              const next = core.applyVersionedDocSource(
+                currentDocument,
+                expected,
+                text,
+                { projected: true },
+              );
+              currentDocument = next;
+              ownedDocuments.add(next);
+              documentEdits.push(next);
+              return next;
+            }
+          : undefined,
       docId: "00000000-0000-4000-8000-000000000001",
       onSourceChange: editable
         ? (text: string, expected: core.DocBlock[]) => {
@@ -147,6 +172,7 @@ function fixture(native: boolean, editable = false) {
     focused: () => focused,
     states,
     edits,
+    documentEdits,
     opened,
     closed: () => closed,
   });
@@ -647,3 +673,176 @@ test("web source errors keep the dialog mounted and Escape observes the latest v
   assert.equal(render.focused(), 1);
   assert.equal(render.listeners.has("keydown"), false);
 });
+
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} complete source edits preserve owners and fence stale snapshots`, () => {
+    const render = fixture(native, true);
+    const document = core.parseVersionedDocContent({
+      format: 2,
+      nodes: core.parseDocContainers(
+        "> 7) [x] First ^first\n> 8) [ ] Second ^second",
+        { anchors: true },
+      ),
+    });
+    const projection =
+      document.format === 2
+        ? core.docContainerBlocks(document.nodes)
+        : document.blocks;
+    const tree = render(projection, document);
+    const inputOf = (tree: React.ReactNode) =>
+      find(
+        tree,
+        (props) =>
+          props["aria-label"] === "Markdown source" ||
+          props.accessibilityLabel === "Markdown source",
+      )!;
+    const input = inputOf(tree);
+    assert.equal(input.value, core.versionedDocSource(document));
+    const text = input.value.replace("First", "Edited");
+    if (native) input.onChangeText(text);
+    else input.onChange({ currentTarget: { value: text } });
+    assert.equal(
+      render.edits.length,
+      0,
+      "the flat callback must never handle owned source",
+    );
+    assert.equal(render.documentEdits.length, 1);
+    const edited = render.documentEdits[0];
+    assert.equal(edited.format, 2);
+    assert.equal(inputOf(render(projection, edited)).value, text);
+    if (edited.format !== 2 || document.format !== 2)
+      throw new Error("Lost ownership");
+    const unchanged = JSON.parse(JSON.stringify(document));
+    core.visitDocContainers(unchanged.nodes, (node) => {
+      if (
+        node.kind === "block" &&
+        node.block.id === "first" &&
+        "text" in node.block
+      )
+        node.block.text = "Edited";
+    });
+    assert.deepEqual(edited, unchanged);
+    const external = core.applyVersionedDocSource(
+      edited,
+      edited,
+      core.versionedDocSource(edited).replace("Second", "Remote"),
+    );
+    render(projection, external);
+    // This retained input belongs to the previous accepted owner, before the external effect settled.
+    // The parent's expected-snapshot check, rather than a flat projection, fences it.
+    const stale = inputOf(tree);
+    if (native) stale.onChangeText(text.replace("Edited", "Late"));
+    else
+      stale.onChange({
+        currentTarget: { value: text.replace("Edited", "Late") },
+      });
+    assert.equal(render.documentEdits.length, 1);
+    assert.match(
+      renderToStaticMarkup(render(projection, external)),
+      /has not been saved/,
+    );
+  });
+  test(`${native ? "native" : "web"} an owned document is readonly without its matching owner callback`, () => {
+    const render = fixture(native, true, false);
+    const document = core.parseVersionedDocContent({
+      format: 2,
+      nodes: core.parseDocContainers("> Nested"),
+    });
+    const tree = render([], document);
+    const input = find(
+      tree,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    assert.equal(native ? input.editable : input.readOnly, !native);
+    assert.equal(native ? input.onChangeText : input.onChange, undefined);
+  });
+}
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} stale source events cannot overwrite a newer remote revision`, () => {
+    const render = fixture(native, true);
+    const original = core.parseDoc("Original ^line", { anchors: true });
+    const tree = render(original);
+    const input = find(
+      tree,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    const external = core.parseDoc("Remote revision ^line", { anchors: true });
+    render(external);
+    const text = "Late typing on original ^line";
+    if (native) input.onChangeText(text);
+    else input.onChange({ currentTarget: { value: text } });
+    assert.equal(
+      render.edits.length,
+      0,
+      "the retained input belongs to the older revision",
+    );
+    assert.match(renderToStaticMarkup(render(external)), /has not been saved/);
+  });
+}
+
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} delayed owned echoes retain the newest source and preview tree`, () => {
+    const render = fixture(native, true);
+    const document = core.parseVersionedDocContent({
+      format: 2,
+      nodes: core.parseDocContainers("> First ^first", { anchors: true }),
+    });
+    let tree = render([], document);
+    const inputOf = (tree: React.ReactNode) =>
+      find(
+        tree,
+        (props) =>
+          props["aria-label"] === "Markdown source" ||
+          props.accessibilityLabel === "Markdown source",
+      )!;
+    const input = inputOf(tree);
+    const type = (text: string) =>
+      native
+        ? input.onChangeText(text)
+        : input.onChange({ currentTarget: { value: text } });
+    type(input.value.replace("First", "Older"));
+    const latest = input.value.replace("First", "Latest") + "\n\nLast ^last";
+    type(latest);
+    assert.equal(render.documentEdits.length, 2);
+    tree = render([], render.documentEdits[0]);
+    assert.equal(inputOf(tree).value, latest);
+    if (native) {
+      find(tree, (props) => props.title === "Show preview")!.onPress();
+      tree = render([], render.documentEdits[0]);
+    }
+    const preview = find(tree, (props) => props.nodes && props.renderLeaf)!;
+    assert.deepEqual(
+      preview.nodes,
+      (render.documentEdits[1] as core.VersionedDocContent & { format: 2 })
+        .nodes,
+    );
+    assert.equal(render.closed(), 0);
+  });
+}
+
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} identical source does not discard a change of ownership format`, () => {
+    const render = fixture(native, true);
+    const blocks = core.parseDoc("First ^first", { anchors: true });
+    render(blocks);
+    const document = core.upgradeDocContent({ format: 1, blocks });
+    render(blocks, document);
+    const tree = render(blocks, document);
+    const input = find(
+      tree,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    const text = input.value.replace("First", "Owned");
+    if (native) input.onChangeText(text);
+    else input.onChange({ currentTarget: { value: text } });
+    assert.equal(render.edits.length, 0);
+    assert.equal(render.documentEdits.length, 1);
+    assert.equal(render.documentEdits[0].format, 2);
+  });
+}
