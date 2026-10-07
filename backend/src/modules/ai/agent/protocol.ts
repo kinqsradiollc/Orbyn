@@ -7,6 +7,7 @@ import {
 } from "../providers/model-controls.js";
 import type { ResolvedAi } from "../providers/adapters.js";
 import {
+  complete,
   headers,
   json,
   ProviderError,
@@ -679,20 +680,33 @@ async function jsonStep(
           },
         ],
       })
-    : await send(
-        chatUrl(ai),
-        {
-          method: "POST",
-          headers: headers(ai),
-          body: JSON.stringify({
-            ...(ai.format === "azure" ? {} : { model: ai.model }),
-            messages: protocolMessages,
-            ...(schema ? { response_format: stepFormat(usable) } : {}),
-          }),
-        },
-        signal,
-        ai.apiKey,
-      );
+    : ai.format === "anthropic"
+      ? Response.json({
+          choices: [
+            {
+              message: {
+                // JSON is the agent protocol, not a different provider API.
+                // Native Messages also owns usage, truncation and authority.
+                content: await complete(ai, protocolMessages, { signal }),
+              },
+              finish_reason: "stop",
+            },
+          ],
+        })
+      : await send(
+          chatUrl(ai),
+          {
+            method: "POST",
+            headers: headers(ai),
+            body: JSON.stringify({
+              ...(ai.format === "azure" ? {} : { model: ai.model }),
+              messages: protocolMessages,
+              ...(schema ? { response_format: stepFormat(usable) } : {}),
+            }),
+          },
+          signal,
+          ai.apiKey,
+        );
   const body = await json<{
     error?: unknown;
     usage?: unknown;
@@ -700,7 +714,7 @@ async function jsonStep(
     choices?: { message?: { content?: unknown }; finish_reason?: string }[];
   }>(response);
   throwIfErrorEnvelope(body, ai.apiKey);
-  if (!ai.textTransport)
+  if (!ai.textTransport && ai.format !== "anthropic")
     await ai.recordUsage?.(readChatCompletionUsage(body.usage), body.id);
   const choice = body.choices?.[0];
   if (!choice)

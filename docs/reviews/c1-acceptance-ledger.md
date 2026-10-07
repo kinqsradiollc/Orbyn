@@ -1,6 +1,25 @@
 # C1 acceptance ledger
 
-## Anthropic pagination and saved-provider inventory — candidate 8 October 2026
+## Anthropic JSON fallback — local repair 8 October 2026
+
+Actual durable-loop reproduction requested `/messages` then `/chat/completions`
+and failed404 after native tools were rejected. Initial targeted suite5pass/5fail
+also exposes resumed history, truncation and post-response authority gaps.
+Repair routes Anthropic JSON protocol through the shared native Messages text
+adapter, which owns auth/system shape, usage, truncation and authority. Managed
+usage is recorded exactly once; private transport keeps precedence and no
+managed observations. Expanded cohort145/145 covers13 fallback cases and existing
+protocol/model controls/Responses/private recovery/all20 provider kinds.
+Backend build passes. Compiled actual loop now requests `/messages` twice and
+completes, with inert content/tools and no DB access or live vendor request.
+Logs: `/tmp/orbyn-c1-anthropic-json-loop-before-20261008.log`,
+`/tmp/orbyn-c1-anthropic-json-suite-before-20261008.log`,
+`/tmp/orbyn-c1-anthropic-json-cohort-20261008.log`,
+`/tmp/orbyn-c1-anthropic-json-build-20261008.log`,
+`/tmp/orbyn-c1-anthropic-json-compiled-20261008.log`.
+Full regression/main promotion pending; no previous full result covers this repair.
+
+## Anthropic pagination and saved-provider inventory — merged 8 October 2026
 
 Candidate `cee9219e` fixes the reproduced first-page-only Anthropic catalog.
 Before:19pass/1fail; after:34/34 adapter checks. Catalog authority/provider cohort
@@ -24,7 +43,9 @@ Logs: `/tmp/orbyn-c1-pagination-before-20261008.log`,
 `/tmp/orbyn-c1-pagination-build-20261008.log`,
 `/tmp/orbyn-c1-runtime-inventory-20261008.log`.
 Scope and remaining gates: [provider runtime inventory](c1-provider-runtime-inventory.md).
-Qualification complete; main promotion is the next operation. WholeC1 remains open.
+Qualified checkpoint merged/pushed to main as `07edbcc5`. Root mobile/app.json
+SHA1 remains dacd602172347441f2fd92f16d8772b3ba1ef7a8; unrelated changes are
+preserved. WholeC1 remains open.
 
 ## Active embedding consent checkpoint — 8 October 2026
 

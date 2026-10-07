@@ -12,7 +12,8 @@ The requested CodeHype badge is pushed to main; revised hero placement is `7e28f
 The C1 catalog checkpoint is merged and pushed to main as `8ab6c822`; provider controls and manual-model preservation were inspected in web/mobile browser captures.
 The reviewed embedding-consent checkpoint is merged and pushed as `43fa8f57`.
 The C1 indexing failure/retry checkpoint and its inference/deployment/UI prerequisites are merged and pushed as `d4da3d41`. Full3786/3786, focused47/47, migration/runtime checks and scoped browser review pass.
-Next within C1: finish the multi-provider dispatch/catalog/runtime inventory and remaining permitted cache evaluation. Wider embedding/native/full-stage acceptance remains open.
+The pagination/inventory checkpoint is merged and pushed as `07edbcc5`: full3806/3806, separate inventory61/61.
+Next within C1: repair Anthropic JSON fallback, then complete remaining provider/embedding/cache gates. Wider embedding/native/full-stage acceptance remains open.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 
@@ -73,9 +74,10 @@ Acceptance comes from this session's image inspection, not the capture session's
    zero failures/skips/cancellations, exit0. Independent saved-row
    dispatch/catalog/embedding/agent checks pass61/61 across all20 kinds; these are
    fixtures and do not establish live vendor qualification.
-4. Next reproduced runtime defect: native Anthropic tool rejection switches
-   JSON fallback to the wrong compatible endpoint and fails404. Repair after
-   this checkpoint is qualified/promoted; preserve Messages/usage/authority.
+4. Current runtime repair: Anthropic JSON fallback now locally preserves the
+   Messages endpoint, native usage, truncation and authority. Reproduced suite
+   initially5pass/5fail; expanded protocol/provider/recovery cohort passes145/145
+   and backend build passes. Full regression and main promotion remain pending.
 5. Keep remaining live-provider/OpenAI cache gates explicit. Matilda's fixed
    baseline does not qualify OpenAI cache economics. Promote this checkpoint only
    after qualification, then continue remaining C1 gates before C2/M1.
