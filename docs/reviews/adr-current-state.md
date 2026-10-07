@@ -66,10 +66,11 @@ Acceptance comes from this session's image inspection, not the capture session's
    embeddings. [The current inventory](c1-provider-runtime-inventory.md) separates
    source contracts, fixture qualification and live evidence.
 3. Anthropic catalog pagination omission is reproduced locally: first page only
-   returns `b` where the complete result is `a,b`. Candidate follows same-endpoint
+   returns `b` where the complete result is `a,b`. Qualified checkpoint follows same-endpoint
    cursors with one eight-second budget, bounded pages and sanitized whole-catalog
    failure. Focused adapter checks pass34/34; route/provider cohort passes49/49.
-   Backend types/build pass; broader regression is running. Independent saved-row
+   Backend types/build pass; full frozen regression passes3806/3806,
+   zero failures/skips/cancellations, exit0. Independent saved-row
    dispatch/catalog/embedding/agent checks pass61/61 across all20 kinds; these are
    fixtures and do not establish live vendor qualification.
 4. Next reproduced runtime defect: native Anthropic tool rejection switches

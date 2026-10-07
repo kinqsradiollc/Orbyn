@@ -55,7 +55,8 @@ Evidence: `/tmp/orbyn-c1-pagination-before-20261008.log` (19pass/1fail),
 `/tmp/orbyn-c1-pagination-after-20261008.log` (34/34).
 The adapter/catalog-authority/provider cohort passes49/49 with zero failures,
 skips or cancellations (`/tmp/orbyn-c1-pagination-cohort-20261008.log`).
-Backend typecheck passes. Broader regression is pending. No live Anthropic
+Backend typecheck passes. Source-frozen full regression passes3806/3806, zero failures/skips/cancellations,
+exit0,804189ms (`/tmp/orbyn-c1-pagination-full-20261008.log`). No live Anthropic
 call or whole-stage acceptance is claimed.
 
 ## Per-kind fixture qualification

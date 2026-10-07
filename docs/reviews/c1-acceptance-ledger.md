@@ -7,8 +7,11 @@ Before:19pass/1fail; after:34/34 adapter checks. Catalog authority/provider coho
 passes49/49, including concurrent mutation during the second page. Both pages
 share one timeout signal; opaque cursors stay on the saved endpoint; malformed,
 cyclic, endless or later-failing catalogs never return partial models.
-Backend types/build pass. Full source-frozen regression is running as session32029
-(`/tmp/orbyn-c1-pagination-full-20261008.log`); no terminal/full-pass claim yet.
+Backend types/build pass. Full source-frozen regression32029 is terminal exit0:3806/3806, zero failures,
+skips or cancellations,804189ms
+(`/tmp/orbyn-c1-pagination-full-20261008.log`). Backend source still matches
+`cee9219e`; later changes are tests/documentation only. Scoped Prettier and
+diff checks pass.
 
 Separate saved-row runtime inventory tests pass61/61 across all20 kinds:
 resolver → direct completion/catalog/embedding/durable agent starting mode.
@@ -21,7 +24,7 @@ Logs: `/tmp/orbyn-c1-pagination-before-20261008.log`,
 `/tmp/orbyn-c1-pagination-build-20261008.log`,
 `/tmp/orbyn-c1-runtime-inventory-20261008.log`.
 Scope and remaining gates: [provider runtime inventory](c1-provider-runtime-inventory.md).
-This candidate is not yet on main; wholeC1 remains open.
+Qualification complete; main promotion is the next operation. WholeC1 remains open.
 
 ## Active embedding consent checkpoint — 8 October 2026
 
