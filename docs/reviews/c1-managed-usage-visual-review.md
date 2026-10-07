@@ -1,11 +1,36 @@
 # C1 managed usage browser review
 
-Root review, 8 October 2026. Product source81e807ee; docs-only candidateab01bcc8.
+Historical root review, 8 October 2026. Product source81e807ee; docs-only candidateab01bcc8.
 Capture session: Orbyn Visual Check. Root inspects originals and owns findings.
 Synthetic counters are confined to the disposable local QA account; no vendor
 billing, plan limits, cost or live inference is established by this fixture.
 
-## Fixture and API
+## Current checkpoint
+
+Candidate c69f342f is frozen locally and not merged. Fresh4248/4248 regression,
+69/69 vector cohort, upgrade1/1 and late-install1/1 pass; types/web build pass.
+Preview API health200 and ownership were rechecked without mutation:
+/tmp/orbyn-c1-preview-usage-guard-receipt-20261008.json.
+
+Visual Check reports authenticated internal-browser web captures at320/390 and
+1280 widths in Light/Dark. They are inline-only, not available to root as saved
+originals, and are not accepted by metadata alone. One390Dark identity-containing
+image is invalid and excluded; its separately named corrected retake is eligible
+for later review. Mobile login succeeded and its usage capture batch is still
+active. Root requested valid images be attached here for inspection; the blocked
+file-export route is not retried. Keyboard/focus and remaining client states are
+not accepted by inference.
+
+Current synthetic rows belong to the fresh disposable admin; ownership metadata
+is /tmp/orbyn-c1-usage-visual-fixture-fresh-admin-20261008.json. Input overflow is
+unknown, not zero. Cleanup is prepared but must wait for capture quiescence and
+target only those two rows. Old fixture identifiers below describe the lost
+pre-recovery database and must not be used for current cleanup.
+
+The sections below retain chronological evidence, failed attempts and superseded
+states. Their earlier live/pending descriptions are historical, not current.
+
+## Historical fixture and API
 
 Two tracked done jobs, no runner invocation. Fresh authenticated GET /ai/usage
 returns200,enabledtrue,requests2/window30,input2000/output200/reasoning40,
@@ -118,3 +143,161 @@ Dark's current original remains right-edge clipped. Root requested separately
 named replacements and same-tab ID/viewport/DPR/pixel metadata. Full viewport
 acceptance remains open until that provenance is verified. Disk recovered from
 260MiB to526MiB but remains too low for heavy builds.
+
+### Preview interruption and local narrow-navigation correction
+
+Chrome is available again. Root inspected separately named wide Light/Dark v2
+originals: the usage block and modal are horizontally contained, and the unknown
+input aggregate is omitted. The capture manifest records same-tab1280×1000,
+DPR2 and2560×2158 full-page images. This is scoped usage/layout evidence, not a
+fresh successful network-response receipt at capture time.
+
+The API subsequently died with an ENOSPC logging error. Its unchanged compiled
+listener was restored, with output discarded to avoid another disk-write crash;
+health still returns503 because PostgreSQL is unreachable. Docker CLI also
+hangs. Visual Check is quiescent. Its two320Light images are explicitly stale/
+error and unqualified;320Dark/mobile overflow and loading/error/retry remain
+open. The synthetic rows remain owned and retained until database recovery and
+capture completion allow exact cleanup. No production database was changed.
+
+A local correction for U1-SETTINGS-NARROW-01 replaces wrapping category buttons
+at600px and below with Orbyn's existing Select. Wide category navigation remains
+available; both controls use the same guarded destination action. A stable
+accessible section label avoids duplicate IDs and hidden-button references.
+Only the settings navigation/component CSS and focused test changed. This is
+not committed, pushed or visually accepted yet; the running preview remains on
+the earlier frozen candidate.
+
+The corrected focused cohort passes31/31, zero skips, exit0, including settings
+navigation, modal focus/Escape, search, responsive grids and existing picker
+behavior. Receipt:/tmp/orbyn-c1-compact-settings-focused-20261008.log. Main's
+ordinary typecheck and picker run initially failed against stale compiled shared
+packages; those failures are retained as environment failures. Desktop no-emit
+typecheck passes with a temporary config targeting the already-qualified
+candidate package declarations. The31-test receipt uses a temporary resolver
+for those same compiled packages and the existing Darwin esbuild binary; no
+dependency install or shared node_modules mutation occurred. This does not
+replace fresh full regression or browser keyboard/layout acceptance of the new
+navigation.
+
+The final local cohort is32/32, exit0, zero skips, after adding a source-order
+CSS cascade check. It verifies that exactly one category control is displayed
+at320/390/560/600,601/900 and1280 widths, and proves the evaluator detects a
+late rule that would reintroduce stacked navigation. Receipt:
+/tmp/orbyn-c1-compact-settings-final-focused-20261008.log. This strengthens the
+regression check but does not establish screenshot, text-size or keyboard proof.
+Recheck: free space703MiB; API health remains503/database unreachable.
+
+### Database recovery and frozen candidate
+
+Docker recovered and disk space exceeded5GiB. Only the two owned C1 PostgreSQL
+test containers were recreated after their startup failed on empty socket-lock
+files. Their pgdata is tmpfs and was lost; the prior preview providers, account
+and synthetic jobs are not claimed retained. Receipt:
+/tmp/orbyn-c1-test-db-recovery-receipt-20261008.json. Unrelated containers were
+not started or removed. The fresh local orbyn_ui_preview database migrated with
+exit0, API health returned200, and the disposable admin was recreated with its
+existing private credentials. No production credential was copied.
+
+Fresh owned usage rows reproduce the positive and overflow API200 states;
+receipts use the distinct -rebuilt- filenames and preserve prior receipts. The
+new cleanup script targets only the new exact job IDs. The old fixture metadata
+describes a lost database instance, not records to delete from the new one.
+
+The compact-navigation source and its two test files are frozen in candidate
+c69f342f, not merged or pushed to main. The existing5174 preview serves this
+candidate;8083 remains unchanged. Visual Check is assigned same-tab originals
+for narrow picker open/selection/focus, wide settings, and mobile usage overflow,
+with browser sign-in renewed for the rebuilt QA account. Acceptance is pending.
+
+Fresh full regression runs against its own marked
+orbyn_c1_compact_settings_20261008_test database. Receipt:
+/tmp/orbyn-c1-compact-settings-full-20261008.log. This run is active; no terminal
+pass is claimed. Earlier4246/4246 applies to ab01bcc8, not this new candidate.
+
+The candidate's fresh dedicated vector cohort passes69/69, zero skips, exit0,
+using a separate newly marked pgvector database. Workspace typechecks and web
+build also exit0. Receipts are
+/tmp/orbyn-c1-compact-settings-vectors-20261008.log,
+/tmp/orbyn-c1-compact-settings-workspace-types-20261008.log and
+/tmp/orbyn-c1-compact-settings-web-build-20261008.log. These are local runtime/
+compiler checks, not live embedding-recipient or native acceptance.
+
+Post-fix capture has not started: Visual Check reached the expired-session login
+page, and Computer Use denied com.apple.Terminal when it attempted to obtain
+the QA account file. The agent stopped. Root requested manual Chrome sign-in;
+no post-fix screenshots, fresh keyboard/layout acceptance or main delivery is
+claimed. Full regression continues independently on its confirmed live handle.
+
+The user then explicitly requested a new admin and autonomous sign-in. Root
+created a fresh disposable admin through the local API and assigned direct
+Chrome sign-in to Visual Check, without Terminal or the old account-file path.
+Credentials are private and excluded from reports/captures. The two earlier
+rebuilt usage jobs were deleted with exact ownership checks; their cleanup
+receipt confirms zero remaining fixture usage and all other jobs preserved.
+New owned rows for the fresh admin reproduce the same overflow API200 state.
+Receipts:/tmp/orbyn-c1-usage-fixture-cleanup-rebuilt-20261008.json and
+/tmp/orbyn-c1-usage-overflow-api-fresh-admin-20261008.json. Fresh-admin capture
+is authorized and pending; no screenshot acceptance is inferred from API setup.
+
+Fresh frozen c69f342f full regression completed4248/4248, zero failures/skips/
+cancellations, exit0,809852ms. Terminal receipt:
+/tmp/orbyn-c1-compact-settings-full-terminal-20261008.json. The source remained
+clean/frozen during the run and capture task. Main delivery is still pending
+root screenshot review; this full pass does not close the broader C1 gates.
+
+### Screenshot export blocked
+
+Visual Check confirms CUA screenshot bytes exist, but its file-writing Node
+runtime is separate and cannot access them. CUA's documented screenshot API
+has no save-to-path option. The ordinary Chrome save-image attempt using a
+data:image URL was rejected by Browser Use: URL protocols are restricted to
+http/https, and the rejection expressly forbids alternate surfaces/transport,
+indirect execution or raw browser commands to achieve that blocked action.
+That export path stopped. No saved post-fix image or visual acceptance exists.
+Root requested manually attached web/mobile-browser Settings screenshots and
+instructed Visual Check to remain quiescent. Candidate c69f342f remains local;
+main delivery and later loading/error/retry visual gates are unfinished.
+
+### Internal-browser retry and current-source migration qualification
+
+The user requires Codex's internal browser for further visual work. Visual Check
+opened the authorized HTTP preview in internal tab47; `/app` redirected to
+`/login` with an expired-session message. It emitted that login screenshot inline,
+not as a saved original. Settings has not been reviewed in this browser. The
+visual session requested action-time confirmation for the Sign in Terms/Privacy
+notice and is waiting; no credentials were submitted or disclosed.
+
+Frozen candidate c69f342f now also passes two separate migration fixtures:
+
+- Fresh pgvector upgrade:1/1, zero failures/skips/cancellations, exit0. Legacy
+  unbound consent and vectors are cleared, repeated migrations remain safe and
+  stale legacy inserts are rejected. Log:
+  /tmp/orbyn-c1-compact-settings-upgrade-20261008.log.
+- Fresh stock-Postgres schema/data restored into a separate pgvector database
+  before extension installation:1/1, zero failures/skips/cancellations, exit0.
+  Installation preserves recorded migration timestamps, queues the existing
+  fixture page and grants no semantic consent. Log:
+  /tmp/orbyn-c1-compact-settings-late-restored-20261008.log. Only PostgreSQL17's
+  unsupported transaction_timeout header was removed for the PostgreSQL16
+  restore; schema/data and migration history were preserved.
+
+These tests used new marked local test databases, not the preview or production
+database, and made no vendor calls. They add current-source migration evidence
+to the4248 stock regression and69 vector cohort without changing their counts.
+Wider mixed-version worker operations, visual/native acceptance and the retained
+C1 live-provider/cache gates remain open. Merge-tree against current main
+7bb95c07 reports no conflicts; all four primary Settings/test copies match the
+frozen candidate and unrelated mobile/app.json retains its recorded SHA1.
+Candidate promotion remains pending; no full C1 completion is claimed.
+
+### Sign-in blocker resolved
+
+The human explicitly approved submitting the disposable QA Sign in and accepting
+its displayed Terms/Privacy notice. Visual Check reports successful internal
+browser sign-in to `/app` and is capturing the requested Settings states through
+documented inline image output. No further sign-in confirmation is pending.
+The earlier credential-handoff interpretation was corrected to the ordinary
+authorized file-read/form-fill workflow; it was not a browser policy rejection.
+Credentials remain excluded from reports, manifests and screenshots. No saved
+post-fix originals or root visual acceptance are claimed while this batch runs.

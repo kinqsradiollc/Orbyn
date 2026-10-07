@@ -13,6 +13,15 @@ Fresh full4246/4246 passes with zero skips/cancellations; focused170/170,
 catalog/inventory10/10, vector repeat34/34, workspace types/backend/web builds
 and scoped web/mobile browser review pass. Remaining C1 gates below stay open.
 
+Current local candidate: compact phone-width Settings navigation, c69f342f.
+Fresh regression4248/4248, separate vector69/69, legacy upgrade1/1 and restored
+stock-schema late vector-install1/1 pass with zero failures/skips/cancellations.
+Workspace typechecks and web build pass. Candidate is not merged or pushed.
+Visual Check reports successful disposable-admin sign-in in Codex's internal
+browser at `/app` following explicit human approval; Settings captures are active.
+The earlier sign-in blocker is resolved. Inline captures are not saved originals
+or root visual acceptance. Details: [current usage/Settings review](c1-managed-usage-visual-review.md).
+
 The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.
 The C1 catalog checkpoint is merged and pushed to main as `8ab6c822`; provider controls and manual-model preservation were inspected in web/mobile browser captures.
