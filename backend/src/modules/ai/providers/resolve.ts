@@ -15,6 +15,7 @@ import {
 import { decryptSecret } from "../../../lib/secrets.js";
 import type { ResolvedAi } from "./adapters.js";
 import type { EmbeddingConfiguration } from "../../search/vectors.js";
+import { zenModelTransport } from "./zen-transport.js";
 
 export type ProviderRow = {
   id: string;
@@ -48,9 +49,19 @@ export async function connection(
       : null;
   if (controlError) fail(422, controlError);
   const definition = AI_PROVIDERS[row.kind];
+  const transport =
+    row.kind === "opencode" && purpose === "generation"
+      ? zenModelTransport(model)
+      : undefined;
+  if (transport === "unsupported")
+    fail(
+      422,
+      "This Zen model requires a transport Orbyn does not support yet. Choose another model.",
+    );
   return {
     kind: row.kind,
-    format: definition?.format ?? "openai",
+    format:
+      transport === "messages" ? "anthropic" : (definition?.format ?? "openai"),
     baseUrl: row.base_url || definition?.defaultBaseUrl || "",
     apiKey: row.api_key_encrypted
       ? await decryptSecret(row.api_key_encrypted)
@@ -64,7 +75,10 @@ export async function connection(
     structuredOutput: definition?.structuredOutput,
     local: definition?.local,
     defaultApiKey: definition?.defaultApiKey,
-    requestFormat: definition?.requestFormat,
+    requestFormat:
+      transport === "responses" || transport === "gemini"
+        ? transport
+        : definition?.requestFormat,
   };
 }
 

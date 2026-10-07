@@ -2,6 +2,33 @@ import { createHash } from "node:crypto";
 import { aiModelControlError, type AiModelUsage } from "@orbyn/core";
 import { ProviderError, type ResolvedAi } from "./adapters.js";
 
+/** Gemini counts answer and thought output separately; missing totals stay unknown. */
+export function readGeminiUsage(value: unknown): AiModelUsage {
+  const body =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const count = (value: unknown) =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+      ? value
+      : null;
+  const input = count(body.promptTokenCount);
+  const answer = count(body.candidatesTokenCount);
+  const thoughts = count(body.thoughtsTokenCount);
+  let cached = count(body.cachedContentTokenCount);
+  if (input !== null && cached !== null && cached > input) cached = null;
+  const combined =
+    answer !== null && thoughts !== null ? answer + thoughts : null;
+  return {
+    input_tokens: input,
+    output_tokens:
+      combined !== null && Number.isSafeInteger(combined) ? combined : null,
+    reasoning_tokens: thoughts,
+    cached_input_tokens: cached,
+    cache_write_tokens: null,
+  };
+}
+
 /** Shared by direct Responses completion and durable native tool requests. */
 export function responsesControls(ai: ResolvedAi, input: object[]) {
   const error = aiModelControlError(ai.kind, ai.model, ai.options);

@@ -3,6 +3,7 @@ import {
   readOpenAiUsage,
   readChatCompletionUsage,
   readAnthropicUsage,
+  readGeminiUsage,
 } from "./model-controls.js";
 import type {
   AiModelUsage,
@@ -11,6 +12,7 @@ import type {
 } from "@orbyn/core";
 import { aiModelControlError } from "@orbyn/core";
 import { assertProviderUrl, isPrivateUrl } from "./network.js";
+import { zenModelTransport } from "./zen-transport.js";
 import {
   embeddingVectors,
   EmbeddingResponseError,
@@ -53,8 +55,8 @@ export type ResolvedAi = {
   local?: boolean;
   /** Sent when the key is blank (opencode's "public"). */
   defaultApiKey?: string;
-  /** "responses": OpenAI's Responses API for GPT and o-series models. */
-  requestFormat?: "responses";
+  /** Reviewed native request protocol; private transports retain precedence. */
+  requestFormat?: "responses" | "gemini";
 };
 
 export type ChatMessage = {
@@ -146,7 +148,7 @@ export function headers(ai: Connection): Record<string, string> {
   if (ai.format === "anthropic")
     return {
       "Content-Type": "application/json",
-      "x-api-key": ai.apiKey,
+      "x-api-key": ai.apiKey || ai.defaultApiKey || "",
       "anthropic-version": "2023-06-01",
     };
   if (ai.format === "azure")
@@ -257,11 +259,21 @@ const OPENAI_ENDPOINT = "https://api.openai.com/v1";
  * on OpenAI's own endpoint; everything else uses chat completions.
  */
 export const usesResponsesApi = (
-  ai: Pick<ResolvedAi, "requestFormat" | "baseUrl" | "model">,
+  ai: Pick<ResolvedAi, "requestFormat" | "baseUrl" | "model"> &
+    Partial<Pick<ResolvedAi, "kind">>,
 ) =>
   ai.requestFormat === "responses" &&
-  trimSlash(ai.baseUrl).toLowerCase() === OPENAI_ENDPOINT &&
-  RESPONSES_MODEL.test(ai.model);
+  ((trimSlash(ai.baseUrl).toLowerCase() === OPENAI_ENDPOINT &&
+    RESPONSES_MODEL.test(ai.model)) ||
+    (ai.kind === "opencode" && zenModelTransport(ai.model) === "responses"));
+
+/** Native Google content protocol selected only by reviewed Zen model metadata. */
+export const usesGeminiApi = (
+  ai: Pick<ResolvedAi, "kind" | "requestFormat" | "model">,
+) =>
+  ai.kind === "opencode" &&
+  ai.requestFormat === "gemini" &&
+  zenModelTransport(ai.model) === "gemini";
 
 /**
  * Send a chat and return the model's text reply. Pass `signal` to share one
@@ -315,6 +327,91 @@ export async function complete(
     .map((m) => m.content)
     .join("\n\n");
   const conversation = messages.filter((m) => m.role !== "system");
+
+  if (usesGeminiApi(ai)) {
+    const format = options.responseFormat as
+      { type?: string; json_schema?: { schema?: unknown } } | undefined;
+    const response = await send(
+      `${trimSlash(ai.baseUrl)}/models/${encodeURIComponent(ai.model)}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": ai.apiKey || ai.defaultApiKey || "",
+        },
+        body: JSON.stringify({
+          ...(system
+            ? { systemInstruction: { parts: [{ text: system }] } }
+            : {}),
+          contents: conversation.map((m) => ({
+            role: m.role === "assistant" ? "model" : "user",
+            parts: [{ text: m.content }],
+          })),
+          generationConfig: {
+            ...(options.maxOutputTokens === undefined
+              ? {}
+              : { maxOutputTokens: options.maxOutputTokens }),
+            ...(format ? { responseMimeType: "application/json" } : {}),
+            ...(format?.json_schema?.schema
+              ? { responseJsonSchema: format.json_schema.schema }
+              : {}),
+          },
+        }),
+      },
+      signal,
+      ai.apiKey,
+    );
+    const body = await json<{
+      error?: unknown;
+      responseId?: unknown;
+      usageMetadata?: unknown;
+      candidates?: {
+        finishReason?: string;
+        content?: { parts?: { text?: unknown; thought?: boolean }[] };
+      }[];
+    }>(response);
+    const invalid = () =>
+      new ProviderError(
+        "invalid_body",
+        "The provider sent a reply Orbyn could not read.",
+      );
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      throw invalid();
+    throwIfErrorEnvelope(body, ai.apiKey);
+    await ai.recordUsage?.(
+      readGeminiUsage(body.usageMetadata),
+      body.responseId,
+    );
+    if (!Array.isArray(body.candidates)) throw invalid();
+    const candidate = body.candidates[0];
+    if (candidate?.finishReason === "MAX_TOKENS") throw truncated();
+    if (
+      !candidate ||
+      (candidate.finishReason && candidate.finishReason !== "STOP")
+    )
+      throw new ProviderError(
+        "blocked_output",
+        "The provider could not return an answer.",
+      );
+    if (
+      !Array.isArray(candidate.content?.parts) ||
+      candidate.content.parts.some(
+        (p) =>
+          !p ||
+          typeof p !== "object" ||
+          Array.isArray(p) ||
+          typeof p.text !== "string",
+      )
+    )
+      throw invalid();
+    const text = candidate.content.parts
+      .filter((p) => !p.thought && typeof p.text === "string")
+      .map((p) => p.text)
+      .join("");
+    if (!text)
+      throw new ProviderError("no_answer", "The provider returned no answer.");
+    return accepted(text);
+  }
 
   if (ai.format === "anthropic") {
     // Native Messages API: system prompt separate, max_tokens required

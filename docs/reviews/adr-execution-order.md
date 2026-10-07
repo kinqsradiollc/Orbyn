@@ -3,6 +3,12 @@
 Updated 7 October 2026. This orders the complete retained ADR; it does not replace
 its acceptance contract in `devday-2026-implementation-review.md`.
 
+## Requested stop
+
+On 8 October 2026 the user requested a pause **after completing C1**. Finish and
+qualify all retained C1 requirements, provide a remaining-work table, and pause
+before starting C2/M1. This does not waive C1 acceptance or reduce the full ADR.
+
 ## Working rule
 
 Finish the active checkpoint before starting another product change. For each

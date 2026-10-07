@@ -1,0 +1,479 @@
+{
+  "source": "https://models.dev/api.json",
+  "consumer": "https://github.com/anomalyco/opencode/blob/dev/packages/opencode/src/provider/provider.ts",
+  "reviewed": "2026-10-08",
+  "models": [
+    {
+      "id": "big-pickle",
+      "protocol": "chat"
+    },
+    {
+      "id": "claude-3-5-haiku",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-fable-5",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-fable-5-1",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-haiku-4-5",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-opus-4-1",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-opus-4-5",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-opus-4-6",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-opus-4-7",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-opus-4-8",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-opus-5",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-opus-5-5",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-sonnet-4",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-sonnet-4-5",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-sonnet-4-6",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-sonnet-5",
+      "protocol": "messages"
+    },
+    {
+      "id": "claude-sonnet-5-5",
+      "protocol": "messages"
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "protocol": "chat"
+    },
+    {
+      "id": "deepseek-v4-flash-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "deepseek-v4-flash-vision-exp",
+      "protocol": "chat"
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "protocol": "chat"
+    },
+    {
+      "id": "deepseek-v4.1-flash",
+      "protocol": "chat"
+    },
+    {
+      "id": "exo-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "fledge-alpha-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "gemini-3-flash",
+      "protocol": "gemini"
+    },
+    {
+      "id": "gemini-3-pro",
+      "protocol": "gemini"
+    },
+    {
+      "id": "gemini-3.1-pro",
+      "protocol": "gemini"
+    },
+    {
+      "id": "gemini-3.5-flash",
+      "protocol": "gemini"
+    },
+    {
+      "id": "gemini-3.5-flash-lite",
+      "protocol": "gemini"
+    },
+    {
+      "id": "gemini-3.6-flash",
+      "protocol": "gemini"
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "protocol": "gemini"
+    },
+    {
+      "id": "gemini-3.8-flash",
+      "protocol": "gemini"
+    },
+    {
+      "id": "glm-4.6",
+      "protocol": "chat"
+    },
+    {
+      "id": "glm-4.7",
+      "protocol": "chat"
+    },
+    {
+      "id": "glm-4.7-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "glm-5",
+      "protocol": "chat"
+    },
+    {
+      "id": "glm-5-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "glm-5.1",
+      "protocol": "chat"
+    },
+    {
+      "id": "glm-5.2",
+      "protocol": "chat"
+    },
+    {
+      "id": "glm-5.3",
+      "protocol": "chat"
+    },
+    {
+      "id": "glm-5.3-flash",
+      "protocol": "chat"
+    },
+    {
+      "id": "gpt-5",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5-codex",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5-nano",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.1",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.1-codex",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.1-codex-max",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.1-codex-mini",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.2",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.2-codex",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.3-codex",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.3-codex-spark",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.4",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.4-nano",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.4-pro",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.5",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.5-pro",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.6-luna",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.6-sol",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-5.6-terra",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-6-astra",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-6-luna",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-6-sol",
+      "protocol": "responses"
+    },
+    {
+      "id": "gpt-6.1-sol",
+      "protocol": "responses"
+    },
+    {
+      "id": "grok-4.5",
+      "protocol": "responses"
+    },
+    {
+      "id": "grok-4.6",
+      "protocol": "responses"
+    },
+    {
+      "id": "grok-4.7",
+      "protocol": "responses"
+    },
+    {
+      "id": "grok-build-0.1",
+      "protocol": "responses"
+    },
+    {
+      "id": "grok-code",
+      "protocol": "chat"
+    },
+    {
+      "id": "hy3-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "hy3-preview-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "kimi-k2",
+      "protocol": "chat"
+    },
+    {
+      "id": "kimi-k2-thinking",
+      "protocol": "chat"
+    },
+    {
+      "id": "kimi-k2.5",
+      "protocol": "chat"
+    },
+    {
+      "id": "kimi-k2.5-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "kimi-k2.6",
+      "protocol": "chat"
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "protocol": "chat"
+    },
+    {
+      "id": "kimi-k3",
+      "protocol": "chat"
+    },
+    {
+      "id": "laguna-s-2.1-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "ling-2.6-flash-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "ling-3.0-flash-fin-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "ling-3.0-flash-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "ling-3.0-tiny-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "ling-3.1-flash-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "longcat-2.0-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "longcat-2.5-preview-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "mimo-v2-flash-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "mimo-v2-omni-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "mimo-v2-pro-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "mimo-v2.5-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "mimo-v2.6-flash-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "minimax-m2.1",
+      "protocol": "chat"
+    },
+    {
+      "id": "minimax-m2.1-free",
+      "protocol": "messages"
+    },
+    {
+      "id": "minimax-m2.5",
+      "protocol": "chat"
+    },
+    {
+      "id": "minimax-m2.5-free",
+      "protocol": "messages"
+    },
+    {
+      "id": "minimax-m2.7",
+      "protocol": "chat"
+    },
+    {
+      "id": "minimax-m3",
+      "protocol": "chat"
+    },
+    {
+      "id": "minimax-m3-free",
+      "protocol": "messages"
+    },
+    {
+      "id": "mistral-large-4",
+      "protocol": "chat"
+    },
+    {
+      "id": "muse-spark-1.2",
+      "protocol": "responses"
+    },
+    {
+      "id": "muse-spark-1.2-contributor-free",
+      "protocol": "responses"
+    },
+    {
+      "id": "muse-spark-1.3",
+      "protocol": "responses"
+    },
+    {
+      "id": "muse-spark-1.3-contributor-free",
+      "protocol": "responses"
+    },
+    {
+      "id": "nemotron-3-super-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "nemotron-3-ultra-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "nemotron-3.5-lightning-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "north-mini-code-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "qwen3-coder",
+      "protocol": "chat"
+    },
+    {
+      "id": "qwen3.5-plus",
+      "protocol": "messages"
+    },
+    {
+      "id": "qwen3.6-plus",
+      "protocol": "messages"
+    },
+    {
+      "id": "qwen3.6-plus-free",
+      "protocol": "messages"
+    },
+    {
+      "id": "qwen3.8-flash",
+      "protocol": "messages"
+    },
+    {
+      "id": "qwen3.8-max",
+      "protocol": "chat"
+    },
+    {
+      "id": "ring-2.6-1t-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "space-bunny-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "trinity-large-preview-free",
+      "protocol": "chat"
+    },
+    {
+      "id": "x-preview-f-free",
+      "protocol": "chat"
+    }
+  ]
+}

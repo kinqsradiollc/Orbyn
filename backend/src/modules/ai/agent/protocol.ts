@@ -17,6 +17,7 @@ import {
   trimSlash,
   truncated,
   usesResponsesApi,
+  usesGeminiApi,
 } from "../providers/adapters.js";
 
 /**
@@ -68,7 +69,7 @@ const newId = () => `call_${Date.now().toString(36)}_${++counter}`;
 
 /** Providers flagged for structured output use the JSON protocol from the start. */
 export const startingMode = (ai: ResolvedAi): Mode =>
-  ai.structuredOutput ? "json" : "native";
+  ai.structuredOutput || usesGeminiApi(ai) ? "json" : "native";
 
 /** A 400 that says the provider does not do tools: switch to the JSON protocol. */
 export const rejectsTools = (error: unknown) =>
@@ -88,7 +89,7 @@ export async function step(
   if (controlError)
     throw new ProviderError("unsupported_model_controls", controlError);
   const result =
-    options.mode === "json"
+    options.mode === "json" || usesGeminiApi(ai)
       ? await jsonStep(ai, messages, tools, options)
       : ai.format === "anthropic"
         ? await anthropicStep(ai, messages, tools, options)
@@ -680,7 +681,7 @@ async function jsonStep(
           },
         ],
       })
-    : ai.format === "anthropic"
+    : ai.format === "anthropic" || usesResponsesApi(ai) || usesGeminiApi(ai)
       ? Response.json({
           choices: [
             {
@@ -714,7 +715,12 @@ async function jsonStep(
     choices?: { message?: { content?: unknown }; finish_reason?: string }[];
   }>(response);
   throwIfErrorEnvelope(body, ai.apiKey);
-  if (!ai.textTransport && ai.format !== "anthropic")
+  if (
+    !ai.textTransport &&
+    ai.format !== "anthropic" &&
+    !usesResponsesApi(ai) &&
+    !usesGeminiApi(ai)
+  )
     await ai.recordUsage?.(readChatCompletionUsage(body.usage), body.id);
   const choice = body.choices?.[0];
   if (!choice)
