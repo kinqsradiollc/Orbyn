@@ -347,6 +347,7 @@ for (const mobile of [false, true]) {
           node.props.children === "Load embedding model catalog",
     );
     assert.ok(control);
+    if (!mobile) assert.equal(control.props.className, "secondary");
     if (mobile) control.props.onPress();
     else control.props.onClick();
     assert.deepEqual(view.calls, ["catalog-load"]);

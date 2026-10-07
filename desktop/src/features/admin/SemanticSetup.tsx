@@ -226,6 +226,7 @@ export function SemanticSetup({
           </label>
           <button
             type="button"
+            className="secondary"
             disabled={
               busy ||
               discovery.loading ||

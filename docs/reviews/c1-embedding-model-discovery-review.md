@@ -92,3 +92,51 @@ This selected cohort differs from the earlier154-case selection; it is not a
 full-suite result. Corrected mobile and web originals have been requested.
 The earlier Dark generation no-match v2 capture clips the notice and requires
 recapture. No complete visual or C1 acceptance is claimed.
+
+## Post-full-run corrections
+
+Frozen d498febd full regression finished4226/4227, one failure, no skips or
+cancellations, exit1,809877.996125ms. The failure names the new administrator
+embedding-catalog route missing from the capability inventory. It is now
+explicitly excluded as `admin`, matching the existing catalog/test routes;
+this does not expose an agent capability.
+
+Root inspected corrected mobile originals in both themes and the full Dark
+manual/no-match notice crop. Empty-strip removal and manual preservation pass
+those scoped browser states. The first web1280 Light exact-model crop shows
+the new Load catalog action using browser-default chrome. It now uses the
+existing `secondary` class; an actual component assertion preserves that style.
+Corrected web captures remain required.
+
+The shared provider send function previously followed redirects after checking
+only the initial URL. An actual local compiled Anthropic catalog302 forwards
+an inert x-api-key sentinel to another origin. No real key or document was used.
+All redirect statuses301/302/303/307/308 are now rejected before a subsequent
+request, including same-origin redirects and caller `redirect:follow` overrides.
+An actionable sanitized error asks the admin to update the saved base URL;
+Location/body contents are not shown. This deliberately requires a final saved
+endpoint rather than forwarding provider credentials or request text.
+
+The real-source regression covers the three credential header families, direct
+success, same-origin rejection, error privacy and body cancellation. Initial
+isolated proposal checks failed on the harness's nonexistent `code` property;
+using the real `reason` property yields16/16. Product-source tests later found
+a streaming redirect body left open (18/19); explicit cancellation corrects it
+and19/19 pass. Logs remain distinct:
+`/tmp/orbyn-c1-provider-redirect-body-before-20261008.log` and
+`/tmp/orbyn-c1-provider-redirect-body-after-20261008.log`.
+
+No source was changed while the full run or frozen capture batch was live;
+Visual Check confirmed quiescence before these changes. The mobile UI is
+unchanged since its accepted d498febd screenshots. Final focused/build/full
+qualification and refreshed web review precede feature promotion.
+
+Final combined redirect/inventory/discovery/controls cohort passes170/170,
+zero failures/skips/cancellations; workspace typecheck passes and final backend
+typecheck/backend build/web build exit zero. Logs:
+`/tmp/orbyn-c1-discovery-redirect-final-focused-20261008.log`,
+`/tmp/orbyn-c1-discovery-redirect-corrected-types-20261008.log`,
+`/tmp/orbyn-c1-discovery-redirect-final-backend-types-20261008.log`,
+`/tmp/orbyn-c1-discovery-redirect-final-backend-build-20261008.log`,
+`/tmp/orbyn-c1-discovery-redirect-final-web-build-20261008.log`.
+The earlier failed full result is not relabelled by these focused passes.

@@ -178,7 +178,8 @@ export async function send(
   await assertProviderUrl(url);
   let response: Response;
   try {
-    response = await fetch(url, { ...init, signal });
+    // Keep provider credentials and request text on the saved recipient.
+    response = await fetch(url, { ...init, redirect: "manual", signal });
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "TimeoutError";
     throw new ProviderError(
@@ -186,6 +187,13 @@ export async function send(
       timedOut
         ? "The provider took too long to answer."
         : "Could not reach the provider.",
+    );
+  }
+  if (response.status >= 300 && response.status < 400) {
+    await response.body?.cancel().catch(() => {});
+    throw new ProviderError(
+      "redirect",
+      "The provider redirected this request. Update the saved base URL to its final endpoint.",
     );
   }
   if (!response.ok) {
