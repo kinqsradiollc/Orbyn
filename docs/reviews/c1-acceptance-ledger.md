@@ -64,7 +64,6 @@ then remaining multi-provider/embedding and both-client acceptance. Real provide
 inference, installed native acceptance, C2-M1 through C6/D1/U1 and final cleanup
 remain open. User/character files are preserved.
 
-
 ## Independent main-scope qualification — 7 October 2026
 
 C1 authority files fromafd18161 are prepared on main24cc5607, not committed or
@@ -90,7 +89,6 @@ Frozen afd18161 full regression is still live as session 78103 on its own databa
 this qualification does not replace its terminal result. Keep checkpoint open and
 main uncommitted until that result is inspected. No production deploy or real
 provider acceptance is claimed. No next product checkpoint started.
-
 
 ## Managed authority candidate — 7 October 2026
 
@@ -122,7 +120,6 @@ response before a tool checkpoint. These intercept provider traffic; no real
 provider inference is established. Prior3990/3990 full evidence covers the preceding
 Responses scope only. Main remains24cc5607; this candidate is not deployed.
 
-
 ## Qualified Responses checkpoint — 7 October 2026
 
 This scoped main checkpoint promotes the managed native Responses tool repair:
@@ -152,7 +149,6 @@ Next: managed-provider enqueue/dispatch/recovery authority across all audited
 entry points, then supported reasoning/cache controls and remaining provider/
 embedding qualification. Historical failures and earlier pending status below
 are retained as evidence and superseded by this terminal result.
-
 
 Updated 7 October 2026. C1 is active. This evidence index supplements the full
 contract in `devday-2026-implementation-review.md`; it does not reduce that scope.
@@ -204,20 +200,20 @@ callbacks; they do not establish real provider or browser/native acceptance.
 
 ## Requirements and evidence
 
-| Requirement | Current evidence | Still required |
-| --- | --- | --- |
-| Managed/BYO/plan connection distinction | `providers/user-choice.ts` resolves an immutable job choice; the private plan route uses `textTransport` and structured JSON, not managed credentials. The new isolation fixture passes. | Reconcile the connection-kind discriminator across schemas, persisted state and clients; qualify all managed conversation and automation paths. |
-| Selected connection/model preserved | `providers/resolve.ts` resolves the saved provider/model; Responses fixtures retain legacy/current model names. Custom-compatible and Azure fixtures retain chat protocol. | Confirm complete model capability validation, disabled/deleted/revised connection behavior and actual supported-model availability. |
-| Native Responses tools | Candidate protocol validates output, refuses incomplete or ambiguous calls, retains encrypted reasoning, and uses `call_id`. Before/after-tool serialized restart fixtures pass without repeated provider/tool work. | Frozen regression and scoped main integration; actual permitted provider probe. Deterministic checkpoint interruption is not a process-kill/live-provider test. |
-| Explicit fallback and provenance | `providers/user-choice.ts` checks `fallback_to_default`, queues private calls and records fallback operations; provenance has a dedicated test. | Reconcile current authority, uncertainty, pre-stream eligibility, selected connection/model and receipts for every entry point; prove no silent paid fallback under recovery and revocation. |
-| Sol catalog and capability validation | Twenty named provider definitions exist in `@orbyn/core`; OpenAI advertises Responses routing. | Explicit model capabilities/catalog defaults and supported reasoning-value validation. A generic model-name regex is a routing rule, not a complete capability contract. |
-| Reasoning controls | Current managed `ResolvedAi.options` and persisted provider option schemas expose only Azure `apiVersion`. | Implement model-aware reasoning settings, unsupported-value rejection, backend/shared/web/mobile persistence and request mapping. |
-| Prompt caching controls | No managed reasoning/cache request controls were found in the inspected adapters and provider schemas. | Stable instruction/tool-prefix handling, documented cache controls, cache hit/write/input/output usage, plus permitted cost/latency/quality evaluation against baseline. |
-| Multiple saved providers | `ai/admin.ts` stores independent provider rows; both `AdminAi` clients support provider management and per-row model selection. | Current duplicate-kind/custom-endpoint, credential testing/catalog refresh/manual-entry and both-client interaction acceptance. A form/source implementation is not live provider acceptance. |
-| Independent embeddings | `resolveEmbedding` binds accepted provider revision and model separately from generation; existing embedding audits and adapter/configuration/race tests are retained. | Reconcile all consent, dimensions, document/configuration fences, conditional queue acknowledgement, mixed-version upgrades/reindex and actual provider/UI gates against current source. |
-| Budgets/team/MCP compatibility | Existing managed resolution and capability authorization remain in place; MCP is a separate grant boundary. | Full current provider/automation/team/MCP regressions and per-path authority/budget evidence. Detailed budget reconciliation remains C3, without waiving the C1 compatibility gate. |
-| Client parity and UI acceptance | Both provider administration clients and embedding controls exist; prior sampled browser checks are recorded separately. | Assign the exact C1 provider/embedding flows to Orbyn Visual Check; review desktop/web and mobile browser, loading/error/long-catalog states, themes, overlays and native functional parity. |
-| Production checkpoint | Managed Responses candidate committed; main integration pending. | Terminal qualification, scoped main commit/push, and evidence that clearly distinguishes merged from manually deployed. |
+| Requirement                             | Current evidence                                                                                                                                                                                                     | Still required                                                                                                                                                                                |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Managed/BYO/plan connection distinction | `providers/user-choice.ts` resolves an immutable job choice; the private plan route uses `textTransport` and structured JSON, not managed credentials. The new isolation fixture passes.                             | Reconcile the connection-kind discriminator across schemas, persisted state and clients; qualify all managed conversation and automation paths.                                               |
+| Selected connection/model preserved     | `providers/resolve.ts` resolves the saved provider/model; Responses fixtures retain legacy/current model names. Custom-compatible and Azure fixtures retain chat protocol.                                           | Confirm complete model capability validation, disabled/deleted/revised connection behavior and actual supported-model availability.                                                           |
+| Native Responses tools                  | Candidate protocol validates output, refuses incomplete or ambiguous calls, retains encrypted reasoning, and uses `call_id`. Before/after-tool serialized restart fixtures pass without repeated provider/tool work. | Frozen regression and scoped main integration; actual permitted provider probe. Deterministic checkpoint interruption is not a process-kill/live-provider test.                               |
+| Explicit fallback and provenance        | `providers/user-choice.ts` checks `fallback_to_default`, queues private calls and records fallback operations; provenance has a dedicated test.                                                                      | Reconcile current authority, uncertainty, pre-stream eligibility, selected connection/model and receipts for every entry point; prove no silent paid fallback under recovery and revocation.  |
+| Sol catalog and capability validation   | Twenty named provider definitions exist in `@orbyn/core`; OpenAI advertises Responses routing.                                                                                                                       | Explicit model capabilities/catalog defaults and supported reasoning-value validation. A generic model-name regex is a routing rule, not a complete capability contract.                      |
+| Reasoning controls                      | Current managed `ResolvedAi.options` and persisted provider option schemas expose only Azure `apiVersion`.                                                                                                           | Implement model-aware reasoning settings, unsupported-value rejection, backend/shared/web/mobile persistence and request mapping.                                                             |
+| Prompt caching controls                 | No managed reasoning/cache request controls were found in the inspected adapters and provider schemas.                                                                                                               | Stable instruction/tool-prefix handling, documented cache controls, cache hit/write/input/output usage, plus permitted cost/latency/quality evaluation against baseline.                      |
+| Multiple saved providers                | `ai/admin.ts` stores independent provider rows; both `AdminAi` clients support provider management and per-row model selection.                                                                                      | Current duplicate-kind/custom-endpoint, credential testing/catalog refresh/manual-entry and both-client interaction acceptance. A form/source implementation is not live provider acceptance. |
+| Independent embeddings                  | `resolveEmbedding` binds accepted provider revision and model separately from generation; existing embedding audits and adapter/configuration/race tests are retained.                                               | Reconcile all consent, dimensions, document/configuration fences, conditional queue acknowledgement, mixed-version upgrades/reindex and actual provider/UI gates against current source.      |
+| Budgets/team/MCP compatibility          | Existing managed resolution and capability authorization remain in place; MCP is a separate grant boundary.                                                                                                          | Full current provider/automation/team/MCP regressions and per-path authority/budget evidence. Detailed budget reconciliation remains C3, without waiving the C1 compatibility gate.           |
+| Client parity and UI acceptance         | Both provider administration clients and embedding controls exist; prior sampled browser checks are recorded separately.                                                                                             | Assign the exact C1 provider/embedding flows to Orbyn Visual Check; review desktop/web and mobile browser, loading/error/long-catalog states, themes, overlays and native functional parity.  |
+| Production checkpoint                   | Managed Responses candidate committed; main integration pending.                                                                                                                                                     | Terminal qualification, scoped main commit/push, and evidence that clearly distinguishes merged from manually deployed.                                                                       |
 
 ## Next implementation sequence within C1
 
@@ -242,7 +238,12 @@ resolved the job, changed the managed settings to model B, checked the original
 resolved authority, then resolved the same job again. Observed:
 
 ```json
-{"before":"fixture-model-a","resumed":"fixture-model-b","existingAuthority":"allowed","providerRequests":0}
+{
+  "before": "fixture-model-a",
+  "resumed": "fixture-model-b",
+  "existingAuthority": "allowed",
+  "providerRequests": 0
+}
 ```
 
 `resolveUserAi` rereads `resolveAi()` on resume. Its default-route authority checks
@@ -335,14 +336,14 @@ Implement this after the Responses checkpoint qualifies and is promoted. The
 confirmed model-retarget reproduction remains unresolved. Source inspection also
 identifies adjacent entry points that must participate in the same contract:
 
-| Path | Existing boundary | Required repair/acceptance |
-| --- | --- | --- |
-| Agent and first-party feature jobs (`user-choice.ts`, `feature-call.ts`, `agenda-call.ts`) | Immutable personal provider choice; default/fallback still resolves current managed settings | Credential-free immutable enqueue snapshot of managed provider identity, model and monotonic authority revision; validate live snapshot before dispatch, after response and on recovery. |
-| Explicit ChatGPT fallback (`user-choice.ts`) | Consent and durable operation reservation prevent unapproved fallback/retry | Resolve only the captured managed fallback; configuration changes cannot silently select a different model/provider. Preserve cached known results and reject uncertain completion. |
-| Default Agenda summary (`agenda-brief.ts`) | Source and personal-choice checks surround direct managed completion | Compose those checks with managed provider authority; do not overwrite its guard. Prove revocation during awaited work yields no usable completion. |
-| Recording transcription (`recording.ts`) | Checks source and personal choice, but calls `transcribe` directly with resolved managed credentials | Fence managed provider/key/options/enabled state around transcription and all awaited source reads. Preserve text-plan/audio capability separation. |
+| Path                                                                                           | Existing boundary                                                                                                     | Required repair/acceptance                                                                                                                                                                    |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent and first-party feature jobs (`user-choice.ts`, `feature-call.ts`, `agenda-call.ts`)     | Immutable personal provider choice; default/fallback still resolves current managed settings                          | Credential-free immutable enqueue snapshot of managed provider identity, model and monotonic authority revision; validate live snapshot before dispatch, after response and on recovery.      |
+| Explicit ChatGPT fallback (`user-choice.ts`)                                                   | Consent and durable operation reservation prevent unapproved fallback/retry                                           | Resolve only the captured managed fallback; configuration changes cannot silently select a different model/provider. Preserve cached known results and reject uncertain completion.           |
+| Default Agenda summary (`agenda-brief.ts`)                                                     | Source and personal-choice checks surround direct managed completion                                                  | Compose those checks with managed provider authority; do not overwrite its guard. Prove revocation during awaited work yields no usable completion.                                           |
+| Recording transcription (`recording.ts`)                                                       | Checks source and personal choice, but calls `transcribe` directly with resolved managed credentials                  | Fence managed provider/key/options/enabled state around transcription and all awaited source reads. Preserve text-plan/audio capability separation.                                           |
 | Hosted maintained pages (`maintenance-model.ts`, `maintenance-runs.ts`, `maintained-pages.ts`) | Hosted model_origin captures personal-choice version; worker later hashes current provider/model and fences that hash | Capture managed identity at enqueue as well as during dispatch; do not infer an old queued run's original model from current settings. Retain page authority, source/lease and budget guards. |
-| Plugin inference (`plugin/inference-broker.ts`) | Independent managed permission already captures provider/model/revision and checks live rows under locks | Preserve the separate broker and authority; reuse a shared managed identity primitive without converting MCP/plugin permission into personal provider consent. |
+| Plugin inference (`plugin/inference-broker.ts`)                                                | Independent managed permission already captures provider/model/revision and checks live rows under locks              | Preserve the separate broker and authority; reuse a shared managed identity primitive without converting MCP/plugin permission into personal provider consent.                                |
 
 Configuration identity must include a monotonic managed-selection revision, so
 switching model A→B→A still invalidates old work. Provider credential, endpoint,
@@ -549,7 +550,6 @@ blocks mobile recapture; user confirmation requested for that disposable account
 The agent must not accept pending consent until the user answers. Main promotion
 and whole checkpoint acceptance remain pending.
 
-
 ### Usage route boundary correction
 
 The missing inventory entry is classified as an account route, preserving its
@@ -558,7 +558,6 @@ before reading usage, and integration coverage refuses personal API keys without
 returning measurements. Focused controls, route inventory and API-key regression
 pass20/20, zero failures/skips, exit0; backend typecheck passes. Evidence `/tmp/orbyn-c1-usage-boundary-20261007.log`. This follow-up is
 a candidate correction and is not promoted to main. Full regression must be rerun on the new freeze.
-
 
 ### Correction qualification and preview provenance
 
@@ -573,7 +572,6 @@ Stale localhost-onlyPID31340 was stopped to remove ambiguous bundle provenance;
 currentPID92851 remains. Agent instructed to reload127.0.0.1:8083 and wait for user
 confirmation of updated local Terms. No provider calls or legal acceptance made.
 
-
 ### Documented model completeness follow-up
 
 Official docs fetched7 October2026 confirmgpt-5.6-sol andgpt-5.6 alias use
@@ -586,7 +584,6 @@ or entitlement is not established by these docs. Frozen31111112 full run remains
 unchanged; this follow-up passes24/24 model-controls/evaluation cases, zero failures/skips,
 exit0; shared package builds pass. Log:
 `/tmp/orbyn-c1-model-completeness-20261007.log`. A later full freeze is required.
-
 
 ### Usage retry/cancellation qualification
 
@@ -604,7 +601,6 @@ counters and the fixed30-day sweeper match the saved-assistant privacy paragraph
 This source audit does not replace live-provider or visual acceptance.
 Frozen31111112 full regression continues; latest observed completed case1448.
 
-
 ### Prepared-main scope inspection
 
 33 promoted product/test files match the latest candidate byte-for-byte.
@@ -617,7 +613,6 @@ Prepared-main usage UI regression also passes8/8, zero failures/skips,912ms:
 `/tmp/orbyn-main-usage-ui-errors-20261007.log`.
 Frozen31111112 remains live; latest completed case2655, no reported failure yet.
 No terminal full pass or main promotion is claimed.
-
 
 ### Catalog correction after terminal regression
 
@@ -644,7 +639,6 @@ Compiled aggregation probe independently passes overflow unknowns, anonymous
 observation identity,30-day exclusion and job deletion cascade:
 `/tmp/orbyn-main-controls-0f446664-aggregate-probe-20261007.log`.
 
-
 ### Corrected exact-main run and preview alignment
 
 Release qualification is frozen atc082d93e on main3c8feb40 with regenerated
@@ -663,7 +657,6 @@ Log `/tmp/orbyn-c1-preview-api-c082d93e-20261007.log`. QA data preserved, SMTP o
 no provider inference or legal acceptance performed. Capture agent notified to
 reload after explicit local Terms confirmation. Main remains3c8feb40.
 
-
 ### Capture-method evidence correction
 
 Root inspectedQA-013c-web-terms-blocker-fromSurface-false.png original2560x1440:
@@ -673,7 +666,6 @@ evidence. The updated Terms blocker remains supported only by the agent's record
 accessibility state. Requested one public local landing-page Chrome/native capture
 for method calibration, no login or consent. Capture agent remains screenshot-only;
 root owns analysis. No visual completion claimed.
-
 
 ### Chrome capture calibration accepted
 
@@ -686,7 +678,6 @@ Manifest: `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a4
 Updated local Terms confirmation still blocks signed-in C1 captures. Agent told
 to await that dependency and capture only; root inspects images. Corrected full
 mainc082d93e continues as session29017; no full pass or main promotion claimed.
-
 
 ## Exact-main C1 regression qualified — 7 October 2026
 
@@ -708,7 +699,6 @@ integration when acceptance is sufficient. Local process has no evaluation key;
 a names-only inspection finds no managed OpenAI/evaluation key variable in
 .env.production. No secret values were printed or changed. Later C1 embedding/
 multi-provider matrix and C2/M1-C6/D1/U1 remain required; no final cleanup.
-
 
 ## Generation-control/embedding revision correction
 
@@ -779,3 +769,33 @@ embedding validation cohort passes29/29, zero failures/skips,7292ms; no provider
 network calls. Log `/tmp/orbyn-c1-embedding-controls-matrix-20261007.log`.
 Prior mainc082d93e3722/3722 full pass predates this correction. Fresh exact-main
 qualification is required; no promotion or complete C1 stage claimed.
+
+## Matilda steering and compatible usage correction — 7 October 2026
+
+The user configured an enabled Matilda (Maincode) provider and selected `matilda`
+in the local preview. Existing fixed admin Test succeeded863ms before this
+correction, but no usage was returned because the compatible adapter discarded it.
+The scoped correction normalizes Chat Completions usage through the existing
+nonnegative safe-integer/subset guards, records response identity and preserves
+missing counters as unknown. Error envelopes do not create observations; truncated
+answers retain reported usage. Authority checks and private ChatGPT transport
+isolation remain intact. Schema source: [OpenAI Chat Completions reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
+
+Backend build passes. Focused normalization/adapter tests pass29/29; log
+`/tmp/orbyn-c1-compatible-usage-focused-20261007.log`. Rebuilt single-process API8008
+preserves the preview DB/config and user-selected provider. One fixed OK/ping
+Matilda probe succeeds815ms and returns provider-reported input0, output0,
+reasoning0, cached input0, cache writes unknown. Evidence:
+`/tmp/orbyn-c1-matilda-live-usage-20261007.json`. These zero counters do not establish
+measured cost, cache savings, general quality or ChatGPT-plan entitlement. No
+workspace content was sent. The OpenAI-specific cache benchmark cannot qualify
+Matilda cache controls. New adapter product code needs refreshed full regression;
+prior66f7a5f2 result remains valid only for its previous freeze.
+
+Root inspected QA016 original images: wide/light desktop controls through Save,
+provider management menu and zero-usage Settings are readable without observed
+overlap in those captured states. Mobile390x197 shows scaled desktop content and
+is rejected for requested390x844 acceptance. Visual Check was instructed to
+correct capture viewport and capture narrow/dark/mobile states; capture-only
+manifest workflow remains. User explicitly authorized disposable local QA Terms
+acceptance and same-account sign-in. No entire C1/UI stage acceptance claimed.

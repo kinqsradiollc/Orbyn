@@ -376,3 +376,166 @@ for (const native of [false, true]) {
     assert.equal(observed.output_tokens, 10);
   });
 }
+
+for (const kind of ["matilda", "openai-compatible", "azure"] as const) {
+  test(`${kind} records compatible usage and response identity`, async (t) => {
+    const observations: any[] = [];
+    t.mock.method(globalThis, "fetch", async () =>
+      Response.json({
+        id: "chatcmpl-fixture",
+        usage: {
+          prompt_tokens: 100,
+          completion_tokens: 20,
+          prompt_tokens_details: { cached_tokens: 50, cache_write_tokens: 10 },
+          completion_tokens_details: { reasoning_tokens: 5 },
+        },
+        choices: [{ message: { content: "OK" }, finish_reason: "stop" }],
+      }),
+    );
+    assert.equal(
+      await complete(
+        {
+          ...ai,
+          kind,
+          format: kind === "azure" ? "azure" : "openai",
+          requestFormat: undefined,
+          model: "fixture",
+          baseUrl: "https://fixture.invalid/v1",
+          options: { apiVersion: "fixture-version" },
+          recordUsage: async (...args) => {
+            observations.push(args);
+          },
+        },
+        messages,
+      ),
+      "OK",
+    );
+    assert.deepEqual(observations, [
+      [
+        {
+          input_tokens: 100,
+          output_tokens: 20,
+          reasoning_tokens: 5,
+          cached_input_tokens: 50,
+          cache_write_tokens: 10,
+        },
+        "chatcmpl-fixture",
+      ],
+    ]);
+  });
+}
+
+test("compatible usage is retained for truncated answers but not error envelopes", async (t) => {
+  let observed = 0;
+  let response: any = {
+    usage: { prompt_tokens: 20, completion_tokens: 10 },
+    choices: [{ message: { content: "Partial" }, finish_reason: "length" }],
+  };
+  t.mock.method(globalThis, "fetch", async () => Response.json(response));
+  const target: ResolvedAi = {
+    ...ai,
+    kind: "matilda",
+    model: "matilda",
+    requestFormat: undefined,
+    baseUrl: "https://fixture.invalid/v1",
+    options: {},
+    recordUsage: async () => {
+      observed++;
+    },
+  };
+  await assert.rejects(complete(target, messages));
+  assert.equal(observed, 1);
+  response = { ...response, error: { message: "Fixture error" } };
+  await assert.rejects(complete(target, messages));
+  assert.equal(observed, 1);
+});
+
+test("compatible usage keeps missing and contradictory counters unknown", async () => {
+  const { readChatCompletionUsage } =
+    await import("../src/modules/ai/providers/model-controls.js");
+  assert.deepEqual(
+    readChatCompletionUsage(undefined),
+    readOpenAiUsage(undefined),
+  );
+  assert.deepEqual(
+    readChatCompletionUsage({
+      prompt_tokens: 10,
+      completion_tokens: 5,
+      prompt_tokens_details: { cached_tokens: 9, cache_write_tokens: 8 },
+      completion_tokens_details: { reasoning_tokens: 6 },
+    }),
+    {
+      input_tokens: 10,
+      output_tokens: 5,
+      reasoning_tokens: null,
+      cached_input_tokens: null,
+      cache_write_tokens: null,
+    },
+  );
+  assert.equal(
+    readChatCompletionUsage({ prompt_tokens: "10" }).input_tokens,
+    null,
+  );
+  assert.equal(
+    readChatCompletionUsage({ completion_tokens: -1 }).output_tokens,
+    null,
+  );
+});
+
+test("compatible usage collection preserves authority checks before dispatch and answer acceptance", async (t) => {
+  let calls = 0;
+  let revoked = true;
+  let observations = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    calls++;
+    revoked = true;
+    return Response.json({
+      usage: { prompt_tokens: 1, completion_tokens: 1 },
+      choices: [{ message: { content: "OK" } }],
+    });
+  });
+  const target: ResolvedAi = {
+    ...ai,
+    kind: "matilda",
+    model: "matilda",
+    requestFormat: undefined,
+    baseUrl: "https://fixture.invalid/v1",
+    options: {},
+    assertAuthority: async () => {
+      if (revoked) throw new Error("Authority revoked");
+    },
+    recordUsage: async () => {
+      observations++;
+    },
+  };
+  await assert.rejects(complete(target, messages), /Authority revoked/);
+  assert.equal(calls, 0);
+  revoked = false;
+  await assert.rejects(complete(target, messages), /Authority revoked/);
+  assert.equal(calls, 1);
+  // The completed request consumed tokens even though its answer is rejected.
+  assert.equal(observations, 1);
+});
+
+test("private ChatGPT transport never acquires managed compatible usage", async (t) => {
+  let observations = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("No managed request allowed");
+  });
+  assert.equal(
+    await complete(
+      {
+        ...ai,
+        kind: "chatgpt_plan",
+        options: {},
+        textTransport: async () => "Private answer",
+        recordUsage: async () => {
+          observations++;
+        },
+      },
+      messages,
+    ),
+    "Private answer",
+  );
+  assert.equal(observations, 0);
+});

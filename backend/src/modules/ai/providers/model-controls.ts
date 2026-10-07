@@ -93,3 +93,17 @@ export function readOpenAiUsage(value: unknown): AiModelUsage {
     cache_write_tokens: writes,
   };
 }
+
+/** Normalize documented Chat Completions counters without estimating missing fields. */
+export function readChatCompletionUsage(value: unknown): AiModelUsage {
+  const body =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  return readOpenAiUsage({
+    input_tokens: body.prompt_tokens,
+    output_tokens: body.completion_tokens,
+    input_tokens_details: body.prompt_tokens_details,
+    output_tokens_details: body.completion_tokens_details,
+  });
+}

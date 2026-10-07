@@ -1,4 +1,8 @@
-import { responsesControls, readOpenAiUsage } from "./model-controls.js";
+import {
+  responsesControls,
+  readOpenAiUsage,
+  readChatCompletionUsage,
+} from "./model-controls.js";
 import type {
   AiModelUsage,
   AiProviderOptions,
@@ -431,9 +435,12 @@ export async function complete(
   };
   const body = await json<{
     error?: unknown;
+    id?: unknown;
+    usage?: unknown;
     choices?: { message?: Message; delta?: Message; finish_reason?: string }[];
   }>(response);
   throwIfErrorEnvelope(body, ai.apiKey);
+  await ai.recordUsage?.(readChatCompletionUsage(body.usage), body.id);
   const choice = body.choices?.[0];
   if (!choice)
     throw new ProviderError("no_choices", "The provider returned no answer.");
