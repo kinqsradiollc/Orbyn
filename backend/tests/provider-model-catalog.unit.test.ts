@@ -119,3 +119,175 @@ test("Azure catalog remains manual and makes no remote request", async () => {
     globalThis.fetch = original;
   }
 });
+
+test("Anthropic catalog follows same-endpoint cursors and combines every page", async () => {
+  const original = globalThis.fetch;
+  const calls: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    calls.push(url);
+    assert.equal(
+      new Headers(init?.headers).get("x-api-key"),
+      connection.apiKey,
+    );
+    assert.equal(
+      new Headers(init?.headers).get("anthropic-version"),
+      "2023-06-01",
+    );
+    return new Response(
+      JSON.stringify(
+        calls.length === 1
+          ? { data: [{ id: "b" }], has_more: true, last_id: "b" }
+          : { data: [{ id: "a" }, { id: "b" }], has_more: false, last_id: "b" },
+      ),
+    );
+  };
+  try {
+    assert.deepEqual(await listModels({ ...connection, format: "anthropic" }), [
+      "a",
+      "b",
+    ]);
+    assert.deepEqual(calls, [
+      connection.baseUrl + "/models",
+      connection.baseUrl + "/models?after_id=b",
+    ]);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+for (const metadata of [
+  { has_more: "true", last_id: "b" },
+  { has_more: true },
+  { has_more: true, last_id: "" },
+  { has_more: true, last_id: "wrong" },
+  { has_more: true, last_id: "b\n" },
+]) {
+  test(`Anthropic rejects malformed continuation: ${JSON.stringify(metadata)}`, async () => {
+    await withCatalog({ data: [{ id: "b" }], ...metadata }, async () => {
+      await assert.rejects(
+        listModels({ ...connection, format: "anthropic" }),
+        (error: unknown) =>
+          error instanceof ProviderError && error.reason === "invalid_catalog",
+      );
+    });
+  });
+}
+
+test("Anthropic rejects cursor cycles without returning partial results", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(
+      JSON.stringify({ data: [{ id: "b" }], has_more: true, last_id: "b" }),
+    );
+  };
+  try {
+    await assert.rejects(
+      listModels({ ...connection, format: "anthropic" }),
+      (error: unknown) =>
+        error instanceof ProviderError && error.reason === "invalid_catalog",
+    );
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+for (const status of [400, 401, 403, 429, 500]) {
+  test(`Anthropic later-page HTTP ${status} rejects the whole catalog safely`, async () => {
+    const original = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () =>
+      ++calls === 1
+        ? new Response(
+            JSON.stringify({
+              data: [{ id: "b" }],
+              has_more: true,
+              last_id: "b",
+            }),
+          )
+        : new Response(
+            JSON.stringify({ error: { message: connection.apiKey } }),
+            { status },
+          );
+    try {
+      await assert.rejects(
+        listModels({ ...connection, format: "anthropic" }),
+        (error: unknown) => {
+          assert.ok(error instanceof ProviderError);
+          assert.equal(error.reason, `http_${status}`);
+          assert.ok(!error.message.includes(connection.apiKey));
+          return true;
+        },
+      );
+      assert.equal(calls, 2);
+    } finally {
+      globalThis.fetch = original;
+    }
+  });
+}
+
+test("Anthropic pages share one timeout signal and encode opaque cursors on the saved endpoint", async () => {
+  const original = globalThis.fetch;
+  const cursor = "model&redirect=https://other.invalid/";
+  let calls = 0;
+  let signal: AbortSignal | null | undefined;
+  globalThis.fetch = async (input, init) => {
+    calls++;
+    if (calls === 1) signal = init?.signal;
+    else {
+      assert.equal(init?.signal, signal);
+      const url = new URL(String(input));
+      assert.equal(url.origin, new URL(connection.baseUrl).origin);
+      assert.deepEqual([...url.searchParams], [["after_id", cursor]]);
+    }
+    return new Response(
+      JSON.stringify(
+        calls === 1
+          ? { data: [{ id: cursor }], has_more: true, last_id: cursor }
+          : { data: [{ id: "a" }], has_more: false },
+      ),
+    );
+  };
+  try {
+    assert.deepEqual(await listModels({ ...connection, format: "anthropic" }), [
+      "a",
+      cursor,
+    ]);
+    assert.equal(calls, 2);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("Anthropic bounds endless unique pages", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => {
+    const id = `model-${++calls}`;
+    return new Response(
+      JSON.stringify({ data: [{ id }], has_more: true, last_id: id }),
+    );
+  };
+  try {
+    await assert.rejects(
+      listModels({ ...connection, format: "anthropic" }),
+      (error: unknown) =>
+        error instanceof ProviderError && error.reason === "invalid_catalog",
+    );
+    assert.equal(calls, 100);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test("compatible catalogs do not inherit Anthropic cursor semantics", async () => {
+  await withCatalog(
+    { data: [{ id: "a" }], has_more: true, last_id: "a" },
+    async () => {
+      assert.deepEqual(await listModels(connection), ["a"]);
+    },
+  );
+});

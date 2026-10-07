@@ -57,23 +57,23 @@ QA manifest:
 `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-018-capture-manifest.md`.
 Acceptance comes from this session's image inspection, not the capture session's findings.
 
-## Next implementation checkpoint — C1 embedding consent/reindex matrix
+## Current implementation checkpoint — C1 provider inventory and pagination
 
-1. Catalog validation, displayed-revision authority and manual selection checkpoint
-   is on main8ab6c822 (delivery docs66d0c733); broader live inventory stays open.
-2. Embedding reviewed-destination consent race reproduced and corrected locally
-   ind4cd4273. Focused pgvector48 pass/one stock-only skip; separate stock20/20.
-   Shared/backend builds and both client types pass. Full frozen regression completed as session87929:3781/3781, zero failures/skips/cancellations, exit0.
-   Root inspected QA022 web wide/narrow and mobile320/390 OFF controls; manifest
-   confirms source/viewport metadata. Web production build passes. Scoped main
-   promotion completed43fa8f57; wider enabled/error/native matrix stays open.
-3. Next: implement persistent sanitized indexing failure/retry status and isolate
-   failed pages so healthy queued pages proceed; follow the embedding audit order.
-   Complete the remaining embedding consent/validation/reindex/search/client matrix.
-   Keep live provider/OpenAI cache gates explicit; Matilda does not support the
-   OpenAI-specific cache benchmark and does not waive that retained requirement.
-4. Promote each qualified C1 checkpoint, then continue C2/M1 → C3 → C4/D1 → C5
-   → C6 → final U1/integration/cleanup. Do not jump ahead or mark C1 complete early.
+1. Consent/reindex authority and persistent sanitized indexing failure/retry
+   checkpoints are on main (`43fa8f57`, `d4da3d41`). Wider runtime/native coverage
+   remains open; see their evidence rather than treating them as full C1 acceptance.
+2. Audit all 20 configured provider kinds across catalog, dispatch, controls and
+   embeddings. [The current inventory](c1-provider-runtime-inventory.md) separates
+   source contracts, fixture qualification and live evidence.
+3. Anthropic catalog pagination omission is reproduced locally: first page only
+   returns `b` where the complete result is `a,b`. Candidate follows same-endpoint
+   cursors with one eight-second budget, bounded pages and sanitized whole-catalog
+   failure. Focused adapter checks pass34/34; route/provider cohort passes49/49.
+   Backend types pass; broader regression is pending.
+4. Keep remaining live-provider/OpenAI cache gates explicit. Matilda's fixed
+   baseline does not qualify OpenAI cache economics. Promote this checkpoint only
+   after qualification, then continue remaining C1 gates before C2/M1.
+5. Continue C2/M1 → C3 → C4/D1 → C5 → C6 → U1/integration/cleanup in order.
 
 Orbyn Visual Check captures originals and a Markdown manifest only. This session
 inspects images, owns findings/implementation and records acceptance.

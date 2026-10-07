@@ -465,43 +465,78 @@ export async function listModels(ai: Connection): Promise<string[]> {
       "unsupported",
       "Azure does not list deployments here. Type your deployment name as the model.",
     );
-  const response = await send(
-    `${trimSlash(ai.baseUrl)}/models`,
-    { headers: headers(ai) },
-    AbortSignal.timeout(8_000),
-    ai.apiKey,
-  );
-  const body = await json<unknown>(response);
+  const endpoint = `${trimSlash(ai.baseUrl)}/models`;
+  // One budget covers the entire catalog, rather than eight seconds per page.
+  const signal = AbortSignal.timeout(8_000);
   const invalid = () =>
     new ProviderError(
       "invalid_catalog",
       "The provider returned an invalid model catalog.",
     );
-  if (!body || typeof body !== "object" || Array.isArray(body)) throw invalid();
-  throwIfErrorEnvelope(body, ai.apiKey);
-  const catalog = body as Record<string, unknown>;
-  if (!("data" in catalog) && !("models" in catalog)) throw invalid();
   const ids: string[] = [];
-  for (const field of ["data", "models"] as const) {
-    if (!(field in catalog)) continue;
-    const entries = catalog[field];
-    if (!Array.isArray(entries)) throw invalid();
-    for (const entry of entries) {
-      const id =
-        field === "models" && typeof entry === "string"
-          ? entry
-          : entry && typeof entry === "object" && !Array.isArray(entry)
-            ? (entry.id ?? (field === "models" ? entry.name : undefined))
-            : undefined;
-      if (
-        typeof id !== "string" ||
-        !id.trim() ||
-        id.length > 512 ||
-        /[\u0000-\u001f\u007f]/.test(id)
-      )
-        throw invalid();
-      ids.push(id);
+  const cursors = new Set<string>();
+  let cursor: string | undefined;
+  for (let page = 0; ; page++) {
+    // Bound even a provider that returns endless unique cursors. Never publish
+    // the partial catalog, which could silently remove a person's saved model.
+    if (page >= 100) throw invalid();
+    const url = cursor
+      ? `${endpoint}?${new URLSearchParams({ after_id: cursor })}`
+      : endpoint;
+    const response = await send(
+      url,
+      { headers: headers(ai) },
+      signal,
+      ai.apiKey,
+    );
+    const body = await json<unknown>(response);
+    if (!body || typeof body !== "object" || Array.isArray(body))
+      throw invalid();
+    throwIfErrorEnvelope(body, ai.apiKey);
+    const catalog = body as Record<string, unknown>;
+    if (!("data" in catalog) && !("models" in catalog)) throw invalid();
+    for (const field of ["data", "models"] as const) {
+      if (!(field in catalog)) continue;
+      const entries = catalog[field];
+      if (!Array.isArray(entries)) throw invalid();
+      for (const entry of entries) {
+        const id =
+          field === "models" && typeof entry === "string"
+            ? entry
+            : entry && typeof entry === "object" && !Array.isArray(entry)
+              ? (entry.id ?? (field === "models" ? entry.name : undefined))
+              : undefined;
+        if (
+          typeof id !== "string" ||
+          !id.trim() ||
+          id.length > 512 ||
+          /[\u0000-\u001f\u007f]/.test(id)
+        )
+          throw invalid();
+        ids.push(id);
+        if (ids.length > 100_000) throw invalid();
+      }
     }
+    // Only the native Anthropic API specifies these pagination fields.
+    // Compatible catalogs retain their existing single-response contract.
+    if (ai.format !== "anthropic") break;
+    if ("has_more" in catalog && typeof catalog.has_more !== "boolean")
+      throw invalid();
+    if (catalog.has_more !== true) break;
+    const next = catalog.last_id;
+    if (
+      !Array.isArray(catalog.data) ||
+      !catalog.data.length ||
+      typeof next !== "string" ||
+      !next.trim() ||
+      next.length > 512 ||
+      /[\u0000-\u001f\u007f]/.test(next) ||
+      catalog.data[catalog.data.length - 1]?.id !== next ||
+      cursors.has(next)
+    )
+      throw invalid();
+    cursors.add(next);
+    cursor = next;
   }
   return [...new Set(ids)].sort();
 }

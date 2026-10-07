@@ -15,8 +15,20 @@ let hold = false;
 let held: ServerResponse | undefined;
 let arrived: (() => void) | undefined;
 let calls = 0;
+let paginated = false;
 const server = createServer((req, res) => {
   calls++;
+  if (paginated && !req.url?.includes("after_id=")) {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(
+      JSON.stringify({
+        data: [{ id: "first-model" }],
+        has_more: true,
+        last_id: "first-model",
+      }),
+    );
+    return;
+  }
   const reply = () => {
     if (res.writableEnded) return;
     res.writeHead(200, { "Content-Type": "application/json" });
@@ -49,9 +61,12 @@ function call(
     ...(payload === undefined ? {} : { payload }),
   });
 }
-async function create(name = "Catalog fixture") {
+async function create(
+  name = "Catalog fixture",
+  kind: "openai" | "anthropic" = "openai",
+) {
   const response = await call("POST", "/ai/providers", {
-    kind: "openai",
+    kind,
     name,
     base_url: `${base}/original`,
     api_key: "fixture-catalog-key-12345",
@@ -230,4 +245,52 @@ test("same-kind connections remain independent and metadata/no-op edits preserve
   assert.equal(result.statusCode, 200, result.body);
   assert.equal(result.json().provider_revision, a.controls_revision);
   assert.deepEqual(result.json().models, ["/original/models-model"]);
+});
+
+test("paginated Anthropic catalog retains authority checks through the last page", async () => {
+  const p = await create("Paginated connection", "anthropic");
+  paginated = true;
+  hold = true;
+  const received = new Promise<void>((resolve) => {
+    arrived = resolve;
+  });
+  const before = calls;
+  const pending = call("POST", `/ai/providers/${p.id}/models`, {
+    expected_revision: p.controls_revision,
+  });
+  try {
+    await Promise.race([
+      received,
+      new Promise((_resolve, reject) =>
+        setTimeout(
+          () => reject(new Error("Second page not called")),
+          5000,
+        ).unref(),
+      ),
+    ]);
+    assert.equal(calls - before, 2);
+    // This edit must finish while the second network response is held: no row
+    // lock may span either external request.
+    assert.equal(
+      (await call("PUT", `/ai/providers/${p.id}`, { enabled: false }))
+        .statusCode,
+      200,
+    );
+  } finally {
+    paginated = false;
+    hold = false;
+    arrived = undefined;
+    held?.writeHead(200, { "Content-Type": "application/json" });
+    held?.end(
+      JSON.stringify({
+        data: [{ id: "obsolete-last-model" }],
+        has_more: false,
+      }),
+    );
+    held = undefined;
+  }
+  const result = await pending;
+  assert.equal(result.statusCode, 409, result.body);
+  assert.ok(!result.body.includes("first-model"));
+  assert.ok(!result.body.includes("obsolete-last-model"));
 });
