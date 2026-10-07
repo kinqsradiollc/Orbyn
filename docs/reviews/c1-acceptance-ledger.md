@@ -1121,3 +1121,14 @@ Full backend regression14318 still uses the unchanged corrected backend source
 a1a1d773; this independently qualified deployment-script addition does not restart
 that live run. Main/origin remain bddd8783 after fetch; root unrelated changes and
 mobile/app.json SHA1 remain preserved. No main delivery claimed yet.
+
+Preview runtime upgrade: compiled source applies migration257 twice to the owned
+`orbyn_ui_preview` database while hashes of all provider and AI settings rows
+remain identical. Log: `/tmp/orbyn-c1-retry-preview-upgrade-20261008.log`. Only the
+known preview API60704 was stopped; updated API75984 serves compiled source with
+the same database/admin configuration and canonical CORS_ORIGINS, health200.
+Mobile cross-origin /ai/providers preflight204. Log:
+`/tmp/orbyn-c1-retry-preview-api-20261008.log`. No production or real-provider
+request was made. Visual Check has been asked for current real Admin OFF-state
+captures in web wide/narrow and mobile390; no consent/settings action authorized
+for that capture. Full regression14318 remains live and is not restarted.
