@@ -199,6 +199,15 @@
   font-size: 11px;
   margin-left: 4px;
 }
+/* Launch discovery sits with the hero actions, separate from footer navigation. */
+.home-launch-badge {
+  display: inline-flex;
+  width: 160px;
+  max-width: 100%;
+  margin-top: 20px;
+  line-height: 0;
+}
+
 .home-scene {
   min-height: 410px;
   position: relative;

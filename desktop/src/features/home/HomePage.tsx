@@ -228,6 +228,29 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               <Smartphone size={16} />
               <span>One planner. Web, desktop, iOS and Android.</span>
             </div>
+            <a
+              className="home-launch-badge"
+              href="https://www.codehype.ai/product/orbyn?utm_source=codehype_badge"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              <img
+                src="https://www.codehype.ai/badges/orbyn.svg?variant=find-us&v=20"
+                alt="Featured on CodeHype"
+                width={180}
+                height={65}
+                loading="lazy"
+                decoding="async"
+                style={{
+                  display: "inline-block",
+                  border: 0,
+                  width: "100%",
+                  maxWidth: 180,
+                  height: "auto",
+                  maxHeight: 65,
+                }}
+              />
+            </a>
           </div>
           <div
             className="home-scene"
@@ -769,28 +792,6 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             {signedIn ? "Open planner" : "Sign in"}
             <ArrowUpRight size={14} />
           </button>
-          <a
-            href="https://www.codehype.ai/product/orbyn?utm_source=codehype_badge"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <img
-              src="https://www.codehype.ai/badges/orbyn.svg?variant=find-us&v=20"
-              alt="Featured on CodeHype"
-              width={180}
-              height={65}
-              loading="lazy"
-              decoding="async"
-              style={{
-                display: "inline-block",
-                border: 0,
-                width: "100%",
-                maxWidth: 180,
-                height: "auto",
-                maxHeight: 65,
-              }}
-            />
-          </a>
         </nav>
       </footer>
     </div>
