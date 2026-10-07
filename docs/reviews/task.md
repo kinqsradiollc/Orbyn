@@ -1,3 +1,24 @@
+## Current C1 checkpoint — 7 October 2026
+
+C1 remains active in the top-down ADR queue. This checkpoint aligns the mobile
+confirmation message with the shared15 type scale. Builder personally inspected
+QA-012 screenshots at320x567 and390x844: message and both actions fit without
+overlap/clipping. The capture manifest records Keep task dismissal with status
+unchanged. Native/large-text/all-theme acceptance remains open. Manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-012-capture-manifest.md`.
+
+The scoped main working tree passes49 focused Responses/protocol/style checks,
+code formatting and backend typecheck/build; candidate mobile typecheck passes.
+Responses product changes are not committed to main yet. Frozen8a11d03b's fresh
+full regression is running (session53125), with complete protected log
+`/tmp/orbyn-adr-full-8a11d03b-20261007.log`. Previous frozenfc613153 retry finished
+3988 passes/one failure/zero skips; the failure was the corrected font-size14.
+Follow adr-execution-order.md. After Responses qualification/integration, continue
+C1 with managed provider/model enqueue authority, then reasoning/cache controls
+and the remaining full provider/embedding acceptance. No C1/whole-ADR completion
+or production deployment is claimed. Future visual handoffs capture screenshots
+only; builder inspects them and records findings.
+
 ## Qualified structural/native editor checkpoint — 6 October 2026
 
 Main is now869a8005, fast-forwarded and pushed with the exact fixed DB65 application
