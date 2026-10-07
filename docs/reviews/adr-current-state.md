@@ -17,6 +17,22 @@ User deploys main manually; deployment is unconfirmed. No entire ADR stage is cl
 | Last | Integration/cleanup | Qualified scoped checkpoints on main; candidate/user/character changes preserved. | Reconcile remaining branches/worktrees; qualify and promote each scope; clean only safe merged work after complete ADR acceptance. |
 | Excluded | Removed product scope | Voice, computer-use product features and speculative Decisions are excluded by the ADR. | No implementation required; computer-use tools may still capture QA screenshots. |
 
+## Latest qualification — exact main scope
+
+Release candidatec082d93e full regression completed3722/3722, zero failures or
+skips, terminal exit0,868170ms. Log:
+`/tmp/orbyn-adr-full-main-c082d93e-20261007.log`. This covers the actual main-based
+scope, including catalog correction, model controls and usage UI tests. Workspace
+types/builds and compiled API/aggregation fixture probes pass. No live provider
+inference or entire stage completion claimed.
+
+Main remains3c8feb40. Current checkpoint promotion still waits on signed-in
+web/mobile visual review; Chrome screenshot calibration now succeeds. Updated
+local test-account Terms confirmation is pending. Live managed-provider evaluation
+has no configured credential. Complete those current acceptance gates, then
+remaining C1 provider/embedding matrix before C2/M1. Earlier run statuses below
+are historical and superseded by this exact-main terminal result.
+
 ## Current checkpoint status — 7 October 2026
 
 C1 reasoning/cache controls and owner-private managed usage are implemented in

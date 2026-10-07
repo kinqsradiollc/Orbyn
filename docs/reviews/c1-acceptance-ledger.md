@@ -612,3 +612,68 @@ encrypted checkpoint/completion and owner counters with zero external requests:
 Compiled aggregation probe independently passes overflow unknowns, anonymous
 observation identity,30-day exclusion and job deletion cascade:
 `/tmp/orbyn-main-controls-0f446664-aggregate-probe-20261007.log`.
+
+
+### Corrected exact-main run and preview alignment
+
+Release qualification is frozen atc082d93e on main3c8feb40 with regenerated
+catalog counts. Fresh full regression is live as session29017 against
+orbyn_full_main_c082d93e_test,442 files; complete protected log
+`/tmp/orbyn-adr-full-main-c082d93e-20261007.log`. Last observed completed case715;
+no terminal result or full pass claimed. Both preceding runners are terminal.
+
+Preview provenance was checked from actual listener/CWD. OwnedAPI8008 retained
+older loaded source although its working directory was the candidate. SIGTERM
+closed the listener but the process failed to exit in the bounded wait, so the
+first guarded replacement aborted. After verifying the same owned process and
+empty port, it was terminated and rebuilt compiled releaseAPI started with the
+same orbyn_ui_preview database and settings. NewPID11903/session9004 health200.
+Log `/tmp/orbyn-c1-preview-api-c082d93e-20261007.log`. QA data preserved, SMTP off;
+no provider inference or legal acceptance performed. Capture agent notified to
+reload after explicit local Terms confirmation. Main remains3c8feb40.
+
+
+### Capture-method evidence correction
+
+Root inspectedQA-013c-web-terms-blocker-fromSurface-false.png original2560x1440:
+it contains Codex conversation chrome on the left and black pixels on the right,
+not the target Orbyn page or legal gate. It is rejected as product/blocker pixel
+evidence. The updated Terms blocker remains supported only by the agent's recorded
+accessibility state. Requested one public local landing-page Chrome/native capture
+for method calibration, no login or consent. Capture agent remains screenshot-only;
+root owns analysis. No visual completion claimed.
+
+
+### Chrome capture calibration accepted
+
+QA-013d corrected the unsupported Chrome visibility option using documented
+Chrome options. Root inspected the original1728x871 JPEG: actual local Orbyn
+landing page, readable, no black region or tiled Codex surface. Accepted only as
+capture-method calibration. It does not qualify C1 Admin/provider/usage layouts or
+the whole landing page. OriginalJPEG is primary; PNG re-encoding is unnecessary.
+Manifest: `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-013d-capture-manifest.md`.
+Updated local Terms confirmation still blocks signed-in C1 captures. Agent told
+to await that dependency and capture only; root inspects images. Corrected full
+mainc082d93e continues as session29017; no full pass or main promotion claimed.
+
+
+## Exact-main C1 regression qualified — 7 October 2026
+
+Frozen release scopec082d93e completed full backend regression3722/3722,
+zero failures/cancellations/skips, terminal exit0,868170ms. Session29017 is
+terminal. Complete log `/tmp/orbyn-adr-full-main-c082d93e-20261007.log`.
+This is the actual main-based442-file test suite, not the broader candidate's
+464-file/4044-case scope. Neither historical failed run is presented as passing.
+
+The production/test files remain unchanged from that freeze. All workspace types,
+backend/web builds/Home prerender and independent compiled runtime/aggregation
+fixture probes passed. No real provider inference, cache economics, installed
+native acceptance or whole C1 completion is established. Main stays3c8feb40.
+
+Remaining current-checkpoint gates: signed-in web/mobile screenshots using the
+now-working Chrome method (local updated Terms confirmation pending), live
+permitted managed-provider cache/latency/quality evaluation, then scoped main
+integration when acceptance is sufficient. Local process has no evaluation key;
+a names-only inspection finds no managed OpenAI/evaluation key variable in
+.env.production. No secret values were printed or changed. Later C1 embedding/
+multi-provider matrix and C2/M1-C6/D1/U1 remain required; no final cleanup.
