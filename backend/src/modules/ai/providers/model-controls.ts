@@ -1,3 +1,4 @@
+import { usesPerplexityResponses } from "./perplexity-transport.js";
 import { createHash } from "node:crypto";
 import { aiModelControlError, type AiModelUsage } from "@orbyn/core";
 import { ProviderError, type ResolvedAi } from "./adapters.js";
@@ -33,6 +34,7 @@ export function readGeminiUsage(value: unknown): AiModelUsage {
 export function responsesControls(ai: ResolvedAi, input: object[]) {
   const error = aiModelControlError(ai.kind, ai.model, ai.options);
   if (error) throw new ProviderError("unsupported_model_controls", error);
+  if (usesPerplexityResponses(ai)) return { input };
   const mode = ai.options.cacheMode;
   let marked = false;
   const messages = input.map((item) => {
@@ -159,4 +161,27 @@ export function readAnthropicUsage(value: unknown): AiModelUsage {
     ...usage,
     input_tokens: total !== null && Number.isSafeInteger(total) ? total : null,
   };
+}
+
+/** Native Perplexity names cache observations differently; common validation keeps unknowns honest. */
+export function readResponsesUsage(
+  ai: ResolvedAi,
+  value: unknown,
+): AiModelUsage {
+  if (!usesPerplexityResponses(ai)) return readOpenAiUsage(value);
+  const body =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const details =
+    body.input_tokens_details && typeof body.input_tokens_details === "object"
+      ? (body.input_tokens_details as Record<string, unknown>)
+      : {};
+  return readOpenAiUsage({
+    ...body,
+    input_tokens_details: {
+      cached_tokens: details.cache_read_input_tokens,
+      cache_write_tokens: details.cache_creation_input_tokens,
+    },
+  });
 }

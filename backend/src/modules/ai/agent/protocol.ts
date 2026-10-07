@@ -1,7 +1,11 @@
+import {
+  perplexityNativeBase,
+  usesPerplexityResponses,
+} from "../providers/perplexity-transport.js";
 import { aiModelControlError } from "@orbyn/core";
 import {
   responsesControls,
-  readOpenAiUsage,
+  readResponsesUsage,
   readChatCompletionUsage,
   readAnthropicUsage,
 } from "../providers/model-controls.js";
@@ -46,7 +50,13 @@ export type ResponseContextItem =
       summary: { type: "summary_text"; text: string }[];
       encrypted_content: string;
     }
-  | { type: "function_call"; call_id: string; name: string; arguments: string }
+  | {
+      type: "function_call";
+      call_id: string;
+      name: string;
+      arguments: string;
+      thought_signature?: string;
+    }
   | { role: "assistant"; content: string };
 export type AgentMessage =
   | { role: "system" | "user"; content: string }
@@ -136,7 +146,7 @@ async function responsesStep(
   { toolsAllowed, signal }: { toolsAllowed: boolean; signal: AbortSignal },
 ): Promise<StepResult> {
   const response = await send(
-    `${trimSlash(ai.baseUrl)}/responses`,
+    `${perplexityNativeBase(ai) ?? trimSlash(ai.baseUrl)}/responses`,
     {
       method: "POST",
       headers: headers(ai),
@@ -144,7 +154,9 @@ async function responsesStep(
         model: ai.model,
         ...responsesControls(ai, responsesInput(messages)),
         store: false,
-        include: ["reasoning.encrypted_content"],
+        ...(usesPerplexityResponses(ai)
+          ? {}
+          : { include: ["reasoning.encrypted_content"] }),
         parallel_tool_calls: false,
         tools: tools.map((tool) => ({
           type: "function",
@@ -165,7 +177,7 @@ async function responsesStep(
     output?: unknown[];
   }>(response);
   throwIfErrorEnvelope(body, ai.apiKey);
-  await ai.recordUsage?.(readOpenAiUsage(body.usage), body.id);
+  await ai.recordUsage?.(readResponsesUsage(ai, body.usage), body.id);
   if (body.status === "incomplete") throw truncated();
   const invalid = (): never => {
     throw new ProviderError(
@@ -200,6 +212,14 @@ async function responsesStep(
         !tools.some((tool) => tool.name === item.name)
       )
         invalid();
+      if (
+        usesPerplexityResponses(ai) &&
+        item.thought_signature !== undefined &&
+        (typeof item.thought_signature !== "string" ||
+          !item.thought_signature.length ||
+          item.thought_signature.length > 65536)
+      )
+        invalid();
       ids.add(item.call_id as string);
       toolCalls.push({
         id: item.call_id as string,
@@ -208,6 +228,10 @@ async function responsesStep(
       });
       responseItems.push({
         type: "function_call",
+        ...(usesPerplexityResponses(ai) &&
+        typeof item.thought_signature === "string"
+          ? { thought_signature: item.thought_signature }
+          : {}),
         call_id: item.call_id as string,
         name: item.name as string,
         arguments: item.arguments as string,

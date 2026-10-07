@@ -1,6 +1,6 @@
 import {
   responsesControls,
-  readOpenAiUsage,
+  readResponsesUsage,
   readChatCompletionUsage,
   readAnthropicUsage,
   readGeminiUsage,
@@ -12,6 +12,10 @@ import type {
 } from "@orbyn/core";
 import { aiModelControlError } from "@orbyn/core";
 import { assertProviderUrl, isPrivateUrl } from "./network.js";
+import {
+  perplexityNativeBase,
+  usesPerplexityResponses,
+} from "./perplexity-transport.js";
 import { zenModelTransport } from "./zen-transport.js";
 import {
   perplexityEmbeddingEndpoint,
@@ -260,17 +264,18 @@ const RESPONSES_MODEL = /^(gpt-[0-9]|o[134]|chatgpt-)/i;
 const OPENAI_ENDPOINT = "https://api.openai.com/v1";
 
 /**
- * BrainRouter's rule: OpenAI's Responses API only for GPT and o-series models
- * on OpenAI's own endpoint; everything else uses chat completions.
+ * Select reviewed native Responses resources: OpenAI GPT/o-series, Zen model
+ * metadata, and Perplexity Agent API. Custom compatible paths keep their protocol.
  */
 export const usesResponsesApi = (
   ai: Pick<ResolvedAi, "requestFormat" | "baseUrl" | "model"> &
-    Partial<Pick<ResolvedAi, "kind">>,
+    Partial<Pick<ResolvedAi, "kind" | "format">>,
 ) =>
-  ai.requestFormat === "responses" &&
-  ((trimSlash(ai.baseUrl).toLowerCase() === OPENAI_ENDPOINT &&
-    RESPONSES_MODEL.test(ai.model)) ||
-    (ai.kind === "opencode" && zenModelTransport(ai.model) === "responses"));
+  usesPerplexityResponses({ ...ai, format: ai.format ?? "openai" }) ||
+  (ai.requestFormat === "responses" &&
+    ((trimSlash(ai.baseUrl).toLowerCase() === OPENAI_ENDPOINT &&
+      RESPONSES_MODEL.test(ai.model)) ||
+      (ai.kind === "opencode" && zenModelTransport(ai.model) === "responses")));
 
 /** Native Google content protocol selected only by reviewed Zen model metadata. */
 export const usesGeminiApi = (
@@ -456,7 +461,7 @@ export async function complete(
 
   if (usesResponsesApi(ai)) {
     const response = await send(
-      `${trimSlash(ai.baseUrl)}/responses`,
+      `${perplexityNativeBase(ai) ?? trimSlash(ai.baseUrl)}/responses`,
       {
         method: "POST",
         headers: headers(ai),
@@ -472,6 +477,7 @@ export async function complete(
             ),
           ),
           store: false,
+          ...(usesPerplexityResponses(ai) ? { tools: [] } : {}),
           ...(options.maxOutputTokens === undefined
             ? {}
             : { max_output_tokens: options.maxOutputTokens }),
@@ -491,7 +497,7 @@ export async function complete(
       }[];
     }>(response);
     throwIfErrorEnvelope(body, ai.apiKey);
-    await ai.recordUsage?.(readOpenAiUsage(body.usage), body.id);
+    await ai.recordUsage?.(readResponsesUsage(ai, body.usage), body.id);
     if (!Array.isArray(body.output))
       throw new ProviderError(
         "invalid_body",
@@ -567,7 +573,7 @@ export async function listModels(ai: Connection): Promise<string[]> {
       "unsupported",
       "Azure does not list deployments here. Type your deployment name as the model.",
     );
-  const endpoint = `${trimSlash(ai.baseUrl)}/models`;
+  const endpoint = `${perplexityNativeBase(ai) ?? trimSlash(ai.baseUrl)}/models`;
   // One budget covers the entire catalog, rather than eight seconds per page.
   const signal = AbortSignal.timeout(8_000);
   const invalid = () =>

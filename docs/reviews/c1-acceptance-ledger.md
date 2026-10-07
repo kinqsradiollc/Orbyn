@@ -1466,3 +1466,19 @@ multi-provider dispatch/catalog/runtime inventory and permitted cache evaluation
 - No live Perplexity key/inference, current UI/native acceptance, production
   deployment or whole-C1 completion is claimed. Finish remaining C1 gates,
   report the remaining ADR table, then pause before C2.
+
+## Native Perplexity generation/catalog candidate — 8 October 2026
+
+- Compiled reproduction1/3 →3/3:
+  `/tmp/orbyn-c1-perplexity-generation-before-20261008.log`,
+  `/tmp/orbyn-c1-perplexity-generation-after-20261008.log`.
+- Native and custom resource/protocol separation, legacy model preservation,
+  JSON fallback, signed tool continuation, actual serialized loop recovery,
+  authority/cancellation, error sanitization and observed cache-count mapping:
+  combined287/287, zero failures/skips, exit0;
+  `/tmp/orbyn-c1-perplexity-generation-cohort-20261008.log`.
+- Backend build passes:
+  `/tmp/orbyn-c1-perplexity-generation-build-20261008.log`.
+- Full frozen regression and main delivery pending. Native fixtures do not
+  establish live vendor acceptance or finish C1. C2 remains queued; pause only
+  after the remaining C1 acceptance gates and final remaining-ADR table.

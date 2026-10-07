@@ -6,28 +6,28 @@ Definitions: `packages/core/src/aiProviders.ts`; resolution:
 `backend/src/modules/ai/providers/resolve.ts`; adapters:
 `backend/src/modules/ai/providers/adapters.ts`.
 
-| Saved kind        | Catalog contract                                                    | Generation transport                                  | Embedding adapter                                                     |
-| ----------------- | ------------------------------------------------------------------- | ----------------------------------------------------- | --------------------------------------------------------------------- |
-| openai            | GET /models, data IDs                                               | Responses                                             | Compatible /embeddings                                                |
-| anthropic         | GET /models, native cursor pages                                    | Messages                                              | Explicitly unsupported                                                |
-| gemini            | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
-| openrouter        | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
-| zenmux            | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
-| matilda           | Compatible /models                                                  | Chat Completions, schema and request limits           | Compatible probe required                                             |
-| groq              | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
-| azure             | Manual deployment name, no catalog fetch                            | Deployment Chat Completions, apiVersion               | Deployment embeddings, apiVersion                                     |
-| openai-compatible | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
-| opencode          | Compatible /models, public key if blank                             | Reviewed per-model Responses/Messages/Gemini/chat     | Compatible probe required                                             |
-| lmstudio          | Compatible /models, local key handling                              | Chat Completions                                      | Compatible probe required                                             |
-| ollama            | Compatible /models, local key handling                              | Chat Completions                                      | Compatible probe required                                             |
-| deepseek          | Compatible /models; hidden from add picker                          | Chat Completions                                      | Compatible probe required                                             |
-| together          | /models, native array normalized                                    | Chat Completions                                      | Compatible probe required                                             |
-| fireworks         | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
-| mistral           | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
-| xai               | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
-| perplexity        | Saved root /models currently returns404; native catalog is separate | Legacy Chat Completions; native migration under audit | Candidate native signed-int8 /v1/embeddings; custom compatible floats |
-| deepinfra         | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
-| nebius            | Compatible /models                                                  | Chat Completions                                      | Compatible probe required                                             |
+| Saved kind        | Catalog contract                                                        | Generation transport                                                                    | Embedding adapter                                                        |
+| ----------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| openai            | GET /models, data IDs                                                   | Responses                                                                               | Compatible /embeddings                                                   |
+| anthropic         | GET /models, native cursor pages                                        | Messages                                                                                | Explicitly unsupported                                                   |
+| gemini            | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
+| openrouter        | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
+| zenmux            | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
+| matilda           | Compatible /models                                                      | Chat Completions, schema and request limits                                             | Compatible probe required                                                |
+| groq              | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
+| azure             | Manual deployment name, no catalog fetch                                | Deployment Chat Completions, apiVersion                                                 | Deployment embeddings, apiVersion                                        |
+| openai-compatible | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
+| opencode          | Compatible /models, public key if blank                                 | Reviewed per-model Responses/Messages/Gemini/chat                                       | Compatible probe required                                                |
+| lmstudio          | Compatible /models, local key handling                                  | Chat Completions                                                                        | Compatible probe required                                                |
+| ollama            | Compatible /models, local key handling                                  | Chat Completions                                                                        | Compatible probe required                                                |
+| deepseek          | Compatible /models; hidden from add picker                              | Chat Completions                                                                        | Compatible probe required                                                |
+| together          | /models, native array normalized                                        | Chat Completions                                                                        | Compatible probe required                                                |
+| fireworks         | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
+| mistral           | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
+| xai               | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
+| perplexity        | Candidate native /v1/models; custom catalogs preserve their saved paths | Candidate Agent Responses with signed tool continuation; legacy Sonar choices preserved | Main6ece8866 native signed-int8 /v1/embeddings; custom compatible floats |
+| deepinfra         | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
+| nebius            | Compatible /models                                                      | Chat Completions                                                                        | Compatible probe required                                                |
 
 A compatible embedding adapter does not establish that the vendor serves the
 selected model or dimensions. Reviewed-destination consent and a successful
@@ -280,3 +280,25 @@ Public unauthenticated metadata probes sent no provider key or inference text;
   benchmark evidence separately before claiming economics.
 - Installed native and full-page UI acceptance remain open. Visual Check supplies
   capture originals and manifests; root owns review.
+
+## Native Perplexity generation correction candidate — 8 October 2026
+
+The compiled baseline reproduces wrong native catalog routing and rejected
+Agent output (1/3 pass); repaired compiled fixture3/3 and protocol/control/vendor
+cohort287/287 pass. Native root or /v1 connections use /v1/models and Agent
+Responses. Existing Sonar/r1 choices and custom/Router compatible paths retain
+saved model/protocol behavior. No selection is silently replaced by a preset.
+
+Application function calls retain a bounded opaque thought_signature with their
+exact call id. The actual agent loop serializes and resumes it without executing
+the completed tool again. Direct calls explicitly request no hosted tools;
+agent calls expose only Orbyn's custom functions. Usage maps the native observed
+cache-read/cache-creation fields through the common nonnegative/contradiction
+checks; missing counts remain unknown. Unsupported cache/reasoning controls
+remain explicit; no prompt-cache field is inferred from an internal scope.
+
+References: [native resource/output contract](https://docs.perplexity.ai/docs/agent-api/openai-compatibility),
+[custom function continuation](https://docs.perplexity.ai/docs/agent-api/tools/custom-functions).
+Backend build and scoped formatting pass. Full regression/main promotion are
+pending. This is inert fixture qualification, not a live Perplexity entitlement,
+Sonar compatibility-service availability or whole-C1 acceptance claim.
