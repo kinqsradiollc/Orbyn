@@ -1098,3 +1098,26 @@ UI and installed-native acceptance remain open within C1/U1. Manifest:
 Owned temporary fixture routes were removed after capture; mobile/index.ts was
 restored exactly, with scoped status components/types retained in the preview.
 Fixture sources are archived at `/tmp/orbyn-c1-retry-visual-fixtures-20261008`.
+
+### Measuring-worker deployment prerequisite
+
+Source audit found `deploy.sh` built/migrated the shared image but never replaced
+the optional `measure` container. That would leave old workers ignoring persisted
+backoff after the retry checkpoint. Correction817c8658 pauses existing measure
+containers before migration, and starts/waits for the updated service only when
+COMPOSE_PROFILES includes `semantic`. Profile-off leaves it stopped; queued pages
+remain in PostgreSQL. A failed deploy after pause leaves it offline until a
+successful retry/explicit start. No API downtime requirement is added.
+
+Six semantic/PDF deployment checks pass, zero skips/failures; `bash -n` passes.
+Log: `/tmp/orbyn-c1-retry-deployment-checks-20261008.log`. Actual shell helpers were
+also run against an isolated Compose project using an already-installed image:
+profile-off stop and profile-on start/readiness pass; its owned container was
+removed. Log: `/tmp/orbyn-c1-retry-deployment-runtime-20261008.log`. Existing user
+containers and production were not modified. This is lifecycle evidence, not a
+production deploy or real-provider inference check.
+
+Full backend regression14318 still uses the unchanged corrected backend source
+a1a1d773; this independently qualified deployment-script addition does not restart
+that live run. Main/origin remain bddd8783 after fetch; root unrelated changes and
+mobile/app.json SHA1 remain preserved. No main delivery claimed yet.
