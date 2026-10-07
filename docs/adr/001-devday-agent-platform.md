@@ -1,3 +1,17 @@
+## Extraction reference/footnote dependencies — 7 October 2026
+
+Both extracted and retained pages now keep the supporting definitions their text
+uses. Missing references and footnotes are copied with fresh identities, and
+transitive/cyclic footnote dependencies close once. Literal code does not request
+copies. Split duplicate definitions retain the original first reference binding
+(including title) and last footnote binding, without removing authored duplicates.
+Copied definition links use the existing cross-page relocation pass.47 focused
+extraction/merge/reference/title tests pass (zero failures/skips,589ms); packages
+build, backend types and formatting pass. The DB extraction regression now checks
+a moved reference definition, but remains unrun. Candidate only; broader URL forms,
+normal editor/CRDT activation, database/runtime and visual qualification remain
+open. Main remains7263b45b; full ADR is not complete and no deployment is claimed.
+
 ## Extraction fragment relocation — 7 October 2026
 
 Extraction now receives source/destination identities and relocates local and

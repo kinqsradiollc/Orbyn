@@ -5,6 +5,9 @@ import {
   parseDocContainers,
   docContainerBlocks,
   docContainerTaskBlocks,
+  docReferenceLinks,
+  parseDocInline,
+  footnoteTexts,
   type VersionedDocContent,
   type DocBlock,
 } from "@orbyn/core";
@@ -207,4 +210,173 @@ test("extraction refuses invalid pages and generated anchors that collide with s
       }),
     /identity/,
   );
+});
+
+test("extraction carries transitive references and footnotes with fresh copy identities", () => {
+  const value: VersionedDocContent = {
+    format: 2,
+    nodes: [
+      {
+        kind: "quote",
+        children: [
+          {
+            kind: "block",
+            block: {
+              type: "paragraph",
+              id: "move",
+              text: "Read [**Guide**][guide] and note[^n]",
+            },
+          },
+        ],
+      },
+      {
+        kind: "block",
+        block: {
+          type: "paragraph",
+          id: "guide-definition",
+          text: '[guide]: https://guide.test "Guide title"',
+        },
+      },
+      {
+        kind: "block",
+        block: {
+          type: "footnote",
+          id: "note-n",
+          label: "n",
+          text: "Nested note[^m] and [guide] and [Heading](#kept)",
+        },
+      },
+      {
+        kind: "block",
+        block: {
+          type: "footnote",
+          id: "note-m",
+          label: "m",
+          text: "Cycle back[^n]",
+        },
+      },
+      {
+        kind: "block",
+        block: { type: "heading", id: "kept", level: 2, text: "Kept" },
+      },
+      {
+        kind: "block",
+        block: {
+          type: "paragraph",
+          id: "unused",
+          text: "[unused]: https://unused.test",
+        },
+      },
+    ],
+  };
+  const before = structuredClone(value),
+    result = extractDocContent(value, ["move"], link);
+  const moved = leaves(result.extracted),
+    refs = docReferenceLinks(moved),
+    notes = footnoteTexts(moved);
+  assert.equal(refs.get("guide"), "https://guide.test");
+  assert.equal(refs.titleFor?.("guide", "https://guide.test"), "Guide title");
+  assert.equal(refs.has("unused"), false);
+  assert.equal(notes.size, 2);
+  assert.equal(
+    notes.get("n"),
+    `Nested note[^m] and [guide] and [Heading](orbyn://doc/${sourceId}#kept)`,
+  );
+  assert.equal(notes.get("m"), "Cycle back[^n]");
+  assert.equal(moved.length, 4);
+  assert.equal(
+    moved.some(
+      (b) =>
+        b.id === "guide-definition" || b.id === "note-n" || b.id === "note-m",
+    ),
+    false,
+  );
+  const paragraph = moved[0];
+  assert.ok(
+    "text" in paragraph &&
+      parseDocInline(paragraph.text, refs).some(
+        (run) => run.link === "https://guide.test",
+      ),
+  );
+  assert.deepEqual(value, before);
+});
+
+test("moving definitions retains copies required by source content without copying literal examples", () => {
+  const value: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", id: "stay", text: "[guide] and note[^n]" },
+      {
+        type: "paragraph",
+        id: "definition",
+        text: "[guide]: https://guide.test",
+      },
+      { type: "footnote", id: "note", label: "n", text: "Note text" },
+      { type: "code", lang: "md", text: "[unused] [^unused]" },
+      {
+        type: "paragraph",
+        id: "unused-definition",
+        text: "[unused]: https://unused.test",
+      },
+      {
+        type: "footnote",
+        id: "unused-note",
+        label: "unused",
+        text: "Unused text",
+      },
+    ],
+  };
+  const result = extractDocContent(value, ["definition", "note"], link);
+  const kept = leaves(result.source),
+    moved = leaves(result.extracted);
+  assert.equal(docReferenceLinks(kept).get("guide"), "https://guide.test");
+  assert.equal(footnoteTexts(kept).get("n"), "Note text");
+  assert.equal(
+    kept.some((b) => b.id === "definition" || b.id === "note"),
+    false,
+  );
+  assert.deepEqual(
+    moved.map((b) => b.id),
+    ["definition", "note"],
+  );
+  assert.equal(
+    moved.some((b) => b.id === "unused-definition" || b.id === "unused-note"),
+    false,
+  );
+});
+
+test("split duplicate definitions retain the original first reference and last footnote bindings", () => {
+  const value: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      {
+        type: "paragraph",
+        id: "first-ref",
+        text: '[guide]: https://first.test "First"',
+      },
+      {
+        type: "paragraph",
+        id: "later-ref",
+        text: '[guide]: https://later.test "Later"',
+      },
+      { type: "paragraph", id: "move", text: "[guide] and note[^n]" },
+      { type: "footnote", id: "earlier-note", label: "n", text: "Earlier" },
+      { type: "footnote", id: "last-note", label: "n", text: "Last" },
+      { type: "paragraph", id: "stay", text: "[guide] and note[^n]" },
+    ],
+  };
+  const result = extractDocContent(
+    value,
+    ["later-ref", "move", "earlier-note"],
+    link,
+  );
+  for (const document of [result.source, result.extracted]) {
+    const blocks = leaves(document),
+      refs = docReferenceLinks(blocks);
+    assert.equal(refs.get("guide"), "https://first.test");
+    assert.equal(refs.titleFor?.("guide", "https://first.test"), "First");
+    assert.equal(footnoteTexts(blocks).get("n"), "Last");
+  }
+  assert.ok(leaves(result.extracted).some((b) => b.id === "later-ref"));
+  assert.ok(leaves(result.extracted).some((b) => b.id === "earlier-note"));
 });

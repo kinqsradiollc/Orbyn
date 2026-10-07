@@ -1,3 +1,4 @@
+import { retainExtractDependencies } from "./doc-extract-dependencies.js";
 import { docFragmentIndex, docLinkDestination } from "./doc-navigation.js";
 import { linkHref, parseObjectHref } from "./links.js";
 import { rewriteDocBlockLinks } from "./doc-link-rewrite.js";
@@ -138,6 +139,8 @@ export function extractDocContent(
     occupied.add(id);
     return id;
   };
+  retainExtractDependencies(result.kept, leaves, fresh);
+  retainExtractDependencies(result.moved, leaves, fresh);
   const relocate = (nodes: DocContainerNode[], pageId: string) => {
     const replacements = new Map<DocBlock, DocBlock>();
     visitDocContainers(nodes, (node) => {
