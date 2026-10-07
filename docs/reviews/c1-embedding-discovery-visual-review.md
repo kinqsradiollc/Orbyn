@@ -58,3 +58,22 @@ must verify its removal. These browser samples do not prove native acceptance.
 
 Fresh full regression log for frozen d498febd:
 `/tmp/orbyn-c1-discovery-corrected-full-20261008.log` (running, no terminal result).
+
+## Corrected mobile originals — root acceptance
+
+Root opened all three files in the corrected batch manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-026-c1-captures-postfix-2026-10-08/manifest.md`.
+Source is d498febd,320×740 CSS pixels,DPR2.
+
+| Saved image | Root acceptance |
+| --- | --- |
+| `QA-026-postfix-mobile-embedding-no-match-manual-light.png` | ✓ Empty segmented strip removed; complete no-match notice and manual draft preserved; controls fit horizontally. The validation button continues below this viewport and is disabled. |
+| `QA-026-postfix-mobile-embedding-no-match-manual-dark.png` | ✓ Empty strip removed; manual draft and no-match text retained; consent off and complete disabled validation action visible after scrolling. |
+| `QA-026-postfix-mobile-model-no-match-manual-dark.png` | ✓ Credential-safe crop shows complete manual model, no-match notice and Reload/Test/Use controls without overlap. This replaces the clipped Dark v2 notice evidence. |
+
+The generation image is an explicit640×700 crop of the actual browser capture,
+not a full-surface image. The embedding images are640×1480 originals. No Test,
+Use, validation or consent action was performed. C1-EMB-UI-01 is visually closed
+for these mobile browser states; native/keyboard/full-surface checks remain open.
+Web1280/320 Light/Dark originals are still being captured. The newly reproduced
+provider-redirect defect is a separate backend promotion gate.
