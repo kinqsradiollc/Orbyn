@@ -22,7 +22,8 @@ corrected to established422 and added malformed JSON400 coverage. Re-run50/50.
 Logs: `/tmp/orbyn-c1-inventory-full-20261007.log`,
 `/tmp/orbyn-c1-catalog-authority-after-fixed-20261008.log`,
 `/tmp/orbyn-c1-catalog-revision-compiled-20261008.log`.
-Current Visual Check captures are pending root inspection. This checkpoint is
+QA020 wide Admin originals inspected; narrow Admin scale/clipping needs verified
+viewport/zoom and recapture. Mobile/model-state captures are pending. This checkpoint is
 local until promotion is recorded; wholeC1 and all remaining ADR stages stay open.
 All visual requests go through Orbyn Visual Check for originals/manifest only.
 
