@@ -1,6 +1,6 @@
 # C1 acceptance ledger
 
-## Together array catalog — local checkpoint 8 October 2026
+## Together array catalog — qualified checkpoint 8 October 2026
 
 Frozen source `8d83fb01` normalizes Together's documented top-level array only
 for its saved kind and compatible protocol. Common ID validation, bounded
@@ -17,8 +17,11 @@ Logs: `/tmp/orbyn-c1-together-unit-before-20261008.log`,
 `/tmp/orbyn-c1-together-inventory-20261008.log`,
 `/tmp/orbyn-c1-together-build-20261008.log`,
 `/tmp/orbyn-c1-together-compiled-20261008.log`.
-Full regression is running as session23362 on a fresh marked database:
-`/tmp/orbyn-c1-together-full-20261008.log`. Main promotion pending.
+Full frozen regression session23362 is terminal exit0 on a fresh marked database:
+3894/3894, zero failures/skips/cancellations,764252ms.
+`/tmp/orbyn-c1-together-full-20261008.log`. Later commits change documentation
+only; scoped formatting and diff checks pass. Main integration follows.
+No live vendor call, UI change or full C1 completion is claimed.
 
 ## Anthropic JSON fallback — merged 8 October 2026
 

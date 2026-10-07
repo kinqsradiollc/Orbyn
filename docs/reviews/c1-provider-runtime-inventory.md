@@ -150,8 +150,9 @@ Local `8d83fb01` normalizes Together's explicit array contract without accepting
 arrays for every provider. Common ID validation, error redaction and revision
 fencing remain. Adapter46/46 and route cohort63/63 pass, including an actual
 saved Together connection and in-flight mutation409. All20 inventory61/61 now
-uses the vendor's array shape. Full qualification/main promotion remain pending;
-these fixtures do not establish a live saved-host model call.
+uses the vendor's array shape. Full frozen regression passes3894/3894,
+zero failures/skips/cancellations, exit0,764252ms; main integration follows.
+These fixtures do not establish a live saved-host model call.
 
 ## Additional endpoint evidence
 
