@@ -33,13 +33,13 @@ provider credentials remain separate.
 | --- | --- | --- |
 | Backend/shared/both-client controls | Implemented and committed in candidate; main-based product freeze `66f7a5f2`. | Complete UI/runtime acceptance and main promotion. |
 | Managed usage/privacy | Owner-only session route; nullable observed counters, opt-out, bounded retention and both-client loading/retry/cancellation coverage. | Signed-in visual acceptance and live observed-provider evidence. |
-| Embedding consent correction | Migration256 preserves acceptance when only reasoningEffort/cacheMode/cacheRetention changes. Endpoint/key/API-version/enablement changes still invalidate it; old invalidated consent is not revived. | Refreshed full regression. |
+| Embedding consent correction | Migration256 preserves acceptance when only reasoningEffort/cacheMode/cacheRetention changes. Endpoint/key/API-version/enablement changes still invalidate it; old invalidated consent is not revived. | Main promotion after current checkpoint acceptance. |
 | Latest focused qualification | Fresh main-based database: 29/29 passed, zero skips/failures. Backend typecheck passed. | Does not replace full regression or real provider calls. |
 | Compiled runtime qualification | Fresh migration256 database: durable tools/control mapping/encrypted checkpoint/owner usage and aggregation edge cases pass; zero external requests. | Fixture proof does not establish live provider behavior. |
 | Upgrade qualification | Local preview255→256 and a repeat pass; all three providers' embedding/generation revision pairs preserved. | No production deployment claimed. |
 | pgvector integration | 12/12 separate integration checks pass: accepted consent/no-op/generation edits, real connection changes and validation races, measured search/document/policy fences, Azure storage, pre218 legacy cleanup and late extension installation. | Local provider fixtures; real provider/UI/reindex acceptance remains required. |
 | Earlier full regression | Exact-main `c082d93e`: 3722/3722 passed, zero skips/failures, terminal exit0. | Predates migration256; cannot qualify the latest correction. |
-| Refreshed full regression | Frozen `66f7a5f2`, marked `orbyn_full_main_66f7a5f2_test`, live session88045. | Inspect terminal result; no passing result claimed yet. |
+| Refreshed full regression | Frozen `66f7a5f2`: 3723/3723 passed, zero failures/cancellations/skips, exit0, 883745ms. Session88045 is terminal. | Does not establish live-provider, visual or whole-stage acceptance. |
 | Visual review | Chrome original JPEG capture calibration accepted; one dark390 cache-menu state accepted. | Signed-in controls/actions/usage screenshots across web/mobile/themes; local updated Terms confirmation pending. |
 | Live evaluation | Fixed six-call non-personal cache/latency harness prepared and mocked tests passed. | Configure authorized managed test credential/model. No real cache economics, general quality or plan entitlement established. |
 | Integration | Qualification branch committed; main stays `3c8feb40`. | Merge only after sufficient current-checkpoint qualification. |
@@ -53,12 +53,12 @@ Logs:
 - `/tmp/orbyn-vector-256-azure-storage-20261007.log` (1/1)
 - `/tmp/orbyn_vector_256_upgrade_test-20261007.log` (1/1)
 - `/tmp/orbyn-256-late-extension-20261007.log` (1/1)
-- `/tmp/orbyn-adr-full-main-66f7a5f2-20261007.log` (live; no terminal pass)
+- `/tmp/orbyn-adr-full-main-66f7a5f2-20261007.log` (terminal green, 3723/3723)
 
 ## Next actions
 
-1. Finish this C1 checkpoint: refreshed full regression, signed-in screenshots
-   inspected by this session, permitted live evaluation and scoped integration.
+1. Finish this C1 checkpoint: signed-in screenshots inspected by this session,
+   permitted live evaluation and scoped integration. Full local regression is green.
 2. Complete the remaining C1 provider/embedding matrix before moving to C2/M1.
 3. Continue C2/M1 → C3 → C4/D1 → C5 → C6 → final U1/integration/cleanup.
 

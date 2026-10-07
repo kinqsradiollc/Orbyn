@@ -1,5 +1,22 @@
 # C1 acceptance ledger
 
+## Current terminal qualification — migration256 controls freeze
+
+Exact main-based66f7a5f2 full backend regression completed3723/3723,
+zero failures/cancellations/skips, terminal exit0,883745ms. Session88045 is
+terminal; complete log `/tmp/orbyn-adr-full-main-66f7a5f2-20261007.log`.
+This supersedes the earlier3722-case run for the migration256 product scope.
+Later qualification commits change only documentation and the two separately
+executed embedding integration files, outside the normal tests/*.test.ts suite.
+Product source and normal full-suite files remain identical to the freeze.
+
+Fresh focused29/29, backend types, compiled runtime/aggregation probes and
+separate pgvector12/12 are green. Main remains3c8feb40; no production deployment
+or current-checkpoint main promotion claimed. Signed-in web/mobile screenshots,
+permitted live cost/latency/quality evaluation and remaining C1 multi-provider/
+embedding acceptance stay required. Historical live/failed states below are
+superseded only for their corresponding scope; the entire C1 stage remains open.
+
 ## Qualified managed authority checkpoint — 7 October 2026
 
 Frozen afd18161 full backend regression is terminal green: 4012 passed, zero
