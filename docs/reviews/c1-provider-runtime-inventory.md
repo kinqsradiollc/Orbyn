@@ -228,6 +228,12 @@ inferred safely from names alone (Qwen models already use different protocols).
 Native Gemini requires its own verified wire contract; generic compatible
 fixtures must not be used to claim that endpoint family complete.
 
+The current `usesResponsesApi` guard also requires OpenAI's exact public base
+and its model-name family. Setting a Zen connection's `requestFormat` flag alone
+would therefore leave it on Chat Completions. The next repair must preserve that
+existing OpenAI default behavior while introducing an explicit, qualified
+gateway transport selection; changing only the provider definition is inadequate.
+
 ## Remaining qualification
 
 - Verify public endpoint/catalog availability and model-specific controls against
