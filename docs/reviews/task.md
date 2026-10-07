@@ -1,3 +1,15 @@
+## Qualified full regression — 7 October 2026
+
+The corrected frozen candidate400ee67e full database run is terminal green:
+3939 tests passed, zero failures/skips (882009ms), recorded in
+/tmp/orbyn-adr-full-db-catalog-fixed-20261007.log. This supersedes the earlier
+failed run as current full-regression evidence without rewriting its history.
+Later Source/Preview changes and main source-event reconciliation have separate
+51/51 focused checks and client typechecks; they are not covered by that frozen
+full run. Normal rich-editor activation and real browser/native acceptance remain
+unfinished. Visual review is assigned to the user's separate review session;
+implementation and main checkpoints remain in this session.
+
 ## Complete Source/Preview ownership contract — 7 October 2026
 
 Both client source panes now accept a complete VersionedDocContent and a matching

@@ -1,3 +1,17 @@
+## Page task creation authority — 7 October 2026
+
+The task-creation entry point now requires write permission before inspecting
+eligible lines. A viewer previously received200 for an empty task selection;
+the regression reproduces that unauthorized success response, not a demonstrated
+page overwrite. Viewers now receive403 even when no line matches. Owner no-op
+behavior remains200, and page content, revisions, task links and items remain
+unchanged on denied requests.
+
+The main structured-storage integration cohort passes19/19, zero failures/skips
+(3301ms), including401/403/400/429 coverage. Backend TypeScript and scoped diff
+checks pass. Full editor activation, browser acceptance and the wider ADR remain
+unfinished.
+
 ## Source-event revision guard — 7 October 2026
 
 A retained Source/Preview input handler could send an older buffer against a

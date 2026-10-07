@@ -1566,3 +1566,101 @@ test("structured extraction refusals preserve source ownership and create no des
   assert.equal(retained.version, 2);
   assert.deepEqual(retained.document, { format: 2, nodes });
 });
+
+test("making page tasks requires write authority even when no line matches", async () => {
+  const id = await page(owner, [
+    { type: "paragraph", id: "body", text: "Read-only page" },
+  ]);
+  const team = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO teams(name,created_by) VALUES($1,$2) RETURNING id",
+      ["Page task authority", owner.id],
+    )
+  ).rows[0].id;
+  teams.push(team);
+  await pool.query(
+    "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner'),($1,$3,'viewer')",
+    [team, owner.id, stranger.id],
+  );
+  await pool.query("UPDATE docs SET team_id=$2 WHERE id=$1", [id, team]);
+  const snapshot = async () => ({
+    page: (
+      await pool.query(
+        "SELECT version,content,content_format,content_nodes FROM docs WHERE id=$1",
+        [id],
+      )
+    ).rows[0],
+    links: (
+      await pool.query("SELECT * FROM doc_task_links WHERE doc_id=$1", [id])
+    ).rows,
+    tasks: (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM items WHERE team_id=$1",
+        [team],
+      )
+    ).rows[0].n,
+  });
+  const before = await snapshot();
+  const url = `/docs/${id}/tasks`;
+  assert.equal(
+    (await app.inject({ method: "POST", url, payload: {} })).statusCode,
+    401,
+  );
+  assert.equal(
+    (
+      await app.inject({
+        method: "POST",
+        url,
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        payload: "{",
+      })
+    ).statusCode,
+    400,
+  );
+  for (const payload of [{}, { block_ids: ["body"] }]) {
+    const refused = await app.inject({
+      method: "POST",
+      url,
+      headers: { authorization: `Bearer ${strangerToken}` },
+      payload,
+    });
+    assert.equal(refused.statusCode, 403, refused.body);
+    assert.deepEqual(await snapshot(), before);
+  }
+  const { settings, cachedSettings } = await import("../src/lib/settings.js");
+  const { freshRateLimitSession } = await import("./rate-limit-session.js");
+  const fresh = await freshRateLimitSession(strangerToken);
+  await settings();
+  const live = cachedSettings();
+  const previous = live.rate_limit_per_minute;
+  live.rate_limit_per_minute = 2;
+  try {
+    const send = () =>
+      app.inject({
+        method: "POST",
+        url,
+        headers: {
+          authorization: `Bearer ${fresh}`,
+        },
+        payload: {},
+      });
+    assert.equal((await send()).statusCode, 403);
+    assert.equal((await send()).statusCode, 403);
+    assert.equal((await send()).statusCode, 429);
+    assert.deepEqual(await snapshot(), before);
+  } finally {
+    live.rate_limit_per_minute = previous;
+  }
+  const allowed = await app.inject({
+    method: "POST",
+    url,
+    headers: { authorization: `Bearer ${token}` },
+    payload: {},
+  });
+  assert.equal(allowed.statusCode, 200, allowed.body);
+  assert.deepEqual(allowed.json(), { created: 0, items: [], doc: null });
+  assert.deepEqual(await snapshot(), before);
+});
