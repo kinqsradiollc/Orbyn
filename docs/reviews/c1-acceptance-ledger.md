@@ -157,3 +157,20 @@ lists low, medium, high, xhigh and max reasoning efforts and explicitly excludes
 none/minimal. Existing managed provider options currently cannot represent this
 configuration. This confirmed gap follows the managed authority repair within C1
 after the active Responses repair qualifies.
+
+## Corrected qualification and builder screenshot inspection
+
+Frozen candidate `8a11d03b` is running a fresh full backend regression on the
+isolated marked `orbyn_full_8a11d03b_test` database, session53125; complete protected
+log `/tmp/orbyn-adr-full-8a11d03b-20261007.log`. Await the terminal result before
+claiming a green full run. Main's scoped Responses integration working tree passes
+49 focused protocol/style checks, scoped formatting and backend typecheck/build;
+the candidate mobile typecheck passes. Responses promotion is pending this run.
+
+Builder inspected QA-012's 320x567 and390x844 light screenshots personally. The
+confirmation message wraps inside the sheet with padding, and Cancel task/Keep
+task are both visible without overlap or clipping. Capture manifest records safe
+Keep task dismissal with the existing task still To do. This qualifies the shared
+message font correction for these mobile-browser states, not native keyboard,
+large-text or all-theme behavior. Screenshots and manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-012-capture-manifest.md`.
