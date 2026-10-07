@@ -1,3 +1,15 @@
+## Unresolved-reference merge preservation — 7 October 2026
+
+Merges preserve rendered unresolved reference text on both pages by escaping only
+references that the other page's definitions would activate. Allocated source
+labels also avoid unresolved shortcuts. Dangling footnotes retain their unbound
+state; unsafe destination definitions cannot suppress valid moved links under
+Markdown's first-definition rule.55 focused merge/reference/title/balanced-link
+tests pass (zero failures/skips,709ms); packages build, backend types and scoped
+format checks pass. Candidate only. Database merge acceptance, extraction link
+relocation, normal editor/CRDT activation and full D1/U1 visual/runtime acceptance
+remain open. Main remains7263b45b; no deployment claimed.
+
 ## Merged reference/footnote namespaces — 7 October 2026
 
 Page merges now rename conflicting source reference definitions and their full,
