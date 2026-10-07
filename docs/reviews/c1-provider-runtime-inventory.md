@@ -90,6 +90,9 @@ the actual second step requests `/v1/chat/completions` and fails404 instead of
 remaining on `/v1/messages`. This is a concrete runtime defect, not a vendor
 capability assumption. Reproduction:
 `/tmp/orbyn-c1-anthropic-json-fallback-before-20261008.log`.
+The actual durable `runAgent()` loop independently reproduces the same first
+Messages request → wrong compatible request →404, with an inert tool and no DB
+reads/writes: `/tmp/orbyn-c1-anthropic-json-loop-before-20261008.log`.
 
 Fix after the current pagination checkpoint is qualified/promoted: preserve
 Anthropic Messages authentication/system/conversation shape for text JSON
@@ -97,6 +100,24 @@ fallback, parse the same JSON tool protocol and retain native usage accounting,
 authority checks, timeout and truncation behavior. Cover normal starting mode,
 tool rejection/resumed JSON mode and final tools-off replies. Do not claim this
 fallback repaired from the61 passing starting-mode tests.
+
+## Primary-documentation spot checks
+
+- [Groq models](https://console.groq.com/docs/models) documents its active-model
+  catalog at `/openai/v1/models`; the saved default path matches. Its
+  [compatibility guide](https://console.groq.com/docs/openai) describes partial
+  OpenAI compatibility. This does not qualify embeddings or every model's tools.
+- [LM Studio model listing](https://lmstudio.ai/docs/developer/openai-compat/models)
+  documents its compatible model endpoint. Its [developer overview](https://lmstudio.ai/docs/developer)
+  lists compatible chat/Responses/embedding support. Loaded models, server auth,
+  local network reachability and model-specific tools require runtime validation.
+- [Matilda documentation](https://maincode.com/docs) is a documentation landing
+  page, not sufficient evidence for all endpoints/options. Keep its existing
+  fixed live baseline separate; do not infer embedding support from the brand
+  or a compatible response fixture.
+
+These are spot checks on8October2026. Every remaining vendor still needs the
+same evidence review; missing search results do not prove an API unsupported.
 
 ## Remaining qualification
 
