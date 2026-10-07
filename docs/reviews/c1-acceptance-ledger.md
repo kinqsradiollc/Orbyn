@@ -1,5 +1,38 @@
 # C1 acceptance ledger
 
+## Zen selected-model transport — frozen candidate 8 October 2026
+
+Candidate `890d42ce` resolves reviewed Zen model IDs through Responses, native
+Messages or native Gemini content instead of assigning Chat Completions to every
+model. Exact IDs come from the official Zen endpoint table and Models.dev metadata
+used by OpenCode; unknown IDs retain the existing compatible contract without
+family-name guessing. Jev models fail explicitly because their custom transport
+is not implemented. Catalog and embedding resolution remain independent.
+
+Gemini uses the existing provider-neutral JSON agent tool protocol, including
+resumed native-mode jobs; this is not a claim of native Google function calling.
+Native auth/system/history/output decoding, private-transport precedence,
+post-response authority, cancellation, truncation and usage-once guards are
+covered. Unknown usage fields remain unknown, thought output is not displayed.
+
+Before: direct/agent/JSON protocol fixtures0/15 pass. Expanded cohort335/335 now
+passes, including118 independently captured model metadata assignments and
+HTTP400/401/403/429/500 sanitization. Backend build passes. Compiled actual durable
+loops complete for Responses, Messages and Gemini at their expected saved URLs.
+The initial compiled fixture omitted Responses completed status and was rejected;
+correcting the fixture produced three passing loop cases without a source change.
+
+Logs: `/tmp/orbyn-c1-zen-transport-before-20261008.log`,
+`/tmp/orbyn-c1-zen-expanded-cohort-20261008.log`,
+`/tmp/orbyn-c1-zen-final-build-20261008.log`,
+`/tmp/orbyn-c1-zen-compiled-20261008.log`.
+Full frozen regression is running as session13419 on a fresh marked database:
+`/tmp/orbyn-c1-zen-full-20261008.log`. No terminal pass or main delivery claimed.
+No live vendor inference, UI change, production deploy or complete C1 acceptance.
+
+The user requests a pause after **all C1 acceptance**, before C2/M1. Remaining
+C1 runtime/client/embedding/cache gates are retained rather than waived.
+
 ## Together array catalog — merged checkpoint 8 October 2026
 
 Frozen source `8d83fb01` normalizes Together's documented top-level array only

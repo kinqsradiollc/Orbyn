@@ -18,7 +18,11 @@ focused145/145, backend build and compiled loop pass.
 Together catalog repair is merged and pushed as `22f24742`: adapter46/46, route cohort63/63,
 inventory61/61, backend build and compiled check pass. Full frozen regression
 passes3894/3894, zero failures/skips/cancellations, exit0.
-Next: OpenCode selected-model transport repair, then remaining provider/embedding/cache gates.
+OpenCode selected-model transport is frozen locally as `890d42ce`: focused335/335,
+backend build and three compiled durable-loop protocol cases pass. Full regression
+is running; this candidate is not yet on main.
+Next: finish this qualification, then remaining provider/embedding/cache gates.
+The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
@@ -88,7 +92,8 @@ Acceptance comes from this session's image inspection, not the capture session's
 5. Keep remaining live-provider/OpenAI cache gates explicit. Matilda's fixed
    baseline does not qualify OpenAI cache economics. Promote this checkpoint only
    after qualification, then continue remaining C1 gates before C2/M1.
-6. Continue C2/M1 → C3 → C4/D1 → C5 → C6 → U1/integration/cleanup in order.
+6. Pause after completing C1 and provide the remaining-work table. After a user
+   resume, continue C2/M1 → C3 → C4/D1 → C5 → C6 → U1/integration/cleanup in order.
 
 Orbyn Visual Check captures originals and a Markdown manifest only. This session
 inspects images, owns findings/implementation and records acceptance.
