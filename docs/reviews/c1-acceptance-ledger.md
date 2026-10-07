@@ -145,6 +145,23 @@ credential/transport (renewed consent) from chat-only reasoning/cache settings
 formats and Claude's disjoint input counters. Scope is ready for main promotion
 as a tested implementation checkpoint; entire C1 stage remains incomplete.
 
+## Main promotion — 7 October 2026
+
+Qualified controls/usage checkpoint9a869240 was fast-forwarded from main3c8feb40
+and pushed to origin/main. Main's unrelated mobile/app.json content hash and
+complete pre-existing tracked/untracked status were verified unchanged. No
+production deployment performed; user deploys main manually. Full3736/3736 and
+final47/47 evidence, compiled owner usage, migration/pgvector and root-inspected
+responsive captures qualify this checkpoint, not the entire C1 stage.
+
+Visual Check completed consolidated QA018 capture manifest at
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-018-capture-manifest.md`.
+Root inspected the original images listed above; its suggested fixes are not
+used as acceptance authority. The missing-icon failure is retained historically
+and corrected captures show contained provider sheets in all four mobile
+size/theme combinations. Next C1 checkpoint is connection/model inventory and
+remaining provider/embedding qualification. No stage reorder/cleanup claimed.
+
 ## Historical qualification — migration256 controls freeze
 
 ### Current visual-gate revalidation
@@ -300,7 +317,7 @@ contract in `devday-2026-implementation-review.md`; it does not reduce that scop
 Complete C1 before moving to C2/M1. A check means a scoped check passed, not that
 the entire row or stage has shipped.
 
-## Current checkpoint
+## Historical Responses checkpoint
 
 Candidate `fc613153` repairs the managed native agent's Responses tool protocol.
 It preserves the selected model, exact function call/output identity and bounded
