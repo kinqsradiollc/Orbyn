@@ -20,6 +20,31 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 
 ## Current evidence
 
+## Browser preview requirement and catalog reconciliation — 7 October 2026
+
+UI acceptance now explicitly requires the web/desktop browser preview and the
+mobile browser preview. Keep native mobile controls, accessibility, keyboard and
+sheet behavior; browser layout checks do not replace installed OAuth/keystore/
+inference acceptance. Capture the relevant narrow/wide, collapsed, multi-panel,
+large-text and keyboard states before calling each redesigned surface complete.
+Do not substitute simulator screenshots for the requested browser review.
+
+The ownership worktree's Vite5174 and Expo web8083 previews are running and return
+HTTP200. A dangling worktree-local Vite cache symlink was replaced with a local
+cache directory without changing its former target. Browser Use still explicitly
+rejects5174 because of the saved Block, including alternate-port/browser bypasses;
+no screenshot or authenticated visual acceptance is claimed. User permission
+repair remains pending while implementation continues.
+
+The frozen full regression exposed stale generated MCP route totals after the
+credential-route exclusion repair:289 exclusions became290. Regeneration changes
+only the totals in mcp-catalog.json and mcp.md; schemas, grants and provider/plugin
+boundaries are unchanged. The catalog/directory/route inventory rerun passes21/21,
+zero failures/skips (6394ms), on a separate disposable test database. An initial
+invocation omitted TEST_DATABASE_URL and was refused by the test harness; only
+the correctly configured rerun is counted. The full candidate run remains live;
+its catalog failure is recorded, not rewritten as a passing full run.
+
 ## Owned leaf-edit checkpoint — 7 October 2026
 
 Explicit replace-leaf and splice-leaf operations now edit an exact rendered path
