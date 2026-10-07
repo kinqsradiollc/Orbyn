@@ -1,3 +1,22 @@
+## Home identities and mobile Settings navigation — 7 October 2026
+
+Default Background/Overnight identities now show each name once; custom names
+keep their distinct lane subtitle. Web identity columns give default names room,
+prefer word boundaries and stack identity/purpose when the actual card is narrow.
+Purpose text centers against its identity. The mobile Assistant drawer now names
+and opens the actual Settings sheet, resetting an old search-section selection.
+Connections remains a separately named Settings destination.
+
+The Home/Settings component and real routing-callback cohort passes19/19, zero
+failures/skips (1215ms). Desktop TypeScript and candidate mobile TypeScript pass.
+The independent Orbyn Visual Check session confirms web default names at1280x800,
+1000x800 and390x844, plus mobile Home and Settings at390x844. Final centered web
+layout is captured in home-centered-purpose-1280x800.jpg; mobile routing is in
+QA-004-recheck-mobile-settings.jpg, under the review session's orbyn-qa evidence
+folder. Long custom names and broader whole-app acceptance remain unfinished.
+The temporary preview backend later crashed with ENOSPC; its availability is a
+separate environment recovery, not proof of successful agent/Docs data loading.
+
 ## Page task creation authority — 7 October 2026
 
 The task-creation entry point now requires write permission before inspecting

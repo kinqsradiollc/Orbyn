@@ -148,7 +148,11 @@ export function HomeCompanions({
                     agent.name === "Background" ? "background" : "overnight"
                   ]?.name ?? agent.name}
                 </Text>
-                <Text style={shared.small}>{agent.name}</Text>
+                {(identities[
+                  agent.name === "Background" ? "background" : "overnight"
+                ]?.name ?? agent.name) !== agent.name && (
+                  <Text style={shared.small}>{agent.name}</Text>
+                )}
               </View>
             </View>
             <Text style={shared.small}>{agent.brief}</Text>

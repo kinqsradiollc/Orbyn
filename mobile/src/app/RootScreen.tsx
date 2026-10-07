@@ -1535,7 +1535,7 @@ export function RootScreen() {
                       onOpenMemory={() => present({ sheet: "memory" })}
                       onOpenAgentNotes={() => present({ sheet: "agent" })}
                       onOpenOvernight={() => present({ sheet: "overnight" })}
-                      onOpenSettings={() => present({ sheet: "connections" })}
+                      onOpenSettings={() => openSettingsAt(null)}
                       onBackToProject={(id) => {
                         setProjectToOpen(id);
                         setSheet("projects");
