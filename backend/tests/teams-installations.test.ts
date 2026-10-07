@@ -10,6 +10,17 @@ const {
   readTeamsInstallationRequest,
   confirmTeamsInstallation,
 } = await import("../src/modules/agent-channels/teams-installations.js");
+// Finish asynchronous fixtures before registering tests: a later top-level
+// await lets the runner finish the first batch and close its shared pool early.
+const { SignJWT, exportJWK, generateKeyPair } = await import("jose");
+const { bindTeamsPersonalConversation } =
+  await import("../src/modules/agent-channels/teams-conversations.js");
+const pair = await generateKeyPair("RS256", { modulusLength: 2048 });
+const signingKey = {
+  ...(await exportJWK(pair.publicKey)),
+  kid: "personal-link",
+  endorsements: ["msteams"],
+};
 const config = {
   clientId: randomUUID(),
   clientSecret: "fixture-client-secret",
@@ -418,15 +429,6 @@ test("active attempts are bounded per owner instead of creating unlimited privat
   );
 });
 
-const { SignJWT, exportJWK, generateKeyPair } = await import("jose");
-const { bindTeamsPersonalConversation } =
-  await import("../src/modules/agent-channels/teams-conversations.js");
-const pair = await generateKeyPair("RS256", { modulusLength: 2048 });
-const signingKey = {
-  ...(await exportJWK(pair.publicKey)),
-  kid: "personal-link",
-  endorsements: ["msteams"],
-};
 async function preparedLink() {
   const f = await fixture();
   await captureTeamsInstallation(
