@@ -21,7 +21,19 @@ Combined frozen source5466bc1c adds the pending exact-match mobile search fix.
 Its full regression is running, not completed, in the new marked database
 `orbyn_c1_embedding_discovery_full_20261008_test`:
 `/tmp/orbyn-c1-embedding-discovery-full-20261008.log`.
-The source tree remains clean and unchanged while that run is live.
+The source tree remained unchanged until that run authoritatively terminated.
+It exited7 without a final TAP summary;18 existing component-harness tests failed
+resolving the new hook import. Its last output is the native-page clock case.
+The whole native-page file independently passes10/10; the termination cause is
+not established. Free disk fell below500MiB; recovered space is requested before
+another full run.
+
+Test-only correction15301fbd adapts that component harness, with real-hook tests
+retained and12 additional read-only/loading/error/manual UI cases. Corrected
+combined cohort154/154 passes, zero failures/skips/cancellations:
+`/tmp/orbyn-c1-embedding-discovery-corrected-cohort-20261008.log`.
+No full-suite pass is claimed. Captures still target the unchanged5466bc1c
+product UI;15301fbd changes only tests and documentation.
 
 Owned API/web/mobile previews now serve5466bc1c at the existing8008/5174/8083
 ports. Authenticated discovery against the inert local provider returns200,

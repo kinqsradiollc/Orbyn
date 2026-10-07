@@ -82,14 +82,17 @@ checkpoint1941fe13 and the pending mobile exact-match search correction. The
 embedding catalog route is fenced to its independent recipient revision, labels
 unclassified candidates honestly and preserves manual models and consent.
 Focused discovery/catalog/client tests122/122, final workspace typechecks and
-backend/web builds pass. Frozen full regression is running in a fresh marked
-database; it is not yet a pass or main delivery. Both previews now serve that
+backend/web builds pass. Frozen full regression5466bc1c terminated early with exit7 and no final TAP
+summary;18 existing component-harness imports failed. Test-only correction
+15301fbd passes the expanded154/154 cohort; the isolated native-clock file passes
+10/10. A fresh full rerun awaits recovered disk space; no full pass or main
+feature delivery is claimed. Both previews now serve that
 candidate on the existing5174/8083 origins. Authenticated inert catalog loading
 returns250 candidates, matching revision, with semantic search stillOFF.
 The human restored Chrome availability; original corrected mobile and new
 embedding UI captures have been requested from Orbyn Visual Check. Root review
-and candidate promotion remain pending. Main currently delivers e3c68493;
-the feature source is still local, not shipped.
+and candidate promotion remain pending. The latest delivered product checkpoint remains e3c68493; tracking docs
+advance separately. The feature source is still local, not shipped.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.
