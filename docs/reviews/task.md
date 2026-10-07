@@ -1,3 +1,26 @@
+## Current handoff — 7 October 2026, Home/Settings checkpoint
+
+Main/origin/main43c448c4 contains the independently browser-reviewed Home label/
+wrapping/alignment and mobile Settings destination fixes. Focused main UI tests
+pass19/19; candidate post-merge Home/navigation/editor-session tests pass33/33.
+Candidate editor-session/operation/source checks pass37/37 and packages build;
+normal editor wiring is still unfinished. Candidate5523afe1 includes main and
+preserves the native ChatGPT foreground hook. A fresh full run is live as
+session90186 on isolatedorbyn_full_5523afe1_test, log
+/tmp/orbyn-adr-full-5523afe1-20261007.log; no passing result is claimed yet.
+
+The preview API crashed with ENOSPC and Docker stopped. Only our disposable PG
+was restarted; tmpfs erased preview fixtures/sessions. Preview DB/migrations/admin
+were recreated with the same protected credentials. Combined API session20199
+returns health200; Vite5174 session71601 and Expo8083 session58254 remain owned
+previews. Independent Orbyn Visual Check owns browser screenshots and reports.
+QA003/004/007 are accepted for inspected default-name/layout/navigation states;
+long custom names remain untested. QA006 task management and redundant dismissal
+controls are the next UI repair. QA005 method-aware capture shows OPTIONS+GET,
+not duplicate GET polling; actual429 review traffic remains separate evidence.
+Full C1-C6/M1/D1/U1 acceptance, standalone ChatGPT web, normal Docs ownership
+activation, runtime qualification and final cleanup remain incomplete.
+
 ## Saved editor ownership receipt validation — 7 October 2026
 
 A same-format receipt must also retain the sent ownership topology: quote/list

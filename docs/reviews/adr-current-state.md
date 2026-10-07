@@ -6,7 +6,7 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 
 | Area                           | Current state                                                                                                                                                                                                                                   | Remaining acceptance / next implementation                                                                                                                                                                                                                                              |
 | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Main                           | `origin/main` verified at `bed5ba7e`; user deploys manually                                                                                                                                                                                     | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                                                                         |
+| Main                           | `origin/main` verified at `43c448c4`; user deploys manually                                                                                                                                                                                     | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                                                                         |
 | ChatGPT native                 | Direct local OAuth, protected tokens, model catalog/defaults, signed inference and Settings/foreground activation implemented on `codex/chatgpt-direct-web-oauth`                                                                               | Installed iOS/Android OAuth/keystore/browser/lifecycle acceptance; account management and truthful plan/usage acceptance                                                                                                                                                                |
 | Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire                                                                                            | Candidate only; 441 ChatGPT unit tests pass; current adapter mobile/backend typechecks pass; refresh coordination, revocation, idle saved-account controls and confirmed invalid-refresh recovery implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
 | ChatGPT hosted web             | No supported direct browser-only implementation established; desktop handoff is not completion                                                                                                                                                  | Supported authorization and user-controlled runtime; actual popup/callback/provider acceptance without desktop                                                                                                                                                                          |
@@ -19,6 +19,30 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 | Cleanup                        | Worktrees, root character/user changes preserved                                                                                                                                                                                                | Cleanup only after relevant commits are reconciled, merged and qualified                                                                                                                                                                                                                |
 
 ## Current evidence
+
+## Current handoff — 7 October 2026, Home/Settings checkpoint
+
+Main/origin/main43c448c4 contains the independently browser-reviewed Home label/
+wrapping/alignment and mobile Settings destination fixes. Focused main UI tests
+pass19/19; candidate post-merge Home/navigation/editor-session tests pass33/33.
+Candidate editor-session/operation/source checks pass37/37 and packages build;
+normal editor wiring is still unfinished. Candidate5523afe1 includes main and
+preserves the native ChatGPT foreground hook. A fresh full run is live as
+session90186 on isolatedorbyn_full_5523afe1_test, log
+/tmp/orbyn-adr-full-5523afe1-20261007.log; no passing result is claimed yet.
+
+The preview API crashed with ENOSPC and Docker stopped. Only our disposable PG
+was restarted; tmpfs erased preview fixtures/sessions. Preview DB/migrations/admin
+were recreated with the same protected credentials. Combined API session20199
+returns health200; Vite5174 session71601 and Expo8083 session58254 remain owned
+previews. Independent Orbyn Visual Check owns browser screenshots and reports.
+QA003/004/007 are accepted for inspected default-name/layout/navigation states;
+long custom names remain untested. QA006 task management and redundant dismissal
+controls are the next UI repair. QA005 method-aware capture shows OPTIONS+GET,
+not duplicate GET polling; actual429 review traffic remains separate evidence.
+Full C1-C6/M1/D1/U1 acceptance, standalone ChatGPT web, normal Docs ownership
+activation, runtime qualification and final cleanup remain incomplete.
+
 
 ## Qualified full regression — 7 October 2026
 
