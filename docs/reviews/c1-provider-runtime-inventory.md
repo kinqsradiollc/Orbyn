@@ -350,3 +350,28 @@ No credentials or inference requests were used. These checks do not qualify
 model generation, embeddings, private entitlement or provider billing. Unauthenticated
 model GETs for Fireworks and both old/new Nebius hosts return401; authenticated
 catalog and existing-credential compatibility remain unqualified.
+
+## Fireworks contract follow-up — 8 October 2026
+
+The current [compatibility guide](https://docs.fireworks.ai/tools-sdks/openai-compatibility)
+confirms the saved inference base `/inference/v1` and Chat Completions shape.
+Its [embedding reference](https://docs.fireworks.ai/api-reference/creates-an-embedding-vector-representing-the-input-text)
+confirms `/inference/v1/embeddings`, string-array input, indexed float vectors
+and usage. Orbyn's compatible embedding request and decoder match those shapes;
+this does not qualify a live selected model or dimension.
+
+The [List Models reference](https://docs.fireworks.ai/api-reference/list-models)
+is an account management endpoint `/v1/accounts/{account_id}/models` rather than
+proof of the saved inference `/models` catalog. Credential-free GET probes to
+both the saved inference catalog and public-account management path return401.
+This establishes an authentication response, not a usable authenticated catalog
+or model entitlement; do not substitute the management path or redirect a saved
+credential automatically. Manual model entry remains available. Receipt:
+`/tmp/orbyn-c1-fireworks-public-catalog-probes-20261008.json`.
+No provider key, inference request or document text was sent.
+
+Embedding discovery is now an unpromoted candidate at d498febd. The exact native
+OpenRouter recipient uses its separate embedding catalog; generic compatible
+catalogs are explicitly unclassified and require validation. Earlier paragraphs
+about manual-only embedding entry describe the delivered main source, not this
+candidate. Its full regression and corrected browser review are still pending.
