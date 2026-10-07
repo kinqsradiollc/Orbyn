@@ -21,7 +21,13 @@ database and explicitly runs configuration/schema, storage/search, retries,
 access-race, vector validation and client callback checks. Its matching local
 cohort passes53/53, zero failures/skips/cancellations on a fresh marked database:
 `/tmp/orbyn-c1-embedding-ci-cohort-20261008.log`. Scoped formatting and diff checks
-pass. The remote GitHub job itself is not yet observed. This test/workflow-only
+pass. Delivery: `c5dcc19c` is published on main. Four normal Git push attempts returned
+Internal Server Error, including an existing workflow-scoped CLI credential.
+GitHub Git Data API publication verified all four blob hashes, the full tree and
+exact original commit SHA, rechecked the remote parent, and updated with
+`force:false`. Fetch confirms local main/origin match; unrelated primary changes
+and mobile/app.json hash are preserved. No credentials were printed or persisted
+in source. The remote GitHub job result remains unverified. This test/workflow-only
 checkpoint does not change backend source or add its count to the terminal
 4044/4044 stock regression; no live provider, UI/native or full C1 completion.
 
