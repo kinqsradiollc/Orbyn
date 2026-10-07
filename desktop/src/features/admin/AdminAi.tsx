@@ -67,20 +67,32 @@ export function AdminAi({ busy, revision, act, report }: Props) {
     [data?.settings.night_token_budget],
   );
   const formRef = useRef<HTMLElement>(null);
+  const dataRef = useRef(data);
+  dataRef.current = data;
+  const loadRequest = useRef(0);
   const reportRef = useRef(report);
   reportRef.current = report;
 
   const load = useCallback(async () => {
+    const request = ++loadRequest.current;
     try {
-      setData(await client.listAiProviders());
+      const next = await client.listAiProviders();
+      if (request !== loadRequest.current) return;
+      dataRef.current = next;
+      setData(next);
+      setLoaded({});
       setTests({});
     } catch (e) {
-      reportRef.current(e);
+      if (request === loadRequest.current) reportRef.current(e);
     }
   }, []);
 
   useEffect(() => {
     void load();
+    return () => {
+      loadRequest.current++;
+      dataRef.current = null;
+    };
   }, [load, revision]);
 
   useEffect(() => {
@@ -122,9 +134,14 @@ export function AdminAi({ busy, revision, act, report }: Props) {
   const loadModels = (p: AiProvider) =>
     void act(async () => {
       const { models: list } = await client.listAiModels(p.id);
+      if (
+        !dataRef.current?.providers.some(
+          (current) =>
+            current.id === p.id && current.updated_at === p.updated_at,
+        )
+      )
+        return;
       setLoaded((m) => ({ ...m, [p.id]: list }));
-      if (list.length && !models[p.id] && !list.includes(modelFor(p)))
-        setModels((m) => ({ ...m, [p.id]: list[0] }));
     });
 
   const test = (p: AiProvider) =>
@@ -134,6 +151,13 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         p.id,
         modelFor(p).trim() || undefined,
       );
+      if (
+        !dataRef.current?.providers.some(
+          (current) =>
+            current.id === p.id && current.updated_at === p.updated_at,
+        )
+      )
+        return;
       setTests((t) => ({ ...t, [p.id]: result }));
     });
 

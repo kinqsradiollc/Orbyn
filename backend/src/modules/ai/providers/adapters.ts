@@ -101,6 +101,7 @@ function providerDetail(raw: string, secret: string): string {
   } catch {
     // Not JSON: use the text as it is.
   }
+  if (typeof text !== "string") text = "";
   if (secret) text = text.split(secret).join("••••");
   text = text.replace(/\s+/g, " ").trim();
   return text.length > 200 ? `${text.slice(0, 199)}…` : text;
@@ -470,16 +471,38 @@ export async function listModels(ai: Connection): Promise<string[]> {
     AbortSignal.timeout(8_000),
     ai.apiKey,
   );
-  const body = await json<{
-    data?: { id?: string }[];
-    models?: ({ id?: string; name?: string } | string)[];
-  }>(response);
-  const ids = [
-    ...(body.data ?? []).map((m) => m.id),
-    ...(body.models ?? []).map((m) =>
-      typeof m === "string" ? m : (m.id ?? m.name),
-    ),
-  ].filter((id): id is string => !!id);
+  const body = await json<unknown>(response);
+  const invalid = () =>
+    new ProviderError(
+      "invalid_catalog",
+      "The provider returned an invalid model catalog.",
+    );
+  if (!body || typeof body !== "object" || Array.isArray(body)) throw invalid();
+  throwIfErrorEnvelope(body, ai.apiKey);
+  const catalog = body as Record<string, unknown>;
+  if (!("data" in catalog) && !("models" in catalog)) throw invalid();
+  const ids: string[] = [];
+  for (const field of ["data", "models"] as const) {
+    if (!(field in catalog)) continue;
+    const entries = catalog[field];
+    if (!Array.isArray(entries)) throw invalid();
+    for (const entry of entries) {
+      const id =
+        field === "models" && typeof entry === "string"
+          ? entry
+          : entry && typeof entry === "object" && !Array.isArray(entry)
+            ? (entry.id ?? (field === "models" ? entry.name : undefined))
+            : undefined;
+      if (
+        typeof id !== "string" ||
+        !id.trim() ||
+        id.length > 512 ||
+        /[\u0000-\u001f\u007f]/.test(id)
+      )
+        throw invalid();
+      ids.push(id);
+    }
+  }
   return [...new Set(ids)].sort();
 }
 

@@ -1,5 +1,5 @@
 import { AiModelControls } from "./AiModelControls";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { SemanticSetup } from "./SemanticSetup";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Switch } from "../components/Switch";
@@ -336,8 +336,24 @@ function ProviderRow({
   const [model, setModel] = useState(active ? activeModel : "");
   const [models, setModels] = useState<string[] | null>(null);
   const [test, setTest] = useState<AiTestResult | null>(null);
+  const savedModel = useRef(active ? activeModel : "");
+  useEffect(() => {
+    const next = active ? activeModel : "";
+    const previous = savedModel.current;
+    savedModel.current = next;
+    setModel((current) => (current === previous ? next : current));
+  }, [active, activeModel]);
 
-  useEffect(() => setTest(null), [p.updated_at]);
+  const providerRevision = useRef<string | null>(p.updated_at);
+  providerRevision.current = p.updated_at;
+  useEffect(() => {
+    providerRevision.current = p.updated_at;
+    setTest(null);
+    setModels(null);
+    return () => {
+      providerRevision.current = null;
+    };
+  }, [p.updated_at]);
   const list = models ?? def.suggestedModels;
   const typed = model.trim();
   const query = typed.toLowerCase();
@@ -480,7 +496,9 @@ function ProviderRow({
                 disabled={busy}
                 onPress={() =>
                   act(async () => {
-                    setModels((await client.listAiModels(p.id)).models);
+                    const result = await client.listAiModels(p.id);
+                    if (providerRevision.current === p.updated_at)
+                      setModels(result.models);
                   })
                 }
               />
@@ -491,9 +509,12 @@ function ProviderRow({
               onPress={() =>
                 act(async () => {
                   setTest(null);
-                  setTest(
-                    await client.testAiProvider(p.id, typed || undefined),
+                  const result = await client.testAiProvider(
+                    p.id,
+                    typed || undefined,
                   );
+                  if (providerRevision.current === p.updated_at)
+                    setTest(result);
                 })
               }
             />

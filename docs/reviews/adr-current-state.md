@@ -8,6 +8,8 @@ Detailed qualification and historical failures remain in
 
 **Active stage: C1. No entire ADR stage is complete.**
 The controls/usage checkpoint is merged and pushed to main as `9a869240`.
+The requested public homepage CodeHype badge is pushed to main as `98a9394f`.
+The next C1 catalog checkpoint is local and undergoing regression qualification.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 
@@ -67,3 +69,20 @@ Acceptance comes from this session's image inspection, not the capture session's
 
 Orbyn Visual Check captures originals and a Markdown manifest only. This session
 inspects images, owns findings/implementation and records acceptance.
+
+## Current C1 catalog checkpoint — local, not promoted
+
+| Requirement                         | Current evidence                                                                                                                                                                                                     | Remaining gate                                                                                   |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Catalog response validation         | Malformed catalogs and HTTP-200 error envelopes become sanitized provider errors; valid compatible/named catalogs deduplicate and sort. Initial reproduction: 1/11 passed, 10 failures; fixed focused cohort: 35/35. | Full backend regression running against a fresh marked test database.                            |
+| Catalog refresh preserves selection | Web refresh no longer replaces an unlisted saved/manual model with the first catalog item. Actual callback regression tests cover current, revised and deleted connections.                                          | Wider provider/client inventory matrix.                                                          |
+| Stale result handling               | Web discards revised/deleted connection results and older list loads; mobile clears catalogs on revision and discards revised/unmounted results. Connection tests use the same revision guards.                      | Concurrent external edits and server-side catalog revision authority matrix.                     |
+| Mobile saved model updates          | Clean model state follows active saved settings; manually entered drafts remain intact.                                                                                                                              | Broader cross-client switching and native interaction matrix.                                    |
+| Existing provider routes            | 5/5 provider integration tests passed with local HTTP stand-ins; no real provider inference used.                                                                                                                    | Full regression and runtime matrix.                                                              |
+| Visual acceptance                   | No layout/CSS change in this checkpoint. Direct browser preview remains blocked by a saved Browser Use permission.                                                                                                   | Current screenshot acceptance remains unverified; no alternate surface used to bypass the block. |
+
+Focused log: `/tmp/orbyn-c1-inventory-focused-20261007.log`.
+Provider integration log: `/tmp/orbyn-c1-inventory-provider-integration-20261007.log`.
+Full regression log: `/tmp/orbyn-c1-inventory-full-20261007.log`.
+Do not treat a started full run as a passing result. Matilda live evidence belongs
+to the earlier controls/usage checkpoint and does not qualify OpenAI cache economics.
