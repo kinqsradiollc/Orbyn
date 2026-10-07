@@ -4,7 +4,11 @@ import { refuseSecrets } from "../capabilities/write.js";
 import { syncSavedPages } from "../modules/study/service.js";
 import type { FastifyBaseLogger } from "fastify";
 import { transaction } from "../db/pool.js";
-import { complete, attemptMsFor } from "../modules/ai/providers/adapters.js";
+import {
+  complete,
+  attemptMsFor,
+  ProviderError,
+} from "../modules/ai/providers/adapters.js";
 import {
   maintainedPagePatchInput,
   type MaintainedPageModelOrigin,
@@ -86,6 +90,7 @@ export async function processMaintainedPageRun(
     | "provider_failed"
     | "budget_exceeded"
     | "authority_changed"
+    | "provider_choice_changed"
     | "source_changed" = "authority_changed";
   try {
     signal.throwIfAborted();
@@ -101,6 +106,8 @@ export async function processMaintainedPageRun(
       );
     } catch (error) {
       if (!(error instanceof PageModelUnavailable)) throw error;
+      // An immutable stale selection cannot become valid by retrying current settings.
+      if (error.reason === "provider_choice_changed") throw error;
       await transaction((db) =>
         deferMaintainedPageModel(db, run.id, token, error.reason, now()),
       );
@@ -224,6 +231,12 @@ export async function processMaintainedPageRun(
     )
       return { state: "stopped" as const, runId: run.id };
     if (error instanceof PageRunBudgetExceeded) failure = "budget_exceeded";
+    if (
+      (error instanceof PageModelUnavailable &&
+        error.reason === "provider_choice_changed") ||
+      (error instanceof ProviderError && error.reason === "provider_changed")
+    )
+      failure = "provider_choice_changed";
     // Never persist/log raw provider errors or generated private text.
     await transaction((db) =>
       failMaintainedPageRun(db, run.id, token, failure, now()),

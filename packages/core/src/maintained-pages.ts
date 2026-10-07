@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { managedAiAuthority } from "./managed-ai-authority.js";
 import { docContent } from "./schemas.js";
 import type { DocBlock } from "./docs.js";
 import { agentRoutineInput } from "./assistant-workspace.js";
@@ -187,6 +188,8 @@ export const maintainedPageModelOrigin = z.discriminatedUnion("kind", [
   z
     .object({
       kind: z.literal("hosted"),
+      // Older origins remain readable but cannot prove queued managed authority.
+      managed_provider_snapshot: managedAiAuthority.optional(),
       provider_choice_version: z
         .number()
         .int()

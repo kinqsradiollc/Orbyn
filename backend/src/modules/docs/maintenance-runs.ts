@@ -217,6 +217,7 @@ export async function failMaintainedPageRun(
   leaseToken: string,
   reason:
     | "authority_changed"
+    | "provider_choice_changed"
     | "source_changed"
     | "provider_failed"
     | "budget_exceeded",
@@ -224,6 +225,8 @@ export async function failMaintainedPageRun(
 ) {
   const reasons = {
     authority_changed: "The assistant's authority changed.",
+    provider_choice_changed:
+      "The selected provider or model changed. Queue a fresh page update.",
     source_changed: "The page or binding changed.",
     provider_failed: "The model request could not finish.",
     budget_exceeded: "The page run reached its token budget.",

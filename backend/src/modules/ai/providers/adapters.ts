@@ -277,12 +277,19 @@ export async function complete(
     options.signal ?? AbortSignal.timeout(options.timeoutMs ?? 60_000);
   await ai.assertAuthority?.();
   signal.throwIfAborted();
+  const accepted = async (text: string) => {
+    await ai.assertAuthority?.();
+    signal.throwIfAborted();
+    return text;
+  };
   if (ai.textTransport)
-    return ai.textTransport(
-      messages,
-      signal,
-      ai.operationId,
-      options.maxOutputTokens,
+    return accepted(
+      await ai.textTransport(
+        messages,
+        signal,
+        ai.operationId,
+        options.maxOutputTokens,
+      ),
     );
   const system = messages
     .filter((m) => m.role === "system")
@@ -320,7 +327,7 @@ export async function complete(
       .map((part) => part.text ?? "")
       .join("");
     if (body.stop_reason === "max_tokens") throw truncated();
-    return text;
+    return accepted(text);
   }
 
   if (usesResponsesApi(ai)) {
@@ -366,7 +373,7 @@ export async function complete(
       .map((part) => part.text ?? "")
       .join("");
     if (body.status === "incomplete") throw truncated();
-    return text;
+    return accepted(text);
   }
 
   const url =
@@ -414,7 +421,7 @@ export async function complete(
   // reasoning field; use it rather than failing (as BrainRouter's memory LLM).
   if (!text.trim()) text = message.reasoning_content ?? message.reasoning ?? "";
   if (choice.finish_reason === "length") throw truncated();
-  return text;
+  return accepted(text);
 }
 
 /** The provider's model ids, sorted. Uses the saved key. */
@@ -505,7 +512,10 @@ export async function embed(
  * can't write out recordings; the app says so and keeps the recording.
  */
 export async function transcribe(
-  ai: Connection & { model: string },
+  ai: Connection & {
+    model: string;
+    assertAuthority?: ResolvedAi["assertAuthority"];
+  },
   audio: Uint8Array,
   mime: string,
   options: { model?: string; timeoutMs?: number } = {},
@@ -515,6 +525,7 @@ export async function transcribe(
       "no_transcription",
       "The assistant's AI service can't write out recordings.",
     );
+  await ai.assertAuthority?.();
   const signal = AbortSignal.timeout(options.timeoutMs ?? 300_000);
   const form = new FormData();
   const ext = mime.split("/")[1]?.replace("mpeg", "mp3") || "webm";
@@ -533,5 +544,7 @@ export async function transcribe(
     ai.apiKey,
   );
   const body = await json<{ text?: string }>(response);
+  await ai.assertAuthority?.();
+  signal.throwIfAborted();
   return (body.text ?? "").trim();
 }

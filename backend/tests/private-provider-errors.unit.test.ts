@@ -8,6 +8,15 @@ import {
 test("private run failures expose fixed recovery messages, never raw provider text", () => {
   assert.equal(
     privateProviderFailureMessage(
+      new ProviderError(
+        "managed_authority_unverified",
+        "private-upstream-content",
+      ),
+    ),
+    "This older run has no verified workspace provider or model. Review the saved work before starting a fresh request.",
+  );
+  assert.equal(
+    privateProviderFailureMessage(
       new ProviderError("chatgpt_usage_limit", "private-upstream-content"),
     ),
     "ChatGPT plan usage limit reached. Manage usage in ChatGPT.",

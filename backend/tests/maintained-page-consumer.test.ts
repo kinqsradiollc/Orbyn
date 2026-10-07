@@ -343,14 +343,14 @@ test("a selected ChatGPT account default is never silently sent to a hosted prov
   assert.equal(
     (await processMaintainedPageRun(log, "background", options(f.run.id)))
       .state,
-    "deferred",
+    "failed",
   );
   assert.equal(seen.length, 0);
   const job = await current(f.run.id);
-  assert.equal(job.state, "queued");
+  assert.equal(job.state, "failed");
   assert.equal(job.token_estimate, 0);
-  assert.equal(job.attempts, 0);
-  assert.ok(job.retry_after > time);
+  assert.equal(job.attempts, 1);
+  assert.match(job.error_message, /provider or model changed/);
   assert.equal(
     (await processMaintainedPageRun(log, "background", options(f.run.id)))
       .state,
@@ -392,9 +392,14 @@ test("changing provider choice away and back cannot revive an older hosted page 
   assert.equal(
     (await processMaintainedPageRun(log, "background", options(f.run.id)))
       .state,
-    "deferred",
+    "failed",
   );
   assert.equal(seen.length, 0);
+  assert.equal((await current(f.run.id)).state, "failed");
+  assert.match(
+    (await current(f.run.id)).error_message,
+    /provider or model changed/,
+  );
   assert.equal((await current(f.run.id)).token_estimate, 0);
 });
 
@@ -407,9 +412,14 @@ test("unavailable personal choice without a model never becomes a hosted page re
   assert.equal(
     (await processMaintainedPageRun(log, "background", options(f.run.id)))
       .state,
-    "deferred",
+    "failed",
   );
   assert.equal(seen.length, 0);
+  assert.equal((await current(f.run.id)).state, "failed");
+  assert.match(
+    (await current(f.run.id)).error_message,
+    /provider or model changed/,
+  );
 });
 
 test("provider consent changing during a page call prevents staging its answer", async () => {
@@ -584,9 +594,14 @@ test("removing a selected account cannot turn its queued work into a hosted requ
   assert.equal(
     (await processMaintainedPageRun(log, "background", options(f.run.id)))
       .state,
-    "deferred",
+    "failed",
   );
   assert.equal(seen.length, 0);
+  assert.equal((await current(f.run.id)).state, "failed");
+  assert.match(
+    (await current(f.run.id)).error_message,
+    /provider or model changed/,
+  );
 });
 
 test("saved Overnight changes remain manually reviewable in the morning without another model call", async () => {
@@ -705,7 +720,7 @@ test("the selected per-page budget is captured and prevents an oversized request
 
 test("switching hosted provider identity is detected even when endpoint and model are identical", async () => {
   const f = await fixture();
-  const first = await resolveMaintainedPageModel(f.user.id, f.run.model_origin);
+  await resolveMaintainedPageModel(f.user.id, f.run.model_origin);
   const base = (
     await pool.query("SELECT base_url FROM ai_providers WHERE id=$1", [
       providerId,
@@ -721,17 +736,24 @@ test("switching hosted provider identity is detected even when endpoint and mode
     await pool.query("UPDATE ai_settings SET provider_id=$1 WHERE id", [
       replacement,
     ]);
-    const next = await resolveMaintainedPageModel(
-      f.user.id,
-      f.run.model_origin,
+    await assert.rejects(
+      resolveMaintainedPageModel(f.user.id, f.run.model_origin),
+      (error: any) => error.reason === "provider_choice_changed",
     );
-    assert.notEqual(next.key, first.key);
-    let calls = 0;
-    const result = await processMaintainedPageRun(log, "background", {
-      ...options(f.run.id),
-      resolveModel: async () => (++calls === 1 ? first : next),
-    });
+    const result = await processMaintainedPageRun(
+      log,
+      "background",
+      options(f.run.id),
+    );
     assert.equal(result.state, "failed");
+    const held = await current(f.run.id);
+    assert.equal(
+      held.state,
+      "failed",
+      "a permanently stale origin must not retry indefinitely",
+    );
+    assert.match(held.error_message, /provider or model changed/);
+    assert.equal(held.token_estimate, 0);
     assert.equal(seen.length, 0);
   } finally {
     await pool.query("UPDATE ai_settings SET provider_id=$1 WHERE id", [

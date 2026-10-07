@@ -1,5 +1,97 @@
 # C1 acceptance ledger
 
+## Qualified managed authority checkpoint — 7 October 2026
+
+Frozen afd18161 full backend regression is terminal green: 4012 passed, zero
+failures/skips, exit 0, 846953 ms. Protected complete log:
+`/tmp/orbyn-adr-full-afd18161-20261007.log` (session 78103, terminal).
+The 15 scoped main product/test files match the frozen commit byte-for-byte;
+main adds only the managed authority export, excluding unrelated Docs/native
+candidate exports and migration 253. Prepared main passes 61 focused cases,
+all backend/web/mobile types, shared package and backend builds. The web production
+build and Home prerender also pass after restoring incomplete existing locked
+local Mermaid/Iconify dependencies; package manifests and versions are unchanged.
+Log: `/tmp/orbyn-main-authority-web-build-restored-20261007.log`. Actual compiled
+main fixture probes pass healthy durable tools, post-response revocation and the
+legacy NULL-snapshot recovery contract with zero external requests.
+
+Jobs now preserve the queued managed provider/model and generation revision
+across dispatch, resume and consented fallback. Agenda, recording and hosted-page
+work retain their source and personal-choice checks alongside managed authority.
+Provider changes stop stale work rather than selecting a new default. Permanent
+page-provider changes fail once instead of requeuing indefinitely. Plugin grants
+and private ChatGPT credentials stay separate.
+
+Deployment note: migration 254 leaves old job snapshots unverified. Legacy queued
+managed work and old hosted origins need review and a fresh request/update;
+current configuration is never substituted as proof of old intent. Completed
+historical results remain available. The user deploys main manually.
+
+This closes the managed authority implementation checkpoint, not the whole C1
+stage. Next implement supported reasoning/cache controls and usage/evaluation,
+then remaining multi-provider/embedding and both-client acceptance. Real provider
+inference, installed native acceptance, C2-M1 through C6/D1/U1 and final cleanup
+remain open. User/character files are preserved.
+
+
+## Independent main-scope qualification — 7 October 2026
+
+C1 authority files fromafd18161 are prepared on main24cc5607, not committed or
+pushed. Only the managed authority export was appended to the main core index;
+unrelated candidate Docs/native exports are excluded. User mobile/app.json and
+untracked files remain untouched. Backend/web/mobile typechecks, shared package
+builds and backend build pass. The first root checks exposed missing declared
+WebView13.16.1 and a wrong-platform local esbuild installation. Restored the existing
+WebView package and selected the known macOS esbuild binary for the rerun; no
+manifest/dependency version changes. The failed environment run stays recorded.
+
+Prepared-main focused tests pass61/61, zero failures/skips,10751ms:
+`/tmp/orbyn-main-managed-authority-focused-fixed-20261007.log`.
+Actual compiled main healthy and revoked Responses probes both pass with zero
+external requests. Healthy work completes and clears its durable state; revoked
+work stops after one provider request before any returned tool checkpoint.
+Logs: `/tmp/orbyn-main-authority-healthy-20261007.log` and
+`/tmp/orbyn-main-authority-revocation-20261007.log`.
+Actual old-schema-upgrade NULL job also rejects with the distinct fixed legacy
+reason, zero dispatch: `/tmp/orbyn-main-authority-legacy-contract-20261007.log`.
+
+Frozen afd18161 full regression is still live as session 78103 on its own database;
+this qualification does not replace its terminal result. Keep checkpoint open and
+main uncommitted until that result is inspected. No production deploy or real
+provider acceptance is claimed. No next product checkpoint started.
+
+
+## Managed authority candidate — 7 October 2026
+
+The C1 enqueue/dispatch/recovery repair is implemented locally and awaits a fresh
+full frozen regression before main promotion. Jobs capture an immutable,
+credential-free managed provider/model identity with monotonic selection/provider
+revisions. Default and explicitly consented fallback retain that identity; changes
+before dispatch, after response or on recovery reject rather than retarget. Agenda,
+transcription and hosted page updates compose the same guard with existing source,
+personal-choice, lease and budget checks. Plugin permissions stay independent.
+
+Migration254 leaves legacy job snapshots NULL rather than inventing old intent.
+Those runs stop with a fixed recovery message; users must review saved work and
+start a fresh request. Hosted origins without verified capture also require a fresh
+update. Permanent provider-choice changes fail once instead of deferring forever.
+Label and night-budget changes do not invalidate generation authority.
+
+The integrated focused cohort passed151/151, zero failures/skips,32308ms:
+`/tmp/orbyn-managed-authority-254-permanent-stop-20261007.log`. A later distinct
+legacy-error follow-up first passed20/23: three revocation assertions incorrectly
+expected the new missing-identity reason. They now retain the provider_changed
+expectation; the corrected contract/privacy-message cohort passes23/23, zero
+failures/skips,1955ms:
+`/tmp/orbyn-managed-authority-final-contract-fixed-20261007.log`.
+
+Actual old-schema upgrade preserved a legacy NULL snapshot and rejected retargeting.
+Compiled fixture probes pass healthy durable tools and stop a revoked provider's
+response before a tool checkpoint. These intercept provider traffic; no real
+provider inference is established. Prior3990/3990 full evidence covers the preceding
+Responses scope only. Main remains24cc5607; this candidate is not deployed.
+
+
 ## Qualified Responses checkpoint — 7 October 2026
 
 This scoped main checkpoint promotes the managed native Responses tool repair:
@@ -242,3 +334,29 @@ This table is an implementation/verification plan derived from current source;
 its adjacent rows are audit gaps, not claimed runtime reproductions or fixes.
 Mainc2476119 contains only the qualified typography checkpoint. The Responses
 working-tree integration remains uncommitted until the live full run finishes.
+
+## Next controls reference refreshed — 7 October 2026
+
+Read-only preparation while the authority checkpoint qualifies; no controls are
+implemented by this note. Official [GPT-6.1 Sol model contract](https://developers.openai.com/api/docs/models/gpt-6.1-sol)
+supports low/medium/high/xhigh/max effort, excluding none/minimal; native tools
+require Responses. Use explicit model capability validation rather than sending
+every effort to every catalog entry.
+
+The fetched [prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching)
+uses prompt_cache_options mode/ttl for5.6 and later, with30m currently supported.
+Explicit-only mode without breakpoints produces no cache writes. Top-level
+instructions cannot hold an explicit breakpoint; reusable developer content needs
+a supported input text block. Retain older-model retention as its own capability.
+Keep stable tools/instructions first, dynamic source material later, and separate
+cache accounting by opaque user/workspace identity. Cache hits are not guaranteed.
+
+After authority promotion, implement shared/backend/web/mobile controls and
+unsupported-value refusal together. Preserve generation revisions when options
+change. Cover direct completion and native tool requests, durable replay and
+explicit fallback without introducing personal-plan or plugin authority sharing.
+Capture observed input/output/reasoning/cache-read/cache-write usage; absent fields
+stay unknown. Evaluate representative workflows for cost, latency and quality
+against baseline with a permitted real provider probe; fixtures do not prove hits
+or billing savings. Obtain exact-flow screenshot captures and inspect both clients
+before declaring the controls checkpoint complete.

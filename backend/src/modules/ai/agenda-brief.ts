@@ -119,6 +119,7 @@ export async function briefFor(
       return null;
     }
     const unchanged = async () => {
+      await ai.assertAuthority?.();
       await assertAgendaAiSnapshot(ownerId, now, snapshot);
       if (JSON.stringify(await choiceForOwner()) !== JSON.stringify(choice))
         throw new Error("The agenda provider choice changed.");

@@ -139,3 +139,5 @@ export * from "./doc-versioned-source.js";
 export * from "./doc-content-operations.js";
 
 export * from "./doc-container-tasks.js";
+
+export * from "./managed-ai-authority.js";

@@ -9,7 +9,7 @@ import {
   cancelChatgptInference,
 } from "../../auth/chatgpt-inference.js";
 import { transaction } from "../../../db/pool.js";
-import { resolveAi } from "./resolve.js";
+import { resolveJobManagedAi } from "./resolve.js";
 import { fail } from "@orbyn/core";
 import { recordProviderUse } from "../provider-provenance.js";
 import {
@@ -43,6 +43,8 @@ export function privateProviderFailureMessage(error: unknown): string | null {
       "ChatGPT completion is unknown. This request was not retried through another provider.",
     chatgpt_device_offline:
       "This run could not safely return to its queue. Review the saved work; unfinished model calls were not retried.",
+    managed_authority_unverified:
+      "This older run has no verified workspace provider or model. Review the saved work before starting a fresh request.",
     provider_changed:
       "Your provider choice or captured model changed. Review the saved work before starting a fresh request.",
     fallback_unavailable:
@@ -83,20 +85,26 @@ export async function resolveUserAi(
       );
   };
   if (choice.primary === "default") {
-    const ai = await resolveAi();
+    const ai = await resolveJobManagedAi(userId, jobId);
     return ai
       ? {
           ...ai,
-          assertAuthority: unchanged,
-          recordCompletion: () =>
-            recordProviderUse(
+          assertAuthority: async () => {
+            await unchanged();
+            await ai.assertAuthority?.();
+          },
+          recordCompletion: async () => {
+            await unchanged();
+            await ai.assertAuthority?.();
+            return recordProviderUse(
               userId,
               jobId,
               "default",
               ai.model,
               false,
               "completed",
-            ),
+            );
+          },
         }
       : null;
   }
@@ -104,7 +112,7 @@ export async function resolveUserAi(
     await unchanged();
     if (!choice.fallback_to_default)
       throw new ProviderError("chatgpt_unavailable", reason);
-    const ai = await resolveAi();
+    const ai = await resolveJobManagedAi(userId, jobId);
     if (!ai)
       throw new ProviderError(
         "fallback_unavailable",
@@ -113,7 +121,13 @@ export async function resolveUserAi(
     await notice(
       `Using Orbyn's default provider as your selected fallback. ${reason}`,
     );
-    return { ...ai, assertAuthority: unchanged };
+    return {
+      ...ai,
+      assertAuthority: async () => {
+        await unchanged();
+        await ai.assertAuthority?.();
+      },
+    };
   };
   const preferred = choice.connection_id
     ? await transaction(

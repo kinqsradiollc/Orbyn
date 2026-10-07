@@ -2,6 +2,11 @@ import { z } from "zod";
 import { createHash } from "node:crypto";
 import { pool, type Queryable } from "../../db/pool.js";
 import { resolveAi } from "../ai/providers/resolve.js";
+import {
+  managedAiSnapshot,
+  readManagedSelection,
+} from "../ai/providers/managed-authority.js";
+import { ProviderError } from "../ai/providers/adapters.js";
 import { readAiProviderChoice } from "../auth/ai-provider-choice.js";
 import type { ChatMessage, ResolvedAi } from "../ai/providers/adapters.js";
 import {
@@ -27,7 +32,11 @@ export async function captureMaintainedPageModelOrigin(
 ): Promise<MaintainedPageModelOrigin> {
   const choice = await readAiProviderChoice(db, userId);
   if (choice.primary === "default")
-    return { kind: "hosted", provider_choice_version: choice.version };
+    return {
+      kind: "hosted",
+      provider_choice_version: choice.version,
+      managed_provider_snapshot: (await readManagedSelection(db)).snapshot,
+    };
   const preferences = (
     await db.query<{ connection_id: string; model: string; version: string }>(
       `SELECT p.connection_id,p.model,p.version FROM chatgpt_model_preferences p
@@ -73,17 +82,22 @@ export async function resolveMaintainedPageModel(
     (origin.provider_choice_version ?? 0) !== current.provider_choice_version
   )
     throw new PageModelUnavailable("provider_choice_changed");
-  const ai = await resolveAi();
+  if (!origin.managed_provider_snapshot)
+    throw new PageModelUnavailable("provider_choice_changed");
+  let ai: ResolvedAi | null;
+  try {
+    ai = await resolveAi(origin.managed_provider_snapshot);
+  } catch (error) {
+    if (error instanceof ProviderError && error.reason === "provider_changed")
+      throw new PageModelUnavailable("provider_choice_changed");
+    throw error;
+  }
   if (!ai) throw new PageModelUnavailable("not_configured");
   const key = createHash("sha256")
     .update(
       JSON.stringify({
-        providerId: ai.providerId,
-        providerRevision: ai.providerRevision,
-        kind: ai.kind,
-        baseUrl: ai.baseUrl,
-        model: ai.model,
-        format: ai.format,
+        providerChoiceVersion: origin.provider_choice_version ?? 0,
+        managed: managedAiSnapshot.parse(origin.managed_provider_snapshot),
       }),
     )
     .digest("base64url");

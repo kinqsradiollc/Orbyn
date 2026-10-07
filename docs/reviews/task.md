@@ -1,3 +1,33 @@
+## Qualified managed authority checkpoint — 7 October 2026
+
+Frozen afd18161 full backend regression is terminal green: 4012 passed, zero
+failures/skips, exit 0, 846953 ms. Protected complete log:
+`/tmp/orbyn-adr-full-afd18161-20261007.log` (session 78103, terminal).
+The 15 scoped main product/test files match the frozen commit byte-for-byte;
+main adds only the managed authority export, excluding unrelated Docs/native
+candidate exports and migration 253. Prepared main passes 61 focused cases,
+all backend/web/mobile types, shared package and backend builds. Actual compiled
+main fixture probes pass healthy durable tools, post-response revocation and the
+legacy NULL-snapshot recovery contract with zero external requests.
+
+Jobs now preserve the queued managed provider/model and generation revision
+across dispatch, resume and consented fallback. Agenda, recording and hosted-page
+work retain their source and personal-choice checks alongside managed authority.
+Provider changes stop stale work rather than selecting a new default. Permanent
+page-provider changes fail once instead of requeuing indefinitely. Plugin grants
+and private ChatGPT credentials stay separate.
+
+Deployment note: migration 254 leaves old job snapshots unverified. Legacy queued
+managed work and old hosted origins need review and a fresh request/update;
+current configuration is never substituted as proof of old intent. Completed
+historical results remain available. The user deploys main manually.
+
+This closes the managed authority implementation checkpoint, not the whole C1
+stage. Next implement supported reasoning/cache controls and usage/evaluation,
+then remaining multi-provider/embedding and both-client acceptance. Real provider
+inference, installed native acceptance, C2-M1 through C6/D1/U1 and final cleanup
+remain open. User/character files are preserved.
+
 ## Qualified C1 Responses protocol checkpoint — 7 October 2026
 
 This scope promotes only protocol.ts, loop.ts and their managed Responses tests.

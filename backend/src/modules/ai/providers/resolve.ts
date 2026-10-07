@@ -1,5 +1,11 @@
 import { AI_PROVIDERS, type AiProviderKind } from "@orbyn/core";
-import { query } from "../../../db/pool.js";
+import { query, transaction } from "../../../db/pool.js";
+import {
+  readManagedSelection,
+  assertManagedSelection,
+  readJobManagedSnapshot,
+  type ManagedAiSnapshot,
+} from "./managed-authority.js";
 import { decryptSecret } from "../../../lib/secrets.js";
 import type { ResolvedAi } from "./adapters.js";
 import type { EmbeddingConfiguration } from "../../search/vectors.js";
@@ -49,15 +55,40 @@ export async function connection(
  * The provider the assistant should use: the admin's choice from the admin
  * console, or nothing (the assistant is off). There is no server fallback.
  */
-export async function resolveAi(): Promise<ResolvedAi | null> {
-  const row = (
-    await query<ProviderRow & { model: string }>(
-      `SELECT p.*, extract(epoch from p.updated_at)::text AS provider_revision, s.model FROM ai_settings s
-       JOIN ai_providers p ON p.id = s.provider_id
-       WHERE s.id AND p.enabled AND s.model <> ''`,
-    )
-  ).rows[0];
-  return row ? connection(row, row.model) : null;
+export async function resolveAi(
+  captured?: ManagedAiSnapshot,
+): Promise<ResolvedAi | null> {
+  const selected = await transaction(async (db) => {
+    const live = await readManagedSelection(db);
+    if (captured) assertManagedSelection(captured, live.snapshot);
+    return live;
+  });
+  if (!selected.provider || !selected.snapshot.provider) return null;
+  const ai = await connection(
+    selected.provider,
+    selected.snapshot.provider.model,
+  );
+  return {
+    ...ai,
+    assertAuthority: async () =>
+      transaction(async (db) => {
+        assertManagedSelection(
+          selected.snapshot,
+          (await readManagedSelection(db)).snapshot,
+        );
+      }),
+  };
+}
+
+/** Resume and explicit fallback use the job's enqueue-time managed identity only. */
+export async function resolveJobManagedAi(
+  owner: string,
+  jobId: string,
+): Promise<ResolvedAi | null> {
+  const captured = await transaction((db) =>
+    readJobManagedSnapshot(db, owner, jobId),
+  );
+  return resolveAi(captured);
 }
 
 /** Embeddings use only their accepted provider revision, independently of chat. */

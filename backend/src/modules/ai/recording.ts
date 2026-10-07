@@ -105,6 +105,7 @@ export async function aiRecordingRoutes(app: FastifyInstance) {
           if (!ai) fail(503, "The transcription provider is unavailable.");
           const audio = await recordingBytes(file.id);
           const assertAudioSource = async () => {
+            await ai.assertAuthority?.();
             const currentChoice = await readAiProviderChoice(pool, u.id);
             if (
               currentChoice.primary !== "default" ||
