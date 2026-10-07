@@ -1553,3 +1553,21 @@ multi-provider dispatch/catalog/runtime inventory and permitted cache evaluation
   Visual Check was asked for corrected320px web and320/390 mobile originals.
   The1280px browser capture returned only918px of output: full wide-surface
   acceptance remains open. Native installed-client gates also remain open.
+
+### Corrected capture review in progress
+
+Root inspected corrected693066d5 originals from Visual Check: web320 Light/Dark
+empty and cleared-search popup now fit within the viewport; the light Tab state
+returns focus to Name. Mobile320 Light/Dark empty chooser and390 filtered results
+keep their search/rows within the sampled control bounds after15pt correction.
+The mobile capture reports DPR0.8 with400×925/488×1054 output for320×740/390×844
+CSS targets; physical capture/viewport fidelity and native keyboard remain open.
+Root requested a lower-list frame to prove the remaining provider rows are
+reachable, plus a documented same-browser full-wide capture if supported.
+No full C1 or installed-native acceptance is claimed. Await final manifest and
+the same confirmed-live full regression before main delivery.
+
+Actual compiled public catalog adapter checks independently pass for DeepInfra
+(181 unique sorted models) and ZenMux (201). This used no credential, paid
+inference or private content. Receipt:
+`/tmp/orbyn-c1-public-catalog-live-20261008.json`.
