@@ -1048,3 +1048,21 @@ Root inspected all four QA023 Home originals at1278×900 and390×844. The badge
 is contained below the hero platform line and absent from footer navigation.
 Accept only this badge placement; no full Home/whole-app acceptance implied.
 Manifest: `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-023-home-badge-capture-manifest.md`.
+
+Retry full regression52257 has a confirmed failure in `agenda-private.test.ts`:
+ChatGPT Agenda polling/publication deadlocks between the request-row UPDATE lock
+and an `ai_jobs` SHARE-to-UPDATE upgrade in provenance recording. PostgreSQL
+identifies both statements; log `/tmp/orbyn-c1-retry-deadlock-postgres-20261008.log`.
+The embedding checkpoint cannot promote while this prerequisite regression fails.
+A new actual-job-guard unit reproduction passes1/2 before correction
+(`/tmp/orbyn-c1-inference-lock-before-20261008.log`): its lock must serialize job
+writes before the request lock, while retaining source/consent checks. Product
+source remains unchanged until the running full cohort is terminal.
+
+Web production build passes (`/tmp/orbyn-c1-retry-web-build-20261008.log`).
+Root inspected QA024 originals: web wide/narrow retry text and disabled controls
+are contained. Initial mobile originals bypassed App's font bootstrap and used
+a fallback serif font; they are excluded from typography acceptance. The
+temporary fixture now loads App's actual Manrope/DM Sans set and theme provider;
+Visual Check has been asked for refreshed mobile originals. No product font
+change or real provider/consent action was performed.
