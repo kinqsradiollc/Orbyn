@@ -33,6 +33,31 @@ No live vendor inference, UI change, production deploy or complete C1 acceptance
 The user requests a pause after **all C1 acceptance**, before C2/M1. Remaining
 C1 runtime/client/embedding/cache gates are retained rather than waived.
 
+### Additional Zen qualification and visual boundary
+
+Current workspace typechecks pass for shared packages, backend, desktop and
+mobile: `/tmp/orbyn-c1-zen-workspace-types-20261008.log`. Public Zen catalog
+snapshot86 IDs is independently compared with118 reviewed metadata records:
+84 current IDs are covered; the remaining two are explicitly unsupported Jev
+models. This is snapshot coverage, not certification of future model additions.
+
+Root inspected QA026 mobile heading-metrics and screenshot-mode originals.
+Computed headings are18px with contained320px DOM bounds, scale/zoom1; the
+320px and later390px capture pixels nevertheless show roughly double-size
+text and crop the right side. Alternate documented screenshot modes do not
+resolve the discrepancy. Do not classify it as a repaired product defect or
+accept that320px layout from DOM measurements alone. Earlier normal390px and
+scoped web picker captures remain sampled evidence only.
+
+Native capture of the authenticated Codex browser was denied by Computer Use:
+`Computer Use is not allowed to use the app 'com.openai.codex' for safety reasons.`
+The visual session's direct human no-alternate-browser instruction prevents its
+Chrome retest of that flow after the denial. No permission was bypassed, no
+credentials were exposed, and no further target screenshot was obtained. This
+capture gate remains open; Zen's backend transport checkpoint makes no UI change.
+Manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-026-provider-picker-screenshot-mode-follow-up-manifest.md`.
+
 ## Together array catalog — merged checkpoint 8 October 2026
 
 Frozen source `8d83fb01` normalizes Together's documented top-level array only
