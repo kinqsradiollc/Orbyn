@@ -17,6 +17,15 @@ User deploys main manually; deployment is unconfirmed. No entire ADR stage is cl
 | Last | Integration/cleanup | Qualified scoped checkpoints on main; candidate/user/character changes preserved. | Reconcile remaining branches/worktrees; qualify and promote each scope; clean only safe merged work after complete ADR acceptance. |
 | Excluded | Removed product scope | Voice, computer-use product features and speculative Decisions are excluded by the ADR. | No implementation required; computer-use tools may still capture QA screenshots. |
 
+## Current follow-up — embedding consent preservation
+
+The controls audit reproduced generation-only edits invalidating embedding consent
+because migration218 increments its provider revision on every update. Migration256
+and regression correct that boundary without reviving previously invalidated
+consent. Focused29/29 checks pass; refreshed exact-main full qualification remains
+required. The earlier3722/3722 result below predates this correction. Visual and
+live-provider gates remain open; main stays3c8feb40.
+
 ## Latest qualification — exact main scope
 
 Release candidatec082d93e full regression completed3722/3722, zero failures or

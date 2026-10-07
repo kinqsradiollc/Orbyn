@@ -677,3 +677,26 @@ integration when acceptance is sufficient. Local process has no evaluation key;
 a names-only inspection finds no managed OpenAI/evaluation key variable in
 .env.production. No secret values were printed or changed. Later C1 embedding/
 multi-provider matrix and C2/M1-C6/D1/U1 remain required; no final cleanup.
+
+
+## Generation-control/embedding revision correction
+
+Source audit found migration218 bumps embedding_revision on every provider UPDATE.
+Reproduction changed only high reasoning/explicit caching and invalidated the prior
+embedding binding (revision6 to7). New regression failed6/7 before the fix; log
+`/tmp/orbyn-c1-embedding-controls-reproduction-20261007.log`.
+
+Migration256 replaces only that trigger function: generation-only reasoningEffort,
+cacheMode and cacheRetention, and updated_at, do not change the embedding token.
+Existing captured tokens are preserved; previously invalidated consent is not
+revived. Endpoint, credential, provider kind/name/key hint, enabled state and any
+remaining transport options still invalidate the token monotonically. Generation
+revision continues to advance for changed generation controls.
+
+Expanded real API/database/resolver matrix covers all three generation fields,
+endpoint change, key rotation, API version, disable and re-enable. Old invalidated
+binding never resolves again. The combined controls/inventory/catalog/stock search/
+embedding validation cohort passes29/29, zero failures/skips,7292ms; no provider
+network calls. Log `/tmp/orbyn-c1-embedding-controls-matrix-20261007.log`.
+Prior mainc082d93e3722/3722 full pass predates this correction. Fresh exact-main
+qualification is required; no promotion or complete C1 stage claimed.

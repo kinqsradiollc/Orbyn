@@ -261,3 +261,78 @@ test("exact control revisions reject rapid edits even when timestamps are identi
   assert.notEqual(second.controls_revision, old.controls_revision);
   assert.deepEqual(second.options, { cacheMode: "implicit" });
 });
+
+test("generation controls retain the accepted embedding connection revision", async () => {
+  const { resolveEmbedding } =
+    await import("../src/modules/ai/providers/resolve.js");
+  const before = (
+    await pool.query(
+      "SELECT embedding_revision,generation_revision FROM ai_providers WHERE id=$1",
+      [providerId],
+    )
+  ).rows[0];
+  const config = {
+    providerId,
+    providerRevision: before.embedding_revision,
+    model: "text-embedding-3-small",
+    dimensions: 1536,
+    generation: randomUUID(),
+  };
+  assert.ok(await resolveEmbedding(config));
+  const saved = await call("PUT", `/ai/providers/${providerId}`, {
+    options: { reasoningEffort: "high", cacheMode: "explicit" },
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  const after = (
+    await pool.query(
+      "SELECT embedding_revision,generation_revision FROM ai_providers WHERE id=$1",
+      [providerId],
+    )
+  ).rows[0];
+  assert.notEqual(after.generation_revision, before.generation_revision);
+  assert.equal(after.embedding_revision, before.embedding_revision);
+  const embedding = await resolveEmbedding(config);
+  assert.ok(embedding);
+  assert.deepEqual(embedding.options, {});
+  // The dormant generation connection can save legacy retention without
+  // selecting an incompatible model; embedding transport remains independent.
+  await pool.query("UPDATE ai_settings SET provider_id=NULL,model='' WHERE id");
+  for (const options of [
+    { reasoningEffort: "low" },
+    { cacheMode: "off" },
+    { cacheRetention: "24h" },
+  ]) {
+    const result = await call("PUT", `/ai/providers/${providerId}`, {
+      options,
+    });
+    assert.equal(result.statusCode, 200, result.body);
+    const current = (
+      await pool.query(
+        "SELECT embedding_revision FROM ai_providers WHERE id=$1",
+        [providerId],
+      )
+    ).rows[0];
+    assert.equal(current.embedding_revision, before.embedding_revision);
+    assert.ok(await resolveEmbedding(config));
+  }
+  let revision = before.embedding_revision;
+  for (const change of [
+    { base_url: "https://embedding-fixture.example.invalid/v1" },
+    { api_key: "rotated-embedding-fixture-key" },
+    { options: { apiVersion: "2026-10-01" } },
+    { enabled: false },
+    { enabled: true },
+  ]) {
+    const changed = await call("PUT", `/ai/providers/${providerId}`, change);
+    assert.equal(changed.statusCode, 200, changed.body);
+    const current = (
+      await pool.query(
+        "SELECT embedding_revision FROM ai_providers WHERE id=$1",
+        [providerId],
+      )
+    ).rows[0];
+    assert.ok(BigInt(current.embedding_revision) > BigInt(revision));
+    revision = current.embedding_revision;
+    assert.equal(await resolveEmbedding(config), null);
+  }
+});
