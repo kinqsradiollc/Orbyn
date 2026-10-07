@@ -1,0 +1,44 @@
+# C1 managed usage browser review
+
+Root review, 8 October 2026. Product source81e807ee; docs-only candidateab01bcc8.
+Capture session: Orbyn Visual Check. Root inspects originals and owns findings.
+Synthetic counters are confined to the disposable local QA account; no vendor
+billing, plan limits, cost or live inference is established by this fixture.
+
+## Fixture and API
+
+Two tracked done jobs, no runner invocation. Fresh authenticated GET /ai/usage
+returns200,enabledtrue,requests2/window30,input2000/output200/reasoning40,
+cached1000/cache-write100. Exact ownership/cleanup metadata lives in
+/tmp/orbyn-c1-usage-visual-fixture-20261008.json. Prior QA usage count was zero.
+Do not delete other usage or jobs. Positive capture is still live; overflow is
+prepared but not switched until the capture session is quiescent.
+
+## Root-inspected evidence
+
+Folder:
+/Users/anhdang/.codex/visualizations/2026/10/08/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-026-c1-usage-positive-2026-10-08/.
+Privacy-safe crops retain the full usage subsection; full source originals are
+kept separately. These are browser screenshots, not installed-native proof.
+
+| Original/crop | Root result | Scope limit |
+| --- | --- | --- |
+| C1-usage-positive-web-1280x1000-light.png | ✓ All five counters,2responses/window30 and observed-only/ChatGPT-plan exclusion visible and contained. | Modal crop; no keyboard or alternate data-state proof. |
+| C1-usage-positive-web-1280x1000-dark.png | ✓ Same five counters and honesty text visible and contained. | Modal crop; no whole-settings acceptance. |
+| C1-usage-positive-web-320x740-dark.png | ✓ Counters/window/disclaimer/Refresh wrap horizontally; no clipped counters. | Settings navigation consumes substantial viewport height; usability finding below. |
+
+Narrow Light/mobile320/390 both themes, overflow, loading/error and native
+acceptance remain open until their own evidence is inspected. No whole C1 or
+U1 completion is inferred from these three images.
+
+## Retained layout finding
+
+**U1-SETTINGS-NARROW-01 — settings navigation uses excessive vertical space.**
+The320×740 Dark image shows the title, search and wrapping navigation filling
+roughly the top40percent of the visible modal, leaving a restricted scrolling
+content region. The usage counters themselves wrap correctly. This is a broader
+settings layout issue, not evidence of horizontal counter overflow. During U1,
+replace the narrow navigation with a compact section control or drawer, then
+capture all sections and scroll/focus behavior on phone heights and large text.
+Keep the original palette and modal design. Do not claim this issue fixed by a
+passing usage-counter component test.
