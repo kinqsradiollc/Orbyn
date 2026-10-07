@@ -185,9 +185,19 @@ for (const change of [
   });
 }
 
-for (const change of ["trash", "delete", "provider-delete"] as const) {
+for (const change of [
+  "trash",
+  "delete",
+  "provider-delete",
+  "team-keep-out",
+  "move-to-kept-out-team",
+] as const) {
   test(`measuring withholds storage after in-flight ${change}`, async () => {
     await fixture(async (state) => {
+      if (change === "move-to-kept-out-team")
+        await pool.query("UPDATE docs SET team_id=NULL WHERE id=$1", [
+          state.doc,
+        ]);
       state.mutate(async () => {
         if (change === "trash")
           await pool.query("UPDATE docs SET deleted_at=now() WHERE id=$1", [
@@ -195,10 +205,26 @@ for (const change of ["trash", "delete", "provider-delete"] as const) {
           ]);
         else if (change === "delete")
           await pool.query("DELETE FROM docs WHERE id=$1", [state.doc]);
-        else
+        else if (change === "provider-delete")
           await pool.query("DELETE FROM ai_providers WHERE id=$1", [
             state.provider,
           ]);
+        else if (change === "team-keep-out")
+          await pool.query(
+            "UPDATE teams SET assistant_allowed=false WHERE id=$1",
+            [state.team],
+          );
+        else {
+          // Moving a private page into a kept-out team does not edit its content.
+          await pool.query(
+            "UPDATE teams SET assistant_allowed=false WHERE id=$1",
+            [state.team],
+          );
+          await pool.query("UPDATE docs SET team_id=$2 WHERE id=$1", [
+            state.doc,
+            state.team,
+          ]);
+        }
       });
       assert.equal(await measureQueued(), 0);
       assert.equal(
@@ -210,7 +236,7 @@ for (const change of ["trash", "delete", "provider-delete"] as const) {
         ).rows[0].count,
         0,
       );
-      if (change === "provider-delete")
+      if (change !== "trash" && change !== "delete")
         assert.equal(
           (
             await pool.query(
@@ -221,6 +247,37 @@ for (const change of ["trash", "delete", "provider-delete"] as const) {
           1,
           "discarded output does not acknowledge queued work",
         );
+      if (change === "team-keep-out" || change === "move-to-kept-out-team") {
+        assert.equal(
+          await measureQueued(),
+          0,
+          "kept-out work remains unprocessed",
+        );
+        await pool.query(
+          "UPDATE teams SET assistant_allowed=true WHERE id=$1",
+          [state.team],
+        );
+        assert.equal(
+          await measureQueued(),
+          1,
+          "restored permission resumes queued work",
+        );
+        assert.equal(
+          await measureQueued(),
+          0,
+          "completed work is acknowledged once",
+        );
+        assert.equal(
+          (
+            await pool.query(
+              "SELECT count(*)::integer count FROM doc_embeddings WHERE doc_id=$1",
+              [state.doc],
+            )
+          ).rows[0].count,
+          1,
+          "only a fresh authorized vector is stored",
+        );
+      }
       if (change === "trash") {
         assert.equal(
           (

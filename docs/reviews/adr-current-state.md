@@ -64,6 +64,9 @@ open. Picker and test-lifecycle correction are qualified for scoped main deliver
 Scoped picker/test-lifecycle delivery is merged and pushed as1438b0bd; main
 and origin/main matched, and unrelated primary changes were preserved.
 C1 remains active; no premature pause or C2 work.
+The additional successful indexing access-race/recovery tests pass in the
+current56/56 vector cohort, plus independent upgrade1/1 and late-install1/1.
+No backend product source change or live-recipient acceptance is implied.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.

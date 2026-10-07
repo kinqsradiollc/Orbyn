@@ -1613,3 +1613,34 @@ Visual Check was asked for current-source management/edit captures only, without
 Save/Test/Load or external calls; root acceptance remains pending. C1 retains
 its live-provider, cache benchmark, embedding and broader client acceptance
 gates. Pause only after completing C1 and supplying the remaining ADR table.
+
+## Successful indexing access races and recovery — 8 October 2026
+
+Added two real PostgreSQL/pgvector integration cases to
+`backend/tests/embedding-access-races.integration.ts`: team AI permission revoked
+after the inert recipient receives the request, and a private page moved into
+a kept-out team before the reply. Both discard successful vector output and
+retain queued work. An additional measuring attempt while kept out does no work;
+restoring permission indexes the page once, clears the queue and stores only a
+fresh authorized vector. The recipient mutation executes exactly once.
+
+Current dedicated CI vector cohort passes56/56, zero failures/skips/cancellations,
+exit0; backend typecheck passes. Logs:
+`/tmp/orbyn-c1-access-vector-corrected-cohort-20261008.log` and
+`/tmp/orbyn-c1-access-types-20261008.log`. Product source is unchanged.
+Separate original upgrade test passes1/1 on a fresh marked vector database;
+late-extension test passes1/1 on a stock schema/data fixture restored into the
+vector server without its extension. Logs:
+`/tmp/orbyn-c1-access-upgrade-20261008.log` and
+`/tmp/orbyn-c1-access-late-restored-corrected-20261008.log`. The restore removes
+only PostgreSQL17's unsupported `SET transaction_timeout = 0` header for the
+PostgreSQL16 target; schema/data and migration history remain intact.
+
+Harness failures are retained: the initial mixed cohort30/32 failed because
+late-install and upgrade require independent fixture databases, not an already
+migrated vector database. A blank late-install database then failed its required
+restored-stock-fixture prerequisite; the first17→16 restore failed on the header
+above. None establishes a product regression; corrected fixture runs pass.
+No real vendor content, provider configuration, embedding consent or production
+database was touched. Remaining live-recipient, benchmark and client gates stay
+open; this checkpoint does not complete C1.
