@@ -683,6 +683,17 @@ multi-provider matrix and C2/M1-C6/D1/U1 remain required; no final cleanup.
 
 ### Separate pgvector integration qualification
 
+Fresh marked `orbyn_compiled_main_256_test` also passes both compiled main probes
+with migration256 applied. Runtime proves selected high/explicit controls,
+two-step durable tool recovery, encrypted intermediate checkpoint, done-state
+cleanup, two owner observations and401/403 usage boundaries. Aggregation proves
+overflow stays unknown, anonymous observations remain distinct, expired rows are
+excluded and job deletion cascades. External provider requests:0.
+Logs: `/tmp/orbyn-main-256-compiled-runtime-20261007.log` and
+`/tmp/orbyn-main-256-compiled-aggregation-20261007.log`.
+Git comparison confirms backend/shared/client product source is unchanged between
+the previously compiledc082d93e and66f7a5f2; only migrations/tests/docs changed.
+
 An existing pgvector16 image ran in the owned tmpfs fixture
 `orbyn-c1-vector-qualification-20261007`, loopback55437; no image download or
 user-container/engine restart. It was removed after all12 checks completed;
