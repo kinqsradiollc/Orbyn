@@ -1,3 +1,18 @@
+## Database qualification restored — 7 October 2026
+
+A new disposable PostgreSQL test server on loopback port 55436 restored database
+verification without changing existing containers. The first structured-storage
+run exposed a real extraction failure: inserting a format-2 destination did not
+set the transaction-local structured-writer capability. Extraction now authorizes
+that validated insert explicitly. Its regression also uses the documented 201
+creation response. Added refusal coverage proves 401/403/400/409/429 requests
+preserve source ownership/revision and create no destination page.
+
+The fresh structured-storage, Docs and structured suites pass 63/63 with zero
+failures/skips (6154ms). Full candidate database regression is now running;
+this is not a passing full-suite claim or main promotion. Complete editor UI,
+installed ChatGPT acceptance and the full ADR scope remain open.
+
 ## Extraction reference/footnote dependencies — 7 October 2026
 
 Both extracted and retained pages now keep the supporting definitions their text
@@ -4623,7 +4638,6 @@ Next review other unfinished source paths while runtime acceptance is unavailabl
 starting with D1 flat writers and normal-editor ownership adoption; do not treat
 that review as completion of blocked ChatGPT acceptance.
 
-
 ### D1 structured capture/reflection append checkpoint — 6 October 2026
 
 Added explicit root/section append helpers. Existing quote/callout/list/checklist/
@@ -4652,7 +4666,6 @@ Still open: makeLineTasks and structure.writeLines flat writers, nested checklis
 identity/task mapping, agenda regeneration flat writes, normal-editor adoption,
 CRDT/collaboration and full D1 render/edit/export/privacy matrices. Other full ADR
 requirements remain open. Candidate checkpoint only until database qualification.
-
 
 ### D1 full-tree page merge checkpoint — 6 October 2026
 
@@ -4688,7 +4701,6 @@ reference semantics; agenda regeneration; normal editor/collaboration and full
 render/edit/export/privacy matrices. Remaining ChatGPT/platform, UI, agents,
 plugins/channels and final qualification/cleanup scope remains active.
 
-
 ### D1 nested checklist task mapping checkpoint — 6 October 2026
 
 Shared task view maps a list item's checked metadata and owning first paragraph
@@ -4723,7 +4735,6 @@ agenda regeneration and full Docs editor/collaboration/render/edit/export/privac
 matrices. Full ChatGPT/platform/UI/agents/plugins/channels/integration/cleanup scope
 remains active. Root character/user dirt and native target artifacts preserved.
 
-
 ### Home goal progress main checkpoint — 6 October 2026
 
 Home reads complete nested plan nodes for checklist counts and overlays current
@@ -4748,7 +4759,6 @@ was resolved by retaining candidate's already tested superset. Staged merge diff
 was empty: candidate source tree unchanged. No unresolved conflicts remain.
 Continue other task projections/editor controls, partial extraction/moved fragments,
 agenda regeneration and full governing C1-C6/M1/D1/U1/runtime/visual/cleanup scope.
-
 
 ### Owned-editor offline branch integration — 6 October 2026
 

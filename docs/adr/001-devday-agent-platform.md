@@ -1,3 +1,18 @@
+## Database qualification restored — 7 October 2026
+
+A new disposable PostgreSQL test server on loopback port 55436 restored database
+verification without changing existing containers. The first structured-storage
+run exposed a real extraction failure: inserting a format-2 destination did not
+set the transaction-local structured-writer capability. Extraction now authorizes
+that validated insert explicitly. Its regression also uses the documented 201
+creation response. Added refusal coverage proves 401/403/400/409/429 requests
+preserve source ownership/revision and create no destination page.
+
+The fresh structured-storage, Docs and structured suites pass 63/63 with zero
+failures/skips (6154ms). Full candidate database regression is now running;
+this is not a passing full-suite claim or main promotion. Complete editor UI,
+installed ChatGPT acceptance and the full ADR scope remain open.
+
 ## Extraction reference/footnote dependencies — 7 October 2026
 
 Both extracted and retained pages now keep the supporting definitions their text

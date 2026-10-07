@@ -1306,7 +1306,7 @@ test("extract keeps nested task ownership and complete source history", async ()
     headers: { authorization: `Bearer ${token}` },
     payload: { version: 2, block_ids: ["task"], title: "Moved task" },
   });
-  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.statusCode, 201, response.body);
   const destination = response.json().doc.id;
   const moved = await readVersionedDoc(pool, owner, destination, [1, 2]);
   const remaining = await readVersionedDoc(pool, owner, id, [1, 2]);
@@ -1349,4 +1349,79 @@ test("extract keeps nested task ownership and complete source history", async ()
   ).rows[0];
   assert.deepEqual(history.content_nodes, nodes);
   assert.equal(remaining.version, 3);
+});
+
+test("structured extraction refusals preserve source ownership and create no destination", async () => {
+  const id = await page();
+  const nodes = parseDocContainers(
+    "> - [ ] Keep this task ^task\n> - Keep this too ^other",
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const team = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO teams(name,created_by) VALUES($1,$2) RETURNING id",
+      ["Extraction permissions", owner.id],
+    )
+  ).rows[0].id;
+  teams.push(team);
+  await pool.query(
+    "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner'),($1,$3,'viewer')",
+    [team, owner.id, stranger.id],
+  );
+  await pool.query("UPDATE docs SET team_id=$2 WHERE id=$1", [id, team]);
+  const count = async () =>
+    (
+      await pool.query("SELECT count(*)::int AS n FROM docs WHERE team_id=$1", [
+        team,
+      ])
+    ).rows[0].n;
+  const beforeCount = await count();
+  const send = (auth: string | undefined, payload: unknown) =>
+    app.inject({
+      method: "POST",
+      url: `/docs/${id}/extract`,
+      headers: auth ? { authorization: `Bearer ${auth}` } : {},
+      payload,
+    });
+  const input = { version: 2, block_ids: ["task"] };
+  assert.equal((await send(undefined, input)).statusCode, 401);
+  assert.equal((await send(strangerToken, input)).statusCode, 403);
+  const malformed = await app.inject({
+    method: "POST",
+    url: `/docs/${id}/extract`,
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    payload: "{",
+  });
+  assert.equal(malformed.statusCode, 400);
+  assert.equal((await send(token, { ...input, version: 1 })).statusCode, 409);
+  assert.equal(
+    (await send(token, { ...input, block_ids: ["missing"] })).statusCode,
+    409,
+  );
+  const { settings, cachedSettings } = await import("../src/lib/settings.js");
+  const { freshRateLimitSession } = await import("./rate-limit-session.js");
+  const fresh = await freshRateLimitSession(token);
+  await settings();
+  const live = cachedSettings();
+  const previous = live.rate_limit_per_minute;
+  live.rate_limit_per_minute = 2;
+  try {
+    assert.equal((await send(fresh, { ...input, version: 1 })).statusCode, 409);
+    assert.equal((await send(fresh, { ...input, version: 1 })).statusCode, 409);
+    const limited = await send(fresh, input);
+    assert.equal(limited.statusCode, 429);
+    assert.ok(Number(limited.headers["retry-after"]) > 0);
+  } finally {
+    live.rate_limit_per_minute = previous;
+  }
+  assert.equal(await count(), beforeCount);
+  const retained = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(retained.version, 2);
+  assert.deepEqual(retained.document, { format: 2, nodes });
 });

@@ -4,21 +4,36 @@ Updated 7 October 2026. Goal resumed at the user's request. This is a concise
 status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 [task handoff](task.md) retain the full scope and evidence.
 
-| Area                           | Current state                                                                                                                                                     | Remaining acceptance / next implementation                                                                                                                                                                                                                                              |
-| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Main                           | `origin/main` verified at `7263b45b`; user deploys manually                                                                                                       | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                                                                         |
-| ChatGPT native                 | Direct local OAuth, protected tokens, model catalog/defaults, signed inference and Settings/foreground activation implemented on `codex/chatgpt-direct-web-oauth` | Installed iOS/Android OAuth/keystore/browser/lifecycle acceptance; account management and truthful plan/usage acceptance                                                                                                                                                                |
-| Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire              | Candidate only; 441 ChatGPT unit tests pass; current adapter mobile/backend typechecks pass; refresh coordination, revocation, idle saved-account controls and confirmed invalid-refresh recovery implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
-| ChatGPT hosted web             | No supported direct browser-only implementation established; desktop handoff is not completion                                                                    | Supported authorization and user-controlled runtime; actual popup/callback/provider acceptance without desktop                                                                                                                                                                          |
-| Main integration               | Read-only merge-tree check detected no conflicts; full DB70 run failed after Docker/database loss                                                                 | Restore disk/database, rerun full regression and qualify installed platforms before promotion                                                                                                                                                                                           |
-| Docs D1                        | Structured ownership/Markdown/Mermaid foundations and format-aware capture/reflection, complete-tree merges and nested checklist task mapping implemented on candidate; offline recovery is integrated; normal editor widget activation remains                                         | Normal editor adoption, remaining flat writers/task identity, collaboration, complete import/render/edit/export/privacy matrices and native visual checks                                                                                                                               |
-| Whole-app UI U1                | Existing settings/assistant/responsive checkpoints plus candidate native ChatGPT controls                                                                         | Review every page and interaction on web/desktop/mobile, collapsed/narrow/panel/large-text states; avoid overlaps and duplicate actions                                                                                                                                                 |
-| Providers/plugins/MCP C1–C3/M1 | Separate provider and plugin/backend boundaries remain in scope                                                                                                   | Governing capability/account/budget/usage audit and real host/provider acceptance; keep MCP grants separate                                                                                                                                                                             |
-| Background/Overnight C4–C5     | Separate identities/runtime/reflection foundations recorded in ADR                                                                                                | Collaboration, budgets, maintained/shared/published-page audit and runtime/client acceptance                                                                                                                                                                                            |
-| Channels C6                    | Slack/Teams implementation candidates recorded in ADR                                                                                                             | Real tenant, lifecycle, delivery, exact-question reply and cross-client acceptance                                                                                                                                                                                                      |
-| Cleanup                        | Worktrees, root character/user changes preserved                                                                                                                  | Cleanup only after relevant commits are reconciled, merged and qualified                                                                                                                                                                                                                |
+| Area                           | Current state                                                                                                                                                                                                                                   | Remaining acceptance / next implementation                                                                                                                                                                                                                                              |
+| ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Main                           | `origin/main` verified at `7263b45b`; user deploys manually                                                                                                                                                                                     | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                                                                         |
+| ChatGPT native                 | Direct local OAuth, protected tokens, model catalog/defaults, signed inference and Settings/foreground activation implemented on `codex/chatgpt-direct-web-oauth`                                                                               | Installed iOS/Android OAuth/keystore/browser/lifecycle acceptance; account management and truthful plan/usage acceptance                                                                                                                                                                |
+| Current recovery work          | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire                                                                                            | Candidate only; 441 ChatGPT unit tests pass; current adapter mobile/backend typechecks pass; refresh coordination, revocation, idle saved-account controls and confirmed invalid-refresh recovery implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
+| ChatGPT hosted web             | No supported direct browser-only implementation established; desktop handoff is not completion                                                                                                                                                  | Supported authorization and user-controlled runtime; actual popup/callback/provider acceptance without desktop                                                                                                                                                                          |
+| Main integration               | Read-only merge-tree check detected no conflicts; full DB70 run failed after Docker/database loss                                                                                                                                               | Disposable database restored; 63 focused DB tests pass; full regression running and installed-platform qualification pending                                                                                                                                                            |
+| Docs D1                        | Structured ownership/Markdown/Mermaid foundations and format-aware capture/reflection, complete-tree merges and nested checklist task mapping implemented on candidate; offline recovery is integrated; normal editor widget activation remains | Normal editor adoption, remaining flat writers/task identity, collaboration, complete import/render/edit/export/privacy matrices and native visual checks                                                                                                                               |
+| Whole-app UI U1                | Existing settings/assistant/responsive checkpoints plus candidate native ChatGPT controls                                                                                                                                                       | Review every page and interaction on web/desktop/mobile, collapsed/narrow/panel/large-text states; avoid overlaps and duplicate actions                                                                                                                                                 |
+| Providers/plugins/MCP C1–C3/M1 | Separate provider and plugin/backend boundaries remain in scope                                                                                                                                                                                 | Governing capability/account/budget/usage audit and real host/provider acceptance; keep MCP grants separate                                                                                                                                                                             |
+| Background/Overnight C4–C5     | Separate identities/runtime/reflection foundations recorded in ADR                                                                                                                                                                              | Collaboration, budgets, maintained/shared/published-page audit and runtime/client acceptance                                                                                                                                                                                            |
+| Channels C6                    | Slack/Teams implementation candidates recorded in ADR                                                                                                                                                                                           | Real tenant, lifecycle, delivery, exact-question reply and cross-client acceptance                                                                                                                                                                                                      |
+| Cleanup                        | Worktrees, root character/user changes preserved                                                                                                                                                                                                | Cleanup only after relevant commits are reconciled, merged and qualified                                                                                                                                                                                                                |
 
 ## Current evidence
+
+## Database qualification restored — 7 October 2026
+
+A new disposable PostgreSQL test server on loopback port 55436 restored database
+verification without changing existing containers. The first structured-storage
+run exposed a real extraction failure: inserting a format-2 destination did not
+set the transaction-local structured-writer capability. Extraction now authorizes
+that validated insert explicitly. Its regression also uses the documented 201
+creation response. Added refusal coverage proves 401/403/400/409/429 requests
+preserve source ownership/revision and create no destination page.
+
+The fresh structured-storage, Docs and structured suites pass 63/63 with zero
+failures/skips (6154ms). Full candidate database regression is now running;
+this is not a passing full-suite claim or main promotion. Complete editor UI,
+installed ChatGPT acceptance and the full ADR scope remain open.
 
 ## Extraction reference/footnote dependencies — 7 October 2026
 
@@ -33,7 +48,6 @@ build, backend types and formatting pass. The DB extraction regression now check
 a moved reference definition, but remains unrun. Candidate only; broader URL forms,
 normal editor/CRDT activation, database/runtime and visual qualification remain
 open. Main remains7263b45b; full ADR is not complete and no deployment is claimed.
-
 
 ## Extraction fragment relocation — 7 October 2026
 
@@ -50,7 +64,6 @@ DB acceptance remains unrun. Candidate only. Reference/footnote dependencies acr
 extraction, wider app-link forms, normal editor activation and visual/runtime
 qualification remain open. Main remains7263b45b; full ADR goal stays active.
 
-
 ## Unresolved-reference merge preservation — 7 October 2026
 
 Merges preserve rendered unresolved reference text on both pages by escaping only
@@ -62,7 +75,6 @@ tests pass (zero failures/skips,709ms); packages build, backend types and scoped
 format checks pass. Candidate only. Database merge acceptance, extraction link
 relocation, normal editor/CRDT activation and full D1/U1 visual/runtime acceptance
 remain open. Main remains7263b45b; no deployment claimed.
-
 
 ## Merged reference/footnote namespaces — 7 October 2026
 
@@ -78,7 +90,6 @@ merge acceptance, unresolved-reference binding audit, extraction cross-page
 fragments, normal editor and installed/visual acceptance remain open.
 Remote main rechecked at7263b45b; no promotion or deployment in this checkpoint.
 
-
 ## Merged-page local link repair — 7 October 2026
 
 Candidate page merging resolves source-local links before concatenation, updates
@@ -93,7 +104,6 @@ Reference-label namespace collisions, extraction cross-page fragments, normal
 editor integration and installed/visual acceptance remain open. Candidate only;
 main remains7263b45b and production deployment is not confirmed.
 
-
 ## Complete-content extraction candidate — 6 October 2026
 
 Move-to-new-page now reads complete source ownership, retains quote/list wrappers
@@ -107,7 +117,6 @@ regression is added but unrun while the test database is unavailable. Candidate
 only; normal editor activation, link-fragment relocation and full D1 acceptance
 remain open. Main remains7263b45b; no deployment or visual acceptance claimed.
 
-
 ## Nested checklist recovery — 6 October 2026
 
 Complete-document revision merging now combines independent nested checkbox ticks
@@ -117,7 +126,6 @@ ambiguous empty-item changes retain conflict review.33 focused controls, operati
 task and offline replay tests pass; shared packages build and backend types pass.
 Candidate only. Normal editor adoption/save/collaboration and installed/visual
 acceptance remain unfinished. Main stays7263b45b; no deployment is claimed.
-
 
 ## Nested editor control contract — 6 October 2026
 
@@ -132,7 +140,6 @@ state, explicit structural commands, save/reconcile/offline and collaboration
 integration on both clients. Visual/installed acceptance remains open.
 Main remains7263b45b; no main promotion or production deployment in this step.
 
-
 - Owned-editor offline checkpoint0ee17ce5 is now integrated into the working
   candidate at6aa74747. Cached/queued edits retain complete trees; native replay
   uses the versioned editor read/save and original tick baseline. Disjoint named
@@ -141,7 +148,6 @@ Main remains7263b45b; no main promotion or production deployment in this step.
   uses doc-content-merge.ts.55 focused tests, shared package build and desktop/
   mobile/backend typechecks pass. No unresolved conflicts. Normal editor controls,
   recovery UI, installed visual behavior and runtime qualification remain open.
-
 
 - Main checkpoint `7263b45b` is pushed: Home counts complete nested goal-plan
   checklists and current linked task status, including reopening. One batched
@@ -153,7 +159,6 @@ Main remains7263b45b; no main promotion or production deployment in this step.
   Main was reconciled into candidate85ce3340; import/export overlap resolved with
   no source change to the tested candidate tree and no outstanding conflicts.
 
-
 - Nested checklist task creation and versioned read/save synchronization use a
   separate task view, preserving first-paragraph IDs/types and list-item checkbox
   owners. Page write authority is required before task mutation.502 Docs unit
@@ -162,7 +167,6 @@ Main remains7263b45b; no main promotion or production deployment in this step.
   Candidate only. Other task projections, normal-editor controls, extraction,
   moved fragments, agenda generation and complete D1/U1 matrices remain open.
 
-
 - D1 page merges now preserve complete nested trees across mixed formats, rename
   colliding leaf/container IDs, and use versioned writes for target and inbound
   reference pages.75 unit regressions pass; build/backend types/format pass. Actual
@@ -170,14 +174,12 @@ Main remains7263b45b; no main promotion or production deployment in this step.
   mapping, partial extraction, moved local fragments, agenda generation and full
   editor/collaboration/render/edit/export/privacy acceptance remain open.
 
-
 - D1 capture/reflection appends preserve nested owners and identities through the
   versioned writer. Home reads root-owned Reflection with authorized privacy
   projection.63 unit regressions pass; package build/backend types pass. Two DB
   cases added but not run; Docker/database qualification and main promotion remain
   pending. Task extraction/restructuring, agenda regeneration, normal editor,
   collaboration and full D1 matrices remain open.
-
 
 - Actual native factory now has compound account-switch provenance coverage:
   distinct profile tokens/enrollments, old executor cancellation, preserved slots/
