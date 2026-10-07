@@ -1789,3 +1789,16 @@ and screenshots run. That suite cannot close this newly reproduced defect.
 Before promotion, apply the correction, add the real regression to the owned
 worktree, cover direct/agent/catalog/embedding shared transport behavior,
 requalify and document clear reconnect/configuration errors. C1 remains open.
+
+### Current frozen-source embedding runtime checks
+
+While the separate stock full suite remains live, source d498febd passes an
+independent34/34 cohort in a fresh marked pgvector database (zero failures,
+skips or cancellations). It covers setup, retry, indexed Azure3072 vectors,
+provider/document/access mutations, native Perplexity and vector decoding.
+Log: `/tmp/orbyn-c1-discovery-vectors-20261008.log`.
+A second fresh marked vector database passes the legacy consent/vector upgrade
+and repeated-migration case1/1:
+`/tmp/orbyn-c1-discovery-upgrade-20261008.log`.
+These are actual PostgreSQL/local HTTP fixtures. They neither qualify a vendor
+account nor close the recipient-redirect defect discovered afterward.
