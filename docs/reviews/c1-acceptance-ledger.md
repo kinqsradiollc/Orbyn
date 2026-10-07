@@ -44,13 +44,56 @@ callbacks; they do not establish real provider or browser/native acceptance.
 
 1. Qualify and integrate the bounded managed Responses repair; retain external
    provider limits explicitly rather than declaring A3 complete.
-2. Implement the missing model capability/reasoning/cache configuration contract
+2. Repair the confirmed managed enqueue/resume authority gap below, preserving
+   explicit captured provider/model/revision and rejecting changed authority.
+3. Implement the missing model capability/reasoning/cache configuration contract
    with shared/backend and both-client wiring together, then qualify that scope.
-3. Reconcile independent embeddings and multi-provider configuration against their
+4. Reconcile independent embeddings and multi-provider configuration against their
    complete upgrade/race and UI matrix; fix every confirmed remaining defect.
-4. Complete the C1 managed/BYO/plan authority, fallback, usage and evaluation
+5. Complete the C1 managed/BYO/plan authority, fallback, usage and evaluation
    matrix. Record real permitted probes separately from fixtures.
-5. Only after C1 exit conditions are proven, start C2/M1.
+6. Only after C1 exit conditions are proven, start C2/M1.
+
+## Confirmed managed authority defect
+
+A database reproduction on current candidate58645cee used the separate marked
+`orbyn_c1_provider_audit_test`, with no provider requests. It configured a fixture
+managed model A, inserted a queued job (capturing the person's default choice),
+resolved the job, changed the managed settings to model B, checked the original
+resolved authority, then resolved the same job again. Observed:
+
+```json
+{"before":"fixture-model-a","resumed":"fixture-model-b","existingAuthority":"allowed","providerRequests":0}
+```
+
+`resolveUserAi` rereads `resolveAi()` on resume. Its default-route authority checks
+the person's provider choice, whose snapshot has primary=default and null
+connection/executor; it does not compare the managed provider/model/revision.
+Migration231 captures that personal choice, not the selected managed setting.
+Consequently, a global settings change can retarget an existing job and the
+already-resolved configuration is not revoked by that change. This contradicts
+C1's explicit selection/authority acceptance and remains unfixed. The script is
+`/tmp/orbyn-c1-managed-authority-audit.mts`; it statically imports the verified test
+setup before dynamically importing DB/provider modules. Its first invocation
+incorrectly imported the pool before setup completed and failed to connect; no
+SQL ran in that failed invocation. The corrected invocation exited0 and produced
+the result above.
+
+Next repair needs a credential-free enqueue-time managed provider/model/revision
+snapshot, immutable ownership and live dispatch/recovery checks. Include ordinary
+managed calls and explicitly consented fallback, disabled/deleted/key-edited
+providers, legacy jobs, settings races and both preserved/rejected model paths.
+Do not silently treat an unprovable legacy snapshot as current consent.
+
+## Caching reference update
+
+The current official guide uses `prompt_cache_options` for GPT-5.6 and later,
+with implicit/explicit modes, content-block breakpoints and a currently supported
+30m TTL. Earlier-model `prompt_cache_retention` is a separate contract. Track
+`usage.input_tokens_details.cached_tokens` and `cache_write_tokens`; unknown
+usage must not be reported as zero. Implement current model-specific controls,
+not an unconditional legacy24h setting. Source:
+[Prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
 
 ## Provider reference evidence
 
