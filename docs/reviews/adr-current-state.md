@@ -11,7 +11,7 @@ The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.
 The C1 catalog checkpoint is merged and pushed to main as `8ab6c822`; provider controls and manual-model preservation were inspected in web/mobile browser captures.
 The reviewed embedding-consent checkpoint is merged and pushed as `43fa8f57`.
-The next C1 indexing failure/retry checkpoint is committed locally as `d77c1b76`: focused47/47 pass; sampled web/mobile component layouts are reviewed. A full-run Agenda lock regression was corrected as `a1a1d773` (broader44/44 and controlled race pass); corrected full regression14318 passed3786/3786. Real mobile captures found a disclosure outline/text overlap; the spacing correction and19focused checks pass, with recapture pending. No main promotion yet.
+The next C1 indexing failure/retry checkpoint is committed locally as `d77c1b76`: focused47/47 pass; sampled web/mobile component layouts are reviewed. A full-run Agenda lock regression was corrected as `a1a1d773` (broader44/44 and controlled race pass); corrected full regression14318 passed3786/3786. Real mobile captures found a disclosure outline/text overlap; the spacing correction,19focused checks and inspected recapture pass. The scoped checkpoint is locally qualified; main delivery is pending.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 

@@ -1166,3 +1166,13 @@ asked for refreshed focused mobile originals; initial images are pre-fix evidenc
 The backend source remains identical to the terminal3786/3786 freeze; this mobile
 spacing correction is independently checked and does not rerun that backend cohort.
 No whole-page/native/fullC1 acceptance or main promotion is claimed.
+
+Root inspected both QA025 post-padding mobile originals. Focus outline is now
+separated from the first body line; full Search controls remain contained. Accept
+only this real OFF-state panel and the previously inspected web wide/narrow
+panel samples, plus QA024 synthetic active/error component containment. No full
+page/native/fullC1 acceptance implied. Recapture manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-025-mobile-padding-recapture-manifest.md`.
+The scoped retry checkpoint, inference lock/deployment prerequisites and mobile
+focus spacing are locally qualified for main integration. Delivery is pending
+the actual fast-forward/push receipt; production remains user-controlled.
