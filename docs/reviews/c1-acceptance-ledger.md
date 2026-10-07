@@ -31,12 +31,31 @@ manifest workflow remains. User explicitly authorized disposable local QA Terms
 acceptance and same-account sign-in. No entire C1/UI stage acceptance claimed.
 
 Follow-up audit extends the same usage mapping to compatible/Azure native-tool
-steps; Matilda JSON steps already delegate to complete(). Focused checks pass31/31
+steps; The Matilda JSON path was not covered by that follow-up. Focused checks pass31/31
 in `/tmp/orbyn-c1-compatible-native-usage-focused-20261007.log`; backend rebuild
 passes. Initial full run `/tmp/orbyn-adr-full-main-d9621ac7-20261007.log` failed
 because TEST_DATABASE_URL was omitted. It is terminal and provides no product
 qualification. The corrected run must explicitly set both test/app URLs to the
 fresh marked fixture; no preview database is used.
+
+## Durable JSON and Anthropic usage audit
+
+The first compiled Matilda/JSON fixture completed its run but returned zero owner
+observations. Log `/tmp/orbyn-c1-compatible-compiled-usage-20261007.log` retains
+that failed runtime evidence. Source inspection disproved the earlier assumption
+that jsonStep delegates to complete(): it sends independently. The JSON route now
+records compatible usage, except when a private textTransport is used.
+Anthropic direct/native requests now also record usage; their uncached input,
+cache writes and cache reads are disjoint and are summed only when all three
+valid counters are supplied. Missing/overflowing total input stays unknown; no
+reasoning count is inferred. Schema: [Claude prompt caching](https://platform.claude.com/docs/en/build-with-claude/prompt-caching).
+
+All adapter/control unit checks pass35/35 and backend rebuild passes. Log:
+`/tmp/orbyn-c1-all-adapter-usage-focused-20261007.log`. The correctly configured
+3e69c7ef full runner was intentionally stopped after the JSON runtime gap was
+identified; its terminal exit1 is not a product pass. Preserve its log
+`/tmp/orbyn-adr-full-main-3e69c7ef-20261007.log`. Refresh regression on the final
+adapter scope; do not restart an old result or claim the earlier freeze covers it.
 
 ## Historical qualification — migration256 controls freeze
 

@@ -3,6 +3,7 @@ import {
   responsesControls,
   readOpenAiUsage,
   readChatCompletionUsage,
+  readAnthropicUsage,
 } from "../providers/model-controls.js";
 import type { ResolvedAi } from "../providers/adapters.js";
 import {
@@ -438,6 +439,8 @@ async function anthropicStep(
   );
   const body = await json<{
     type?: string;
+    id?: unknown;
+    usage?: unknown;
     error?: unknown;
     stop_reason?: string;
     content?: {
@@ -449,6 +452,7 @@ async function anthropicStep(
     }[];
   }>(response);
   throwIfErrorEnvelope(body, ai.apiKey);
+  await ai.recordUsage?.(readAnthropicUsage(body.usage), body.id);
   const blocks = body.content ?? [];
   const toolCalls = blocks
     .filter((b) => b.type === "tool_use" && b.name)
@@ -691,9 +695,13 @@ async function jsonStep(
       );
   const body = await json<{
     error?: unknown;
+    usage?: unknown;
+    id?: unknown;
     choices?: { message?: { content?: unknown }; finish_reason?: string }[];
   }>(response);
   throwIfErrorEnvelope(body, ai.apiKey);
+  if (!ai.textTransport)
+    await ai.recordUsage?.(readChatCompletionUsage(body.usage), body.id);
   const choice = body.choices?.[0];
   if (!choice)
     throw new ProviderError("no_choices", "The provider returned no answer.");

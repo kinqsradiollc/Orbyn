@@ -58,7 +58,7 @@ Logs:
 ## Next actions
 
 1. Finish this C1 checkpoint: signed-in screenshots inspected by this session,
-   permitted live evaluation and scoped integration. Prior product freeze66f7a5f2 full regression is green; compatible usage adapter correction requires refreshed regression.
+   permitted live evaluation and scoped integration. Prior product freeze66f7a5f2 full regression is green; complete compatible/JSON/Anthropic usage correction requires refreshed regression.
 2. Complete the remaining C1 provider/embedding matrix before moving to C2/M1.
 3. Continue C2/M1 → C3 → C4/D1 → C5 → C6 → final U1/integration/cleanup.
 

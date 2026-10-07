@@ -107,3 +107,29 @@ export function readChatCompletionUsage(value: unknown): AiModelUsage {
     output_tokens_details: body.completion_tokens_details,
   });
 }
+
+/** Claude reports uncached input separately from cache reads and writes. */
+export function readAnthropicUsage(value: unknown): AiModelUsage {
+  const body =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const uncached = readOpenAiUsage({
+    input_tokens: body.input_tokens,
+  }).input_tokens;
+  const usage = readOpenAiUsage({
+    output_tokens: body.output_tokens,
+    input_tokens_details: {
+      cached_tokens: body.cache_read_input_tokens,
+      cache_write_tokens: body.cache_creation_input_tokens,
+    },
+  });
+  const parts = [uncached, usage.cached_input_tokens, usage.cache_write_tokens];
+  const total = parts.every((n) => n !== null)
+    ? parts.reduce<number>((sum, n) => sum + n!, 0)
+    : null;
+  return {
+    ...usage,
+    input_tokens: total !== null && Number.isSafeInteger(total) ? total : null,
+  };
+}

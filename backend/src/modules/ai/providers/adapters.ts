@@ -2,6 +2,7 @@ import {
   responsesControls,
   readOpenAiUsage,
   readChatCompletionUsage,
+  readAnthropicUsage,
 } from "./model-controls.js";
 import type {
   AiModelUsage,
@@ -333,12 +334,15 @@ export async function complete(
       ai.apiKey,
     );
     const body = await json<{
+      id?: unknown;
+      usage?: unknown;
       type?: string;
       error?: unknown;
       stop_reason?: string;
       content?: { type: string; text?: string }[];
     }>(response);
     throwIfErrorEnvelope(body, ai.apiKey);
+    await ai.recordUsage?.(readAnthropicUsage(body.usage), body.id);
     const text = (body.content ?? [])
       .filter((part) => part.type === "text")
       .map((part) => part.text ?? "")

@@ -593,3 +593,122 @@ for (const kind of ["openai-compatible", "azure"] as const) {
     ]);
   });
 }
+
+test("Matilda durable JSON steps record compatible usage and private JSON steps do not", async (t) => {
+  const observations: any[] = [];
+  t.mock.method(globalThis, "fetch", async () =>
+    Response.json({
+      id: "chatcmpl-json-fixture",
+      usage: { prompt_tokens: 7, completion_tokens: 3 },
+      choices: [{ message: { content: JSON.stringify({ answer: ["OK"] }) } }],
+    }),
+  );
+  const target: ResolvedAi = {
+    ...ai,
+    kind: "matilda",
+    model: "matilda",
+    requestFormat: undefined,
+    baseUrl: "https://fixture.invalid/v1",
+    options: {},
+    recordUsage: async (...args) => {
+      observations.push(args);
+    },
+  };
+  await step(target, messages, [], {
+    mode: "json",
+    toolsAllowed: false,
+    signal: AbortSignal.timeout(1000),
+  });
+  assert.equal(observations.length, 1);
+  assert.equal(observations[0][0].input_tokens, 7);
+  assert.equal(observations[0][1], "chatcmpl-json-fixture");
+  await step(
+    {
+      ...target,
+      kind: "chatgpt_plan",
+      textTransport: async () => "Private answer",
+    },
+    messages,
+    [],
+    { mode: "json", toolsAllowed: false, signal: AbortSignal.timeout(1000) },
+  );
+  assert.equal(observations.length, 1);
+});
+
+for (const native of [false, true]) {
+  test(`Anthropic ${native ? "native tools" : "direct completion"} normalizes disjoint input counts`, async (t) => {
+    let observed: any;
+    t.mock.method(globalThis, "fetch", async () =>
+      Response.json({
+        id: "msg-fixture",
+        type: "message",
+        stop_reason: "end_turn",
+        usage: {
+          input_tokens: 10,
+          output_tokens: 5,
+          cache_creation_input_tokens: 20,
+          cache_read_input_tokens: 100,
+        },
+        content: [{ type: "text", text: "OK" }],
+      }),
+    );
+    const target: ResolvedAi = {
+      ...ai,
+      kind: "anthropic",
+      format: "anthropic",
+      model: "claude-fixture",
+      requestFormat: undefined,
+      baseUrl: "https://fixture.invalid/v1",
+      options: {},
+      recordUsage: async (usage, id) => {
+        observed = { usage, id };
+      },
+    };
+    if (native)
+      await step(target, messages, [], {
+        mode: "native",
+        toolsAllowed: false,
+        signal: AbortSignal.timeout(1000),
+      });
+    else assert.equal(await complete(target, messages), "OK");
+    assert.deepEqual(observed, {
+      id: "msg-fixture",
+      usage: {
+        input_tokens: 130,
+        output_tokens: 5,
+        cached_input_tokens: 100,
+        cache_write_tokens: 20,
+        reasoning_tokens: null,
+      },
+    });
+  });
+}
+
+test("Anthropic missing cache counters and overflowing input stay unknown", async () => {
+  const { readAnthropicUsage } =
+    await import("../src/modules/ai/providers/model-controls.js");
+  assert.equal(readAnthropicUsage({ input_tokens: 10 }).input_tokens, null);
+  assert.equal(
+    readAnthropicUsage({
+      input_tokens: Number.MAX_SAFE_INTEGER,
+      cache_creation_input_tokens: 1,
+      cache_read_input_tokens: 1,
+    }).input_tokens,
+    null,
+  );
+  assert.deepEqual(
+    readAnthropicUsage({
+      input_tokens: 10,
+      output_tokens: 0,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
+    }),
+    {
+      input_tokens: 10,
+      output_tokens: 0,
+      reasoning_tokens: null,
+      cache_write_tokens: 0,
+      cached_input_tokens: 0,
+    },
+  );
+});
