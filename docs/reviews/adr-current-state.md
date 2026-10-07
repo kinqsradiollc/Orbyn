@@ -86,3 +86,19 @@ Provider integration log: `/tmp/orbyn-c1-inventory-provider-integration-20261007
 Full regression log: `/tmp/orbyn-c1-inventory-full-20261007.log`.
 Do not treat a started full run as a passing result. Matilda live evidence belongs
 to the earlier controls/usage checkpoint and does not qualify OpenAI cache economics.
+
+### Confirmed next C1 defect: server catalog revision race
+
+A local HTTP fixture held `/ai/providers/:id/models` open while an authorized
+admin changed that provider's endpoint. The route returned HTTP200 with the old
+connection's model list. Reproduction completed with exit0 and
+`staleCatalogAccepted:true`; external requests0.
+Evidence: `/tmp/orbyn-c1-catalog-race-probe-20261007.log` and
+`/tmp/orbyn-c1-catalog-race-probe-20261007.mts`.
+
+Next fix must carry the public exact generation revision into catalog requests,
+reject pre-dispatch mismatches, and verify the saved connection again before
+returning models. Test endpoint/key/options/enable changes, A→B→A round trips,
+removal, independent same-kind connections, no-op/name edits and both client
+call sites. Do not lock a provider row across network I/O. This race is not fixed
+by local client guards and remains an explicit open C1 requirement.
