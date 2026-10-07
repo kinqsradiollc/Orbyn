@@ -1132,3 +1132,11 @@ Mobile cross-origin /ai/providers preflight204. Log:
 request was made. Visual Check has been asked for current real Admin OFF-state
 captures in web wide/narrow and mobile390; no consent/settings action authorized
 for that capture. Full regression14318 remains live and is not restarted.
+
+Final current-source backend/web/mobile typechecks all exit0. Logs:
+`/tmp/orbyn-c1-retry-final-backend-types-20261008.log`,
+`/tmp/orbyn-c1-retry-final-web-types-20261008.log`,
+`/tmp/orbyn-c1-retry-final-mobile-types-20261008.log`. All changed TypeScript/TSX
+and checkpoint docs pass scoped Prettier; the full candidate diff passes
+`git diff --check`. These gates do not substitute for the still-live full
+regression14318 or the requested real Admin capture handoff.
