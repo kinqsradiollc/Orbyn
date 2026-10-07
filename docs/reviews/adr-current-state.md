@@ -61,9 +61,12 @@ Acceptance comes from this session's image inspection, not the capture session's
 2. Embedding reviewed-destination consent race reproduced and corrected locally
    ind4cd4273. Focused pgvector48 pass/one stock-only skip; separate stock20/20.
    Shared/backend builds and both client types pass. Full frozen regression completed as session87929:3781/3781, zero failures/skips/cancellations, exit0.
-   Root inspected QA022 web wide/narrow OFF controls; mobile handoff remains
-   pending. Promotion requires the remaining inspected capture evidence.
-3. Complete the embedding consent/validation/reindex/search/client matrix.
+   Root inspected QA022 web wide/narrow and mobile320/390 OFF controls; manifest
+   confirms source/viewport metadata. Web production build passes. Scoped main
+   promotion follows; wider enabled/error/native matrix stays open.
+3. Next: implement persistent sanitized indexing failure/retry status and isolate
+   failed pages so healthy queued pages proceed; follow the embedding audit order.
+   Complete the remaining embedding consent/validation/reindex/search/client matrix.
    Keep live provider/OpenAI cache gates explicit; Matilda does not support the
    OpenAI-specific cache benchmark and does not waive that retained requirement.
 4. Promote each qualified C1 checkpoint, then continue C2/M1 → C3 → C4/D1 → C5

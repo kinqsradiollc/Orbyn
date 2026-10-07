@@ -232,8 +232,8 @@ consent reset and missing-token disabled controls.
 | Reindex and vector provenance          | Application pgvector tests cover3072 dimensions, replacement cleanup/requeue, old document/configuration results discarded, queue revision preserved | Larger operational/native matrix                                       |
 | Visibility                             | Project/team keep-out tests block later batches and storage; nearest retains readable-document predicates                                            | Complete permission/ownership race matrix                              |
 | Response/storage                       | Indexed Azure local fixture stores/ranks3072 vectors; malformed/zero/dimension checks retained                                                       | Live Azure/OpenAI/other adapters                                       |
-| Stock database                         | Corrected stock search/client suite20/20, zero skips                                                                                                 | Mobile visual handoff pending                                          |
-| Current focused regression             | pgvector cohort48 passed, zero failed; one stock-only test skipped and independently passed on stock                                                 | Mobile visual handoff pending                                          |
+| Stock database                         | Corrected stock search/client suite20/20, zero skips                                                                                                 | Wider enabled/error/native matrix                                      |
+| Current focused regression             | pgvector cohort48 passed, zero failed; one stock-only test skipped and independently passed on stock                                                 | Wider enabled/error/native matrix                                      |
 | Client visuals                         | Capture-only task sent to Orbyn Visual Check for web/narrow/mobile OFF prerequisites                                                                 | Root must inspect returned originals; enabled/error/native states open |
 
 Logs: `/tmp/orbyn-c1-embedding-consent-final-20261008.log`,
@@ -250,9 +250,9 @@ Neither is accepted evidence. The corrected full run uses fresh marked stock DB
 Source is frozen at candidate `d4cd4273`; documentation may advance separately.
 The corrected frozen full regression completed3781/3781, zero failures,
 cancellations or skips, exit0,900795ms (terminal session87929). Later commits
-change documentation only. Web QA022 wide/narrow OFF controls were inspected and
-contained; mobile originals/manifest are pending. Main promotion and wholeC1
-completion remain unclaimed.
+change documentation only. QA022 web wide/narrow and mobile320/390 OFF controls were inspected and
+contained. Web production build passes. Qualified for scoped main promotion;
+wholeC1 completion remains unclaimed.
 
 ### Additional rollout checks — 8 October 2026
 
@@ -316,5 +316,10 @@ The preview-only process was restarted as PID60704 with the actual web5174 and
 mobile8083 origins; the same database, credentials/settings and compiled source
 were preserved. Read-only preflight now returns204 with the matching allowed
 origin. No product source or production environment change was required.
-Original offline images remain harness evidence; refreshed mobile controls and
-root image inspection are still needed for visual acceptance.
+Original offline images remain harness evidence; refreshed mobile controls were
+inspected by root and accepted for containment at320/390 CSS widths.
+
+Capture-only manifest: `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-022-search-by-meaning-capture-manifest.md`.
+Root inspected all accepted web/mobile originals; agent design findings are not
+used as acceptance. Enabled/error/native and whole-page quality remain open.
+Web production build log: `/tmp/orbyn-c1-embedding-web-build-20261008.log` (exit0).

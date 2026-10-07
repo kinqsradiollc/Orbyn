@@ -9,8 +9,11 @@ submit the reviewed revision and reset acceptance after connection changes.
 Focused pgvector48 pass/one stock-only skip; corrected separate stock20/20.
 Shared/backend builds and both client types pass. Full frozen run87929 passes
 3781/3781, zero failures/cancellations/skips, exit0,900795ms. Root inspected
-QA022 wide/narrow web OFF controls; mobile originals/manifest are pending.
-No main promotion of this correction yet.
+QA022 wide/narrow web and mobile320/390 OFF controls. The capture-only manifest
+confirms source/viewport/zoom; root inspected every accepted original. Controls
+are contained, prerequisite labels accurate and consent/validation disabled.
+Web production build passes (terminal46430). Qualified for scoped main promotion;
+no enabled/error/native or wholeC1 acceptance is claimed.
 See [the embedding audit](embedding-provider-audit-2026-10-01.md) for matrix,
 logs, failed harness commands and rollout behavior. WholeC1 remains open.
 
@@ -980,3 +983,14 @@ embedding validation cohort passes29/29, zero failures/skips,7292ms; no provider
 network calls. Log `/tmp/orbyn-c1-embedding-controls-matrix-20261007.log`.
 Prior mainc082d93e3722/3722 full pass predates this correction. Fresh exact-main
 qualification is required; no promotion or complete C1 stage claimed.
+
+## Reviewed embedding consent visual acceptance — 8 October 2026
+
+Root inspected QA022 web wide panel/narrow top and controls plus mobile320/390
+upper and lower controls. Manifest: `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-022-search-by-meaning-capture-manifest.md`.
+Only sampled OFF/prerequisite control containment is accepted; browser captures
+do not prove installed-native behavior. The invalid wrong-tab390×219 screenshot
+and pre-CORS mobile offline states are historical harness evidence, not current
+product findings. No provider/consent/inference action was performed for captures.
+Full3781/3781, focused48 plus independent stock20, upgrade/late-install1/1 each,
+shared/backend/web builds and client types qualify the reviewed-revision fix.
