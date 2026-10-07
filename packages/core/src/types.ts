@@ -571,6 +571,8 @@ export type AiProvider = {
   enabled: boolean;
   created_at: string;
   updated_at: string;
+  /** Exact connection token for embedding consent, independent of generation controls. */
+  embedding_revision?: string;
   /** Exact generation token for model-control compare-and-set. */
   controls_revision?: string;
 };

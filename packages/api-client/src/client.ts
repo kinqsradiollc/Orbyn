@@ -5023,6 +5023,7 @@ export class OrbynClient {
     embedding_model?: string;
     embedding_provider_id?: string;
     expected_generation?: string;
+    expected_provider_revision?: string;
     accept?: boolean;
   }) {
     return this.request<AiSettings>("/ai/settings/semantic", {

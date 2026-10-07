@@ -15,6 +15,7 @@ const providers = [
     kind: "openai",
     name: "Embedding recipient",
     enabled: true,
+    embedding_revision: "7",
   },
 ];
 const settings = {
@@ -30,7 +31,13 @@ const settings = {
   updated_at: null,
 };
 
-function fixture(mobile: boolean, overrides: object = {}, reject = false) {
+function fixture(
+  mobile: boolean,
+  overrides: object = {},
+  reject = false,
+  providerOverrides: object = {},
+) {
+  const effects: { fn: () => void; deps: unknown[] }[] = [];
   const setters: [number, unknown][] = [];
   const calls: unknown[] = [];
   const pending: Promise<unknown>[] = [];
@@ -45,7 +52,7 @@ function fixture(mobile: boolean, overrides: object = {}, reject = false) {
         (value: unknown) => setters.push([at, value]),
       ];
     },
-    useEffect: () => {},
+    useEffect: (fn: () => void, deps: unknown[]) => effects.push({ fn, deps }),
   };
   const control = (props: any) =>
     React.createElement("div", null, props.children);
@@ -101,7 +108,10 @@ function fixture(mobile: boolean, overrides: object = {}, reject = false) {
   runInNewContext(output, context);
   const tree = context.exports.SemanticSetup({
     settings: { ...settings, ...overrides },
-    providers,
+    providers: providers.map((provider) => ({
+      ...provider,
+      ...providerOverrides,
+    })),
     busy: false,
     act: (fn: () => Promise<void>) => {
       const promise = fn();
@@ -127,6 +137,7 @@ function fixture(mobile: boolean, overrides: object = {}, reject = false) {
   walk(tree);
   return {
     tree,
+    effects,
     elements,
     calls,
     setters,
@@ -173,6 +184,7 @@ for (const mobile of [false, true]) {
         embedding_model: "embedding-fixture",
         embedding_provider_id: providerId,
         expected_generation: generation,
+        expected_provider_revision: "7",
         accept: true,
       },
     ]);
@@ -234,5 +246,35 @@ for (const mobile of [false, true]) {
     const html = renderToStaticMarkup(view.tree);
     assert.match(html, /Indexing status is unavailable/);
     assert.doesNotMatch(html, /0 pages measured|dimensions verified/);
+  });
+}
+
+for (const mobile of [false, true]) {
+  const platform = mobile ? "mobile" : "web";
+  test(`${platform} consent resets for the displayed embedding revision and enable state`, () => {
+    const view = fixture(mobile);
+    const effect = view.effects.find(
+      (effect) =>
+        effect.deps.length === 3 &&
+        effect.deps[0] === providerId &&
+        effect.deps[1] === "7" &&
+        effect.deps[2] === true,
+    );
+    assert.ok(
+      effect,
+      "consent watches the embedding revision rather than generation controls",
+    );
+    effect.fn();
+    assert.ok(view.setters.some(([at, value]) => at === 1 && value === false));
+  });
+  test(`${platform} missing embedding revision cannot enable setup`, () => {
+    const view = fixture(mobile, {}, false, { embedding_revision: undefined });
+    const submit = view.elements.find((node) =>
+      mobile
+        ? node.props.title === "Validate and turn on search by meaning"
+        : node.type === "button" &&
+          node.props.children === "Validate and turn on search by meaning",
+    );
+    assert.equal(submit.props.disabled, true);
   });
 }

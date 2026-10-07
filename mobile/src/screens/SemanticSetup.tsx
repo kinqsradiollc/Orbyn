@@ -49,6 +49,9 @@ export function SemanticSetup({
       provider.enabled && AI_PROVIDERS[provider.kind].format !== "anthropic",
   );
   const selected = eligible.find((provider) => provider.id === providerId);
+  useEffect(() => {
+    setAccept(false);
+  }, [selected?.id, selected?.embedding_revision, selected?.enabled]);
   const providerName = providers.find(
     (provider) => provider.id === settings.embedding_provider_id,
   )?.name;
@@ -73,7 +76,7 @@ export function SemanticSetup({
         : "Select an embedding provider.",
     },
   ];
-  const ready = steps.every((x) => x.done);
+  const ready = !!selected?.embedding_revision && steps.every((x) => x.done);
   const change = (next: boolean) =>
     act(async () => {
       try {
@@ -85,6 +88,7 @@ export function SemanticSetup({
                   embedding_model: model.trim(),
                   embedding_provider_id: providerId,
                   expected_generation: settings.embedding_generation,
+                  expected_provider_revision: selected?.embedding_revision,
                   accept,
                 }
               : {

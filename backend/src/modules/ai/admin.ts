@@ -48,6 +48,7 @@ const toPublic = (row: ProviderRow): AiProvider => ({
   enabled: row.enabled,
   created_at: iso(row.created_at),
   updated_at: iso(row.updated_at),
+  embedding_revision: String(row.embedding_revision),
   controls_revision:
     row.generation_revision === undefined
       ? undefined
@@ -480,6 +481,14 @@ export async function aiAdminRoutes(app: FastifyInstance) {
         fail(
           422,
           "Agree that every page is sent to the provider to be measured.",
+        );
+      if (
+        !d.expected_provider_revision ||
+        d.expected_provider_revision !== String(provider.embedding_revision)
+      )
+        fail(
+          409,
+          "The embedding provider changed or was not reviewed. Reload setup before accepting.",
         );
       let dimensions: number;
       try {

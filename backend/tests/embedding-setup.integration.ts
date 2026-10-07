@@ -61,6 +61,14 @@ const call = (
     headers: token ? { authorization: `Bearer ${token}` } : {},
     ...(payload ? { payload } : {}),
   });
+const revision = async (id = providerId) => {
+  const listed = (await call(accounts[0].token, "GET")).json().providers;
+  const selected = listed.find(
+    (provider: { id: string }) => provider.id === id,
+  );
+  assert.match(selected.embedding_revision, /^[1-9][0-9]*$/);
+  return selected.embedding_revision as string;
+};
 before(async () => {
   await migrate();
   await new Promise<void>((resolve) =>
@@ -162,6 +170,7 @@ test("setup validates an explicit provider independently of chat and requires re
     embedding_provider_id: providerId,
     embedding_model: "embedding-fixture",
     expected_generation: settings.embedding_generation,
+    expected_provider_revision: await revision(),
   };
   assert.equal((await call(accounts[0].token, "PUT", input)).statusCode, 422);
   assert.equal(requests, 0, "no probe without acceptance");
@@ -214,6 +223,7 @@ test("a provider edit during validation cannot commit stale consent", async () =
     embedding_provider_id: providerId,
     embedding_model: "embedding-fixture",
     expected_generation: settings.embedding_generation,
+    expected_provider_revision: await revision(),
     accept: true,
   });
   await arrival;
@@ -239,6 +249,7 @@ test("setup rejects missing recipients and the existing settings route can disab
     embedding_provider_id: providerId,
     embedding_model: "embedding-fixture",
     expected_generation: settings.embedding_generation,
+    expected_provider_revision: await revision(),
     accept: true,
   };
   const before = requests;
@@ -264,7 +275,15 @@ test("setup rejects missing recipients and the existing settings route can disab
   await pool.query("UPDATE ai_providers SET enabled=true WHERE id=$1", [
     providerId,
   ]);
-  assert.equal((await call(accounts[0].token, "PUT", input)).statusCode, 200);
+  assert.equal(
+    (
+      await call(accounts[0].token, "PUT", {
+        ...input,
+        expected_provider_revision: await revision(),
+      })
+    ).statusCode,
+    200,
+  );
   const disabled = await app.inject({
     method: "PUT",
     url: "/ai/settings",
@@ -284,12 +303,13 @@ test("setup rejects missing recipients and the existing settings route can disab
 
 test("replacement validates dimensions atomically and does not inherit generation settings", async () => {
   let settings = (await call(accounts[0].token, "GET")).json().settings;
-  const setup = (provider: string, model: string) =>
+  const setup = async (provider: string, model: string) =>
     call(accounts[0].token, "PUT", {
       on: true,
       embedding_provider_id: provider,
       embedding_model: model,
       expected_generation: settings.embedding_generation,
+      expected_provider_revision: await revision(provider),
       accept: true,
     });
   const initial = await setup(providerId, expectedModel);
@@ -399,4 +419,61 @@ test("replacement validates dimensions atomically and does not inherit generatio
     ).rows[0].count,
     0,
   );
+});
+
+test("embedding consent without a displayed provider revision cannot authorize a changed recipient", async () => {
+  const settings = (await call(accounts[0].token, "GET")).json().settings;
+  await pool.query(
+    'UPDATE ai_providers SET options=options || \'{"fixtureDestination":"changed"}\'::jsonb WHERE id=$1',
+    [providerId],
+  );
+  const before = requests;
+  const response = await call(accounts[0].token, "PUT", {
+    on: true,
+    embedding_provider_id: providerId,
+    embedding_model: expectedModel,
+    expected_generation: settings.embedding_generation,
+    accept: true,
+  });
+  assert.equal(response.statusCode, 409, response.body);
+  assert.equal(requests, before, "unbound consent sends no provider probe");
+});
+
+test("displayed embedding revision fences pre-click changes and round trips without a probe", async () => {
+  const settings = (await call(accounts[0].token, "GET")).json().settings;
+  const reviewed = await revision();
+  const options = (
+    await pool.query("SELECT options FROM ai_providers WHERE id=$1", [
+      providerId,
+    ])
+  ).rows[0].options;
+  await pool.query(
+    "UPDATE ai_providers SET options=options || '{\"consentRace\":true}'::jsonb WHERE id=$1",
+    [providerId],
+  );
+  await pool.query("UPDATE ai_providers SET options=$2 WHERE id=$1", [
+    providerId,
+    options,
+  ]);
+  const before = requests;
+  const response = await call(accounts[0].token, "PUT", {
+    on: true,
+    embedding_provider_id: providerId,
+    embedding_model: expectedModel,
+    expected_generation: settings.embedding_generation,
+    expected_provider_revision: reviewed,
+    accept: true,
+  });
+  assert.equal(response.statusCode, 409, response.body);
+  assert.equal(requests, before);
+  const refreshed = await call(accounts[0].token, "PUT", {
+    on: true,
+    embedding_provider_id: providerId,
+    embedding_model: expectedModel,
+    expected_generation: settings.embedding_generation,
+    expected_provider_revision: await revision(),
+    accept: true,
+  });
+  assert.equal(refreshed.statusCode, 200, refreshed.body);
+  assert.equal(requests, before + 1);
 });

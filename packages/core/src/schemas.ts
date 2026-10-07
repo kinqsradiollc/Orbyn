@@ -1093,6 +1093,10 @@ export const semanticSetupInput = z
     embedding_model: z.string().trim().max(200).optional(),
     embedding_provider_id: z.uuid().optional(),
     expected_generation: z.uuid().optional(),
+    expected_provider_revision: z
+      .string()
+      .regex(/^[1-9][0-9]*$/)
+      .optional(),
     accept: z.boolean().optional(),
   })
   .strict();
