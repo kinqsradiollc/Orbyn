@@ -72,10 +72,13 @@ Acceptance comes from this session's image inspection, not the capture session's
    Backend types/build pass; broader regression is running. Independent saved-row
    dispatch/catalog/embedding/agent checks pass61/61 across all20 kinds; these are
    fixtures and do not establish live vendor qualification.
-4. Keep remaining live-provider/OpenAI cache gates explicit. Matilda's fixed
+4. Next reproduced runtime defect: native Anthropic tool rejection switches
+   JSON fallback to the wrong compatible endpoint and fails404. Repair after
+   this checkpoint is qualified/promoted; preserve Messages/usage/authority.
+5. Keep remaining live-provider/OpenAI cache gates explicit. Matilda's fixed
    baseline does not qualify OpenAI cache economics. Promote this checkpoint only
    after qualification, then continue remaining C1 gates before C2/M1.
-5. Continue C2/M1 → C3 → C4/D1 → C5 → C6 → U1/integration/cleanup in order.
+6. Continue C2/M1 → C3 → C4/D1 → C5 → C6 → U1/integration/cleanup in order.
 
 Orbyn Visual Check captures originals and a Markdown manifest only. This session
 inspects images, owns findings/implementation and records acceptance.

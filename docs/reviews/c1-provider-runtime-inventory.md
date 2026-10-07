@@ -81,6 +81,23 @@ The full regression was started before this additional test file existed;
 its terminal count must be reported separately from these61 checks. Product
 adapter source remains frozen at `cee9219e`.
 
+## Next reproduced defect: Anthropic JSON fallback
+
+The durable loop (`agent/loop.ts:415–420`) switches to JSON mode after a native
+HTTP400 tool-support rejection. `jsonStep()` currently calls the compatible
+`chatUrl()` even for native Anthropic. A mocked first response rejects tools;
+the actual second step requests `/v1/chat/completions` and fails404 instead of
+remaining on `/v1/messages`. This is a concrete runtime defect, not a vendor
+capability assumption. Reproduction:
+`/tmp/orbyn-c1-anthropic-json-fallback-before-20261008.log`.
+
+Fix after the current pagination checkpoint is qualified/promoted: preserve
+Anthropic Messages authentication/system/conversation shape for text JSON
+fallback, parse the same JSON tool protocol and retain native usage accounting,
+authority checks, timeout and truncation behavior. Cover normal starting mode,
+tool rejection/resumed JSON mode and final tools-off replies. Do not claim this
+fallback repaired from the61 passing starting-mode tests.
+
 ## Remaining qualification
 
 - Verify public endpoint/catalog availability and model-specific controls against
