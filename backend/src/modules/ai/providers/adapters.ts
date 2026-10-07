@@ -14,6 +14,11 @@ import { aiModelControlError } from "@orbyn/core";
 import { assertProviderUrl, isPrivateUrl } from "./network.js";
 import { zenModelTransport } from "./zen-transport.js";
 import {
+  perplexityEmbeddingEndpoint,
+  perplexityEmbeddingDimensions,
+  decodePerplexityEmbeddings,
+} from "./perplexity-embeddings.js";
+import {
   embeddingVectors,
   EmbeddingResponseError,
 } from "./embedding-vectors.js";
@@ -667,6 +672,24 @@ export async function embed(
       "Choose a provider that supports text embeddings.",
     );
   const model = options.model ?? ai.model;
+  const nativeEndpoint = perplexityEmbeddingEndpoint(ai);
+  const nativeDimensions = nativeEndpoint
+    ? perplexityEmbeddingDimensions(model)
+    : null;
+  if (nativeEndpoint && !nativeDimensions)
+    throw new ProviderError(
+      "unsupported",
+      "Choose a supported Perplexity text embedding model.",
+    );
+  if (
+    nativeDimensions &&
+    options.expectedDimensions !== undefined &&
+    options.expectedDimensions !== nativeDimensions
+  )
+    throw new ProviderError(
+      "embedding_dimensions",
+      "The expected embedding dimensions are incompatible with this model.",
+    );
   if (ai.format === "azure" && !ai.options?.apiVersion?.trim())
     throw new ProviderError(
       "configuration",
@@ -675,7 +698,7 @@ export async function embed(
   const url =
     ai.format === "azure"
       ? `${trimSlash(ai.baseUrl)}/openai/deployments/${encodeURIComponent(model)}/embeddings?api-version=${encodeURIComponent(ai.options!.apiVersion!)}`
-      : `${trimSlash(ai.baseUrl)}/embeddings`;
+      : (nativeEndpoint ?? `${trimSlash(ai.baseUrl)}/embeddings`);
   const signal = AbortSignal.timeout(options.timeoutMs ?? 60_000);
   const response = await send(
     url,
@@ -685,6 +708,7 @@ export async function embed(
       body: JSON.stringify({
         ...(ai.format === "azure" ? {} : { model }),
         input: passages,
+        ...(nativeEndpoint ? { encoding_format: "base64_int8" } : {}),
       }),
     },
     signal,
@@ -692,7 +716,13 @@ export async function embed(
   );
   const body = await json<unknown>(response);
   try {
-    return embeddingVectors(body, passages.length, options.expectedDimensions);
+    return embeddingVectors(
+      nativeDimensions
+        ? decodePerplexityEmbeddings(body, nativeDimensions)
+        : body,
+      passages.length,
+      nativeDimensions ?? options.expectedDimensions,
+    );
   } catch (error) {
     if (error instanceof EmbeddingResponseError)
       throw new ProviderError(error.reason, error.message);

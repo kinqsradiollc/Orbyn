@@ -1,5 +1,55 @@
 # C1 acceptance ledger
 
+## Credential-test checkpoint delivered — 8 October 2026
+
+Frozen source47d35a07 completes full regression4083/4083, zero failures/skips/
+cancellations, exit0,847542ms on a fresh marked stock-Postgres database:
+`/tmp/orbyn-c1-credential-full-20261008.log`. The preceding focused49/49 and27/27,
+workspace typechecks and backend/web builds also pass. Fast-forward merged and
+pushed to main as47d35a07; primary main/origin match and unrelated mobile/app.json
+SHA1dacd602172347441f2fd92f16d8772b3ba1ef7a8 is preserved. This qualifies the
+generation/model-bound credential-test wiring, not remaining visual or full C1
+acceptance. Browser capture is still blocked; installed-native and production
+deployment are unverified.
+
+Main's earlier CI run37656656011 is terminal successful in all five jobs.
+Corrected embedding job112913998033 is confirmed53/53, zero failures/skips/
+cancellations, from the inspected remote log:
+`/tmp/orbyn-c1-embedding-ci-remote-fixed-20261008.log`.
+
+## Perplexity native embedding candidate — 8 October 2026
+
+[Perplexity's current embedding contract](https://docs.perplexity.ai/docs/embeddings/standard-embeddings)
+uses `/v1/embeddings` with base64 signed-int8 vectors. The saved native root
+formerly requested `/embeddings` and rejected the string response. An inert
+compiled fixture reproduces both defects:1/3 before,3/3 after. Custom compatible
+endpoints retain their saved path and float-vector contract.
+
+The candidate recognizes only the exact native HTTPS origin and its root or v1
+base, requests `base64_int8`, strictly decodes signed coordinates and validates
+the reviewed full1024/2560 widths. Unsupported native models and incompatible
+accepted dimensions fail before sending text. Binary/malformed/zero/mismatched
+vectors, count/index errors and upstream400/401/403/429/500 remain rejected or
+sanitized. Generation and catalog routing are separate audit work.
+
+Adapter/vector cohort37/37 and saved-row/provider/storage cohort67/67 pass,
+zero failures/skips/cancellations. Actual pgvector measuring/search preserves
+signed coordinates and rejects old vectors during1024→2560 model replacement.
+The native recipient is mocked, not an authorized live Perplexity account.
+Backend build passes. Logs:
+`/tmp/orbyn-c1-perplexity-embedding-before-20261008.log`,
+`/tmp/orbyn-c1-perplexity-embedding-after-20261008.log`,
+`/tmp/orbyn-c1-perplexity-embedding-cohort-20261008.log`,
+`/tmp/orbyn-c1-perplexity-vector-runtime-20261008.log`,
+`/tmp/orbyn-c1-perplexity-embedding-build-20261008.log`.
+The native vector fixture is added to the dedicated CI job. Matching combined
+vector cohort54/54 passes, zero failures/skips/cancellations:
+`/tmp/orbyn-c1-perplexity-vector-combined-20261008.log`.
+Full regression and main delivery are pending; no full C1 completion is claimed.
+
+Credential source remains frozen at47d35a07 in its separate live regression;
+this candidate's source changes do not alter that running checkout.
+
 ## Credential-test authority candidate — 8 October 2026
 
 An actual local HTTP fixture reproduced a saved provider changing while its

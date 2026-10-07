@@ -76,6 +76,7 @@ jobs:
           backend/tests/embedding-setup.integration.ts
           backend/tests/embedding-retry.integration.ts
           backend/tests/embedding-pgvector.integration.ts
+          backend/tests/perplexity-embeddings.integration.ts
           backend/tests/embedding-vectors.unit.test.ts
           backend/tests/embedding-controls.unit.test.ts
   mobile:
