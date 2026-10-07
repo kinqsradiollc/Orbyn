@@ -276,3 +276,29 @@ The live embedding provider matrix, enabled/error visual states, wider ownership
 and permission races, installed-native behavior and permitted OpenAI cache
 benchmark remain required. Existing local fixture and browser results do not
 complete those gates. Continue C1 in order before C2/M1.
+
+### Failure/retry checkpoint implementation order
+
+After reviewed-destination consent is promoted:
+
+1. Reproduce one failed queued page followed by a healthy page with deterministic
+   local provider replies. Current `measureQueued` propagates the first provider
+   failure, aborting the page loop; `runMeasurer` catches it and waits60seconds.
+   No persisted failure, retry due time or per-page failure count is exposed.
+2. Persist only bounded, sanitized failure categories, attempt count and retry due
+   time bound to queue revision and embedding generation. Do not store passage
+   text, credentials or raw provider errors. A later document/configuration change
+   must invalidate the prior retry result; disabled/kept-out pages remain excluded.
+3. Keep a failed page queued, schedule bounded backoff and permit healthy later
+   pages to proceed. Recheck consent/provider/document/visibility before every
+   request and every failure/success acknowledgement. No automatic retargeting.
+4. Expose truthful failed/waiting/indexed counts and retry information to admins
+   on both clients. Distinguish worker liveness from successful indexing. Confirm
+   turn-off/revalidation behavior and retain word-search fallback.
+5. Qualify failure→retry→success, poison-page isolation, provider/configuration
+   changes, new page edits, keep-out/revocation and process restart; repeat stock,
+   pgvector and late-install/mixed-version gates where schema changes require it.
+   Route all web/mobile screenshots through Orbyn Visual Check; root owns review.
+
+This is the next retained C1 checkpoint, not implemented or accepted behavior.
+Current consent checkpoint source remains frozen while regression87929 runs.
