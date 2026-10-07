@@ -193,3 +193,88 @@ test("named empty leaves survive merge and keep their fragment destinations", ()
     "[empty](#empty) [missing](#missing)",
   );
 });
+
+test("reference and footnote collisions retain the moved page's definitions and literal examples", () => {
+  const target: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", text: '[same]: https://target.test "Target title"' },
+      { type: "paragraph", text: "Target [same] and note[^n]" },
+      { type: "footnote", label: "n", text: "Target note" },
+    ],
+  };
+  const source: VersionedDocContent = {
+    format: 2,
+    nodes: parseDocContainers(
+      '> [same]: https://source.test "Source title"\n>\n> [**Guide**][same] [same][] [same] and note[^n] and `[same] [^n]`\n>\n> [^n]: Source note\n>\n> ```md\n> [same] [^n]\n> ```',
+    ),
+  };
+  const before = structuredClone({ target, source });
+  const result = mergeDocContents(target, source, "", ids());
+  if (result.document.format !== 2)
+    throw new Error("Missing structured result");
+  const blocks = docContainerBlocks(result.document.nodes);
+  assert.deepEqual(blocks.slice(0, 3), target.blocks);
+  const moved = blocks.slice(3);
+  assert.ok(
+    moved.some(
+      (b) =>
+        "text" in b &&
+        b.text === '[merged-reference-1]: https://source.test "Source title"',
+    ),
+  );
+  assert.ok(
+    moved.some(
+      (b) =>
+        "text" in b &&
+        b.text ===
+          "[**Guide**][merged-reference-1] [same][merged-reference-1] [same][merged-reference-1] and note[^merged-note-1] and `[same] [^n]`",
+    ),
+  );
+  assert.ok(
+    moved.some(
+      (b) =>
+        b.type === "footnote" &&
+        b.label === "merged-note-1" &&
+        b.text === "Source note",
+    ),
+  );
+  assert.ok(moved.some((b) => b.type === "code" && b.text === "[same] [^n]"));
+  assert.deepEqual({ target, source }, before);
+});
+
+test("identical reference definitions can share a label; generated labels avoid both pages", () => {
+  const target: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", text: "[same]: https://same.test" },
+      {
+        type: "paragraph",
+        text: "[merged-reference-1]: https://occupied.test",
+      },
+    ],
+  };
+  const identical: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", text: "[same]: https://same.test" },
+      { type: "paragraph", text: "[same]" },
+    ],
+  };
+  const shared = mergeDocContents(target, identical, "", ids());
+  if (shared.document.format !== 1) throw new Error("Wrong format");
+  assert.equal((shared.document.blocks.at(-1) as any).text, "[same]");
+  const other: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", text: "[same]: https://other.test" },
+      { type: "paragraph", text: "[same]" },
+    ],
+  };
+  const renamed = mergeDocContents(target, other, "", ids());
+  if (renamed.document.format !== 1) throw new Error("Wrong format");
+  assert.equal(
+    (renamed.document.blocks.at(-1) as any).text,
+    "[same][merged-reference-2]",
+  );
+});

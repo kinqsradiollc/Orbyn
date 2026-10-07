@@ -20,6 +20,21 @@ status index; [ADR 001](../adr/001-devday-agent-platform.md) and
 
 ## Current evidence
 
+## Merged reference/footnote namespaces — 7 October 2026
+
+Page merges now rename conflicting source reference definitions and their full,
+collapsed and shortcut uses while retaining visible labels and definition titles.
+Identical link definitions may share a label; allocated names avoid both pages.
+Source footnote definitions/references receive distinct labels when destination
+labels collide. Nested ownership and literal code/examples remain intact. Shared
+reference-span detection now supports formatted visible labels without quadratic
+lookup over all parsed runs.529 Docs unit tests pass (zero failures/skips,28,766ms),
+shared package build/backend types/format checks pass. Candidate only; database
+merge acceptance, unresolved-reference binding audit, extraction cross-page
+fragments, normal editor and installed/visual acceptance remain open.
+Remote main rechecked at7263b45b; no promotion or deployment in this checkpoint.
+
+
 ## Merged-page local link repair — 7 October 2026
 
 Candidate page merging resolves source-local links before concatenation, updates
