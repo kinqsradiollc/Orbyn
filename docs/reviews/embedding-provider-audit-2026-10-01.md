@@ -248,7 +248,11 @@ Neither is accepted evidence. The corrected full run uses fresh marked stock DB
 `orbyn_c1_consent_20261008_test`, session87929, log
 `/tmp/orbyn-c1-embedding-consent-full-corrected-20261008.log`.
 Source is frozen at candidate `d4cd4273`; documentation may advance separately.
-No terminal full pass, main promotion or entire C1 completion is claimed yet.
+The corrected frozen full regression completed3781/3781, zero failures,
+cancellations or skips, exit0,900795ms (terminal session87929). Later commits
+change documentation only. Web QA022 wide/narrow OFF controls were inspected and
+contained; mobile originals/manifest are pending. Main promotion and wholeC1
+completion remain unclaimed.
 
 ### Additional rollout checks — 8 October 2026
 

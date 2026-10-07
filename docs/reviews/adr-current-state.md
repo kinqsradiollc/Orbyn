@@ -61,8 +61,9 @@ Acceptance comes from this session's image inspection, not the capture session's
 2. Embedding reviewed-destination consent race reproduced and corrected locally
    ind4cd4273. Focused pgvector48 pass/one stock-only skip; separate stock20/20.
    Shared/backend builds and both client types pass. Full frozen regression is
-   running as session87929; visual originals requested from Orbyn Visual Check.
-   Promotion requires terminal qualification and inspected capture evidence.
+   terminal as session87929:3781/3781, zero failures/skips/cancellations, exit0.
+   Root inspected QA022 web wide/narrow OFF controls; mobile handoff remains
+   pending. Promotion requires the remaining inspected capture evidence.
 3. Complete the embedding consent/validation/reindex/search/client matrix.
    Keep live provider/OpenAI cache gates explicit; Matilda does not support the
    OpenAI-specific cache benchmark and does not waive that retained requirement.

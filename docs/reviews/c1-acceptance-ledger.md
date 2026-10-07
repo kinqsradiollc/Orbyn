@@ -7,8 +7,10 @@ where409 was required. Candidate `d4cd4273` fences the explicit embedding revisi
 before dispatch and retains post-probe generation/revision checks. Both clients
 submit the reviewed revision and reset acceptance after connection changes.
 Focused pgvector48 pass/one stock-only skip; corrected separate stock20/20.
-Shared/backend builds and both client types pass. Full frozen run87929 and
-Visual Check originals are pending; no main promotion of this correction yet.
+Shared/backend builds and both client types pass. Full frozen run87929 passes
+3781/3781, zero failures/cancellations/skips, exit0,900795ms. Root inspected
+QA022 wide/narrow web OFF controls; mobile originals/manifest are pending.
+No main promotion of this correction yet.
 See [the embedding audit](embedding-provider-audit-2026-10-01.md) for matrix,
 logs, failed harness commands and rollout behavior. WholeC1 remains open.
 
