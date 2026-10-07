@@ -2,6 +2,20 @@
 
 ## Current terminal qualification — migration256 controls freeze
 
+### Current visual-gate revalidation
+
+Orbyn Visual Check completed QA014; root inspected original images directly.
+Desktop1440x900 contains the updated Terms gate for version
+2026-10-07-managed-usage: accepted as blocker pixel evidence only. Mobile image
+is390x232 despite a requested390x844 CSS viewport and shows signup: rejected for
+layout acceptance and cannot establish a signed-in C1 review. Local web5174,
+mobile8083 and API8008 each return200. No account/legal/provider action performed.
+Capture manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-014-capture-manifest.md`.
+Fresh explicit local Terms/sign-in confirmation requested under Computer Use's
+legal agreement restriction. Managed evaluation credential/model still absent
+from the process and production variable names; no secret values printed.
+
 Exact main-based66f7a5f2 full backend regression completed3723/3723,
 zero failures/cancellations/skips, terminal exit0,883745ms. Session88045 is
 terminal; complete log `/tmp/orbyn-adr-full-main-66f7a5f2-20261007.log`.

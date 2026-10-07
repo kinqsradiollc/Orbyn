@@ -40,7 +40,7 @@ provider credentials remain separate.
 | pgvector integration | 12/12 separate integration checks pass: accepted consent/no-op/generation edits, real connection changes and validation races, measured search/document/policy fences, Azure storage, pre218 legacy cleanup and late extension installation. | Local provider fixtures; real provider/UI/reindex acceptance remains required. |
 | Earlier full regression | Exact-main `c082d93e`: 3722/3722 passed, zero skips/failures, terminal exit0. | Predates migration256; cannot qualify the latest correction. |
 | Refreshed full regression | Frozen `66f7a5f2`: 3723/3723 passed, zero failures/cancellations/skips, exit0, 883745ms. Session88045 is terminal. | Does not establish live-provider, visual or whole-stage acceptance. |
-| Visual review | Chrome original JPEG capture calibration accepted; one dark390 cache-menu state accepted. | Signed-in controls/actions/usage screenshots across web/mobile/themes; local updated Terms confirmation pending. |
+| Visual review | Chrome calibration and one dark390 cache-menu state accepted. Root inspected QA014: desktop1440x900 confirms the updated Terms gate; mobile image shows signup and only390x232 pixels. | Signed-in controls/actions/usage screenshots across web/mobile/themes; explicit local Terms/sign-in confirmation pending. QA014 mobile is rejected for390x844 layout acceptance. |
 | Live evaluation | Fixed six-call non-personal cache/latency harness prepared and mocked tests passed. | Configure authorized managed test credential/model. No real cache economics, general quality or plan entitlement established. |
 | Integration | Qualification branch committed; main stays `3c8feb40`. | Merge only after sufficient current-checkpoint qualification. |
 
