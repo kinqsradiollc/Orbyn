@@ -1,3 +1,25 @@
+## Task-panel controls checkpoint — 7 October 2026
+
+Task cancellation now lives in the title options menu on web and mobile; the
+desktop footer no longer duplicates the header dismissal. Existing write/open-
+task guards and confirmation-before-mutation remain. Mobile browser confirmation
+uses an app-owned sheet with wrapped consequences and Keep task / Cancel task
+choices; installed iOS/Android retain native alerts. Its affirmative callback
+checks current task identity, permission and busy state before mutation.
+
+Focused task/Home/navigation checks pass26/26 on the main working tree and
+candidate. Desktop/mobile candidate types, main desktop types, desktop build and
+format checks pass. Browser review accepts web390/1280 and mobile390/320 menu/
+confirmation containment; Keep task preserves status after reload. Native
+confirmation and visual busy/read-only races remain unverified; automated guards
+are separate evidence. The frozen5523afe1 full regression passes3969/3969 with
+zero failures/skips; it excludes this later task-panel patch.
+
+Follow [the ordered ADR queue](../reviews/adr-execution-order.md). This finishes
+the scoped task-panel browser repair, not U1 or the full ADR. Normal Docs editor
+ownership activation is next. Orbyn Visual Check writes steps, screenshots,
+findings and limits in its Markdown report and sends short handoffs only.
+
 ## Home identities and mobile Settings navigation — 7 October 2026
 
 Default Background/Overnight identities now show each name once; custom names
