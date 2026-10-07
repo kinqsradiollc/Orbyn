@@ -1,3 +1,15 @@
+## Full regression repair and main reconciliation — 7 October 2026
+
+Main is now64e905f5, pushed:00270b91 fixes complete-tree line naming and64e905f5
+isolates recurring maintenance test fixtures. The candidate includes both main
+checkpoints; the latest merge completed without conflicts. Its prior full run
+finished with3929 passes,2 failures and zero skips (907152ms). Those failures were
+a reproducible fixture scheduling leak and an unclassified identity-refresh route.
+The corrected candidate focused rerun passes55/55 with backend typecheck/formatting;
+main's focused rerun passes48/48. The new full candidate rerun is pending its own
+result; neither focused evidence nor main integration proves the full ADR complete.
+The temporary anchor qualification worktree is archived after its fix reached main.
+
 ## Normal-editor activation audit — 7 October 2026
 
 Desktop `DocsView.openPage` and mobile `DocsSheet` still load with `getDoc`;
