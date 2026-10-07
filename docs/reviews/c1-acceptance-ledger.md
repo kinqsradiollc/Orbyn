@@ -1452,3 +1452,17 @@ mobile/app.json SHA1 remains dacd602172347441f2fd92f16d8772b3ba1ef7a8;
 unrelated tracked/untracked changes are preserved. No production deployment or
 whole ADR stage completion claimed. Next active C1 checkpoint is the retained
 multi-provider dispatch/catalog/runtime inventory and permitted cache evaluation.
+
+## Native Perplexity embedding delivery receipt — 8 October 2026
+
+- Frozen source6ece8866: full4112/4112, no failures/skips/cancellations, exit0,
+  duration849290.154875ms. Terminal session20230; log
+  `/tmp/orbyn-c1-perplexity-full-20261008.log`.
+- Source fast-forward merged and pushed to main as6ece8866. Primary unrelated
+  files and mobile/app.json SHA1dacd602172347441f2fd92f16d8772b3ba1ef7a8 preserved.
+- Generation/catalog compiled baseline1/3 passes; two failures reproduced in
+  `/tmp/orbyn-c1-perplexity-generation-before-20261008.log`. The native Agent
+  catalog resource and Responses output require a separate C1 correction.
+- No live Perplexity key/inference, current UI/native acceptance, production
+  deployment or whole-C1 completion is claimed. Finish remaining C1 gates,
+  report the remaining ADR table, then pause before C2.

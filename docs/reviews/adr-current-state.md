@@ -28,6 +28,18 @@ Embedding access-race and dedicated CI coverage is merged/published as
 backend source. Remote CI initially52/53 failed because the new job omitted
 the backend build required by the compiled-process fixture. The prerequisite
 correction passes build and53/53 locally; corrected remote acceptance is pending.
+The corrected dedicated embedding CI run37656656011 passes all five jobs,
+including53/53 vector checks. Credential-test generation/model authority is
+merged and pushed as47d35a07: route49/49, client27/27, workspace types/builds,
+and full4083/4083 pass.
+Native Perplexity embeddings are merged and pushed as6ece8866: explicit
+signed-int8 decoding, reviewed1024/2560 widths, custom compatible float behavior,
+adapter37/37, runtime67/67 and dedicated vector54/54 pass. Frozen full regression
+passes4112/4112, zero failures/skips/cancellations, exit0,849290ms.
+The next C1 repair is native Perplexity catalog/generation routing. Compiled
+baseline1/3 passes: native catalog uses the wrong resource and Agent output is
+rejected; custom compatible behavior passes. Evidence is local fixtures,
+not live account qualification.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.
