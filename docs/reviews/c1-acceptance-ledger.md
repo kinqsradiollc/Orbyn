@@ -1529,3 +1529,27 @@ multi-provider dispatch/catalog/runtime inventory and permitted cache evaluation
   QA026 mixed-source baseline images as candidate acceptance.
 - Main stays0c407a0a. C1 live-provider/cache/embedding and remaining client/native
   gates stay open. The user requested a pause after all C1 gates finish, before C2.
+
+### Rejected candidate and correction
+
+- The first full run is terminal:4141/4153 pass,12fail, zero skips/cancellations,
+  exit1,791939ms. Log `/tmp/orbyn-c1-picker-full-20261008.log`.
+  One failure identifies the new mobile16pt label outside Orbyn's type scale.
+  Eleven later Teams tests share a prematurely closed pool: top-level signing
+  fixture awaits occur after the first tests registered, permitting early cleanup.
+  No passing full qualification or main promotion is claimed for that run.
+- Root inspected QA026 originals: empty web picker clips its right edge at320px
+  in both themes. The popup auto width exceeded the width used for positioning.
+  Source54f53b8c sets explicit bounded width/minimum, retains viewport margins,
+  uses15pt mobile labels and adds actual-component geometry checks.
+  Focused corrected cohort73/73 passes; all workspace typechecks and web build
+  pass. Mobile320/390 sheet/search/no-match originals are contained; they are
+  pre-type-scale correction and browser-only, without a native software keyboard.
+- Test-only693066d5 initializes signing fixtures before any registration.
+  Focused actual Teams installation cohort23/23 passes. No C5 product behavior
+  is changed or declared accepted by this harness correction.
+- A fresh full run is active at frozen product/test source693066d5, log
+  `/tmp/orbyn-c1-picker-corrected-full-20261008.log`; terminal result pending.
+  Visual Check was asked for corrected320px web and320/390 mobile originals.
+  The1280px browser capture returned only918px of output: full wide-surface
+  acceptance remains open. Native installed-client gates also remain open.
