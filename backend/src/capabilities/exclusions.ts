@@ -430,6 +430,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /ai/connections/chatgpt/catalog": "credentials",
   "POST /ai/connections/chatgpt/challenges": "credentials",
   "POST /ai/connections/chatgpt/complete": "credentials",
+  "POST /ai/connections/chatgpt/refresh-identity": "credentials",
   "GET /ai/connections/chatgpt": "credentials",
   "DELETE /ai/connections/chatgpt/:id": "credentials",
   "POST /me/assistant/reminder-nudges/:id/stop": "assistant_control",

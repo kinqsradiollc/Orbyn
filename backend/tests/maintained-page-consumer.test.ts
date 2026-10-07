@@ -97,6 +97,12 @@ afterEach(async () => {
   ]);
   responseHook = undefined;
   seen.length = 0;
+  // Cancelling a run does not cancel its recurring binding. Retire only this
+  // file's completed fixtures so a later real worker cannot schedule them again.
+  await pool.query(
+    "UPDATE assistant_page_bindings SET paused=true WHERE user_id=ANY($1::uuid[])",
+    [people],
+  );
   await pool.query(
     "UPDATE assistant_page_runs SET state='cancelled',lease_token=NULL,lease_expires_at=NULL,waiting_id=NULL WHERE user_id=ANY($1::uuid[]) AND state IN ('queued','running','waiting')",
     [people],
