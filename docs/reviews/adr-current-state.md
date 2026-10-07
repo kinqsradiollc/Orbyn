@@ -2,7 +2,7 @@
 
 Updated 7 October 2026 from current main/candidate source, Git and live test evidence.
 This table records current stages; historical evidence remains in the acceptance ledger.
-This update accompanies the managed authority promotion from main24cc5607.
+Latest qualified product checkpoint: `bdc87260`, pushed to main.
 User deploys main manually; deployment is unconfirmed. No entire ADR stage is closed.
 
 | Order | Stage | Implemented checkpoints | Remaining before stage completion |
@@ -67,4 +67,3 @@ stage. Next implement supported reasoning/cache controls and usage/evaluation,
 then remaining multi-provider/embedding and both-client acceptance. Real provider
 inference, installed native acceptance, C2-M1 through C6/D1/U1 and final cleanup
 remain open. User/character files are preserved.
-
