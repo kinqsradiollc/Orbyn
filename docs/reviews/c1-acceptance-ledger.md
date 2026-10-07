@@ -1868,3 +1868,25 @@ independent upgrade1-case receipts remain historical evidence.
 - Product remains81e807ee; candidate docs-only follow-up adds canonical API
   catalog/redirect contract. No whole-suite passing result is inferred from
   the targeted correction, and feature promotion remains pending visual review.
+
+### 8 October: positive usage browser gate underway
+
+Root seeded two explicitly tracked synthetic usage records for the disposable
+local QA account on orbyn_ui_preview (not the active full-test database).
+Before seeding, account usage count was zero and analytics collection enabled.
+Only two terminal done fixture jobs and their counters were inserted; no runner,
+provider request or workspace content was involved. Original providers/settings
+were untouched. Receipt /tmp/orbyn-c1-usage-visual-fixture-20261008.json identifies
+the exact job IDs/event keys for cleanup; do not delete other usage/jobs.
+
+Authenticated real GET /ai/usage returns200,enabledtrue,requests2/window30,
+input2000/output200/reasoning40/cached1000/cache-write100. Receipt:
+/tmp/orbyn-c1-usage-positive-api-20261008.json. This proves the local API aggregate,
+not vendor billing/plan entitlement. Orbyn Visual Check is capturing the real
+usage subsection on web/mobile browser in both themes; root visual acceptance
+and the separately switched overflow phase remain pending. Do not clean fixture
+records until the capture session is quiescent and both phases complete.
+
+Fresh candidateab01bcc8 full session75238 remains live. Product source frozen.
+Current mainc79e7496 vs candidateab01bcc8 merge-tree dry run exits0/no conflicts,
+treeff2bd44df7090597430b922badd1940e6d06dcb0; revalidate actual refs before merge.
