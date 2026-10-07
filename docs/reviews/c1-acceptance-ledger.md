@@ -1,5 +1,37 @@
 # C1 acceptance ledger
 
+## Independent embedding discovery candidate — 8 October 2026
+
+Local checkpoint1941fe13 adds a purpose-specific catalog route using the
+displayed embedding revision before and after network I/O, independent of
+generation controls. It preserves server-side credentials, manual models,
+assistant settings and explicit semantic consent. Exact native OpenRouter uses
+its separate embedding catalog; custom destinations preserve their saved origin.
+Compatible catalogs are labelled unclassified candidates, not embedding proof.
+Azure deployment names remain manual; native Anthropic embedding setup remains
+excluded. All20 saved kinds have adapter fixtures.
+
+Corrected focused cohort122/122, zero failures/skips/cancellations, passes:
+`/tmp/orbyn-c1-embedding-discovery-focused-20261008.log`.
+Final workspace typecheck, backend and web builds pass. Original initial
+typecheck/VM-harness failures are preserved in the candidate review document;
+they are not represented as passing runs.
+
+Combined frozen source5466bc1c adds the pending exact-match mobile search fix.
+Its full regression is running, not completed, in the new marked database
+`orbyn_c1_embedding_discovery_full_20261008_test`:
+`/tmp/orbyn-c1-embedding-discovery-full-20261008.log`.
+The source tree remains clean and unchanged while that run is live.
+
+Owned API/web/mobile previews now serve5466bc1c at the existing8008/5174/8083
+ports. Authenticated discovery against the inert local provider returns200,
+unclassified250-model catalog and matching embedding revision; semantic search
+staysOFF. No page text was sent, consent granted or real provider selected.
+Chrome was unavailable to Visual Check; the human has now confirmed restored
+availability. Corrected mobile and embedding UI originals are requested and await
+root inspection. Neither feature is promoted to main, and C1 remains active.
+The requested pause applies after full C1 completion, before C2/M1.
+
 ## Credential-test checkpoint delivered — 8 October 2026
 
 Frozen source47d35a07 completes full regression4083/4083, zero failures/skips/

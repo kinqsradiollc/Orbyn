@@ -77,6 +77,19 @@ observations and costs remain unverified. The positive local-provider visual
 batch is active; root rejected a blank mobile crop, reviewed its replacement, and confirmed
 an exact-match mobile model filter defect. Isolated correctiona8ad5a8e passes
 52/52 focused checks and types; corrected browser capture/integration is pending.
+Current local combined candidate5466bc1c includes embedding model discovery
+checkpoint1941fe13 and the pending mobile exact-match search correction. The
+embedding catalog route is fenced to its independent recipient revision, labels
+unclassified candidates honestly and preserves manual models and consent.
+Focused discovery/catalog/client tests122/122, final workspace typechecks and
+backend/web builds pass. Frozen full regression is running in a fresh marked
+database; it is not yet a pass or main delivery. Both previews now serve that
+candidate on the existing5174/8083 origins. Authenticated inert catalog loading
+returns250 candidates, matching revision, with semantic search stillOFF.
+The human restored Chrome availability; original corrected mobile and new
+embedding UI captures have been requested from Orbyn Visual Check. Root review
+and candidate promotion remain pending. Main currently delivers e3c68493;
+the feature source is still local, not shipped.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.
@@ -88,20 +101,20 @@ User/character changes and unmerged work remain preserved.
 This is the current C1 checklist; historical ledger rows describe earlier source.
 A passing fixture or sampled view does not close its named external/native gate.
 
-| C1 requirement                           | Implemented / qualified evidence                                                                                         | Open acceptance                                                                                                      |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| Managed, BYO and personal authority      | Immutable job choice, private/managed isolation and explicit fallback/provenance checkpoints on main                     | Complete entry-point/recovery matrix and actual permitted provider acceptance                                        |
-| Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Current-source browser/native management and credential-test interactions                                            |
-| Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching                       |
-| Generation wire formats                  | Main native Responses/Messages, Zen and Perplexity Agent recovery; compatible/Azure/Matilda fixtures                     | Broader actual supported-model qualification                                                                         |
-| Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Permitted OpenAI cache/latency/cost/quality benchmark; unsupported models remain explicit                            |
-| Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | Positive/overflow/error client states; no inferred billing or plan entitlement                                       |
-| Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted embedding connection and full operational/client matrix                                                |
-| Vector dimensions and replacement        | Flexible pgvector storage,3072-dimension Azure fixture, replacement/requeue and old-result rejection                     | Broader authorized model/dimension runtime matrix                                                                    |
-| Consent/document/visibility races        | Pre-click/in-flight provider, A→B→A, edits, disable, keep-out and queue-revision tests                                   | Remaining ownership/permission/recovery acceptance                                                                   |
-| Migration and worker deployment          | Legacy upgrade, late extension, idempotence and profile lifecycle checks                                                 | Wider mixed-version/operational acceptance; production deployment is user-owned                                      |
-| Indexing failure/status/retry            | Sanitized persistent backoff, newer-work fencing and healthy-page progress on maind4da3d41                               | Real enabled/error/loading client interactions and native review                                                     |
-| Responsive and native clients            | Scoped web wide/narrow, mobile browser390 and earlier controls/zero-usage samples reviewed                               | Remaining full-surface coverage, large text/keyboard/overlays and installed-native acceptance |
+| C1 requirement                           | Implemented / qualified evidence                                                                                         | Open acceptance                                                                                |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Managed, BYO and personal authority      | Immutable job choice, private/managed isolation and explicit fallback/provenance checkpoints on main                     | Complete entry-point/recovery matrix and actual permitted provider acceptance                  |
+| Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Current-source browser/native management and credential-test interactions                      |
+| Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching |
+| Generation wire formats                  | Main native Responses/Messages, Zen and Perplexity Agent recovery; compatible/Azure/Matilda fixtures                     | Broader actual supported-model qualification                                                   |
+| Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Permitted OpenAI cache/latency/cost/quality benchmark; unsupported models remain explicit      |
+| Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | Positive/overflow/error client states; no inferred billing or plan entitlement                 |
+| Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted embedding connection and full operational/client matrix                          |
+| Vector dimensions and replacement        | Flexible pgvector storage,3072-dimension Azure fixture, replacement/requeue and old-result rejection                     | Broader authorized model/dimension runtime matrix                                              |
+| Consent/document/visibility races        | Pre-click/in-flight provider, A→B→A, edits, disable, keep-out and queue-revision tests                                   | Remaining ownership/permission/recovery acceptance                                             |
+| Migration and worker deployment          | Legacy upgrade, late extension, idempotence and profile lifecycle checks                                                 | Wider mixed-version/operational acceptance; production deployment is user-owned                |
+| Indexing failure/status/retry            | Sanitized persistent backoff, newer-work fencing and healthy-page progress on maind4da3d41                               | Real enabled/error/loading client interactions and native review                               |
+| Responsive and native clients            | Scoped web wide/narrow, mobile browser390 and earlier controls/zero-usage samples reviewed                               | Remaining full-surface coverage, large text/keyboard/overlays and installed-native acceptance  |
 
 Finish these gates, record final C1 evidence and main delivery, then pause with the
 remaining ADR table. C2/M1 stays queued until the user resumes after that pause.
