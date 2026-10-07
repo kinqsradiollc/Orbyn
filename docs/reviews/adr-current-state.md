@@ -71,9 +71,12 @@ Access-race/recovery test delivery is merged/pushed as9921c086. Current
 management/edit crops in both themes were inspected; positive receipt/catalog
 interaction captures are now assigned against a disposable local inert provider.
 Standalone cache-report estimate candidate23773ee6 passes focused5/5 and
-backend types/build; its frozen full regression is running. Live OpenAI cache
+backend types/build; its frozen full regression passes4158/4158, zero failures/skips/cancellations,
+exit0. Live OpenAI cache
 observations and costs remain unverified. The positive local-provider visual
-batch is active; root rejected a blank mobile crop and requested recapture.
+batch is active; root rejected a blank mobile crop, reviewed its replacement, and confirmed
+an exact-match mobile model filter defect. Isolated correctiona8ad5a8e passes
+52/52 focused checks and types; corrected browser capture/integration is pending.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.

@@ -1705,3 +1705,19 @@ The first mobile provider-card crop is entirely blank; root rejected it as
 unusable capture evidence and requested recapture through Visual Check. The
 batch/manifest and both-client acceptance are pending. Root has not removed
 the temporary inert provider/server while that authorized batch is live.
+
+### Cache estimate frozen regression — terminal qualification
+
+Frozen23773ee6 source passes4158/4158 in the fresh marked stock database,
+zero failures/skips/cancellations, exit0,784294.837291ms. Log:
+`/tmp/orbyn-c1-cache-estimate-full-20261008.log`. Focused5/5 and backend
+typecheck/build also pass. Later413e0fba is documentation-only. The estimate
+is qualified for scoped main integration; it does not complete the live
+OpenAI cache benchmark or full C1. No vendor request was made by these tests.
+
+Root's current mobile screenshot review found an exact-match model filtering
+defect. The actual component closure reproduces40 chips rather than the single
+late model. Isolated correctiona8ad5a8e passes actual picker/component15/15,
+extended Admin AI/layout cohort52/52, backend/mobile types. It remains outside
+this frozen source/main pending corrected browser captures. See
+`c1-mobile-model-search-review.md` in the mobile candidate checkout.
