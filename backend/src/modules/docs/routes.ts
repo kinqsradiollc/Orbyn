@@ -920,7 +920,7 @@ export async function docRoutes(app: FastifyInstance) {
       // The page is read and written back under its lock, so a save that
       // lands meanwhile waits, then finds the version moved on and merges,
       // rather than being written over with the copy read here.
-      const doc = await requireDoc(db, id, u, "items:read");
+      const doc = await requireDoc(db, id, u, "items:write");
       // An agenda's lines are copies of tasks you already have; making them
       // into tasks would only make each one twice.
       if (doc.kind === "agenda")
