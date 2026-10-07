@@ -1,3 +1,16 @@
+## Task-panel qualification and full regression — 7 October 2026
+
+Frozen candidate5523afe1 full run is terminal green:3969 passes, zero failures/
+skips,783008ms, exit0; log /tmp/orbyn-adr-full-5523afe1-20261007.log. It excludes
+the uncommitted task-panel patch. That patch passes26 focused cases on candidate
+and main working tree, plus candidate mobile typecheck. Mobile browser recheck
+found native Alert.alert silently did nothing on web; cancellation now uses the
+existing confirmAction helper, retaining native alerts and browser confirmation.
+The owned Expo preview is restarted from mobile/ as session64574. An earlier
+restart from monorepo root selected the wrong AppEntry; its generated root config
+was removed, with no dependency change. Final visual recheck remains pending.
+Keep stage1 active until acceptance and main integration; then begin stage2.
+
 ## Ordered continuation — 7 October 2026
 
 Follow [ADR execution order](adr-execution-order.md), completing one checkpoint

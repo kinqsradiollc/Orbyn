@@ -1,4 +1,5 @@
 import { Select } from "../../components/Select";
+import { Popover } from "../../components/Popover";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
@@ -16,6 +17,7 @@ import {
   Video,
   ListChecks,
   MessageSquare,
+  MoreHorizontal,
   Pencil,
   Sparkles,
   Plus,
@@ -162,6 +164,7 @@ export function TaskDetail({
   const [body, setBody] = useState("");
   const [nextStatus, setNextStatus] = useState<Status | "">("");
   const [draft, setDraft] = useState<number | null>(null);
+  const [optionsAt, setOptionsAt] = useState<DOMRect | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const panel = useRef<HTMLElement>(null);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -482,6 +485,21 @@ export function TaskDetail({
               title={current.title}
               onError={(e) => setError(errorText(e))}
             />
+            {canWrite &&
+              current.kind === "task" &&
+              !isClosed(current.status) && (
+                <button
+                  className="icon-button drawer-share"
+                  aria-label="Task options"
+                  aria-expanded={!!optionsAt}
+                  disabled={pending}
+                  onClick={(e) =>
+                    setOptionsAt(e.currentTarget.getBoundingClientRect())
+                  }
+                >
+                  <MoreHorizontal size={18} />
+                </button>
+              )}
             <button
               ref={closeButton}
               className="icon-button drawer-close"
@@ -1142,22 +1160,6 @@ export function TaskDetail({
               <Crosshair size={15} /> Focus
             </button>
           )}
-          {canWrite && current.kind === "task" && !isClosed(current.status) && (
-            <button
-              className="secondary"
-              disabled={pending}
-              onClick={async () => {
-                if (
-                  await ask({
-                    title: `Cancel “${current.title}”? It closes without being done.`,
-                  })
-                )
-                  setStatus("cancelled");
-              }}
-            >
-              <Ban size={15} /> Cancel task
-            </button>
-          )}
           <button className="secondary" onClick={() => onEdit(current)}>
             {canWrite ? (
               <>
@@ -1169,11 +1171,36 @@ export function TaskDetail({
               </>
             )}
           </button>
-          <button className="text-button" onClick={onClose}>
-            Close
-          </button>
         </div>
       </aside>
+      {optionsAt &&
+        canWrite &&
+        current.kind === "task" &&
+        !isClosed(current.status) && (
+          <Popover
+            anchor={optionsAt}
+            label="Task options"
+            onClose={() => setOptionsAt(null)}
+          >
+            <div className="popover-actions">
+              <button
+                className="popover-action danger"
+                disabled={pending}
+                onClick={async () => {
+                  setOptionsAt(null);
+                  if (
+                    await ask({
+                      title: `Cancel “${current.title}”? It closes without being done.`,
+                    })
+                  )
+                    setStatus("cancelled");
+                }}
+              >
+                <Ban size={15} /> Cancel task
+              </button>
+            </div>
+          </Popover>
+        )}
     </div>
   );
 }

@@ -21,6 +21,16 @@ status index; [ordered execution queue](adr-execution-order.md),
 
 ## Current evidence
 
+## Latest qualification — 7 October 2026
+
+Frozen candidate5523afe1 full regression passed3969/3969, zero failures/skips,
+terminal exit0 (783008ms), /tmp/orbyn-adr-full-5523afe1-20261007.log. It does not
+cover the uncommitted QA-006 patch. That patch passes26 focused cases on both
+candidate and main working tree; candidate mobile types pass. Mobile browser
+confirmation was a native Alert web no-op, now using the existing cross-platform
+helper. Fresh review remains pending; task checkpoint is not yet on main.
+Follow the ordered queue before starting normal Docs editor activation.
+
 ## Current handoff — 7 October 2026, Home/Settings checkpoint
 
 Main/origin/main43c448c4 contains the independently browser-reviewed Home label/
