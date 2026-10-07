@@ -356,11 +356,10 @@ function ProviderRow({
   const list = models ?? def.suggestedModels;
   const typed = model.trim();
   const query = typed.toLowerCase();
-  const shown = (
-    !query || list.includes(typed)
-      ? list
-      : list.filter((m) => m.toLowerCase().includes(query))
-  ).slice(0, MAX_CHIPS);
+  const matches = query
+    ? list.filter((m) => m.toLowerCase().includes(query))
+    : list;
+  const shown = matches.slice(0, MAX_CHIPS);
 
   return (
     <View>
@@ -434,6 +433,11 @@ function ProviderRow({
               No models came back. Type one above.
             </Text>
           )}
+          {models && models.length > 0 && query && !matches.length && (
+            <Text style={[shared.small, s.chipCaption]}>
+              No matching models. You can keep the typed value.
+            </Text>
+          )}
           {shown.length > 0 && (
             <>
               {!models && (
@@ -462,9 +466,9 @@ function ProviderRow({
                   );
                 })}
               </View>
-              {models && models.length > shown.length && (
+              {models && matches.length > shown.length && (
                 <Text style={[shared.small, s.chipCaption]}>
-                  Showing {shown.length} of {models.length}. Type to filter.
+                  Showing {shown.length} of {matches.length}. Type to filter.
                 </Text>
               )}
             </>
