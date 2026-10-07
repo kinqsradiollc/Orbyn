@@ -83,6 +83,32 @@ Both-client types, web production build and scoped CSS formatting pass. Logs:
 remains unchanged from bf3dfef1 during this CSS/documentation follow-up.
 No main promotion or entire-stage/native acceptance claimed.
 
+## Mobile provider management follow-up
+
+QA017 lower controls exposed inline Edit/Delete actions on mobile. Those rare
+actions now use the existing provider-title MoreMenu, matching web management.
+Load/Test/Use remain primary. Source audit also found provider deletion and
+assistant shutdown used Alert.alert, which is a no-op in React Native Web. Both
+now use the existing cross-platform confirmAction helper: native alert on installed
+clients, browser confirmation on mobile web. No mutation occurs before approval.
+Five executable UI/confirmation checks pass in
+`/tmp/orbyn-c1-provider-management-ui-20261007.log`. They evaluate the actual JSX
+callbacks/menu actions and the platform helper, not just source-string presence.
+Initial typecheck rejected the optional edit icon; it was removed, and corrected
+mobile typecheck passes in
+`/tmp/orbyn-c1-provider-menu-mobile-types-fixed-20261007.log`. Old failed typecheck
+and blank QA018 crash capture remain historical evidence; refreshed menu capture
+is required before acceptance. Full bf3dfef1 backend regression is still running;
+these separately executed frontend checks do not substitute for its terminal result.
+
+Root inspected corrected QA017 mobile320 Light usage and390 Dark full usage: all
+zero-request/unknown-counter explanations and Refresh are visible and contained.
+Root inspected390 Light/Dark lower controls through Save: contained, remaining
+inline actions led to this follow-up. QA018 narrow dark header no longer shows
+provider text through Admin navigation, and narrow light menu stays within viewport.
+Remaining dark/narrow usage,320 lower controls and refreshed provider sheet
+captures stay explicit. No installed-native or whole-stage acceptance claimed.
+
 ## Historical qualification — migration256 controls freeze
 
 ### Current visual-gate revalidation

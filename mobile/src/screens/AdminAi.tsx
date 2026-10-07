@@ -1,7 +1,7 @@
 import { AiModelControls } from "./AiModelControls";
 import React, { useEffect, useState } from "react";
 import { SemanticSetup } from "./SemanticSetup";
-import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Switch } from "../components/Switch";
 import {
   AI_PROVIDER_KINDS,
@@ -21,6 +21,8 @@ import { Icon } from "../components/Icon";
 import { Pill } from "../components/Pill";
 import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
+import { MoreMenu } from "../components/MoreMenu";
+import { confirmAction } from "../lib/confirm";
 import { client } from "../lib/api";
 import { FadeIn, PressableScale, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
@@ -209,22 +211,16 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
             style={s.flushButton}
             disabled={busy}
             onPress={() =>
-              Alert.alert(
+              confirmAction(
                 "Turn off the assistant?",
                 "It stays off until you choose a provider again.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Turn off",
-                    style: "destructive",
-                    onPress: () =>
-                      act(async () =>
-                        setSettings(
-                          await client.updateAiSettings({ provider_id: null }),
-                        ),
-                      ),
-                  },
-                ],
+                "Turn off",
+                () =>
+                  act(async () =>
+                    setSettings(
+                      await client.updateAiSettings({ provider_id: null }),
+                    ),
+                  ),
               )
             }
           />
@@ -287,17 +283,11 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
                 }
                 onEdit={() => setForm({ mode: "edit", provider: p })}
                 onDelete={() =>
-                  Alert.alert(
+                  confirmAction(
                     "Delete this provider?",
                     `${p.name} and its saved key are removed. If the assistant was using it, the assistant turns off until you choose another provider.`,
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      {
-                        text: "Delete",
-                        style: "destructive",
-                        onPress: () => run(() => client.deleteAiProvider(p.id)),
-                      },
-                    ],
+                    "Delete",
+                    () => run(() => client.deleteAiProvider(p.id)),
                   )
                 }
               />
@@ -388,6 +378,20 @@ function ProviderRow({
           trackColor={{ true: colors.accent }}
           accessibilityLabel={`${p.name} enabled`}
           onValueChange={onEnabled}
+        />
+        <MoreMenu
+          label={`${p.name} options`}
+          title={p.name}
+          disabled={busy}
+          actions={[
+            { label: "Edit connection", onPress: onEdit },
+            {
+              label: "Delete connection",
+              icon: "trash",
+              destructive: true,
+              onPress: onDelete,
+            },
+          ]}
         />
       </View>
       {expanded && (
@@ -497,13 +501,6 @@ function ProviderRow({
               label="Use for assistant"
               disabled={busy || !typed}
               onPress={() => onUse(typed)}
-            />
-            <SmallAction label="Edit" disabled={busy} onPress={onEdit} />
-            <SmallAction
-              destructive
-              label="Delete"
-              disabled={busy}
-              onPress={onDelete}
             />
           </View>
           {!typed && (
