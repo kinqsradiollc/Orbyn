@@ -1,3 +1,25 @@
+## Structured line-anchor checkpoint — 7 October 2026
+
+`POST /docs/:id/anchor` now names an anonymous nested leaf in its complete tree
+and writes the matching leaf projection atomically under the existing page lock.
+Read-authorized viewers retain Copy link access without gaining edit authority.
+Quote/list/task ownership and unrelated leaves remain unchanged; concurrent calls
+return one stable ID and increment the revision once. Naming still adds no history
+entry, and legacy pages remain flat. The original route reproduces a23514/500;
+the new regression proves nested viewer/concurrent/idempotent/legacy behavior and
+401/403/400/409/429 refusals without mutation.
+
+Scoped main qualification: packages build and backend typecheck pass. The first
+focused run hit the existing normal-read rate-limit assertion (200 vs429); two
+repeat runs pass all58 structured-storage/Docs/structured tests with no failures
+or skips (5789ms and5663ms). No rate-limit production behavior or assertion was
+weakened. This backend-only checkpoint does not complete normal-editor activation.
+
+The broader application candidate remains separate: its fresh full database run
+has3929 passes and2 failures (Background-service request count and unclassified
+ChatGPT refresh-identity route),907152ms. Neither full ADR completion nor production
+deployment is claimed; the user deploys main manually.
+
 ## Atomic normal editor save candidate — 6 October 2026
 
 The normal editor now has a strict shared metadata+complete-document contract and

@@ -2,6 +2,9 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   aliasesInput,
+  parseVersionedDocContent,
+  docContainerBlocks,
+  mapDocContainerBlocks,
   blockPlainText,
   blockText,
   docAnchorInput,
@@ -585,13 +588,25 @@ export async function docStructureRoutes(app: FastifyInstance) {
       // Anyone who can read the page may name a line to link to it: the
       // words don't change, and a viewer's "Copy link to this line" works.
       await requireDoc(db, id, u, "items:read");
+      const stored = (
+        await db.query<{
+          content: DocBlock[] | null;
+          content_format: 1 | 2;
+          content_nodes: unknown;
+        }>(
+          "SELECT content, content_format, content_nodes FROM docs WHERE id = $1",
+          [id],
+        )
+      ).rows[0];
+      const document = parseVersionedDocContent(
+        stored.content_format === 2
+          ? { format: 2, nodes: stored.content_nodes }
+          : { format: 1, blocks: stored.content ?? [] },
+      );
       const content =
-        (
-          await db.query<{ content: DocBlock[] | null }>(
-            "SELECT content FROM docs WHERE id = $1",
-            [id],
-          )
-        ).rows[0].content ?? [];
+        document.format === 2
+          ? docContainerBlocks(document.nodes)
+          : document.blocks;
       const b = content[index];
       // The line's words as the picker showed them, or its Markdown.
       const shown = b
@@ -604,6 +619,31 @@ export async function docStructureRoutes(app: FastifyInstance) {
       const next = content.slice();
       next[index] = named;
       // Naming a line isn't an edit anyone would look for in history.
+      // A viewer may name a leaf, but cannot change its words or ownership.
+      // Preserve the full tree and its matching projection in the same write.
+      if (document.format === 2) {
+        const nodes = mapDocContainerBlocks(document.nodes, (block, at) =>
+          at === index ? named : block,
+        );
+        const validated = parseVersionedDocContent({ format: 2, nodes });
+        if (validated.format !== 2)
+          throw new Error("Expected structured document");
+        await db.query(
+          "SELECT set_config('orbyn.doc_content_writer','2',true)",
+        );
+        const version = (
+          await db.query<{ version: number }>(
+            `UPDATE docs SET content=$2::jsonb, content_nodes=$3::jsonb,
+              version=version+1 WHERE id=$1 RETURNING version`,
+            [
+              id,
+              JSON.stringify(docContainerBlocks(validated.nodes)),
+              JSON.stringify(validated.nodes),
+            ],
+          )
+        ).rows[0].version;
+        return { block_id: named.id, version };
+      }
       const version = (
         await db.query<{ version: number }>(
           `UPDATE docs SET content = $2::jsonb, version = version + 1
