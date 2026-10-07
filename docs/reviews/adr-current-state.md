@@ -9,7 +9,7 @@ Detailed qualification and historical failures remain in
 **Active stage: C1. No entire ADR stage is complete.**
 The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.
-The C1 catalog checkpoint is qualified locally; current visual captures remain pending.
+The C1 catalog checkpoint is qualified for scoped main promotion; provider controls and manual-model preservation were inspected in web/mobile browser captures.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 
@@ -70,17 +70,17 @@ Acceptance comes from this session's image inspection, not the capture session's
 Orbyn Visual Check captures originals and a Markdown manifest only. This session
 inspects images, owns findings/implementation and records acceptance.
 
-## Current C1 catalog checkpoint — qualified locally, visual handoff pending
+## Current C1 catalog checkpoint — qualified for scoped main promotion
 
-| Requirement                 | Evidence                                                                                                                                                                                                                                                                                                                                                                                                                  | Remaining gate                                                      |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Catalog response validation | Malformed catalogs/error envelopes produce sanitized provider errors; valid catalogs deduplicate/sort. Initial 10/11 failures reproduced, fixed.                                                                                                                                                                                                                                                                          | Wider live-provider catalog matrix.                                 |
-| Preserve model choice       | Web read-only refresh preserves saved/manual choice; mobile saved settings sync only clean state. Actual callback tests pass, including both exact revision call sites.                                                                                                                                                                                                                                                   | Broader native switching matrix.                                    |
-| Connection authority        | Pre-dispatch expected generation check plus post-network re-read reject endpoint/key/options/enable changes, A→B→A and deletion with409. Independent same-kind rows, metadata/no-op edits and legacy calls retain behavior. No row lock spans network I/O.                                                                                                                                                                | Remaining execution/embedding inventory matrix.                     |
-| Regression                  | Full frozen inventory implementation:3767/3767, zero failures/skips/cancellations, exit0,878544ms. Later server revision/client contract changes independently qualified50/50.                                                                                                                                                                                                                                            | Full ADR stage acceptance remains open.                             |
-| Builds/runtime              | Shared build, backend build, desktop/mobile types pass. Compiled revision probe returns409 and `staleCatalogAccepted:false`; external requests0. QA API restarted and healthy on8008.                                                                                                                                                                                                                                     | Wider production/native runtime matrix.                             |
-| Visuals                     | All capture requests routed through Orbyn Visual Check. QA019 public footer originals inspected; badge contained, but user rejected placement. QA020 hero wide/narrow and clean-footer originals inspected; hero placement pushed7e28f2bc. Wide Admin originals inspected. Narrow Admin captures appear magnified/clipped; requested verified zoom/viewport metadata and recaptures. Mobile/model-state captures pending. | Inspect current original captures before visual acceptance.         |
-| Delivery                    | Catalog fixes remain on the qualification branch; badge relocation pushed to main7e28f2bc.                                                                                                                                                                                                                                                                                                                                | Commit/promote qualified scope and preserve unrelated user changes. |
+| Requirement                 | Evidence                                                                                                                                                                                                                                                                                                                         | Remaining gate                                                |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Catalog response validation | Malformed catalogs/error envelopes produce sanitized provider errors; valid catalogs deduplicate/sort. Initial 10/11 failures reproduced, fixed.                                                                                                                                                                                 | Wider live-provider catalog matrix.                           |
+| Preserve model choice       | Web read-only refresh preserves saved/manual choice; mobile saved settings sync only clean state. Actual callback tests pass, including both exact revision call sites.                                                                                                                                                          | Broader native switching matrix.                              |
+| Connection authority        | Pre-dispatch expected generation check plus post-network re-read reject endpoint/key/options/enable changes, A→B→A and deletion with409. Independent same-kind rows, metadata/no-op edits and legacy calls retain behavior. No row lock spans network I/O.                                                                       | Remaining execution/embedding inventory matrix.               |
+| Regression                  | Full frozen inventory implementation:3767/3767, zero failures/skips/cancellations, exit0,878544ms. Later server revision/client contract changes independently qualified50/50.                                                                                                                                                   | Full ADR stage acceptance remains open.                       |
+| Builds/runtime              | Shared build, backend build, desktop/mobile types pass. Compiled revision probe returns409 and `staleCatalogAccepted:false`; external requests0. QA API restarted and healthy on8008.                                                                                                                                            | Wider production/native runtime matrix.                       |
+| Visuals                     | Root inspected QA020 hero wide/narrow and footer; QA020 narrow Admin zoom100 recaptures; QA021 wide provider controls and mobile320/390 controls/manual draft. Controls are contained; manual draft remains after one catalog request per client. Wide full-page sticky-header/sidebar compositing is not whole-page acceptance. | Native, whole-page and wider live catalog matrix remain open. |
+| Delivery                    | Catalog implementation and qualification committed; scoped fast-forward promotion follows this evidence checkpoint. Badge relocation is pushed to main7e28f2bc.                                                                                                                                                                  | Verify main push and preserve unrelated user changes.         |
 
 Evidence:
 
@@ -100,6 +100,14 @@ belongs to the earlier usage checkpoint and does not qualify OpenAI cache econom
 Current capture directory:
 `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/`.
 QA020 hero wide1278×900, narrow390×844 and clean-footer wide originals were
-inspected by this session. Initial narrow Admin images are not acceptance:
-verify actual CSS/visual viewport, device ratio and zoom, then inspect recaptures.
-No layout change is inferred from an unverified capture scale.
+inspected by this session. Initial narrow Admin and clipped416px wide files are
+invalid acceptance evidence. The verified narrow recaptures use390×844 CSS,
+DPR2 and zoom1. QA021 mobile320×740/390×844 originals show contained controls.
+Web and mobile preserve `qa-manual-model` after the single catalog request;
+reloading returns the saved web model `matilda`. No option was selected, saved,
+tested or used for inference. The web selector appeared without a visible error;
+its options were not opened, so the actual catalog contents remain unverified.
+Wide full-page images have sticky-header/sidebar compositing artifacts; only
+provider-control containment/manual state is accepted from them. No whole-page
+or installed-native acceptance is claimed.
+Capture-only manifest: `QA-021-c1-catalog-capture-manifest.md` in that directory.

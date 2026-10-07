@@ -22,9 +22,17 @@ corrected to established422 and added malformed JSON400 coverage. Re-run50/50.
 Logs: `/tmp/orbyn-c1-inventory-full-20261007.log`,
 `/tmp/orbyn-c1-catalog-authority-after-fixed-20261008.log`,
 `/tmp/orbyn-c1-catalog-revision-compiled-20261008.log`.
-QA020 wide Admin originals inspected; narrow Admin scale/clipping needs verified
-viewport/zoom and recapture. Mobile/model-state captures are pending. This checkpoint is
-local until promotion is recorded; wholeC1 and all remaining ADR stages stay open.
+Root inspected QA020 hero/footer and verified narrow Admin zoom100 originals;
+QA021 wide provider controls and mobile320×740/390×844 originals. Both clients
+retain unsaved `qa-manual-model` after one catalog metadata request. No visible
+error appeared; web displayed the catalog selector, but options were not opened.
+This proves visible draft preservation, not catalog completeness or inference.
+Provider controls are contained. Wide full-page sticky-header/sidebar compositing
+artifacts do not establish whole-page acceptance. Earlier clipped/magnified files
+remain invalid. Capture manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-021-c1-catalog-capture-manifest.md`.
+Scoped main promotion follows; wholeC1 and all remaining ADR stages stay open.
+Installed-native acceptance remains open.
 All visual requests go through Orbyn Visual Check for originals/manifest only.
 
 ## Matilda steering and compatible usage correction — 7 October 2026
