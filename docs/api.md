@@ -1436,10 +1436,21 @@ queues eligible pages. Mixed-version legacy workers remain disabled.
 requests. `PUT /ai/settings` cannot turn it on (`422`). Settings responses include
 `semantic_search`, `semantic_possible`, `embedding_provider_id`, `embedding_model`,
 `embedding_dimensions`, `embedding_generation`, `embedding_needs_validation`,
-`embedding_pending_pages`, `embedding_indexed_pages`, `semantic_accepted_at` and
-`measure_running`. Counts are available only for an accepted active configuration;
-worker heartbeat reports liveness, not successful indexing. Persisted failure/retry
-status remains a tracked implementation requirement.
+`embedding_pending_pages`, `embedding_indexed_pages`, `embedding_failed_pages`,
+`embedding_next_retry_at`, `semantic_accepted_at` and `measure_running`. Counts and
+retry time are available only for an accepted active configuration; worker
+heartbeat reports liveness, not successful indexing. Failed pages remain included
+in the pending count. `embedding_next_retry_at` is the earliest current failed
+page's retry due time (ISO8601), or null when none exist; it does not promise the
+worker will run at that instant. The worker must be online.
+
+Failure state stores only a generic category, capped attempt count and timing,
+bound to the page version, queue identity and accepted configuration. A failed
+page waits at least60seconds, with exponential delays capped at1hour; other due
+pages can continue. Success clears its failure record. Revalidation/turn-off
+clears failures; obsolete document/configuration/provider/visibility results
+cannot acknowledge the current queue. Migration257 is valid without pgvector.
+Upgrade the measuring worker with the API: older workers do not honour backoff.
 
 Once on, editing a page queues it; the **measuring service** (`node dist/services/measure.js`,
 Compose `measure`, profile `semantic`, never the reminder loop) measures its lines a minute at a time,

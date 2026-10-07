@@ -269,7 +269,7 @@ restored fixture and failed on missing `docs`; it is not accepted evidence.
 
 ### Remaining C1 embedding acceptance requirements
 
-The measuring loop currently logs provider failures but Admin shows heartbeat
+At the consent checkpoint on main, the measuring loop logs provider failures but Admin shows heartbeat
 and queue counts only. A healthy heartbeat and pending count do not prove
 successful indexing. The retained contract requires a truthful failure state;
 trace and qualify persistent, sanitized failure/retry reporting after this consent
@@ -303,7 +303,9 @@ After reviewed-destination consent is promoted:
    pgvector and late-install/mixed-version gates where schema changes require it.
    Route all web/mobile screenshots through Orbyn Visual Check; root owns review.
 
-This is the next retained C1 checkpoint, not implemented or accepted behavior.
+This ordered checkpoint is now implemented in local qualification freeze `d77c1b76`,
+with focused47/47 and stock/upgrade/late-install checks passing. It is not yet
+promoted or fully accepted: full regression and visual acceptance remain pending.
 Current consent checkpoint source remains frozen; regression87929 completed successfully.
 
 ### Preview harness correction

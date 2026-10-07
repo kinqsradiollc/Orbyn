@@ -1037,3 +1037,14 @@ explicitly labelled synthetic data with actions disabled. Visual Check has been
 asked for originals; these will only prove component layout, not installed native
 behavior or an enabled real settings-route session. Qualification source remains
 frozen while the full run continues.
+
+Late installation with recorded migration257 passes1/1 on a fresh stock fixture
+restored into pgvector before extension creation. Only PG17's unsupported
+PG16 session option `SET transaction_timeout=0` was removed from the test dump;
+application schema/data and migration history were retained. Log:
+`/tmp/orbyn-c1-retry-late-install-20261008.log`.
+
+Root inspected all four QA023 Home originals at1278×900 and390×844. The badge
+is contained below the hero platform line and absent from footer navigation.
+Accept only this badge placement; no full Home/whole-app acceptance implied.
+Manifest: `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-023-home-badge-capture-manifest.md`.
