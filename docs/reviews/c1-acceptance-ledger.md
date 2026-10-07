@@ -1644,3 +1644,29 @@ above. None establishes a product regression; corrected fixture runs pass.
 No real vendor content, provider configuration, embedding consent or production
 database was touched. Remaining live-recipient, benchmark and client gates stay
 open; this checkpoint does not complete C1.
+
+### Access-test delivery and current-source management captures
+
+The access-race/recovery test checkpoint is merged and pushed to main as9921c086;
+main/origin matched. The backend product source is unchanged from1438b0bd.
+Unrelated primary changes remain preserved.
+
+Root inspected original Light/Dark wide-web provider control columns and edit
+form crops, plus narrow-mobile summary/edit form crops. The sampled controls
+are contained; empty model rows show disabled Test and saved model fields retain
+their values. The summaries/forms fit their sampled bounds. Credential-safe
+crops intentionally exclude key columns and lower form actions; this is not
+whole-surface, native keyboard or positive Test acceptance. No cached catalog
+was present, so the agent did not load one or invoke existing providers. Manifest:
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-026-C1-provider-management-edit-1438b0bd-capture-manifest.md`.
+
+After that capture batch completed, root added one disposable LM Studio provider
+to the owned local preview, pointing only to127.0.0.1:18089/v1. The original four
+rows and selected assistant/embedding settings remain unchanged. The inert
+recipient serves250 synthetic catalog IDs and fixed built-in ping responses,
+with explicit usage and zero cached tokens. Visual Check is authorized to
+Load/Test only this row and capture success/model-change/empty-model states.
+No vendor calls, credential entry, settings save or embedding consent is allowed
+in that batch. Root owns screenshot review and subsequent fixture removal.
+Temporary row metadata: `/tmp/orbyn-c1-ui-inert-provider-row-20261008.json`;
+server/state paths use the matching `orbyn-c1-ui-inert-provider` prefix.
