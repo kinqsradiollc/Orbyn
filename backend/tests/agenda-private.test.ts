@@ -182,6 +182,54 @@ test("an app-authorized Agenda accepts one bounded signed reply and records meas
     1,
   );
 });
+test("Agenda publication waits for job authority before locking the inference request", async () => {
+  const f = await fixture();
+  const { answer } = await start(f);
+  const a = await assignment(f);
+  const held = await pool.connect();
+  let publication: Promise<unknown> | undefined;
+  try {
+    await held.query("BEGIN");
+    await held.query("SELECT id FROM ai_jobs WHERE id=$1 FOR SHARE", [
+      a.job_id,
+    ]);
+    publication = publish(f, a);
+    pending.push(publication);
+    void publication.catch(() => {});
+    let blocked = false;
+    for (let attempt = 0; attempt < 100 && !blocked; attempt++) {
+      blocked = !!(
+        await pool.query(
+          `SELECT pid FROM pg_stat_activity WHERE datname=current_database()
+         AND wait_event_type='Lock' AND
+           (query LIKE '%SELECT j.id FROM ai_jobs j JOIN users%'
+            OR query LIKE '%UPDATE ai_jobs SET result=coalesce%')`,
+        )
+      ).rowCount;
+      if (!blocked) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(
+      blocked,
+      "publication or its poll must be waiting on the held job",
+    );
+    // This NOWAIT probe fails on the old SHARE-to-UPDATE order: publication
+    // has already acquired the request while awaiting its provenance job write.
+    const request = await pool.query(
+      "SELECT id FROM chatgpt_inference_requests WHERE id=$1 FOR UPDATE NOWAIT",
+      [a.id],
+    );
+    assert.equal(
+      request.rowCount,
+      1,
+      "blocked job authority must not hold the request",
+    );
+  } finally {
+    await held.query("ROLLBACK");
+    held.release();
+  }
+  await publication;
+  assert.equal(await answer, "Signed feature answer");
+});
 test("an Agenda source changed after assignment rejects late signed output and accepted usage", async () => {
   const f = await fixture();
   const id = (

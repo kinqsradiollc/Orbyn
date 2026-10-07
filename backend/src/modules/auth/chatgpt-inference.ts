@@ -53,6 +53,9 @@ async function jobLive(db: Db, owner: string, id: string) {
   const { guardPageInferenceJob } =
     await import("../docs/maintenance-inference.js");
   await guardPageInferenceJob(db, owner, id);
+  // Publication can update job provenance after locking the request. Serialize
+  // the job first; a SHARE lock here would require an upgrade behind a poll
+  // already waiting for that request, creating a job/request lock cycle.
   const job = await db.query(
     `SELECT j.id FROM ai_jobs j JOIN users u ON u.id=j.user_id WHERE j.id=$2 AND j.user_id=$1 AND NOT u.disabled AND j.state='running' AND j.lease_until>clock_timestamp() AND ${assistantJobSourcesVisible("j", "$1", false)}
       AND (coalesce(j.run_state->>'version','') NOT IN ('2','3') OR (
@@ -67,7 +70,7 @@ async function jobLive(db: Db, owner: string, id: string) {
               JOIN team_members feature_member ON feature_member.team_id=feature_team.id
               WHERE feature_team.id=(feature_source->>'id')::uuid AND feature_member.user_id=$1
                 AND feature_member.role<>'viewer' AND feature_team.assistant_allowed)))
-      )) FOR SHARE OF j`,
+      )) FOR UPDATE OF j`,
     [owner, id],
   );
   if (!job.rowCount) fail(409, "The assistant job or its sources changed.");
