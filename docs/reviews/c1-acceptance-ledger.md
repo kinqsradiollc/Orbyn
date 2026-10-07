@@ -1821,3 +1821,25 @@ from nonexistent `code` to the real ProviderError `reason`; the original failed
 proposal-harness log is retained. The proposal has not yet changed product
 source. The sole concrete key-forwarding reproduction remains the inert
 Anthropic302 cross-origin sentinel receipt.
+
+## Applied redirect/inventory/web-control correction — local81e807ee
+
+After authoritative full-suite termination and Visual Check's quiescence
+acknowledgment, the owned worktree now rejects3xx provider responses with manual
+redirect handling, a sanitized actionable error, and response-body cancellation.
+No init override may re-enable following. The new administrator catalog route
+is classified and the web discovery action uses the shared secondary style.
+
+Corrected actual-source focused cohort170/170, zero failures/skips/cancellations;
+workspace types and final backend types/backend build/web build pass. The19-case
+transport file includes the streaming-body regression: first18/19, then19/19
+with cancellation. An actual compiled Anthropic catalog reproduction records
+one source request, zero cross-origin target requests and reason`redirect`:
+`/tmp/orbyn-c1-provider-redirect-after-20261008.json`.
+This closes the reproduced sentinel forwarding behavior locally, not on main.
+
+Fresh source-frozen full suite81e807ee is running in its own marked stock DB:
+`/tmp/orbyn-c1-redirect-final-full-20261008.log`. Earlier4226/4227 failure remains
+retained and unqualified. Refreshed wide/narrow web capture review and full-suite
+terminal acceptance precede candidate promotion. No live vendor request, native
+acceptance, production rollout or entireC1 completion is claimed.

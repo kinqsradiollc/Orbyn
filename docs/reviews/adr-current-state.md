@@ -241,3 +241,21 @@ Wide full-page images have sticky-header/sidebar compositing artifacts; only
 provider-control containment/manual state is accepted from them. No whole-page
 or installed-native acceptance is claimed.
 Capture-only manifest: `QA-021-c1-catalog-capture-manifest.md` in that directory.
+
+## Active corrected C1 candidate
+
+Local source81e807ee repairs the administrator-route inventory omission and
+rejects provider redirects before credentials or request text reach a subsequent
+destination. Its actual compiled Anthropic reproduction now records one saved
+recipient request and zero redirect-target requests, with a sanitized actionable
+error. It also cancels streaming redirect response bodies. Focused170/170,
+workspace typechecks and final backend/web builds pass. A fresh frozen full
+regression is running; `/tmp/orbyn-c1-redirect-final-full-20261008.log`.
+
+Root accepted the corrected mobile Light/Dark no-match samples and complete
+Dark generation notice crop from d498febd; mobile source is unchanged in81e807ee.
+Root's first wide web crop found native browser styling on the new Load catalog
+button;81e807ee applies Orbyn's secondary style. Refreshed wide/narrow Light/Dark
+web captures are assigned. The preview API8008 is compiled81e807ee and all three
+preview origins return200. This feature remains local, unpromoted; latest main
+product checkpoint is e3c68493. Tracking documentation advances independently.
