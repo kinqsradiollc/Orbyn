@@ -617,7 +617,11 @@ export type AiProvidersResponse = {
   providers: AiProvider[];
   settings: AiSettings;
 };
-export type AiModelList = { models: string[] };
+export type AiModelList = {
+  models: string[];
+  /** Saved connection generation verified before returning the catalog. */
+  provider_revision?: string;
+};
 export type AiTestResult = {
   usage?: AiModelUsage;
   ok: boolean;

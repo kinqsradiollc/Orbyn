@@ -52,10 +52,13 @@ for (const scenario of ["current", "revised", "deleted"] as const) {
         pending = fn();
       },
       client: {
-        listAiModels: () =>
-          new Promise((r) => {
+        listAiModels: (id: string, revision: string) => {
+          assert.equal(id, "p");
+          assert.equal(revision, "7");
+          return new Promise((r) => {
             resolve = r;
-          }),
+          });
+        },
       },
       dataRef,
       models: {},
@@ -65,7 +68,7 @@ for (const scenario of ["current", "revised", "deleted"] as const) {
         catalogs = fn(catalogs);
       },
     });
-    loadModels({ id: "p", updated_at: "v1" });
+    loadModels({ id: "p", updated_at: "v1", controls_revision: "7" });
     if (scenario === "revised") dataRef.current.providers[0].updated_at = "v2";
     if (scenario === "deleted") dataRef.current.providers = [];
     resolve({ models: ["first-other-model"] });
@@ -125,12 +128,15 @@ for (const scenario of ["current", "revised", "unmounted"] as const) {
         pending = fn();
       },
       client: {
-        listAiModels: () =>
-          new Promise((r) => {
+        listAiModels: (id: string, revision: string) => {
+          assert.equal(id, "p");
+          assert.equal(revision, "7");
+          return new Promise((r) => {
             resolve = r;
-          }),
+          });
+        },
       },
-      p: { id: "p", updated_at: "v1" },
+      p: { id: "p", updated_at: "v1", controls_revision: "7" },
       providerRevision,
       setModels: () => calls++,
     });
@@ -172,5 +178,49 @@ test("mobile follows saved model changes while preserving a manual draft", () =>
     })();
     assert.equal(model, expected);
     assert.equal(savedModel.current, "updated");
+  }
+});
+
+test("API client sends exact catalog generation without changing legacy calls", async () => {
+  const source = await readFile(
+    new URL("../../packages/api-client/src/client.ts", import.meta.url),
+    "utf8",
+  );
+  const tree = ts.createSourceFile(
+    "client.ts",
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS,
+  );
+  let method: string | undefined;
+  function visit(node: ts.Node) {
+    if (
+      ts.isMethodDeclaration(node) &&
+      node.name.getText(tree) === "listAiModels"
+    )
+      method = node.getText(tree);
+    ts.forEachChild(node, visit);
+  }
+  visit(tree);
+  assert.ok(method);
+  const callback = evaluate(`({ ${method} }).listAiModels`, {});
+  for (const revision of [undefined, "7"]) {
+    let request: { url: string; options: any } | undefined;
+    callback.call(
+      {
+        request: (url: string, options: any) => {
+          request = { url, options };
+        },
+      },
+      "selected",
+      revision,
+    );
+    assert.equal(request!.url, "/ai/providers/selected/models");
+    assert.equal(request!.options.method, "POST");
+    assert.equal(
+      JSON.stringify(request!.options.body),
+      JSON.stringify(revision ? { expected_revision: revision } : {}),
+    );
   }
 });

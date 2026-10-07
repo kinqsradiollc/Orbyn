@@ -1,5 +1,31 @@
 # C1 acceptance ledger
 
+## Model catalog inventory and revision checks — 8 October 2026
+
+Catalog decoding now validates provider responses and redacts error details.
+Web catalog refresh preserves the saved/manual model. Both clients invalidate
+revised/removed catalogs and send the displayed connection's exact generation.
+Mobile follows saved model changes only when its local field is clean.
+Server catalog dispatch rejects stale generations before calling the provider,
+then re-reads generation after the network result. Endpoint/key/options/enabled
+changes, A→B→A and deletion reject409 without returning old model ids. Same-kind
+connections remain independent; metadata/no-op edits preserve valid catalogs;
+legacy calls without a requested revision still receive the post-fetch check.
+No provider row is locked across network I/O. No migration is required.
+
+Qualification: frozen inventory implementation full3767/3767, exit0,878544ms;
+later revision route/client cohort50/50; shared/backend builds and both client
+types pass. Compiled local fixture proves409/no stale catalog/external requests0.
+The first revision cohort49/50 had a test expecting400 for schema validation;
+corrected to established422 and added malformed JSON400 coverage. Re-run50/50.
+
+Logs: `/tmp/orbyn-c1-inventory-full-20261007.log`,
+`/tmp/orbyn-c1-catalog-authority-after-fixed-20261008.log`,
+`/tmp/orbyn-c1-catalog-revision-compiled-20261008.log`.
+Current Visual Check captures are pending root inspection. This checkpoint is
+local until promotion is recorded; wholeC1 and all remaining ADR stages stay open.
+All visual requests go through Orbyn Visual Check for originals/manifest only.
+
 ## Matilda steering and compatible usage correction — 7 October 2026
 
 The user configured an enabled Matilda (Maincode) provider and selected `matilda`

@@ -1097,6 +1097,16 @@ export const semanticSetupInput = z
   })
   .strict();
 
+/** Catalog requests may fence the exact saved connection generation. */
+export const aiCatalogInput = z
+  .object({
+    expected_revision: z
+      .string()
+      .regex(/^[1-9][0-9]*$/)
+      .optional(),
+  })
+  .strict();
+
 export const aiTestInput = z
   .object({ model: z.string().trim().max(200).optional() })
   .strict();

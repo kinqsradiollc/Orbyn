@@ -69,3 +69,13 @@ Mobile browser confirmation is now an app-owned sheet with full explanatory text
 Keep task and Cancel task choices, and fresh task/permission/busy checks. Native
 iOS/Android retain native alerts. This replaces the browser-native prompt after
 visual QA could not establish safe dismissal. Browser review accepts390/320 confirmation containment and safe Keep task dismissal with status preserved after reload. Native visual acceptance remains open.
+
+## Visual coordination requirement
+
+All visual capture requests from the implementation session must be sent to
+**Orbyn Visual Check**. That session captures original screenshots and writes a
+Markdown manifest; the implementation session inspects the originals and owns
+findings, changes and acceptance. Do not delegate design analysis to the capture
+session. Preserve source checkout, URL, viewport and exact image paths in each
+manifest. A blocked permission or stale preview is an open gate, never acceptance;
+respect tool restrictions without alternate-port/browser or indirect workarounds.

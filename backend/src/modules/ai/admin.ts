@@ -10,6 +10,7 @@ import {
   aiSettingsInput,
   aiNightBudgetInput,
   aiTestInput,
+  aiCatalogInput,
   semanticSetupInput,
   fail,
   type AiProvider,
@@ -380,10 +381,25 @@ export async function aiAdminRoutes(app: FastifyInstance) {
 
   app.post("/ai/providers/:id/models", strictRateLimit, async (r) => {
     await authorize(r, "ai:manage");
+    const input = aiCatalogInput.parse(r.body ?? {});
     const row = await providerRow(idParam(r));
+    const revision = String(row.generation_revision);
+    if (input.expected_revision && input.expected_revision !== revision)
+      fail(409, "The provider changed. Refresh connections and try again.");
     const target = await connection(row, "");
     try {
-      return { models: await listModels(target) };
+      const models = await listModels(target);
+      // Network I/O never holds a database lock. Reject old catalogs even after
+      // A→B→A connection changes; generation is stronger than field equality.
+      const current = (
+        await query<{ generation_revision: string }>(
+          "SELECT generation_revision::text FROM ai_providers WHERE id=$1",
+          [row.id],
+        )
+      ).rows[0];
+      if (!current || current.generation_revision !== revision)
+        fail(409, "The provider changed. Refresh connections and try again.");
+      return { models, provider_revision: revision };
     } catch (error) {
       if (error instanceof ProviderError) fail(502, error.message);
       throw error;

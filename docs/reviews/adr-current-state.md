@@ -1,6 +1,6 @@
 # ADR implementation tracker
 
-Updated 7 October 2026. Follow the full contract in
+Updated 8 October 2026. Follow the full contract in
 [the implementation review](devday-2026-implementation-review.md) and
 [the top-down execution order](adr-execution-order.md).
 Detailed qualification and historical failures remain in
@@ -70,35 +70,29 @@ Acceptance comes from this session's image inspection, not the capture session's
 Orbyn Visual Check captures originals and a Markdown manifest only. This session
 inspects images, owns findings/implementation and records acceptance.
 
-## Current C1 catalog checkpoint — local, not promoted
+## Current C1 catalog checkpoint — qualified locally, visual handoff pending
 
-| Requirement                         | Current evidence                                                                                                                                                                                                     | Remaining gate                                                                                   |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| Catalog response validation         | Malformed catalogs and HTTP-200 error envelopes become sanitized provider errors; valid compatible/named catalogs deduplicate and sort. Initial reproduction: 1/11 passed, 10 failures; fixed focused cohort: 35/35. | Full backend regression running against a fresh marked test database.                            |
-| Catalog refresh preserves selection | Web refresh no longer replaces an unlisted saved/manual model with the first catalog item. Actual callback regression tests cover current, revised and deleted connections.                                          | Wider provider/client inventory matrix.                                                          |
-| Stale result handling               | Web discards revised/deleted connection results and older list loads; mobile clears catalogs on revision and discards revised/unmounted results. Connection tests use the same revision guards.                      | Concurrent external edits and server-side catalog revision authority matrix.                     |
-| Mobile saved model updates          | Clean model state follows active saved settings; manually entered drafts remain intact.                                                                                                                              | Broader cross-client switching and native interaction matrix.                                    |
-| Existing provider routes            | 5/5 provider integration tests passed with local HTTP stand-ins; no real provider inference used.                                                                                                                    | Full regression and runtime matrix.                                                              |
-| Visual acceptance                   | No layout/CSS change in this checkpoint. Direct browser preview remains blocked by a saved Browser Use permission.                                                                                                   | Current screenshot acceptance remains unverified; no alternate surface used to bypass the block. |
+| Requirement                 | Evidence                                                                                                                                                                                                                                                          | Remaining gate                                                      |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Catalog response validation | Malformed catalogs/error envelopes produce sanitized provider errors; valid catalogs deduplicate/sort. Initial 10/11 failures reproduced, fixed.                                                                                                                  | Wider live-provider catalog matrix.                                 |
+| Preserve model choice       | Web read-only refresh preserves saved/manual choice; mobile saved settings sync only clean state. Actual callback tests pass, including both exact revision call sites.                                                                                           | Broader native switching matrix.                                    |
+| Connection authority        | Pre-dispatch expected generation check plus post-network re-read reject endpoint/key/options/enable changes, A→B→A and deletion with409. Independent same-kind rows, metadata/no-op edits and legacy calls retain behavior. No row lock spans network I/O.        | Remaining execution/embedding inventory matrix.                     |
+| Regression                  | Full frozen inventory implementation:3767/3767, zero failures/skips/cancellations, exit0,878544ms. Later server revision/client contract changes independently qualified50/50.                                                                                    | Full ADR stage acceptance remains open.                             |
+| Builds/runtime              | Shared build, backend build, desktop/mobile types pass. Compiled revision probe returns409 and `staleCatalogAccepted:false`; external requests0. QA API restarted and healthy on8008.                                                                             | Wider production/native runtime matrix.                             |
+| Visuals                     | All capture requests routed through Orbyn Visual Check. QA019 public footer originals inspected; badge contained, but user rejected placement. Badge moved to hero in main checkout/preview, awaiting new captures. C1 model-state captures requested separately. | Inspect current original captures before visual acceptance.         |
+| Delivery                    | Catalog fixes remain on the qualification branch; badge relocation remains separate in main checkout.                                                                                                                                                             | Commit/promote qualified scope and preserve unrelated user changes. |
 
-Focused log: `/tmp/orbyn-c1-inventory-focused-20261007.log`.
-Provider integration log: `/tmp/orbyn-c1-inventory-provider-integration-20261007.log`.
-Full regression log: `/tmp/orbyn-c1-inventory-full-20261007.log`.
-Do not treat a started full run as a passing result. Matilda live evidence belongs
-to the earlier controls/usage checkpoint and does not qualify OpenAI cache economics.
+Evidence:
 
-### Confirmed next C1 defect: server catalog revision race
+- `/tmp/orbyn-c1-inventory-full-20261007.log` — terminal3767/3767.
+- `/tmp/orbyn-c1-catalog-authority-before-20261007.log` — nine cases reproduce missing guards.
+- `/tmp/orbyn-c1-catalog-authority-after-fixed-20261008.log` — terminal50/50.
+- `/tmp/orbyn-c1-catalog-revision-compiled-20261008.log` — compiled409, no stale catalog.
+- `/tmp/orbyn-c1-catalog-revision-backend-build-20261008.log` and desktop/mobile type logs.
 
-A local HTTP fixture held `/ai/providers/:id/models` open while an authorized
-admin changed that provider's endpoint. The route returned HTTP200 with the old
-connection's model list. Reproduction completed with exit0 and
-`staleCatalogAccepted:true`; external requests0.
-Evidence: `/tmp/orbyn-c1-catalog-race-probe-20261007.log` and
-`/tmp/orbyn-c1-catalog-race-probe-20261007.mts`.
-
-Next fix must carry the public exact generation revision into catalog requests,
-reject pre-dispatch mismatches, and verify the saved connection again before
-returning models. Test endpoint/key/options/enable changes, A→B→A round trips,
-removal, independent same-kind connections, no-op/name edits and both client
-call sites. Do not lock a provider row across network I/O. This race is not fixed
-by local client guards and remains an explicit open C1 requirement.
+The first post-fix test cohort was49/50: its schema-validation assertion wrongly
+expected400 rather than Orbyn's422. Corrected the test and separately covered400
+for malformed JSON; final50/50 includes401/403/404/409/422/429 boundaries.
+The earlier full run does not include the later server revision implementation;
+its focused and compiled evidence are explicitly separate. Matilda live evidence
+belongs to the earlier usage checkpoint and does not qualify OpenAI cache economics.

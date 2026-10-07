@@ -4993,9 +4993,10 @@ export class OrbynClient {
     return this.request<void>(`/ai/providers/${id}`, { method: "DELETE" });
   }
   /** Lists models using the provider's saved key. */
-  listAiModels(id: string) {
+  listAiModels(id: string, expectedRevision?: string) {
     return this.request<AiModelList>(`/ai/providers/${id}/models`, {
       method: "POST",
+      body: expectedRevision ? { expected_revision: expectedRevision } : {},
     });
   }
   testAiProvider(id: string, model?: string) {

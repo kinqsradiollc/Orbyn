@@ -496,7 +496,10 @@ function ProviderRow({
                 disabled={busy}
                 onPress={() =>
                   act(async () => {
-                    const result = await client.listAiModels(p.id);
+                    const result = await client.listAiModels(
+                      p.id,
+                      p.controls_revision,
+                    );
                     if (providerRevision.current === p.updated_at)
                       setModels(result.models);
                   })

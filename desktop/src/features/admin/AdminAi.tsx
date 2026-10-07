@@ -133,7 +133,10 @@ export function AdminAi({ busy, revision, act, report }: Props) {
 
   const loadModels = (p: AiProvider) =>
     void act(async () => {
-      const { models: list } = await client.listAiModels(p.id);
+      const { models: list } = await client.listAiModels(
+        p.id,
+        p.controls_revision,
+      );
       if (
         !dataRef.current?.providers.some(
           (current) =>
