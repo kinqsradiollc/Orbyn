@@ -1,3 +1,17 @@
+## Saved editor ownership receipt validation — 7 October 2026
+
+A same-format receipt must also retain the sent ownership topology: quote/list
+metadata, child order, leaf identities/types, empty owners and checkbox presence.
+Only checkbox state is ignored in this ownership comparison, allowing legitimate
+server task ticks. A same-format flattened or reordered receipt now refuses and
+keeps the local draft. The extended editor-session/operation/source cohort passes
+37/37, zero failures/skips (603ms), after shared package builds. Normal desktop/
+mobile widget activation remains unfinished; this is a candidate foundation.
+
+Historical terminal logs /tmp/orbyn-adr-full-db-20261007.log and
+/tmp/orbyn-adr-full-db-repaired-20261007.log are now verified gzip archives with
+.gz appended. The latest green full log remains unchanged and uncompressed.
+
 ## Complete editor save-session state — 7 October 2026
 
 A shared immutable editor session now keeps the full saved baseline separate
