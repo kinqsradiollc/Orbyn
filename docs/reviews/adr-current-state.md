@@ -70,6 +70,10 @@ No backend product source change or live-recipient acceptance is implied.
 Access-race/recovery test delivery is merged/pushed as9921c086. Current
 management/edit crops in both themes were inspected; positive receipt/catalog
 interaction captures are now assigned against a disposable local inert provider.
+Standalone cache-report estimate candidate23773ee6 passes focused5/5 and
+backend types/build; its frozen full regression is running. Live OpenAI cache
+observations and costs remain unverified. The positive local-provider visual
+batch is active; root rejected a blank mobile crop and requested recapture.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.

@@ -1670,3 +1670,38 @@ No vendor calls, credential entry, settings save or embedding consent is allowed
 in that batch. Root owns screenshot review and subsequent fixture removal.
 Temporary row metadata: `/tmp/orbyn-c1-ui-inert-provider-row-20261008.json`;
 server/state paths use the matching `orbyn-c1-ui-inert-provider` prefix.
+
+## Cache benchmark estimate candidate — 8 October 2026
+
+Fetched current primary OpenAI prompt-caching guidance. Modern Off mapping
+(explicit mode with no breakpoints) matches its documented behavior; no runtime
+control repair is needed. The standalone benchmark previously returned counters
+and latency without a cost comparison. Candidate23773ee6 now reports an
+estimated input cost in ordinary-input-token units for the explicitly documented
+GPT-6.1 Sol ratios: uncached1x, writes1.25x, reads0.05x. It subtracts read/write
+subsets from total input before weighting and never double-counts them.
+Unknown models, missing/null/invalid/contradictory counters remain unknown.
+Output charges, discounts, account pricing and actual billing are excluded.
+Primary source: [OpenAI prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching#how-caching-works).
+
+Focused5/5, backend typecheck/build and scoped format/diff checks pass.
+Logs: `/tmp/orbyn-c1-cache-estimate-focused-20261008.log`,
+`/tmp/orbyn-c1-cache-estimate-types-20261008.log`,
+`/tmp/orbyn-c1-cache-estimate-build-20261008.log`. A fresh frozen full regression
+is running against a dedicated marked stock database; log:
+`/tmp/orbyn-c1-cache-estimate-full-20261008.log`. Source is not promoted yet.
+This is a fixture-qualified estimate/report improvement, not live cache economics
+or billed-cost verification. Matilda's functional baseline remains separate.
+Root requested the missing authorized OpenAI evaluation key/model configuration
+without asking the user to paste a credential. C1 stays active.
+
+### Inert provider positive-state visual batch — partial root review
+
+Root inspected web Light catalog search and changed-model receipt removal,
+plus Dark successful local Test receipt. The filtered250-ID catalog, observed
+12 input/1 output/0 cached-input counters and local model edit fit their sampled
+bounds. No vendor/model entitlement is established.
+The first mobile provider-card crop is entirely blank; root rejected it as
+unusable capture evidence and requested recapture through Visual Check. The
+batch/manifest and both-client acceptance are pending. Root has not removed
+the temporary inert provider/server while that authorized batch is live.
