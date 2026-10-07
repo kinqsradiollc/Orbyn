@@ -1504,3 +1504,28 @@ multi-provider dispatch/catalog/runtime inventory and permitted cache evaluation
   native OpenAI cache economics or an accepted live embedding provider.
 - C1 stays active. C2/M1 remains queued; finish retained C1 acceptance, provide
   the remaining ADR table, then pause as requested.
+
+## Searchable provider/model picker candidate — 8 October 2026
+
+- Frozen sourceae099454 is a local committed candidate, not main delivery.
+  Web provider/model pickers gain explicit search and bounded100-result rendering;
+  the current selection is retained even outside that initial window. Search does
+  not save or change the selected value. Manual model entry remains available.
+  Mobile provider selection uses a compact control and searchable native Sheet;
+  its existing hidden-provider policy and saved hidden selection are preserved.
+- Actual component closures and existing management/probe/catalog/embedding
+  controls pass61/61. New cases cover5000-model catalogs, filtered selection,
+  empty/disabled choices, Escape/Tab focus, Home/End, ordinary typeahead,
+  mobile busy guards and visibility policy. The harness does not prove native
+  rendering or physical focus/geometry. Log:
+  `/tmp/orbyn-c1-picker-cohort-20261008.log`.
+- Backend, desktop and mobile typechecks pass. Backend/web builds pass. Fresh
+  full regression runs against a separate marked owned test database:
+  `/tmp/orbyn-c1-picker-full-20261008.log`. No terminal result yet.
+- Visual Check was sent the frozen source for capture-only full viewport review
+  on5174/8083, wide/390/320, Light/Dark and search/keyboard states. Root inspected
+  the initial mobile390 light sheet: search and rows fit that frame. Remaining
+  captures and their verified viewport/source manifest are pending; do not reuse
+  QA026 mixed-source baseline images as candidate acceptance.
+- Main stays0c407a0a. C1 live-provider/cache/embedding and remaining client/native
+  gates stay open. The user requested a pause after all C1 gates finish, before C2.

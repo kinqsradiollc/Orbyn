@@ -43,8 +43,14 @@ cancellations, exit0,800029ms. Serialized actual-loop recovery preserves its
 function signature/call id and does not repeat completed tool execution.
 These are inert fixtures, not live account qualification.
 Both preview servers now serve the C1 qualification checkout at5174/8083;
-API8008 remains an older loaded runtime. Exact browser retry/captures are pending;
-no current-backend or new visual acceptance is claimed.
+API8008 remains an older loaded runtime. Authorized same-origin browser captures
+now work; root inspected scoped empty-model/disabled-test crops on both clients
+in both themes. These do not establish full-surface or current-backend acceptance.
+Searchable picker candidateae099454 is committed locally, not merged: provider
+search on both clients, bounded100-result web model search, manual value and
+hidden-provider preservation, and viewport containment. Focused61/61, all three
+workspace typechecks, backend/web builds pass. Fresh full regression and frozen
+browser capture review are in progress. C1 remains active.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.
