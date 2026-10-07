@@ -249,3 +249,30 @@ Neither is accepted evidence. The corrected full run uses fresh marked stock DB
 `/tmp/orbyn-c1-embedding-consent-full-corrected-20261008.log`.
 Source is frozen at candidate `d4cd4273`; documentation may advance separately.
 No terminal full pass, main promotion or entire C1 completion is claimed yet.
+
+### Additional rollout checks — 8 October 2026
+
+Pre218 legacy-consent upgrade passes1/1 on a fresh marked pgvector fixture;
+late extension installation passes1/1 against a migrated stock17 fixture restored
+into the dedicated vector16 database. Both use current frozen source; each runs
+migrations twice. Consent remains off, migration history is retained and existing
+pages are queued with dimension-flexible storage. The restore removes only PG17's
+unsupported `SET transaction_timeout = 0` for the PG16 fixture. No production or
+preview data is used. Logs:
+`/tmp/orbyn-c1-embedding-upgrade-20261008.log` and
+`/tmp/orbyn-c1-embedding-late-corrected-20261008.log`.
+The first late-install attempt used an empty database rather than the required
+restored fixture and failed on missing `docs`; it is not accepted evidence.
+
+### Remaining C1 embedding acceptance requirements
+
+The measuring loop currently logs provider failures but Admin shows heartbeat
+and queue counts only. A healthy heartbeat and pending count do not prove
+successful indexing. The retained contract requires a truthful failure state;
+trace and qualify persistent, sanitized failure/retry reporting after this consent
+checkpoint is merged. Do not substitute running heartbeat for successful work.
+
+The live embedding provider matrix, enabled/error visual states, wider ownership
+and permission races, installed-native behavior and permitted OpenAI cache
+benchmark remain required. Existing local fixture and browser results do not
+complete those gates. Continue C1 in order before C2/M1.
