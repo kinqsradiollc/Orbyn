@@ -42,3 +42,26 @@ replace the narrow navigation with a compact section control or drawer, then
 capture all sections and scroll/focus behavior on phone heights and large text.
 Keep the original palette and modal design. Do not claim this issue fixed by a
 passing usage-counter component test.
+
+## Positive batch complete; overflow begun
+
+Root inspected all eight final positive subsection crops: web1280/320 and
+mobile browser320/390 in Light/Dark. Root reopened the final mobile320Light
+file after the capture-session correction. All five known counters, response/
+window line, disclosure and Refresh fit and remain visible. The separate
+settings navigation issue remains retained; this is subsection/browser evidence.
+Capture manifest is in the positive folder above. Its capture-agent Verified
+labels are not independent acceptance; this root review is the acceptance.
+
+After authoritative capture completion/quiescence, root changed only the two
+owned input counters to9007199254740991 each. The authenticated API200 correctly
+returns input_tokens:null for their unsafe aggregate, while requests2/window30,
+output200/reasoning40/cached1000/cache-write100 remain known. Receipt:
+/tmp/orbyn-c1-usage-overflow-api-20261008.json. No provider calls occurred.
+Current shared formatter omits unavailable counters rather than inventing a
+number; the upcoming fresh Refresh captures must show2000 input absent.
+Overflow screenshots/root acceptance remain pending. Cleanup script is prepared
+at /tmp/orbyn-c1-usage-fixture-cleanup-20261008.mjs and must run only after the
+capture session is quiescent. It deletes only the exact tracked terminal fixture
+jobs (usage cascades), preserves all other jobs and verifies remaining fixture
+usage is zero. No production usage is affected.
