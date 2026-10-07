@@ -232,8 +232,8 @@ consent reset and missing-token disabled controls.
 | Reindex and vector provenance          | Application pgvector tests cover3072 dimensions, replacement cleanup/requeue, old document/configuration results discarded, queue revision preserved | Larger operational/native matrix                                       |
 | Visibility                             | Project/team keep-out tests block later batches and storage; nearest retains readable-document predicates                                            | Complete permission/ownership race matrix                              |
 | Response/storage                       | Indexed Azure local fixture stores/ranks3072 vectors; malformed/zero/dimension checks retained                                                       | Live Azure/OpenAI/other adapters                                       |
-| Stock database                         | Corrected stock search/client suite20/20, zero skips                                                                                                 | Full frozen regression running                                         |
-| Current focused regression             | pgvector cohort48 passed, zero failed; one stock-only test skipped and independently passed on stock                                                 | Full frozen regression running                                         |
+| Stock database                         | Corrected stock search/client suite20/20, zero skips                                                                                                 | Mobile visual handoff pending                                          |
+| Current focused regression             | pgvector cohort48 passed, zero failed; one stock-only test skipped and independently passed on stock                                                 | Mobile visual handoff pending                                          |
 | Client visuals                         | Capture-only task sent to Orbyn Visual Check for web/narrow/mobile OFF prerequisites                                                                 | Root must inspect returned originals; enabled/error/native states open |
 
 Logs: `/tmp/orbyn-c1-embedding-consent-final-20261008.log`,
@@ -305,4 +305,16 @@ After reviewed-destination consent is promoted:
    Route all web/mobile screenshots through Orbyn Visual Check; root owns review.
 
 This is the next retained C1 checkpoint, not implemented or accepted behavior.
-Current consent checkpoint source remains frozen while regression87929 runs.
+Current consent checkpoint source remains frozen; regression87929 completed successfully.
+
+### Preview harness correction
+
+The first mobile capture showed offline/provider-load errors. Root verified local
+API health200 but cross-origin OPTIONS404: the API restart preserved singular
+`CORS_ORIGIN`, while the canonical environment key is `CORS_ORIGINS`.
+The preview-only process was restarted as PID60704 with the actual web5174 and
+mobile8083 origins; the same database, credentials/settings and compiled source
+were preserved. Read-only preflight now returns204 with the matching allowed
+origin. No product source or production environment change was required.
+Original offline images remain harness evidence; refreshed mobile controls and
+root image inspection are still needed for visual acceptance.
