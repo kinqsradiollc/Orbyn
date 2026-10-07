@@ -5,6 +5,7 @@ import "./setup.js";
 import {
   parseDocContainers,
   docContainerBlocks,
+  mapDocContainerBlocks,
   replaceVersionedDocLeaf,
   HttpError,
   appendDocContainerBlocks,
@@ -58,6 +59,146 @@ before(async () => {
   const other = await register("Stranger");
   stranger = other.row;
   strangerToken = other.token;
+});
+test("a viewer can name one nested leaf atomically without changing content ownership or history", async () => {
+  const id = await page();
+  const nodes = parseDocContainers(
+    "# Heading ^heading\n\n> - [x] Anonymous task\n>\n>   Continuation\n> - Unrelated ^other\n^quote",
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const team = (
+    await pool.query<{ id: string }>(
+      "INSERT INTO teams(name,created_by) VALUES($1,$2) RETURNING id",
+      ["Nested anchor viewers", owner.id],
+    )
+  ).rows[0].id;
+  teams.push(team);
+  await pool.query(
+    "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'owner'),($1,$3,'viewer')",
+    [team, owner.id, stranger.id],
+  );
+  await pool.query("UPDATE docs SET team_id=$2 WHERE id=$1", [id, team]);
+  const historyCount = async () =>
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM doc_versions WHERE doc_id=$1",
+        [id],
+      )
+    ).rows[0].n;
+  const historyBefore = await historyCount();
+  const anchor = (index: number, text: string, auth = strangerToken) =>
+    app.inject({
+      method: "POST",
+      url: `/docs/${id}/anchor`,
+      headers: { authorization: `Bearer ${auth}` },
+      payload: { index, text },
+    });
+  const replies = await Promise.all([
+    anchor(1, "Anonymous task"),
+    anchor(1, "Anonymous task"),
+  ]);
+  for (const response of replies)
+    assert.equal(response.statusCode, 200, response.body);
+  const blockId = replies[0].json().block_id;
+  assert.match(blockId, /^[A-Za-z0-9_-]{1,64}$/);
+  assert.equal(replies[1].json().block_id, blockId);
+  const expected = mapDocContainerBlocks(nodes, (block, index) =>
+    index === 1 ? { ...block, id: blockId } : block,
+  );
+  const read = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(read.version, 3);
+  assert.deepEqual(read.document, { format: 2, nodes: expected });
+  const stored = (
+    await pool.query("SELECT content FROM docs WHERE id=$1", [id])
+  ).rows[0];
+  assert.deepEqual(stored.content, docContainerBlocks(expected));
+  assert.equal(await historyCount(), historyBefore);
+  assert.equal((await anchor(2, "Stale text")).statusCode, 409);
+  assert.equal((await anchor(99, "Missing")).statusCode, 409);
+  assert.equal((await anchor(0, "Heading")).json().block_id, "heading");
+  const cannotEdit = await app.inject({
+    method: "PUT",
+    url: `/docs/${id}`,
+    headers: {
+      authorization: `Bearer ${strangerToken}`,
+      "x-orbyn-doc-formats": "1,2",
+    },
+    payload: { version: 3, title: "Changed", document: read.document },
+  });
+  assert.equal(cannotEdit.statusCode, 403);
+  const unauthenticated = await app.inject({
+    method: "POST",
+    url: `/docs/${id}/anchor`,
+    payload: { index: 2, text: "Continuation" },
+  });
+  assert.equal(unauthenticated.statusCode, 401);
+  const malformed = await app.inject({
+    method: "POST",
+    url: `/docs/${id}/anchor`,
+    headers: {
+      authorization: `Bearer ${token}`,
+      "content-type": "application/json",
+    },
+    payload: "{",
+  });
+  assert.equal(malformed.statusCode, 400);
+  const { settings, cachedSettings } = await import("../src/lib/settings.js");
+  const { freshRateLimitSession } = await import("./rate-limit-session.js");
+  const fresh = await freshRateLimitSession(strangerToken);
+  await settings();
+  const live = cachedSettings();
+  const previous = live.rate_limit_per_minute;
+  live.rate_limit_per_minute = 2;
+  try {
+    assert.equal((await anchor(99, "Missing", fresh)).statusCode, 409);
+    assert.equal((await anchor(99, "Missing", fresh)).statusCode, 409);
+    const limited = await anchor(2, "Continuation", fresh);
+    assert.equal(limited.statusCode, 429);
+    assert.ok(Number(limited.headers["retry-after"]) > 0);
+  } finally {
+    live.rate_limit_per_minute = previous;
+  }
+  assert.equal((await readVersionedDoc(pool, owner, id, [1, 2])).version, 3);
+  assert.equal(await historyCount(), historyBefore);
+});
+
+test("legacy line naming remains flat, idempotent and absent from history", async () => {
+  const blocks = [
+    { type: "paragraph" as const, text: "Name this line" },
+    { type: "paragraph" as const, id: "other", text: "Unrelated" },
+  ];
+  const id = await page(owner, blocks);
+  const request = () =>
+    app.inject({
+      method: "POST",
+      url: `/docs/${id}/anchor`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { index: 0, text: "Name this line" },
+    });
+  const response = await request();
+  assert.equal(response.statusCode, 200, response.body);
+  const blockId = response.json().block_id;
+  const repeated = await request();
+  assert.equal(repeated.statusCode, 200);
+  assert.equal(repeated.json().block_id, blockId);
+  const retained = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(retained.version, 2);
+  assert.deepEqual(retained.document, {
+    format: 1,
+    blocks: [{ ...blocks[0], id: blockId }, blocks[1]],
+  });
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM doc_versions WHERE doc_id=$1",
+        [id],
+      )
+    ).rows[0].n,
+    0,
+  );
 });
 after(async () => {
   await closeLive();
