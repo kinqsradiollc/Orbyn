@@ -24,9 +24,12 @@ candidate61aae46f. Full regression on that freeze completed4042 passes and1 fail
 route inventory omittedGET /ai/usage. Candidate31111112 corrects its account
 classification, explicitly requires a session principal and covers personal-key
 refusal. Candidate and prepared-main focused cohorts both pass20/20, zero failures
-or skips; backend typecheck passes. Fresh full regression on frozen31111112 is
-running as session96838 against a new server-marked test database; log
-`/tmp/orbyn-adr-full-31111112-20261007.log`. No terminal full pass yet.
+or skips; backend typecheck passes. Frozen31111112 full regression finished4043 passes and1 failure, zero skips:
+the generated MCP catalog's excluded-route count was stale after classification.
+Candidate catalog regeneration passes4/4; exact-main corrected catalog/model/UI
+cohort passes36/36. Main-based0f446664 full run was deliberately stopped after
+confirming the same catalog mismatch, last completed case829, terminal exit1.
+A refreshed exact-main freeze must receive a new full run. Neither run passed.
 
 Prepared-main scoped controls/usage code has passed74 focused checks, all
 client/backend types and builds, plus compiled durable-tool and usage aggregation

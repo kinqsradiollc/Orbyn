@@ -588,12 +588,27 @@ Frozen31111112 remains live; latest completed case2655, no reported failure yet.
 No terminal full pass or main promotion is claimed.
 
 
-### Exact prepared-main freeze
+### Catalog correction after terminal regression
 
-The scoped main qualification branch is frozen separately before integration.
-It includes controls/usage31111112, documented-model413806fe and test1389e7b7
-follow-ups, excluding unrelated candidate Docs and native OAuth changes. Product
-scope matches the inspected patch; focused20+24+8 cases and all workspace types
-pass. Main remains3c8feb40; this is a qualification commit, not promotion.
-A fresh full suite will run on this exact main-based commit with a separate marked
-database. Broader candidate31111112 remains live and its source is unchanged.
+Frozen31111112 full regression finished4043 passes,1 failure,zero skips,
+exit1,814973ms. The sole failure is mcp-catalog generation: the new account-route
+exclusion raised the excluded route count. Generated catalog and MCP docs had not
+been refreshed. Tools/grants/request schemas are unchanged. Candidate regeneration
+changes excluded290 to291 and passes4/4 catalog cases.
+
+Exact-main0f446664 has the same stale-count issue (excluded289 must become290).
+Its full run was deliberately terminated after confirming that mismatch; last
+completed case829, runner terminal exit1. No full pass or complete failure count
+is inferred from the interrupted TAP log. Generated files were refreshed only
+after termination. The corrected main catalog/model/evaluation/usage UI cohort
+passes36/36, zero failures/skips, exit0,1628ms:
+`/tmp/orbyn-main-c1-catalog-contract-20261007.log`. Candidate catalog4/4 log:
+`/tmp/orbyn-c1-catalog-refresh-20261007.log`. A new exact-main full freeze is required.
+
+Exact0f446664 backend/web builds and Home prerender pass (existing chunk warning).
+Rebuilt compiled API probe passes401/403 usage access, two-step durable Responses,
+encrypted checkpoint/completion and owner counters with zero external requests:
+`/tmp/orbyn-main-controls-0f446664-compiled-probe-20261007.log`.
+Compiled aggregation probe independently passes overflow unknowns, anonymous
+observation identity,30-day exclusion and job deletion cascade:
+`/tmp/orbyn-main-controls-0f446664-aggregate-probe-20261007.log`.
