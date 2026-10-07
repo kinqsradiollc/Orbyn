@@ -1,7 +1,11 @@
 # Embedding provider and reindex audit
 
 Status: historical audit plus current verification ledger. Independent
-configuration/reindex foundations and migration256 are on main. Full C1
+configuration/reindex foundations and migration256 are on main. Persistent
+failure/retry checkpoint and migration257 are also merged/pushed as `d4da3d41`;
+full3786/3786, focused47/47 and scoped web/mobile browser review passed.
+The earlier local/pending status below records historical progression, not
+current delivery. Full C1
 embedding/provider acceptance remains incomplete; see the current section below.
 The original defects below describe the pre-correction source, not current main.
 Required by the accepted settings/provider redesign. No voice or computer-use
@@ -303,9 +307,11 @@ After reviewed-destination consent is promoted:
    pgvector and late-install/mixed-version gates where schema changes require it.
    Route all web/mobile screenshots through Orbyn Visual Check; root owns review.
 
-This ordered checkpoint is now implemented in local qualification freeze `d77c1b76`,
-with focused47/47 and stock/upgrade/late-install checks passing. It is not yet
-promoted or fully accepted: full regression and visual acceptance remain pending.
+This ordered checkpoint was implemented in qualification freeze `d77c1b76`,
+with focused47/47 and stock/upgrade/late-install checks passing. Subsequent
+qualification completed full3786/3786 and scoped browser acceptance, then
+promoted as `d4da3d41`. See the C1 acceptance ledger for the exact frozen source,
+logs and capture boundaries; wider live/native acceptance remains open.
 Current consent checkpoint source remains frozen; regression87929 completed successfully.
 
 ### Preview harness correction

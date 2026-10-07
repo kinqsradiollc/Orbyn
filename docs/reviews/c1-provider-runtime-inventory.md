@@ -1,6 +1,6 @@
 # C1 provider runtime inventory
 
-Source audit: 8 October 2026, candidate based on main `be31aed3`.
+Source audit: 8 October 2026, current checkpoint based on main `8749f5f1`.
 This inventory records Orbyn's dispatch contract, not vendor-wide certification.
 Definitions: `packages/core/src/aiProviders.ts`; resolution:
 `backend/src/modules/ai/providers/resolve.ts`; adapters:
@@ -21,7 +21,7 @@ Definitions: `packages/core/src/aiProviders.ts`; resolution:
 | lmstudio          | Compatible /models, local key handling     | Chat Completions                            | Compatible probe required         |
 | ollama            | Compatible /models, local key handling     | Chat Completions                            | Compatible probe required         |
 | deepseek          | Compatible /models; hidden from add picker | Chat Completions                            | Compatible probe required         |
-| together          | Compatible /models                         | Chat Completions                            | Compatible probe required         |
+| together          | /models, native array normalized locally   | Chat Completions                            | Compatible probe required         |
 | fireworks         | Compatible /models                         | Chat Completions                            | Compatible probe required         |
 | mistral           | Compatible /models                         | Chat Completions                            | Compatible probe required         |
 | xai               | Compatible /models                         | Chat Completions                            | Compatible probe required         |
@@ -82,10 +82,10 @@ The full regression was started before this additional test file existed;
 its terminal count must be reported separately from these61 checks. Product
 adapter source remains frozen at `cee9219e`.
 
-## Next reproduced defect: Anthropic JSON fallback
+## Reproduced and repaired: Anthropic JSON fallback
 
 The durable loop (`agent/loop.ts:415–420`) switches to JSON mode after a native
-HTTP400 tool-support rejection. `jsonStep()` currently calls the compatible
+HTTP400 tool-support rejection. Before correction, `jsonStep()` called the compatible
 `chatUrl()` even for native Anthropic. A mocked first response rejects tools;
 the actual second step requests `/v1/chat/completions` and fails404 instead of
 remaining on `/v1/messages`. This is a concrete runtime defect, not a vendor
@@ -95,18 +95,16 @@ The actual durable `runAgent()` loop independently reproduces the same first
 Messages request → wrong compatible request →404, with an inert tool and no DB
 reads/writes: `/tmp/orbyn-c1-anthropic-json-loop-before-20261008.log`.
 
-A prepared10-case fallback suite currently has5pass/5fail. Failures cover wire
+The initial10-case fallback suite had5pass/5fail. Failures covered wire
 shape/usage, actual durable-loop recovery, resumed history, truncation and
 post-response authority. HTTP400/401/403/429/500 sanitization already passes.
 Log: `/tmp/orbyn-c1-anthropic-json-suite-before-20261008.log`.
-Prepared fixture stays outside the running source freeze until promotion.
-
-Fix after the current pagination checkpoint is qualified/promoted: preserve
-Anthropic Messages authentication/system/conversation shape for text JSON
-fallback, parse the same JSON tool protocol and retain native usage accounting,
-authority checks, timeout and truncation behavior. Cover normal starting mode,
-tool rejection/resumed JSON mode and final tools-off replies. Do not claim this
-fallback repaired from the61 passing starting-mode tests.
+The repair preserves native Messages authentication/system/conversation shape,
+JSON tool parsing, native usage once, authority, timeout and truncation.
+Expanded focused cohort145/145, backend build, compiled actual loop and full
+frozen regression3880/3880 pass. Merged/pushed as `eb493433`; documentation
+receipt is `8749f5f1`. This uses the fallback-specific evidence, rather than the
+earlier61 starting-mode checks. Live vendor qualification remains separate.
 
 ## Primary-documentation spot checks
 
