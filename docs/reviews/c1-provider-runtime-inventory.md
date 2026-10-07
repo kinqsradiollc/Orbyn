@@ -335,3 +335,18 @@ Sonar compatibility-service availability or whole-C1 acceptance claim.
 Documentation supports request contracts; it is not live account acceptance.
 No production credentials, provider selections or saved endpoints were changed
 during this review.
+
+### Read-only public catalog runtime check
+
+The actual compiled `listModels` adapter fetched DeepInfra's saved
+`https://api.deepinfra.com/v1/openai` catalog successfully:181 models, nonempty,
+unique and sorted. The separately documented `/v1/models` resource also returns200.
+This resolves the earlier path discrepancy for public catalog access; no saved
+host change is needed. The same compiled adapter fetched201 unique sorted ZenMux
+models from its saved base. Receipt:
+`/tmp/orbyn-c1-public-catalog-live-20261008.json`.
+
+No credentials or inference requests were used. These checks do not qualify
+model generation, embeddings, private entitlement or provider billing. Unauthenticated
+model GETs for Fireworks and both old/new Nebius hosts return401; authenticated
+catalog and existing-credential compatibility remain unqualified.
