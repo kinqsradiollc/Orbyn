@@ -608,6 +608,10 @@ export type AiSettings = {
   embedding_pending_pages?: number;
   /** Eligible pages with passages measured at their current document version. */
   embedding_indexed_pages?: number;
+  /** Failed queued pages for the current accepted configuration and document revision. */
+  embedding_failed_pages?: number;
+  /** Earliest retry due time; worker liveness is reported separately. */
+  embedding_next_retry_at?: string | null;
   /** When an admin accepted that every page is sent to be measured. */
   semantic_accepted_at?: string | null;
   /** Whether the measuring service has reported in lately. */

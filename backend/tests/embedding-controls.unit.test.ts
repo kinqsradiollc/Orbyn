@@ -278,3 +278,22 @@ for (const mobile of [false, true]) {
     assert.equal(submit.props.disabled, true);
   });
 }
+
+for (const mobile of [false, true]) {
+  test(`${mobile ? "mobile" : "web"} displays failed pages and retry due time separately from worker liveness`, () => {
+    const view = fixture(mobile, {
+      semantic_search: true,
+      semantic_accepted_at: "2026-10-08T00:00:00Z",
+      embedding_failed_pages: 2,
+      embedding_pending_pages: 3,
+      embedding_indexed_pages: 4,
+      embedding_next_retry_at: "2026-10-08T00:05:00Z",
+      measure_running: false,
+    });
+    const text = renderToStaticMarkup(view.tree);
+    assert.match(text, /2 pages could not be measured/);
+    assert.match(text, /Next retry due/);
+    assert.match(text, /measuring service is offline/);
+    assert.match(text, /4 pages measured; 3 pages waiting/);
+  });
+}

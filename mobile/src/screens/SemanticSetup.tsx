@@ -155,6 +155,15 @@ export function SemanticSetup({
             {!settings.measure_running &&
               " The measuring service is offline; queued pages will wait until it starts."}
           </Text>
+          {!!settings.embedding_failed_pages && (
+            <Text accessibilityLiveRegion="polite" style={shared.small}>
+              {settings.embedding_failed_pages} pages could not be measured.
+              {settings.embedding_next_retry_at
+                ? ` Next retry due ${new Date(settings.embedding_next_retry_at).toLocaleString()}.`
+                : " Retry time is unavailable."}{" "}
+              Check the provider and measuring service if failures continue.
+            </Text>
+          )}
           <Button
             secondary
             title="Refresh indexing status"

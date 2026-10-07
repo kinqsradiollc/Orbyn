@@ -315,6 +315,7 @@ test("replacement validates dimensions atomically and does not inherit generatio
   const initial = await setup(providerId, expectedModel);
   assert.equal(initial.statusCode, 200, initial.body);
   settings = initial.json();
+  const existingPending = settings.embedding_pending_pages;
   const doc = (
     await pool.query(
       "INSERT INTO docs(user_id,content) VALUES ($1,'[]') RETURNING id,version",
@@ -327,7 +328,7 @@ test("replacement validates dimensions atomically and does not inherit generatio
   );
   const progress = (await call(accounts[0].token, "GET")).json().settings;
   assert.equal(progress.embedding_indexed_pages, 1);
-  assert.equal(progress.embedding_pending_pages, 1);
+  assert.equal(progress.embedding_pending_pages, existingPending + 1);
   const generationChanged = await app.inject({
     method: "PUT",
     url: "/ai/settings",
@@ -374,7 +375,7 @@ test("replacement validates dimensions atomically and does not inherit generatio
   assert.equal(replaced.statusCode, 200, replaced.body);
   assert.equal(replaced.json().embedding_dimensions, 3072);
   assert.equal(replaced.json().embedding_indexed_pages, 0);
-  assert.equal(replaced.json().embedding_pending_pages, 1);
+  assert.equal(replaced.json().embedding_pending_pages, existingPending + 1);
   assert.equal(replaced.json().embedding_provider_id, second);
   assert.notEqual(
     replaced.json().embedding_generation,

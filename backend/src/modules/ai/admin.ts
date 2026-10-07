@@ -112,13 +112,22 @@ async function currentSettings(): Promise<AiSettings> {
   const acceptedEmbedding = possible && !!row?.embedding_ready;
   const progress = acceptedEmbedding
     ? (
-        await query<{ pending: number; indexed: number }>(
-          `SELECT count(*) FILTER (WHERE EXISTS (
-         SELECT 1 FROM doc_embedding_queue q WHERE q.doc_id=d.id))::integer AS pending,
+        await query<{
+          pending: number;
+          indexed: number;
+          failed: number;
+          next_retry: Date | null;
+        }>(
+          `SELECT count(*) FILTER (WHERE q.doc_id IS NOT NULL)::integer AS pending,
        count(*) FILTER (WHERE EXISTS (
          SELECT 1 FROM doc_embeddings e WHERE e.doc_id=d.id
-           AND e.embedding_generation=$1 AND e.doc_version=d.version))::integer AS indexed
-      FROM docs d WHERE d.deleted_at IS NULL AND ${notKeptOut("d")}
+           AND e.embedding_generation=$1 AND e.doc_version=d.version))::integer AS indexed,
+       count(f.doc_id)::integer AS failed,min(f.retry_at) AS next_retry
+      FROM docs d LEFT JOIN doc_embedding_queue q ON q.doc_id=d.id
+        LEFT JOIN doc_embedding_failures f ON f.doc_id=q.doc_id
+          AND f.queue_revision=q.queue_revision AND f.embedding_generation=$1
+          AND f.doc_version=d.version
+      WHERE d.deleted_at IS NULL AND ${notKeptOut("d")}
         AND ${assistantMayRead("d")}`,
           [row.embedding_generation],
         )
@@ -141,6 +150,12 @@ async function currentSettings(): Promise<AiSettings> {
       !!row?.embedding_search_enabled && !acceptedEmbedding,
     embedding_pending_pages: progress?.pending,
     embedding_indexed_pages: progress?.indexed,
+    embedding_failed_pages: progress?.failed,
+    embedding_next_retry_at: progress
+      ? progress.next_retry
+        ? iso(progress.next_retry)
+        : null
+      : undefined,
     semantic_accepted_at: row?.semantic_accepted_at
       ? iso(row.semantic_accepted_at)
       : null,
@@ -542,6 +557,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
             dimensions,
           ],
         );
+        await db.query("DELETE FROM doc_embedding_failures");
         await db.query("DELETE FROM doc_embeddings");
         await db.query("DELETE FROM doc_embedding_queue");
         // Everything written so far is measured once, by the measuring
@@ -589,6 +605,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
           [d.embedding_model ?? null, actor.id],
         );
         // Measurements are the pages' words in another form: off forgets them.
+        await db.query("DELETE FROM doc_embedding_failures");
         if (await hasVectors()) {
           await db.query("DELETE FROM doc_embeddings");
           await db.query("DELETE FROM doc_embedding_queue");
@@ -686,9 +703,12 @@ export async function aiAdminRoutes(app: FastifyInstance) {
           d.semantic_search ?? null,
         ],
       );
-      if (d.semantic_search === false && (await hasVectors())) {
-        await db.query("DELETE FROM doc_embeddings");
-        await db.query("DELETE FROM doc_embedding_queue");
+      if (d.semantic_search === false) {
+        await db.query("DELETE FROM doc_embedding_failures");
+        if (await hasVectors()) {
+          await db.query("DELETE FROM doc_embeddings");
+          await db.query("DELETE FROM doc_embedding_queue");
+        }
       }
       await audit(
         {
