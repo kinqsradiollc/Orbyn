@@ -141,6 +141,6 @@ const s = themed(() =>
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
-    optionLabel: { fontFamily: fonts.medium, fontSize: 16, color: colors.text },
+    optionLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
   }),
 );

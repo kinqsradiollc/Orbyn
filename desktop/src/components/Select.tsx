@@ -156,7 +156,7 @@ export function Select({
       const box = wrap.current.getBoundingClientRect();
       const height = list.current?.offsetHeight ?? 0;
       const width = Math.min(
-        box.width,
+        Math.max(box.width, 240),
         480,
         Math.max(0, window.innerWidth - 16),
       );
@@ -311,7 +311,12 @@ export function Select({
             tabIndex={-1}
             style={
               place
-                ? { left: place.left, top: place.top, minWidth: place.width }
+                ? {
+                    left: place.left,
+                    top: place.top,
+                    width: place.width,
+                    minWidth: 0,
+                  }
                 : { visibility: "hidden" }
             }
           >

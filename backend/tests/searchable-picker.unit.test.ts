@@ -11,6 +11,15 @@ function renderer(
   file: string,
   exportName: string,
   extra: Record<string, unknown> = {},
+  geometry?: {
+    left: number;
+    top: number;
+    bottom: number;
+    width: number;
+    height: number;
+    viewportWidth: number;
+    viewportHeight: number;
+  },
 ) {
   const states: any[] = [];
   const effects: (() => void)[] = [];
@@ -19,8 +28,9 @@ function renderer(
   const dom = {
     focus: () => focuses++,
     querySelector: () => null,
-    getBoundingClientRect: () => ({ left: 0, top: 0, bottom: 40, width: 300 }),
-    offsetHeight: 100,
+    getBoundingClientRect: () =>
+      geometry ?? { left: 0, top: 0, bottom: 40, width: 300 },
+    offsetHeight: geometry?.height ?? 100,
     contains: () => false,
   };
   const jsx = (type: unknown, props: any) => ({ type, props });
@@ -59,8 +69,9 @@ function renderer(
         effects.push(fn);
       }
     },
-    useLayoutEffect: () => {
-      cursor++;
+    useLayoutEffect: (fn: any, deps: any[]) => {
+      if (geometry) hooks.useEffect(fn, deps);
+      else cursor++;
     },
   };
   const dependencies: any = {
@@ -87,8 +98,8 @@ function renderer(
     },
     document: { body: {}, addEventListener() {}, removeEventListener() {} },
     window: {
-      innerWidth: 390,
-      innerHeight: 844,
+      innerWidth: geometry?.viewportWidth ?? 390,
+      innerHeight: geometry?.viewportHeight ?? 844,
       addEventListener() {},
       removeEventListener() {},
     },
@@ -324,6 +335,53 @@ const mobile = () =>
     "./Icon": { Icon: "Icon" },
     "./Sheet": { Sheet: "Sheet" },
   });
+for (const geometry of [
+  {
+    left: 78,
+    top: 294,
+    bottom: 338,
+    width: 111,
+    height: 280,
+    viewportWidth: 320,
+    viewportHeight: 740,
+  },
+  {
+    left: 900,
+    top: 750,
+    bottom: 794,
+    width: 600,
+    height: 280,
+    viewportWidth: 1280,
+    viewportHeight: 900,
+  },
+]) {
+  test(`actual popup explicitly bounds width and position at ${geometry.viewportWidth}px`, () => {
+    const r = renderer(
+      "../../desktop/src/components/Select.tsx",
+      "Select",
+      {},
+      geometry,
+    );
+    const props = {
+      searchable: true,
+      children: [option("a long provider label")],
+      value: "a long provider label",
+    };
+    let tree = r.render(props);
+    trigger(tree).props.onClick();
+    tree = r.render(props);
+    const popup = nodes(tree, (x) =>
+      x.props?.className?.includes("is-floating"),
+    )[0];
+    const place = popup.props.style;
+    assert.equal(place.minWidth, 0);
+    assert.ok(Number.isFinite(place.width));
+    assert.ok(place.left >= 8);
+    assert.ok(place.left + place.width <= geometry.viewportWidth - 8);
+    assert.ok(place.top >= 8);
+    assert.ok(place.top + geometry.height <= geometry.viewportHeight - 8);
+  });
+}
 test("actual mobile provider search is separate from the saved kind and selection changes once", () => {
   const r = mobile();
   const changes: string[] = [];
