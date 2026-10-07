@@ -58,10 +58,34 @@ skips or cancellations (`/tmp/orbyn-c1-pagination-cohort-20261008.log`).
 Backend typecheck passes. Broader regression is pending. No live Anthropic
 call or whole-stage acceptance is claimed.
 
+## Per-kind fixture qualification
+
+`backend/tests/provider-runtime-inventory.unit.test.ts` resolves a saved row for
+all20 kinds through the actual connection resolver, rather than constructing
+adapter formats directly. Its independent kind list requires new providers to
+be reviewed.61/61 checks pass in
+`/tmp/orbyn-c1-runtime-inventory-20261008.log`:
+
+- Direct generation URL, authentication and response decoding for every kind.
+- Catalog/manual-deployment behavior, compatible embedding request/model/input
+  and native Anthropic embedding refusal for every kind.
+- Blank local/public keys for LM Studio, Ollama and OpenCode.
+- Durable agent starting mode and parsed tool call for every kind; Matilda sends
+  its JSON schema with no native tools, OpenAI uses stateless Responses, and
+  Anthropic uses native Messages tool blocks.
+
+These are mocked HTTP responses with inert content. Saved endpoint overrides
+are intentional; the tests do not certify a vendor's public default address,
+model availability, embedding product, pricing, controls or live tool support.
+The full regression was started before this additional test file existed;
+its terminal count must be reported separately from these61 checks. Product
+adapter source remains frozen at `cee9219e`.
+
 ## Remaining qualification
 
-- Enumerate per-kind fixture dispatch/header/options tests against every row;
-  format-family coverage alone does not prove each vendor's live service.
+- Verify public endpoint/catalog availability and model-specific controls against
+  primary documentation and authorized live calls where required; do not convert
+  per-kind fixture coverage into live vendor certification.
 - Extend successful catalog pagination through current revision guards; reject
   edits/deletion while a later page is in flight without holding a DB row lock.
 - Complete remaining consent/validation/reindex/search/error/client matrices.

@@ -69,7 +69,9 @@ Acceptance comes from this session's image inspection, not the capture session's
    returns `b` where the complete result is `a,b`. Candidate follows same-endpoint
    cursors with one eight-second budget, bounded pages and sanitized whole-catalog
    failure. Focused adapter checks pass34/34; route/provider cohort passes49/49.
-   Backend types pass; broader regression is pending.
+   Backend types/build pass; broader regression is running. Independent saved-row
+   dispatch/catalog/embedding/agent checks pass61/61 across all20 kinds; these are
+   fixtures and do not establish live vendor qualification.
 4. Keep remaining live-provider/OpenAI cache gates explicit. Matilda's fixed
    baseline does not qualify OpenAI cache economics. Promote this checkpoint only
    after qualification, then continue remaining C1 gates before C2/M1.

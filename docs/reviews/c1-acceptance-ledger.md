@@ -1,5 +1,28 @@
 # C1 acceptance ledger
 
+## Anthropic pagination and saved-provider inventory — candidate 8 October 2026
+
+Candidate `cee9219e` fixes the reproduced first-page-only Anthropic catalog.
+Before:19pass/1fail; after:34/34 adapter checks. Catalog authority/provider cohort
+passes49/49, including concurrent mutation during the second page. Both pages
+share one timeout signal; opaque cursors stay on the saved endpoint; malformed,
+cyclic, endless or later-failing catalogs never return partial models.
+Backend types/build pass. Full source-frozen regression is running as session32029
+(`/tmp/orbyn-c1-pagination-full-20261008.log`); no terminal/full-pass claim yet.
+
+Separate saved-row runtime inventory tests pass61/61 across all20 kinds:
+resolver → direct completion/catalog/embedding/durable agent starting mode.
+They use mocked HTTP responses and were added after the full runner started.
+Their evidence is independent; they do not establish live vendor capability.
+Logs: `/tmp/orbyn-c1-pagination-before-20261008.log`,
+`/tmp/orbyn-c1-pagination-after-20261008.log`,
+`/tmp/orbyn-c1-pagination-cohort-20261008.log`,
+`/tmp/orbyn-c1-pagination-types-20261008.log`,
+`/tmp/orbyn-c1-pagination-build-20261008.log`,
+`/tmp/orbyn-c1-runtime-inventory-20261008.log`.
+Scope and remaining gates: [provider runtime inventory](c1-provider-runtime-inventory.md).
+This candidate is not yet on main; wholeC1 remains open.
+
 ## Active embedding consent checkpoint — 8 October 2026
 
 Reviewed-provider consent raced a pre-click connection edit; reproduced HTTP200
