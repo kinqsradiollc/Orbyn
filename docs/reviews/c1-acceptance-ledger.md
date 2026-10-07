@@ -1900,3 +1900,24 @@ Narrow/mobile captures remain live and are not accepted by inference.
 Overflow switch is prepared at /tmp/orbyn-c1-usage-overflow-fixture-20261008.mjs,
 not executed. It verifies fixture ownership and alters only the two tracked
 input counters after capture quiescence; original records must be cleaned at end.
+
+### Qualified corrected discovery checkpoint — 8 October
+
+- Frozen candidateab01bcc8: fresh full4246/4246, exit0,0fail/skip/cancel,
+  duration834682.892583ms. Dedicated marked database
+  orbyn_c1_catalog_final_20261008_test; processsession75238 terminal0.
+- Log /tmp/orbyn-c1-catalog-final-full-20261008.log and receipt
+  /tmp/orbyn-c1-catalog-final-full-terminal-20261008.json.
+- Prior4245/4246 and4226/4227 failed full runs remain historical evidence.
+- Focused170/170, configured catalog/inventory10/10, current-source repeated
+  vector34/34; workspace types/backend and web builds pass. Separate legacy
+  upgrade1/1 belongs to d498febd; do not relabel it as newly rerunab01bcc8.
+- Root inspected catalog web1280/320 Light/Dark and unchanged mobile browser
+  no-match/manual states. Scope exclusions remain explicit in visual review.
+- Main merge2fd8e14d completed without conflicts, preserving unrelated changes.
+  Product scope: independent embedding-catalog revision fences, manual candidate
+  selection/no automatic consent, exact mobile model filtering, empty-strip
+  removal, styled web action, shared credential-safe redirect refusal and admin
+  route classification. Canonical API and generated inventory are synchronized.
+- C1 remains active for the retained live/provider/cache/embedding/client gates.
+  Positive usage desktop scoped review passes; mobile/overflow still underway.

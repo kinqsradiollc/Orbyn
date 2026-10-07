@@ -7,6 +7,12 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
+Latest product checkpoint: embedding discovery, exact mobile model search and
+provider redirect protection merged to main as2fd8e14d, from candidateab01bcc8.
+Fresh full4246/4246 passes with zero skips/cancellations; focused170/170,
+catalog/inventory10/10, vector repeat34/34, workspace types/backend/web builds
+and scoped web/mobile browser review pass. Remaining C1 gates below stay open.
+
 The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.
 The C1 catalog checkpoint is merged and pushed to main as `8ab6c822`; provider controls and manual-model preservation were inspected in web/mobile browser captures.
@@ -292,3 +298,17 @@ orbyn_c1_catalog_final_20261008_test database, tool session75238. Log:
 /tmp/orbyn-c1-catalog-final-full-20261008.log. Keep product frozen until terminal;
 do not infer a passing full result from current progress. Feature promotion waits
 for its terminal evidence. Continue remaining C1 gates before the requested pause.
+
+### Qualified catalog checkpoint merged — 8 October
+
+Candidateab01bcc8 fresh full finishes4246/4246, zero failures/skips/cancellations,
+exit0,834682.892583ms. Log /tmp/orbyn-c1-catalog-final-full-20261008.log;
+terminal receipt /tmp/orbyn-c1-catalog-final-full-terminal-20261008.json.
+This supersedes the generated-document failure for the corrected checkpoint,
+without rewriting its earlier4245/4246 receipt. Candidate source was frozen.
+
+Actual merge2fd8e14d has no conflicts. The unrelated mobile/app.json SHA1 remains
+dacd602172347441f2fd92f16d8772b3ba1ef7a8 before/after; other unrelated dirt is
+preserved. Root-scoped browser acceptance is recorded separately. Positive usage
+mobile/overflow captures continue; broader C1 acceptance remains unfinished.
+User deploys main manually; no production rollout is claimed.
