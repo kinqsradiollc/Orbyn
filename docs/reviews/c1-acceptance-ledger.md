@@ -17,7 +17,9 @@ Logs: `/tmp/orbyn-c1-anthropic-json-loop-before-20261008.log`,
 `/tmp/orbyn-c1-anthropic-json-cohort-20261008.log`,
 `/tmp/orbyn-c1-anthropic-json-build-20261008.log`,
 `/tmp/orbyn-c1-anthropic-json-compiled-20261008.log`.
-Full regression/main promotion pending; no previous full result covers this repair.
+Full regression is running on frozen `d09fa409` as session80296 with a fresh
+marked test database (`/tmp/orbyn-c1-anthropic-json-full-20261008.log`). Main
+promotion pending; no previous full result covers this repair.
 
 ## Anthropic pagination and saved-provider inventory — merged 8 October 2026
 

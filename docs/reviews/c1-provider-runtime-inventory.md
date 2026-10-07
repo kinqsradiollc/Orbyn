@@ -140,6 +140,51 @@ fallback repaired from the61 passing starting-mode tests.
 These are spot checks on8October2026. Every remaining vendor still needs the
 same evidence review; missing search results do not prove an API unsupported.
 
+## Next confirmed catalog gap: Together
+
+[Together's current primary model reference](https://docs.together.ai/reference/models)
+documents a top-level JSON array of model records. Orbyn's catalog adapter rejects
+all top-level arrays before inspecting their IDs. A Together-kind fixture using
+that documented shape reproduces `ProviderError: invalid model catalog`.
+Log: `/tmp/orbyn-c1-together-catalog-before-20261008.log`.
+
+After the current Anthropic JSON checkpoint: normalize Together's explicit array
+contract without accepting malformed arrays for every provider. Preserve ID
+validation, error redaction, manual-model behavior and revision fencing. Include
+an actual saved Together connection route fixture. A broad compatible-object
+fixture does not prove Together catalog decoding.
+
+## Additional endpoint evidence
+
+- [DeepSeek model listing](https://api-docs.deepseek.com/api/list-models/) documents
+  a `data` array of IDs and model-specific effort/protocol capabilities. The saved
+  compatible catalog shape matches; richer capability/control qualification stays
+  open.
+- [ZenMux model listing](https://zenmux.ai/docs/api/openai/openai-list-models.html)
+  documents the saved `/api/v1/models` endpoint. Its
+  [API overview](https://zenmux.ai/docs/api/overview.html) lists compatible chat
+  and embedding endpoints; model-specific support still requires validation.
+- [Mistral models](https://docs.mistral.ai/api/endpoint/models) documents a `data`
+  array at `/v1/models`; [embeddings](https://docs.mistral.ai/api/endpoint/embeddings)
+  documents `/v1/embeddings`. Orbyn's endpoint contract matches; no live key/model
+  or selected-dimension acceptance is claimed.
+- [xAI models](https://docs.x.ai/developers/rest-api-reference/inference/models)
+  documents `/v1/models` with `data`, and a separate richer language-model catalog.
+  The current ID-only path matches the simple catalog contract.
+- [Fireworks model listing](https://docs.fireworks.ai/api-reference/list-models)
+  documents an account management path, not evidence that its saved inference
+  `/inference/v1/models` endpoint works. Keep that inference catalog unverified;
+  absence in this page alone is not proof it is unsupported.
+- [Nebius Swagger](https://api.studio.nebius.com/docs) returned no readable schema
+  through the documentation tool. Its catalog remains a source/fixture contract,
+  not verified API documentation.
+
+Public OpenCode metadata GET returned86 ID records with only id/object/created/
+owned_by fields. It supplies no per-model transport hint to fix mixed endpoint
+routing automatically. Snapshot: `/tmp/orbyn-c1-opencode-public-catalog-20261008.json`.
+The first Python request failed local CA validation; native curl succeeded with
+normal TLS verification. No key, personal data or inference request was sent.
+
 ## Remaining qualification
 
 - Verify public endpoint/catalog availability and model-specific controls against
