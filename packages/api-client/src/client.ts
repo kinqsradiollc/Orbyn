@@ -225,6 +225,7 @@ import {
   type WorkRecordUpdate,
   type ProjectStatus,
   type AiModelList,
+  type AiEmbeddingModelList,
   type AiProvider,
   type AiProviderOptions,
   type ManagedAiUsageSummary,
@@ -4998,6 +4999,16 @@ export class OrbynClient {
       method: "POST",
       body: expectedRevision ? { expected_revision: expectedRevision } : {},
     });
+  }
+  /** Loads candidates for the independent embedding connection, without sending pages. */
+  listAiEmbeddingModels(id: string, expectedRevision: string) {
+    return this.request<AiEmbeddingModelList>(
+      `/ai/providers/${id}/embedding-models`,
+      {
+        method: "POST",
+        body: { expected_revision: expectedRevision },
+      },
+    );
   }
   testAiProvider(id: string, model?: string, expectedRevision?: string) {
     return this.request<AiTestResult>(`/ai/providers/${id}/test`, {

@@ -628,6 +628,10 @@ export type AiModelList = {
   /** Saved connection generation verified before returning the catalog. */
   provider_revision?: string;
 };
+/** Discovery is advisory; enabling search still validates dimensions and consent. */
+export type AiEmbeddingModelList = AiModelList & {
+  catalog_kind: "embedding" | "unclassified" | "manual";
+};
 export type AiTestResult = {
   /** Exact saved connection and model tested; older servers may omit them. */
   provider_revision?: string;

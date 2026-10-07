@@ -574,6 +574,33 @@ export async function listModels(ai: Connection): Promise<string[]> {
       "Azure does not list deployments here. Type your deployment name as the model.",
     );
   const endpoint = `${perplexityNativeBase(ai) ?? trimSlash(ai.baseUrl)}/models`;
+  return readModelCatalog(ai, endpoint);
+}
+
+/** Catalog identifiers are candidates, never proof of embedding capability. */
+export async function listEmbeddingModels(ai: Connection): Promise<{
+  models: string[];
+  catalog_kind: "embedding" | "unclassified" | "manual";
+}> {
+  if (ai.format === "azure" || ai.format === "anthropic")
+    return { models: [], catalog_kind: "manual" };
+  // Only OpenRouter's native base has this documented embedding-only catalog.
+  // A custom saved endpoint must keep its own origin and credentials.
+  const nativeRouter =
+    ai.kind === "openrouter" &&
+    trimSlash(ai.baseUrl) === "https://openrouter.ai/api/v1";
+  return {
+    models: nativeRouter
+      ? await readModelCatalog(ai, `${trimSlash(ai.baseUrl)}/embeddings/models`)
+      : await listModels(ai),
+    catalog_kind: nativeRouter ? "embedding" : "unclassified",
+  };
+}
+
+async function readModelCatalog(
+  ai: Connection,
+  endpoint: string,
+): Promise<string[]> {
   // One budget covers the entire catalog, rather than eight seconds per page.
   const signal = AbortSignal.timeout(8_000);
   const invalid = () =>

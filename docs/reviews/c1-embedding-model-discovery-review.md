@@ -1,0 +1,59 @@
+# C1 embedding model discovery
+
+Status: local candidate; not merged or visually accepted. C1 remains active.
+
+## Contract
+
+- `POST /ai/providers/:id/embedding-models` requires administrator authority,
+  strict rate limits, and the displayed `expected_revision` for the independent
+  embedding connection. It checks that revision before and after network I/O.
+- Disabled, changed, deleted and A→B→A connections cannot publish a stale catalog.
+  No row lock spans the external request. Credentials stay server-side.
+- Discovery uses embedding connection options, not generation reasoning/cache
+  controls. It sends no page text, changes no assistant setting and grants no consent.
+- Web and mobile retain typed models, searchable candidates, refresh/loading/error
+  states and empty/manual catalogs. Selecting a model clears prior consent.
+  Catalog configuration remains available when the measuring service or pgvector
+  is unavailable; enabling indexing still requires every prerequisite and validation.
+- Mobile search is independent of the typed model, limits visible chips to40,
+  and reports the filtered count. Late replies, provider/revision switches,
+  disabled providers, newer refreshes and unmounts are fenced in both clients.
+
+## Discovery inventory
+
+All20 saved kinds are covered by an adapter fixture. This is protocol evidence,
+not proof of vendor availability, model capability or account entitlement.
+
+| Connection                                                    | Catalog                          | Meaning                                                           |
+| ------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------- |
+| Exact native OpenRouter HTTPS `/api/v1`                       | GET `/embeddings/models`         | Embedding-only catalog; dimensions still validated                |
+| Custom OpenRouter destination                                 | Saved base + `/models`           | Unclassified candidates; no cross-origin redirect                 |
+| Azure                                                         | No network request               | Type a deployment name manually                                   |
+| Native Anthropic                                              | No embedding catalog request     | Manual response; embedding setup excludes messages-only providers |
+| Other supported compatible kinds, including native Perplexity | Existing saved catalog transport | Unclassified candidates; embedding support must pass validation   |
+
+OpenRouter documents the separate endpoint in its
+[embedding model catalog reference](https://openrouter.ai/docs/api/api-reference/embeddings/list-all-embeddings-models).
+Generic generation catalogs are never presented as proof of embedding support.
+
+## Evidence
+
+- Initial typecheck found an inferred hook-return union; corrected by explicit
+  optional catalog/error fields. Initial unit run74/88 had14 VM export-harness
+  failures; corrected the harness to read `module.exports`. Both original logs
+  are preserved, and neither run is reported as passing.
+- Corrected adapter/hook/catalog unit cohort88/88, zero failures/skips/cancellations:
+  `/tmp/orbyn-c1-embedding-discovery-unit-corrected-20261008.log`.
+- Expanded discovery, authorization, in-flight mutations and existing generation
+  catalog/client cohort122/122, zero failures/skips/cancellations:
+  `/tmp/orbyn-c1-embedding-discovery-focused-20261008.log`.
+- The isolated marked stock-Postgres test database is
+  `orbyn_c1_embedding_catalog_20261008_test`; no production/preview database is used.
+- Final workspace typecheck and backend build pass (exit0):
+  `/tmp/orbyn-c1-embedding-discovery-final-types-20261008.log` and
+  `/tmp/orbyn-c1-embedding-discovery-backend-build-20261008.log`.
+- Web build, frozen full regression and original web/mobile screenshots are
+  pending. Chrome is currently unavailable to the Visual Check session.
+
+No live vendor credential, embedding document upload, production deployment,
+installed-native acceptance or full C1 completion is claimed.
