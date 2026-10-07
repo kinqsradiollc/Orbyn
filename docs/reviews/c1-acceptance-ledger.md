@@ -1026,3 +1026,14 @@ Fresh stock PostgreSQL full regression is running as session52257, log
 Actual active/error browser visual acceptance and remaining migration rollout
 checks are still required before promotion. Prior consent qualification does not
 qualify this newer source. Full C1 and the full ADR remain incomplete.
+
+Additional retry rollout checks: pre218 pgvector upgrade1/1 passes on a fresh
+marked fixture (`/tmp/orbyn-c1-retry-upgrade-20261008.log`). Fresh stock rollout
+proves migration257 exists without vector tables, repeated migration preserves
+attempt16, invalid attempt17/raw error enum are rejected, and page deletion
+cascades the record (`/tmp/orbyn-c1-retry-stock-rollout-20261008.log`).
+Temporary web/mobile browser routes render the actual status components using
+explicitly labelled synthetic data with actions disabled. Visual Check has been
+asked for originals; these will only prove component layout, not installed native
+behavior or an enabled real settings-route session. Qualification source remains
+frozen while the full run continues.
