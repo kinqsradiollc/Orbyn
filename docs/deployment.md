@@ -828,7 +828,12 @@ measured. To make it possible:
 
 2. Start the measuring service: add `semantic` to `COMPOSE_PROFILES` (`docker compose --profile
 semantic up -d measure`). It measures changed pages in its own process, never in the reminder
-   loop, and reports a heartbeat Admin reads.
+   loop, and reports a heartbeat Admin reads. The normal deploy script now pauses
+   any existing measuring service before migrations, then starts its updated image
+   when the `semantic` profile is enabled. With the profile off it stays stopped.
+   The queue is preserved; if a deploy fails after pausing, it remains stopped until
+   a successful deploy or an explicit service start. Admin reports it as offline.
+   This avoids leaving old worker code running across retry/schema changes.
 3. In Admin → AI, choose the model that measures text and accept that every page (except those in
    projects kept out of the assistant) is sent to be measured. Turning it off forgets every
    measurement.

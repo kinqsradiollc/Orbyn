@@ -75,7 +75,28 @@ ocr_on=0
 case ",$profiles," in *,ocr,*) ocr_on=1 ;; esac
 formula_on=0
 case ",$profiles," in *,formula,*) formula_on=1 ;; esac
+semantic_on=0
+case ",$profiles," in *,semantic,*) semantic_on=1 ;; esac
 problems=0
+
+# The optional worker must not keep old queue/retry code across a schema upgrade.
+# Allow 30 seconds for shutdown; any unfinished page stays queued in PostgreSQL.
+pause_measurer() {
+  log "Pausing the measuring service for migrations"
+  compose stop -t 30 measure
+}
+
+resume_measurer() {
+  if [ "$semantic_on" = 1 ]; then
+    log "Starting the updated measuring service"
+    compose up -d --no-deps measure
+    local ids
+    ids=$(compose ps -q measure)
+    [ -n "$ids" ] || { echo "The measuring service did not start." >&2; return 1; }
+    # shellcheck disable=SC2086
+    wait_ready $ids
+  fi
+}
 
 preflight() {
   pdf_key=$(setting DOC_PDF_KEY)
@@ -158,7 +179,9 @@ if [ "$CHECK" = 1 ]; then
     mailpit) echo "- start the development mail catcher (mailpit)" ;;
     *) echo "- mail goes to $smtp_host (nothing to start)" ;;
   esac
+  echo "- pause any existing measuring service before migrations (queued pages are retained)"
   echo "- apply migrations, then roll out pdf, api, mcp, ai, assistant-background, assistant-overnight, realtime, status, notifier, files, converter and the web app"
+  [ "$semantic_on" = 1 ] && echo "- start the updated measuring service (semantic profile enabled)" || echo "- leave the measuring service stopped (semantic profile off)"
   echo "- scanned pages and photos: read with the built-in Tesseract"
   [ "$formula_on" = 1 ] && echo "- start or replace the formula model (equations on scans)" || echo "- no formula model (the formula profile is off; scanned equations keep a placeholder)"
   [ "$ocr_on" = 1 ] && echo "- start or replace the heavy OCR model ($(setting OCR_WORKERS 1) worker(s); the first start downloads the model)" || echo "- no heavy OCR model (the ocr profile is off; this is the default)"
@@ -243,6 +266,7 @@ case "$smtp_host" in
     ;;
 esac
 
+pause_measurer
 log "Applying database migrations"
 compose run --rm migrate
 
@@ -321,6 +345,7 @@ rollout notifier "$(setting NOTIFIER_REPLICAS 1)"
 # as an old copy stops) and the converter, which picks up where it left off.
 rollout files "$(setting FILES_REPLICAS 1)"
 rollout converter "$(setting CONVERTER_REPLICAS 1)"
+resume_measurer
 # The OCR service loads a large model, so it's replaced in place rather than
 # rolled: scanned pages wait in the queue while it starts, and nothing is lost.
 if [ "$formula_on" = 1 ]; then
