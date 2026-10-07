@@ -140,3 +140,32 @@ typecheck/backend build/web build exit zero. Logs:
 `/tmp/orbyn-c1-discovery-redirect-final-backend-build-20261008.log`,
 `/tmp/orbyn-c1-discovery-redirect-final-web-build-20261008.log`.
 The earlier failed full result is not relabelled by these focused passes.
+
+## 8 October terminal regression and generated catalog correction
+
+Frozen product81e807ee full regression finished4245/4246, one failure,
+zero skips/cancellations, exit1. The sole failure is the generated MCP route
+summary: adding the admin exclusion changes excluded290 to291. Regeneration
+changes only those two counts in docs/mcp-catalog.json and docs/mcp.md; no MCP
+capability is added. Product source remains81e807ee. The failed full receipt
+is retained at /tmp/orbyn-c1-redirect-final-full-terminal-20261008.json and
+its complete log at /tmp/orbyn-c1-redirect-final-full-20261008.log.
+
+An initial follow-up invocation passed the four catalog tests but failed the
+route test bootstrap because TEST_DATABASE_URL was omitted. It is retained as
+/tmp/orbyn-c1-generated-catalog-corrected-20261008.log; this is not a product
+failure or a combined passing result. The configured follow-up is recorded
+separately in /tmp/orbyn-c1-generated-catalog-final-20261008.log.
+
+Root inspected original81e807ee narrow Light/Dark zero-result screenshots:
+manual-unlisted-model remains in the model field, the popup shows No matches,
+and controls fit horizontally. Narrow Light/Dark selected249 and wide Dark
+selected249 are contained, with the catalog action styled secondary and consent
+off. These closed-dropdown states do not prove exact-search interaction.
+The narrow navigation-open screenshot shows an overlay over the main content;
+closed navigation restores the contained main surface. Full navigation behavior,
+installed-native interaction and remaining C1 gates are not established here.
+
+Configured generated catalog/inventory follow-up passes10/10, no failures,
+skips or cancellations, exit0. This corrects the sole generated-document
+failure; the original full4245/4246 result is preserved, not relabelled.
