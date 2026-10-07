@@ -1,3 +1,19 @@
+## Recurring maintenance fixture isolation — 7 October 2026
+
+The fresh full candidate run exposed retained recurring bindings in the maintenance
+consumer test file: afterEach cancelled runs but left their schedules active. A
+later real Background worker therefore issued three legitimate fixture requests
+where its case expected one. The failure reproduces independently (23/24 pass).
+Cleanup now pauses only bindings belonging to that file's fixture users, retaining
+the production global scan, inference and exact one-request assertions.
+
+Main's maintained-consumer, route-inventory and structured-storage rerun passes
+48/48, zero failures/skips,13088ms. The candidate rerun passes55/55,10285ms, with
+a separate classification of its new ChatGPT identity-refresh credential route.
+The broader candidate still requires a new full run; no green full-suite or native
+acceptance claim follows from these focused repairs. Normal editor activation,
+ChatGPT web-only connection and full C1-C6/M1/D1/U1 scope remain unfinished.
+
 ## Structured line-anchor checkpoint — 7 October 2026
 
 `POST /docs/:id/anchor` now names an anonymous nested leaf in its complete tree
