@@ -141,3 +141,5 @@ export * from "./doc-content-operations.js";
 export * from "./doc-container-tasks.js";
 
 export * from "./managed-ai-authority.js";
+
+export * from "./ai-model-controls.js";

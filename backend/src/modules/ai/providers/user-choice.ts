@@ -1,3 +1,4 @@
+import { managedUsageRecorder } from "./usage.js";
 import { readJobAiProviderChoice } from "../../auth/ai-provider-choice.js";
 import {
   queueChatgptInference,
@@ -89,6 +90,8 @@ export async function resolveUserAi(
     return ai
       ? {
           ...ai,
+          cacheScope: userId,
+          recordUsage: managedUsageRecorder(userId, jobId, ai),
           assertAuthority: async () => {
             await unchanged();
             await ai.assertAuthority?.();
@@ -123,6 +126,8 @@ export async function resolveUserAi(
     );
     return {
       ...ai,
+      cacheScope: userId,
+      recordUsage: managedUsageRecorder(userId, jobId, ai),
       assertAuthority: async () => {
         await unchanged();
         await ai.assertAuthority?.();

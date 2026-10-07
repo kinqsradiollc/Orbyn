@@ -226,6 +226,8 @@ import {
   type ProjectStatus,
   type AiModelList,
   type AiProvider,
+  type AiProviderOptions,
+  type ManagedAiUsageSummary,
   type AiProviderKind,
   type AiProvidersResponse,
   type AiSettings,
@@ -1460,6 +1462,12 @@ export class OrbynClient {
     );
   }
   /** Completed Orbyn request measurements, not account-wide ChatGPT quota. */
+  managedAiUsage(signal?: AbortSignal) {
+    return this.request<ManagedAiUsageSummary>("/ai/usage", {
+      signal,
+      fresh: true,
+    });
+  }
   async chatgptUsage(signal?: AbortSignal) {
     return chatgptUsageSummary.parse(
       await this.request("/ai/connections/chatgpt/usage", {
@@ -4956,7 +4964,7 @@ export class OrbynClient {
     name: string;
     base_url?: string;
     api_key?: string;
-    options?: { apiVersion?: string };
+    options?: AiProviderOptions;
     enabled?: boolean;
   }) {
     return this.request<AiProvider>("/ai/providers", {
@@ -4971,8 +4979,9 @@ export class OrbynClient {
       name?: string;
       base_url?: string;
       api_key?: string;
-      options?: { apiVersion?: string };
+      options?: AiProviderOptions;
       enabled?: boolean;
+      expected_revision?: string;
     },
   ) {
     return this.request<AiProvider>(`/ai/providers/${id}`, {

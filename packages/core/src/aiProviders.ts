@@ -1,3 +1,4 @@
+import { AI_DOCUMENTED_OPENAI_MODELS } from "./ai-model-controls.js";
 /**
  * AI providers an admin can connect from the admin console. The backend uses
  * `format` to pick the request shape; clients use the rest to build forms.
@@ -106,7 +107,11 @@ export const AI_PROVIDERS: Record<AiProviderKind, AiProviderDefinition> = {
     "OpenAI",
     "cloud · api.openai.com · or any compatible /v1 endpoint",
     "https://api.openai.com/v1",
-    { requestFormat: "responses", keyPrefixes: ["sk-proj-", "sk-"] },
+    {
+      requestFormat: "responses",
+      keyPrefixes: ["sk-proj-", "sk-"],
+      suggestedModels: [...AI_DOCUMENTED_OPENAI_MODELS],
+    },
   ),
   anthropic: cloud(
     "anthropic",

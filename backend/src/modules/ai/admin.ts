@@ -3,6 +3,9 @@ import { createHash } from "node:crypto";
 import {
   AI_PROVIDERS,
   aiProviderInput,
+  aiModelControlError,
+  type AiProviderOptions,
+  type AiModelUsage,
   aiProviderUpdate,
   aiSettingsInput,
   aiNightBudgetInput,
@@ -44,6 +47,10 @@ const toPublic = (row: ProviderRow): AiProvider => ({
   enabled: row.enabled,
   created_at: iso(row.created_at),
   updated_at: iso(row.updated_at),
+  controls_revision:
+    row.generation_revision === undefined
+      ? undefined
+      : String(row.generation_revision),
 });
 
 type BudgetSettings = {
@@ -169,8 +176,10 @@ function checkKey(
 function checkRequired(
   kind: AiProviderKind,
   baseUrl: string,
-  options: { apiVersion?: string },
+  options: AiProviderOptions,
 ) {
+  const controlError = aiModelControlError(kind, undefined, options);
+  if (controlError) fail(422, controlError);
   const definition = AI_PROVIDERS[kind];
   if (!baseUrl) fail(422, `${definition.label} needs a base URL.`);
   for (const option of definition.options)
@@ -266,9 +275,51 @@ export async function aiAdminRoutes(app: FastifyInstance) {
               change: "replaced",
             };
     const changed = (Object.keys(d) as (keyof typeof d)[]).filter(
-      (k) => k !== "api_key",
+      (k) => k !== "api_key" && k !== "expected_revision",
     );
     return transaction(async (db) => {
+      const selected = (
+        await db.query<{ provider_id: string | null; model: string }>(
+          "SELECT provider_id,model FROM ai_settings WHERE id FOR SHARE",
+        )
+      ).rows[0];
+      const locked = (
+        await db.query<ProviderRow>(
+          "SELECT * FROM ai_providers WHERE id=$1 FOR UPDATE",
+          [id],
+        )
+      ).rows[0];
+      if (!locked) fail(404, "AI provider not found.");
+      if (
+        d.expected_revision &&
+        (/^[1-9][0-9]*$/.test(d.expected_revision)
+          ? String(locked.generation_revision) !== d.expected_revision
+          : locked.updated_at.toISOString() !== d.expected_revision)
+      )
+        fail(
+          409,
+          "This connection changed. Reload its saved controls before trying again.",
+        );
+      // Derive omitted fields from the locked row, not the preflight read.
+      next.name = d.name ?? locked.name;
+      next.base_url =
+        (d.base_url ?? locked.base_url) ||
+        AI_PROVIDERS[locked.kind].defaultBaseUrl;
+      next.options = d.options ?? locked.options ?? {};
+      next.enabled = d.enabled ?? locked.enabled;
+      checkRequired(locked.kind, next.base_url, next.options);
+      if (d.api_key === undefined) {
+        key.encrypted = locked.api_key_encrypted;
+        key.hint = locked.key_hint;
+      }
+      if (selected?.provider_id === id) {
+        const controlError = aiModelControlError(
+          current.kind,
+          selected.model,
+          next.options,
+        );
+        if (controlError) fail(422, controlError);
+      }
       const row = (
         await db.query<ProviderRow>(
           `UPDATE ai_providers SET name=$1, base_url=$2, options=$3, enabled=$4,
@@ -276,7 +327,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
            WHERE id=$7 RETURNING *`,
           [
             next.name,
-            baseUrl,
+            next.base_url,
             JSON.stringify(next.options),
             next.enabled,
             key.encrypted,
@@ -340,7 +391,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
   });
 
   app.post("/ai/providers/:id/test", strictRateLimit, async (r) => {
-    await authorize(r, "ai:manage");
+    const actor = await authorize(r, "ai:manage");
     const id = idParam(r);
     const d = aiTestInput.parse(r.body ?? {});
     const row = await providerRow(id);
@@ -349,6 +400,11 @@ export async function aiAdminRoutes(app: FastifyInstance) {
       d.model || (settings.provider_id === id ? settings.model : "");
     if (!model) fail(422, "Choose a model to test.");
     const target = await connection(row, model);
+    target.cacheScope = actor.id;
+    let usage: AiModelUsage | undefined;
+    target.recordUsage = async (observed) => {
+      usage = observed;
+    };
     const started = Date.now();
     try {
       await complete(
@@ -364,6 +420,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
         ok: true,
         latency_ms: latency,
         message: `Connected. ${model} replied in ${latency} ms.`,
+        ...(usage ? { usage } : {}),
       };
     } catch (error) {
       if (!(error instanceof ProviderError)) throw error;
@@ -412,7 +469,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
       try {
         // Only fixed non-personal text is sent before configuration is committed.
         const [probe] = await embed(
-          await connection(provider, model),
+          await connection(provider, model, "embedding"),
           ["Orbyn embedding configuration validation."],
           { timeoutMs: 15_000 },
         );
@@ -568,13 +625,27 @@ export async function aiAdminRoutes(app: FastifyInstance) {
         "Turn on search by meaning in its own setup: it needs a model and your agreement.",
       );
     let providerName: string | null = null;
-    if (d.provider_id) {
-      const row = await providerRow(d.provider_id);
-      if (!row.enabled) fail(409, "Turn this provider on before using it.");
-      if (!d.model) fail(422, "Choose a model for the assistant.");
-      providerName = row.name;
-    }
     await transaction(async (db) => {
+      // Match enqueue/provider-update lock order and validate the committed pair.
+      await db.query("SELECT id FROM ai_settings WHERE id FOR UPDATE");
+      if (d.provider_id) {
+        const row = (
+          await db.query<ProviderRow>(
+            "SELECT * FROM ai_providers WHERE id=$1 FOR SHARE",
+            [d.provider_id],
+          )
+        ).rows[0];
+        if (!row) fail(404, "Provider not found");
+        if (!row.enabled) fail(409, "Turn this provider on before using it.");
+        if (!d.model) fail(422, "Choose a model for the assistant.");
+        const controlError = aiModelControlError(
+          row.kind,
+          d.model,
+          row.options ?? {},
+        );
+        if (controlError) fail(422, controlError);
+        providerName = row.name;
+      }
       await db.query(
         `UPDATE ai_settings SET provider_id=$1, model=$2, updated_by=$3,
            embedding_search_enabled = CASE WHEN $4::boolean=false THEN false ELSE embedding_search_enabled END,

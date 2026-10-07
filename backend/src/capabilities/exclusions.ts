@@ -401,6 +401,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /ai/agenda/private-summary": "credentials",
   "PUT /ai/agenda/private-permission": "credentials",
   "GET /ai/connections/chatgpt/usage": "credentials",
+  "GET /ai/usage": "account",
   "PUT /ai/provider-choice": "credentials",
   "POST /ai/connections/chatgpt/inference/claim": "credentials",
   "POST /ai/connections/chatgpt/inference/result": "credentials",

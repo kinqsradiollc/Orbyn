@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
 import { AI_PROVIDER_KINDS } from "./aiProviders.js";
+import { aiProviderOptions } from "./ai-model-controls.js";
 import { isTimeZone, isValidRrule } from "./time.js";
 import {
   CALLOUT_KINDS,
@@ -1039,10 +1040,7 @@ export const aiProviderInput = z
     name: z.string().trim().min(1).max(80),
     base_url: baseUrl.default(""),
     api_key: z.string().trim().max(4000).optional(),
-    options: z
-      .object({ apiVersion: z.string().trim().max(40).optional() })
-      .strict()
-      .default({}),
+    options: aiProviderOptions.default({}),
     enabled: z.boolean().default(true),
   })
   .strict();
@@ -1050,13 +1048,13 @@ export const aiProviderInput = z
 /** Editing a provider. Omit `api_key` to keep the saved key; send "" to remove it. */
 export const aiProviderUpdate = z
   .object({
+    expected_revision: z
+      .union([z.string().datetime(), z.string().regex(/^[1-9][0-9]*$/)])
+      .optional(),
     name: z.string().trim().min(1).max(80).optional(),
     base_url: baseUrl.optional(),
     api_key: z.string().trim().max(4000).optional(),
-    options: z
-      .object({ apiVersion: z.string().trim().max(40).optional() })
-      .strict()
-      .optional(),
+    options: aiProviderOptions.optional(),
     enabled: z.boolean().optional(),
   })
   .strict();

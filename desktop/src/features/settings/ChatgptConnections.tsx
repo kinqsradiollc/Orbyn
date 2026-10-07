@@ -1,3 +1,4 @@
+import { ManagedAiUsage } from "./ManagedAiUsage";
 import { AgendaPrivateSettings } from "./AgendaPrivateSettings";
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
@@ -54,6 +55,7 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
           ? "Connect ChatGPT as a personal AI provider."
           : "Connect your ChatGPT account and choose a default model."}
       </p>
+      <ManagedAiUsage userId={userId} />
       {state.status === "unsupported" ? (
         <ChatgptRemoteModels userId={userId} />
       ) : (

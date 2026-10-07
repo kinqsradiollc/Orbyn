@@ -3546,3 +3546,32 @@ quote boundaries, ordered starts, task checks and item-owned continuation blocks
 Word validates the authorized tree against its exact flat projection. Format1
 exports retain their existing formats. HTML/PDF continue to recheck current visibility/revision after
 rendering and revalidate image access before returning a file.
+
+## Managed AI controls and observed usage
+
+Admin provider create/update accepts strict `options` fields `apiVersion`,
+`reasoningEffort`, `cacheMode` and `cacheRetention`. Generation controls must match
+Orbyn's documented capability matrix for the selected model; unknown models keep
+provider defaults but configured unsupported controls return 422. Embedding
+resolution uses connection options independently of generation controls. Provider
+update accepts optional `expected_revision` from the returned exact `controls_revision` (generation token); older clients may use `updated_at`. A stale
+revision returns 409 without changing the provider. Model/provider selection and
+controls validation use one transaction. Provider test may return observed `usage`
+counters; missing measurements remain null.
+
+Authenticated `GET /ai/usage` returns owner-only `{window_days:30, enabled,
+requests, usage:{input_tokens,output_tokens,reasoning_tokens,cached_input_tokens,
+cache_write_tokens}}`. It covers reported responses of saved assistant jobs using
+Orbyn's configured Responses provider, including explicitly consented fallback.
+Responses with a repeated provider response identifier deduplicate within that
+job/provider/model. Anonymous response identifiers cannot establish equivalence.
+Reported incomplete responses are counted even though their output is rejected.
+Counters missing from any retained response, or aggregate values beyond the safe
+integer range, remain null. Cached-input and reasoning counters are subsets;
+these are not extra tokens to add to input/output. No price, quota or billing total
+is inferred. Other feature calls and ChatGPT plan usage are separate.
+
+Collection honors Privacy analytics opt-out. Existing records remain until their
+30-day expiry; account/job deletion cascades them. Only hashed deduplication keys,
+owner/job references, timestamps and counters are retained, without prompts,
+replies, raw response identifiers or provider credentials.

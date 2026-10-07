@@ -1,3 +1,8 @@
+import { aiModelControlError } from "@orbyn/core";
+import {
+  responsesControls,
+  readOpenAiUsage,
+} from "../providers/model-controls.js";
 import type { ResolvedAi } from "../providers/adapters.js";
 import {
   headers,
@@ -76,6 +81,9 @@ export async function step(
 ): Promise<StepResult> {
   await ai.assertAuthority?.();
   options.signal.throwIfAborted();
+  const controlError = aiModelControlError(ai.kind, ai.model, ai.options);
+  if (controlError)
+    throw new ProviderError("unsupported_model_controls", controlError);
   const result =
     options.mode === "json"
       ? await jsonStep(ai, messages, tools, options)
@@ -130,7 +138,7 @@ async function responsesStep(
       headers: headers(ai),
       body: JSON.stringify({
         model: ai.model,
-        input: responsesInput(messages),
+        ...responsesControls(ai, responsesInput(messages)),
         store: false,
         include: ["reasoning.encrypted_content"],
         parallel_tool_calls: false,
@@ -147,10 +155,13 @@ async function responsesStep(
   );
   const body = await json<{
     error?: unknown;
+    usage?: unknown;
+    id?: unknown;
     status?: string;
     output?: unknown[];
   }>(response);
   throwIfErrorEnvelope(body, ai.apiKey);
+  await ai.recordUsage?.(readOpenAiUsage(body.usage), body.id);
   if (body.status === "incomplete") throw truncated();
   const invalid = (): never => {
     throw new ProviderError(
@@ -244,6 +255,8 @@ async function responsesStep(
   // Orbyn executes at most one call per reasoning step on this route. Refuse
   // unexpected parallel calls rather than retaining unanswered call items.
   if (toolCalls.length > 1) invalid();
+  await ai.assertAuthority?.();
+  signal.throwIfAborted();
   return { text, toolCalls, responseItems };
 }
 

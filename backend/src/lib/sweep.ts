@@ -611,6 +611,16 @@ export const SWEEP_RULES: SweepRule[] = [
     configurable: false,
   },
   {
+    key: "managed_ai_usage",
+    label: "Managed AI request usage",
+    detail:
+      "Owner-only observed token counters without conversation content, kept for 30 days.",
+    table: "managed_ai_usage",
+    where: "completed_at < now() - interval '30 days'",
+    days: 0,
+    configurable: false,
+  },
+  {
     key: "chatgpt_completed_usage",
     label: "Completed ChatGPT request usage",
     detail:

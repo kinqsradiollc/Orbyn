@@ -1,4 +1,10 @@
-import { AI_PROVIDERS, type AiProviderKind } from "@orbyn/core";
+import {
+  AI_PROVIDERS,
+  aiModelControlError,
+  type AiProviderOptions,
+  type AiProviderKind,
+} from "@orbyn/core";
+import { fail } from "@orbyn/core";
 import { query, transaction } from "../../../db/pool.js";
 import {
   readManagedSelection,
@@ -17,19 +23,30 @@ export type ProviderRow = {
   base_url: string;
   api_key_encrypted: string | null;
   key_hint: string;
-  options: { apiVersion?: string } | null;
+  options: AiProviderOptions | null;
   enabled: boolean;
   created_at: Date;
   updated_at: Date;
   embedding_revision: string;
   provider_revision?: string;
+  generation_revision?: string;
 };
 
 /** How to call a saved provider with `model`, decrypting its key. */
 export async function connection(
   row: ProviderRow,
   model: string,
+  purpose: "generation" | "embedding" = "generation",
 ): Promise<ResolvedAi> {
+  const { reasoningEffort, cacheMode, cacheRetention, ...connectionOptions } =
+    row.options ?? {};
+  const options =
+    purpose === "embedding" ? connectionOptions : (row.options ?? {});
+  const controlError =
+    model && purpose === "generation"
+      ? aiModelControlError(row.kind, model, options)
+      : null;
+  if (controlError) fail(422, controlError);
   const definition = AI_PROVIDERS[row.kind];
   return {
     kind: row.kind,
@@ -39,7 +56,7 @@ export async function connection(
       ? await decryptSecret(row.api_key_encrypted)
       : "",
     model,
-    options: row.options ?? {},
+    options,
     source: "database",
     providerId: row.id,
     providerRevision: row.provider_revision ?? row.updated_at.toISOString(),
@@ -102,5 +119,5 @@ export async function resolveEmbedding(
       [config.providerId, config.providerRevision],
     )
   ).rows[0];
-  return row ? connection(row, config.model) : null;
+  return row ? connection(row, config.model, "embedding") : null;
 }

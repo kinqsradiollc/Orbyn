@@ -110,7 +110,8 @@ export async function briefFor(
       );
       return finish(text, provider);
     }
-    const ai = await resolveAi();
+    const resolved = await resolveAi();
+    const ai = resolved ? { ...resolved, cacheScope: ownerId } : null;
     if (!ai) {
       onOutcome?.({
         status: "unavailable",

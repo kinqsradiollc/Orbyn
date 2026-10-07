@@ -1,4 +1,10 @@
-import type { AiRequestFormat } from "@orbyn/core";
+import { responsesControls, readOpenAiUsage } from "./model-controls.js";
+import type {
+  AiModelUsage,
+  AiProviderOptions,
+  AiRequestFormat,
+} from "@orbyn/core";
+import { aiModelControlError } from "@orbyn/core";
 import { assertProviderUrl, isPrivateUrl } from "./network.js";
 import {
   embeddingVectors,
@@ -12,6 +18,8 @@ export type ResolvedAi = {
   assertAuthority?: () => Promise<void>;
   /** Content-free receipt after a parsed provider response. */
   recordCompletion?: () => Promise<void>;
+  /** Observed managed counters only; unavailable fields remain null. */
+  recordUsage?: (usage: AiModelUsage, responseId?: unknown) => Promise<void>;
   /** Durable private-call slot; per-loop copies prevent cross-specialist mutation. */
   operationId?: string;
   /** Credential-free, internal device transport; never serialized into a client request. */
@@ -25,7 +33,9 @@ export type ResolvedAi = {
   baseUrl: string;
   apiKey: string;
   model: string;
-  options: { apiVersion?: string };
+  /** Internal opaque cache accounting boundary; never accepted from HTTP callers. */
+  cacheScope?: string;
+  options: AiProviderOptions;
   source: "database";
   /** Credential-free configuration identity for scoped execution provenance. */
   providerId?: string;
@@ -282,6 +292,9 @@ export async function complete(
     signal.throwIfAborted();
     return text;
   };
+  const configuredError = aiModelControlError(ai.kind, ai.model, ai.options);
+  if (configuredError)
+    throw new ProviderError("unsupported_model_controls", configuredError);
   if (ai.textTransport)
     return accepted(
       await ai.textTransport(
@@ -338,11 +351,15 @@ export async function complete(
         headers: headers(ai),
         body: JSON.stringify({
           model: ai.model,
-          ...(system ? { instructions: system } : {}),
-          input: conversation.map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          ...(system && ai.options.cacheMode !== "explicit"
+            ? { instructions: system }
+            : {}),
+          ...responsesControls(
+            ai,
+            (ai.options.cacheMode === "explicit" ? messages : conversation).map(
+              (m) => ({ role: m.role, content: m.content }),
+            ),
+          ),
           store: false,
           ...(options.maxOutputTokens === undefined
             ? {}
@@ -354,6 +371,8 @@ export async function complete(
     );
     const body = await json<{
       error?: unknown;
+      usage?: unknown;
+      id?: unknown;
       status?: string;
       output?: {
         type?: string;
@@ -361,6 +380,7 @@ export async function complete(
       }[];
     }>(response);
     throwIfErrorEnvelope(body, ai.apiKey);
+    await ai.recordUsage?.(readOpenAiUsage(body.usage), body.id);
     if (!Array.isArray(body.output))
       throw new ProviderError(
         "invalid_body",
@@ -373,6 +393,8 @@ export async function complete(
       .map((part) => part.text ?? "")
       .join("");
     if (body.status === "incomplete") throw truncated();
+    await ai.assertAuthority?.();
+    signal.throwIfAborted();
     return accepted(text);
   }
 

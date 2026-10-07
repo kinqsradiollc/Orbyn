@@ -1,3 +1,4 @@
+import type { AiModelUsage, AiProviderOptions } from "./ai-model-controls.js";
 import type { AiFeatureProvider } from "./ai-feature.js";
 import type { ProjectDecomposition } from "./projectDraft.js";
 import type { AssistantSource, DraftNote } from "./docs.js";
@@ -566,10 +567,12 @@ export type AiProvider = {
   has_key: boolean;
   /** For example "sk-…9f2a". */
   key_hint: string;
-  options: { apiVersion?: string };
+  options: AiProviderOptions;
   enabled: boolean;
   created_at: string;
   updated_at: string;
+  /** Exact generation token for model-control compare-and-set. */
+  controls_revision?: string;
 };
 
 export type AiSettings = {
@@ -616,6 +619,7 @@ export type AiProvidersResponse = {
 };
 export type AiModelList = { models: string[] };
 export type AiTestResult = {
+  usage?: AiModelUsage;
   ok: boolean;
   latency_ms: number | null;
   message: string;

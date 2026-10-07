@@ -360,3 +360,240 @@ stay unknown. Evaluate representative workflows for cost, latency and quality
 against baseline with a permitted real provider probe; fixtures do not prove hits
 or billing savings. Obtain exact-flow screenshot captures and inspect both clients
 before declaring the controls checkpoint complete.
+
+## C1 reasoning/cache controls candidate — 7 October 2026
+
+Local, uncommitted checkpoint on `codex/docs-owned-editor-activation`; not shipped.
+Shared capability validation and managed Responses controls are wired to web and
+mobile provider forms. Provider saves support an expected saved revision; omitted
+fields derive from the locked row. Model selection locks settings before the
+provider and validates that saved pair, preventing concurrent option edits from
+committing an unsupported active configuration. The shared API client now carries
+these controls and the optional revision.
+
+Fresh marked database `orbyn_model_controls_20261007_test`: controls integration
+and unit cohort passes 19/19, zero failures/skips, terminal exit 0. Evidence:
+`/tmp/orbyn-c1-controls-integration-final-20261007.log`. Cases include 401/403,
+malformed JSON 400, strict option rejection 422, rate limit 429, persisted controls,
+active model refusal, reset, stale save 409, secret omission and pre-dispatch
+refusal. Initial test incorrectly expected schema validation 400; Orbyn's active
+schema contract is 422. Corrected that assertion and separately covered malformed
+JSON 400; original failed log retained. No external provider was called.
+Shared packages build and backend/web/mobile typechecks pass. Browser preview
+5174 responds 200; mobile browser 8083 is currently unavailable and needs restart.
+Visual acceptance is outstanding, including provider action crowding and long
+provider identity. Durable per-job usage/reporting and real permitted
+cost/latency/quality evaluation remain outstanding; observed fixture token counters
+prove parsing only. Full regression and main promotion remain pending.
+
+### Controls follow-up: usage display and embedding separation
+
+Both admin clients now display observed test input/output/cached-input/cache-write/
+reasoning counters through one shared formatter. Unknown stays unavailable, zero
+stays zero, and no token totals, costs or plan limits are invented. This is test
+usage only; durable job accounting remains open. Generation options no longer
+block embedding connections sharing the same provider: embedding resolution
+retains connection fields and excludes generation-only controls, while generation
+continues to refuse unsupported combinations. Regression covers both behaviors.
+
+Latest provider/control/managed-authority/Responses cohort passes 59/59 with zero
+failures/skips, exit 0: `/tmp/orbyn-c1-controls-provider-cohort-20261007.log`.
+Latest packages build and web/mobile types pass. Mobile preview restored on 8083;
+API8008 and web5174 respond. QA-013 capture-only request dispatched to existing
+Orbyn Visual Check session; builder inspection pending. Disabled OpenAI QA fixture
+contains only a fake key; no catalog/test/inference calls authorized for captures.
+Mobile provider identity now uses two collapsed lines and fully wraps when expanded;
+visual acceptance remains pending rather than inferred from source/typechecking.
+
+### Durable saved-assistant usage candidate
+
+Migration255 introduces content-free owner/job counters with 30-day sweeper
+retention, deletion cascades and hashed response deduplication. Default managed
+and explicitly consented managed fallback wire the recorder. Privacy opt-out
+prevents new collection. Response counters are recorded before result acceptance,
+including reported incomplete output; no result/tool authority is weakened.
+Missing provider identifiers receive unique observation identities, not a false
+claim of retry equivalence. Aggregates stay unknown when any response lacks a
+counter or a sum exceeds JavaScript's safe integer range. No prompts, replies,
+raw provider response IDs or credentials enter this table.
+
+Authenticated `/ai/usage` is owner-only; on-demand workspace-provider usage
+controls are implemented in web/desktop and mobile Settings. Account/token changes
+abort requests and hide earlier-account measurements. Privacy source and API docs
+describe the scope and limits. Legal default revision updates to
+`2026-10-07-managed-usage`; custom workspace policy acceptance remains governed by
+existing legal-settings behavior. These are saved-assistant managed Responses
+measurements, not other feature totals, ChatGPT-plan limits or billing.
+
+Durable controls/usage/authority cohort passes44/44, zero failures/skips:
+`/tmp/orbyn-c1-controls-durable-usage-20261007.log`. Additional incomplete-output
+unit cohort passes20/20, zero failures/skips:
+`/tmp/orbyn-c1-controls-incomplete-usage-20261007.log`. Latest backend/web/mobile
+checks pass (mobile refreshed after its SmallAction required prop correction).
+Full combined regression and usage UI acceptance remain pending.
+
+Root inspected QA-013 wide controls and narrow dark cache-selector screenshots.
+Controls were present, but saves failed because preview API still held the old
+loaded schema. Mobile sign-in was blocked by missing loopback CORS, not a proven
+product authentication failure. Owned preview API restarted against current
+candidate; migration255 applied to local `orbyn_ui_preview`; mobile CORS OPTIONS
+now returns204 with the correct allowed origin. QA-013b viewport-only/save/reload/
+mobile/usage captures requested. Sticky full-page compositing and tiny narrow
+captures are insufficient to prove overlap acceptance; no broad visual pass claimed.
+This whole checkpoint remains uncommitted/unmerged pending its remaining gates.
+
+### Combined qualification and remaining visual evidence
+
+Updated combined C1 controls, durable usage, provider authority, Responses, owner
+UI and evaluation-harness cohort:69/69 pass, zero failures/skips, terminal0.
+Log `/tmp/orbyn-c1-controls-combined-20261007.log`. Shared packages and all three
+client/backend typechecks pass. Usage UI executes real component hooks in the
+harness: on-demand loading, unknown counters/opt-out presentation, account switch
+and delayed old-session response rejection on both apps (4 cases).
+
+Exact generation `controls_revision` now fences new UI saves, avoiding millisecond
+Date serialization collisions. Older clients retain timestamp revision support.
+Integration forces identical displayed timestamps with changed options and proves
+that the generation-based stale save receives409. Omitted fields still preserve
+locked current configuration. Empty base URLs normalize to the documented default.
+
+Fixed-text evaluation harness exercises off/implicit/explicit caching twice each
+and records observed usage, latency and a minimal exact-output verdict. The CLI
+requires explicit EVALUATION_MODEL/EVALUATION_OPENAI_API_KEY/EVALUATION_OUTPUT and
+sends six managed requests. Its two mocked cases pass and do not prove real cache
+hits, billing savings or general quality. No live provider call performed; real
+permitted measurements and broader quality/cost acceptance remain open.
+
+QA-013b manifest records successful web save/reload and restored mobile login,
+but original saved JPG metadata contradicts adequate viewport evidence: 1440
+capture is702x810 and 320 capture156x180. Root inspected examples; controls/actions
+are clipped or unreadable. QA-013c requests original readable pixels and reports
+actual pixel size separately from CSS viewport. Do not mark broad visual acceptance
+from the small captures. Provider Edit/Delete now use an owned Popover management
+menu; narrow Model cell occupies full row width with wrapping primary actions.
+These layout edits still need screenshot acceptance. Full regression/main promotion
+remain pending; C1 and the whole ADR stay active.
+
+### Candidate freeze for full regression
+
+All listed controls/usage/evaluation/UI edits are being committed as a candidate
+freeze so full regression can run against immutable Git source. This is not a main
+promotion or visual acceptance. Latest provider-layout source cohort passes5/5:
+`/tmp/orbyn-c1-provider-layout-20261007.log`. QA-013c readable screenshots remain
+pending. Real permitted latency/cache/cost/quality evidence remains an external
+acceptance gate; mocked harness output is not that evidence. Main stays3c8feb40.
+
+### Frozen61aae46f qualification — terminal failure
+
+Candidate37-file checkpoint committed as61aae46f; frozen integration worktree
+fast-forwarded to that commit with generated untracked Watch/widget assets kept.
+Full regression started against fresh marked `orbyn_full_61aae46f_test`,464 files:
+`/tmp/orbyn-adr-full-61aae46f-20261007.log`, session73833 is terminal, exit1. Full regression finished4042 passed,1 failed,
+zero skipped (4043 cases,787186ms). The sole failure is route inventory:
+GET /ai/usage was not classified. No full pass claimed. Frozen packages/backend build and web/mobile types pass.
+Candidate web build and Home prerender pass.
+
+Existing clean release-qualification worktree reused on a new
+`codex/c1-controls-main-qualification` branch from main3c8feb40. Only61aae46f's
+scoped patch applied; core export added separately to exclude unrelated candidate
+Docs/native exports. Main checkout/user files remain untouched. Fresh marked
+`orbyn_main_controls_61aae46f_test` applies main migrations254/255 without253.
+Focused cohort74/74 passes, no failures/skips, exit0; packages/backend/web/mobile
+types and backend/web production builds pass. Missing locked local
+react-native-webview13.16.1 was restored from the existing installed exact version;
+no manifest/lockfile edits. Main production build retains its large-chunk warning.
+
+Actual compiled prepared-main runtime probe passes two-step Responses read/tool
+recovery, selected high reasoning and explicit prefix breakpoints, encrypted
+checkpoint/cleared completion, and owner-only persisted usage matching both fixture
+responses. Evidence `/tmp/orbyn-main-controls-compiled-probe-20261007.log`;
+requests2, done, measured responses2, external requests0. No fixture output proves
+real provider cache hits, pricing, plan eligibility or installed-native acceptance.
+
+Root inspected readable dark390 cache menu: bounded within the viewport, labels
+and selection visible. OtherQA-013c PNGs still clipped relevant controls despite
+larger file dimensions; requested unclipped physical pixel capture with CSS
+viewport, DPR/scale and actual dimensions. New local legal acceptance screen now
+blocks mobile recapture; user confirmation requested for that disposable account.
+The agent must not accept pending consent until the user answers. Main promotion
+and whole checkpoint acceptance remain pending.
+
+
+### Usage route boundary correction
+
+The missing inventory entry is classified as an account route, preserving its
+first-party owner-only scope. The route now explicitly checks session principal
+before reading usage, and integration coverage refuses personal API keys without
+returning measurements. Focused controls, route inventory and API-key regression
+pass20/20, zero failures/skips, exit0; backend typecheck passes. Evidence `/tmp/orbyn-c1-usage-boundary-20261007.log`. This follow-up is
+a candidate correction and is not promoted to main. Full regression must be rerun on the new freeze.
+
+
+### Correction qualification and preview provenance
+
+Frozen31111112 is under fresh full regression on its own marked database, live
+session96838, `/tmp/orbyn-adr-full-31111112-20261007.log`. Previous61aae46f run is
+terminal failed and was not restarted. Prepared-main patch independently passes
+20/20 controls, API-key and inventory cases, zero skips/failures,5774ms:
+`/tmp/orbyn-main-usage-boundary-20261007.log`. Main remains3c8feb40.
+
+Both listeners on8083 were owned Expo processes from the candidate mobile directory.
+Stale localhost-onlyPID31340 was stopped to remove ambiguous bundle provenance;
+currentPID92851 remains. Agent instructed to reload127.0.0.1:8083 and wait for user
+confirmation of updated local Terms. No provider calls or legal acceptance made.
+
+
+### Documented model completeness follow-up
+
+Official docs fetched7 October2026 confirmgpt-5.6-sol andgpt-5.6 alias use
+none/low/medium/high/xhigh/max reasoning and modern caching. Both were absent
+from the controls allowlist despite being documented. Candidate adds both exact
+identities and the same per-model contract tests; no selected default changes.
+Sources: https://developers.openai.com/api/docs/models/gpt-5.6-sol and
+https://developers.openai.com/api/docs/guides/prompt-caching . Live provider access
+or entitlement is not established by these docs. Frozen31111112 full run remains
+unchanged; this follow-up passes24/24 model-controls/evaluation cases, zero failures/skips,
+exit0; shared package builds pass. Log:
+`/tmp/orbyn-c1-model-completeness-20261007.log`. A later full freeze is required.
+
+
+### Usage retry/cancellation qualification
+
+Prepared-main latest documented-model follow-up passes24/24 model/evaluation
+checks and complete workspace typechecks, exit0. Logs:
+`/tmp/orbyn-main-model-completeness-20261007.log` and
+`/tmp/orbyn-main-controls-latest-types-20261007.log`.
+
+Both real usage components now have additional hook-harness cases for rejected
+loads, refresh clearing stale errors, renewed requests and cancellation when
+collapsed. Eight usage UI cases pass, zero skips/failures:
+`/tmp/orbyn-c1-usage-ui-errors-20261007.log`. Product UI source is unchanged by
+this test-only follow-up. Migration255 owner/job cascades, bounded nullable
+counters and the fixed30-day sweeper match the saved-assistant privacy paragraph.
+This source audit does not replace live-provider or visual acceptance.
+Frozen31111112 full regression continues; latest observed completed case1448.
+
+
+### Prepared-main scope inspection
+
+33 promoted product/test files match the latest candidate byte-for-byte.
+Three broader files deliberately differ: capabilities exclusions omits the
+unrelated native refresh-identity endpoint; API docs omits pending P-256/native
+receipt contracts; API client omits pending native identity refresh and unrelated
+profile freshness changes. The main core index adds only ai-model-controls;
+no migration253/native OAuth or unrelated Docs implementation is introduced.
+Prepared-main usage UI regression also passes8/8, zero failures/skips,912ms:
+`/tmp/orbyn-main-usage-ui-errors-20261007.log`.
+Frozen31111112 remains live; latest completed case2655, no reported failure yet.
+No terminal full pass or main promotion is claimed.
+
+
+### Exact prepared-main freeze
+
+The scoped main qualification branch is frozen separately before integration.
+It includes controls/usage31111112, documented-model413806fe and test1389e7b7
+follow-ups, excluding unrelated candidate Docs and native OAuth changes. Product
+scope matches the inspected patch; focused20+24+8 cases and all workspace types
+pass. Main remains3c8feb40; this is a qualification commit, not promotion.
+A fresh full suite will run on this exact main-based commit with a separate marked
+database. Broader candidate31111112 remains live and its source is unchanged.

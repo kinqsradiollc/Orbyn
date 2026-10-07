@@ -1,3 +1,4 @@
+import { AiModelControls } from "./AiModelControls";
 import React, { useEffect, useState } from "react";
 import { SemanticSetup } from "./SemanticSetup";
 import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
@@ -7,9 +8,11 @@ import {
   AI_PROVIDERS,
   type AiProvider,
   type AiProviderKind,
+  type AiProviderOptions,
   type AiProvidersResponse,
   type AiSettings,
   type AiTestResult,
+  aiUsageSummary,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Field } from "../components/Field";
@@ -274,6 +277,14 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
                     ),
                   )
                 }
+                onControlsSaved={(options, expected_revision) =>
+                  void run(() =>
+                    client.updateAiProvider(p.id, {
+                      options,
+                      expected_revision,
+                    }),
+                  )
+                }
                 onEdit={() => setForm({ mode: "edit", provider: p })}
                 onDelete={() =>
                   Alert.alert(
@@ -315,6 +326,7 @@ function ProviderRow({
   onEnabled,
   onUse,
   onEdit,
+  onControlsSaved,
   onDelete,
 }: {
   provider: AiProvider;
@@ -327,6 +339,7 @@ function ProviderRow({
   onEnabled: (enabled: boolean) => void;
   onUse: (model: string) => void;
   onEdit: () => void;
+  onControlsSaved: (options: AiProviderOptions, revision: string) => void;
   onDelete: () => void;
 }) {
   const def = AI_PROVIDERS[p.kind];
@@ -334,6 +347,7 @@ function ProviderRow({
   const [models, setModels] = useState<string[] | null>(null);
   const [test, setTest] = useState<AiTestResult | null>(null);
 
+  useEffect(() => setTest(null), [p.updated_at]);
   const list = models ?? def.suggestedModels;
   const typed = model.trim();
   const query = typed.toLowerCase();
@@ -356,7 +370,10 @@ function ProviderRow({
           style={s.rowMain}
         >
           <View style={s.rowTitle}>
-            <Text style={[s.name, { flexShrink: 1 }]} numberOfLines={1}>
+            <Text
+              style={[s.name, { flexShrink: 1 }]}
+              numberOfLines={expanded ? undefined : 2}
+            >
               {p.name}
             </Text>
             {active && <Pill label="Active" tone="accent" />}
@@ -443,8 +460,15 @@ function ProviderRow({
             >
               {test.message}
               {test.latency_ms !== null ? ` · ${test.latency_ms} ms` : ""}
+              {test.usage ? `\n${aiUsageSummary(test.usage)}` : ""}
             </Text>
           )}
+          <AiModelControls
+            provider={p}
+            model={typed}
+            busy={busy}
+            onSave={onControlsSaved}
+          />
           <View style={s.actions}>
             {def.listsModels && (
               <SmallAction
@@ -769,8 +793,13 @@ const s = themed(() =>
       paddingVertical: 12,
       paddingHorizontal: 16,
     },
-    rowMain: { flex: 1, gap: 2 },
-    rowTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
+    rowMain: { flex: 1, minWidth: 0, gap: 2 },
+    rowTitle: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
     name: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     expand: { paddingHorizontal: 16, paddingBottom: 14 },
     input: { marginBottom: 12 },

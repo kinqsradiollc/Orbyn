@@ -101,7 +101,7 @@ export async function resolveMaintainedPageModel(
       }),
     )
     .digest("base64url");
-  return { key, ai };
+  return { key, ai: { ...ai, cacheScope: userId } };
 }
 
 /** Only selected block material reaches this provider request; no workspace overview or memory. */

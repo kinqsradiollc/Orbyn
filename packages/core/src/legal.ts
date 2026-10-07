@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-10-06-teams-replies";
+export const DEFAULT_LEGAL_VERSION = "2026-10-07-managed-usage";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -328,6 +328,10 @@ If you turn on "Keep the original" (off unless you choose it), the file itself i
 ## Search by meaning
 
 Search by meaning is off unless your workspace's administrator selects an embedding provider and model and accepts sending page text to that provider. This selection is separate from the provider used for chat. Setup sends fixed non-personal validation text to verify the model; it does not send page contents before acceptance. When enabled, the words of eligible pages (excluding deleted pages and pages in projects or teams kept out of the assistant) and semantic search queries are sent to the selected embedding provider. We store the selected provider revision, model, verified dimensions, and who accepted and when. Editing or removing that provider requires renewed validation and acceptance before more text is sent. Measurements are kept in Orbyn's database, replaced when the embedding configuration changes, and deleted when the page is deleted for good or search by meaning is turned off. Search results retain the page's access restrictions. Personal ChatGPT plan credentials are not used for this workspace service.
+
+## Usage of Orbyn's configured AI provider
+
+Unless you opt out of analytics in Privacy, Orbyn keeps owner-scoped observed token counters for saved assistant requests to its configured provider for 30 days. This includes responses whose results were later rejected or interrupted, when the provider reported their usage. Records contain a saved-job reference and token measurements, without prompts, replies or provider credentials. Repeated response identifiers are hashed for deduplication. Missing counters remain unknown; these records do not establish billing costs, provider-wide quota or ChatGPT-plan usage. Usage in other Orbyn features is not included in this saved-assistant summary.
 
 ## Keeping a project out of the assistant
 

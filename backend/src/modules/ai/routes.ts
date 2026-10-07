@@ -1,3 +1,4 @@
+import { managedUsageSummary } from "./providers/usage.js";
 import { randomUUID } from "node:crypto";
 import { parseProjectDraft, PROJECT_DRAFT_PROMPT } from "./project-draft.js";
 import { proposeProject } from "./project-proposal.js";
@@ -196,6 +197,17 @@ async function prepareChatTurn(u: UserRow, d: ChatRequest, db: Db) {
 }
 
 export async function aiRoutes(app: FastifyInstance) {
+  app.get("/ai/usage", async (r) => {
+    const user = await authenticate(r);
+    if (!isSessionPrincipal(user))
+      fail(403, "Sign in to Orbyn to inspect your provider usage.");
+    return {
+      window_days: 30,
+      enabled: !user.analytics_opt_out,
+      ...(await managedUsageSummary(user.id)),
+    };
+  });
+
   let stopRunner: (() => Promise<void>) | undefined;
   app.addHook("onReady", async () => {
     stopRunner = startAssistantRunner(app.log);

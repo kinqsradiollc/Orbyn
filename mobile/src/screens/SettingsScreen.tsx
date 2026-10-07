@@ -1,3 +1,4 @@
+import { ManagedAiUsage } from "./settings/ManagedAiUsage";
 import { ChatgptModelsSection } from "./settings/ChatgptModelsSection";
 import {
   SettingsAnchor,
@@ -397,6 +398,7 @@ export function SettingsScreen({
       </View>
 
       <SettingsAnchor name="AI connections & models">
+        <ManagedAiUsage userId={user?.id ?? ""} />
         <ChatgptModelsSection userId={user?.id ?? ""} />
       </SettingsAnchor>
 

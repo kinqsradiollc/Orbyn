@@ -1,3 +1,5 @@
+import { Popover } from "../../components/Popover";
+import { AiModelControls } from "./AiModelControls";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { SemanticSetup } from "./SemanticSetup";
@@ -14,6 +16,7 @@ import {
   CircleCheck,
   CircleX,
   KeyRound,
+  MoreHorizontal,
   Pencil,
   Plus,
   Power,
@@ -28,6 +31,7 @@ import {
   type AiProviderKind,
   type AiProvidersResponse,
   type AiTestResult,
+  aiUsageSummary,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import type { TeamActions } from "../teams/TeamDetail";
@@ -69,6 +73,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
   const load = useCallback(async () => {
     try {
       setData(await client.listAiProviders());
+      setTests({});
     } catch (e) {
       reportRef.current(e);
     }
@@ -420,6 +425,21 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                             }))
                           }
                         />
+                        <AiModelControls
+                          provider={p}
+                          model={model}
+                          busy={busy}
+                          onSave={(options, expected_revision) =>
+                            void mutate(
+                              () =>
+                                client.updateAiProvider(p.id, {
+                                  options,
+                                  expected_revision,
+                                }),
+                              `Save model controls for ${p.name}?`,
+                            )
+                          }
+                        />
                         <datalist id={listId}>
                           {(choices ?? def?.suggestedModels ?? []).map((m) => (
                             <option key={m} value={m} />
@@ -455,6 +475,11 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                             {result.ok && result.latency_ms !== null
                               ? ` (${result.latency_ms} ms)`
                               : ""}
+                            {result.usage && (
+                              <span className="ai-test-usage">
+                                {aiUsageSummary(result.usage)}
+                              </span>
+                            )}
                           </span>
                         </p>
                       )}
@@ -490,22 +515,12 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                       >
                         <Sparkles size={12} /> Use for assistant
                       </button>
-                      <button
-                        className="link-button"
-                        aria-label={`Edit ${p.name}`}
-                        disabled={busy}
-                        onClick={() => setEditing(p)}
-                      >
-                        <Pencil size={12} /> Edit
-                      </button>
-                      <button
-                        className="danger-text"
-                        aria-label={`Delete ${p.name}`}
-                        disabled={busy}
-                        onClick={() => remove(p)}
-                      >
-                        <Trash2 size={12} /> Delete
-                      </button>
+                      <ProviderManagement
+                        provider={p}
+                        busy={busy}
+                        onEdit={() => setEditing(p)}
+                        onDelete={() => remove(p)}
+                      />
                     </td>
                   </tr>
                 );
@@ -533,6 +548,69 @@ export function AdminAi({ busy, revision, act, report }: Props) {
 }
 
 type SaveFn = () => Promise<unknown>;
+
+/** Rare connection changes use one focused menu rather than repeated row actions. */
+function ProviderManagement({
+  provider,
+  busy,
+  onEdit,
+  onDelete,
+}: {
+  provider: AiProvider;
+  busy: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
+  return (
+    <>
+      <button
+        className="icon-button"
+        type="button"
+        disabled={busy}
+        aria-label={`Manage ${provider.name}`}
+        aria-haspopup="menu"
+        aria-expanded={!!anchor}
+        onClick={(e) => setAnchor(e.currentTarget.getBoundingClientRect())}
+      >
+        <MoreHorizontal size={16} />
+      </button>
+      {anchor && (
+        <Popover
+          anchor={anchor}
+          label={`Manage ${provider.name}`}
+          onClose={() => setAnchor(null)}
+          width={220}
+        >
+          <div className="doc-menu" role="menu">
+            <button
+              className="doc-menu-item"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => {
+                setAnchor(null);
+                onEdit();
+              }}
+            >
+              <Pencil size={14} /> Edit connection
+            </button>
+            <button
+              className="doc-menu-item danger-text"
+              role="menuitem"
+              disabled={busy}
+              onClick={() => {
+                setAnchor(null);
+                onDelete();
+              }}
+            >
+              <Trash2 size={14} /> Delete connection
+            </button>
+          </div>
+        </Popover>
+      )}
+    </>
+  );
+}
 
 type FormProps = {
   ref: Ref<HTMLElement>;
@@ -577,9 +655,12 @@ function ProviderForm({
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const key = apiKey;
-    const opts = Object.fromEntries(
-      def.options.map((o) => [o.key, options[o.key]?.trim() ?? ""]),
-    ) as { apiVersion?: string };
+    const opts = {
+      ...existing?.options,
+      ...Object.fromEntries(
+        def.options.map((o) => [o.key, options[o.key]?.trim() ?? ""]),
+      ),
+    };
     const body = {
       name: name.trim() || def.label,
       base_url: baseUrl.trim() || undefined,
