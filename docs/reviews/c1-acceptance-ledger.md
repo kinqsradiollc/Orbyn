@@ -13,10 +13,17 @@ encrypted reasoning context through serialized checkpoints. Its 38 focused
 protocol/graph/wire/output-limit tests pass, as do backend typecheck and build.
 The source checkpoint has no UI change. It is not yet on main.
 
-Frozen integration worktree now contains that commit. Full backend regression is
-running against the isolated, server-marked `orbyn_full_fc613153_test` database,
-exec session 28221. No terminal result is claimed. This invocation's output is
-in the tool transcript; it was not redirected to a complete standalone log.
+Frozen integration worktree contains that commit. Full backend regression against
+the isolated, server-marked `orbyn_full_fc613153_test` database terminated with
+3988 passes, one failure, zero skips, exit1 (794931ms), exec session28221. The
+failing test details were omitted by truncated tool output; no green result is
+claimed. This invocation's output is in the tool transcript, not a complete log.
+
+Unchanged frozen source is rerunning on `orbyn_full_fc613153_retry_test`, exec
+session38118, with a complete protected log:
+`/tmp/orbyn-adr-full-fc613153-retry-20261007.log`. Inspect and triage its failure
+details before any promotion. Desktop/mobile typechecks on frozen source pass;
+scoped C1 code formatting passes. Main integration remains pending.
 
 Additional existing configuration/provenance/embedding/private-error/client-choice
 unit checks pass 34/34, zero failures/skips (1562ms), log
@@ -94,6 +101,29 @@ with implicit/explicit modes, content-block breakpoints and a currently supporte
 usage must not be reported as zero. Implement current model-specific controls,
 not an unconditional legacy24h setting. Source:
 [Prompt caching](https://developers.openai.com/api/docs/guides/prompt-caching).
+
+## C1 browser review — scoped observations
+
+Orbyn Visual Check completed the assigned provider/embedding browser batch at web
+1280/768/390 and mobile390/960 in sampled light/dark states. Its authoritative
+Markdown report is
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/review-tracking.md`.
+Both clients distinguish generation and embedding configuration, show unavailable
+database/measuring prerequisites, and contain inspected long Azure/Matilda drafts.
+Two local saved compatible fixtures expose enabled/disabled and duplicate-kind
+identity without changing the generation selection or making provider requests.
+
+- QA-010 P3: web narrow saved-provider actions are crowded; rare Edit/Delete need
+  a management menu and separated primary actions.
+- QA-011 P3: mobile expanded saved-provider identity still truncates a long name;
+  reveal the full connection name without moving the enabled switch off-screen.
+
+The implementation owner viewed the long web edit-form and mobile embedding
+unavailable screenshots directly. These observations do not establish successful
+connection testing, catalogs, model persistence, embeddings, OAuth or native
+behavior. No real provider key was entered by the reviewer in this batch.
+Keep both findings in C1; repair and recheck after the active backend checkpoint
+and managed authority repair. Unrelated Docs findings remain queued under C4.
 
 ## Provider reference evidence
 
