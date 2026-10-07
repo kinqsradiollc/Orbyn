@@ -600,9 +600,8 @@
   color: var(--color-textMuted);
 }
 :root[data-theme="dark"] .topbar {
-  background: color-mix(in srgb, var(--color-surface) 69%, transparent);
+  background: var(--color-surface);
   color: var(--color-muted);
-  background: color-mix(in srgb, var(--color-surface) 84%, transparent);
 }
 :root[data-theme="dark"] .topbar strong {
   color: var(--color-textSoft);

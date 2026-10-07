@@ -57,6 +57,32 @@ identified; its terminal exit1 is not a product pass. Preserve its log
 `/tmp/orbyn-adr-full-main-3e69c7ef-20261007.log`. Refresh regression on the final
 adapter scope; do not restart an old result or claim the earlier freeze covers it.
 
+## Final adapter freeze and responsive evidence follow-up
+
+Product freeze bf3dfef1 includes Responses, compatible direct/native/JSON, and
+Anthropic direct/native usage recording, keeping private transports separate.
+The compiled compatible JSON rerun passes with one provider fixture request,
+one persisted owner observation, correct input/output/cache-read/reasoning
+counts, unknown cache writes and cleared completed job state. External requests0.
+Log `/tmp/orbyn-c1-compatible-compiled-usage-fixed-20261007.log`.
+Fresh full regression is running as session79617 against marked
+orbyn_c1_bf3dfef1_test, with both TEST_DATABASE_URL and DATABASE_URL explicitly
+set. Log `/tmp/orbyn-adr-full-main-bf3dfef1-20261007.log`; no terminal pass yet.
+
+Root inspected QA017 actual320/390 mobile and390 narrow web originals. Light
+narrow web controls through Save/menu and zero-usage Settings are contained.
+Mobile model/chip/control portions are readable but lower controls/usage require
+scroll captures. Dark narrow usage screenshot shows Appearance rather than
+the requested usage card and is rejected for that state. Dark narrow Admin
+provider text shows through translucent pinned header. Scoped CSS switches
+topbar to the existing opaque surface token in both themes; no palette change.
+Preview source is patched; recapture requested before visual acceptance.
+Both-client types, web production build and scoped CSS formatting pass. Logs:
+`/tmp/orbyn-c1-adapter-client-types-20261007.log`,
+`/tmp/orbyn-c1-controls-header-web-build-20261007.log`. Backend/full-suite source
+remains unchanged from bf3dfef1 during this CSS/documentation follow-up.
+No main promotion or entire-stage/native acceptance claimed.
+
 ## Historical qualification — migration256 controls freeze
 
 ### Current visual-gate revalidation

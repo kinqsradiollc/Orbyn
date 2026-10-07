@@ -396,7 +396,7 @@ nav button i,
 }
 .topbar {
   height: 77px;
-  background: #ffffffb0;
+  background: var(--color-surface);
   border-bottom: 1px solid var(--border);
   padding: 0 43px;
   display: flex;
@@ -2489,9 +2489,7 @@ footer svg {
   top: 0;
   z-index: 3;
   height: var(--topbar-h);
-  background: rgba(255, 255, 255, 0.84);
-  -webkit-backdrop-filter: saturate(1.4) blur(14px);
-  backdrop-filter: saturate(1.4) blur(14px);
+  background: var(--color-surface);
 }
 @media (max-width: 800px) {
   .shell {
