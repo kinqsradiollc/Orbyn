@@ -259,3 +259,21 @@ button;81e807ee applies Orbyn's secondary style. Refreshed wide/narrow Light/Dar
 web captures are assigned. The preview API8008 is compiled81e807ee and all three
 preview origins return200. This feature remains local, unpromoted; latest main
 product checkpoint is e3c68493. Tracking documentation advances independently.
+
+### 8 October: terminal discovery regression and resumed Chrome evidence
+
+C1 remains active. Frozen product81e807ee full regression finished4245/4246,
+exit1, no skips/cancellations. The sole failure is the generated MCP route
+summary after the new embedding-catalog admin exclusion (290→291). Candidate
+document regeneration changes only those summary counts; configured catalog/
+route inventory follow-up passes10/10, exit0. Initial follow-up omitted the test
+DB and failed bootstrap; its log is retained separately. The full failure is
+not relabelled as a new full passing run. Runtime product is unchanged.
+
+Chrome capture resumes through Orbyn Visual Check. Root inspected original
+narrow Light/Dark true zero-result and selected249 states and wide Dark
+selected249: manual model preservation and horizontal containment pass these
+scoped browser states. The catalog action uses the expected secondary styling.
+Exact-search interaction and the completed capture manifest remain pending.
+Candidate product is still local and unpromoted; no whole ADR stage completes.
+Continue C1 retained gates, then pause before C2 as requested.

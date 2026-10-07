@@ -1852,3 +1852,19 @@ cancellations: `/tmp/orbyn-c1-redirect-final-vectors-20261008.log`.
 This is a repeated actual PostgreSQL/local HTTP cohort, not a fresh database
 or a live vendor model qualification. The earlier d498febd fresh34-case and
 independent upgrade1-case receipts remain historical evidence.
+
+### 8 October81e807ee terminal receipt
+
+- Full:4245/4246, exit1, zero skipped/cancelled. Sole failure: generated MCP
+  route summary count, not a runtime assertion. Log:
+  /tmp/orbyn-c1-redirect-final-full-20261008.log; terminal receipt:
+  /tmp/orbyn-c1-redirect-final-full-terminal-20261008.json.
+- Candidate regenerated docs/mcp-catalog.json and docs/mcp.md excluded290→291.
+  No additional MCP tools/capabilities are exposed.
+- First follow-up: catalog4pass plus missing TEST_DATABASE_URL bootstrap failure,
+  /tmp/orbyn-c1-generated-catalog-corrected-20261008.log.
+- Configured follow-up: catalog/inventory10/10, exit0, zero skipped/cancelled,
+  /tmp/orbyn-c1-generated-catalog-final-20261008.log.
+- Product remains81e807ee; candidate docs-only follow-up adds canonical API
+  catalog/redirect contract. No whole-suite passing result is inferred from
+  the targeted correction, and feature promotion remains pending visual review.
