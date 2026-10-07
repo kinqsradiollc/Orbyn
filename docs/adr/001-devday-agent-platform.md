@@ -1,3 +1,16 @@
+## Canonical delivery order — user direction, 7 October 2026
+
+The full ADR must proceed top down: C1 provider/connection contracts, C2/M1
+ChatGPT identity/catalog/default/runtime, C3 rules/ownership/activity/budgets,
+C4/D1 Docs and UI parity, C5 bound pages/publication/channels, then C6 plugin
+integration/security. U1 and mobile parity are acceptance requirements within
+every affected checkpoint, followed by the final whole-app matrix and cleanup.
+This supersedes the previous Docs-first continuation queue. C1 is active; normal
+Docs editor activation remains queued under C4. Existing implementations and
+completed task-panel main checkpoints are retained. Partial foundations, focused
+checks and sampled screenshots do not close a canonical stage. See the
+[ordered queue](../reviews/adr-execution-order.md) for exit conditions.
+
 ## Task-panel controls checkpoint — 7 October 2026
 
 Task cancellation now lives in the title options menu on web and mobile; the
