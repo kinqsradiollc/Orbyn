@@ -1,3 +1,36 @@
+## Normal-editor activation audit — 7 October 2026
+
+Desktop `DocsView.openPage` and mobile `DocsSheet` still load with `getDoc`;
+both normal `DocEditor` implementations persist/recover with `updateDoc` and
+`getDoc`. The negotiated `getDocForEditor` / `updateDocForEditor` contract exists,
+but these clients do not consume it. Merely changing the transport would leave
+flat structural edits unaware of their owning quote/list item. The nested renderers
+already expose exact leaf paths and an expected node snapshot; activation must
+reuse the existing editing widgets with those paths and complete-page contexts.
+
+A further prerequisite is `POST /docs/:id/anchor`: it still names an anonymous
+leaf by updating only `docs.content`. On structured pages that violates the
+structured-content guard. Preserve its existing read-authorized copy-link behavior,
+text-match conflict check, idempotence and no-history semantics while naming the
+leaf in its full tree and writing a matching projection atomically. Verify nested
+anonymous leaves, viewer permissions, stale text, stable IDs and unrelated owners.
+Then wire owned loading/saving, leaf/structural commands, task ticks, source editing,
+history, recovery and collaboration in both editors; none is complete from helpers.
+
+At application checkpoint38dcc9e3, fresh desktop and mobile typechecks and desktop
+production build pass. Full database regression remains live. The same-origin web
+preview retry is still rejected by a saved Browser Use block; no bypass attempted.
+The booted iOS26.5 simulator displays its home screen, but native input fails with
+noWindowsAvailable. Neither observation verifies authenticated Orbyn UI behavior.
+
+Official OpenAI documentation was refreshed on7 October. The
+[open-source registration flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+continues to document initial dynamic registration and reuse of the issued account
+client identity without a secret or partner API key. The separate
+[website guide](https://developers.openai.com/siwc/website) documents registered
+website callbacks and selected-partner access. This does not establish the requested
+browser-only plan-usage flow; desktop handoff remains explicitly incomplete.
+
 ## Database qualification restored — 7 October 2026
 
 A new disposable PostgreSQL test server on loopback port 55436 restored database
