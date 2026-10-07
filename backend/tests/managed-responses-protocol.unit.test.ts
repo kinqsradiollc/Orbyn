@@ -443,3 +443,46 @@ for (const stopAfterTool of [false, true]) {
     ]);
   });
 }
+
+test("oversized encrypted Responses context is refused before executing a tool", async (t) => {
+  const { runAgent } = await import("../src/modules/ai/agent/loop.js");
+  let executions = 0;
+  let requests = 0;
+  t.mock.method(globalThis, "fetch", async () => {
+    requests++;
+    return Response.json({
+      status: "completed",
+      output: [
+        { ...reasoningItem, encrypted_content: "x".repeat(64_000) },
+        callItem,
+      ],
+    });
+  });
+  await assert.rejects(
+    runAgent(
+      ai,
+      {
+        user: { id: "00000000-0000-4000-8000-000000000000", role: "admin" },
+        timezone: "UTC",
+        intentText: "Look up a fixture",
+        actions: [],
+        clarification: null,
+      },
+      "Look up a fixture",
+      [],
+      {},
+      undefined,
+      undefined,
+      {
+        tools,
+        executeTool: async () => {
+          executions++;
+          return { content: "Must not execute", isError: false };
+        },
+      },
+    ),
+    /The provider reply exceeded the bounded reply size/,
+  );
+  assert.equal(requests, 1);
+  assert.equal(executions, 0);
+});

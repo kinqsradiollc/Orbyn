@@ -252,7 +252,7 @@ const s = themed(() =>
       paddingHorizontal: 16,
       paddingVertical: 10,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: 15,
       color: colors.textSoft,
     },
     // Rows share a minimum height; long labels wrap with room on every side.

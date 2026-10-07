@@ -9,21 +9,39 @@ the entire row or stage has shipped.
 
 Candidate `fc613153` repairs the managed native agent's Responses tool protocol.
 It preserves the selected model, exact function call/output identity and bounded
-encrypted reasoning context through serialized checkpoints. Its 38 focused
-protocol/graph/wire/output-limit tests pass, as do backend typecheck and build.
-The source checkpoint has no UI change. It is not yet on main.
+encrypted reasoning context through serialized checkpoints. Backend build and
+all three client/backend typechecks pass. It is not yet on main.
 
-Frozen integration worktree contains that commit. Full backend regression against
-the isolated, server-marked `orbyn_full_fc613153_test` database terminated with
-3988 passes, one failure, zero skips, exit1 (794931ms), exec session28221. The
-failing test details were omitted by truncated tool output; no green result is
-claimed. This invocation's output is in the tool transcript, not a complete log.
+The first frozen full run terminated with 3988 passes, one failure, zero skips,
+exit1 (794931ms). The complete-log retry on unchanged frozen source reproduced
+exactly one failure: `neatness.unit.test.ts` rejected
+`mobile/src/components/MoreMenu.tsx:255` because its confirmation message used
+font size14 rather than the shared scale. Retry totals:3989 tests,3988 passes,
+one failure, zero skips, exit1 (769079ms). Protected log:
+`/tmp/orbyn-adr-full-fc613153-retry-20261007.log` (session38118, terminal).
 
-Unchanged frozen source is rerunning on `orbyn_full_fc613153_retry_test`, exec
-session38118, with a complete protected log:
-`/tmp/orbyn-adr-full-fc613153-retry-20261007.log`. Inspect and triage its failure
-details before any promotion. Desktop/mobile typechecks on frozen source pass;
-scoped C1 code formatting passes. Main integration remains pending.
+The candidate fixes that message to15 and adds a regression proving oversized
+encrypted Responses context stops before tool execution. Combined protocol,
+graph, wire, output-limit and neatness checks now pass49/49, zero failures/skips
+(812ms): `/tmp/orbyn-c1-neatness-responses-20261007.log`. The 39-case protocol
+cohort independently passed. This focused result does not replace a full run on
+the corrected candidate. Main promotion and mobile screenshot inspection remain
+pending.
+
+A disposable, server-marked database probe also exercised the compiled API's
+actual queue and durable job checkpoint with intercepted provider fixtures:
+two Responses calls, selected model preserved, encrypted context persisted before
+continuation, exact function output identity, done result and cleared final run
+state. External requests:zero. Log:
+`/tmp/orbyn-c1-compiled-responses-audit-20261007.log`.
+This proves the compiled/DB path with fixtures, not real OpenAI inference. The
+first probe harness incorrectly expected completed jobs to retain run_state;
+the corrected harness checks persisted context during continuation and verifies
+clearing at completion. No product change was needed for that correction.
+
+Future Orbyn Visual Check assignments capture images and a concise manifest only.
+This session inspects screenshots and records findings; historical review reports
+remain evidence for the states they actually captured.
 
 Additional existing configuration/provenance/embedding/private-error/client-choice
 unit checks pass 34/34, zero failures/skips (1562ms), log
@@ -137,5 +155,5 @@ installation's model entitlement or successful inference.
 The official [GPT-6.1 Sol model page](https://developers.openai.com/api/docs/models/gpt-6.1-sol)
 lists low, medium, high, xhigh and max reasoning efforts and explicitly excludes
 none/minimal. Existing managed provider options currently cannot represent this
-configuration. This confirmed gap is the next C1 implementation checkpoint after
-the active Responses repair qualifies.
+configuration. This confirmed gap follows the managed authority repair within C1
+after the active Responses repair qualifies.
