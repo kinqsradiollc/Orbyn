@@ -1152,3 +1152,17 @@ Authenticated compiled preview Admin /ai/providers returns200 with semantic
 search still OFF; active retry fields are absent rather than invented zero counts.
 Only local auth/read endpoints were called; credentials/token were not printed.
 Real Admin capture review remains the final requested handoff before main delivery.
+
+Real QA025 originals were inspected by root. Web Search panel controls are
+contained in wide/narrow samples; the wide frame's clipped surrounding sidebar/
+heading is not whole-page acceptance. Mobile Search disclosure's focused heading
+outline crossed the first body line. Added8pt body-top spacing to shared
+Disclosure, preserving heading touch target and horizontal/bottom padding.
+Both qualification and preview use the correction. Actual style/component checks
+pass19/19 and mobile typecheck passes; logs:
+`/tmp/orbyn-c1-retry-disclosure-checks-20261008.log`,
+`/tmp/orbyn-c1-retry-disclosure-mobile-types-20261008.log`. Visual Check has been
+asked for refreshed focused mobile originals; initial images are pre-fix evidence.
+The backend source remains identical to the terminal3786/3786 freeze; this mobile
+spacing correction is independently checked and does not rerun that backend cohort.
+No whole-page/native/fullC1 acceptance or main promotion is claimed.
