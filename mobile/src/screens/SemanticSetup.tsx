@@ -272,20 +272,22 @@ export function SemanticSetup({
                     autoCapitalize="none"
                     autoCorrect={false}
                   />
-                  <Segmented
-                    wrap
-                    options={matches.slice(0, 40)}
-                    value={model}
-                    labels={Object.fromEntries(
-                      matches.slice(0, 40).map((id) => [id, id]),
-                    )}
-                    accessibilityLabel="Embedding catalog models"
-                    disabled={busy}
-                    onChange={(next) => {
-                      setModel(next);
-                      setAccept(false);
-                    }}
-                  />
+                  {matches.length > 0 && (
+                    <Segmented
+                      wrap
+                      options={matches.slice(0, 40)}
+                      value={model}
+                      labels={Object.fromEntries(
+                        matches.slice(0, 40).map((id) => [id, id]),
+                      )}
+                      accessibilityLabel="Embedding catalog models"
+                      disabled={busy}
+                      onChange={(next) => {
+                        setModel(next);
+                        setAccept(false);
+                      }}
+                    />
+                  )}
                   {!matches.length && (
                     <Text style={shared.small}>
                       No matching models. You can keep the typed value.

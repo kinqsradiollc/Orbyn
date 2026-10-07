@@ -37,6 +37,7 @@ function fixture(
   reject = false,
   providerOverrides: object = {},
   discoveryOverrides: object = {},
+  catalogSearch = "",
 ) {
   const effects: { fn: () => void; deps: unknown[] }[] = [];
   const setters: [number, unknown][] = [];
@@ -49,7 +50,7 @@ function fixture(
     useState: (initial: unknown) => {
       const at = index++;
       return [
-        at === 1 ? true : initial,
+        at === 1 ? true : mobile && at === 3 ? catalogSearch : initial,
         (value: unknown) => setters.push([at, value]),
       ];
     },
@@ -158,6 +159,30 @@ function fixture(
     refreshed: () => refreshed,
   };
 }
+
+test("mobile no-match catalog omits the empty chip track and preserves the manual model", () => {
+  const view = fixture(
+    true,
+    {},
+    false,
+    {},
+    {
+      catalog: { models: ["last-model-249"], catalog_kind: "unclassified" },
+    },
+    "no-such-model",
+  );
+  assert.ok(
+    view.elements.some((node) => node.props.value === settings.embedding_model),
+  );
+  assert.match(renderToStaticMarkup(view.tree), /No matching models/);
+  assert.equal(
+    view.elements.some(
+      (node) => node.props.accessibilityLabel === "Embedding catalog models",
+    ),
+    false,
+  );
+  assert.deepEqual(view.calls, []);
+});
 
 for (const mobile of [false, true]) {
   test(`${mobile ? "mobile" : "web"} setup describes missing prerequisites without claiming readiness`, () => {

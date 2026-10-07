@@ -77,3 +77,18 @@ Generic generation catalogs are never presented as proof of embedding support.
 
 No live vendor credential, embedding document upload, production deployment,
 installed-native acceptance or full C1 completion is claimed.
+
+## Empty catalog track correction
+
+Root inspected the original mobile Light and Dark no-match screenshots and
+confirmed C1-EMB-UI-01: an empty segmented track below the catalog query.
+The control now renders only when matches exist. The manual model and no-match
+notice remain unchanged. The new regression failed before the correction
+(30/31 component cases) and passes afterward (48/48 controls, hooks and mobile
+search cases). Mobile typecheck exits zero. Expanded catalog authority, adapter,
+client and control checks pass145/145, zero failures/skips/cancellations:
+`/tmp/orbyn-c1-embedding-empty-track-expanded-20261008.log`.
+This selected cohort differs from the earlier154-case selection; it is not a
+full-suite result. Corrected mobile and web originals have been requested.
+The earlier Dark generation no-match v2 capture clips the notice and requires
+recapture. No complete visual or C1 acceptance is claimed.
