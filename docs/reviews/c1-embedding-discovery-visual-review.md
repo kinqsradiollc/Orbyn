@@ -6,7 +6,7 @@
 
 Visual Check's partial manifest:
 `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-026-c1-captures-2026-10-08/manifest.md`.
-Original PNGs live in that same directory. Root opened and inspected all three:
+Original PNGs live in that same directory. The initial review opened these three originals:
 
 | Original                                            | Root finding                                                                                                                                |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -22,10 +22,12 @@ samples, not full-surface, Dark, desktop, installed-native or complete C1 eviden
 ## Required correction
 
 C1-EMB-UI-01, low: omit the empty `Segmented` catalog control when filtered
-matches are zero. Preserve the typed model, query and no-match notice. A targeted
-patch is prepared outside the source tree; it is not applied while Visual Check
-is capturing this frozen product. After the batch finishes, qualify the fix and
-request new mobile no-match originals in Light and Dark.
+matches are zero. Preserve the typed model, query and no-match notice. After Visual Check confirmed capture quiescence, the correction was applied
+and committed as d498febd. The added component regression fails before the fix
+(30/31) and passes afterward (48/48 selected component/hook cases). Expanded
+catalog authority/adapter/client/control coverage passes145/145 with no
+failures/skips/cancellations; mobile typecheck exits zero. Corrected Light and
+Dark no-match originals are requested; screenshot acceptance remains pending.
 
 ## Remaining evidence
 
@@ -39,3 +41,20 @@ The screenshots show semantic consent off and validation unavailable. Separately
 root's authenticated API check returns an inert250-model catalog with the matching
 embedding revision while semantic search remainsOFF. Neither source asserts live
 vendor entitlement, document indexing or production deployment.
+
+## Additional original inspection
+
+Root inspected the six generation model originals (Light/Dark exact249,
+manual no-match and actual disabled Test/Use states), plus Dark embedding
+exact249 with retained manual draft and Dark embedding no-match.
+The exact249 single chip and manual draft fit the320px viewport in both themes.
+Disabled Test/Use buttons are visible, but the long catalog means the blank
+input is not coframed; this is scoped button evidence supported by component
+checks, not a complete surface capture. Dark generation no-match `-v2` clips
+the notice at its bottom edge despite the manifest's framing description.
+Root requested a lower-scroll recapture showing the full notice and buttons.
+Both embedding no-match originals show the empty-track defect; new originals
+must verify its removal. These browser samples do not prove native acceptance.
+
+Fresh full regression log for frozen d498febd:
+`/tmp/orbyn-c1-discovery-corrected-full-20261008.log` (running, no terminal result).

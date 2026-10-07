@@ -85,13 +85,18 @@ Focused discovery/catalog/client tests122/122, final workspace typechecks and
 backend/web builds pass. Frozen full regression5466bc1c terminated early with exit7 and no final TAP
 summary;18 existing component-harness imports failed. Test-only correction
 15301fbd passes the expanded154/154 cohort; the isolated native-clock file passes
-10/10. A fresh full rerun awaits recovered disk space; no full pass or main
+10/10. Disk space recovered to1.7GiB. Corrected source d498febd now has a fresh
+full regression running on its own marked test database; no full pass or main
 feature delivery is claimed. Both previews now serve that
 candidate on the existing5174/8083 origins. Authenticated inert catalog loading
 returns250 candidates, matching revision, with semantic search stillOFF.
 The human restored Chrome availability; original corrected mobile and new
-embedding UI captures have been requested from Orbyn Visual Check. Root review
-and candidate promotion remain pending. The latest delivered product checkpoint remains e3c68493; tracking docs
+embedding UI captures have been requested from Orbyn Visual Check. Root inspected the mobile embedding and generation samples in both themes.
+The no-match embedding strip defect is corrected locally with145/145 selected
+regressions and mobile typecheck passing; its before/after component checks
+reproduce the defect. Corrected no-match and web captures are pending. The Dark
+generation no-match notice was clipped in its v2 original and requires recapture.
+Candidate promotion remains pending. The latest delivered product checkpoint remains e3c68493; tracking docs
 advance separately. The feature source is still local, not shipped.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
