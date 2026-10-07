@@ -43,7 +43,8 @@ cancellations, exit0,800029ms. Serialized actual-loop recovery preserves its
 function signature/call id and does not repeat completed tool execution.
 These are inert fixtures, not live account qualification.
 Both preview servers now serve the C1 qualification checkout at5174/8083;
-API8008 remains an older loaded runtime. Authorized same-origin browser captures
+API8008 was refreshed from main1438b0bd; authenticated /me and /ai/providers
+return200 with the same four saved providers. Authorized same-origin browser captures
 now work; root inspected scoped empty-model/disabled-test crops on both clients
 in both themes. These do not establish full-surface or current-backend acceptance.
 Searchable picker candidateae099454 is committed locally, not merged: provider
@@ -60,7 +61,9 @@ Root inspected corrected web320 Light/Dark and mobile320/390 originals, keyboard
 return-to-Name, lower-list reachability and a credential-safe1280px wide crop.
 That crop is not full-surface acceptance; native keyboard/installed clients remain
 open. Picker and test-lifecycle correction are qualified for scoped main delivery.
-Main delivery receipt follows. C1 remains active; no premature pause or C2 work.
+Scoped picker/test-lifecycle delivery is merged and pushed as1438b0bd; main
+and origin/main matched, and unrelated primary changes were preserved.
+C1 remains active; no premature pause or C2 work.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.
@@ -85,7 +88,7 @@ A passing fixture or sampled view does not close its named external/native gate.
 | Consent/document/visibility races        | Pre-click/in-flight provider, A→B→A, edits, disable, keep-out and queue-revision tests                                   | Remaining ownership/permission/recovery acceptance                                                                   |
 | Migration and worker deployment          | Legacy upgrade, late extension, idempotence and profile lifecycle checks                                                 | Wider mixed-version/operational acceptance; production deployment is user-owned                                      |
 | Indexing failure/status/retry            | Sanitized persistent backoff, newer-work fencing and healthy-page progress on maind4da3d41                               | Real enabled/error/loading client interactions and native review                                                     |
-| Responsive and native clients            | Scoped web wide/narrow, mobile browser390 and earlier controls/zero-usage samples reviewed                               | Unresolved QA026320px capture discrepancy, both themes, large text/keyboard/overlays and installed-native acceptance |
+| Responsive and native clients            | Scoped web wide/narrow, mobile browser390 and earlier controls/zero-usage samples reviewed                               | Remaining full-surface coverage, large text/keyboard/overlays and installed-native acceptance |
 
 Finish these gates, record final C1 evidence and main delivery, then pause with the
 remaining ADR table. C2/M1 stays queued until the user resumes after that pause.
@@ -104,7 +107,7 @@ A completed checkpoint does not complete its entire stage.
 | 5                      | C5 pages/publication/channels    | ✓ Block bindings/jobs, comments, publication boundaries and separate Slack/Teams installation/outbox/reply/lifecycle foundations.                                                                                                                                                                                                          | ✗ Human-edit conflicts/source revocation/public consent; authorized real channel delivery/exact-question replies; tenant/lifecycle/reconnect and both-client acceptance.                                                          |
 | 6                      | C6 separate plugin backend       | ✓ Separate service/principal/grants, managed inference broker/permissions, launch context/UI/import/reconnect foundations.                                                                                                                                                                                                                 | ✗ Real host OAuth/UI/account switching/reconnect; production configuration; managed/BYO execution; authorized security scan and triage.                                                                                           |
 | Throughout; final gate | U1 whole-app UI                  | ✓ Settings modal, assistant/agent separation, selected Home/navigation/task controls. ✓ Current C1 provider controls/management and zero-usage states inspected on wide/narrow web and320/390 mobile browser, Light/Dark.                                                                                                                  | ✗ Every-page web/desktop/mobile matrix, positive/overflow/error/loading states, collapsed/nested panels, keyboard/large text and native acceptance. Browser checks do not prove installed-native parity.                          |
-| Last                   | Integration/cleanup              | ✓ Qualified scoped checkpoints pushed to main, latestd4da3d41; unrelated local changes preserved.                                                                                                                                                                                                                                          | ✗ Qualify/promote remaining retained scope; reconcile branches/worktrees; remove only safe merged work after full acceptance.                                                                                                     |
+| Last                   | Integration/cleanup              | ✓ Qualified scoped checkpoints pushed to main, latest1438b0bd; unrelated local changes preserved.                                                                                                                                                                                                                                          | ✗ Qualify/promote remaining retained scope; reconcile branches/worktrees; remove only safe merged work after full acceptance.                                                                                                     |
 
 Voice, computer-use product features and speculative Decisions remain excluded.
 Computer-use tools may capture QA. MCP/plugin authority and personal ChatGPT

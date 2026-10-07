@@ -1593,3 +1593,23 @@ C1's remaining live-provider/cache/embedding and client/native gates stay open.
 Three task-created, terminal disposable stock test databases were retired after
 checking their test marker and zero sessions. Active corrected-full and preview
 databases, logs, user Docker containers and unrelated work remain preserved.
+
+## Scoped picker delivery and refreshed API — 8 October 2026
+
+Corrected picker, bounded geometry and test-fixture lifecycle checkpoint was
+fast-forwarded and pushed to main as1438b0bd. Main/origin matched. Unrelated
+primary changes, including mobile/app.json, were preserved. Qualification source
+remained clean. Corrected frozen regression:4155/4155, zero failures/skips/
+cancellations, exit0; prior failed run remains recorded.
+
+Owned preview API8008 was restarted from this qualification source with its same
+explicit environment and preview database. /health returns200. Disposable QA
+login followed by authenticated /me and /ai/providers both return200; the same
+four saved providers remain. No configuration, embedding consent or external
+provider call was made. Receipt:
+`/tmp/orbyn-c1-current-preview-auth-check-20261008.json`.
+
+Visual Check was asked for current-source management/edit captures only, without
+Save/Test/Load or external calls; root acceptance remains pending. C1 retains
+its live-provider, cache benchmark, embedding and broader client acceptance
+gates. Pause only after completing C1 and supplying the remaining ADR table.
