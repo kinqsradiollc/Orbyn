@@ -9,7 +9,7 @@ Detailed qualification and historical failures remain in
 **Active stage: C1. No entire ADR stage is complete.**
 The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.
-The C1 catalog checkpoint is qualified for scoped main promotion; provider controls and manual-model preservation were inspected in web/mobile browser captures.
+The C1 catalog checkpoint is merged and pushed to main as `8ab6c822`; provider controls and manual-model preservation were inspected in web/mobile browser captures.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 
@@ -70,7 +70,7 @@ Acceptance comes from this session's image inspection, not the capture session's
 Orbyn Visual Check captures originals and a Markdown manifest only. This session
 inspects images, owns findings/implementation and records acceptance.
 
-## Current C1 catalog checkpoint — qualified for scoped main promotion
+## Current C1 catalog checkpoint — merged and pushed
 
 | Requirement                 | Evidence                                                                                                                                                                                                                                                                                                                         | Remaining gate                                                |
 | --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -80,7 +80,7 @@ inspects images, owns findings/implementation and records acceptance.
 | Regression                  | Full frozen inventory implementation:3767/3767, zero failures/skips/cancellations, exit0,878544ms. Later server revision/client contract changes independently qualified50/50.                                                                                                                                                   | Full ADR stage acceptance remains open.                       |
 | Builds/runtime              | Shared build, backend build, desktop/mobile types pass. Compiled revision probe returns409 and `staleCatalogAccepted:false`; external requests0. QA API restarted and healthy on8008.                                                                                                                                            | Wider production/native runtime matrix.                       |
 | Visuals                     | Root inspected QA020 hero wide/narrow and footer; QA020 narrow Admin zoom100 recaptures; QA021 wide provider controls and mobile320/390 controls/manual draft. Controls are contained; manual draft remains after one catalog request per client. Wide full-page sticky-header/sidebar compositing is not whole-page acceptance. | Native, whole-page and wider live catalog matrix remain open. |
-| Delivery                    | Catalog implementation and qualification committed; scoped fast-forward promotion follows this evidence checkpoint. Badge relocation is pushed to main7e28f2bc.                                                                                                                                                                  | Verify main push and preserve unrelated user changes.         |
+| Delivery                    | Catalog checkpoint merged by fast-forward and pushed as8ab6c822. Root mobile/app.json hash and unrelated local changes are preserved. Badge relocation is pushed as7e28f2bc.                                                                                                                                                     | Production deployment remains unconfirmed.                    |
 
 Evidence:
 

@@ -31,7 +31,7 @@ Provider controls are contained. Wide full-page sticky-header/sidebar compositin
 artifacts do not establish whole-page acceptance. Earlier clipped/magnified files
 remain invalid. Capture manifest:
 `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-021-c1-catalog-capture-manifest.md`.
-Scoped main promotion follows; wholeC1 and all remaining ADR stages stay open.
+Scoped checkpoint merged by fast-forward and pushed to main as `8ab6c822` on8October2026. Unrelated root changes, including mobile/app.json, are preserved. Production deployment is unconfirmed; wholeC1 and all remaining ADR stages stay open.
 Installed-native acceptance remains open.
 All visual requests go through Orbyn Visual Check for originals/manifest only.
 
