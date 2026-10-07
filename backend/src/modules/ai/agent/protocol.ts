@@ -8,6 +8,7 @@ import {
   throwIfErrorEnvelope,
   trimSlash,
   truncated,
+  usesResponsesApi,
 } from "../providers/adapters.js";
 
 /**
@@ -28,11 +29,30 @@ export type ToolSpec = {
 };
 export type JsonSchema = Record<string, unknown>;
 export type ToolCall = { id: string; name: string; arguments: string };
+/** Stateless Responses context retained with its exact assistant turn. */
+export type ResponseContextItem =
+  | {
+      type: "reasoning";
+      id: string;
+      summary: { type: "summary_text"; text: string }[];
+      encrypted_content: string;
+    }
+  | { type: "function_call"; call_id: string; name: string; arguments: string }
+  | { role: "assistant"; content: string };
 export type AgentMessage =
   | { role: "system" | "user"; content: string }
-  | { role: "assistant"; content: string; tool_calls?: ToolCall[] }
+  | {
+      role: "assistant";
+      content: string;
+      tool_calls?: ToolCall[];
+      responseItems?: ResponseContextItem[];
+    }
   | { role: "tool"; tool_call_id: string; name: string; content: string };
-export type StepResult = { text: string; toolCalls: ToolCall[] };
+export type StepResult = {
+  text: string;
+  toolCalls: ToolCall[];
+  responseItems?: ResponseContextItem[];
+};
 export type Mode = "native" | "json";
 
 let counter = 0;
@@ -61,12 +81,171 @@ export async function step(
       ? await jsonStep(ai, messages, tools, options)
       : ai.format === "anthropic"
         ? await anthropicStep(ai, messages, tools, options)
-        : await openAiStep(ai, messages, tools, options);
+        : ai.format === "openai" && usesResponsesApi(ai)
+          ? await responsesStep(ai, messages, tools, options)
+          : await openAiStep(ai, messages, tools, options);
   await ai.recordCompletion?.();
   return result;
 }
 
 // ---- OpenAI-compatible (and Azure) native tools ----------------------------
+
+function responsesInput(messages: AgentMessage[]): object[] {
+  return messages.flatMap((message): object[] => {
+    if (message.role === "tool")
+      return [
+        {
+          type: "function_call_output",
+          call_id: message.tool_call_id,
+          output: message.content,
+        },
+      ];
+    if (message.role !== "assistant")
+      return [{ role: message.role, content: message.content }];
+    if (message.responseItems) return message.responseItems;
+    return [
+      ...(message.content
+        ? [{ role: "assistant", content: message.content }]
+        : []),
+      ...(message.tool_calls ?? []).map((call) => ({
+        type: "function_call",
+        call_id: call.id,
+        name: call.name,
+        arguments: call.arguments,
+      })),
+    ];
+  });
+}
+
+async function responsesStep(
+  ai: ResolvedAi,
+  messages: AgentMessage[],
+  tools: ToolSpec[],
+  { toolsAllowed, signal }: { toolsAllowed: boolean; signal: AbortSignal },
+): Promise<StepResult> {
+  const response = await send(
+    `${trimSlash(ai.baseUrl)}/responses`,
+    {
+      method: "POST",
+      headers: headers(ai),
+      body: JSON.stringify({
+        model: ai.model,
+        input: responsesInput(messages),
+        store: false,
+        include: ["reasoning.encrypted_content"],
+        parallel_tool_calls: false,
+        tools: tools.map((tool) => ({
+          type: "function",
+          ...tool,
+          strict: false,
+        })),
+        tool_choice: toolsAllowed ? "auto" : "none",
+      }),
+    },
+    signal,
+    ai.apiKey,
+  );
+  const body = await json<{
+    error?: unknown;
+    status?: string;
+    output?: unknown[];
+  }>(response);
+  throwIfErrorEnvelope(body, ai.apiKey);
+  if (body.status === "incomplete") throw truncated();
+  const invalid = (): never => {
+    throw new ProviderError(
+      "invalid_body",
+      "The provider sent a reply Orbyn could not read.",
+    );
+  };
+  if (
+    body.status !== "completed" ||
+    !Array.isArray(body.output) ||
+    body.output.length > 128 ||
+    JSON.stringify(body.output).length > 2_000_000
+  )
+    invalid();
+  const toolCalls: ToolCall[] = [];
+  const responseItems: ResponseContextItem[] = [];
+  let text = "";
+  const ids = new Set<string>();
+  const string = (value: unknown): value is string =>
+    typeof value === "string" && value.length > 0;
+  for (const raw of body.output!) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) invalid();
+    const item = raw as Record<string, unknown>;
+    if (item.type === "function_call") {
+      if (
+        !toolsAllowed ||
+        !string(item.call_id) ||
+        !string(item.name) ||
+        typeof item.arguments !== "string" ||
+        (item.status !== undefined && item.status !== "completed") ||
+        ids.has(item.call_id) ||
+        !tools.some((tool) => tool.name === item.name)
+      )
+        invalid();
+      ids.add(item.call_id as string);
+      toolCalls.push({
+        id: item.call_id as string,
+        name: item.name as string,
+        arguments: item.arguments as string,
+      });
+      responseItems.push({
+        type: "function_call",
+        call_id: item.call_id as string,
+        name: item.name as string,
+        arguments: item.arguments as string,
+      });
+    } else if (item.type === "reasoning") {
+      if (
+        !string(item.id) ||
+        !string(item.encrypted_content) ||
+        !Array.isArray(item.summary)
+      )
+        invalid();
+      const summary = (item.summary as unknown[]).map((entry) => {
+        if (!entry || typeof entry !== "object") invalid();
+        const part = entry as Record<string, unknown>;
+        if (part.type !== "summary_text" || typeof part.text !== "string")
+          invalid();
+        return { type: "summary_text" as const, text: part.text as string };
+      });
+      responseItems.push({
+        type: "reasoning",
+        id: item.id as string,
+        summary,
+        encrypted_content: item.encrypted_content as string,
+      });
+    } else if (item.type === "message") {
+      if (
+        item.role !== "assistant" ||
+        (item.status !== undefined && item.status !== "completed") ||
+        !Array.isArray(item.content)
+      )
+        invalid();
+      let content = "";
+      for (const rawPart of item.content as unknown[]) {
+        if (!rawPart || typeof rawPart !== "object") invalid();
+        const part = rawPart as Record<string, unknown>;
+        const value =
+          part.type === "output_text"
+            ? part.text
+            : part.type === "refusal"
+              ? part.refusal
+              : undefined;
+        if (typeof value !== "string") invalid();
+        content += value;
+      }
+      text += content;
+      if (content) responseItems.push({ role: "assistant", content });
+    } else invalid();
+  }
+  // Orbyn executes at most one call per reasoning step on this route. Refuse
+  // unexpected parallel calls rather than retaining unanswered call items.
+  if (toolCalls.length > 1) invalid();
+  return { text, toolCalls, responseItems };
+}
 
 function chatUrl(ai: ResolvedAi) {
   return ai.format === "azure"

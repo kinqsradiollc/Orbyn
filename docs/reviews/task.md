@@ -1,3 +1,21 @@
+## Qualified C1 Responses protocol checkpoint — 7 October 2026
+
+This scope promotes only protocol.ts, loop.ts and their managed Responses tests.
+Frozen8a11d03b completed3990/3990 full backend tests, zero failures/skips,
+terminal0,829536ms; log /tmp/orbyn-adr-full-8a11d03b-20261007.log.
+Promoted files match that frozen source byte-for-byte. Prepared main49/49 focused
+checks, backend/desktop types, backend build and formatting pass; mobile types
+pass on candidate. Compiled main queue/database fixture probe also passes with
+no external provider requests. Candidate-only Docs/native work remains separate.
+
+This closes the scoped protocol repair, not C1 or the full ADR. Real provider
+inference remains unverified. Continue C1 with credential-free immutable managed
+provider/model snapshots and live authority across chat, Agenda, recording,
+maintained pages and explicit fallback; preserve separate plugin authority.
+Then reasoning/cache controls and full provider/embedding acceptance before C2.
+See c1-acceptance-ledger.md and adr-execution-order.md. Preserve user files;
+user deploys manually; no release/deploy/final cleanup.
+
 ## Current C1 checkpoint — 7 October 2026
 
 C1 remains active in the top-down ADR queue. This checkpoint aligns the mobile
