@@ -190,11 +190,15 @@ fixture does not prove Together catalog decoding.
 - [Ollama OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility)
   documents `/v1/models` and `/v1/embeddings` at the configured local base.
   Loaded model, dimensions and local runtime acceptance remain open.
-- [Perplexity's documentation index](https://docs.perplexity.ai/llms.txt) links
-  distinct Router and Agent model catalogs. The linked model reference pages
-  were not readable through the documentation tool. This is not evidence that
-  Orbyn's saved Sonar catalog works or that it is unsupported; resolve the
-  specific saved endpoint and protocol before changing it.
+- [Perplexity Agent models](https://docs.perplexity.ai/api-reference/models-get)
+  documents `/v1/models` for `/v1/agent`, while
+  [Router models](https://docs.perplexity.ai/api-reference/gateway-models-get)
+  documents `/router/v1/models`. Both use a `data` array. The
+  [Router quickstart](https://docs.perplexity.ai/docs/router/quickstart) pairs
+  `/router/v1` with compatible chat/Responses. These distinct products do not
+  establish that Orbyn's saved Sonar `/models` path works; verify its catalog and
+  execution pair before changing it. HTML references were readable after the
+  initial Markdown reference requests failed.
 
 Public OpenCode metadata GET returned86 ID records with only id/object/created/
 owned_by fields. It supplies no per-model transport hint to fix mixed endpoint
@@ -207,8 +211,9 @@ normal TLS verification. No key, personal data or inference request was sent.
 - Verify public endpoint/catalog availability and model-specific controls against
   primary documentation and authorized live calls where required; do not convert
   per-kind fixture coverage into live vendor certification.
-- Extend successful catalog pagination through current revision guards; reject
-  edits/deletion while a later page is in flight without holding a DB row lock.
+- Pagination revision guards are qualified in the saved-connection route fixture:
+  edits/deletion while a later page is in flight are rejected without a DB row
+  lock spanning the network call. Retain this coverage in subsequent repairs.
 - Complete remaining consent/validation/reindex/search/error/client matrices.
 - Preserve actual Matilda baseline observations; obtain permitted OpenAI cache
   benchmark evidence separately before claiming economics.
