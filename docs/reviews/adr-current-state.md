@@ -1,49 +1,42 @@
 # ADR implementation tracker
 
-Updated 7 October 2026. Goal resumed at the user's request. This is a concise
-status index; [ordered execution queue](adr-execution-order.md),
-[ADR 001](../adr/001-devday-agent-platform.md) and
-[task handoff](task.md) retain the full scope and evidence.
+Updated 7 October 2026 from current main/candidate source, Git and live test evidence.
+This table supersedes the historical notes below. Main/origin/main is c2476119.
+User deploys main manually; deployment is unconfirmed. No entire ADR stage is closed.
 
-| Area                              | Current state                                                                                                                                                                                                                                   | Remaining acceptance / next implementation                                                                                                                                                                                                                                              |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Main                              | `origin/main` verified at `43c448c4`; user deploys manually                                                                                                                                                                                     | Candidate integration, qualification and main promotion; production deployment is not confirmed                                                                                                                                                                                         |
-| ChatGPT native                    | Direct local OAuth, protected tokens, model catalog/defaults, signed inference and Settings/foreground activation implemented on `codex/chatgpt-direct-web-oauth`                                                                               | Installed iOS/Android OAuth/keystore/browser/lifecycle acceptance; account management and truthful plan/usage acceptance                                                                                                                                                                |
-| Current recovery work             | Failed/cancelled reconnect resumes preserved credentials; catalog refresh runs every two minutes so its five-minute freshness window does not expire                                                                                            | Candidate only; 441 ChatGPT unit tests pass; current adapter mobile/backend typechecks pass; refresh coordination, revocation, idle saved-account controls and confirmed invalid-refresh recovery implemented; signed iOS startup inspected; OAuth/storage/inference acceptance pending |
-| ChatGPT hosted web                | No supported direct browser-only implementation established; desktop handoff is not completion                                                                                                                                                  | Supported authorization and user-controlled runtime; actual popup/callback/provider acceptance without desktop                                                                                                                                                                          |
-| Main integration                  | Frozen candidate400ee67e full regression:3939 passed,0 failed,0 skipped; later source-pane changes have focused evidence                                                                                                                        | Full regression of later changes and installed-platform qualification pending                                                                                                                                                                                                           |
-| Docs D1                           | Structured ownership/Markdown/Mermaid foundations and format-aware capture/reflection, complete-tree merges and nested checklist task mapping implemented on candidate; offline recovery is integrated; normal editor widget activation remains | Normal editor adoption, remaining flat writers/task identity, collaboration, complete import/render/edit/export/privacy matrices and native visual checks                                                                                                                               |
-| Whole-app UI U1                   | Existing settings/assistant/responsive checkpoints plus candidate native ChatGPT controls                                                                                                                                                       | Review every page and interaction on web/desktop/mobile, collapsed/narrow/panel/large-text states; avoid overlaps and duplicate actions                                                                                                                                                 |
-| Providers/plugins/MCP C1/C2/C6/M1 | Separate provider and plugin/backend boundaries remain in scope                                                                                                                                                                                 | Governing capability/account/budget/usage audit and real host/provider acceptance; keep MCP grants separate                                                                                                                                                                             |
-| Background/Overnight C3           | Separate identities/runtime/reflection foundations recorded in ADR                                                                                                                                                                              | Collaboration, budgets, maintained/shared/published-page audit and runtime/client acceptance                                                                                                                                                                                            |
-| Channels C5                       | Slack/Teams implementation candidates recorded in ADR                                                                                                                                                                                           | Real tenant, lifecycle, delivery, exact-question reply and cross-client acceptance                                                                                                                                                                                                      |
-| Cleanup                           | Worktrees, root character/user changes preserved                                                                                                                                                                                                | Cleanup only after relevant commits are reconciled, merged and qualified                                                                                                                                                                                                                |
+| Order | Stage | Implemented checkpoints | Remaining before stage completion |
+| --- | --- | --- | --- |
+| 1 — ACTIVE | C1 model/provider contracts | Managed/personal isolation, selected-provider routing, independent saved providers and embedding configuration foundations on main. Responses native-tool/recovery repair committed on candidate8a11d03b and prepared in main working tree. | Responses full regression/promotion; managed enqueue/resume authority defect; supported reasoning/cache controls, usage and cost/latency/quality evaluation; multi-provider and embedding consent/reindex/runtime/UI matrix. |
+| 2 | C2/M1 ChatGPT connection and models | Desktop OAuth/protected credentials, executor/catalog/default contracts, authenticated GET /models and PUT /models/default, explicit provider fallback/provenance foundations. Native local OAuth/protected account recovery/Settings changes remain candidate. | Direct web connection without desktop dependency; complete installed iOS/Android OAuth/storage/recovery; real eligible inference; verified plan and truthful usage; default/catalog/account switch/revocation acceptance on every client. |
+| 3 | C3 Background/Overnight agents | Separate lanes/profiles, characters, activity, rules/ownership, budgets and Overnight reflection foundations. | All write paths/races/revocations; independent idle/running/waiting/stopped recovery; collaboration and reflection evidence; budget reconciliation and both-client/native acceptance. |
+| 4 | C4/D1 Docs | Structured storage/API/editor foundations and some Markdown/Mermaid/export/privacy checkpoints on main. Complete-tree append/merge/task mapping and normal editor/source activation follow-ups remain candidate. | Normal editor ownership adoption; remaining flat writers/task identity; collaboration; full CommonMark/GFM/code/math/Mermaid/media/link/anchor/footnote/import/export/privacy matrix and web/native visual checks. |
+| 5 | C5 pages/publication/channels | Maintained block bindings/jobs, comments, scoped publication and separate Slack/Teams installation/outbox/reply/lifecycle foundations. | Concurrent human edits/source revocation/publication consent; real authorized Slack/Teams delivery and exact-question replies; tenant/lifecycle/reconnect and both-client acceptance. |
+| 6 | C6 separate plugin backend | Separate service/principal/grants; managed inference broker/permissions, launch context, UI resources/import jobs/reconnect foundations on main. MCP and personal plan credentials remain separate. | Real host OAuth/UI/account-switch/reconnect acceptance; production configuration and managed/BYO provider tests; authorized scan artifact and security triage. |
+| Throughout, then final | U1 whole-app UI | Settings modal, assistant/agent separation, Home/navigation/task-control responsive checkpoints. Mainc2476119 fixes confirmation typography; builder inspected320/390 screenshots. | Complete every-page web/desktop/mobile matrix, themes/narrow/collapsed/nested panels/keyboard/large text/loading/errors; QA010 provider actions and QA011 long provider identity remain C1 work. Native parity is not established by browser checks. |
+| Last | Integration/cleanup | Qualified scoped checkpoints on main; candidate/user/character changes preserved. | Reconcile remaining branches/worktrees; qualify and promote each scope; clean only safe merged work after complete ADR acceptance. |
+| Excluded | Removed product scope | Voice, computer-use product features and speculative Decisions are excluded by the ADR. | No implementation required; computer-use tools may still capture QA screenshots. |
 
-## Current evidence
+## Current individual checkpoint: Responses protocol
 
-### Active C1 candidate: managed Responses agent tools
+Frozen8a11d03b has a live fresh full backend regression, session53125, isolated marked
+orbyn_full_8a11d03b_test; protected log /tmp/orbyn-adr-full-8a11d03b-20261007.log.
+No terminal result yet. Previous unchangedfc613153 retry finished3988 passes,
+one failure and zero skips: mobile confirmation font14 violated the shared scale.
+The font15 correction is committed/pushed to mainc2476119 after builder inspected
+QA-012 screenshots. Corrected focused protocol/graph/wire/output/style tests pass
+49/49 on candidate and prepared main. Backend typecheck/build, mobile typecheck
+and scoped formatting pass. Compiled API/database fixture probe proves selected
+model, encrypted checkpoint, tool output pairing and done cleanup with zero
+external requests; real OpenAI inference remains unverified.
 
-The candidate fixes the gap between the managed Responses completion adapter and
-the native agent's chat-only tool path. Selected models, function call/output
-identity and encrypted reasoning context survive serialized loop checkpoints.
-Focused checks pass 38/38; backend typecheck/build pass. Recovery tests simulate
-interruptions before/after a tool result and resume without repeated provider/tool
-work. Log: /tmp/orbyn-c1-responses-boundaries-20261007.log. Private-plan isolation
-passes without managed network traffic; legacy/current model routing fixtures pass.
+Responses main promotion awaits the full regression. Then finish the managed
+provider/model enqueue and dispatch authority repair, supported reasoning/cache
+contracts and remaining C1 provider/embedding acceptance before starting C2/M1.
+Use [C1 acceptance ledger](c1-acceptance-ledger.md) and
+[canonical order](adr-execution-order.md) for complete gates. Visual Check captures
+screenshots/manifest only; builder inspects images and records findings.
 
-Not integrated to main; real provider inference and model capability compatibility
-remain unverified. This does not close C1. Next: qualify the provider selector and
-private-plan boundary, then reconcile all C1 caching, model, multi-provider and
-embedding requirements before C2/M1. No browser/native acceptance is inferred from
-backend fixture tests.
-
-## Current stage — C1 contracts, canonical top-down order
-
-Main37dc1259 records the user's top-down order: C1 → C2/M1 → C3 → C4/D1 → C5 →
-C6, with U1/mobile parity within each checkpoint and a final whole-app matrix.
-C1 provider/connection contract audit and qualification is active. Docs normal
-editor activation stays queued under C4. Existing task checkpoint and candidate
-foundations remain retained; no canonical stage is declared complete from them.
+## Historical evidence (superseded status; retained test/implementation records)
 
 ## Historical stage transition — normal Docs editor activation
 
