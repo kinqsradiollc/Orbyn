@@ -1176,3 +1176,10 @@ page/native/fullC1 acceptance implied. Recapture manifest:
 The scoped retry checkpoint, inference lock/deployment prerequisites and mobile
 focus spacing are locally qualified for main integration. Delivery is pending
 the actual fast-forward/push receipt; production remains user-controlled.
+
+Delivery receipt: scoped retry checkpoint merged by fast-forward and pushed to
+main asd4da3d41 on8October2026. Main/origin matched after push. Root
+mobile/app.json SHA1 remains dacd602172347441f2fd92f16d8772b3ba1ef7a8;
+unrelated tracked/untracked changes are preserved. No production deployment or
+whole ADR stage completion claimed. Next active C1 checkpoint is the retained
+multi-provider dispatch/catalog/runtime inventory and permitted cache evaluation.
