@@ -77,3 +77,25 @@ Use, validation or consent action was performed. C1-EMB-UI-01 is visually closed
 for these mobile browser states; native/keyboard/full-surface checks remain open.
 Web1280/320 Light/Dark originals are still being captured. The newly reproduced
 provider-redirect defect is a separate backend promotion gate.
+
+## Current81e807ee web samples — partial root review
+
+Root inspected these saved images under
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-026-c1-captures-81e807ee-2026-10-08/`:
+
+- `QA-026-postfix-web-embedding-1280-light-exact-81e807ee.png`: ✓ The Load
+  catalog action now has the standard secondary appearance rather than the
+  browser-default gray button. Exact249 is selected, controls are contained,
+  consent remains off and validation disabled. This is a panel crop.
+- `QA-026-postfix-web-320x740-light-no-match-81e807ee.png`: ✓ Closed navigation
+  leaves the admin panel visible, manual model preserved and dropdown contained
+  in320px. The search currently matches its added manual option; despite the
+  filename, this is not zero-result search evidence. Root requested a distinct
+  unmatched dropdown query while preserving the manual model field.
+
+The capture session's earlier sidebar-open observation is not accepted as a
+persistent narrow-layout defect without root-inspected originals and actions.
+Wide/narrow Dark, true zero-result search, exact249 dropdown interaction and the
+open/collapsed navigation originals remain pending. Mobile acceptance above is
+unchanged because81e807ee did not change mobile UI. Complete C1/U1 acceptance is
+not established by these samples.

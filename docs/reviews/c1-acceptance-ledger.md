@@ -1843,3 +1843,12 @@ Fresh source-frozen full suite81e807ee is running in its own marked stock DB:
 retained and unqualified. Refreshed wide/narrow web capture review and full-suite
 terminal acceptance precede candidate promotion. No live vendor request, native
 acceptance, production rollout or entireC1 completion is claimed.
+
+### Current-source vector repeat —81e807ee
+
+The same marked vector fixture, separately from the active stock full suite,
+passes34/34 after the shared redirect correction, zero failures/skips/
+cancellations: `/tmp/orbyn-c1-redirect-final-vectors-20261008.log`.
+This is a repeated actual PostgreSQL/local HTTP cohort, not a fresh database
+or a live vendor model qualification. The earlier d498febd fresh34-case and
+independent upgrade1-case receipts remain historical evidence.
