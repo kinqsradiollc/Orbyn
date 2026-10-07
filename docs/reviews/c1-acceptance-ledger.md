@@ -1,5 +1,17 @@
 # C1 acceptance ledger
 
+## Active embedding consent checkpoint — 8 October 2026
+
+Reviewed-provider consent raced a pre-click connection edit; reproduced HTTP200
+where409 was required. Candidate `d4cd4273` fences the explicit embedding revision
+before dispatch and retains post-probe generation/revision checks. Both clients
+submit the reviewed revision and reset acceptance after connection changes.
+Focused pgvector48 pass/one stock-only skip; corrected separate stock20/20.
+Shared/backend builds and both client types pass. Full frozen run87929 and
+Visual Check originals are pending; no main promotion of this correction yet.
+See [the embedding audit](embedding-provider-audit-2026-10-01.md) for matrix,
+logs, failed harness commands and rollout behavior. WholeC1 remains open.
+
 ## Model catalog inventory and revision checks — 8 October 2026
 
 Catalog decoding now validates provider responses and redacts error details.

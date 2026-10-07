@@ -54,13 +54,15 @@ QA manifest:
 `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-018-capture-manifest.md`.
 Acceptance comes from this session's image inspection, not the capture session's findings.
 
-## Next implementation checkpoint — C1 connection/model inventory
+## Next implementation checkpoint — C1 embedding consent/reindex matrix
 
-1. Audit independent same-kind connections and model/catalog selection on backend,
-   shared contracts, desktop/web and mobile; trace every managed entry point.
-2. Reproduce and correct disabled/deleted/revised connection, stale catalog,
-   manual model entry and duplicate-provider behavior; qualify authority/fallback
-   boundaries without retargeting saved work.
+1. Catalog validation, displayed-revision authority and manual selection checkpoint
+   is on main8ab6c822 (delivery docs66d0c733); broader live inventory stays open.
+2. Embedding reviewed-destination consent race reproduced and corrected locally
+   ind4cd4273. Focused pgvector48 pass/one stock-only skip; separate stock20/20.
+   Shared/backend builds and both client types pass. Full frozen regression is
+   running as session87929; visual originals requested from Orbyn Visual Check.
+   Promotion requires terminal qualification and inspected capture evidence.
 3. Complete the embedding consent/validation/reindex/search/client matrix.
    Keep live provider/OpenAI cache gates explicit; Matilda does not support the
    OpenAI-specific cache benchmark and does not waive that retained requirement.

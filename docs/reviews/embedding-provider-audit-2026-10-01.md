@@ -1,7 +1,9 @@
 # Embedding provider and reindex audit
 
-Status: source audit and implementation contract; response validation integrated
-into main, configuration/reindex corrections incomplete.
+Status: historical audit plus current verification ledger. Independent
+configuration/reindex foundations and migration256 are on main. Full C1
+embedding/provider acceptance remains incomplete; see the current section below.
+The original defects below describe the pre-correction source, not current main.
 Required by the accepted settings/provider redesign. No voice or computer-use
 product feature is introduced.
 
@@ -203,3 +205,47 @@ not substituted for current qualification. Current pgvector21, stock17 and two
 separate late-install/legacy-upgrade checks pass; full/CI and actual provider/UI
 acceptance remain open. Evidence and limits are recorded in
 `evidence/independent-embedding-main-integration.md`.
+
+## Current reviewed-destination consent correction — 8 October 2026
+
+Source audit reproduced a remaining pre-click race: settings generation did not
+change when the selected provider changed, and setup carried no reviewed provider
+revision. A request based on the earlier recipient was accepted with HTTP200.
+The disposable local-fixture reproduction passed5/6 and failed the new invariant;
+log `/tmp/orbyn-c1-embedding-consent-before-20261008.log`.
+
+Candidate `d4cd4273` exposes the independent embedding revision to admins and
+requires `expected_provider_revision` before any validation probe. Missing/stale
+values return409; refreshed explicit consent can validate. The post-network
+revision and settings-generation checks remain. No migration or private ChatGPT
+credential use is introduced. Old clients must reload the updated setup before
+turning semantic search on; turning it off remains available.
+
+Both clients send the displayed embedding revision, clear acceptance when its
+revision/enable state changes and disable setup if the server supplies no token.
+Generation control revisions remain separate. Callback tests cover exact request,
+consent reset and missing-token disabled controls.
+
+| Requirement                            | Current evidence                                                                                                                                     | Remaining                                                              |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Independent provider/model and consent | Local HTTP fixtures cover generation independence, explicit acceptance, pre-click and in-flight revision changes, A→B→A, renewed consent             | Real authorized embedding account and live provider matrix             |
+| Reindex and vector provenance          | Application pgvector tests cover3072 dimensions, replacement cleanup/requeue, old document/configuration results discarded, queue revision preserved | Larger operational/native matrix                                       |
+| Visibility                             | Project/team keep-out tests block later batches and storage; nearest retains readable-document predicates                                            | Complete permission/ownership race matrix                              |
+| Response/storage                       | Indexed Azure local fixture stores/ranks3072 vectors; malformed/zero/dimension checks retained                                                       | Live Azure/OpenAI/other adapters                                       |
+| Stock database                         | Corrected stock search/client suite20/20, zero skips                                                                                                 | Full frozen regression running                                         |
+| Current focused regression             | pgvector cohort48 passed, zero failed; one stock-only test skipped and independently passed on stock                                                 | Full frozen regression running                                         |
+| Client visuals                         | Capture-only task sent to Orbyn Visual Check for web/narrow/mobile OFF prerequisites                                                                 | Root must inspect returned originals; enabled/error/native states open |
+
+Logs: `/tmp/orbyn-c1-embedding-consent-final-20261008.log`,
+`/tmp/orbyn-c1-embedding-stock-corrected-20261008.log`.
+Shared/backend builds and desktop/mobile types pass. API8008 is healthy with the
+compiled candidate; preview provider settings/credentials/consent are unchanged.
+No inference or real-provider probe was run for this correction.
+
+The initial stock/full commands used the wrong container database username.
+Stock result16/17 failed authentication; the owned full process tree was stopped.
+Neither is accepted evidence. The corrected full run uses fresh marked stock DB
+`orbyn_c1_consent_20261008_test`, session87929, log
+`/tmp/orbyn-c1-embedding-consent-full-corrected-20261008.log`.
+Source is frozen at candidate `d4cd4273`; documentation may advance separately.
+No terminal full pass, main promotion or entire C1 completion is claimed yet.
