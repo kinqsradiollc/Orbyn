@@ -82,3 +82,19 @@ delay/fail only GET /ai/usage, forward other routes to the unchanged compiled
 backend, capture actual loading/error/retry UI, then restore direct preview API.
 This is test infrastructure, not application source or production deployment.
 No loading/error visual acceptance is claimed until actual captures are inspected.
+
+### Overflow viewport correction — root acceptance withdrawn
+
+The capture session subsequently reports the first Light original came from
+another Chrome tab at1728CSS width, despite a1280 viewport check on its target
+tab. Therefore root withdraws1280 acceptance for that image; only its visible
+counter contents were inspected. Preserve it as superseded, and require a
+replacement-v2 with same-tab viewport/screenshot identity. Do not overwrite
+history or infer1280 behavior from its dimensions.
+
+Root also inspected the first Dark original. Its counter/disclosure contents
+fit, but the modal's right edge and adjacent Refresh are cut at the image edge.
+Full-modal containment is not accepted; root requested verified same-tab1280
+Dark-v2 if identity is uncertain. Remaining overflow capture review is open.
+Disk free fell to260MiB; the earlier space-recovery request remains pending.
+No heavy build, API restart or fixture cleanup occurred during the live batch.
