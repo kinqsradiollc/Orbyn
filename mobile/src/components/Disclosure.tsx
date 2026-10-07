@@ -65,7 +65,7 @@ const s = themed(() =>
       lineHeight: 19,
       color: colors.muted,
     },
-    body: { paddingHorizontal: 16, paddingBottom: 16 },
+    body: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 16 },
     hidden: { display: "none" },
   }),
 );
