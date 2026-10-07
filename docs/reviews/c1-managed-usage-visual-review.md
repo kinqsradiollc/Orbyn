@@ -65,3 +65,20 @@ at /tmp/orbyn-c1-usage-fixture-cleanup-20261008.mjs and must run only after the
 capture session is quiescent. It deletes only the exact tracked terminal fixture
 jobs (usage cascades), preserves all other jobs and verifies remaining fixture
 usage is zero. No production usage is affected.
+
+### First overflow original — partial root review
+
+Root inspected
+/Users/anhdang/.codex/visualizations/2026/10/08/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-026-c1-usage-overflow-2026-10-08/originals/C1-usage-overflow-web-1280x1000-light.png.
+The prior2000 input counter is absent after Refresh. Output200/cached1000/
+cache-write100/reasoning40,2responses/window30, disclosure and Refresh remain
+visible and contained. This is accepted for wide Light only. Other overflow
+views and cleanup are pending. No unknown input number is fabricated.
+
+A local usage-only network fixture is prepared at
+/tmp/orbyn-c1-usage-network-fixture-20261008.mjs; node syntax validation passes.
+It is not running and no preview API has moved or restarted. Planned next check:
+delay/fail only GET /ai/usage, forward other routes to the unchanged compiled
+backend, capture actual loading/error/retry UI, then restore direct preview API.
+This is test infrastructure, not application source or production deployment.
+No loading/error visual acceptance is claimed until actual captures are inspected.
