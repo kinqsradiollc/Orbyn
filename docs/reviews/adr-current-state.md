@@ -18,11 +18,12 @@ focused145/145, backend build and compiled loop pass.
 Together catalog repair is merged and pushed as `22f24742`: adapter46/46, route cohort63/63,
 inventory61/61, backend build and compiled check pass. Full frozen regression
 passes3894/3894, zero failures/skips/cancellations, exit0.
-OpenCode selected-model transport is frozen locally as `890d42ce`: focused335/335,
+OpenCode selected-model transport source `890d42ce` is merged and pushed as
+`2186dcb9`: focused335/335,
 backend build and three compiled durable-loop protocol cases pass. Full regression
 passes4044/4044 with zero failures/skips, workspace types/web build and separate
-pgvector47/47 pass. This qualified candidate is not yet on main.
-Next: finish this qualification, then remaining provider/embedding/cache gates.
+pgvector47/47 pass. Main and origin matched after fast-forward/push.
+Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.
 Production deployment is unconfirmed; the user deploys main manually.
@@ -38,7 +39,7 @@ A passing fixture or sampled view does not close its named external/native gate.
 | Managed, BYO and personal authority      | Immutable job choice, private/managed isolation and explicit fallback/provenance checkpoints on main                     | Complete entry-point/recovery matrix and actual permitted provider acceptance                                        |
 | Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Both-client management and credential-testing interaction matrix                                                     |
 | Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching                       |
-| Generation wire formats                  | Main native Responses and Messages recovery, compatible/Azure/Matilda fixtures                                           | Zen main integration; broader actual supported-model qualification                                                   |
+| Generation wire formats                  | Main native Responses and Messages recovery, compatible/Azure/Matilda fixtures                                           | Broader actual supported-model qualification                                                                         |
 | Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Permitted OpenAI cache/latency/cost/quality benchmark; unsupported models remain explicit                            |
 | Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | Positive/overflow/error client states; no inferred billing or plan entitlement                                       |
 | Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted embedding connection and full operational/client matrix                                                |

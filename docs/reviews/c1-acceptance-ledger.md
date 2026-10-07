@@ -29,7 +29,9 @@ Logs: `/tmp/orbyn-c1-zen-transport-before-20261008.log`,
 Full frozen regression13419 is terminal exit0 on a fresh marked database:
 4044/4044 passed, zero failures/skips/cancellations,847821ms.
 `/tmp/orbyn-c1-zen-full-20261008.log`. Subsequent edits are documentation only.
-Scoped formatting and diff checks pass; main integration is pending.
+Scoped formatting and diff checks pass. Fast-forward merged and pushed as
+`2186dcb9`; main/origin matched. Primary unrelated changes are preserved, including
+mobile/app.json SHA1dacd602172347441f2fd92f16d8772b3ba1ef7a8.
 No live vendor inference, UI change, production deploy or complete C1 acceptance.
 
 The user requests a pause after **all C1 acceptance**, before C2/M1. Remaining
