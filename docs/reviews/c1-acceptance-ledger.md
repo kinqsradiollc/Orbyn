@@ -1482,3 +1482,25 @@ multi-provider dispatch/catalog/runtime inventory and permitted cache evaluation
 - Full frozen regression and main delivery pending. Native fixtures do not
   establish live vendor acceptance or finish C1. C2 remains queued; pause only
   after the remaining C1 acceptance gates and final remaining-ADR table.
+
+## Native Perplexity generation delivery receipt — 8 October 2026
+
+- Frozen sourcef71ef338: full4142/4142, zero failures/skips/cancellations,
+  exit0,800029.4725ms. Terminal session64430;
+  `/tmp/orbyn-c1-perplexity-generation-full-20261008.log`.
+- Fast-forward merged and pushed to main asf71ef338. Main/origin verification
+  follows the documentation receipt; unrelated primary files and mobile/app.json
+  SHA1dacd602172347441f2fd92f16d8772b3ba1ef7a8 remain preserved.
+- Actual preview Vite5174 (session68067) and Expo mobile-web8083 (session54697)
+  restarted from the C1 qualification checkout. Both return200. Backend8008
+  remains an older loaded runtime; no exact-backend acceptance is inferred.
+- Visual Check's native Codex capture was denied. The same existing-browser
+  lookup subsequently returned `Tab not found in browser 4`, which is not a
+  website permission denial. A new tab in that same authorized browser and on
+  that same5174 URL was requested; screenshots/acceptance remain pending.
+- Local preview metadata confirms selected Matilda/matilda with embeddings OFF.
+  Dedicated EVALUATION_OPENAI_API_KEY/EVALUATION_MODEL are unconfigured in the
+  local env files. The earlier Matilda baseline is retained; it cannot qualify
+  native OpenAI cache economics or an accepted live embedding provider.
+- C1 stays active. C2/M1 remains queued; finish retained C1 acceptance, provide
+  the remaining ADR table, then pause as requested.

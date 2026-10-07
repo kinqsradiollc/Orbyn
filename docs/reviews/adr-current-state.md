@@ -36,10 +36,15 @@ Native Perplexity embeddings are merged and pushed as6ece8866: explicit
 signed-int8 decoding, reviewed1024/2560 widths, custom compatible float behavior,
 adapter37/37, runtime67/67 and dedicated vector54/54 pass. Frozen full regression
 passes4112/4112, zero failures/skips/cancellations, exit0,849290ms.
-The next C1 repair is native Perplexity catalog/generation routing. Compiled
-baseline1/3 passes: native catalog uses the wrong resource and Agent output is
-rejected; custom compatible behavior passes. Evidence is local fixtures,
-not live account qualification.
+Native Perplexity catalog/generation routing is merged/pushed asf71ef338.
+Compiled baseline1/3 →3/3, protocol/control/inventory cohort287/287 and backend
+build pass. Full frozen regression4142/4142 passes with zero failures/skips/
+cancellations, exit0,800029ms. Serialized actual-loop recovery preserves its
+function signature/call id and does not repeat completed tool execution.
+These are inert fixtures, not live account qualification.
+Both preview servers now serve the C1 qualification checkout at5174/8083;
+API8008 remains an older loaded runtime. Exact browser retry/captures are pending;
+no current-backend or new visual acceptance is claimed.
 Next: remaining provider/embedding/cache/client acceptance gates.
 The user requested a pause after completing C1, before C2/M1.
 Wider embedding/native/full-stage acceptance remains open.
@@ -54,9 +59,9 @@ A passing fixture or sampled view does not close its named external/native gate.
 | C1 requirement                           | Implemented / qualified evidence                                                                                         | Open acceptance                                                                                                      |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | Managed, BYO and personal authority      | Immutable job choice, private/managed isolation and explicit fallback/provenance checkpoints on main                     | Complete entry-point/recovery matrix and actual permitted provider acceptance                                        |
-| Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Both-client management and credential-testing interaction matrix                                                     |
+| Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Current-source browser/native management and credential-test interactions                                            |
 | Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching                       |
-| Generation wire formats                  | Main native Responses and Messages recovery, compatible/Azure/Matilda fixtures                                           | Broader actual supported-model qualification                                                                         |
+| Generation wire formats                  | Main native Responses/Messages, Zen and Perplexity Agent recovery; compatible/Azure/Matilda fixtures                     | Broader actual supported-model qualification                                                                         |
 | Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Permitted OpenAI cache/latency/cost/quality benchmark; unsupported models remain explicit                            |
 | Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | Positive/overflow/error client states; no inferred billing or plan entitlement                                       |
 | Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted embedding connection and full operational/client matrix                                                |
