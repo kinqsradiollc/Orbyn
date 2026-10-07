@@ -1765,3 +1765,27 @@ late model. Isolated correctiona8ad5a8e passes actual picker/component15/15,
 extended Admin AI/layout cohort52/52, backend/mobile types. It remains outside
 this frozen source/main pending corrected browser captures. See
 `c1-mobile-model-search-review.md` in the mobile candidate checkout.
+
+## Newly reproduced C1 recipient redirect defect — 8 October 2026
+
+C1-TRANSPORT-REDIRECT-01, high. Shared provider `send()` validates only its
+initial URL and uses fetch's automatic redirect behavior. An actual compiled
+Anthropic catalog call to a local inert server follows a302 to another local
+origin; that target receives the sentinel `x-api-key` and returns a catalog.
+No real key or user text was used. Receipt:
+`/tmp/orbyn-c1-provider-redirect-before-20261008.json`.
+
+A targeted external regression reproduces all15 redirect status/header cases
+(301/302/303/307/308 × Authorization/x-api-key/api-key) as missing rejection;
+the ordinary direct saved-recipient request passes. This does not assert every
+header is forwarded by fetch: the concrete key-forwarding proof is the native
+Anthropic sentinel receipt. Log:
+`/tmp/orbyn-c1-provider-redirect-regression-before-20261008.log` (1/16 pass).
+
+The proposed correction rejects redirects before sending any credentials or
+input to a destination outside the saved request. Its patch and regression
+source are prepared in `/tmp`, not applied while the frozen d498febd full suite
+and screenshots run. That suite cannot close this newly reproduced defect.
+Before promotion, apply the correction, add the real regression to the owned
+worktree, cover direct/agent/catalog/embedding shared transport behavior,
+requalify and document clear reconnect/configuration errors. C1 remains open.
