@@ -13,7 +13,9 @@ The C1 catalog checkpoint is merged and pushed to main as `8ab6c822`; provider c
 The reviewed embedding-consent checkpoint is merged and pushed as `43fa8f57`.
 The C1 indexing failure/retry checkpoint and its inference/deployment/UI prerequisites are merged and pushed as `d4da3d41`. Full3786/3786, focused47/47, migration/runtime checks and scoped browser review pass.
 The pagination/inventory checkpoint is merged and pushed as `07edbcc5`: full3806/3806, separate inventory61/61.
-Next within C1: repair Anthropic JSON fallback, then complete remaining provider/embedding/cache gates. Wider embedding/native/full-stage acceptance remains open.
+Anthropic JSON fallback is qualified locally: full3880/3880, focused145/145,
+backend build and compiled loop pass. Main integration follows this qualification.
+Next within C1: Together catalog repair, then remaining provider/embedding/cache gates. Wider embedding/native/full-stage acceptance remains open.
 Production deployment is unconfirmed; the user deploys main manually.
 User/character changes and unmerged work remain preserved.
 
@@ -77,7 +79,8 @@ Acceptance comes from this session's image inspection, not the capture session's
 4. Current runtime repair: Anthropic JSON fallback now locally preserves the
    Messages endpoint, native usage, truncation and authority. Reproduced suite
    initially5pass/5fail; expanded protocol/provider/recovery cohort passes145/145
-   and backend build passes. Full regression and main promotion remain pending.
+   and backend build passes. Full frozen regression passes3880/3880, zero
+   failures/skips/cancellations, exit0,756874ms. Main integration follows.
 5. Keep remaining live-provider/OpenAI cache gates explicit. Matilda's fixed
    baseline does not qualify OpenAI cache economics. Promote this checkpoint only
    after qualification, then continue remaining C1 gates before C2/M1.
