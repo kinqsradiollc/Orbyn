@@ -205,6 +205,29 @@ routing automatically. Snapshot: `/tmp/orbyn-c1-opencode-public-catalog-20261008
 The first Python request failed local CA validation; native curl succeeded with
 normal TLS verification. No key, personal data or inference request was sent.
 
+## Next transport audit: OpenCode Zen
+
+[Zen's endpoint table](https://opencode.ai/docs/zen) assigns transports by model:
+GPT6.1 Sol uses Responses, Claude Sonnet4.6 and Qwen3.8 Flash use Messages,
+while other models use compatible chat or native Gemini. Orbyn's saved
+`opencode` resolver currently sets one compatible-chat format for every model.
+
+Compiled saved-row resolution reproduces the mismatch for direct completion
+and durable agent steps for those three documented models. All six dispatches
+target `/zen/v1/chat/completions`, rather than their documented endpoint.
+The controlled fixture returns404 to make the mismatch visible; that status is
+not an observed vendor failure. No live inference or workspace content is sent.
+Log: `/tmp/orbyn-c1-opencode-transport-before-20261008.log`.
+
+After Together qualification/promotion, resolve the selected model's transport
+without redirecting the saved connection or leaking credentials. Catalog reads
+must remain independent of generation format. Cover direct calls, durable tools,
+JSON fallback, usage/authority and embeddings separately. The public ID-only
+catalog has no protocol metadata, and vendor-specific model mappings cannot be
+inferred safely from names alone (Qwen models already use different protocols).
+Native Gemini requires its own verified wire contract; generic compatible
+fixtures must not be used to claim that endpoint family complete.
+
 ## Remaining qualification
 
 - Verify public endpoint/catalog availability and model-specific controls against
