@@ -403,3 +403,30 @@ for (const mobile of [false, true]) {
     assert.deepEqual(view.calls, []);
   });
 }
+
+for (const name of ["Embedding recipient", "Changed recipient"]) {
+  test(`mobile consent switch exposes the displayed scope and recipient: ${name}`, () => {
+    const view = fixture(true, {}, false, { name });
+    const consent = view.elements.find(
+      (node) => node.props.onValueChange && node.props.value === true,
+    );
+    assert.ok(consent);
+    assert.equal(
+      consent.props.accessibilityLabel,
+      `I understand that the words of every page (except projects and teams kept out of the assistant) are sent to ${name} to be measured.`,
+    );
+    const text = renderToStaticMarkup(view.tree);
+    assert.ok(text.includes(consent.props.accessibilityLabel));
+    assert.deepEqual(view.calls, []);
+  });
+}
+
+test("mobile missing eligible recipient retains full consent scope without enabling", () => {
+  const view = fixture(true, {}, false, { enabled: false });
+  const consent = view.elements.find((node) => node.props.onValueChange);
+  assert.ok(consent);
+  assert.match(consent.props.accessibilityLabel, /projects and teams kept out/);
+  assert.match(consent.props.accessibilityLabel, /the selected embedding provider/);
+  assert.equal(consent.props.disabled, true);
+  assert.deepEqual(view.calls, []);
+});
