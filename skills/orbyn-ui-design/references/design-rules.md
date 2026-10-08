@@ -56,11 +56,16 @@ Use the shared scale by role at normal text settings:
 - One active overlay controls focus. Nested pickers close before the parent;
   background controls must not intercept input. Web dialogs need an accessible
   name, contained focus, dismissal, and focus return to a sensible opener.
+  If that opener becomes hidden or is removed, use a visible logical return target.
+  Recheck both Close and Escape when navigation is closing or the viewport changes;
+  a target visible during a transition may become hidden immediately after focus.
 - Preserve visible keyboard focus without drawing two competing borders around
   the same search field. A sticky header, footer, or composer must not obscure
   the focused control. Test the actual focus ring instead of removing outlines.
 - Reuse theme/radius tokens, `Select`, `DateField`, shared buttons, menus, and
   native controls. Avoid local palette literals and unrelated CSS overrides.
+  Check final styles with shared CSS loaded; a local rule can lose to a later
+  generic rule. Source-only checks must not substitute for computed styles/pixels.
 - Keep adequate pointer/touch targets without inflating text or entire cards.
   Native `controls.tap` is 44pt; compact controls keep a reachable hit area whose
   expansion does not collide with neighboring targets.

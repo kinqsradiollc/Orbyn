@@ -7,9 +7,13 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-Latest product checkpoint: embedding discovery, exact mobile model search and
-provider redirect protection merged to main as2fd8e14d, from candidateab01bcc8.
-Fresh full4246/4246 passes with zero skips/cancellations; focused170/170,
+Latest delivered product checkpoint: compact Settings navigation and Theme
+containment, merged as994d6de3. At the start of this status check, main and freshly
+fetched origin/main matched4b6c46e1; later commits are documentation checkpoints.
+Production deployment is unconfirmed.
+Embedding discovery, exact mobile model search and provider redirect protection
+were merged as2fd8e14d, from candidateab01bcc8. That source's fresh full4246/4246
+passes with zero skips/cancellations; focused170/170,
 catalog/inventory10/10, vector repeat34/34, workspace types/backend/web builds
 and scoped web/mobile browser review pass. Remaining C1 gates below stay open.
 
@@ -22,21 +26,38 @@ late-install1/1; these are not results from the newer source.
 The user now authorizes Visual Check's analysis. Its delegated normal-scale
 recheck accepts Theme containment on web320/390/1280 and mobile-browser320/390,
 Light/Dark. Root reviewed its report; exported originals remain unavailable.
-Overall Settings UX is not accepted: duplicate search focus, excessive narrow
-chrome/rows and Connected agents copy remain open. 200% enlargement and native
-acceptance remain unverified. The researched repository skill now covers UI and
+Overall Settings UX is not accepted. The newer local candidate corrects duplicate
+search focus, excessive narrow chrome/rows and Connected agents copy in scoped
+browser review, but those changes are not yet delivered. 200% enlargement and
+native acceptance remain unverified. The researched repository skill covers UI and
 UX task flows, concise copy, density, recovery and cross-client acceptance.
 The local test container stopped and lost its temporary DB; the owned preview DB
 and disposable admin were restored. Fresh login works; usage counters are zero.
 Historical positive/error/overflow images remain unreviewed. Details:
 [current usage/Settings review](c1-managed-usage-visual-review.md).
 
-Next C1 Settings UX candidate5e69d4eb is committed locally, not merged. It uses
+Current C1 Settings UX candidate38558c8a is committed locally, not merged. It uses
 the available phone modal space, compact padding/rows, one search-focus outline,
-and concise Connected agents copy with optional help on web/mobile. Focused23/23,
-both client types and web build pass. Fresh full regression and QA-028 delegated
-browser review are running; density, copy and focus findings remain open until
-their recheck. No C2 work or full-stage completion is claimed.
+and concise Connected agents copy with optional help on web/mobile. QA-028 accepts
+scoped portrait density/copy/single-focus improvements on parent5e69d4eb but found
+narrow dismissal focus loss and poor landscape task space. Parent full4254/4254
+passes; it is not delivered independently. The corrected candidate adds visible
+navigation focus return, height-aware navigation and backdrop specificity fixes.
+Focused29/29, both client types and web build pass. Its fresh full regression is
+still running. QA-029 is complete: phone modal space, landscape content height
+and Close focus return pass in the inspected scope; narrow Escape still returns
+focus to BODY. Root reviewed the report. A primary-only follow-up skips a closing
+sidebar as a focus target and passes31/31 focused checks and desktop types. Its transition diagnosis
+and browser acceptance remain unverified; it is not frozen or merged. The
+immediate next step is to qualify and recheck that correction, then deliver the
+Settings checkpoint before continuing the remaining C1 gates. No C2 work or
+full-stage completion is claimed.
+
+## Historical checkpoint log
+
+Entries below retain the state at their recorded checkpoint. The current summary
+above and completion-gate tables control present status; an older "running" or
+"latest" statement is not a current execution or delivery claim.
 
 The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.
@@ -174,7 +195,7 @@ A completed checkpoint does not complete its entire stage.
 | 5                      | C5 pages/publication/channels    | ✓ Block bindings/jobs, comments, publication boundaries and separate Slack/Teams installation/outbox/reply/lifecycle foundations.                                                                                                                                                                                                          | ✗ Human-edit conflicts/source revocation/public consent; authorized real channel delivery/exact-question replies; tenant/lifecycle/reconnect and both-client acceptance.                                                          |
 | 6                      | C6 separate plugin backend       | ✓ Separate service/principal/grants, managed inference broker/permissions, launch context/UI/import/reconnect foundations.                                                                                                                                                                                                                 | ✗ Real host OAuth/UI/account switching/reconnect; production configuration; managed/BYO execution; authorized security scan and triage.                                                                                           |
 | Throughout; final gate | U1 whole-app UI                  | ✓ Settings modal, assistant/agent separation, selected Home/navigation/task controls. ✓ Current C1 provider controls/management and zero-usage states inspected on wide/narrow web and320/390 mobile browser, Light/Dark.                                                                                                                  | ✗ Every-page web/desktop/mobile matrix, positive/overflow/error/loading states, collapsed/nested panels, keyboard/large text and native acceptance. Browser checks do not prove installed-native parity.                          |
-| Last                   | Integration/cleanup              | ✓ Qualified scoped checkpoints pushed to main, latest9921c086; unrelated local changes preserved.                                                                                                                                                                                                                                          | ✗ Qualify/promote remaining retained scope; reconcile branches/worktrees; remove only safe merged work after full acceptance.                                                                                                     |
+| Last                   | Integration/cleanup              | ✓ Qualified scoped checkpoints pushed to main, latest product994d6de3; unrelated local changes preserved.                                                                                                                                                                                                                                          | ✗ Qualify/promote remaining retained scope; reconcile branches/worktrees; remove only safe merged work after full acceptance.                                                                                                     |
 
 Voice, computer-use product features and speculative Decisions remain excluded.
 Computer-use tools may capture QA. MCP/plugin authority and personal ChatGPT

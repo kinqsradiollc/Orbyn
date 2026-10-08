@@ -18,6 +18,35 @@ site permission. No alternate-browser, port or export workaround is authorized.
 
 ## Current checkpoint
 
+Current frozen correction38558c8a is local, not merged. Parent5e69d4eb full
+regression passed4254/4254, zero failures/skips/cancellations, exit0,788822ms.
+QA-028 delegated review confirms scoped portrait density/copy/help/single focus
+improvements, but reproduces P2 narrow focus loss on dismissal and landscape
+content height94px. It prevents complete Settings checkpoint acceptance.
+Report: `QA-028-settings-density-2026-10-08/visual-analysis.md` under the same QA root.
+
+The corrected source restores focus to the visible opener or current visible
+workspace navigation, after removing background inertness; hidden, removed,
+disabled and inert targets are skipped. Short windows use a compact category row,
+stacking it on very narrow widths. A higher-specificity backdrop rule fixes the
+actual later generic CSS override that retained phone gutters despite the earlier
+source rule. Source-only density assertions were insufficient to establish that
+rendered result. The extended test evaluates both global/local stylesheet orders.
+
+Focused29/29, both client types and production web build pass. Fresh full
+regression: `/tmp/orbyn-c1-settings-recovery-full-20261008.log` (running).
+QA-029 is complete; root reviewed its delegated report. Normal-scale full-screen
+phone layout and740×320 task space pass; content height improves94→174px. Close
+returns focus correctly, but original narrow Escape from Search or Close still
+returns BODY. The checkpoint remains unaccepted. A primary-only follow-up rejects
+the closing transformed sidebar as a focus target and passes31/31 focused tests
+and desktop types;
+the inferred transition cause and corrected browser behavior still need recheck.
+Full38558c8a regression remains running. Enlarged/native gaps remain.
+Report: `QA-029-settings-recovery-2026-10-08/visual-analysis.md` under the same QA root.
+
+## Parent density/copy candidate
+
 Current follow-up5e69d4eb is frozen locally, not merged. Phone-width Settings
 uses the available modal screen with compact gutters/section padding and existing
 font/control tokens. Search retains the shared outer outline and neutral border;
@@ -35,11 +64,12 @@ and no font/scale overrides in the compact media block. Both logs are retained:
 Actual mobile help closed/open state and its accessible toggle are executed by
 the new component harness; CSS tests do not establish rendered usability.
 
-Full regression is running in `orbyn_c1_settings_density_20261008_test`:
+Full regression completed in `orbyn_c1_settings_density_20261008_test`:
 `/tmp/orbyn-c1-settings-density-full-20261008.log`. QA-028 internal-browser review
-is assigned for V02/V03/V04, both clients/themes, narrow/wide, scrolling,
+completed for V02/V03/V04, both clients/themes, narrow/wide, scrolling,
 dismissal/focus return and actual enlargement where supported. No current full
-pass, visual acceptance or main delivery is inferred from the focused checks.
+main delivery is inferred from the focused checks; its separate terminal and
+delegated findings are recorded above.
 
 ## Qualified navigation and Theme checkpoint
 

@@ -1,5 +1,28 @@
 # C1 acceptance ledger
 
+## Corrected Settings focus/landscape candidate — 8 October 2026
+
+Parent5e69d4eb frozen regression passed4254/4254 with zero failures/skips/
+cancellations, exit0,788822ms; log `/tmp/orbyn-c1-settings-density-full-20261008.log`.
+QA-028 delegated review accepts the scoped portrait/single-focus/copy improvements
+but finds two P2 issues: narrow Close loses focus to BODY and landscape leaves
+94px content height. Root reviewed the report and kept the checkpoint unmerged.
+
+Corrected local38558c8a adds visible opener/navigation focus return, compact
+short-height category/search layout and backdrop selector specificity so later
+generic CSS cannot override the phone layout. Focused29/29 and desktop/mobile
+types/web build pass. New tests execute removed/hidden/failed opener return,
+skip disabled/inert controls, and cover height boundaries and either stylesheet
+order. Fresh marked-DB full regression is running:
+`/tmp/orbyn-c1-settings-recovery-full-20261008.log`. QA-029 targeted internal-browser
+recheck is complete. QA-029 accepts the scoped full-screen phone layout,
+landscape task-space correction and Close return. Original narrow Escape from
+Search or Close still returns BODY; QA-028-001 remains open. Root reviewed the
+delegated report, not exported originals. A primary-only closing-sidebar focus
+follow-up passes31/31 focused checks and desktop types; it is not frozen, visually verified or
+merged. The full38558c8a regression remains active. C1 stays open, with
+enlarged/native/external gates explicit.
+
 ## Settings density, focus and copy candidate — 8 October 2026
 
 Frozen local5e69d4eb follows qualified main b0c7696a. It changes only Settings
