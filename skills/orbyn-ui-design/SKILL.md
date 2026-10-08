@@ -39,13 +39,17 @@ accessibility settings.
 
 ## Review and delivery
 
-Send visual work to **Orbyn Visual Check**. Give it the candidate checkout/ref,
+Apply the on-demand cadence in `AGENT.md`: no automatic visual sweep for every
+change or checkpoint. Prefer tests/API evidence for functional behavior and reuse
+valid prior UI evidence. For a material layout/interaction risk or reproduced
+visual defect, send one bounded request to **Orbyn Visual Check**. Give it the candidate checkout/ref,
 URLs, exact states, viewport sizes, themes, and a Markdown report destination.
 Specify whether its assignment is capture-only or includes analysis, following
 the user's current authorization. Report delegated pixel review as delegated;
 do not label it personal inspection.
 
-Use the matrix in the rules for the changed feature. Verify actual CSS viewport,
+Choose only cases relevant to the named risk; do not expand into a full matrix
+of unchanged states or screens. Stop when those cases are checked. Verify actual CSS viewport,
 zoom, and screenshot provenance before diagnosing a cropped or scaled image.
 Passing builds, DOM dimensions, and screenshot metadata alone do not prove a
 usable layout. Review density, discoverability, and task completion as well as

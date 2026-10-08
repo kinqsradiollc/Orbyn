@@ -46,47 +46,44 @@ then honor the user's requested pause before C2/M1.
 
 ## Visual review cadence
 
-Visual review is a checkpoint gate, not a task after every edit. Builder sends
-one consolidated request to Orbyn Visual Check once the candidate UI and compiled
-API are stable, package builds are complete, preview reloads have settled, and
-fixture ownership is agreed. Code/unit/type checks can run during implementation
-without repeatedly opening screens. Do not change fixtures underneath a live
-visual batch or trigger package rebuilds that disrupt its account/session.
+Visual review is **on demand**, not a continuous task or an automatic gate for
+every checkpoint. Builder requests Orbyn Visual Check only when a material
+layout/interaction change, reproduced visual defect or explicit user request
+needs rendered evidence. Functional provider CRUD, persistence, routing, worker
+recovery and backend races primarily use tests/API/runtime evidence. Request a
+browser check only for their specific visible risk, not their entire test matrix.
 
-- **Choose cases by impact.** List changed flows, affected shared controls, known
-  defects and required acceptance states before requesting captures. Layout or
-  typography changes need affected narrow/wide/short-height and enlarged-text
-  cases; theme changes need both themes; behavior changes need the relevant
-  success/loading/error/recovery, draft, keyboard and overlay paths. Shared shell
-  or token changes need representative affected surfaces across both clients.
-- **Batch evidence.** Cover distinct layout boundaries and meaningful states,
-  rather than every combination of viewport, theme and action. Use the smallest
-  matrix that proves the changed scope, retaining all explicit ADR requirements.
-  Capture images at meaningful checkpoints or reproduced defects; do not export
-  duplicate unchanged frames or repeat login/navigation for each assertion.
-- **Target rechecks.** After fixes, rerun failed cases and flows affected by the
-  fix. Repeat the wider matrix only when shared layout/navigation/styles or
-  runtime behavior changed enough to invalidate it. Do not rerun visual checks
-  merely because tests, documentation or commit metadata changed.
-- **Reuse honestly.** Link prior reports and record relevant UI/shared-control/
-  runtime source equivalence, viewport/state and limitations. A different SHA
-  alone does not invalidate unchanged visual evidence; matching screenshots
-  alone do not establish functional equivalence. New or changed states still
-  need evidence. Backend-only changes that alter visible status/errors require
-  affected-flow checks; purely invisible backend or prose-doc changes do not.
-- **Stop churn.** If the preview, account or fixture fails, record the failure,
-  notify its owner and settle requests. Resume after confirmed recovery with one
-  explicit retry. Do not repeatedly refresh, rebuild, restart or capture the same
-  blocked screen. Permission/export restrictions remain in force.
+- **Justify and bound the request.** Name the changed surface, concrete visual
+  risk and finite cases. Use a stable candidate and settled preview. Default to
+  one representative web and one mobile-browser case for a shared UI change;
+  add widths, themes, overlays or enlarged text only when the change affects
+  them or an explicit requirement needs that evidence. No Cartesian matrix.
+- **One short batch by default.** Do not request screenshots per edit, commit,
+  test run or checkpoint. Reviewer and Tester reuse the same report. A second
+  batch needs a named failed/new visual risk and only its affected cases.
+  Do not expand an active assignment to unrelated screens or new stages.
+- **Finish and return to building.** Stop when the requested cases are checked,
+  record findings and untested limits, restore only owned fixture state and
+  return the evidence. No repeated login/navigation/captures to fill speculative
+  gaps. Missing mandatory evidence remains recorded for a deliberate later
+  qualification decision; it does not automatically launch another sweep.
+- **Reuse valid evidence.** Record relevant source/runtime equivalence. A new
+  commit or documentation change alone does not invalidate earlier UI evidence.
+  Backend/docs-only changes need no screenshots unless a concrete visible
+  behavior changed. Tests do not prove layout, and screenshots do not prove
+  API authority, persistence, billing or native behavior.
+- **Respect ownership and tool limits.** One batch/fixture owner at a time;
+  do not rebuild or mutate fixtures underneath inspection. On preview/account/
+  permission failure, record it and settle requests. No repeated refresh loop
+  or alternate browser/port/export workaround for a security restriction.
 
-Visual Check writes one source-qualified Markdown report per batch, appending
-rechecks and retaining failures. Separate browser rendering, accessible markup,
-actual assistive-technology behavior and installed-native evidence. Builder
-reviews the delegated evidence; Tester references it instead of duplicating
-browser work; Reviewer requests only specific missing or invalidated cases.
-Stage Tracker reports evidence coverage without initiating repeat captures.
-Unverified required states remain open: this cadence reduces duplicate work,
-not the full ADR scope or its acceptance standard.
+Visual Check writes one source-qualified Markdown report with viewport, theme,
+findings, captures or export limits. Separate browser rendering, accessible markup,
+actual assistive-technology and installed-native evidence. Builder reviews it;
+Reviewer requests only specific missing/invalidated cases. Stage Tracker reports
+coverage without initiating screenshots. This protocol supersedes earlier blanket
+visual-matrix instructions: retain explicit user/ADR acceptance requirements,
+without treating every functional scenario as a fresh visual assignment.
 
 ## Shared record and handoffs
 
