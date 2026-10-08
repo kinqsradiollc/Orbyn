@@ -4,9 +4,10 @@ Cycle C1-full-2026-10-08. Round **2/3**, persisted before substantive review on
 8 October 2026. Source `1a92a2c091e42d350e3b029bf57e932c630b4487`, branch
 `codex/c1-production-checkpoint`, checkout
 `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
-Review in progress. Reviewer inspects code/ADR/existing evidence only; no tests,
-builds or product/test edits. Full acceptance remains open pending review and
-retained gates. Report stays uncommitted in primary for Builder delivery.
+Full round-2 review completed. Reviewer inspected code/ADR/existing evidence only;
+no tests, builds or product/test edits. Full acceptance remains open for E1/E2.
+Original report committed by Builder in3cb6d402; closure updates remain uncommitted
+in primary for Builder delivery.
 
 ## Decision
 
@@ -127,3 +128,20 @@ Return one consolidated response for E1/E2/D1. Builder owns any discovered code
 fixes; Tester owns qualification. Reviewer may close evidence within round2 after
 inspection. Reports/status only were written and left uncommitted in primary;
 no source edits, tests, builds, merge/push/deployment or next-stage work performed.
+
+
+## R2-D1 closure — 8 October 2026
+
+**D1 closed** after read-only inspection of documentation commit3cb6d402 and the
+current primary index/readiness/handoff records. Their current summaries identify
+frozen1a92a2c0, completed208/type/build qualification, source-scoped4337/69 and
+migration/runtime receipts, QA040001 closure, review2/3 and unresolved E1/E2.
+The indexed consolidated handoff now exists in primary. Its admission-time1/3
+wording and earlier preparation receipts are historical; current summaries identify
+the completed round2 decision. Earlier3cc delivery is explicitly separated from
+the unpromoted final candidate. Report header now records full review completed.
+
+This is documentation-only same-round closure. E1 remains waitingOnApproval;
+E2 requires genuine enlargement evidence or explicit human disposition. The
+pending question is not a waiver. No tests/builds/source edits/visual requests,
+new full review, counter increment, product promotion or full C1 acceptance.

@@ -31,7 +31,7 @@ maine9f90593. [Round2 review](c1-full-2026-10-08-review-r2.md) found no new code
 defect. Full acceptance remains open for E1 Electron interaction (pending Computer
 Use app approval) and E2 genuine200% evidence or explicit user disposition.
 QA040001 DOM closure is complete; actual AT behavior remains untested. D1 record
-reconciliation is delivered for Reviewer inspection. Productcandidate1a92a2c0 is
+reconciliation is independently closed by Reviewer within round2. Productcandidate1a92a2c0 is
 not on main. No C1 acceptance, production deployment or C2 advancement is claimed.
 
 | Full-checkpoint readiness | Current evidence / action |
@@ -39,7 +39,7 @@ not on main. No C1 acceptance, production deployment or C2 advancement is claime
 | Scope/state map | All12 retained groups reconciled in consolidated Tester and round2 Reviewer reports; current user overrides apply. |
 | Implementation | R1/QA040 local defects closed; no new actionable product-code defect found in round2. Frozencandidate1a92a2c0 awaits full acceptance, not product delivery. |
 | Remaining evidence | E1 bounded Electron check pending app approval; E2 genuine200% evidence or user disposition pending. Live cache/embedding are follow-ups; iOS/Android excluded. |
-| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer round2/3 complete; E1/E2 evidence and D1 record reconciliation pending. |
+| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer round2/3 complete; E1/E2 evidence pending; D1 independently closed within round2. |
 
 ## Historical predecessor evidence — retained source scopes
 
