@@ -55,6 +55,15 @@ claimed. Builder removed only this worktree's newly generated Pods, iOS build
 outputs, Android app build/C++ outputs, capture-module build outputs and the
 owned temporary iOS DerivedData. Logs and source changes are retained.
 
+Follow-up inspection of the retained log confirms successful capture-module
+tasks: `:orbyn-capture:compileReleaseKotlin` (line564),
+`compileReleaseJavaWithJavac` (565), `bundleLibCompileToJarRelease` (566),
+`bundleLibRuntimeToDirRelease` (586), and `processReleaseManifest` (635).
+These tasks have no failure marker. They support the scoped native-module
+configuration/compiler repair; the overall process still exited143, so this
+does not prove full APK assembly or installed C1 behavior. Do not rerun the full
+build until disk capacity changes.
+
 Both build wrappers stop their own process group if available disk drops below
 1.2GiB. Terminal results must be read before retrying. The Android package uses
 the generated local debug signing configuration and one QA architecture; it
