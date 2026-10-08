@@ -2184,3 +2184,12 @@ wordsearch afterlocalproviderterminal. Safe receipts in linkedruntime report.
 No livevendor/cacheeconomics, installed interaction or genuineenlargement proof.
 FullC1 remainsopen; conditionalcompleted-C1pause not yettaken, C2notstarted.
 Userdeploysmainmanually; deploymentunconfirmed.
+
+## Full-checkpoint handoff clarification — 8 October 2026
+
+Canonicalmaine658af82 requires Builder to finish all states and prepare all
+qualification prerequisites before one consolidated formalTest→Reviewhandoff.
+Earlierpartial deliveries/receipts are historical, notfullC1completion. Current
+phase returns toBuilderpreparation; Tester/Reviewerwait. Read-onlyinstalled
+inventory may finish as prerequisite evidence, not a newformaltestjob. Counter1/3
+preserved; max3ceiling/earlierapproval still applies. No newautomaticvisualsweep.

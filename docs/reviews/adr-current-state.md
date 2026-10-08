@@ -7,7 +7,20 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: qualified code delivered; full acceptance prerequisites open. Review rounds: 1/3.**
+**Active cycle: C1-full-2026-10-08. Phase: Builder full-checkpoint preparation; not ready for formal handoff. Review rounds: 1/3.**
+User clarification applied: complete every C1 implementation state and prepare all
+qualification prerequisites before one consolidated Test → Review handoff. No more
+formal partial-state jobs or per-fix handoffs. Earlier qualified main delivery and
+retest receipts remain historical evidence, not full-C1 completion. Builder owns
+preparation and all code; Tester/Reviewer wait. Current review counter is retained.
+
+| Full-checkpoint readiness | Current evidence / action |
+| --- | --- |
+| Scope/state map | Retained C1 contract and round-1 full requirement audit remain governing; reconcile every row before handoff. |
+| Implementation | Reviewed local correction findings closed; current code is delivered. Builder must resolve any remaining implementation state discovered during full reconciliation. |
+| Test prerequisites | Authorized live/cache/embedding inputs and source-matched installed/enlargement setup remain unavailable or not yet established; prepare them before formal handoff. |
+| Freeze/handoff | Not ready. Freeze one complete candidate and full test plan only after every readiness item is satisfied. |
+
 Frozen candidate `3ccf8f578d3e355238ee55478e7d5e02b2b68b67` is clean on
 `codex/c1-full-completion` in
 `/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`.
