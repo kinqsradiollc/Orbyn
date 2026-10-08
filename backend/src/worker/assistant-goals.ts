@@ -2,7 +2,7 @@ import { assistantSourceVisible } from "../lib/assistant-source-visibility.js";
 import type { SystemRole } from "@orbyn/core";
 import { pool } from "../db/pool.js";
 import { startAssistantAutomation } from "../modules/ai/agent/run.js";
-import { resolveAi } from "../modules/ai/providers/resolve.js";
+import { assistantProviderAdmissionSql } from "../modules/ai/providers/admission.js";
 import type { ResolvedAi } from "../modules/ai/providers/adapters.js";
 import {
   FAILED_RETRY_HOURS,
@@ -55,9 +55,7 @@ export async function scanAssistantGoals(
     startAutomation?: typeof startAssistantAutomation;
   } = {},
 ) {
-  // No provider: nothing is claimed, so no chat fills with failed turns.
-  const ai = options.ai === undefined ? await resolveAi() : options.ai;
-  if (!ai) return 0;
+  if (options.ai === null) return 0;
   const limit = Math.max(1, Math.min(options.limit ?? GOAL_BATCH, 50));
   const goals = (
     await pool.query<GoalDue>(
@@ -74,6 +72,7 @@ export async function scanAssistantGoals(
          LEFT JOIN goals_checkins c ON c.goal_id = g.id AND c.week_of = wk.week_of
         WHERE g.status = 'active' AND ${assistantSourceVisible("'goal'", "g.id", "g.user_id")}
           AND ${assistantActive("g.user_id")}
+          AND ${assistantProviderAdmissionSql("g.user_id", options.ai)}
           AND NOT ${nightShiftOwns("g.user_id")}
           AND NOT EXISTS (
             SELECT 1 FROM projects hidden

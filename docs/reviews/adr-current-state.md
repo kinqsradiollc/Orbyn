@@ -19,10 +19,11 @@ Earlier maintenance authority checkpoint a5d2274f remains delivered, with full42
 focused103/103 and actual migration258 upgrade1/1. Its captured owner/provider/model
 authority and deployment notifier pause remain qualified.
 
-Next C1 implementation: correct the global-provider availability gate affecting
-all five personal automation scanners. Reproductions exist for goals, ideas,
-routines, tasks and Overnight. Reuse the canonical per-user admission contract;
-preserve explicit fallback, source/claim guards and durable offline behavior.
+Active C1 implementation: per-owner provider admission now covers goals, ideas,
+routines, tasks and Overnight in the isolated scanner branch. Focused checks pass
+98/98 and backend types pass; full regression and main delivery remain pending.
+See [scanner qualification](c1-personal-scanner-admission.md). Explicit fallback,
+source/claim guards and durable offline behavior remain required.
 No next-stage implementation has begun. Remaining enlarged/native, error/overflow,
 live-provider/cache and embedding acceptance gates remain open.
 

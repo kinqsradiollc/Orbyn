@@ -1,6 +1,6 @@
 import { pool } from "../db/pool.js";
 import { startAssistantAutomation } from "../modules/ai/agent/run.js";
-import { resolveAi } from "../modules/ai/providers/resolve.js";
+import { assistantProviderAdmissionSql } from "../modules/ai/providers/admission.js";
 import type { ResolvedAi } from "../modules/ai/providers/adapters.js";
 import {
   FAILED_RETRY_HOURS,
@@ -41,9 +41,7 @@ export async function scanAssistantIdeas(
     startAutomation?: typeof startAssistantAutomation;
   } = {},
 ) {
-  // No provider: nothing is claimed, so no chat fills with failed turns.
-  const ai = options.ai === undefined ? await resolveAi() : options.ai;
-  if (!ai) return 0;
+  if (options.ai === null) return 0;
   const limit = Math.max(1, Math.min(options.limit ?? IDEA_BATCH, 100));
   // Only people with an open slot today, least recently served first, so
   // everyone is reached however many use the assistant.
@@ -58,6 +56,7 @@ export async function scanAssistantIdeas(
            SELECT ($3::timestamptz AT TIME ZONE coalesce(p.timezone, 'UTC'))::date AS day
          ) local
         WHERE g.kind = 'assistant' AND g.revoked_at IS NULL
+          AND ${assistantProviderAdmissionSql("g.user_id", options.ai)}
           AND g.suspended_at IS NULL
           AND ${recentlyActive("g.user_id", "$3")}
           AND EXISTS (

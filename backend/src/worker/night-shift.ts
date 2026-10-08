@@ -21,7 +21,7 @@ import {
   type NightShiftSettings,
 } from "@orbyn/core";
 import { pool, transaction, type Queryable, type Db } from "../db/pool.js";
-import { resolveAi } from "../modules/ai/providers/resolve.js";
+import { assistantProviderAdmissionSql } from "../modules/ai/providers/admission.js";
 import type { ResolvedAi } from "../modules/ai/providers/adapters.js";
 import { assistantPrincipal } from "../modules/agents/assistant.js";
 import { policy } from "../capabilities/policy.js";
@@ -577,8 +577,7 @@ export async function scanNightShift(
     [now],
   );
   await queueOvernightNotices(now, options.only);
-  const ai = options.ai === undefined ? await resolveAi() : options.ai;
-  if (!ai) return 0;
+  if (options.ai === null) return 0;
   const people = (
     await pool.query<{
       id: string;
@@ -588,6 +587,7 @@ export async function scanNightShift(
     }>(
       `SELECT u.id, u.name, u.role, a.night_shift FROM users u JOIN agent_settings a ON a.user_id = u.id
      WHERE NOT u.disabled AND a.night_shift->>'enabled' = 'true'
+          AND ${assistantProviderAdmissionSql("u.id", options.ai)}
        AND ($1::uuid[] IS NULL OR u.id = ANY($1::uuid[]))
        AND ($2::uuid IS NULL OR u.id > $2::uuid) ORDER BY u.id LIMIT 200`,
       [options.only ?? null, options.only ? null : afterPerson],

@@ -1,7 +1,7 @@
 import { nextOccurrence, type SystemRole } from "@orbyn/core";
 import { pool, transaction } from "../db/pool.js";
 import { startAssistantAutomation } from "../modules/ai/agent/run.js";
-import { resolveAi } from "../modules/ai/providers/resolve.js";
+import { assistantProviderAdmissionSql } from "../modules/ai/providers/admission.js";
 import type { ResolvedAi } from "../modules/ai/providers/adapters.js";
 import {
   assistantActive,
@@ -32,9 +32,7 @@ export async function scanAssistantRoutines(
     startAutomation?: typeof startAssistantAutomation;
   } = {},
 ) {
-  // No provider: nothing is claimed, so no chat fills with failed turns.
-  const ai = options.ai === undefined ? await resolveAi() : options.ai;
-  if (!ai) return 0;
+  if (options.ai === null) return 0;
   const limit = Math.max(1, Math.min(options.limit ?? ROUTINE_BATCH, 50));
   const routines = await transaction(async (db) => {
     const rows = (
@@ -43,6 +41,7 @@ export async function scanAssistantRoutines(
                 r.rrule, r.timezone, r.next_run_at
            FROM agent_routines r JOIN users u ON u.id = r.user_id AND NOT u.disabled
           WHERE r.paused = false AND r.next_run_at <= $1
+          AND ${assistantProviderAdmissionSql("r.user_id", options.ai)}
             -- A job that finished, failed, died or waits too long on the
             -- person no longer holds the routine (after a restart, say).
             AND ${jobReleased("r.current_job_id", "$1")}

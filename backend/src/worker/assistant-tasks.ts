@@ -1,7 +1,7 @@
 import type { SystemRole } from "@orbyn/core";
 import { pool, transaction } from "../db/pool.js";
 import { startAssistantAutomation } from "../modules/ai/agent/run.js";
-import { resolveAi } from "../modules/ai/providers/resolve.js";
+import { assistantProviderAdmissionSql } from "../modules/ai/providers/admission.js";
 import type { ResolvedAi } from "../modules/ai/providers/adapters.js";
 import {
   FAILED_RETRY_HOURS,
@@ -120,8 +120,7 @@ export async function scanAssistantTasks(
     startAutomation?: typeof startAssistantAutomation;
   } = {},
 ) {
-  const ai = options.ai === undefined ? await resolveAi() : options.ai;
-  if (!ai) return 0;
+  if (options.ai === null) return 0;
   const only = options.only ?? null;
   await giveUp(now, only);
   const limit = Math.max(1, Math.min(options.limit ?? TASK_BATCH, 50));
@@ -139,6 +138,7 @@ export async function scanAssistantTasks(
            LEFT JOIN teams t ON t.id = i.team_id
            LEFT JOIN projects p ON p.id = i.project_id
           WHERE i.agent_state IN ('queued', 'working')
+          AND ${assistantProviderAdmissionSql("g.user_id", options.ai)}
             AND i.agent_when = 'now'
             AND ${assistantActive("g.user_id")}
             AND NOT ${keptOut("i")}
