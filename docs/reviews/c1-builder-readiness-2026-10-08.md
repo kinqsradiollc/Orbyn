@@ -1,6 +1,7 @@
 # C1 Builder readiness
 
-Status: **preparation, no formal handoff**. Review counter remains **1/3**.
+Status: **preparation blocked on external prerequisites, no formal handoff**.
+Review counter remains **1/3**.
 Latest Builder code candidate: `10d3d1e3` on `codex/c1-production-checkpoint`
 (native Android capture Gradle correction); preparation receipt commit
 `f74ecc5c`. This source delta is not qualified or promoted to main.

@@ -7,7 +7,15 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: Builder full-checkpoint preparation; not ready for formal handoff. Review rounds: 1/3.**
+**Active cycle: C1-full-2026-10-08. Phase: Builder preparation blocked on external prerequisites; not ready for formal handoff. Review rounds: 1/3.**
+8 October blocker audit: the same native/live qualification prerequisites remain
+unavailable across three consecutive goal turns. Fresh checks confirm1.9GiB free,
+no watchOS runtime, no connected Android target, and no evaluation/OpenAI/embedding
+inputs in the checked local env files. iOS and Android attempts are terminal
+(exit70 and143). The Android compiler repair is on the preparation branch;
+whole C1 is unqualified. Wait for the requested capacity and authorized inputs;
+do not restart stopped builds, issue a partial handoff, advance C2 or claim the
+conditional completed-C1 pause.
 Builder's complete requirement-group preparation map is
 [`c1-builder-readiness-2026-10-08.md`](c1-builder-readiness-2026-10-08.md).
 User clarification applied: complete every C1 implementation state and prepare all
