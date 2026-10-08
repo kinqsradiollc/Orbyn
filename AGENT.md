@@ -14,7 +14,15 @@
 
 - **Full-checkpoint workflow:** complete the whole active ADR checkpoint (currently
   all C1), then **Test → Review**. Follow `docs/reviews/checkpoint-workflow.md`.
-  Do not repeatedly hand off individual features as if they completed the checkpoint.
+  **Handoff unit is the whole checkpoint, never an individual state or feature.**
+  “All states” means every row of the retained checkpoint requirements, including
+  success, empty, loading, error, recovery, authority and cross-client behavior;
+  it does not mean only the latest diff or the already passing subset.
+  Builder finishes every required implementation state and prepares all test
+  prerequisites before one consolidated Tester → Reviewer handoff. Missing code,
+  unfinished states or unavailable required test inputs keep ownership with Builder;
+  do not send a partial candidate just because one subset passes. Formal validation
+  belongs to Tester after readiness, not a claim Builder must pre-pass those tests.
   Review/fix cycles have a shared, recorded maximum of **3 review rounds**, not
   three required rounds. Reviewer may approve in any round when evidence supports
   it; verified fixes can close that same round. No silent counter reset.
@@ -23,10 +31,13 @@
   across backend/shared/web/desktop/mobile, freeze it, and hand it to Tester. Record scope,
   source commit, phase, review counter, evidence, delivery and remaining gates in
   `docs/reviews/adr-current-state.md` and the linked acceptance ledger.
+  Batch all returned findings into a complete revision before retesting; do not
+  send each fix separately. Product checkpoint promotion follows full acceptance.
 - **Orbyn Tester:** qualify the exact frozen candidate against the full checkpoint
   contract, publish a Markdown report with commands, results and missing gates,
   and retest Builder's fixes. Own formal test execution; send defects to Builder
   rather than patching source. Older green runs do not qualify changed code.
+  Wait for Builder's full-checkpoint readiness record; no per-state formal jobs.
 - **Orbyn Reviewer (review only):** inspect appropriate code, ADR coverage and
   existing test/visual evidence; publish actionable findings with paths, expected
   behavior and required verification for Builder. **Do not code, modify product or
