@@ -9,6 +9,7 @@ repository evidence; do not ask Builder to repeat a status already documented.
 | --- | --- |
 | `docs/reviews/adr-current-state.md` | Current stage, latest checkpoint, open acceptance gates; read its current summary before historical sections. |
 | `docs/reviews/adr-execution-order.md` | Canonical stage order and completion rules. |
+| `docs/reviews/checkpoint-workflow.md` | Full-checkpoint handoffs, role ownership and the maximum of three review rounds. |
 | `docs/reviews/devday-2026-implementation-review.md` | Full retained ADR scope; never redefine completion around implemented work. |
 | `docs/reviews/c1-acceptance-ledger.md` and linked checkpoint receipts | Exact source commits, test results, visual reports, failures and remaining gates for C1. Use later stages' linked receipts when reached. |
 | Git status, log, worktree list and remote refs | Distinguish uncommitted work, committed branch, local main and confirmed pushed main. |
@@ -45,6 +46,10 @@ percentages, invented dates, promised ETAs, or unsupported "no conflicts" claims
 
 - Builder updates authoritative artifacts at checkpoint transitions with the
   active worktree/branch, source commit, evidence, remaining gates and next step.
+- Track the active cycle ID, phase, candidate commit, review round (0–3), Tester
+  report and Reviewer report from the current-state artifact. Implementation,
+  test pass and review acceptance are separate states. Read their Markdown reports;
+  report missing evidence as unverified. Do not reset the counter or start a fourth round.
 - Tracker reads those artifacts and recent Builder activity before requesting an
   update. Ask a targeted question only when a material fact is missing/conflicting.
 - Builder need not post routine state tables; Tracker supplies them when asked.

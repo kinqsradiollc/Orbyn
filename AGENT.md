@@ -12,9 +12,21 @@
 
 ## Cross-session coordination
 
-- **Orbyn Builder:** implement one ADR checkpoint at a time, qualify it, and record
-  its source commit, checks, delivery state and remaining gates in
+- **Full-checkpoint workflow:** complete the whole active ADR checkpoint (currently
+  all C1), then **Test → Review**. Follow `docs/reviews/checkpoint-workflow.md`.
+  Do not repeatedly hand off individual features as if they completed the checkpoint.
+  Review/fix cycles have a shared, recorded maximum of **3 review rounds**; no silent reset.
+- **Orbyn Builder:** implement the full checkpoint across backend/shared/web/desktop/
+  mobile as applicable, freeze the candidate, and hand it to Tester. Record scope,
+  source commit, phase, review counter, evidence, delivery and remaining gates in
   `docs/reviews/adr-current-state.md` and the linked acceptance ledger.
+- **Orbyn Tester:** qualify the exact frozen candidate against the full checkpoint
+  contract, publish a Markdown report with commands, results and missing gates,
+  and retest fixes before another review. Older green runs do not qualify new code.
+- **Orbyn Reviewer:** review the tested candidate against the full contract and
+  test/visual evidence; publish findings and the numbered round. May make scoped
+  fixes while holding sole write ownership, then return the new candidate to Tester.
+  Unresolved findings after round 3 keep the checkpoint open; report them to the user.
 - **Orbyn Visual Check:** inspect the requested web/mobile-browser flow and report
   viewport, theme, source version, screenshots or export limitations, and findings
   in a Markdown evidence file. Builder reviews that evidence before UI acceptance.

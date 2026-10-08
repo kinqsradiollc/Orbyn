@@ -11,12 +11,13 @@ before starting C2/M1. This does not waive C1 acceptance or reduce the full ADR.
 
 ## Working rule
 
-Finish the active checkpoint before starting another product change. For each
-checkpoint: reproduce/audit, implement backend and both clients as applicable,
-run focused checks, obtain browser review, record remaining native/external gates,
-then commit and integrate a production-ready scope into main. Do not describe
-candidate-only or unverified behavior as shipped. A failing or incomplete gate
-keeps that checkpoint open. External gates remain explicit and do not erase scope.
+Complete the full active ADR checkpoint before the formal Test → Review handoff:
+currently this means all retained C1 scope. Builder implements, Tester qualifies
+the frozen candidate, and Reviewer reviews it and may fix scoped defects. Follow
+[the checkpoint workflow](checkpoint-workflow.md), including its recorded maximum
+of three review rounds and retesting after fixes. Record native/external gates;
+an incomplete gate keeps the checkpoint open. Only qualified scopes may integrate
+into main; candidate-only behavior is not shipped and pushed main is not deployment.
 
 On 8 October the user authorized Orbyn Visual Check to analyze the rendered UI
 and report findings, superseding its capture-only assignment for this checkpoint.
@@ -45,9 +46,9 @@ normal Docs activation stays queued under C4. Existing work is retained.
 | 7     | U1: final whole-app acceptance                       | Required within each stage; sampled checks only so far                 | Every named surface and cross-client feature, themes, narrow/wide/collapsed panels, large text, errors/loading/keyboard/overlays and native parity verified                              |
 | 8     | Final integration and cleanup                        | Pending                                                                | All retained ADR requirements reconciled and qualified on main; preserve user/character work; remove only safe merged branches/worktrees; user deploys manually                          |
 
-Within each stage, complete one feature checkpoint before another. UI/backend/
-shared/mobile work belongs to that feature's checkpoint, not a separate random
-workstream. Record a dependency or production incident before an exceptional
+Within each stage, implement its full scope in a coherent order before formal
+qualification and review. UI/backend/shared/mobile work belongs to that stage,
+not a separate random workstream. Record a dependency or production incident before an exceptional
 reorder; an incomplete external gate remains visible and is not waived. Do not
 move to the next canonical stage while claiming the current stage complete
 without its full acceptance evidence.

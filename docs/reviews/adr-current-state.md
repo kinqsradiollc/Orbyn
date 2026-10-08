@@ -7,6 +7,12 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
+**Active cycle: C1-full-2026-10-08. Phase: implementation. Review rounds: 0/3.**
+Builder acknowledges the full-checkpoint **Implement → Test → Review** workflow;
+see [the handoff and iteration rules](checkpoint-workflow.md). The full C1 candidate
+is not frozen or handed off yet. Tester and Reviewer reports for this cycle are
+pending. Existing receipts remain scoped historical evidence, not full C1 acceptance.
+
 Latest delivered checkpoint: personal scanner admission, merged and pushed as
 0c19e330 (productfed13851), full4322/4322, focused98/98 and backend types/build
 pass. Stage Tracker reporting rules are included. Production deployment remains
