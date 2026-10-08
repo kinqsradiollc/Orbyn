@@ -372,8 +372,10 @@ export async function selectNativeChatgptAccount(
       saved = refreshed.saved;
       check();
     }
-    if (!saved.grant.sharingGranted || saved.grant.expiresAt <= Date.now())
-      throw new Error("Enable ChatGPT plan usage and reconnect this account.");
+    // Selecting an identity is separate from granting inference permission.
+    // Executor and catalog entry points independently require plan-use scopes.
+    if (saved.grant.expiresAt <= Date.now())
+      throw new Error("Reconnect this ChatGPT account.");
     await live();
     if ((await storage.read(key)) !== original)
       throw new Error("The saved ChatGPT account changed. Try again.");

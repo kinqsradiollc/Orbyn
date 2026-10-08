@@ -1895,7 +1895,7 @@ test("switching has one exclusive cancellable lifetime while a refresh is in fli
   await rejected;
   assert.equal((await f.savedAccounts()).revision, before.revision);
 });
-test("native switch stops the previous executor and rejects plan-use-off target credentials", async () => {
+test("native identity-only selection stops the previous executor without enabling inference", async () => {
   const target = {
     ...connection,
     id: randomUUID(),
@@ -1912,12 +1912,12 @@ test("native switch stops the previous executor and rejects plan-use-off target 
   saved.grant.scopes = ["openid"];
   saved.grant.sharingGranted = false;
   f.storage.set(second.slot, JSON.stringify(saved));
-  await assert.rejects(
-    f.chooseAccount(target.id, second.revision),
-    /Enable ChatGPT plan usage/,
-  );
+  await f.chooseAccount(target.id, second.revision);
   await assert.rejects(runtime.heartbeat());
-  assert.equal((await f.savedAccounts()).selected, connection.id);
+  assert.equal((await f.savedAccounts()).selected, target.id);
+  await assert.rejects(f.executor());
+  await assert.rejects(f.models());
+  assert.equal(f.calls.responses, 0);
   runtime.close();
 });
 test("native Add account uses dynamic registration and preserves the existing selected credentials", async () => {
