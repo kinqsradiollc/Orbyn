@@ -7,7 +7,7 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: consolidated Tester qualification of frozen1a92a2c0. Review rounds: 1/3.**
+**Active cycle: C1-full-2026-10-08. Phase: round2 code review complete; evidence closure pending for frozen1a92a2c0. Review rounds: 2/3.**
 The user resumed work and removed iOS builds and Android-specific verification on
 8 October. Missing native mobile runtimes/devices and build capacity are no longer
 C1 gates; do not restart those jobs. Previous blocker records are historical.
@@ -20,22 +20,30 @@ User clarification applied: complete every C1 implementation state and prepare a
 qualification prerequisites before one consolidated Test → Review handoff. No more
 formal partial-state jobs or per-fix handoffs. Earlier qualified main delivery and
 retest receipts remain historical evidence, not full-C1 completion. Builder owns all code and freezes application/test source. Tester owns consolidated
-qualification; Reviewer waits for its Markdown report. Current review counter is retained.
+qualification; Reviewer has completed the full round-2 code/evidence assessment. Review counter is 2/3.
 
 Current handoff: `c1-consolidated-final-handoff-2026-10-08.md` on candidate
 `1a92a2c0` in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
-Development34/34 consent/control tests and mobile TypeScript pass; formal Tester
-results remain pending. Main9768f350 contains role/scope docs, not this product
-candidate. No C1 acceptance, production deployment or C2 advancement is claimed.
+Consolidated Tester208/208, workspace types and production build pass; older
+4337/69/migration/runtime receipts retain exact source equivalence and original
+provenance. [Tester report](c1-full-2026-10-08-final-test-1a92a2c0.md) is on
+maine9f90593. [Round2 review](c1-full-2026-10-08-review-r2.md) found no new code
+defect. Full acceptance remains open for E1 Electron interaction (pending Computer
+Use app approval) and E2 genuine200% evidence or explicit user disposition.
+QA040001 DOM closure is complete; actual AT behavior remains untested. D1 record
+reconciliation is delivered for Reviewer inspection. Productcandidate1a92a2c0 is
+not on main. No C1 acceptance, production deployment or C2 advancement is claimed.
 
 | Full-checkpoint readiness | Current evidence / action |
 | --- | --- |
-| Scope/state map | Retained C1 contract and round-1 full requirement audit remain governing; reconcile every row before handoff. |
-| Implementation | Reviewed local correction findings closed; current code is delivered. Builder must resolve any remaining implementation state discovered during full reconciliation. |
-| Test prerequisites | Live cache/embedding probes are approved follow-ups, not handoff blockers. Existing Matilda baseline and synthetic runtime receipts are available. Complete bounded browser evidence; native iOS/Android jobs are excluded. |
-| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer waits; next full review2/3. |
+| Scope/state map | All12 retained groups reconciled in consolidated Tester and round2 Reviewer reports; current user overrides apply. |
+| Implementation | R1/QA040 local defects closed; no new actionable product-code defect found in round2. Frozencandidate1a92a2c0 awaits full acceptance, not product delivery. |
+| Remaining evidence | E1 bounded Electron check pending app approval; E2 genuine200% evidence or user disposition pending. Live cache/embedding are follow-ups; iOS/Android excluded. |
+| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer round2/3 complete; E1/E2 evidence and D1 record reconciliation pending. |
 
-Frozen candidate `3ccf8f578d3e355238ee55478e7d5e02b2b68b67` is clean on
+## Historical predecessor evidence — retained source scopes
+
+Earlier frozen candidate `3ccf8f578d3e355238ee55478e7d5e02b2b68b67` is clean on
 `codex/c1-full-completion` in
 `/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`.
 Tester independently passed205/205, workspace typechecks and iOS/Android exports.
@@ -48,7 +56,8 @@ repair is independently tested and Reviewer has closed QA038001/002 within
 round1. R1-001/002/003 local correction findings are closed; full gates stay open. Its earlier
 Reviewer coding ownership is historical: maina5e5028a now assigns every source fix
 to Builder, all formal execution to Tester, and review-only inspection to Reviewer.
-No new full review/counter increment has started. Builder corrected the QA040 consent accessible name on candidate0fe6b087.
+That round1 closure did not consume another round. Builder later corrected QA040
+on0fe6b087; consolidated1a92a2c0 now has completed full round2 review.
 
 QA039 is finalized/stopped: isolated login and scoped cross-client provider
 create/cancel/edit/key/toggle/manual/default outcomes are recorded. API cleanup
@@ -98,7 +107,7 @@ and catalog client interaction coverage. External/native acceptance stays open.
 
 Remaining C1 execution order: frozen1a92a2c0 and consolidated evidence are with
 Tester. QA040's named accessible-consent defect is closed; Tester qualifies the retained
-scope, then Reviewer reviews it (next full round2/3). Resolve findings as a batch,
+scope, and Reviewer has completed round2/3. Close E1/E2/D1 within that round,
 record full acceptance/main push, then pause before C2/M1. The approved live
 follow-ups remain unknown, not claimed measured. Native iOS/Android jobs stay
 excluded. Genuine200% enlargement is unsupported by the exposed internal-browser

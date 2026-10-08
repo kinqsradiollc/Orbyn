@@ -10,13 +10,15 @@ evidence can qualify C1, with unknown cost/vendor outcomes reported honestly. Fu
 
 # C1 Builder readiness
 
-Status: **Complete retained candidate frozen; consolidated Tester qualification active**.
-Review counter remains **1/3**.
+Status: **Retained candidate tested; round2 code review complete, evidence closure pending**.
+Review counter is **2/3**; no reset or automatic third review.
 Frozen full candidate: `1a92a2c0` (contains product correction `0fe6b087`) on `codex/c1-production-checkpoint`
 in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
 It includes the retained full C1 implementation, prior capture-module repair,
 and QA-040-001 mobile consent accessible-name correction. The latter passes
-34 focused development tests and awaits consolidated Tester qualification.
+34 focused development tests; consolidated current-source208/208, workspace
+types/build pass. Exact unchanged backend source retains original4337/69 and
+independent migration/runtime receipts, without a new full aggregate claim.
 No product subset is promoted before full C1 acceptance.
 
 ## Full state inventory
@@ -51,8 +53,10 @@ source. No vendor requests or native jobs are needed for the label recheck.
 
 Builder owns source fixes, packages and prerequisites. Tester waits for the whole
 ready candidate; Reviewer waits for consolidated Tester evidence. The consolidated handoff is `c1-consolidated-final-handoff-2026-10-08.md`
-on the frozen candidate. Tester now owns formal qualification; Reviewer waits
-for its report, with the next full review recorded as2/3 before it begins.
+on the frozen candidate. Tester completed executable qualification; Reviewer completed round2 without
+a new product-code defect. E1 bounded Electron interaction awaits Computer Use
+app approval. E2 genuine200% evidence or explicit user disposition remains open.
+Current records are reconciled for D1; Reviewer inspects closure within round2.
 
 The read-only installed inventory is in
 `c1-installed-qualification-readiness-2026-10-08.md`: existing packages cannot
