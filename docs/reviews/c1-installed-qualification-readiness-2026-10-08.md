@@ -95,4 +95,3 @@ build or SSR rendering as installed-device proof.
 No further native action was taken. C1 remains under Builder's whole-checkpoint
 preparation; the requested pause before C2/M1 remains conditional on completing
 and qualifying all C1 requirements.
-

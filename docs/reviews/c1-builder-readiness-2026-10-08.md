@@ -42,6 +42,29 @@ source-bound Electron artifact in the clean
 `codex/c1-production-checkpoint` worktree. The primary checkout's user-owned
 `mobile/app.json` changes remain untouched.
 
+### Desktop prerequisite prepared
+
+Builder rebuilt shared packages, built the desktop renderer with the isolated
+QA API `http://127.0.0.1:8010`, then packaged an unsigned macOS arm64 Electron
+app. Both build and final packaging exited **0**. The initial build used stale
+shared dist files and failed; rebuilding the shared packages resolved those
+errors without source changes. An unnecessary signing attempt was terminated
+(exit143), then local-only packaging explicitly disabled signing.
+
+- Clean source: `f7a48abf`, `codex/c1-production-checkpoint`; product tree
+  identical to main `e6c4c75b`/`3ccf8f57`.
+- App: `/tmp/orbyn-c1-desktop-source-package-unsigned-20261008/mac-arm64/Orbyn.app`.
+- Manifest: `/tmp/orbyn-c1-desktop-source-package-unsigned-20261008/source-manifest.json`.
+- Archive SHA256: `63e9a0a4269c80d8edec44a5d35ea14082d27fbf7df6df7a51b68ebefd30645f`.
+- All172 checked dist/preload/Electron files match the source-bound archive.
+- Logs: `/tmp/orbyn-c1-desktop-package-build-20261008.log` and
+  `/tmp/orbyn-c1-desktop-package-unsigned-20261008.log`.
+
+Packaging reported the default icon and unresolved dependency-discovery warnings.
+This artifact has not been launched or installed; runtime correctness, native
+interaction and persistence remain unqualified. It is a local QA prerequisite,
+not a release or a Tester handoff. iOS/Android prerequisites remain open.
+
 Live provider/cache/embedding configuration is a pending external prerequisite.
 No fabricated vendor, installed-device, text-enlargement or full-C1 acceptance
 is recorded. C2 remains unstarted and the pause stays conditional on full C1.
