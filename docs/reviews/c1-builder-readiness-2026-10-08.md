@@ -82,6 +82,9 @@ capture module's legacy Expo Gradle setup omitted `compileSdk`. Builder migrated
 that module to the current Expo plugin on the C1 branch. The revised assembly
 passed configuration and reached compilation/bundling, but stopped for disk
 capacity (exit143); no mobile package or native acceptance is claimed.
+Retained-log inspection also confirms the capture module's Kotlin/Java compile,
+library bundling and manifest tasks completed; this scopes the repair evidence
+without turning an interrupted APK build into a pass.
 
 Builder removed only its own new native build outputs, recovering space from
 390MiB to1.9GiB. More free disk, the missing runtime and an Android execution
