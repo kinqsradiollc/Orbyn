@@ -25,6 +25,14 @@ From `conventions-skill`: kebab-case.ts files, PascalCase components/types, came
 
 ## UI Conventions
 
+- **Design skill:** read `skills/orbyn-ui-design/SKILL.md` for visible UI changes.
+  Its referenced rules cover compact type, responsive panels, AI controls and visual acceptance.
+- **Compact and readable:** use shared text roles; reserve display headings for deliberate
+  hero content. Keep user text scaling enabled and reflow layouts instead of shrinking text.
+- **No unintended overlap:** adapt to the remaining pane width, wrap or stack controls,
+  and collapse secondary panels before they obscure the main task. Verify open overlays,
+  short heights, long labels, both themes and enlarged text in the changed flow.
+
 - **Colours:** never change the palette. Use theme tokens (`var(--color-*)` on web, `colors.*` on mobile); no colour literals in new code.
 - **Corners:** web uses the radius scale in `desktop/src/styles/global.css` — `--radius-xs` (4, bars and marks), `--radius-sm` (8, controls), `--radius-md` (12, cards and panels), `--radius-lg` (16, dialogs), `--radius-pill`. Mobile uses `radii.input` / `radii.card` / `radii.pill` (and `radii.check` for checkboxes). No raw pixel radii.
 - **Controls are ours, not the browser's:** `Select` (`components/Select.tsx`) instead of `<select>`, `DateField` (`components/DateField.tsx`) instead of `<input type="date|time|datetime-local">`. Bare fields, checkboxes and radios are styled at zero specificity in `global.css`; a switch is a checkbox with `role="switch"` and `className="ai-switch"`. Mobile switches set `trackColor={{ true: colors.accent }}`.

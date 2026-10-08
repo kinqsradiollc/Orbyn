@@ -5,6 +5,9 @@ Skills are used by the BrainRouter agent to guide its behavior when working on t
 
 ## Enabled Skills
 
+- [`orbyn-ui-design/SKILL.md`](orbyn-ui-design/SKILL.md) - Orbyn UI/UX rules,
+  responsive layouts, compact typography, AI interactions and visual review
+
 - `planning-skill.md` - Breaks work into ordered tasks
 - `spec-driven-skill.md` - Creates specs before coding
 - `adr-skill.md` - Architecture decision records
@@ -17,6 +20,11 @@ Skills are used by the BrainRouter agent to guide its behavior when working on t
 - `verify-loop.md` - Verification loop
 
 ## Usage
+
+For visible UI work, `AGENT.md` routes agents to `orbyn-ui-design/SKILL.md`.
+This folder uses standard skill frontmatter and includes its research/rules.
+It is repository guidance; no global skill installation or BrainRouter automatic
+registration is implied by creating it.
 
 When working on Orbyn, the BrainRouter agent will automatically load these skills
 based on the workspace configuration in `.brainrouter/workspace.json`.
