@@ -35,10 +35,12 @@ loading/503/explicit retry reports. Scoped normal-browser checks pass; two marke
 fixtures are removed with other jobs preserved, direct API8008 restored, and
 API/web/mobile return200. Evidence-only checkpoint5b427293 is merged and pushed. No new UI fix or
 vendor request was made. See [usage review](c1-managed-usage-visual-review.md).
-Next implementation checkpoint is entrypoint/recovery matrix reconciliation.
+Local entrypoint/recovery reconciliation is recorded in
+[the source/test matrix](c1-entrypoint-recovery-matrix.md); no additional
+first-party text routing bypass was found. Next checkpoint is saved-connection
+and catalog client interaction coverage. External/native acceptance stays open.
 
-Remaining C1 execution order after this usage checkpoint: reconcile the complete
-entrypoint/recovery matrix; finish saved-connection/catalog interaction coverage;
+Remaining C1 execution order: finish saved-connection/catalog interaction coverage;
 qualify permitted live provider and cache benchmarks; complete embedding recipient,
 dimension/reindex/permission/recovery acceptance; close remaining cross-client,
 enlargement and installed-native gates. Preserve unresolved external gates rather
@@ -226,7 +228,7 @@ A passing fixture or sampled view does not close its named external/native gate.
 
 | C1 requirement                           | Implemented / qualified evidence                                                                                         | Open acceptance                                                                                |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| Managed, BYO and personal authority      | Immutable job choice, private/managed isolation and explicit fallback/provenance checkpoints on main                     | Complete entry-point/recovery matrix and actual permitted provider acceptance                  |
+| Managed, BYO and personal authority      | Immutable job choice, private/managed isolation and explicit fallback/provenance checkpoints on main                     | Local source/test entrypoint matrix reconciled; actual permitted provider and installed recovery acceptance open                  |
 | Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Current-source browser/native management and credential-test interactions                      |
 | Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching |
 | Generation wire formats                  | Main native Responses/Messages, Zen and Perplexity Agent recovery; compatible/Azure/Matilda fixtures                     | Broader actual supported-model qualification                                                   |
