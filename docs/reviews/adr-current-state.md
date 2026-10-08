@@ -6,8 +6,8 @@ Updated 9 October 2026. Follow the full contract in
 Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
-**C1 complete under the final user-approved scope. C2/M1 resumed: implementation in progress.**
-**Active cycle: C2-full-2026-10-08. Phase: scope reconciliation and implementation.
+**C1 complete under the final user-approved scope. C2/M1 blocked on hosted ChatGPT-plan integration.**
+**Active cycle: C2-full-2026-10-08. Phase: blocked pending hosted integration contract or explicit scope disposition.
 Review rounds: 0/3; no frozen candidate or formal handoff yet.**
 
 Candidate checkout: `adr-release-qualification/Orbyn`, branch
