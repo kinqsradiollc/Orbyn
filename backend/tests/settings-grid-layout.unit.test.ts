@@ -8,7 +8,13 @@ const cssUrl = new URL(
 );
 
 /** Evaluate the relevant class rules in source order, including media nesting. */
-function gridColumns(css: string, width: number, pairs = false) {
+function gridColumns(
+  css: string,
+  width: number,
+  pairs = false,
+  property = "grid-template-columns",
+  className = "",
+) {
   let result = "";
   let specificity = -1;
   function visit(source: string, enabled: boolean) {
@@ -31,11 +37,16 @@ function gridColumns(css: string, width: number, pairs = false) {
         continue;
       }
       if (!enabled) continue;
-      const value = /grid-template-columns:\s*([^;]+);/.exec(body)?.[1].trim();
+      const value = new RegExp(property + ":\\s*([^;]+);")
+        .exec(body)?.[1]
+        .trim();
       if (!value) continue;
       for (const part of selector.split(",").map((item) => item.trim())) {
-        const score =
-          part === ".settings-grid"
+        const score = className
+          ? part === "." + className
+            ? 1
+            : -1
+          : part === ".settings-grid"
             ? 1
             : pairs && part === ".settings-grid.settings-pairs"
               ? 2
@@ -80,4 +91,58 @@ test("settings field and secret surfaces use existing theme tokens", async () =>
   for (const token of ["surface", "surfaceMuted", "text", "border", "muted"]) {
     assert.ok(css.includes(`var(--color-${token})`));
   }
+});
+
+test("phone settings expose exactly one navigation control through the final CSS cascade", async () => {
+  const css = await readFile(cssUrl, "utf8");
+  const display = (width: number, name: string, source = css) =>
+    gridColumns(source, width, false, "display", name);
+  for (const width of [320, 390, 560, 600]) {
+    assert.equal(display(width, "settings-navigation-wide"), "none");
+    assert.equal(display(width, "settings-navigation-compact"), "block");
+  }
+  for (const width of [601, 900]) {
+    assert.equal(display(width, "settings-navigation-wide"), "flex");
+    assert.equal(display(width, "settings-navigation-compact"), "none");
+  }
+  assert.equal(display(1280, "settings-navigation-wide"), "grid");
+  assert.equal(display(1280, "settings-navigation-compact"), "none");
+  assert.equal(
+    display(
+      320,
+      "settings-navigation-wide",
+      css + "\n.settings-navigation-wide { display: grid; }",
+    ),
+    "grid",
+    "the evaluator must detect later regressions rather than merely finding the media rule",
+  );
+});
+
+test("phone theme controls use three shrinkable columns inside their card", async () => {
+  const css = await readFile(cssUrl, "utf8");
+  for (const width of [320, 390, 560, 600]) {
+    const property = (name: string) =>
+      gridColumns(css, width, false, name, "theme-preference > .segmented");
+    assert.equal(property("display"), "grid");
+    assert.equal(property("grid-template-columns"), "repeat(3, minmax(0, 1fr))");
+    assert.equal(property("width"), "100%");
+    assert.equal(property("min-width"), "0");
+  }
+  assert.notEqual(
+    gridColumns(css, 601, false, "display", "theme-preference > .segmented"),
+    "grid",
+    "wide settings retain the existing compact theme control",
+  );
+});
+
+test("theme labels can wrap at enlarged text sizes without hiding their content", async () => {
+  const css = await readFile(cssUrl, "utf8");
+  const property = (name: string) =>
+    gridColumns(css, 320, false, name, "theme-preference > .segmented button");
+  assert.equal(property("min-width"), "0");
+  assert.equal(property("flex-wrap"), "wrap");
+  assert.equal(property("overflow-wrap"), "anywhere");
+  assert.equal(property("padding-inline"), "6px");
+  assert.notEqual(property("overflow"), "hidden");
+  assert.equal(property("font-size"), "", "retain shared readable text size");
 });
