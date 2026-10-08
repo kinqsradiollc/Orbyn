@@ -7,21 +7,17 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: implementation. Review rounds: 0/3.**
-Implementation owner: Orbyn Builder. Checkout:
-`/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`, branch
-`codex/c1-full-completion`, current product source `98b82af6` (not on main).
-Provider reload/retry parity and embedding search-strategy reporting are implemented.
-Development checks: lifecycle17/17, pgvector operational cohort30/30; backend,
-desktop and mobile types pass. These are not formal full-cycle qualification.
-Orbyn Visual Check is gathering saved-provider/catalog/keyboard evidence; Orbyn
-Tester is preparing the full qualification plan and has not received a frozen
-candidate. Full C1 acceptance and review remain pending.
-
-Builder acknowledges the full-checkpoint **Implement → Test → Review** workflow;
-see [the handoff and iteration rules](checkpoint-workflow.md). The full C1 candidate
-is not frozen or handed off yet. Tester and Reviewer reports for this cycle are
-pending. Existing receipts remain scoped historical evidence, not full C1 acceptance.
+**Active cycle: C1-full-2026-10-08. Phase: testing handoff. Review rounds: 0/3.**
+Builder's full local C1 implementation pass is recorded in
+[the complete candidate handoff](c1-full-2026-10-08-handoff.md), with
+[the Tester plan](c1-full-2026-10-08-qualification-plan.md).
+Checkout `/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`, branch
+`codex/c1-full-completion`: freeze the commit containing this handoff; not on main.
+Builder stops product/test edits during Tester execution. Reviewer has not started.
+Development lifecycle17/17, pgvector30/30 and provider-receipt20/20 pass; these
+are not full-cycle qualification. Full C1 acceptance and formal review remain
+pending, including explicit live-provider/cache, enlargement and installed gates.
+Existing receipts remain scoped historical evidence.
 
 Latest delivered checkpoint: personal scanner admission, merged and pushed as
 0c19e330 (productfed13851), full4322/4322, focused98/98 and backend types/build

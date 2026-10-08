@@ -200,6 +200,8 @@ test("provider test checks displayed revision before dispatch and retains legacy
   assert.equal(r.statusCode, 200);
   assert.equal(r.json().ok, true);
   assert.equal(r.json().model, "fixture-model");
+  assert.equal(r.json().message, "Connected. fixture-model replied.");
+  assert.ok(Number.isInteger(r.json().latency_ms));
   assert.notEqual(r.json().provider_revision, p.controls_revision);
 });
 for (const change of [

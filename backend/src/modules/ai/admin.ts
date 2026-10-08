@@ -505,7 +505,7 @@ export async function aiAdminRoutes(app: FastifyInstance) {
         provider_revision: revision,
         model,
         latency_ms: latency,
-        message: `Connected. ${model} replied in ${latency} ms.`,
+        message: `Connected. ${model} replied.`,
         ...(usage ? { usage } : {}),
       };
     } catch (error) {
