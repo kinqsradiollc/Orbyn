@@ -432,3 +432,21 @@ The earlier credential-handoff interpretation was corrected to the ordinary
 authorized file-read/form-fill workflow; it was not a browser policy rejection.
 Credentials remain excluded from reports, manifests and screenshots. No saved
 post-fix originals or root visual acceptance are claimed while this batch runs.
+
+
+## QA-035 current-source large/unknown counters — 8 October 2026
+
+Owner: Orbyn Builder; delegated reviewer: Orbyn Visual Check. Source0bad2971,
+branchcodex/c1-usage-state-acceptance; current UI is unchanged from QA-033.
+The local disposable QA account has exactly two marked synthetic jobs; fixture
+identity is in `/tmp/orbyn-c1-usage-visual-fixture-qa035-20261008.json`.
+API receipt `/tmp/orbyn-c1-usage-overflow-api-qa035-20261008.json` confirms200,
+requests2, inputnull (unsafe aggregate omitted), output9007199254740000,
+reasoning40, cached input1000 and cache write100. Vendor calls0. These are display
+fixtures, not real usage, billing, quota or plan evidence.
+
+QA-035 will inspect current same-tab web320/390/768/1280 and mobile-browser320/390,
+Light/Dark, wrapping, reachable refresh/disclosure/close, keyboard and short height.
+Rendered acceptance is pending. Loading/error/retry follows this phase; cleanup
+must delete only the two recorded owned jobs and preserve all other QA work.
+QA-034 enlargement remains blocked and installed-native acceptance is separate.

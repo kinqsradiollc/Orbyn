@@ -29,6 +29,13 @@ tasks and Overnight. Productfed13851 passes focused98/98, backend types/build,
 and full4322/4322 (exit0, no failures/skips/cancellations). Merged and pushed to main0c19e330; application/test source stayed frozen
 through qualification. See
 [scanner qualification](c1-personal-scanner-admission.md).
+Current work: remaining C1 usage-state browser acceptance, on
+`codex/c1-usage-state-acceptance` in the C1 qualification worktree. QA-035 is
+assigned synthetic large/unknown counters on both browser clients; API200 is
+verified but rendered acceptance is pending. Next in this checkpoint is controlled
+loading/error/retry, then cleanup of the two marked QA jobs. No vendor call or
+production data is involved; no UI source change has been made.
+
 QA-034 confirms genuine enlargement remains unavailable in the internal browser;
 no enlarged Settings/mobile acceptance is claimed. Stage Tracker reporting sources
 and format are defined in [its guide](stage-tracker-guide.md).
