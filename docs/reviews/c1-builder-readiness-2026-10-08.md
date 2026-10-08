@@ -10,7 +10,7 @@ evidence can qualify C1, with unknown cost/vendor outcomes reported honestly. Fu
 
 # C1 Builder readiness
 
-Status: **Retained candidate tested; round2 code review complete, evidence closure pending**.
+Status: **Corrected desktop startup ready; consolidated environment impact retest and bounded E1 check assigned**.
 Review counter is **2/3**; no reset or automatic third review.
 Frozen full candidate: `1a92a2c0` (contains product correction `0fe6b087`) on `codex/c1-production-checkpoint`
 in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
@@ -54,8 +54,11 @@ source. No vendor requests or native jobs are needed for the label recheck.
 Builder owns source fixes, packages and prerequisites. Tester waits for the whole
 ready candidate; Reviewer waits for consolidated Tester evidence. The consolidated handoff is `c1-consolidated-final-handoff-2026-10-08.md`
 on the frozen candidate. Tester completed executable qualification; Reviewer completed round2 without
-a new product-code defect. E1 bounded Electron interaction awaits Computer Use
-app approval. E2 genuine200% evidence or explicit user disposition remains open.
+a new product-code defect. E1 failed actual package startup with missinglib0; Builder installed dependencies
+from the lockfile and rebuilt the unsigned package, exit0. lib0/yjs are included;
+actual renderer starts in isolated temporary profile with no module-load error.
+Source1a92a2c0 remains unchanged. Tester has the complete source/environment/artifact
+impact handoff; Visual owns only the existing bounded C1 desktop check. E2 genuine200% evidence or explicit user disposition remains open.
 Current records are reconciled for D1; Reviewer inspects closure within round2.
 
 The read-only installed inventory is in
