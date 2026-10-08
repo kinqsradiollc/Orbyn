@@ -1,5 +1,26 @@
 # C1 acceptance ledger
 
+## Personal scanner admission candidate — 8 October 2026
+
+Frozen product candidate `fed13851` corrects the shared managed-provider gate in
+all five personal automation scanners. Per-owner admission runs before batch
+limits and claims; offline personal bindings can enqueue without managed AI.
+Explicit fallback and captured dispatch authority remain separate requirements.
+
+Original five reproductions failed before implementation. Expanded new tests
+pass22/22; the scanner/worker/admission/managed-authority cohort passes98/98,
+exit0, no skips/cancellations (18298.397208ms). Backend typecheck and diff check
+pass. Full backend regression is running in a fresh marked database; do not infer
+completion from partial TAP output. Main remains18c1e229 until qualification.
+See [the scoped receipt](c1-personal-scanner-admission.md).
+
+Documentation-only follow-up `db896872` defines Builder/Visual Check/Stage Tracker
+responsibilities. It does not change the frozen application or test source.
+Visual Check has been assigned an actual enlargement/keyboard Settings review
+against the unchanged UI; that acceptance remains pending. No C1 completion,
+installed-native qualification or production deployment is claimed.
+
+
 ## Corrected Settings focus/landscape candidate — 8 October 2026
 
 **Delivered as main7260db93 from clean frozen d672fc50.** Full4262/4262 passes,
