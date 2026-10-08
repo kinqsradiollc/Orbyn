@@ -126,3 +126,10 @@ usage rows remain, and other jobs were preserved. Receipt:
 This qualifies the Agenda/page usage correction with cross-client truthful copy.
 It does not close error/overflow, enlarged/native, vendor, scanner availability,
 or overall C1 gates. Next ordered implementation is personal scanner admission.
+
+## Main delivery
+
+Qualified branch fast-forwarded and pushed to main as e90699c4. Product source
+2f6c7f82 is included. Primary mobile/app.json SHA-1 remains
+`dacd602172347441f2fd92f16d8772b3ba1ef7a8`; unrelated untracked files were preserved.
+This records repository delivery, not production deployment or full C1 completion.

@@ -7,25 +7,24 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-Latest delivered product checkpoint: chat maintenance provider authority, merged
-and pushed as a5d2274f. Frozen full4286/4286, focused103/103, actual migration258
-upgrade1/1 and backend types/build pass. Memory and chat compaction now retain
-captured owner/provider/model authority and recovery identity. Reopening/pinning
-revokes compaction without counting a failed attempt. Deployment pauses the old
-notifier before migration. The earlier f5445544 full failure remains recorded;
-its corrected re-entry assertion passes in the final full suite. See
-[the maintenance receipt](c1-chat-maintenance-authority.md).
+Latest delivered checkpoint: managed Agenda/page usage and truthful client copy,
+merged and pushed as e90699c4 (product2f6c7f82). Frozen backend candidate15c4a8e3
+passed4300/4300; post-full copy/legal checks15/15, both client types and web build
+pass. QA-033 delegated review accepts positive usage on both browser clients at
+320×740/1280×800, Light/Dark. Synthetic fixtures were removed. Existing local
+mobile/app.json and unrelated files are preserved. Production deployment remains
+user-owned and unconfirmed. See [the receipt](c1-entrypoint-usage-and-availability.md).
 
-Next C1 checkpoint: [managed entrypoint usage](c1-entrypoint-usage-and-availability.md).
-The branch now corrects missing observed usage receipts for managed Agenda
-briefs and hosted maintained pages. Focused125/125 and backend types/build pass;
-after disk recovery, frozen15c4a8e3 full4300/4300 passes. The subsequent copy/privacy
-correction passes UI/legal15/15, both client types and web build. QA-033 accepts corrected positive
-usage rendering on web/mobile browser320/1280, both themes. Product2f6c7f82 is
-qualified for scoped integration; receipt below will record main delivery.
-After those are qualified and integrated,
-correct the independently reproduced global-provider availability gate affecting
-all five personal automation scanners. No next-stage implementation has begun.
+Earlier maintenance authority checkpoint a5d2274f remains delivered, with full4286/4286,
+focused103/103 and actual migration258 upgrade1/1. Its captured owner/provider/model
+authority and deployment notifier pause remain qualified.
+
+Next C1 implementation: correct the global-provider availability gate affecting
+all five personal automation scanners. Reproductions exist for goals, ideas,
+routines, tasks and Overnight. Reuse the canonical per-user admission contract;
+preserve explicit fallback, source/claim guards and durable offline behavior.
+No next-stage implementation has begun. Remaining enlarged/native, error/overflow,
+live-provider/cache and embedding acceptance gates remain open.
 
 Compact Settings density/copy/focus checkpoint7260db93 remains qualified by its
 full4262/4262, focused31/31, desktop types/web build and scoped QA-030 review.
