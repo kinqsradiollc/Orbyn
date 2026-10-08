@@ -33,10 +33,10 @@ owner, without starting inference. Overnight expiry/notice cleanup is unchanged.
 | Original five scanner reproductions | 0/5 before; 5/5 after |
 | Expanded scanner tests | 22/22 |
 | Scanner, existing worker, admission and managed authority cohort | 98/98; exit 0; no skips/cancellations |
-| Backend typecheck | Passed |
+| Backend typecheck / production build | Passed |
 | Diff whitespace | Passed |
-| Full backend regression | Pending frozen candidate |
-| Main delivery | Pending |
+| Full backend regression | 4322/4322 on fed13851; exit0/signal:null; no failures/skips/cancellations; 811917.458ms |
+| Main delivery | Qualified; integration pending |
 
 Focused log: `/tmp/orbyn-c1-scanner-admission-v3-focused-20261008.log`.
 The cohort verifies all five personal/offline/disabled/unavailable cases,
@@ -48,3 +48,9 @@ No external model call, new UI or production deployment is claimed.
 Remaining C1 acceptance includes broader entrypoint/recovery and connection
 matrices, live provider/cache and embedding qualification, error/overflow usage,
 and enlarged-text/native acceptance. This checkpoint does not complete C1.
+
+Full log: `/tmp/orbyn-c1-scanner-admission-full-focused-20261008.log`.
+Terminal receipt: `/tmp/orbyn-c1-scanner-admission-full-focused-terminal-20261008.json`.
+The live tool session84118 terminated with exit0. Changes after fed13851 are
+repository instructions and evidence documentation only; application/test source
+is identical to the frozen candidate. Production deployment remains user-owned.

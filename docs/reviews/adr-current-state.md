@@ -19,11 +19,14 @@ Earlier maintenance authority checkpoint a5d2274f remains delivered, with full42
 focused103/103 and actual migration258 upgrade1/1. Its captured owner/provider/model
 authority and deployment notifier pause remain qualified.
 
-Active C1 implementation: per-owner provider admission now covers goals, ideas,
-routines, tasks and Overnight in the isolated scanner branch. Focused checks pass
-98/98 and backend types pass; full regression and main delivery remain pending.
-See [scanner qualification](c1-personal-scanner-admission.md). Explicit fallback,
-source/claim guards and durable offline behavior remain required.
+Active C1 checkpoint: per-owner provider admission covers goals, ideas, routines,
+tasks and Overnight. Productfed13851 passes focused98/98, backend types/build,
+and full4322/4322 (exit0, no failures/skips/cancellations). Main integration is
+pending; application/test source stayed frozen through qualification. See
+[scanner qualification](c1-personal-scanner-admission.md).
+QA-034 confirms genuine enlargement remains unavailable in the internal browser;
+no enlarged Settings/mobile acceptance is claimed. Stage Tracker reporting sources
+and format are defined in [its guide](stage-tracker-guide.md).
 No next-stage implementation has begun. Remaining enlarged/native, error/overflow,
 live-provider/cache and embedding acceptance gates remain open.
 

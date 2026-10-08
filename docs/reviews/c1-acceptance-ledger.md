@@ -10,8 +10,9 @@ Explicit fallback and captured dispatch authority remain separate requirements.
 Original five reproductions failed before implementation. Expanded new tests
 pass22/22; the scanner/worker/admission/managed-authority cohort passes98/98,
 exit0, no skips/cancellations (18298.397208ms). Backend typecheck and diff check
-pass. Full backend regression is running in a fresh marked database; do not infer
-completion from partial TAP output. Main remains18c1e229 until qualification.
+pass. Full backend regression on fed13851 finished4322/4322, exit0/signal:null,
+zero failures/skips/cancellations,811917.458ms. Backend production build passes.
+Post-freeze changes are documentation only. Main integration is next.
 See [the scoped receipt](c1-personal-scanner-admission.md).
 
 Documentation-only follow-up `db896872` defines Builder/Visual Check/Stage Tracker
