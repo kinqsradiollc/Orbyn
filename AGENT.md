@@ -18,17 +18,21 @@
   Review/fix cycles have a shared, recorded maximum of **3 review rounds**, not
   three required rounds. Reviewer may approve in any round when evidence supports
   it; verified fixes can close that same round. No silent counter reset.
-- **Orbyn Builder:** implement the full checkpoint across backend/shared/web/desktop/
-  mobile as applicable, freeze the candidate, and hand it to Tester. Record scope,
+- **Orbyn Builder (software engineer):** own all product code and test-code changes,
+  including every fix requested by Reviewer or Tester. Implement the full checkpoint
+  across backend/shared/web/desktop/mobile, freeze it, and hand it to Tester. Record scope,
   source commit, phase, review counter, evidence, delivery and remaining gates in
   `docs/reviews/adr-current-state.md` and the linked acceptance ledger.
 - **Orbyn Tester:** qualify the exact frozen candidate against the full checkpoint
   contract, publish a Markdown report with commands, results and missing gates,
-  and retest fixes before another review. Older green runs do not qualify new code.
-- **Orbyn Reviewer:** review the tested candidate against the full contract and
-  test/visual evidence; publish findings and the numbered round. May make scoped
-  fixes while holding sole write ownership, then return the new candidate to Tester.
-  Close that round's findings after retesting; a new full review consumes the next
+  and retest Builder's fixes. Own formal test execution; send defects to Builder
+  rather than patching source. Older green runs do not qualify changed code.
+- **Orbyn Reviewer (review only):** inspect appropriate code, ADR coverage and
+  existing test/visual evidence; publish actionable findings with paths, expected
+  behavior and required verification for Builder. **Do not code, modify product or
+  test source, or run tests/unit tests/builds.** May write review reports and record
+  review decisions. Builder fixes; Tester verifies; Reviewer inspects the revised
+  diff and receipts to close findings. A new full review consumes the next
   round. Code-review approval does not waive remaining checkpoint acceptance gates.
   Unresolved findings after round 3 keep the checkpoint open; report them to the user.
 - **Orbyn Visual Check:** inspect the requested web/mobile-browser flow and report

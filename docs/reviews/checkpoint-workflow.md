@@ -9,7 +9,8 @@ then honor the user's requested pause before C2/M1.
 1. **Builder implements the full checkpoint.** Reconcile every retained requirement,
    including applicable backend, shared packages and all clients. Use development
    checks to catch defects; do not repeat formal full-suite handoffs for each feature.
-   Record missing external/native gates without reducing scope.
+   Builder is the software engineer and owns all product/test-code changes,
+   including fixes from review and testing. Record missing external/native gates.
 2. **Builder freezes and hands off a candidate.** Include cycle ID, exact checkout,
    branch and commit, scope/acceptance matrix, changed files, run instructions,
    evidence links and known gaps. All required code must be committed. One session
@@ -17,19 +18,25 @@ then honor the user's requested pause before C2/M1.
 3. **Tester qualifies that commit.** Run appropriate focused/regression/build/runtime
    checks and coordinate required visual evidence. Publish a Markdown report with
    exact source, commands, terminal results, failures and unverified acceptance gates.
-   Failed tests return to the write owner for correction and retesting. Test retries
+   Tester owns formal execution and reports failures to Builder for correction;
+   Tester does not patch product/test source. Test retries
    are recorded but do not consume a review round or erase failures.
 4. **Reviewer reviews the tested candidate.** Before beginning, persist the next
    round number in the shared current-state artifact: round 1, 2 or 3. Review code,
    full ADR coverage and test/visual evidence. Publish a Markdown report naming the
-   commit, round, findings, fixes and acceptance decision. Reviewer may fix defects
-   within the checkpoint after taking sole write ownership from Builder.
+   commit, round, findings and acceptance decision. Reviewer is review-only:
+   inspect code and existing evidence, but never modify product/test source or
+   run tests, unit tests or builds. Review reports/status decisions are permitted.
+   Each finding guides Builder with file/location, reproduction or reasoning,
+   expected behavior and verification needed; do not take coding ownership.
    Three rounds is a ceiling, not a required sequence: approve in round 1, 2 or 3
    when the evidence supports the decision.
-5. **Retest every revised candidate.** Commit fixes and return the new source to
-   Tester. Prior results remain historical; Tester records what was rerun and why.
-   Reviewer may verify fixes and close the existing findings within the same round
-   after Tester verification; another full review is not automatically required.
+5. **Builder fixes → Tester retests → Reviewer inspects.** Builder implements and
+   commits the requested fixes, then freezes the revised candidate for Tester.
+   Prior results remain historical; Tester records what was rerun and why.
+   Reviewer inspects the revised diff and Tester receipts to close existing findings
+   within the same round; Reviewer does not execute verification commands.
+   Another full review is not automatically required.
    Record the revised commit, retest evidence and closure decision in that round's
    report. A newly initiated full candidate review consumes the next numbered
    round; do not relabel full reviews as closure to bypass the limit. A round-3
