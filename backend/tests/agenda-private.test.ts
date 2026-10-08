@@ -418,6 +418,15 @@ test("interactive Agenda exposes its accepted ChatGPT model to both clients", as
   void answer.catch(() => {});
   await publish(f, await assignment(f));
   assert.equal(await answer, "Signed feature answer");
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM managed_ai_usage WHERE user_id=$1",
+        [f.owner],
+      )
+    ).rows[0].n,
+    0,
+  );
   assert.deepEqual(outcomes, [
     {
       status: "completed",
@@ -438,6 +447,7 @@ test("Agenda fallback requires consent and a confirmed pre-stream rejection, and
     res.setHeader("Content-Type", "application/json");
     res.end(
       JSON.stringify({
+        usage: { prompt_tokens: 120, completion_tokens: 20 },
         choices: [
           {
             finish_reason: "stop",
@@ -515,6 +525,16 @@ test("Agenda fallback requires consent and a confirmed pre-stream rejection, and
           a.job_id,
         ])
       ).rows[0];
+      const managed = await pool.query(
+        "SELECT input_tokens,output_tokens FROM managed_ai_usage WHERE user_id=$1",
+        [f.owner],
+      );
+      assert.equal(managed.rowCount, accepted ? 1 : 0);
+      if (accepted)
+        assert.deepEqual(managed.rows[0], {
+          input_tokens: "120",
+          output_tokens: "20",
+        });
       assert.equal(job.state, accepted ? "done" : "failed");
       if (accepted)
         assert.deepEqual(job.result.feature_provider, {

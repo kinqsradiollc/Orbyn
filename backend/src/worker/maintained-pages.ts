@@ -194,6 +194,7 @@ export async function processMaintainedPageRun(
         ).key !== model.key
       )
         throw new Error("The model selection changed.");
+      await model.ai.recordCompletion?.();
       await transaction((db) =>
         stageMaintainedPageRun(db, run.id, token, proposal, reserved, now()),
       );

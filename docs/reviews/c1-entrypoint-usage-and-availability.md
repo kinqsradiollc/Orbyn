@@ -24,9 +24,27 @@ Evidence:
 
 All use separate marked local databases and inert provider responses. No vendor
 request, production data, billing claim or new private authority is involved.
-No implementation or main delivery of these corrections is claimed yet.
+The usage correction is implemented on the C1 branch; main delivery and full
+regression remain pending. Scanner availability is still queued.
 
 Acceptance includes observed and missing counters, owner isolation, analytics
 opt-out, failed post-response publication, unchanged authority, explicit fallback,
 private usage separation and no duplicate call on approval/recovery. Browser
 usage states remain a separate C1 acceptance gate with Orbyn Visual Check.
+
+## Usage candidate qualification
+
+Managed Agenda briefs now use an owned captured job, including default-provider
+morning summaries without an interactive session. Personal calls still require a
+live session. Hosted page usage belongs to its exact parent run and lease;
+completion provenance is recorded in the same transaction as its authority check.
+Previously staged output is reused without inventing receipts or repeating calls.
+
+Focused final cohort:125/125 pass, zero failures/skips/cancellations, exit0,
+signal:null,53219.721875ms. Evidence:
+`/tmp/orbyn-c1-entrypoint-usage-v3-focused-20261008.log` and matching terminal JSON.
+It covers missing counters, opt-out, provider rejection, post-response source/model
+changes, session revocation, owner separation, explicit fallback, private usage
+exclusion, approval reuse and existing lease/recovery behavior. Backend typecheck
+and build pass. These are local inert provider fixtures, not vendor acceptance.
+Full frozen regression and browser usage-state acceptance are not yet complete.

@@ -274,6 +274,15 @@ test("private page consumer sends selected blocks with an output limit and appli
     publication(f, a),
   );
   assert.equal((await work).state, "done");
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int AS n FROM managed_ai_usage WHERE user_id=$1",
+        [f.owner],
+      )
+    ).rows[0].n,
+    0,
+  );
   const content = (
     await pool.query("SELECT content FROM docs WHERE id=$1", [f.doc.id])
   ).rows[0].content;

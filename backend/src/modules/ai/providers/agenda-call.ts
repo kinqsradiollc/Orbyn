@@ -17,7 +17,7 @@ import {
   type AgendaAiSnapshot,
 } from "../../docs/agenda-ai-snapshot.js";
 import { resolveUserAi } from "./user-choice.js";
-import { complete, type ChatMessage } from "./adapters.js";
+import { complete, ProviderError, type ChatMessage } from "./adapters.js";
 
 const source = z
   .object({
@@ -77,7 +77,7 @@ const stateSchema = z
     version: z.literal(4),
     feature: z.literal("agenda_brief"),
     operation_id: z.uuid(),
-    session_id: z.uuid(),
+    session_id: z.uuid().nullable(),
     provider_choice: aiProviderChoice,
     preference: z
       .object({
@@ -99,7 +99,7 @@ const stateSchema = z
       .strict(),
   })
   .strict();
-type Session = { userId: string; sessionId: string };
+type Session = { userId: string; sessionId?: string };
 export const agendaSnapshotSchema = stateSchema.shape.snapshot;
 async function preferenceFor(db: Db, choice: AiProviderChoice) {
   if (choice.primary !== "chatgpt" || !choice.connection_id) return null;
@@ -140,11 +140,14 @@ export async function guardAgendaInferenceJob(
   const parsed = stateSchema.safeParse(row.run_state);
   if (!parsed.success)
     fail(409, "This Agenda inference context is unavailable.");
-  await requireLiveSession(db, {
-    userId: owner,
-    sessionId: parsed.data.session_id,
-  });
+  if (parsed.data.session_id)
+    await requireLiveSession(db, {
+      userId: owner,
+      sessionId: parsed.data.session_id,
+    });
   const choice = await readAiProviderChoice(db, owner);
+  if (!parsed.data.session_id && choice.primary !== "default")
+    fail(403, "Personal Agenda inference requires a live app session.");
   if (
     JSON.stringify(choice) !== JSON.stringify(parsed.data.provider_choice) ||
     JSON.stringify(await preferenceFor(db, choice)) !==
@@ -165,7 +168,7 @@ export async function guardAgendaInferenceJob(
   }
 }
 
-/** One app-authorized Agenda completion; no chat/tool authority or implicit scheduled consent. */
+/** One captured Agenda completion; personal calls require a live app session. */
 export async function completeAgendaFeature(
   session: Session,
   snapshot: AgendaAiSnapshot,
@@ -177,8 +180,23 @@ export async function completeAgendaFeature(
   const operationId = randomUUID();
   const claimedBy = `agenda:${randomUUID()}`;
   const jobId = await transaction(async (db) => {
-    await requireLiveSession(db, session);
+    if (session.sessionId)
+      await requireLiveSession(db, {
+        userId: owner,
+        sessionId: session.sessionId,
+      });
+    else if (
+      !(
+        await db.query(
+          "SELECT id FROM users WHERE id=$1 AND NOT disabled FOR SHARE",
+          [owner],
+        )
+      ).rowCount
+    )
+      fail(403, "This account cannot run the assistant.");
     const choice = await readAiProviderChoice(db, owner);
+    if (!session.sessionId && choice.primary !== "default")
+      fail(403, "Personal Agenda inference requires a live app session.");
     if (
       expectedChoice &&
       JSON.stringify(choice) !== JSON.stringify(expectedChoice)
@@ -194,7 +212,7 @@ export async function completeAgendaFeature(
       version: 4,
       feature: "agenda_brief",
       operation_id: operationId,
-      session_id: session.sessionId,
+      session_id: session.sessionId ?? null,
       snapshot,
       provider_choice: choice,
       preference: await preferenceFor(db, choice),
@@ -214,7 +232,11 @@ export async function completeAgendaFeature(
       snapshot.sources.map((s) => `${s.kind}:${s.id}`),
     );
     const ai = await resolveUserAi(owner, jobId, async () => {});
-    if (!ai) fail(503, "The selected AI provider is unavailable.");
+    if (!ai)
+      throw new ProviderError(
+        "not_configured",
+        "AI summary is not configured.",
+      );
     const assertAuthority = async () => {
       await ai.assertAuthority?.();
       await assertChatgptJobAccess(owner, jobId);

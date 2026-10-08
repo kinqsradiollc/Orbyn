@@ -101,7 +101,13 @@ export async function resolveMaintainedPageModel(
       }),
     )
     .digest("base64url");
-  return { key, ai: { ...ai, cacheScope: userId } };
+  const model = { key, ai: { ...ai, cacheScope: userId } };
+  if (parent) {
+    const { attachManagedPageUsage } =
+      await import("./maintenance-managed-usage.js");
+    return attachManagedPageUsage(userId, origin, parent, model);
+  }
+  return model;
 }
 
 /** Only selected block material reaches this provider request; no workspace overview or memory. */

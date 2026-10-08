@@ -32,6 +32,8 @@ const people: string[] = [];
 const seen: any[] = [];
 let responseHook: undefined | ((body: any) => Promise<string>);
 let providerId: string;
+let replyUsage: unknown = { prompt_tokens: 210, completion_tokens: 30 };
+let replyStatus = 200;
 let original: {
   provider_id: string | null;
   model: string;
@@ -57,9 +59,10 @@ const provider = createServer((req, res) => {
               },
             ],
           });
-      res.writeHead(200, { "content-type": "application/json" });
+      res.writeHead(replyStatus, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
+          usage: replyUsage,
           choices: [{ finish_reason: "stop", message: { content } }],
         }),
       );
@@ -95,7 +98,10 @@ afterEach(async () => {
   await pool.query("UPDATE ai_settings SET night_token_budget=$1 WHERE id", [
     original.night_token_budget,
   ]);
+  await pool.query("UPDATE ai_settings SET model='fixture-model' WHERE id");
   responseHook = undefined;
+  replyUsage = { prompt_tokens: 210, completion_tokens: 30 };
+  replyStatus = 200;
   seen.length = 0;
   // Cancelling a run does not cancel its recurring binding. Retire only this
   // file's completed fixtures so a later real worker cannot schedule them again.
@@ -255,6 +261,16 @@ test("real hosted completion sends only selected blocks, sets an output cap and 
   );
   const saved = await current(f.run.id);
   assert.equal(saved.state, "done");
+  const measured = (
+    await pool.query(
+      "SELECT u.input_tokens,u.output_tokens,j.state FROM managed_ai_usage u JOIN ai_jobs j ON j.id=u.job_id WHERE u.user_id=$1 AND j.maintenance_run_id=$2",
+      [f.user.id, f.run.id],
+    )
+  ).rows;
+  assert.equal(measured.length, 1);
+  assert.equal(Number(measured[0].input_tokens), 210);
+  assert.equal(Number(measured[0].output_tokens), 30);
+  assert.equal(measured[0].state, "done");
   assert.equal(saved.reserved_tokens, 0);
   assert.ok(
     saved.token_estimate > 0 && saved.token_estimate <= saved.token_budget,
@@ -1128,3 +1144,74 @@ test("real Overnight service stages a scheduled page for exact owner review with
     "Human review must never resume Night inference",
   );
 });
+
+for (const mode of [
+  "opt_out",
+  "missing_counters",
+  "rate_limit",
+  "source_changed",
+  "provider_changed",
+  "overnight",
+] as const) {
+  test(`hosted page usage handles ${mode} under its owned run`, async () => {
+    const f = await fixture({ night: mode === "overnight" });
+    if (mode === "opt_out")
+      await pool.query("UPDATE users SET analytics_opt_out=true WHERE id=$1", [
+        f.user.id,
+      ]);
+    if (mode === "missing_counters") replyUsage = undefined;
+    if (mode === "rate_limit") replyStatus = 429;
+    if (mode === "source_changed" || mode === "provider_changed")
+      responseHook = async (body) => {
+        if (mode === "source_changed")
+          await pool.query("UPDATE docs SET version=version+1 WHERE id=$1", [
+            f.doc.id,
+          ]);
+        else
+          await pool.query(
+            "UPDATE ai_settings SET model=model||'-changed' WHERE id",
+          );
+        return JSON.stringify({
+          expected_revision: 1,
+          replacements: [
+            {
+              id: "summary",
+              type: "paragraph",
+              text: "Generated scoped summary.",
+            },
+          ],
+        });
+      };
+    const result = await processMaintainedPageRun(
+      log,
+      mode === "overnight" ? "overnight" : "background",
+      options(f.run.id),
+    );
+    assert.equal(seen.length, 1);
+    const rows = (
+      await pool.query(
+        "SELECT u.input_tokens,u.output_tokens FROM managed_ai_usage u JOIN ai_jobs j ON j.id=u.job_id WHERE u.user_id=$1 AND j.maintenance_run_id=$2",
+        [f.user.id, f.run.id],
+      )
+    ).rows;
+    assert.equal(
+      rows.length,
+      mode === "opt_out" || mode === "rate_limit" ? 0 : 1,
+    );
+    if (mode === "missing_counters")
+      assert.deepEqual(rows[0], { input_tokens: null, output_tokens: null });
+    if (["rate_limit", "source_changed", "provider_changed"].includes(mode))
+      assert.equal(result.state, "failed");
+    else assert.ok(["done", "waiting"].includes(result.state));
+    await processMaintainedPageRun(
+      log,
+      mode === "overnight" ? "overnight" : "background",
+      options(f.run.id),
+    );
+    assert.equal(
+      seen.length,
+      1,
+      "settled or failed work must not issue another request",
+    );
+  });
+}

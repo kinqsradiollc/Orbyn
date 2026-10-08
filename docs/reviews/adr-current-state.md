@@ -17,8 +17,9 @@ its corrected re-entry assertion passes in the final full suite. See
 [the maintenance receipt](c1-chat-maintenance-authority.md).
 
 Next C1 checkpoint: [managed entrypoint usage](c1-entrypoint-usage-and-availability.md).
-Local HTTP fixtures reproduce missing observed usage receipts for managed Agenda
-briefs and hosted maintained pages. After those are qualified and integrated,
+The branch now corrects missing observed usage receipts for managed Agenda
+briefs and hosted maintained pages. Focused125/125 and backend types/build pass;
+frozen full regression and integration remain pending. After those are qualified and integrated,
 correct the independently reproduced global-provider availability gate affecting
 all five personal automation scanners. No next-stage implementation has begun.
 

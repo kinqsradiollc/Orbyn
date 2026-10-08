@@ -24,7 +24,7 @@ export async function recordProviderUse(
     if (!row?.chat_id || !row.turn_id) {
       if (
         phase === "completed" &&
-        ([2, 6].includes(row?.run_state?.version) ||
+        ([2, 3, 6].includes(row?.run_state?.version) ||
           ([4, 5].includes(row?.run_state?.version) &&
             row.run_state.feature === "agenda_brief"))
       )

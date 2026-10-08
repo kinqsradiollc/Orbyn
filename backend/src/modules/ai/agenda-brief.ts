@@ -1,12 +1,8 @@
-import {
-  captureAgendaAiSnapshot,
-  assertAgendaAiSnapshot,
-} from "../docs/agenda-ai-snapshot.js";
+import { captureAgendaAiSnapshot } from "../docs/agenda-ai-snapshot.js";
 import type { Day } from "../docs/agenda.js";
-import { resolveAi } from "./providers/resolve.js";
 import { transaction } from "../../db/pool.js";
 import { readAiProviderChoice } from "../auth/ai-provider-choice.js";
-import { complete } from "./providers/adapters.js";
+import { ProviderError } from "./providers/adapters.js";
 import { completeAgendaFeature } from "./providers/agenda-call.js";
 import type { AgendaBriefOutcome, AiFeatureProvider } from "@orbyn/core";
 import { privateProviderFailureMessage } from "./providers/user-choice.js";
@@ -97,46 +93,27 @@ export async function briefFor(
       );
       return cleaned;
     };
-    if (choice.primary === "chatgpt") {
-      let provider: AiFeatureProvider | undefined;
-      const text = await completeAgendaFeature(
-        session!,
-        snapshot,
-        messages,
-        choice,
-        (value) => {
-          provider = value;
-        },
-      );
-      return finish(text, provider);
-    }
-    const resolved = await resolveAi();
-    const ai = resolved ? { ...resolved, cacheScope: ownerId } : null;
-    if (!ai) {
+    if (session && session.userId !== ownerId)
+      throw new Error("The Agenda session does not own this request.");
+    let provider: AiFeatureProvider | undefined;
+    const text = await completeAgendaFeature(
+      session ?? { userId: ownerId },
+      snapshot,
+      messages,
+      choice,
+      (value) => {
+        provider = value;
+      },
+    );
+    return finish(text, provider);
+  } catch (error) {
+    if (error instanceof ProviderError && error.reason === "not_configured") {
       onOutcome?.({
         status: "unavailable",
         message: "AI summary is not configured.",
       });
       return null;
     }
-    const unchanged = async () => {
-      await ai.assertAuthority?.();
-      await assertAgendaAiSnapshot(ownerId, now, snapshot);
-      if (JSON.stringify(await choiceForOwner()) !== JSON.stringify(choice))
-        throw new Error("The agenda provider choice changed.");
-    };
-    const text = await complete(
-      { ...ai, assertAuthority: unchanged },
-      messages,
-      { timeoutMs: 30_000, maxOutputTokens: 512 },
-    );
-    await unchanged();
-    return finish(text, {
-      source: "default",
-      model: ai.model,
-      fallback: false,
-    });
-  } catch (error) {
     onOutcome?.({
       status: "failed",
       message:
