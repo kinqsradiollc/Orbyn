@@ -80,3 +80,40 @@
     padding: 16px;
   }
 }
+
+/* A phone-sized modal uses the available screen rather than nested gutters. */
+@media (max-width: 600px) {
+  .settings-backdrop {
+    padding: 0;
+  }
+  .settings-dialog {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+  .settings-dialog-header {
+    gap: 12px;
+    padding: 8px 12px;
+  }
+  .settings-dialog .settings-sidebar {
+    padding: 8px 12px;
+  }
+  .settings-dialog .settings-search {
+    margin-bottom: 8px;
+  }
+  .settings-dialog .settings-content {
+    padding: 12px;
+  }
+  .settings-dialog .settings-content > .settings-card {
+    margin-bottom: 8px;
+  }
+  .settings-dialog .settings-section-head {
+    min-height: var(--control-h);
+    gap: 8px;
+    padding: 8px 12px;
+  }
+  .settings-dialog .settings-section-body {
+    padding: 12px;
+  }
+}

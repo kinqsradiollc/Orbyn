@@ -7,6 +7,68 @@ const cssUrl = new URL(
   import.meta.url,
 );
 
+test("phone Settings uses the available modal space without shrinking controls", async () => {
+  const css = await readFile(
+    new URL(
+      "../../desktop/src/features/settings/settings-modal.css",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  for (const width of [320, 390, 560, 600]) {
+    assert.equal(
+      gridColumns(css, width, false, "padding", "settings-backdrop"),
+      "0",
+    );
+    assert.equal(
+      gridColumns(css, width, false, "width", "settings-dialog"),
+      "100%",
+    );
+    assert.equal(
+      gridColumns(css, width, false, "height", "settings-dialog"),
+      "100%",
+    );
+    assert.equal(
+      gridColumns(css, width, false, "padding", "settings-dialog-header"),
+      "8px 12px",
+    );
+    assert.equal(
+      gridColumns(
+        css,
+        width,
+        false,
+        "min-height",
+        "settings-dialog .settings-section-head",
+      ),
+      "var(--control-h)",
+    );
+  }
+  assert.equal(
+    gridColumns(css, 601, false, "padding", "settings-backdrop"),
+    "12px",
+  );
+  assert.equal(
+    gridColumns(css, 1280, false, "width", "settings-dialog"),
+    "min(1000px, 100%)",
+  );
+  assert.equal(
+    gridColumns(css, 1280, false, "padding", "settings-dialog-header"),
+    "16px 20px",
+  );
+  assert.equal(
+    gridColumns(css, 320, false, "font-size", "settings-dialog-header h2"),
+    "18px",
+  );
+  assert.equal(
+    gridColumns(css, 1280, false, "font-size", "settings-dialog-header h2"),
+    "18px",
+  );
+  assert.doesNotMatch(
+    css.slice(css.lastIndexOf("@media (max-width: 600px)")),
+    /font-size|transform:\s*scale|zoom:/,
+  );
+});
+
 /** Evaluate the relevant class rules in source order, including media nesting. */
 function gridColumns(
   css: string,
@@ -124,7 +186,10 @@ test("phone theme controls use three shrinkable columns inside their card", asyn
     const property = (name: string) =>
       gridColumns(css, width, false, name, "theme-preference > .segmented");
     assert.equal(property("display"), "grid");
-    assert.equal(property("grid-template-columns"), "repeat(3, minmax(0, 1fr))");
+    assert.equal(
+      property("grid-template-columns"),
+      "repeat(3, minmax(0, 1fr))",
+    );
     assert.equal(property("width"), "100%");
     assert.equal(property("min-width"), "0");
   }

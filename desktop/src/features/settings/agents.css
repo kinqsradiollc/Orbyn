@@ -13,6 +13,19 @@
 .agents-head .primary {
   flex: none;
 }
+.agents-help {
+  margin-top: 8px;
+}
+.agents-help summary {
+  min-height: var(--control-h);
+  align-content: center;
+  color: var(--color-accent);
+  font-size: 13px;
+  cursor: pointer;
+}
+.agents-help p {
+  margin: 0 0 8px;
+}
 
 .agents-list {
   list-style: none;

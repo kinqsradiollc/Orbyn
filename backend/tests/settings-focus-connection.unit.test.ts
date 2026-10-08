@@ -2,6 +2,22 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 const file = (path: string) => readFile(new URL(path, import.meta.url), "utf8");
+test("settings search retains the shared focus outline with a neutral wrapper border", async () => {
+  const css = await file("../../desktop/src/features/settings/settings.css");
+  assert.doesNotMatch(
+    css,
+    /\.settings-search-field:focus-within\s*\{[^}]*border-color:\s*var\(--color-accent\)/s,
+  );
+  assert.match(
+    css,
+    /\.settings-search-field\s*\{[^}]*border: 1px solid var\(--color-border\)/s,
+  );
+  const global = await file("../../desktop/src/styles/global.css");
+  assert.match(
+    global,
+    /\.settings-search-field,[\s\S]*?\):focus-within\s*\{\s*outline: 2px solid var\(--color-focus\)/,
+  );
+});
 test("compound settings searches override focus-visible on the inner input", async () => {
   const css = await file("../../desktop/src/features/settings/settings.css");
   assert.match(
