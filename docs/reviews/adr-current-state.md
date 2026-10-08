@@ -7,7 +7,7 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: scoped round-1 closure and runtime qualification. Review rounds: 1/3.**
+**Active cycle: C1-full-2026-10-08. Phase: qualified code delivered; full acceptance prerequisites open. Review rounds: 1/3.**
 Frozen candidate `3ccf8f578d3e355238ee55478e7d5e02b2b68b67` is clean on
 `codex/c1-full-completion` in
 `/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`.
@@ -31,8 +31,11 @@ sweep. API/worker qualification separately proves synthetic3D indexing, sanitize
 503/scheduled recovery,7D replacement/deletion/requeue; actual worker offline/heartbeat expiry/restart and7D indexing pass. Stale
 provider/settings and in-flight revision changes refuse409 and require revalidation. See [runtime evidence](c1-full-2026-10-08-runtime-qualification.md).
 Live-provider/cache/live embedding, installed-client, genuine enlargement and
-other explicit unverified gates remain open. No full C1 acceptance, candidate
-main merge/push/deployment, C2 advancement or completed-C1 pause.
+other explicit unverified gates remain open. Qualified code merged and pushed to main as `f7a48abf632157d368ac8e75e22117b42c8c581e`.
+Application/test/dependency paths match tested3cc exactly; canonical role/visual rules
+are retained. Runtime indexing after revalidation, off cleanup and word search with
+the local provider stopped also pass. No full C1 acceptance, production deployment,
+C2 advancement or completed-C1 pause is claimed.
 
 Latest delivered checkpoint: personal scanner admission, merged and pushed as
 0c19e330 (productfed13851), full4322/4322, focused98/98 and backend types/build

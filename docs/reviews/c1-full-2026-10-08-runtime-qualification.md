@@ -3,7 +3,8 @@
 8 October 2026. API/worker evidence, not browser or live-vendor acceptance.
 Backend compiled from `244abc21c464d19c379bf0ebaf5d431f4f8e344d`;
 mobile-only repair `3ccf8f578d3e355238ee55478e7d5e02b2b68b67` leaves backend
-source unchanged. No full C1 acceptance or main promotion.
+source unchanged. No full C1 acceptance. Qualified code was subsequently promoted as mainf7a48abf;
+this runtime sequence remains its recorded compiled244 backend evidence.
 
 ## Isolation and evidence
 
@@ -62,3 +63,7 @@ Owned restarted worker7490 received SIGTERM after off-state qualification.
 Local provider82925 is confirmed terminal; counters are retained privately at
 /tmp/orbyn-c1-vector-visual-provider-counts-20261008.json. Synthetic rows/page
 remain isolated for reproducibility; no user production data was modified.
+
+Worker7490 is independently confirmed terminal after cleanup. Isolated synthetic
+provider82925 is terminal; ordinary word search still succeeds. This leaves the
+fixture off rather than an active background test.

@@ -2165,3 +2165,22 @@ Prior authority callbacks unchanged. Final205/205 focused and mobile types pass;
 see round-1 report/logs. Revised source is the containing commit. Frozen for Tester
 impact-based retest; scoped rendered recheck only if needed for these named defects.
 No additional browser sweep, full acceptance, merge/push/deploy or round increment.
+
+## Qualified C1 code promotion — 8 October 2026
+
+Mainf7a48abf632157d368ac8e75e22117b42c8c581e merged/pushed and remote-verified.
+Reviewer recommends scoped promotion; localR1-001/002/003closed withinround1.
+Application/test/dependency paths match frozen3ccf8f57 exactly. Independent205/205
+plus workspace types/iOS+Androidexports pass; broad244full4337/4337 and vector/
+migration cohorts retained only by recorded relevant source equivalence, not
+relabelled as new runs. Canonical role/on-demand visual updates preserved.
+Owned primary documents backed up before tracked installation; mobile/app.json
+and unrelated files preserved.
+
+Runtimequalification additionally proves local3D/7D indexing/replacement, real
+503backoff/scheduledrecovery, actual workerterminal/heartbeatexpiry/restart,
+stale/in-flight409/revalidation, offstorage/queue/failure/consentcleanup and
+wordsearch afterlocalproviderterminal. Safe receipts in linkedruntime report.
+No livevendor/cacheeconomics, installed interaction or genuineenlargement proof.
+FullC1 remainsopen; conditionalcompleted-C1pause not yettaken, C2notstarted.
+Userdeploysmainmanually; deploymentunconfirmed.
