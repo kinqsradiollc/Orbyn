@@ -11,7 +11,7 @@ accessibility settings.
 
 ## Read before designing
 
-- Read `AGENT.md` and the active ADR checkpoint; preserve scope and stage order.
+- Read `AGENT.md` and the agreed task scope; preserve scope and stage order.
 - For product copy and information hierarchy, read
   `skills/orbyn-content-design/SKILL.md`; keep detailed content rules there.
 - Read [design rules](references/design-rules.md) for typography, layout, copy,
@@ -59,4 +59,4 @@ Fix reproduced problems and request a targeted recheck. Retain failed attempts
 and unverified states. If browser permission or export is rejected, report the
 blocked action and use an allowed handoff; do not bypass it through another
 browser, port, transport, or indirect export. Integrate a scoped checkpoint only
-when its acceptance evidence supports it; do not claim the whole ADR complete.
+when its acceptance evidence supports it; do not claim the whole task complete.

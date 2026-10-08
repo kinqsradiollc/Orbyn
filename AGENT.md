@@ -1,39 +1,34 @@
-# Orbyn — Agent Instructions
+# Orbyn — Contributor Instructions
 
-Canonical entry point for all Orbyn agents. Read the guides required for your
-role/task; their instructions are part of these rules.
+Canonical entry point for contributors and agent sessions. Read only the guides
+needed for your role and task; linked rules apply to that work.
 
 ## Always
 
-- Read [development rules](docs/agents/development.md) before changing code.
-- Read [roles and coordination](docs/agents/coordination.md) for all session work.
-- Complete the **whole ADR checkpoint → Test → Review**. Builder owns source;
-  Tester executes tests; Reviewer reviews code quality, test code and test evidence,
-  then guides Builder on fixes without coding or running tests.
-- Maximum **3 counted review rounds**, with earlier approval allowed. Preserve
-  the counter; batch findings rather than handing off individual fixes.
-- **Use web preview to qualify the shared web/desktop UI.** Do not require
-  separate desktop-app visual, packaging or runtime checks unless the user
-  explicitly requests them again. This is scope, not proof of native integrations.
-- **Do not require 200% enlargement testing for C1.** The user removed this
-  acceptance check on 8 October; record it as untested, not passed.
-- Preserve unrelated work. Record exact source, evidence and delivery separately.
-- **Do not build iOS or perform Android-specific verification unless the user
-  requests it again.** These are removed from C1 acceptance by the user's
-  8 October instruction. Shared mobile source and mobile-browser parity remain.
+- Read [development](docs/agents/development.md) before changing code and
+  [coordination](docs/agents/coordination.md) when collaborating.
+- Complete the **agreed delivery scope → Test → Review**. Builder owns source;
+  Tester executes checks; Reviewer assesses code quality and test evidence,
+  then gives Builder actionable correction guidance.
+- Maximum **3 full review rounds**; earlier approval is allowed. Preserve the
+  counter and batch fixes. Match verification to the change and agreed scope.
+- Preserve unrelated work. Record implementation, evidence and delivery separately.
+- Use web preview for shared web/desktop UI and **Expo web** for mobile UI.
+  Separate desktop-app checks, iOS builds and Android-specific verification
+  require an explicit user request; browser results do not prove native behavior.
+- Visual checks go through **Orbyn Visual Check**, only for a concrete bounded
+  risk or explicit request. Reuse valid evidence; no automatic sweep per edit.
 
 ## Task guides
 
-| Work                                   | Read                                                                                                     |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Product UI or copy                     | [UI/UX rules](docs/agents/ui-ux.md), linked design/content skills                                        |
-| Services, privacy, imports, deployment | [Operations](docs/agents/operations.md)                                                                  |
-| Checkpoint delivery                    | [Workflow](docs/reviews/checkpoint-workflow.md), [execution order](docs/reviews/adr-execution-order.md)  |
-| Code and test-evidence review          | [Reviewer guide](docs/agents/review.md)                                                                  |
-| Stage reporting                        | [Tracker guide](docs/reviews/stage-tracker-guide.md), [current state](docs/reviews/adr-current-state.md) |
+| Work                             | Read                                                                                                  |
+| -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Implementation                   | [Development](docs/agents/development.md)                                                             |
+| Roles and handoffs               | [Coordination](docs/agents/coordination.md), [delivery workflow](docs/reviews/checkpoint-workflow.md) |
+| Code and test-evidence review    | [Reviewer guide](docs/agents/review.md)                                                               |
+| Product UI or copy               | [UI/UX](docs/agents/ui-ux.md), linked design/content skills                                           |
+| Services, privacy and deployment | [Operations](docs/agents/operations.md)                                                               |
+| Progress reporting               | [Tracker guide](docs/reviews/stage-tracker-guide.md)                                                  |
 
-Use **Expo web** for mobile visual checks (the mobile app renderer, usually port 8083);
-record it as mobile-browser evidence, not native verification.
-
-Visual checks are on demand, through **Orbyn Visual Check**, for a concrete
-bounded risk. Reuse valid evidence; no automatic sweep per edit or checkpoint.
+Keep task plans, active status and historical exceptions in task records, not in
+these universal rules. Direct user scope and pause instructions take precedence.

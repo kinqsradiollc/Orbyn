@@ -7,23 +7,32 @@ Applies testing standards to all new code in the Orbyn codebase. Load this befor
 ## Workflow
 
 ### [TEST-001] Security Shield Verification
-Integration tests must verify the entire request-handling ingress pipeline:
+
+Cover applicable ingress behavior for new or changed endpoints; choose relevant cases,
+not every status in every individual test:
 
 - Confirm `401 Unauthorized` responses when requests are unauthenticated
 - Confirm `403 Forbidden` responses when requests lack required roles
 - Confirm `429 Too Many Requests` when rate limits are exceeded (using mocks)
 - Confirm `400 Bad Request` when structural input validation fails (Zod)
 
-### [TEST-002] Mandatory Mocking
-- Never run unit or integration tests against a live production database or external system
-- Mock all database querying layers (such as `readQuery`, `writeQuery`)
-- Mock all external integrations (Cloud storage, email transmitters, Redis cache)
+### [TEST-002] Isolation
+
+- Never use a production database or send real external requests in deterministic tests.
+- Unit tests isolate database and external dependencies with appropriate mocks.
+- Integration/migration/runtime tests may use guarded disposable PostgreSQL fixtures:
+  `TEST_DATABASE_URL`, a database name ending in `_test`, and the server-side test marker.
+  Follow `docs/setup.md#4-tests`; never mark a real-data database as a test database.
+- Mock external providers/email/storage for deterministic tests. Authorized live
+  measurements are separate evidence, not a replacement for regression tests.
 
 ### [TEST-003] Response Schema Consistency
+
 - Ensure API responses precisely match active specifications
-- Use `expect.objectContaining` or json-schema snapshot comparisons
+- Use the existing Node test/assert conventions and explicit response assertions
 
 ### [TEST-004] Error Case Coverage
+
 - Exercise failure branches
 - Tests must cover `catch` blocks, invalid formats, entity-not-found exceptions, and rate limit occurrences
 
@@ -31,7 +40,7 @@ Integration tests must verify the entire request-handling ingress pipeline:
 
 - Backend tests are in `backend/tests/` — integration tests using `tsx --test`
 - Test database: `orbyn_test` (started via `docker compose --profile test up -d postgres-test`)
-- Use mock injection for database layers and external services
+- Match fixtures to the contract: mocks for unit isolation, guarded test DB for real SQL behavior
 - AI provider calls must be mocked — never hit real endpoints in tests
 - Test the security shield (auth, roles, rate limits) for every new endpoint
 
@@ -41,29 +50,32 @@ Integration tests must verify the entire request-handling ingress pipeline:
 # Build packages first, then run backend tests
 npm test
 
-# With test Docker services
+# With guarded disposable test Docker services
 docker compose --profile test up -d postgres-test
-npm test
+TEST_DATABASE_URL=postgres://orbyn:orbyn-test@localhost:55434/orbyn_test npm test
 ```
 
 ## Required Checks
 
 - [ ] Security shield verification for every new endpoint
-- [ ] No live database or external system calls in tests
+- [ ] No production database or real external provider calls in deterministic tests
 - [ ] Response schema matches active specs
 - [ ] Error cases are covered
 
 ## When to Use
+
 - Writing new integration tests
 - Adding endpoints to the API
 - Reviewing existing test coverage
 - Any backend code changes
 
 ## NOT for
+
 - Simple documentation-only changes
 - Config-only modifications
 
 ## Verification
+
 - [ ] All security shield checks pass
 - [ ] No live connections in test code
 - [ ] Response schema matches specs

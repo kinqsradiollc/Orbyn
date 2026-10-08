@@ -7,8 +7,8 @@ does not establish native integration behavior.
 Use Expo web to preview the mobile app UI. Record mobile-browser results
 separately from responsive desktop/web and native-device results.
 
-For C1, the user explicitly removed 200% enlargement testing from acceptance
-on 8 October. Do not rerun it or treat its absence as a C1 blocker; no pass is claimed.
+Use the agreed task requirements to choose acceptance checks. Record exclusions
+in the task report as untested, not passed; do not invent extra verification gates.
 
 ## UI and UX Conventions
 

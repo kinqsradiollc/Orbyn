@@ -1,6 +1,6 @@
 # Orbyn UX rules
 
-Apply these to the changed flow within the current ADR checkpoint. They cover
+Apply these to the changed flow within the agreed task scope. They cover
 behavior and information architecture as well as appearance. Research sources
 and the distinction between external guidance and local choices are in
 [research](research.md).
@@ -60,7 +60,7 @@ and the distinction between external guidance and local choices are in
 - Show useful provenance and the actual reason for waiting. Keep uncertain or
   unavailable plan/usage information distinct from a verified zero value.
 - Preserve approval, review, cancellation, and ownership boundaries as specified
-  in the ADR. Convenience must not turn a suggestion into an authorized write.
+  in the agreed task requirements. Convenience must not turn a suggestion into an authorized write.
 - Keep contextual suggestions in a stable location; do not rearrange primary
   navigation or change settings based on inferred preferences without a choice.
 
@@ -68,13 +68,13 @@ and the distinction between external guidance and local choices are in
 
 For the changed feature, record an outcome, not just an opened screen:
 
-| Check | Evidence to record |
-| --- | --- |
-| Find and complete | Starting point, actions, observable result, confusing or duplicate steps |
-| Cancel and return | Draft/selection retained, correct destination, restored focus where applicable |
-| Fail and recover | Specific error, reachable next action, no work loss or duplicate side effects |
+| Check               | Evidence to record                                                             |
+| ------------------- | ------------------------------------------------------------------------------ |
+| Find and complete   | Starting point, actions, observable result, confusing or duplicate steps       |
+| Cancel and return   | Draft/selection retained, correct destination, restored focus where applicable |
+| Fail and recover    | Specific error, reachable next action, no work loss or duplicate side effects  |
 | Narrow and enlarged | Actual viewport/scale, usable task space, keyboard/overlays, no trapped action |
-| Equivalent clients | Same supported task and authority on web/desktop/mobile; explicit native gaps |
+| Equivalent clients  | Same supported task and authority on web/desktop/mobile; explicit native gaps  |
 
 Ask Orbyn Visual Check for the authorized interaction review and Markdown report.
 Use plain task goals for exploratory review rather than giving away every click;

@@ -6,8 +6,8 @@
   `.cursorrules` and `codex.md` where present in the affected scope.
 - Confirm checkout, branch, worktrees and uncommitted ownership before editing.
   Preserve user/other-session changes. Never overwrite an existing environment file.
-- Use [current ADR state](../reviews/adr-current-state.md) and
-  [execution order](../reviews/adr-execution-order.md), not a historical handoff.
+- Read the current task request, plan and handoff. Confirm scope and delivery
+  order; do not substitute a historical report for current requirements.
 - Read the relevant [architecture](../architecture.md) and [setup](../setup.md)
   sections. Env schema: `backend/src/config/env.ts`; permissions:
   `packages/core/src/rbac.ts`. Never print credentials or put them in reports.
@@ -41,8 +41,9 @@ belongs in api-client. Backend enforces authority; UI permission checks are hint
 ## Development and verification
 
 Builder owns product/test source and development checks. Tester owns formal
-checkpoint execution; Reviewer assesses code quality and test evidence without
-coding or running tests. Follow the complete **Implement → Test → Review** flow.
+delivery verification; Reviewer assesses code quality and test evidence without
+coding or running tests. Follow **Implement → Test → Review** for the agreed scope.
+Documentation-only changes need document checks, not product builds or visual sweeps.
 
 - Unit tests isolate dependencies. Integration/runtime tests may use the guarded,
   disposable PostgreSQL test database documented in [setup](../setup.md#4-tests).
@@ -77,4 +78,4 @@ These ports are local examples: reuse existing owned processes and matching APIs
 Run migrations only against the intended database. Background and Overnight have
 separate runtimes; launch commands and service ownership are in setup/architecture.
 Web qualifies shared desktop UI; Expo web qualifies mobile browser UI. Do not add
-desktop-app, iOS/Android or C1 200% verification jobs excluded by the user.
+platform or enlargement verification jobs excluded from the agreed task scope.
