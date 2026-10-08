@@ -8,6 +8,8 @@ Detailed qualification and historical failures remain in
 
 **Active stage: C1. No entire ADR stage is complete.**
 **Active cycle: C1-full-2026-10-08. Phase: Builder full-checkpoint preparation; not ready for formal handoff. Review rounds: 1/3.**
+Builder's complete requirement-group preparation map is
+[`c1-builder-readiness-2026-10-08.md`](c1-builder-readiness-2026-10-08.md).
 User clarification applied: complete every C1 implementation state and prepare all
 qualification prerequisites before one consolidated Test → Review handoff. No more
 formal partial-state jobs or per-fix handoffs. Earlier qualified main delivery and

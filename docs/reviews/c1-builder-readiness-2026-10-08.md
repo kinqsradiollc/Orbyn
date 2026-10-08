@@ -1,0 +1,47 @@
+# C1 Builder readiness
+
+Status: **preparation, no formal handoff**. Review counter remains **1/3**.
+Scope: all retained C1 requirements, not just the latest fixes. Product source
+at main `e6c4c75b` is equivalent to `3ccf8f57` for product/test/dependency paths.
+The current rules require full readiness before one Test → Review handoff.
+
+## Full state inventory
+
+The implementation and planned checks are indexed in
+`c1-full-2026-10-08-handoff.md` and
+`c1-full-2026-10-08-qualification-plan.md`. Their earlier handoff status,
+counter and preview ownership are historical; this record and
+`adr-current-state.md` govern current readiness.
+
+| Requirement group | Builder preparation remaining before formal handoff |
+| --- | --- |
+| Managed/BYO/personal authority | Retain the complete entrypoint/recovery matrix; prepare permitted live-provider and installed recovery inputs. |
+| Saved independent connections | Carry CRUD, enable/disable, credential testing, account/revision changes and persistence into the single platform plan. |
+| Catalog/manual/default | Retain large/slow/empty/error, keyboard and stale-response coverage; prepare current native artifacts. |
+| Generation wire formats | Retain all adapter fixtures; identify the actual authorized live model separately from fixtures. |
+| Reasoning/cache | Obtain authorized OpenAI evaluation model/key and bounded benchmark configuration; Matilda baseline is not OpenAI cache economics. |
+| Usage | Carry positive/large/unknown/loading/error/retry states and private separation; preserve uncertainty about billing and plans. |
+| Independent embedding recipient | Identify authorized live embedding provider/model and prepare explicit recipient/revision consent. Local synthetic proof stays distinct. |
+| Dimensions/replacement | Retain pgvector/dimension/reindex fixtures and the completed synthetic 3D→7D replacement receipt. |
+| Consent/document/access races | Retain ownership/visibility/edit/delete/revoke and in-flight revision fixtures; include installed-client recovery. |
+| Migration/worker | Retain isolated upgrade/late-install fixtures and operational restart receipts, with explicit fixture ownership. |
+| Failure/status/retry | Retain persistent backoff and completed synthetic failure/retry/restart/off/exact-search receipts; prepare platform interactions. |
+| Cross-client behavior | Prepare source-bound Electron/iOS/Android packages and available device targets. Reuse valid browser evidence; request visuals only for a specific unresolved material risk. |
+
+## Preparation ownership
+
+Builder owns source fixes, packages and prerequisites. Tester waits for the whole
+ready candidate; Reviewer waits for consolidated Tester evidence. No new review
+round or formal test run is initiated by this document.
+
+The read-only installed inventory is in
+`c1-installed-qualification-readiness-2026-10-08.md`: existing packages cannot
+be attributed to the current source, Android has no connected device, and the
+paired physical iPhone's inventory request timed out. Builder is preparing a
+source-bound Electron artifact in the clean
+`codex/c1-production-checkpoint` worktree. The primary checkout's user-owned
+`mobile/app.json` changes remain untouched.
+
+Live provider/cache/embedding configuration is a pending external prerequisite.
+No fabricated vendor, installed-device, text-enlargement or full-C1 acceptance
+is recorded. C2 remains unstarted and the pause stays conditional on full C1.

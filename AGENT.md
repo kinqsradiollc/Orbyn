@@ -15,6 +15,9 @@
 - **Full-checkpoint workflow:** complete the whole active ADR checkpoint (currently
   all C1), then **Test → Review**. Follow `docs/reviews/checkpoint-workflow.md`.
   **Handoff unit is the whole checkpoint, never an individual state or feature.**
+  “All states” means every row of the retained checkpoint requirements, including
+  success, empty, loading, error, recovery, authority and cross-client behavior;
+  it does not mean only the latest diff or the already passing subset.
   Builder finishes every required implementation state and prepares all test
   prerequisites before one consolidated Tester → Reviewer handoff. Missing code,
   unfinished states or unavailable required test inputs keep ownership with Builder;

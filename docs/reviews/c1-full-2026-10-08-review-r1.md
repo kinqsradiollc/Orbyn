@@ -354,3 +354,20 @@ C1 complete and taking the user's conditional completed-C1 pause is not supporte
 until the mandatory gaps above are resolved. Missing external access is a concrete
 verification prerequisite, not a waiver and not proof of an implementation defect.
 No full approval, merge/push/deployment or C2 advancement is claimed here.
+
+## Promotion policy superseded — 8 October 2026
+
+Canonical workflowe658af82 now requires complete C1 implementation and all
+qualification prerequisites before one consolidated formal Tester→Reviewer
+handoff, with product promotion only after full checkpoint acceptance.
+Accordingly, the earlier scoped main-promotion recommendation in this report is
+historical and **must not be used to authorize a future partial promotion**.
+Existing scoped finding closures and test receipts remain valid within their
+recorded limits; they do not establish complete C1 readiness or acceptance.
+
+C1 returns to Builder implementation/preparation ownership. Reviewer waits for
+the complete readiness ledger, frozen candidate and consolidated Tester evidence;
+no further per-state formal review or individually handed-off fix closure begins.
+Builder batches returned findings into one complete revision. Counter remains1/3,
+with no reset or new review caused by this policy update. Reviewer remains
+review-only. No product/test edits, tests/builds or visual sweep performed.
