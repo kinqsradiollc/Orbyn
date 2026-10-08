@@ -12,6 +12,8 @@ accessibility settings.
 ## Read before designing
 
 - Read `AGENT.md` and the active ADR checkpoint; preserve scope and stage order.
+- For product copy and information hierarchy, read
+  `skills/orbyn-content-design/SKILL.md`; keep detailed content rules there.
 - Read [design rules](references/design-rules.md) for typography, layout, copy,
   AI behavior, and the visual acceptance matrix.
 - Read [UX rules](references/ux-rules.md) when changing navigation, task steps,

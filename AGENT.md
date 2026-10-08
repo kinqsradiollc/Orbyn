@@ -68,6 +68,11 @@ From `conventions-skill`: kebab-case.ts files, PascalCase components/types, came
 
 - **Design skill:** read `skills/orbyn-ui-design/SKILL.md` for UI/UX changes.
   Its rules cover task flows, concise copy, compact layout, recovery and acceptance.
+- **Content skill:** read `skills/orbyn-content-design/SKILL.md` when writing or
+  arranging product copy. Routine screens show the task, current state and action;
+  optional explanations go behind named help. Remove repeated headings, marketing
+  filler and technical QA wording. Keep essential consent/consequences visible
+  and preserve user-authored content. Shorten copy before shrinking its text.
 - **Compact and readable:** use shared text roles; reserve display headings for deliberate
   hero content. Keep user text scaling enabled and reflow layouts instead of shrinking text.
 - **No unintended overlap:** adapt to the remaining pane width, wrap or stack controls,
