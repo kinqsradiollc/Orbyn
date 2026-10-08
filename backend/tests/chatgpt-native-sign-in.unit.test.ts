@@ -39,6 +39,8 @@ function mount(
     platform?: string;
     available?: boolean;
     scopes?: string;
+    consumeRefresh?: boolean;
+    failRotatedStore?: boolean;
     callback?: "wrong" | "denied";
     identity?: object;
     changeSession?: "finish" | "store" | "delete";
@@ -69,6 +71,7 @@ function mount(
   } = {},
 ) {
   const storage = new Map<string, string>();
+  const consumedRefresh = new Set<string>();
   const signingAliases: string[] = [],
     removedAliases: string[] = [];
   const pair = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
@@ -204,6 +207,12 @@ function mount(
                 key.includes(".slot-registration."))
             )
               throw new Error("private-access storage failure");
+            if (
+              options.failRotatedStore &&
+              key.includes(".account.") &&
+              JSON.parse(value).grant?.refreshToken === "refreshed-refresh"
+            )
+              throw new Error("replacement storage unavailable");
             storage.set(key, value);
             if (key.includes(".directory.")) options.onDirectoryWrite?.();
             if (options.changeSession === "store" && key.includes(".account."))
@@ -347,6 +356,15 @@ function mount(
             );
             if (init.body.get("grant_type") === "refresh_token") {
               calls.refreshed++;
+              if (options.consumeRefresh) {
+                const token = init.body.get("refresh_token");
+                assert.equal(
+                  consumedRefresh.has(token),
+                  false,
+                  "provider rejects consumed refresh token reuse",
+                );
+                consumedRefresh.add(token);
+              }
               await options.onRefresh?.();
               if (options.refreshError)
                 return Response.json(
@@ -713,11 +731,8 @@ test("wrong state and denied callback never exchange credentials", async () => {
     assert.ok(fixture.calls.stopped >= 1);
   }
 });
-test("scope denial and changed verified identity cannot install a provider", async () => {
-  for (const options of [
-    { scopes: "openid" },
-    { identity: { client_id: "oaiapp_other" } },
-  ]) {
+test("changed verified identity cannot install a provider", async () => {
+  for (const options of [{ identity: { client_id: "oaiapp_other" } }]) {
     const fixture = mount(options);
     await assert.rejects(fixture.signIn());
     assert.equal(accounts(fixture.storage).length, 0);
@@ -930,7 +945,7 @@ test("unchanged refresh identity needs no new sign-in proof but retains the orig
     connection,
   );
 });
-test("altered or unverified refreshed identity never rotates protected credentials", async () => {
+test("altered or unverified refreshed identity retires the consumed grant", async () => {
   for (const options of [
     { refreshedId: true, refreshIdentity: { subject: "foreign-subject" } },
     { refreshedId: true, failRefreshProof: true },
@@ -939,7 +954,11 @@ test("altered or unverified refreshed identity never rotates protected credentia
     await fixture.signIn();
     const original = expireSoon(fixture);
     await assert.rejects(fixture.models());
-    assert.equal(accounts(fixture.storage)[0][1], original);
+    const retired = JSON.parse(accounts(fixture.storage)[0][1]);
+    assert.equal(retired.version, 2);
+    assert.equal(retired.grant, null);
+    await assert.rejects(fixture.models());
+    assert.equal(fixture.calls.refreshed, 1);
   }
 });
 test("refresh scope reduction persists rotated tokens but cannot request a model catalog", async () => {
@@ -982,14 +1001,17 @@ test("disconnect aborts pending refresh and cannot reinstall credentials afterwa
   assert.equal(accounts(fixture.storage).length, 0);
   assert.equal(fixture.calls.refreshProof.length, 0);
 });
-test("session changes during refreshed secure write restore only the prior registration", async () => {
+test("session changes during rotation never restore a consumed refresh token", async () => {
   const options: { changeSession?: "finish" | "store" } = {};
   const fixture = mount(options);
   await fixture.signIn();
   const original = expireSoon(fixture);
   options.changeSession = "store";
   await assert.rejects(fixture.models(), /changed/);
-  assert.equal(accounts(fixture.storage)[0][1], original);
+  const retired = JSON.parse(accounts(fixture.storage)[0][1]);
+  assert.equal(retired.version, 2);
+  assert.equal(retired.grant, null);
+  assert.notEqual(accounts(fixture.storage)[0][1], original);
 });
 
 test("actual native executor factory publishes local account models and disconnect closes it and removes its key", async () => {
@@ -2099,7 +2121,7 @@ test("native Add directory conflict removes only the attempted new slot and pres
   assert.equal(after.revision, newRevision);
   assert.equal(after.selected, connection.id);
 });
-test("native Add denied plan permission preserves the selected account without fallback or new credentials", async () => {
+test("native Add retains declined-plan identity without switching the selected account", async () => {
   const target = {
     ...connection,
     id: randomUUID(),
@@ -2117,11 +2139,15 @@ test("native Add denied plan permission preserves the selected account without f
     original = [...f.storage];
   currentConnection = target;
   options.scopes = "openid resource.invoke";
-  await assert.rejects(
-    f.signIn(undefined, { kind: "add", expectedRevision: before.revision }),
-    /Enable ChatGPT plan usage/,
-  );
-  assert.deepEqual([...f.storage], original);
+  const result = await f.signIn(undefined, {
+    kind: "add",
+    expectedRevision: before.revision,
+  });
+  assert.equal(result.sharingGranted, false);
+  assert.equal(accounts(f.storage).length, 2);
+  for (const [key, value] of original)
+    if (key.includes(".slot.")) assert.equal(f.storage.get(key), value);
+  assert.equal(f.calls.responses, 0);
   assert.equal((await f.savedAccounts()).selected, connection.id);
 });
 test("native OAuth action is copied before awaits so caller mutation cannot bypass its displayed revision", async () => {
@@ -2489,4 +2515,75 @@ test("native account switch fences old in-flight inference and binds the replace
     older?.close();
     replacement?.close();
   }
+});
+
+test("identity-only sign-in is retained without publishing an executable provider", async () => {
+  const f = mount({ scopes: "openid offline_access" });
+  const result = await f.signIn();
+  assert.equal(result.sharingGranted, false);
+  assert.equal(
+    JSON.parse(accounts(f.storage)[0][1]).grant.sharingGranted,
+    false,
+  );
+  await assert.rejects(f.models());
+  assert.equal(f.calls.responses, 0);
+});
+
+test("provider rotation followed by backend or replacement-storage failure never retries consumed R1", async () => {
+  for (const failStorage of [false, true]) {
+    const f = mount({
+      consumeRefresh: true,
+      refreshedId: true,
+      failRefreshProof: !failStorage,
+      failRotatedStore: failStorage,
+    });
+    await f.signIn();
+    expireSoon(f);
+    await assert.rejects(f.models());
+    assert.equal(JSON.parse(accounts(f.storage)[0][1]).grant, null);
+    await assert.rejects(f.models());
+    assert.equal(f.calls.refreshed, 1);
+  }
+});
+
+test("native explicit plan enablement reuses the identity-only issued registration and preserves declined state", async () => {
+  const f = mount({ scopes: "openid offline_access" });
+  await f.signIn();
+  await f.prepare();
+  const before = await f.savedAccounts();
+  const result = await f.signIn(undefined, {
+    kind: "reconnect",
+    connectionId: connection.id,
+    expectedRevision: before.revision,
+    requestPlanConsent: true,
+  });
+  assert.equal(result.sharingGranted, false);
+  const url = new URL(f.calls.opened.at(-1)!);
+  assert.equal(url.searchParams.get("client_id"), connection.client_id);
+  assert.equal(url.searchParams.get("prompt"), "consent");
+  await assert.rejects(f.models());
+  assert.equal(f.calls.responses, 0);
+});
+
+test("explicit native consent can enable the retained identity account without creating a new registration", async () => {
+  const options: { scopes?: string } = { scopes: "openid offline_access" };
+  const f = mount(options);
+  await f.signIn();
+  await f.prepare();
+  const before = await f.savedAccounts();
+  options.scopes = tokens.scope;
+  const result = await f.signIn(undefined, {
+    kind: "reconnect",
+    connectionId: connection.id,
+    expectedRevision: before.revision,
+    requestPlanConsent: true,
+  });
+  assert.equal(result.sharingGranted, true);
+  assert.equal(result.connection.id, connection.id);
+  assert.equal(accounts(f.storage).length, 1);
+  await f.models();
+  assert.equal(
+    new URL(f.calls.opened.at(-1)!).searchParams.get("prompt"),
+    "consent",
+  );
 });

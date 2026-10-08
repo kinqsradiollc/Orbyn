@@ -67,25 +67,37 @@ async function createChatgptCredentialResolver({
           }
           throw error;
         }
-        combined.throwIfAborted();
-        await live();
-        if (replacement.clientId !== binding.client_id)
-          throw new Error("The refreshed ChatGPT registration changed.");
-        if (replacement.idToken !== credentials.idToken) {
-          const identity = await verifier(replacement.idToken, {
-            clientId: binding.client_id,
-            subject: binding.subject,
-          });
-          if (
-            identity.issuer !== binding.issuer ||
-            identity.subject !== binding.subject ||
-            identity.clientId !== binding.client_id
-          )
-            throw new Error("The refreshed ChatGPT account changed.");
+        // Rotation consumed the observed token. Retire it before cancellable
+        // post-refresh verification; preserve a concurrently newer registration.
+        const retiredRevision = await vault.revokeObserved(
+          binding,
+          saved.revision,
+        );
+        try {
+          combined.throwIfAborted();
+          await live();
+          if (replacement.clientId !== binding.client_id)
+            throw new Error("The refreshed ChatGPT registration changed.");
+          if (replacement.idToken !== credentials.idToken) {
+            const identity = await verifier(replacement.idToken, {
+              clientId: binding.client_id,
+              subject: binding.subject,
+            });
+            if (
+              identity.issuer !== binding.issuer ||
+              identity.subject !== binding.subject ||
+              identity.clientId !== binding.client_id
+            )
+              throw new Error("The refreshed ChatGPT account changed.");
+          }
+          combined.throwIfAborted();
+          await live();
+          await vault.write(binding, replacement, retiredRevision);
+        } catch (error) {
+          // The consumed grant is retired; surface reconnect without restoring it.
+          onInvalidated?.();
+          throw error;
         }
-        combined.throwIfAborted();
-        await live();
-        await vault.write(binding, replacement, saved.revision);
         combined.throwIfAborted();
         await live();
         saved = await vault.read(binding);

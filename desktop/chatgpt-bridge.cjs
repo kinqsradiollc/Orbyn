@@ -50,7 +50,10 @@ async function installChatgptBridge({ ipcMain, manager, guard, getWindow }) {
           );
         case "reconnect":
           return chatgptDesktopState.parse(
-            await manager.reconnect(command.registrationId),
+            await manager.reconnect(
+              command.registrationId,
+              command.requestPlanConsent,
+            ),
           );
         case "disconnect":
           return chatgptDesktopDisconnect.parse(

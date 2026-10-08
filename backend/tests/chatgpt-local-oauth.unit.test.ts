@@ -120,3 +120,27 @@ test("malformed and oversized codes and attempts are rejected", () => {
       chatgptLocalAuthorizationUrl({ ...attempt, [property]: "bad" }),
     );
 });
+
+test("explicit plan enablement requests consent with the saved issued client, ordinary reconnect does not", () => {
+  const saved = {
+    ...attempt,
+    clientId: "oaiapp_fixture",
+    idTokenHint: "retained-id",
+  };
+  assert.equal(
+    new URL(chatgptLocalAuthorizationUrl(saved)).searchParams.has("prompt"),
+    false,
+  );
+  const uri = new URL(
+    chatgptLocalAuthorizationUrl({ ...saved, requestPlanConsent: true }),
+  );
+  assert.equal(uri.searchParams.get("prompt"), "consent");
+  assert.equal(uri.searchParams.get("client_id"), saved.clientId);
+  assert.ok(
+    uri.searchParams.get("scope")!.includes("chatgpt.tokens.use.direct"),
+  );
+  assert.equal(uri.searchParams.has("force_reconsent"), false);
+  assert.throws(() =>
+    chatgptLocalAuthorizationUrl({ ...attempt, requestPlanConsent: true }),
+  );
+});

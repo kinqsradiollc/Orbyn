@@ -818,9 +818,11 @@ test("native account menu binds rare cleanup to its displayed identity and revis
   const menu = elements(f.render()).find(
     (n) => n.type === "MoreMenu" && n.props.label === "Account 3 options",
   );
-  assert.equal(menu.props.actions[0].label, "Disconnect account");
-  assert.equal(menu.props.actions[0].destructive, true);
-  menu.props.actions[0].onPress();
+  const cleanup = menu.props.actions.find(
+    (a: any) => a.label === "Disconnect account",
+  );
+  assert.equal(cleanup.destructive, true);
+  cleanup.onPress();
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(JSON.parse(JSON.stringify(f.cleanupTargets[0])), {
     connectionId: "account-three",

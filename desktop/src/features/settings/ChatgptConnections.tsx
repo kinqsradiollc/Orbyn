@@ -142,6 +142,19 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
                             run({
                               action: "reconnect",
                               registrationId: account.registration_id,
+                              requestPlanConsent: true,
+                            })
+                          }
+                        >
+                          Enable ChatGPT plan usage
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            run({
+                              action: "reconnect",
+                              registrationId: account.registration_id,
                             })
                           }
                         >

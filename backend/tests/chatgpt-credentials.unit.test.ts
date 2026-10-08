@@ -40,6 +40,7 @@ function fixture() {
         assert.equal(expected, revision);
         credentials = null;
         revision = randomUUID();
+        return revision;
       },
       write: async (_binding: unknown, next: any, expected: string) => {
         assert.equal(expected, revision);
@@ -127,7 +128,7 @@ test("wrong refreshed identity or registration cannot replace the stored grant",
     }
     const resolver = await create(f.options);
     await assert.rejects(resolver.current(), /changed/);
-    assert.deepEqual(f.snapshot(), original);
+    assert.equal(f.snapshot(), null);
     assert.equal(f.writes(), 0);
     resolver.close();
   }
@@ -157,6 +158,7 @@ test("connection revocation or local stop during refresh prevents storage and la
     await assert.rejects(pending);
     await assert.rejects(resolver.current());
     assert.equal(f.writes(), 0);
+    assert.equal(f.snapshot(), null);
     resolver.close();
   }
 });
@@ -253,5 +255,25 @@ test("desktop late terminal refresh cannot erase after its connection changes", 
   const resolver = await create(f.options);
   await assert.rejects(resolver.current(), /changed/);
   assert.deepEqual(f.snapshot(), original);
+  resolver.close();
+});
+
+test("post-rotation identity outage retires R1 so a later call cannot reuse it", async () => {
+  const f = fixture();
+  let consumed = false;
+  const refresh = f.options.refresh;
+  f.options.refresh = async (...args) => {
+    assert.equal(consumed, false, "provider rejects reuse of R1");
+    consumed = true;
+    return refresh(...args);
+  };
+  f.options.verifyIdentity = async () => {
+    throw new Error("verification unavailable");
+  };
+  const resolver = await create(f.options);
+  await assert.rejects(resolver.current(), /verification unavailable/);
+  assert.equal(f.snapshot(), null);
+  await assert.rejects(resolver.current(), /Reconnect/);
+  assert.equal(f.calls(), 1);
   resolver.close();
 });

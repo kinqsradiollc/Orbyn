@@ -455,3 +455,33 @@ test("desktop refresh recognizes terminal grant errors without confusing server 
       status("AUTH_FAILED"),
     );
 });
+
+test("desktop explicit enable-plan authorization requests consent only for the saved registration", async () => {
+  for (const requestPlanConsent of [false, true]) {
+    const attempt = await prepare({
+      ...options,
+      clientId: "oaiapp_returning",
+      requestPlanConsent,
+    });
+    try {
+      const uri = new URL(attempt.authorizationUrl);
+      assert.equal(
+        uri.searchParams.get("prompt"),
+        requestPlanConsent ? "consent" : null,
+      );
+      assert.equal(uri.searchParams.get("client_id"), "oaiapp_returning");
+      assert.ok(
+        uri.searchParams.get("scope")!.includes("chatgpt.tokens.use.direct"),
+      );
+      const rejected = assert.rejects(attempt.result);
+      attempt.cancel();
+      await rejected;
+    } finally {
+      attempt.cancel();
+    }
+  }
+  await assert.rejects(
+    prepare({ ...options, requestPlanConsent: true }),
+    status("AUTH_INPUT"),
+  );
+});

@@ -441,12 +441,18 @@ const connectAction = z.discriminatedUnion("kind", [
       kind: z.literal("reconnect"),
       connectionId: z.uuid(),
       expectedRevision: z.uuid(),
+      requestPlanConsent: z.boolean().optional(),
     })
     .strict(),
 ]);
 export type NativeChatgptConnectAction =
   | { kind: "add"; expectedRevision: string | null }
-  | { kind: "reconnect"; connectionId: string; expectedRevision: string };
+  | {
+      kind: "reconnect";
+      connectionId: string;
+      expectedRevision: string;
+      requestPlanConsent?: boolean;
+    };
 
 /** Native-only authorization; access/refresh credentials stay in this device's protected store. */
 export async function signInNativeChatgpt(
@@ -589,6 +595,9 @@ export async function signInNativeChatgpt(
         .replace(/\//g, "_")
         .replace(/=+$/, ""),
       hostId: host,
+      ...(action?.kind === "reconnect" && action.requestPlanConsent
+        ? { requestPlanConsent: true }
+        : {}),
       ...(returning
         ? {
             clientId: returning.connection.client_id,
@@ -650,10 +659,6 @@ export async function signInNativeChatgpt(
       throw new Error("The selected ChatGPT account changed. Start again.");
     if (grant.expiresAt <= Date.now())
       throw new Error("ChatGPT sign-in expired. Reconnect this account.");
-    if (!grant.sharingGranted)
-      throw new Error(
-        "Enable ChatGPT plan usage before connecting this provider.",
-      );
     if (action?.kind === "add") {
       if (
         before?.accounts.some((entry) => entry.connection.id === connection.id)
@@ -721,12 +726,12 @@ export async function signInNativeChatgpt(
       check();
     }
     try {
-      if (action)
-        await context!.directory.connectAndSelect(
-          connection,
-          action.expectedRevision,
-        );
-      else await updateDirectoryStatus(userId, key, "connected", check);
+      if (action) {
+        const publish = grant.sharingGranted
+          ? context!.directory.connectAndSelect
+          : context!.directory.add;
+        await publish(connection, action.expectedRevision);
+      } else await updateDirectoryStatus(userId, key, "connected", check);
     } catch (error) {
       // Metadata publication is also an awaited ownership boundary.
       if (
@@ -806,6 +811,18 @@ async function renewNativeRegistration(
       fetch: expoFetch as unknown as typeof fetch,
       signal: controller.signal,
     });
+    // The provider has consumed the observed refresh token. Retire it before
+    // any cancellable identity/network work; failed verification needs reconnect.
+    if ((await readProtectedItem(key, protectedOptions)) !== original)
+      throw new Error("ChatGPT account changed. Try again.");
+    const retired = JSON.stringify({
+      version: 2,
+      revision: id,
+      connection: saved.connection,
+      grant: null,
+      ...(saved.signingAlias ? { signingAlias: saved.signingAlias } : {}),
+    });
+    await writeProtectedItem(key, retired, protectedOptions);
     check();
     if (grant.idToken !== saved.grant.idToken) {
       const identity = await client.verifyChatgptRefreshIdentity(
@@ -837,7 +854,7 @@ async function renewNativeRegistration(
       )
     )
       throw new Error("Reconnect this ChatGPT account.");
-    if ((await readProtectedItem(key, protectedOptions)) !== original)
+    if ((await readProtectedItem(key, protectedOptions)) !== retired)
       throw new Error("ChatGPT account changed. Try again.");
     check();
     const installed = JSON.stringify({
@@ -853,8 +870,7 @@ async function renewNativeRegistration(
       session.token !== sessionToken ||
       current?.id !== id
     ) {
-      if ((await readProtectedItem(key, protectedOptions)) === installed)
-        await writeProtectedItem(key, original, protectedOptions);
+      // Verified replacements remain durable even if the caller cancels.
       check();
     }
     return { original: installed, saved: { ...saved, revision: id, grant } };

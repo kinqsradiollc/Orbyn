@@ -116,7 +116,13 @@ async function createChatgptManager({
     operations = result.catch(() => {});
     return result;
   };
-  const authenticate = async (ctx, store, controller, binding) => {
+  const authenticate = async (
+    ctx,
+    store,
+    controller,
+    binding,
+    requestPlanConsent = false,
+  ) => {
     const signal = AbortSignal.any([ctx.lifetime.signal, controller.signal]);
     signal.throwIfAborted();
     await signIn({
@@ -124,6 +130,7 @@ async function createChatgptManager({
       registrationStore: store,
       vault,
       reconnectBinding: binding,
+      requestPlanConsent,
       beginConnection: (value) =>
         ctx.client.startChatgptConnection(value, signal),
       finishConnection: (value) =>
@@ -554,7 +561,9 @@ async function createChatgptManager({
         return snapshot();
       });
     },
-    reconnect(registrationId) {
+    reconnect(registrationId, requestPlanConsent = false) {
+      if (typeof requestPlanConsent !== "boolean")
+        throw new Error("Invalid ChatGPT consent action.");
       if (registrationId !== "primary")
         chatgptModelBinding.shape.connection_id.parse(registrationId);
       const attempt = reserveSignIn();
@@ -565,7 +574,13 @@ async function createChatgptManager({
         const binding = await store.connection();
         requireContext(ctx);
         if (!binding) throw new Error("Connect this ChatGPT account first.");
-        await authenticate(ctx, store, attempt.controller, binding);
+        await authenticate(
+          ctx,
+          store,
+          attempt.controller,
+          binding,
+          requestPlanConsent,
+        );
         requireContext(ctx);
         const selection = await ctx.store.selection();
         await ctx.store.select(registrationId, selection.revision);

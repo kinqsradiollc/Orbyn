@@ -44,10 +44,7 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
       <div className="settings-head">
         <div>
           <h3>ChatGPT</h3>
-          <p className="muted">
-            Direct web sign-in is unavailable. Manage your connected accounts
-            below.
-          </p>
+          <p className="muted">Direct web sign-in is unavailable.</p>
         </div>
         <div className="ai-connection-actions">
           <button

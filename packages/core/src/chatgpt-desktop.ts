@@ -168,6 +168,7 @@ export const chatgptDesktopCommand = z.discriminatedUnion("action", [
     .object({
       action: z.literal("reconnect"),
       registrationId: chatgptRegistrationId,
+      requestPlanConsent: z.boolean().optional(),
     })
     .strict(),
   z

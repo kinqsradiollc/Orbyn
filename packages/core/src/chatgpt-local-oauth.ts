@@ -14,6 +14,7 @@ const attemptSchema = z
       .max(512)
       .regex(/^[^\s\x00-\x1f\x7f]+$/),
     clientId: chatgptModelBinding.shape.client_id.optional(),
+    requestPlanConsent: z.boolean().optional(),
     idTokenHint: z
       .string()
       .min(1)
@@ -68,6 +69,11 @@ export function chatgptLocalAuthorizationUrl(
   if (!attempt.clientId) url.searchParams.set("agent_name_hint", "Orbyn");
   if (attempt.idTokenHint)
     url.searchParams.set("id_token_hint", attempt.idTokenHint);
+  if (attempt.requestPlanConsent) {
+    if (!attempt.clientId)
+      throw new Error("Select the saved ChatGPT registration first.");
+    url.searchParams.set("prompt", "consent");
+  }
   return url.href;
 }
 

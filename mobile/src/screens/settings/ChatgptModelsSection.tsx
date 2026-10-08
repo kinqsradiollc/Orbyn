@@ -163,14 +163,12 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         action,
       });
       if (controller.signal.aborted || !owned()) return;
-      if (!connected.sharingGranted)
-        throw new Error(
-          "Enable ChatGPT plan usage when connecting this account.",
-        );
       await prepareNativeChatgptAccounts(userId, { signal: controller.signal });
       if (controller.signal.aborted || !owned()) return;
       refresh();
       setAccountReload((n) => n + 1);
+      if (!connected.sharingGranted)
+        setConnectError("Account saved. ChatGPT plan use is off.");
     } catch (error) {
       if (!controller.signal.aborted && owned())
         setConnectError(errorText(error));
@@ -340,7 +338,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
             : account?.status === "unreadable"
               ? "Saved connection needs attention. Reconnect or disconnect it."
               : account?.status === "saved" && !account.planUseAllowed
-                ? "ChatGPT plan use is off. Enable it in ChatGPT Settings, then reconnect."
+                ? "ChatGPT plan use is off."
                 : "Account saved on this device."}
         </Text>
       )}
@@ -426,6 +424,17 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
                     title={`Account ${index + 1}`}
                     disabled={localBusy}
                     actions={[
+                      {
+                        label: "Enable ChatGPT plan usage",
+                        disabled: localBusy || entry.status === "disconnected",
+                        onPress: () =>
+                          void connect({
+                            kind: "reconnect",
+                            connectionId: entry.connection.id,
+                            expectedRevision: savedAccounts.revision,
+                            requestPlanConsent: true,
+                          }),
+                      },
                       {
                         label:
                           entry.status === "disconnected"

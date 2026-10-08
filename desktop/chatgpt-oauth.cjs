@@ -33,11 +33,14 @@ async function prepareChatgptAuthorization(options = {}) {
     nonce,
     clientId,
     idTokenHint,
+    requestPlanConsent = false,
     signal,
     timeoutMs = 600_000,
   } = options ?? {};
   if (
     !identifier(hostId) ||
+    typeof requestPlanConsent !== "boolean" ||
+    (requestPlanConsent && clientId === undefined) ||
     (clientId !== undefined && !issuedClient(clientId)) ||
     (idTokenHint !== undefined &&
       (clientId === undefined ||
@@ -230,6 +233,7 @@ async function prepareChatgptAuthorization(options = {}) {
     code_challenge: challenge,
     ...(clientId === undefined ? { agent_name_hint: "Orbyn" } : {}),
     ...(idTokenHint === undefined ? {} : { id_token_hint: idTokenHint }),
+    ...(requestPlanConsent ? { prompt: "consent" } : {}),
   }))
     authorization.searchParams.set(key, value);
   return { authorizationUrl: authorization.href, redirectUri, result, cancel };
