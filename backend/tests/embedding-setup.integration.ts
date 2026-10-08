@@ -182,6 +182,7 @@ test("setup validates an explicit provider independently of chat and requires re
   assert.equal(enabled.json().semantic_search, true);
   assert.equal(enabled.json().source, "none");
   assert.equal(enabled.json().embedding_dimensions, 3);
+  assert.equal(enabled.json().embedding_search_strategy, "exact");
   assert.equal(enabled.json().embedding_provider_id, providerId);
   assert.notEqual(
     enabled.json().embedding_generation,
@@ -374,6 +375,7 @@ test("replacement validates dimensions atomically and does not inherit generatio
   const replaced = await setup(second, expectedModel);
   assert.equal(replaced.statusCode, 200, replaced.body);
   assert.equal(replaced.json().embedding_dimensions, 3072);
+  assert.equal(replaced.json().embedding_search_strategy, "exact");
   assert.equal(replaced.json().embedding_indexed_pages, 0);
   assert.equal(replaced.json().embedding_pending_pages, existingPending + 1);
   assert.equal(replaced.json().embedding_provider_id, second);

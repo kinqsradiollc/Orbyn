@@ -71,6 +71,7 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
   const loadRequest = useRef(0);
   const load = useCallback(async () => {
     const request = ++loadRequest.current;
+    setFailed(false);
     try {
       const next = await client.listAiProviders();
       if (request !== loadRequest.current) return;
@@ -149,6 +150,17 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
 
   return (
     <>
+      {failed && (
+        <View style={shared.card} accessibilityLiveRegion="polite">
+          <Text style={shared.body}>Couldn't refresh AI providers.</Text>
+          <Button
+            secondary
+            title="Try again"
+            disabled={busy}
+            onPress={firstLoad}
+          />
+        </View>
+      )}
       <FadeIn style={shared.card}>
         <View style={s.cardHead}>
           <Text style={[shared.sectionTitle, { flex: 1 }]}>Assistant</Text>

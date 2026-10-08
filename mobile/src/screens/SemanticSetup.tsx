@@ -185,6 +185,8 @@ export function SemanticSetup({
             {settings.embedding_dimensions
               ? `${settings.embedding_dimensions} dimensions verified.`
               : ""}
+            {settings.embedding_search_strategy === "exact" &&
+              " Exact vector search."}
           </Text>
           <Button
             secondary

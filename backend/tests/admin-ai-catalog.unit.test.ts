@@ -295,7 +295,7 @@ for (const outcome of ["success", "error"] as const) {
       );
       assert.deepEqual(
         failures,
-        lifecycle === "current" ? [outcome === "error"] : [],
+        lifecycle === "current" ? [false, outcome === "error"] : [false],
       );
     });
   }

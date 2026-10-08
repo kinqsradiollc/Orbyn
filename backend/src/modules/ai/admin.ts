@@ -146,6 +146,8 @@ async function currentSettings(): Promise<AiSettings> {
     embedding_model: row?.embedding_model ?? "",
     embedding_provider_id: row?.embedding_provider_id ?? null,
     embedding_dimensions: row?.embedding_dimensions ?? null,
+    // ensure_vectors removes the legacy ANN index; flexible vectors use exact cosine search.
+    embedding_search_strategy: possible ? "exact" : null,
     embedding_generation: row?.embedding_generation,
     embedding_needs_validation:
       !!row?.embedding_search_enabled && !acceptedEmbedding,

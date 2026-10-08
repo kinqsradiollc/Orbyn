@@ -55,6 +55,7 @@ const offered = (kinds: readonly AiProviderKind[], current: AiProviderKind) =>
 export function AdminAi({ busy, revision, act, report }: Props) {
   const { ask, tell } = useConfirm();
   const [data, setData] = useState<AiProvidersResponse | null>(null);
+  const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<AiProvider | "new" | null>(null);
   /** Model chosen per provider row. */
   const [models, setModels] = useState<Record<string, string>>({});
@@ -75,6 +76,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
 
   const load = useCallback(async () => {
     const request = ++loadRequest.current;
+    setFailed(false);
     try {
       const next = await client.listAiProviders();
       if (request !== loadRequest.current) return;
@@ -83,7 +85,10 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       setLoaded({});
       setTests({});
     } catch (e) {
-      if (request === loadRequest.current) reportRef.current(e);
+      if (request === loadRequest.current) {
+        setFailed(true);
+        reportRef.current(e);
+      }
     }
   }, []);
 
@@ -212,8 +217,26 @@ export function AdminAi({ busy, revision, act, report }: Props) {
     void mutate(() => client.updateAiSettings({ provider_id: null }), "", true);
   };
 
+  const loadError = (
+    <section className="card" role="alert">
+      <p>Couldn't load AI providers.</p>
+      <button className="secondary" disabled={busy} onClick={() => void load()}>
+        Try again
+      </button>
+    </section>
+  );
+  if (!data)
+    return failed ? (
+      loadError
+    ) : (
+      <section className="card" aria-busy="true">
+        <p className="muted">Loading AI providers…</p>
+      </section>
+    );
+
   return (
     <>
+      {failed && loadError}
       <section className="card ai-assistant fade-up">
         <div className="section-heading">
           <h2>Assistant</h2>

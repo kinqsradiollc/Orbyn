@@ -600,6 +600,8 @@ export type AiSettings = {
   embedding_provider_id?: string | null;
   /** Dimensions verified by a non-personal setup probe. */
   embedding_dimensions?: number | null;
+  /** Orbyn's configured vector search strategy; absent when measurements are unavailable. */
+  embedding_search_strategy?: "exact" | null;
   /** Compare-and-set token for concurrent setup changes. */
   embedding_generation?: string;
   /** Saved acceptance was invalidated by a provider edit or removal. */
