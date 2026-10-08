@@ -56,6 +56,36 @@ export function settingsHasOverlay(root: HTMLElement): boolean {
   });
 }
 
+/** Return to the opener, or visible workspace navigation after a layout change. */
+export function restoreSettingsFocus(opener: HTMLElement | null): void {
+  const focus = (element: HTMLElement | null) => {
+    if (
+      !element?.isConnected ||
+      element === document.body ||
+      !element.getClientRects().length ||
+      element.closest("[inert], [hidden], :disabled") ||
+      getComputedStyle(element).visibility !== "visible"
+    )
+      return false;
+    const navigation = element.closest<HTMLElement>(".sidebar");
+    // Closing phone navigation keeps visibility until its slide finishes.
+    // Focus must not return there during that transient visible frame.
+    if (
+      navigation &&
+      !navigation.classList.contains("open") &&
+      getComputedStyle(navigation).transform !== "none"
+    )
+      return false;
+    element.focus({ preventScroll: true });
+    return document.activeElement === element;
+  };
+  if (focus(opener)) return;
+  for (const control of document.querySelectorAll<HTMLElement>(
+    "[data-settings-focus-return]",
+  ))
+    if (focus(control)) return;
+}
+
 /** Settings floats over the workspace; the open document and chat remain mounted. */
 export function SettingsModal({
   children,
@@ -198,7 +228,7 @@ export function SettingsModal({
         popup.element.style.visibility = popup.visibility;
         popup.element.inert = popup.inert;
       }
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
+      restoreSettingsFocus(opener);
     };
   }, []);
   const dismiss = () => {

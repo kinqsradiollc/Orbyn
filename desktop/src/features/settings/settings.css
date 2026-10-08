@@ -718,9 +718,7 @@
   background: var(--color-surface);
   color: var(--color-muted);
 }
-.settings-search-field:focus-within {
-  border-color: var(--color-accent);
-}
+/* The shared focus-within outline owns focus; keep the frame neutral. */
 .settings-search .settings-search-field input[type="search"],
 .settings-search .settings-search-field input[type="search"]:focus,
 .settings-search .settings-search-field input[type="search"]:focus-visible {

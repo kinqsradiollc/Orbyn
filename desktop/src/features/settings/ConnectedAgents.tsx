@@ -611,19 +611,22 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
         <Bot size={16} aria-hidden="true" /> Connected agents
       </h2>
       <div className="agents-head">
-        <p className="muted">
-          AI agents you’ve let into Orbyn, like Claude, ChatGPT, Claude Code,
-          Codex and Cursor. They can only see what you can, in the spaces you
-          choose. Each one uses its own AI: Orbyn sends it only what it asks
-          for.{" "}
-          <a href="/developers/mcp" className="link-button">
-            For developers
-          </a>
-        </p>
+        <p className="muted">Choose what connected agents can access.</p>
         <button type="button" className="primary" onClick={openConnect}>
           <Plus size={14} /> Connect an agent
         </button>
       </div>
+
+      <details className="agents-help">
+        <summary>How connections work</summary>
+        <p className="muted">
+          Agents use their own AI and only access the spaces you allow. Review
+          permissions when connecting and disconnect at any time.
+        </p>
+        <a href="/developers/mcp" className="link-button">
+          Developer guide
+        </a>
+      </details>
 
       {overview === null ? (
         <p className="muted">Loading connected agents…</p>
@@ -967,11 +970,7 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
           })}
         </ul>
       ) : (
-        <p className="muted agents-empty">
-          No agents yet. Connect one below: Claude and ChatGPT sign in with
-          Orbyn and ask you what they may do; other apps get an agent key.
-          Disconnect any of them at any time.
-        </p>
+        <p className="muted agents-empty">No agents connected.</p>
       )}
       {overview &&
         grants.some((g) => g.kind === "legacy") &&

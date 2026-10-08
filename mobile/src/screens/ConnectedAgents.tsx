@@ -359,6 +359,7 @@ export function ConnectedAgentsCard({
   onOpenReview?: (proposalId: string) => void;
 }) {
   const [overview, setOverview] = useState<AgentsOverview | null>(null);
+  const [connectionHelpOpen, setConnectionHelpOpen] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [activity, setActivity] = useState<
     Record<string, AgentActivity[] | null>
@@ -661,9 +662,30 @@ export function ConnectedAgentsCard({
       <Text style={[shared.eyebrow, s.eyebrow]}>CONNECTED AGENTS</Text>
       <View style={shared.card}>
         <Text style={[shared.small, s.gap]}>
-          AI agents you’ve let into Orbyn, like Claude, ChatGPT, Claude Code and
-          Codex. They can only see what you can, in the spaces you choose.
+          Choose what connected agents can access.
         </Text>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityState={{ expanded: connectionHelpOpen }}
+          onPress={() => {
+            animateLayout();
+            setConnectionHelpOpen(!connectionHelpOpen);
+          }}
+          style={s.connectionHelp}
+        >
+          <Text style={shared.small}>How connections work</Text>
+          <Icon
+            name={connectionHelpOpen ? "chevronDown" : "chevronRight"}
+            size={16}
+            color={colors.muted}
+          />
+        </PressableScale>
+        {connectionHelpOpen && (
+          <Text style={[shared.small, s.gap]}>
+            Agents use their own AI and only access the spaces you allow. Review
+            permissions when connecting and disconnect at any time.
+          </Text>
+        )}
         {overview === null ? (
           <Text style={shared.small}>Loading…</Text>
         ) : grants.length ? (
@@ -860,7 +882,7 @@ export function ConnectedAgentsCard({
             );
           })
         ) : (
-          <Text style={shared.small}>No agents yet.</Text>
+          <Text style={shared.small}>No agents connected.</Text>
         )}
       </View>
 
@@ -1081,6 +1103,14 @@ const s = themed(() =>
   StyleSheet.create({
     eyebrow: { marginTop: 8 },
     gap: { marginBottom: 12 },
+    connectionHelp: {
+      minHeight: controls.tap,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      marginBottom: 8,
+    },
     row: {
       paddingVertical: 12,
       borderTopWidth: StyleSheet.hairlineWidth,
