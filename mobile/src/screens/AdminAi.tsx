@@ -527,9 +527,14 @@ function ProviderRow({
             busy={busy}
             onSave={onControlsSaved}
           />
-          <View style={s.actions} accessibilityState={{ busy: catalogLoading }}>
+          <View
+            style={s.actions}
+            accessibilityState={{ busy: catalogLoading }}
+            aria-busy={catalogLoading}
+          >
             {def.listsModels && (
               <SmallAction
+                accessibilityLiveRegion="polite"
                 label={
                   catalogLoading
                     ? "Loading models…"
@@ -592,9 +597,6 @@ function ProviderRow({
               onPress={() => onUse(typed)}
             />
           </View>
-          <Text accessibilityLiveRegion="polite" style={shared.small}>
-            {catalogLoading ? "Loading models…" : ""}
-          </Text>
           {catalogError && (
             <Text
               accessibilityRole="alert"

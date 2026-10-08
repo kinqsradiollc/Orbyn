@@ -7,27 +7,18 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: retesting handoff ready. Review rounds: 1/3.**
-Round 1 reviewed frozen `aa10d566d5c11b8e3c1aa06063e60c4799c12e54` in
-`/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`, branch
-`codex/c1-full-completion`. Revised candidate is the commit containing the
-[round-1 report](c1-full-2026-10-08-review-r1.md); resolve exact HEAD for retest.
-Reviewer freezes product/test source and relinquishes writes for Tester retesting.
-No competing Builder product edits. Handoff is file-backed; Reviewer has not sent
-cross-chat messages without direct human authorization in this chat.
-
-Historical [Tester attempt 1](c1-full-2026-10-08-test-r1.md):4322/4329 pass,
-7fail, zero skip/cancel, exit1; types/build/export, vector69/69 and three separate
-migration1/1 pass. Round-1 fixes supply stale web probe harness refs, add refresh
-invalidation coverage, and provide accessible catalog loading and persistent inline
-error/retry on both clients. Final focused202/202, workspace types and web build
-pass. Tester full regression and delegated revised-source rendered checks pending.
-QA037001 single duration retains delegated scoped aa10 pass. Live-provider/cache,
-accepted embedding recipient, genuine enlargement, installed-client and full
-browser management/embedding matrix remain open. See report's requirement audit
-and executable visual/runtime tasks. No C1 acceptance/main merge/push/deployment.
-Next numbered review needs tested-source handoff and recorded2/3; maximum3.
-See [workflow](checkpoint-workflow.md) and [original handoff](c1-full-2026-10-08-handoff.md).
+**Active cycle: C1-full-2026-10-08. Phase: scoped round-1 retest handoff ready. Review rounds: 1/3.**
+244abc21 independently passed full4337/4337 and focused202/202/types/build/exports.
+Same-round closure verifies R1-001 and scoped R1-003; R1-002 visible loading passes.
+Reviewer then took sole writes to correct existing QA038001/002 mobile busy mapping
+and duplicate visible progress. Revised source is this containing commit on
+codex/c1-full-completion in `/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`.
+205/205 focused, mobile types, formatting/diff checks pass; Tester revised-source
+retest and any narrowly justified mobile pending-state recheck remain pending.
+Reviewer freezes/relinquishes writes after commit. No new full review/counter increment.
+See [round-1 evidence](c1-full-2026-10-08-review-r1.md). Full C1 acceptance gaps
+remain; no merge/push/deploy/next-stage advancement. Apply primary workflow94284ab7:
+visual checks only for named material risk/defect or user request, no automatic sweep.
 
 Latest delivered checkpoint: personal scanner admission, merged and pushed as
 0c19e330 (productfed13851), full4322/4322, focused98/98 and backend types/build

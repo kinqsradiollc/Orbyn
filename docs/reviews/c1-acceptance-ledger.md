@@ -2153,3 +2153,15 @@ codex/c1-full-completion in the c1-perplexity-embeddings checkout. Reviewer free
 source and relinquishes writes for Tester; cross-chat messages not sent without
 direct human authorization. No merge/push/deploy or round reset. Prior failures
 remain intact. Next formal review must record2/3 after tested-source handoff.
+
+
+### Same-round QA038001/002 mobile accessibility/content repair — 8 October
+
+Round1/3 unchanged; explicit sole Reviewer source ownership. On244abc21, RN Web
+actual-renderer regression reproduces absent busy mapping (1pass/2fail). Repair
+adds supported aria-busy alongside native accessibilityState and forwards polite
+live-region onto existing catalog action label, removing duplicate visible status.
+Prior authority callbacks unchanged. Final205/205 focused and mobile types pass;
+see round-1 report/logs. Revised source is the containing commit. Frozen for Tester
+impact-based retest; scoped rendered recheck only if needed for these named defects.
+No additional browser sweep, full acceptance, merge/push/deploy or round increment.

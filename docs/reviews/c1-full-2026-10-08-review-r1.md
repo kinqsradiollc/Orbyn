@@ -147,3 +147,102 @@ are implemented but await independent Tester and rendered verification. Preserve
 failed4322/4329 as historical evidence. Shared counter stays1/3; next formal review
 requires tested-source handoff and persisted2/3. Maximum3 rounds, no silent reset
 or fourth review. No merge/push/deploy/C2 advancement or finished-C1 pause.
+
+## Same-round evidence closure — 8 October 2026, 20:13 Melbourne
+
+Evidence-only follow-up within **round1/3**, applying canonical workflow
+clarification8eea1512: verified fixes may close existing findings in the same
+round. Earlier text implying that every retest automatically requires round2 is
+superseded. No new full candidate review, product/test edit or counter increment.
+Candidate remains clean frozen `244abc21c464d19c379bf0ebaf5d431f4f8e344d` on
+`codex/c1-full-completion`; Reviewer independently checked Git HEAD/status.
+Only this primary report is appended; the frozen source checkout is unchanged.
+
+Read `c1-full-2026-10-08-retest-r1.md` and final consolidated QA038 evidence at
+`/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-038-c1-round1-catalog-2026-10-08/visual-analysis.md`.
+Independently inspected terminal TAP tails: full4337/4337 and focused202/202,
+zero failures/skips/cancellations. Tester records terminal exit0/signal:null,
+all466 test hashes matching, workspace types/build and both mobile exports pass.
+Prior aa10 failed attempt remains historical; no new test run by Reviewer.
+Unchanged operational69/69 and separate migration1/1 receipts remain explicitly
+aa10 executions on equivalent relevant source, not freshly executed244a results.
+
+| Finding | Evidence closure | Remaining limitation/correction |
+| --- | --- | --- |
+| R1-001 / Tester F1 | **Closed for the harness defect and added lifecycle assertions.** Independent full/focused repaired-source results verify all seven former failures plus added refresh/retired-row coverage. | Does not qualify every installed/provider race or full C1. |
+| R1-002 / QA037002 | **Visible loading feedback verified; partial closure only.** Delegated representative narrow/short/theme browser cases show Loading models… while disabled, retained drafts/catalog, then idle. Web rendered aria-busy and polite status markup verified by Visual Check; mobile polite live text exists. | Full pending accessibility correction remains open as QA038001: mobile browser exposes no aria-busy despite the source accessibilityState. QA038002 duplicate visible mobile progress remains open. Actual screen-reader announcement/native behavior is untested. |
+| R1-003 / QA037003 | **Closed for the scoped inline failure/retry defect.** QA038 final retained-form503→empty→success→retained-catalog503→success sequence verifies nearby persistent error/retry, cleared old errors after explicit successful retry, preserved manual drafts and prior loaded picker/helper. | Rendered prior-state retention does not re-enumerate every catalog entry or prove stale authority races. Callback stale/error tests supply separate local evidence; no new full visual matrix inferred. |
+| R1-004 | **Open.** No full C1 acceptance or overall code-review approval from this closure. | Remaining management/default/credential, enabled/error/consent/status embedding evidence; reliable wide captures, genuine enlargement, installed clients and authorized live-provider/cache/embedding qualification. |
+
+QA038001 and QA038002 remain **P3 open findings**. The missing rendered busy
+attribute is a browser markup gap, not proof that all assistive technology fails
+to announce progress. The duplicate visible Loading models sentence is confirmed
+by delegated short-height mobile inspection and matches the source's visible
+live-region Text; future correction must preserve an accessible announcement
+without duplicate visible copy. No correction is made before explicit source
+ownership handoff. These are not hidden by closing the original visible-feedback
+portion of R1-002.
+
+Visual conclusions here are a review of **delegated Markdown evidence**, not
+personal pixel inspection. QA independently identified frontend244abc21; APIaa10
+runtime/source equivalence is owner-confirmed and backend product is unchanged.
+Original images are inline-only with export limitations. Reliable wide frames
+were excluded due to capture inconsistency; no overlap defect or pass inferred.
+Historical shared-control/theme evidence can be reused only under recorded relevant
+source/runtime equivalence. No new screenshots requested; ongoing StageA/B batches
+retain their single fixture owner and cover specific missing cases.
+
+**Decision:** close R1-001 and scoped R1-003; verify the visible-feedback portion
+of R1-002 while its accessibility/content follow-ups remain unresolved. Round1/3
+stays open for those findings and R1-004 acceptance gaps. No full C1 approval,
+main merge/push/deployment, C2 advancement or completed-C1 pause. Three rounds
+remains a ceiling; any later new full review must persist the next number, while
+verified closure of existing findings need not consume another round.
+
+
+## Same-round QA038001/002 scoped repair — 8 October 2026
+
+Explicit sole source ownership was handed to Reviewer for these two existing
+R1-002 follow-ups only. No new full review, counter remains1/3. Clean starting
+source244abc21. Builder performs runtime/API qualification on unchanged compiled
+backend without source edits/builds; Tester waits for this repair freeze.
+
+The installed React Native Web0.21.2 createDOMProps maps `aria-busy` but does not
+map this `accessibilityState.busy`. AdminAi now supplies both native-facing busy
+state and supported `aria-busy`. SmallAction accepts an optional Text live-region
+prop; the catalog action's existing label carries the polite announcement instead
+of a separate visible Loading models sentence. Other SmallAction consumers retain
+their default behavior. No hidden text layout, font scaling restriction, callback
+or provider-authority change. Native-facing live-region props remain present;
+actual screen-reader announcement timing and installed behavior are unverified.
+
+Changed files:
+- `mobile/src/screens/AdminAi.tsx`: supported busy prop, one visible progress label.
+- `mobile/src/components/SmallAction.tsx`: optional live-region forwarding to label.
+- `backend/tests/admin-ai-catalog-accessibility.unit.test.ts`: actual ProviderRow /
+  SmallAction markup through installed RN Web View/Text/Pressable renderer, with
+  unrelated controls/motion isolated; native-facing state/announcement props also
+  checked. Pending/idle/error cases verify busy true/false, single progress text,
+  polite live label, disabled action and retained retry/manual draft.
+- Review/current-state/ledger documentation only otherwise.
+
+Pre-fix new test on244abc21:1pass/2fail, exit1; actual renderer confirms absent
+busy markup. Log `/tmp/orbyn-reviewer-r1-a11y-before.log`; preserve failure.
+After repair:205/205 across the prior seven-file202 cohort plus new three cases,
+zero failure/skip/cancel, exit0; `/tmp/orbyn-reviewer-r1-a11y-focused.log`.
+Command: `npx tsx --test --test-concurrency=1` with
+`admin-ai-catalog-accessibility.unit.test.ts` plus the seven earlier focused files.
+Mobile `npm run typecheck -w mobile`: exit0,
+`/tmp/orbyn-reviewer-r1-a11y-mobile-types.log`. Scoped Prettier and diff checks pass.
+No backend/web build or duplicate full regression by Reviewer; product change is
+mobile-only and Tester records impact-based retest on the revised committed source.
+
+Revised candidate is this containing commit oncodex/c1-full-completion in the
+c1-perplexity-embeddings checkout; exact SHA returned in handoff and primary state.
+Source frozen and Reviewer relinquishes writes for Tester after commit.
+QA038001/002 are implemented and locally verified, **not independently closed**.
+Use on-demand rule94284ab7: if rendered recheck is needed, one bounded mobile
+pending-state check for these named defects only; no management/embedding sweep.
+No cross-chat messages sent by Reviewer. Builder can coordinate from its authorized
+chat. R1-004 and required live/native/enlargement gates stay open; no full C1
+approval, main merge/push/deployment or counter increment.
