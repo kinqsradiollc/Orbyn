@@ -10,9 +10,9 @@ evidence can qualify C1, with unknown cost/vendor outcomes reported honestly. Fu
 
 # C1 Builder readiness
 
-Status: **Builder completion preparation under revised verification scope, no formal handoff**.
+Status: **Complete retained candidate frozen; consolidated Tester qualification active**.
 Review counter remains **1/3**.
-Latest Builder code candidate: `0fe6b087` on `codex/c1-production-checkpoint`
+Frozen full candidate: `1a92a2c0` (contains product correction `0fe6b087`) on `codex/c1-production-checkpoint`
 in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
 It includes the retained full C1 implementation, prior capture-module repair,
 and QA-040-001 mobile consent accessible-name correction. The latter passes
@@ -35,7 +35,7 @@ current scope override. This record and `adr-current-state.md` govern readiness.
 | Generation wire formats | All20 saved-kind fixtures available; actual authorized Matilda six-call baseline remains distinct from mocks. |
 | Reasoning/cache | Control/wire tests available. Actual OpenAI cache economics are an approved follow-up; do not infer savings from zero counters. |
 | Usage | Positive/large/unknown/loading/error/retry evidence available, with private separation and billing uncertainty. |
-| Independent embedding recipient | Revision-bound consent fixtures and QA040 scoped browser flow available; accessible name fixed, targeted closure pending. Live accepted vendor probe is an approved follow-up. |
+| Independent embedding recipient | Revision-bound consent fixtures and QA040 scoped browser flow available; accessible name fixed and QA040001 independently closed in Expo web DOM. Live accepted vendor probe is an approved follow-up. |
 | Dimensions/replacement | pgvector fixtures and actual synthetic3D→7D replacement/deletion/requeue receipt available. |
 | Consent/document/access races | Ownership/visibility/edit/delete/revoke and in-flight revision suites available. |
 | Migration/worker | Independent upgrade/late-install fixtures and operational restart receipts available. |
@@ -50,8 +50,9 @@ source. No vendor requests or native jobs are needed for the label recheck.
 ## Preparation ownership
 
 Builder owns source fixes, packages and prerequisites. Tester waits for the whole
-ready candidate; Reviewer waits for consolidated Tester evidence. No new review
-round or formal test run is initiated by this document.
+ready candidate; Reviewer waits for consolidated Tester evidence. The consolidated handoff is `c1-consolidated-final-handoff-2026-10-08.md`
+on the frozen candidate. Tester now owns formal qualification; Reviewer waits
+for its report, with the next full review recorded as2/3 before it begins.
 
 The read-only installed inventory is in
 `c1-installed-qualification-readiness-2026-10-08.md`: existing packages cannot
