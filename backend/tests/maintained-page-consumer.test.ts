@@ -1148,6 +1148,8 @@ test("real Overnight service stages a scheduled page for exact owner review with
 for (const mode of [
   "opt_out",
   "missing_counters",
+  "invalid_json",
+  "invalid_schema",
   "rate_limit",
   "source_changed",
   "provider_changed",
@@ -1161,6 +1163,9 @@ for (const mode of [
       ]);
     if (mode === "missing_counters") replyUsage = undefined;
     if (mode === "rate_limit") replyStatus = 429;
+    if (mode === "invalid_json") responseHook = async () => "not JSON";
+    if (mode === "invalid_schema")
+      responseHook = async () => JSON.stringify({ unexpected: true });
     if (mode === "source_changed" || mode === "provider_changed")
       responseHook = async (body) => {
         if (mode === "source_changed")
@@ -1200,9 +1205,26 @@ for (const mode of [
     );
     if (mode === "missing_counters")
       assert.deepEqual(rows[0], { input_tokens: null, output_tokens: null });
-    if (["rate_limit", "source_changed", "provider_changed"].includes(mode))
+    if (
+      [
+        "rate_limit",
+        "source_changed",
+        "provider_changed",
+        "invalid_json",
+        "invalid_schema",
+      ].includes(mode)
+    )
       assert.equal(result.state, "failed");
     else assert.ok(["done", "waiting"].includes(result.state));
+    if (mode === "invalid_json" || mode === "invalid_schema") {
+      assert.equal((await current(f.run.id)).proposal, null);
+      assert.equal(
+        (await pool.query("SELECT content FROM docs WHERE id=$1", [f.doc.id]))
+          .rows[0].content[1].text,
+        "Authorized selected source.",
+      );
+      assert.deepEqual(rows[0], { input_tokens: "210", output_tokens: "30" });
+    }
     await processMaintainedPageRun(
       log,
       mode === "overnight" ? "overnight" : "background",

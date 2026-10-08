@@ -64,3 +64,17 @@ Archive mapping and hashes: `/tmp/orbyn-c1-compressed-log-index-20261008.json`.
 Earlier log paths in this ledger resolve to the same name plus `.gz` when listed
 in that index. About280MiB remains free; more headroom is needed before restarting
 the full regression. User has been asked to free several GiB.
+
+### Malformed-output review
+
+The hosted-page cohort now explicitly covers invalid JSON and invalid patch
+schema after a response carrying observed210/30 counters. Both leave the page
+unchanged with no staged proposal, retain one usage receipt, and make no new
+request when the failed run is visited again. Actual provider adapter and worker
+paths are exercised against the inert HTTP fixture.
+
+Updated page-consumer cohort32/32 passes, zero failures/skips/cancellations,
+exit0/signal:null,10798.8925ms:
+`/tmp/orbyn-c1-entrypoint-usage-parse-focused-20261008.log` and matching terminal
+JSON. Product source remains c1dde1d3; these additional tests do not replace the
+pending full regression. Disk remains below300MiB.
