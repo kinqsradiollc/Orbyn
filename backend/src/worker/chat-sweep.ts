@@ -5,13 +5,19 @@ import type { UserRow } from "../lib/auth.js";
 import { keptOutFor, type KeptOut } from "../lib/assistant-off.js";
 import { visibleProjects } from "../lib/visibility.js";
 import { createDoc } from "../modules/docs/service.js";
-import { resolveAi } from "../modules/ai/providers/resolve.js";
+import {
+  captureChatSweepJob,
+  completeChatMaintenance,
+  finishChatMaintenance,
+  releaseChatMaintenance,
+} from "../modules/ai/providers/chat-maintenance.js";
 import {
   complete,
   type ChatMessage,
   type ResolvedAi,
 } from "../modules/ai/providers/adapters.js";
 import { appLink } from "../modules/booking/service.js";
+import { ChatgptDeviceDeferred } from "../modules/ai/providers/user-choice.js";
 
 export const CHAT_RETENTION_DAYS = 7;
 export const SWEEP_MAX_ATTEMPTS = 5;
@@ -42,6 +48,7 @@ type ChatRow = {
   scope_kind: "project" | "task" | null;
   scope_id: string | null;
   attempts: number;
+  sweep_job_id: string;
 };
 
 export type ChatCompactor = (
@@ -197,6 +204,8 @@ async function claimChats(limit: number, now: Date, skip: string[]) {
       )
     ).rows;
     if (!rows.length) return rows;
+    for (const row of rows)
+      row.sweep_job_id = await captureChatSweepJob(db, row.user_id, row.id);
     await db.query(
       "UPDATE ai_chats SET sweep_claimed_at = $2, sweep_attempts = sweep_attempts + 1 WHERE id = ANY($1::uuid[])",
       [rows.map((row) => row.id), now],
@@ -217,8 +226,7 @@ export async function sweepOldChats(
     budgetMs?: number;
   } = {},
 ): Promise<number> {
-  const ai = options.ai === undefined ? await resolveAi() : options.ai;
-  if (!ai) return 0;
+  if (options.ai === null) return 0;
   const compact = options.compact ?? complete;
   const now = options.now ?? new Date();
   const limit = Math.max(1, Math.min(options.limit ?? SWEEP_BATCH, 20));
@@ -232,7 +240,7 @@ export async function sweepOldChats(
     if (!chats.length) break;
     for (const chat of chats) {
       tried.push(chat.id);
-      if (await sweepChat(ai, compact, chat, now)) swept++;
+      if (await sweepChat(options.ai, compact, chat, now)) swept++;
     }
   }
   return swept;
@@ -240,11 +248,12 @@ export async function sweepOldChats(
 
 /** Compact one claimed chat; true when it was swept. */
 async function sweepChat(
-  ai: ResolvedAi,
+  ai: ResolvedAi | undefined,
   compact: ChatCompactor,
   chat: ChatRow,
   now: Date,
 ): Promise<boolean> {
+  let claim: string | undefined;
   try {
     const keptOut = await keptOutFor(pool, chat.user_id);
     const rawTurns = dropKeptOutTurns(chat.turns, keptOut);
@@ -260,19 +269,35 @@ async function sweepChat(
         [chat.id, now, chat.user_id, CHAT_RETENTION_DAYS],
       );
       if (!cleared.rowCount) await cameBack(chat);
+      else
+        await pool.query(
+          "UPDATE ai_jobs SET state='failed',claimed_by=NULL,lease_until=NULL,error_message='Empty chat needs no model call.' WHERE id=$1 AND user_id=$2 AND state='queued'",
+          [chat.sweep_job_id, chat.user_id],
+        );
       return Boolean(cleared.rowCount);
     }
     const transcript = turns
       .map((turn) => `${turn.role}: ${turn.text}`)
       .join("\n\n")
       .slice(-24_000);
-    const raw = await compact(ai, [
-      { role: "system", content: summaryPrompt },
+    const raw = await completeChatMaintenance(
+      chat.user_id,
+      chat.sweep_job_id,
+      [
+        { role: "system", content: summaryPrompt },
+        {
+          role: "user",
+          content: `Conversation title: ${chat.title}\n\n${transcript}`,
+        },
+      ],
       {
-        role: "user",
-        content: `Conversation title: ${chat.title}\n\n${transcript}`,
+        ai,
+        send: compact,
+        onClaim: (value) => {
+          claim = value;
+        },
       },
-    ]);
+    );
     const clean = raw
       .trim()
       .replace(/^```(?:json)?\s*/i, "")
@@ -298,6 +323,7 @@ async function sweepChat(
         )
       ).rows[0];
       if (!current) return false;
+      await finishChatMaintenance(db, chat.user_id, chat.sweep_job_id, claim!);
       const user = {
         id: chat.user_id,
         name: chat.user_name,
@@ -326,19 +352,32 @@ async function sweepChat(
     if (!saved) await cameBack(chat);
     return saved;
   } catch (error) {
+    if (claim)
+      await releaseChatMaintenance(
+        chat.user_id,
+        chat.sweep_job_id,
+        claim,
+        error instanceof SyntaxError || error instanceof z.ZodError,
+      ).catch(() => {});
     // Only the error's kind is kept; the conversation never reaches logs.
     const message =
       error instanceof SyntaxError || error instanceof z.ZodError
         ? "The summary was not valid JSON."
-        : error instanceof Error
-          ? error.message.slice(0, 200)
-          : "unknown";
+        : error instanceof ChatgptDeviceDeferred
+          ? "Waiting for your ChatGPT device."
+          : "The summary could not be completed.";
     console.error("Chat sweep failed", chat.id, message);
     await pool
       .query(
-        `UPDATE ai_chats SET sweep_claimed_at = NULL, sweep_last_error = $3
-          WHERE id = $1 AND user_id = $2 AND swept_at IS NULL`,
-        [chat.id, chat.user_id, message],
+        `UPDATE ai_chats SET sweep_claimed_at=CASE WHEN $4 THEN sweep_claimed_at ELSE NULL END,
+          sweep_attempts=greatest(0,sweep_attempts-CASE WHEN $4 THEN 1 ELSE 0 END),sweep_last_error=$3
+          WHERE id=$1 AND user_id=$2 AND swept_at IS NULL`,
+        [
+          chat.id,
+          chat.user_id,
+          message,
+          error instanceof ChatgptDeviceDeferred,
+        ],
       )
       .catch(() => undefined);
     return false;

@@ -4,10 +4,15 @@ import type {
   ResolvedAi,
 } from "../modules/ai/providers/adapters.js";
 import { complete } from "../modules/ai/providers/adapters.js";
-import { resolveAi } from "../modules/ai/providers/resolve.js";
 import { pool, transaction } from "../db/pool.js";
 import { keptOutFor } from "../lib/assistant-off.js";
+import {
+  completeChatMaintenance,
+  finishChatMaintenance,
+  releaseChatMaintenance,
+} from "../modules/ai/providers/chat-maintenance.js";
 import { rememberMemory } from "../modules/memory/service.js";
+import { ChatgptDeviceDeferred } from "../modules/ai/providers/user-choice.js";
 
 const extraction = z
   .object({
@@ -36,6 +41,7 @@ type QueuedTurn = {
   user_id: string;
   turns: { role: "user" | "assistant"; content: string }[];
   source_project_id: string | null;
+  maintenance_job_id: string | null;
 };
 
 export type MemoryCompleter = (
@@ -59,8 +65,7 @@ export async function drainMemoryQueue(
     limit?: number;
   } = {},
 ): Promise<number> {
-  const ai = options.ai === undefined ? await resolveAi() : options.ai;
-  if (!ai) return 0;
+  if (options.ai === null) return 0;
   const completeTurn = options.completeTurn ?? complete;
   const limit = Math.max(1, Math.min(options.limit ?? 5, 20));
   const jobs = await transaction(async (db) => {
@@ -69,7 +74,7 @@ export async function drainMemoryQueue(
     ]);
     const rows = (
       await db.query<QueuedTurn>(
-        `SELECT id, chat_id, user_id, turns, source_project_id
+        `SELECT id, chat_id, user_id, turns, source_project_id, maintenance_job_id
            FROM memory_queue
           WHERE claimed_at IS NULL OR claimed_at < now() -
             make_interval(mins => least(60, greatest(5, attempts * 5)))
@@ -87,6 +92,7 @@ export async function drainMemoryQueue(
   });
 
   for (const job of jobs) {
+    let claim: string | undefined;
     try {
       // Recheck persisted provenance before any provider call, including queued
       // turns written by an older worker during a rolling deployment.
@@ -117,10 +123,23 @@ export async function drainMemoryQueue(
         .map((turn) => `${turn.role}: ${turn.content}`)
         .join("\n\n")
         .slice(-24_000);
-      const response = await completeTurn(ai, [
-        { role: "system", content: system },
-        { role: "user", content: conversation },
-      ]);
+      if (!job.maintenance_job_id)
+        throw new Error("Queued maintenance authority is unverified");
+      const response = await completeChatMaintenance(
+        job.user_id,
+        job.maintenance_job_id,
+        [
+          { role: "system", content: system },
+          { role: "user", content: conversation },
+        ],
+        {
+          ai: options.ai,
+          send: completeTurn,
+          onClaim: (value) => {
+            claim = value;
+          },
+        },
+      );
       const result = parseJson(response);
       const sources = [
         {
@@ -159,6 +178,12 @@ export async function drainMemoryQueue(
           );
           return;
         }
+        await finishChatMaintenance(
+          db,
+          job.user_id,
+          job.maintenance_job_id!,
+          claim!,
+        );
         for (const topic of result.topics)
           await rememberMemory(
             db,
@@ -169,12 +194,32 @@ export async function drainMemoryQueue(
           );
         await db.query("DELETE FROM memory_queue WHERE id = $1", [job.id]);
       });
-    } catch {
+    } catch (error) {
+      // A source removed during the model call must not leave queued personal text behind.
+      await pool.query(
+        `DELETE FROM memory_queue q WHERE q.id=$1 AND q.user_id=$2
+         AND NOT EXISTS(SELECT 1 FROM ai_chats c WHERE c.id=q.chat_id
+           AND c.user_id=q.user_id AND c.origin='person')`,
+        [job.id, job.user_id],
+      );
+      if (job.maintenance_job_id && claim)
+        await releaseChatMaintenance(
+          job.user_id,
+          job.maintenance_job_id,
+          claim,
+          error instanceof SyntaxError || error instanceof z.ZodError,
+        ).catch(() => {});
       // The queued text stays available for retry; logs and error fields never hold it.
       await pool
         .query(
-          "UPDATE memory_queue SET last_error = 'Learning failed' WHERE id = $1",
-          [job.id],
+          "UPDATE memory_queue SET last_error=$2,attempts=greatest(0,attempts-$3) WHERE id=$1",
+          [
+            job.id,
+            error instanceof ChatgptDeviceDeferred
+              ? "Waiting for your ChatGPT device."
+              : "Learning failed",
+            error instanceof ChatgptDeviceDeferred ? 1 : 0,
+          ],
         )
         .catch(() => {});
     }

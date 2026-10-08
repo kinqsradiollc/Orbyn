@@ -681,7 +681,11 @@ export const SWEEP_RULES: SweepRule[] = [
     where: `((created_at < now() - interval '1 day' AND state IN ('done', 'failed'))
       OR (state = 'running' AND run_state IS NULL AND heartbeat_at < now() - interval '1 day')
       OR (state = 'waiting' AND heartbeat_at < now() - interval '14 days'))
-      AND NOT EXISTS (SELECT 1 FROM assistant_night_runs nr WHERE nr.job_id = ai_jobs.id)`,
+      AND NOT EXISTS (SELECT 1 FROM assistant_night_runs nr WHERE nr.job_id = ai_jobs.id)
+      -- Keep captured maintenance identity while its source awaits recovery.
+      -- Deleting it would make an unchanged old chat enqueue a fresh call.
+      AND NOT EXISTS (SELECT 1 FROM memory_queue q WHERE q.maintenance_job_id=ai_jobs.id)
+      AND NOT EXISTS (SELECT 1 FROM ai_chats c WHERE c.sweep_job_id=ai_jobs.id AND c.swept_at IS NULL)`,
     days: 0,
     configurable: false,
   },

@@ -74,6 +74,9 @@ async function jobLive(db: Db, owner: string, id: string) {
     [owner, id],
   );
   if (!job.rowCount) fail(409, "The assistant job or its sources changed.");
+  const { guardChatMaintenanceJob } =
+    await import("../ai/providers/chat-maintenance.js");
+  await guardChatMaintenanceJob(db, owner, id);
   await assertJobAiProviderChoice(db, owner, id);
 }
 /** Cached loop replies still require current producing-source authority. */

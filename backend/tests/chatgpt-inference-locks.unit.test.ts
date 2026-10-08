@@ -23,6 +23,10 @@ function actualJobGuard() {
   const context = {
     exports: {} as Record<string, any>,
     require: (path: string) => {
+      if (path.endsWith("chat-maintenance.js"))
+        return {
+          guardChatMaintenanceJob: async () => calls.push("maintenance"),
+        };
       if (path.endsWith("agenda-call.js"))
         return { guardAgendaInferenceJob: async () => calls.push("agenda") };
       if (path.endsWith("maintenance-inference.js"))
@@ -55,6 +59,7 @@ test("inference job authority takes a write-compatible job lock before any reque
     {
       query: async (sql: string) => {
         queries.push(sql);
+        guard.calls.push("lock");
         return { rowCount: 1 };
       },
     },
@@ -63,7 +68,13 @@ test("inference job authority takes a write-compatible job lock before any reque
   );
   assert.equal(queries.length, 1);
   assert.match(queries[0], /FOR (?:NO KEY )?UPDATE OF j\s*$/);
-  assert.deepEqual(guard.calls, ["agenda", "page", "choice"]);
+  assert.deepEqual(guard.calls, [
+    "agenda",
+    "page",
+    "lock",
+    "maintenance",
+    "choice",
+  ]);
 });
 
 test("exclusive job authority still rejects changed jobs before provider consent", async () => {

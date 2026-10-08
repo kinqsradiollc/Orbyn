@@ -14,6 +14,11 @@ focused31/31, desktop types and web build pass. QA-030 accepts the scoped browse
 correction. Main promotion preserved unrelated changes and matched all11 tested
 application/test files. Docker restoration/cleanup is recorded in accad117.
 Production deployment is unconfirmed.
+Current local C1 work is [chat maintenance authority](c1-chat-maintenance-authority.md):
+Memory extraction and old-chat compaction now capture owner/provider/model and
+recovery identity. The refined maintenance/private/provider cohort passes83/83,
+backend types/build pass; full fresh-source qualification is pending. This
+candidate is not yet merged or delivered. Main remains6351e48a.
 Embedding discovery, exact mobile model search and provider redirect protection
 were merged as2fd8e14d, from candidateab01bcc8. That source's fresh full4246/4246
 passes with zero skips/cancellations; focused170/170,
