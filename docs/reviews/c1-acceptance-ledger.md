@@ -13,7 +13,7 @@ short-height category/search layout and backdrop selector specificity so later
 generic CSS cannot override the phone layout. Focused29/29 and desktop/mobile
 types/web build pass. New tests execute removed/hidden/failed opener return,
 skip disabled/inert controls, and cover height boundaries and either stylesheet
-order. Fresh marked-DB full regression is running:
+order. Its full-regression log is:
 `/tmp/orbyn-c1-settings-recovery-full-20261008.log`. QA-029 targeted internal-browser
 recheck is complete. QA-029 accepts the scoped full-screen phone layout,
 landscape task-space correction and Close return. Original narrow Escape from
@@ -28,8 +28,17 @@ Initial freeze was not executed because automatic approval review failed with
 ENOSPC. Space recovered and the scoped copy/commit succeeded. QA-030 then recorded
 a blocked attempt: preview account loading fails, Settings cannot open, API8008
 times out, owned PostgreSQL55436 has no listener and Docker daemon queries time
-out. No engine restart, unrelated container change, visual acceptance or main
-product delivery is claimed. C1 stays open, with
+out. The user subsequently authorized restoring Docker and cleaning unused Orbyn
+containers. Recovery completed;21 old stopped containers were removed without
+deleting persistent volumes. The owned disposable database was recreated after
+a stale socket-lock failure, preview migrations pass and the restored QA admin
+has health200/register201/me200. The API recovered without restart.
+
+d672fc50 web build now passes. Fresh frozen full regression is running in its own
+marked database, log `/tmp/orbyn-c1-settings-escape-full-20261008.log`.
+QA-030 is assigned to resume with fresh QA sign-in. Neither the new full terminal
+nor visual acceptance/main product delivery is claimed. Recovery details:
+[Docker restoration](docker-restoration-2026-10-08.md). C1 stays open, with
 enlarged/native/external gates explicit.
 
 ## Settings density, focus and copy candidate — 8 October 2026

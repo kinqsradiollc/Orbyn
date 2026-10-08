@@ -39,15 +39,19 @@ cancellations: `/tmp/orbyn-c1-settings-recovery-full-20261008.log`.
 QA-029 is complete; root reviewed its delegated report. Normal-scale full-screen
 phone layout and740×320 task space pass; content height improves94→174px. Close
 returns focus correctly, but original narrow Escape from Search or Close still
-returns BODY. The checkpoint remains unaccepted. A primary-only follow-up rejects
+returns BODY. The checkpoint remains unaccepted. The follow-up rejects
 the closing transformed sidebar as a focus target and is frozen as d672fc50.
-Actual-source31/31 focused tests and desktop types pass;
+Actual-source31/31 focused tests, desktop types and web build pass;
 the inferred transition cause and corrected browser behavior still need recheck.
-There is no full d672fc50 regression or visual acceptance yet. QA-030 records a
+There is no full d672fc50 terminal or visual acceptance yet. QA-030 records a
 blocked preview: account-loading error, no Settings dialog, API8008 timeout and
 missing local PostgreSQL55436 listener; Docker queries also time out. Initial
 disk-full approval failure prevented execution; space recovery subsequently
-allowed the scoped freeze. Docker Desktop remains under user control.
+allowed the scoped freeze. The user then authorized Docker restoration and unused
+Orbyn container cleanup. Recovery and cleanup completed with persistent volumes
+retained; preview migrations and health200/register201/me200 admin pass. QA-030
+is assigned to resume with fresh sign-in against unchanged d672fc50. Its fresh
+full regression is running separately; no prior-source result is relabelled.
 Enlarged/native gaps remain.
 Report: `QA-029-settings-recovery-2026-10-08/visual-analysis.md` under the same QA root.
 

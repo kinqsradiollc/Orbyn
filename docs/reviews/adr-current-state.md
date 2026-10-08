@@ -48,14 +48,20 @@ regression finished4260/4260, exit0, zero failures/skips/cancellations (812881ms
 QA-029 is complete: phone modal space, landscape content height
 and Close focus return pass in the inspected scope; narrow Escape still returns
 focus to BODY. Root reviewed the report. Follow-up d672fc50 skips a closing
-sidebar as a focus target and passes31/31 focused checks and desktop types on the
+sidebar as a focus target and passes31/31 focused checks, desktop types and web build on the
 frozen source. Its transition diagnosis and browser acceptance remain unverified.
-QA-030 cannot open Settings because preview account data failed to load: API8008
-times out, PostgreSQL55436 has no listener and Docker daemon queries time out.
+QA-030's initial attempt could not open Settings because preview account data
+failed to load while Docker/PostgreSQL were unavailable.
 Approval initially failed with disk-full ENOSPC; space recovered and the scoped
-freeze succeeded. No full d672fc50 regression, visual acceptance or delivery is
-claimed. The
-immediate next step is to qualify and recheck that correction, then deliver the
+freeze succeeded. The user subsequently authorized Docker restoration and
+unused Orbyn container cleanup. Docker is healthy,21 unused stopped containers
+were removed with persistent volumes retained, and the disposable preview DB/admin
+were restored: health200/register201/me200 admin. See
+[the recovery receipt](docker-restoration-2026-10-08.md).
+Fresh full d672fc50 regression is now running in a separate marked test database;
+QA-030 is assigned to resume after fresh sign-in. No terminal full pass, visual
+acceptance or product delivery is claimed. The immediate next step is to qualify
+and recheck that correction, then deliver the
 Settings checkpoint before continuing the remaining C1 gates. No C2 work or
 full-stage completion is claimed.
 
