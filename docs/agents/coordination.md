@@ -39,7 +39,12 @@ canonical rules indexed by `AGENT.md`.
   diff and receipts to close findings. A new full review consumes the next
   round. Code-review approval does not waive remaining checkpoint acceptance gates.
   Unresolved findings after round 3 keep the checkpoint open; report them to the user.
-- **Orbyn Visual Check:** inspect the requested web/mobile-browser flow and report
+- **Orbyn Visual Check:** use the desktop/web preview for web and **Expo web**
+  (normally port 8083) for the mobile app renderer. A narrow desktop-web viewport alone
+  is not the mobile app preview. Record renderer, URL, source and viewport; mobile
+  browser evidence does not prove native-only behavior. Native iOS builds and
+  Android-specific verification are currently excluded by the user. Inspect the
+  requested web/mobile-browser flow and report
   viewport, theme, source version, screenshots or export limitations, and findings
   in a Markdown evidence file. Builder reviews that evidence before UI acceptance.
 - **Visual cadence: on demand, not continuous.** Request Orbyn Visual Check only

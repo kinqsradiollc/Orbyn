@@ -4,42 +4,48 @@ The user removed iOS builds and Android-specific verification from C1. Their
 runtime/device/disk prerequisites no longer gate acceptance; do not repeat native
 mobile packaging or Android-specific jobs. Shared mobile code/types and mobile
 browser checks remain in scope. Historical native preparation receipts below are
-retained, not active requirements. Remaining live/cache/embedding evidence must
-still be reported honestly. Full-checkpoint Test → Review and counter1/3 remain.
+retained, not active requirements. The user also approved live OpenAI cache and live embedding qualification as
+follow-up measurements. The existing Matilda baseline plus deterministic/runtime
+evidence can qualify C1, with unknown cost/vendor outcomes reported honestly. Full-checkpoint Test → Review and counter1/3 remain.
 
 # C1 Builder readiness
 
 Status: **Builder completion preparation under revised verification scope, no formal handoff**.
 Review counter remains **1/3**.
-Latest Builder code candidate: `10d3d1e3` on `codex/c1-production-checkpoint`
-(native Android capture Gradle correction); preparation receipt commit
-`f74ecc5c`. This source delta is not qualified or promoted to main.
-Scope: all retained C1 requirements, not just the latest fixes. Product source
-at main `e6c4c75b` is equivalent to `3ccf8f57` for product/test/dependency paths.
-The current rules require full readiness before one Test → Review handoff.
+Latest Builder code candidate: `0fe6b087` on `codex/c1-production-checkpoint`
+in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
+It includes the retained full C1 implementation, prior capture-module repair,
+and QA-040-001 mobile consent accessible-name correction. The latter passes
+34 focused development tests and awaits consolidated Tester qualification.
+No product subset is promoted before full C1 acceptance.
 
 ## Full state inventory
 
-The implementation and planned checks are indexed in
+The implementation and test plan remain indexed in
 `c1-full-2026-10-08-handoff.md` and
-`c1-full-2026-10-08-qualification-plan.md`. Their earlier handoff status,
-counter and preview ownership are historical; this record and
-`adr-current-state.md` govern current readiness.
+`c1-full-2026-10-08-qualification-plan.md`. Earlier sources, counters and
+native/live prerequisites in those historical records are superseded by the
+current scope override. This record and `adr-current-state.md` govern readiness.
 
-| Requirement group | Builder preparation remaining before formal handoff |
+| Requirement group | Current preparation / qualification |
 | --- | --- |
-| Managed/BYO/personal authority | Retain the complete entrypoint/recovery matrix; prepare permitted live-provider and installed recovery inputs. |
-| Saved independent connections | Carry CRUD, enable/disable, credential testing, account/revision changes and persistence into the single platform plan. |
-| Catalog/manual/default | Retain large/slow/empty/error, keyboard and stale-response coverage; prepare current native artifacts. |
-| Generation wire formats | Retain all adapter fixtures; identify the actual authorized live model separately from fixtures. |
-| Reasoning/cache | Obtain authorized OpenAI evaluation model/key and bounded benchmark configuration; Matilda baseline is not OpenAI cache economics. |
-| Usage | Carry positive/large/unknown/loading/error/retry states and private separation; preserve uncertainty about billing and plans. |
-| Independent embedding recipient | Identify authorized live embedding provider/model and prepare explicit recipient/revision consent. Local synthetic proof stays distinct. |
-| Dimensions/replacement | Retain pgvector/dimension/reindex fixtures and the completed synthetic 3D→7D replacement receipt. |
-| Consent/document/access races | Retain ownership/visibility/edit/delete/revoke and in-flight revision fixtures; include installed-client recovery. |
-| Migration/worker | Retain isolated upgrade/late-install fixtures and operational restart receipts, with explicit fixture ownership. |
-| Failure/status/retry | Retain persistent backoff and completed synthetic failure/retry/restart/off/exact-search receipts; prepare platform interactions. |
-| Cross-client behavior | Prepare source-bound Electron/iOS/Android packages and available device targets. Reuse valid browser evidence; request visuals only for a specific unresolved material risk. |
+| Managed/BYO/personal authority | Full entrypoint/recovery matrix and immutable snapshot suites ready for consolidated qualification. |
+| Saved independent connections | CRUD, enable/disable, credential testing, revisions and persistence fixtures plus QA039 scoped browser evidence available. |
+| Catalog/manual/default | Large/slow/empty/error, keyboard and stale-response coverage available; retain QA037/038 and 205-case retest limits. |
+| Generation wire formats | All20 saved-kind fixtures available; actual authorized Matilda six-call baseline remains distinct from mocks. |
+| Reasoning/cache | Control/wire tests available. Actual OpenAI cache economics are an approved follow-up; do not infer savings from zero counters. |
+| Usage | Positive/large/unknown/loading/error/retry evidence available, with private separation and billing uncertainty. |
+| Independent embedding recipient | Revision-bound consent fixtures and QA040 scoped browser flow available; accessible name fixed, targeted closure pending. Live accepted vendor probe is an approved follow-up. |
+| Dimensions/replacement | pgvector fixtures and actual synthetic3D→7D replacement/deletion/requeue receipt available. |
+| Consent/document/access races | Ownership/visibility/edit/delete/revoke and in-flight revision suites available. |
+| Migration/worker | Independent upgrade/late-install fixtures and operational restart receipts available. |
+| Failure/status/retry | Synthetic persistent backoff, scheduled recovery, heartbeat expiry/restart, off cleanup and exact-search receipts available. |
+| Cross-client behavior | Shared mobile types and Expo web preview; web/Electron source-bound artifact available. iOS builds/Android verification excluded. Genuine200% tool limitation and unexecuted Electron interaction must remain explicit for Tester/Reviewer disposition. |
+
+QA040 cleanup is verified in the marked isolated database: search off, consent
+null, queue/vectors/failures zero. Owned measuring worker stopped. Expo8083
+now serves the corrected candidate; web5174/API8010 retain unchanged relevant
+source. No vendor requests or native jobs are needed for the label recheck.
 
 ## Preparation ownership
 
@@ -76,9 +82,9 @@ errors without source changes. An unnecessary signing attempt was terminated
 Packaging reported the default icon and unresolved dependency-discovery warnings.
 This artifact has not been launched or installed; runtime correctness, native
 interaction and persistence remain unqualified. It is a local QA prerequisite,
-not a release or a Tester handoff. iOS/Android prerequisites remain open.
+not a release or a Tester handoff. Historical iOS/Android prerequisites are excluded by the current user scope.
 
-Live provider/cache/embedding configuration is a pending external prerequisite.
+Live OpenAI cache and accepted embedding measurements are approved follow-ups.
 No fabricated vendor, installed-device, text-enlargement or full-C1 acceptance
 is recorded. C2 remains unstarted and the pause stays conditional on full C1.
 
@@ -98,7 +104,7 @@ without turning an interrupted APK build into a pass.
 
 Builder removed only its own new native build outputs, recovering space from
 390MiB to1.9GiB. More free disk, the missing runtime and an Android execution
-target are still required. The detailed retained commands/results are in
+target were required for that historical attempt; they no longer gate C1. The detailed retained commands/results are in
 `docs/reviews/c1-native-package-preparation-2026-10-08.md` on the candidate branch
 at `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
 No formal Tester/Reviewer job or extra visual batch was dispatched.

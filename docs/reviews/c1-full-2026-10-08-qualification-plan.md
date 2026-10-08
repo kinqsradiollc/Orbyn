@@ -5,7 +5,9 @@ execute or require native iOS/Android packaging, device installation or Android
 interaction jobs from the historical plan below. Missing native mobile capacity,
 watchOS runtime and Android execution targets no longer block C1. Preserve shared
 mobile source/type checks and mobile-browser acceptance. Follow the compact
-`AGENT.md` and linked role/workflow guides. Counter remains1/3, not the historical
+`AGENT.md` and linked role/workflow guides. Live OpenAI/cache and accepted live embedding measurements are user-approved
+follow-ups; use the existing Matilda baseline and deterministic/runtime receipts
+for C1 without fabricating vendor/cost results. Counter remains1/3, not the historical
 0/3 below. Wait for the consolidated complete candidate handoff.
 
 # Full C1 qualification plan

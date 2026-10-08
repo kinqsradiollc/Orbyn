@@ -1,5 +1,8 @@
 # UI and UX rules
 
+Use Expo web to preview the mobile app UI. Record mobile-browser results
+separately from responsive desktop/web and native-device results.
+
 ## UI and UX Conventions
 
 - **Design skill:** read `skills/orbyn-ui-design/SKILL.md` for UI/UX changes.
