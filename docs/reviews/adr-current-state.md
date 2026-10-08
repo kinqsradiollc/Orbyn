@@ -29,13 +29,13 @@ tasks and Overnight. Productfed13851 passes focused98/98, backend types/build,
 and full4322/4322 (exit0, no failures/skips/cancellations). Merged and pushed to main0c19e330; application/test source stayed frozen
 through qualification. See
 [scanner qualification](c1-personal-scanner-admission.md).
-Current work: remaining C1 usage-state browser acceptance, on
-`codex/c1-usage-state-acceptance` in the C1 qualification worktree. QA-035 is
-complete: root reviewed its scoped large/unknown counter rendering report for
-web320/390/768/1280 and mobile320/390, Light/Dark. QA-036 loading review also
-passes its scoped browser matrix. Controlled503 error review is active, followed
-by explicit Refresh recovery and cleanup of the two marked QA jobs. No vendor
-call or production data is involved; no UI source change has been made.
+Usage-state browser acceptance checkpoint completed on
+`codex/c1-usage-state-acceptance`: root reviewed QA-035 large/unknown and QA-036
+loading/503/explicit retry reports. Scoped normal-browser checks pass; two marked
+fixtures are removed with other jobs preserved, direct API8008 restored, and
+API/web/mobile return200. Evidence-only integration is pending. No new UI fix or
+vendor request was made. See [usage review](c1-managed-usage-visual-review.md).
+Next implementation checkpoint is entrypoint/recovery matrix reconciliation.
 
 Remaining C1 execution order after this usage checkpoint: reconcile the complete
 entrypoint/recovery matrix; finish saved-connection/catalog interaction coverage;
@@ -231,7 +231,7 @@ A passing fixture or sampled view does not close its named external/native gate.
 | Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching |
 | Generation wire formats                  | Main native Responses/Messages, Zen and Perplexity Agent recovery; compatible/Azure/Matilda fixtures                     | Broader actual supported-model qualification                                                   |
 | Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Permitted OpenAI cache/latency/cost/quality benchmark; unsupported models remain explicit      |
-| Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | Positive/overflow/error client states; no inferred billing or plan entitlement                 |
+| Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | QA033/035/036 scoped positive/large/unknown/loading/503/retry browser states accepted; enlarged/native remain open; no billing/plan inference                 |
 | Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted embedding connection and full operational/client matrix                          |
 | Vector dimensions and replacement        | Flexible pgvector storage,3072-dimension Azure fixture, replacement/requeue and old-result rejection                     | Broader authorized model/dimension runtime matrix                                              |
 | Consent/document/visibility races        | Pre-click/in-flight provider, A→B→A, edits, disable, keep-out and queue-revision tests                                   | Remaining ownership/permission/recovery acceptance                                             |

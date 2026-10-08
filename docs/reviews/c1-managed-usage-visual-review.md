@@ -474,3 +474,33 @@ is controlled. Ownership-checked lifecycle is in
 API38060/gateway38061. Phase2 now returns503 and is assigned to Visual Check.
 Pass-mode explicit retry, fixture cleanup and direct API restoration remain
 required before finishing this checkpoint. Browser origins/ports are unchanged.
+
+
+### QA-036 retry acceptance and cleanup
+
+Root read final QA-036 phase2/3. Controlled503 errors wrap without stale counters
+on web320Light/Dark/1280Dark and mobile320Light/Dark. Repeated Refresh remains an
+error until pass mode is restored. Actual explicit error-to-success transitions
+were independently inspected at web1280 and mobile320; subsequent web320Light/Dark
+frames show successful refresh after resize, not an independent narrow transition.
+Expected exact counters return and the error disappears. Disclosure/dismissal
+remain usable. Visual Check restored themes/viewports and closed its tabs.
+Fifteen QA-036 inline images support the delegated report; root reviewed the
+report rather than exported images. No UI source fix was required by this matrix.
+
+Builder then removed only the two marked jobs: deletedOwnedJobs2,
+fixtureUsageRowsRemaining0, otherJobsPreservedtrue. Receipt:
+`/tmp/orbyn-c1-usage-fixture-cleanup-qa035-20261008.json`.
+The gateway and upstream API were stopped by verified ownership, and direct
+API8008 restored (PID39358, sourcefed13851). Port8009 is released. API health,
+web5174 and mobile8083 all return200. Lifecycle receipt:
+`/tmp/orbyn-c1-preview-usage-lifecycle-state-qa035-20261008.json`.
+Gateway counters:709forwarded/10heldUsage/13failedUsage/0forwardErrors. They are
+fixture traffic observations, not user analytics or proof of server cancellation.
+
+This closes the scoped normal-browser large/unknown/loading/controlled503/retry
+acceptance for Workspace provider usage. It does not establish every network
+failure, explicit unknown-field labels, transport cancellation, installed-native,
+genuine enlarged text, live vendor behavior, billing/plan data or complete C1.
+Application/test source is unchanged from qualified main0bad2971 (full4322/4322);
+this checkpoint changes evidence only, so no redundant regression was run.

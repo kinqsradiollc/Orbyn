@@ -1,5 +1,18 @@
 # C1 acceptance ledger
 
+## Usage browser-state acceptance — 8 October 2026
+
+Root reviewed QA-035 and final QA-036: scoped normal-browser large/unknown,
+loading,503 and explicit retry checks pass on web/mobile, with exact viewports,
+themes, inline-image limitations and recovery boundaries recorded in
+[cross-client usage review](c1-managed-usage-visual-review.md). No UI change was
+required. Marked fixture cleanup deleted2jobs/left0usage rows/preservedotherjobs;
+direct API8008 restored, temporary8009 released, API/web/mobile all200.
+Application/tests remain identical to qualified main0bad2971, full4322/4322.
+This evidence-only checkpoint does not repeat broad regression or close
+QA034 enlargement, installed-native, live-provider or complete C1 gates.
+
+
 ## Personal scanner admission candidate — 8 October 2026
 
 Frozen product candidate `fed13851` corrects the shared managed-provider gate in
