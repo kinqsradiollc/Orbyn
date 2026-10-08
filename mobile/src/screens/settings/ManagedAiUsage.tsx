@@ -49,7 +49,7 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
           {current?.data && (
             <>
               <Text style={shared.small}>
-                {current.data.requests} saved-assistant responses · Last{" "}
+                {current.data.requests} provider responses · Last{" "}
                 {current.data.window_days} days
               </Text>
               <Text style={shared.small}>
@@ -61,8 +61,7 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
                 </Text>
               )}
               <Text style={shared.small}>
-                Observed counters only. Excludes other features, billing and
-                ChatGPT plan limits.
+                Recorded responses only. Not billing or ChatGPT plan limits.
               </Text>
             </>
           )}

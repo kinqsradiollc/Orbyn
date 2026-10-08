@@ -19,8 +19,9 @@ its corrected re-entry assertion passes in the final full suite. See
 Next C1 checkpoint: [managed entrypoint usage](c1-entrypoint-usage-and-availability.md).
 The branch now corrects missing observed usage receipts for managed Agenda
 briefs and hosted maintained pages. Focused125/125 and backend types/build pass;
-the full runner hit disk-full ENOSPC after1384 logged passes with no final summary.
-Full qualification and integration remain pending until disk headroom is restored.
+after disk recovery, frozen15c4a8e3 full4300/4300 passes. The subsequent copy/privacy
+correction passes UI/legal15/15, both client types and web build. Corrected positive
+usage visual review and integration remain pending.
 After those are qualified and integrated,
 correct the independently reproduced global-provider availability gate affecting
 all five personal automation scanners. No next-stage implementation has begun.

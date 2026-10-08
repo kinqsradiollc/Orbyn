@@ -153,6 +153,9 @@ for (const app of ["desktop", "mobile"] as const) {
       f.calls[0].resolve(summary);
       await Promise.resolve();
       const text = content(f.render("a")).replace(/\s+/g, " ");
+      assert.match(text, /provider responses/);
+      assert.ok(!text.includes("saved-assistant"));
+      assert.ok(!text.includes("Excludes other features"));
       assert.match(text, /1200 input/);
       assert.match(text, /40 output/);
       assert.match(text, /1000 cached input/);
@@ -160,7 +163,7 @@ for (const app of ["desktop", "mobile"] as const) {
       assert.match(text, /Usage collection is off in Privacy/);
       assert.match(
         text,
-        /Excludes other features, billing and ChatGPT plan limits/,
+        /Recorded responses only. Not billing or ChatGPT plan limits/,
       );
       f.setToken("session-b");
       const changed = content(f.render("b"));

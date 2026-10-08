@@ -78,3 +78,32 @@ exit0/signal:null,10798.8925ms:
 `/tmp/orbyn-c1-entrypoint-usage-parse-focused-20261008.log` and matching terminal
 JSON. Product source remains c1dde1d3; these additional tests do not replace the
 pending full regression. Disk remains below300MiB.
+
+## Recovered qualification and expanded usage wording
+
+Disk recovered to12GiB. The retained test container restarted; its tmpfs preview
+database was recreated and migrated, the disposable QA admin restored, and
+API8008/web5174/mobile8083 returned200. Synthetic positive-display records are
+restricted to that QA account and establish no vendor usage or billing.
+
+Frozen15c4a8e3 full regression passed4300/4300 across465 files, zero
+failures/skips/cancellations, exit0/signal:null,803068.725583ms. Terminal receipt
+confirms clean source:
+`/tmp/orbyn-c1-entrypoint-usage-recovered-full-terminal-20261008.json`;
+log: `/tmp/orbyn-c1-entrypoint-usage-recovered-full-20261008.log`.
+The interrupted prior attempt remains historical incomplete evidence.
+
+QA-032 delegated recovery review passed fresh sign-in and normal empty-state
+layout/controls on web and mobile browser320×740/1280×800. Its old saved-assistant
+wording is not accepted for expanded feature coverage. Both client counters now
+say provider responses and explain that recorded responses are not billing or
+ChatGPT plan limits. Privacy defaults name saved runs, Agenda, maintained pages,
+Memory and compaction, preserving30-day retention/opt-out and unknown counters;
+default legal version advances to2026-10-08-managed-features.
+
+This post-full delta is copy/legal/test-only; backend implementation is unchanged.
+Actual-component UI and legal cohort15/15 passes, zero skips/failures,4420.283833ms,
+exit0/signal:null (`/tmp/orbyn-c1-entrypoint-usage-copy-focused-20261008.log`).
+Both client typechecks, shared packages build and desktop production build pass.
+Positive-state visual review of corrected wording is assigned to Orbyn Visual
+Check. Do not treat these results as full-stage, native or live-vendor acceptance.

@@ -20,7 +20,7 @@ export const LEGAL_TITLES: Record<LegalDoc, string> = {
 };
 
 /** The version the shipped texts carry until an admin publishes another. */
-export const DEFAULT_LEGAL_VERSION = "2026-10-07-managed-usage";
+export const DEFAULT_LEGAL_VERSION = "2026-10-08-managed-features";
 
 /**
  * The youngest someone may be to make an account. 16 is the highest age of
@@ -331,7 +331,7 @@ Search by meaning is off unless your workspace's administrator selects an embedd
 
 ## Usage of Orbyn's configured AI provider
 
-Unless you opt out of analytics in Privacy, Orbyn keeps owner-scoped observed token counters for saved assistant requests to its configured provider for 30 days. This includes responses whose results were later rejected or interrupted, when the provider reported their usage. Records contain a saved-job reference and token measurements, without prompts, replies or provider credentials. Repeated response identifiers are hashed for deduplication. Missing counters remain unknown; these records do not establish billing costs, provider-wide quota or ChatGPT-plan usage. Usage in other Orbyn features is not included in this saved-assistant summary.
+Unless you opt out of analytics in Privacy, Orbyn keeps owner-scoped observed token counters for requests to its configured provider for 30 days, including saved assistant runs, Agenda summaries, maintained-page updates, Memory extraction and chat compaction. This includes responses whose results were later rejected or interrupted, when the provider reported their usage. Records contain a saved-job reference and token measurements, without prompts, replies or provider credentials. Repeated response identifiers are hashed for deduplication. Missing counters remain unknown; these records do not establish billing costs, provider-wide quota or ChatGPT-plan usage. The summary includes recorded responses only; it is not a complete account-wide usage total.
 
 ## Keeping a project out of the assistant
 
