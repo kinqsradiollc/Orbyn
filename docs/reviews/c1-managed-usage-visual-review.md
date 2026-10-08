@@ -450,3 +450,27 @@ Light/Dark, wrapping, reachable refresh/disclosure/close, keyboard and short hei
 Rendered acceptance is pending. Loading/error/retry follows this phase; cleanup
 must delete only the two recorded owned jobs and preserve all other QA work.
 QA-034 enlargement remains blocked and installed-native acceptance is separate.
+
+
+### QA-035 accepted scope and QA-036 loading
+
+Root read QA-035's final delegated report: all requested normal-scale web/mobile
+widths and themes preserve the exact large output, omit unsafe/unknown input
+without a false zero, and retain reachable controls. Fourteen inline screenshots
+were inspected by Visual Check; saved paths are unavailable. Root reviewed the
+report, not exported pixels. No explicit unknown-field label is present; no
+acceptance for that separate wording claim is inferred. Report:
+`/Users/anhdang/.codex/visualizations/2026/10/08/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-035-large-unknown-usage-2026-10-08/visual-analysis.md`.
+
+Root also read QA-036 phase1: five held-loading frames on web320Light/Dark,
+web1280Dark and mobile320Light/Dark show actual loading, no stale counters and
+reachable dismissal/refresh/disclosure. UI reopening is verified; server-side
+cancellation is not inferred. Report:
+`/Users/anhdang/.codex/visualizations/2026/10/08/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-036-loading-error-retry-2026-10-08/visual-analysis.md`.
+
+The temporary local gateway on8008 forwards to owned API8009; only GET /ai/usage
+is controlled. Ownership-checked lifecycle is in
+`/tmp/orbyn-c1-preview-usage-lifecycle-qa035-20261008.mjs`; ready receipt names
+API38060/gateway38061. Phase2 now returns503 and is assigned to Visual Check.
+Pass-mode explicit retry, fixture cleanup and direct API restoration remain
+required before finishing this checkpoint. Browser origins/ports are unchanged.

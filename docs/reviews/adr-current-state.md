@@ -31,10 +31,18 @@ through qualification. See
 [scanner qualification](c1-personal-scanner-admission.md).
 Current work: remaining C1 usage-state browser acceptance, on
 `codex/c1-usage-state-acceptance` in the C1 qualification worktree. QA-035 is
-assigned synthetic large/unknown counters on both browser clients; API200 is
-verified but rendered acceptance is pending. Next in this checkpoint is controlled
-loading/error/retry, then cleanup of the two marked QA jobs. No vendor call or
-production data is involved; no UI source change has been made.
+complete: root reviewed its scoped large/unknown counter rendering report for
+web320/390/768/1280 and mobile320/390, Light/Dark. QA-036 loading review also
+passes its scoped browser matrix. Controlled503 error review is active, followed
+by explicit Refresh recovery and cleanup of the two marked QA jobs. No vendor
+call or production data is involved; no UI source change has been made.
+
+Remaining C1 execution order after this usage checkpoint: reconcile the complete
+entrypoint/recovery matrix; finish saved-connection/catalog interaction coverage;
+qualify permitted live provider and cache benchmarks; complete embedding recipient,
+dimension/reindex/permission/recovery acceptance; close remaining cross-client,
+enlargement and installed-native gates. Preserve unresolved external gates rather
+than claiming C1 complete, then honor the requested pause before C2/M1.
 
 QA-034 confirms genuine enlargement remains unavailable in the internal browser;
 no enlarged Settings/mobile acceptance is claimed. Stage Tracker reporting sources
