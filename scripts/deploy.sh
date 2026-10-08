@@ -86,6 +86,13 @@ pause_measurer() {
   compose stop -t 30 measure
 }
 
+# An old notifier does not enforce captured maintenance authority. Keep it
+# stopped across schema upgrade; rollout starts only the updated image.
+pause_notifier() {
+  log "Pausing the notifier for maintenance migrations"
+  compose stop -t 30 notifier
+}
+
 resume_measurer() {
   if [ "$semantic_on" = 1 ]; then
     log "Starting the updated measuring service"
@@ -179,7 +186,7 @@ if [ "$CHECK" = 1 ]; then
     mailpit) echo "- start the development mail catcher (mailpit)" ;;
     *) echo "- mail goes to $smtp_host (nothing to start)" ;;
   esac
-  echo "- pause any existing measuring service before migrations (queued pages are retained)"
+  echo "- pause existing measuring and notifier services before migrations (queued work is retained)"
   echo "- apply migrations, then roll out pdf, api, mcp, ai, assistant-background, assistant-overnight, realtime, status, notifier, files, converter and the web app"
   [ "$semantic_on" = 1 ] && echo "- start the updated measuring service (semantic profile enabled)" || echo "- leave the measuring service stopped (semantic profile off)"
   echo "- scanned pages and photos: read with the built-in Tesseract"
@@ -267,6 +274,7 @@ case "$smtp_host" in
 esac
 
 pause_measurer
+pause_notifier
 log "Applying database migrations"
 compose run --rm migrate
 

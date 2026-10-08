@@ -2017,3 +2017,24 @@ input counters after capture quiescence; original records must be cleaned at end
   route classification. Canonical API and generated inventory are synchronized.
 - C1 remains active for the retained live/provider/cache/embedding/client gates.
   Positive usage desktop scoped review passes; mobile/overflow still underway.
+
+
+### 8 October: maintenance authority correction before delivery
+
+- Frozen f5445544 full suite failed the existing worker chat re-entry assertion:
+  expected sweep_attempts0, actual1. The owned process was stopped, exit1,
+  signal:null; no final TAP summary or full pass is claimed. Original log and
+  terminal receipt remain under /tmp/orbyn-c1-maintenance-authority-full-20261008.*.
+- Corrected reopening/pinning recovery and deployment pause cohort passes103/103,
+  exit0, signal:null, zero failures/skips/cancellations,31443ms. Backend types
+  and build pass with terminal exit0. Evidence uses the v12 focused/types/build
+  filenames in the maintenance authority review.
+- The repository migration upgrade fixture passes1/1 in a fresh marked database:
+  actual migrate(), legacy queue authority, old-writer progress and idempotence.
+  No observed deadlock retry is claimed. Evidence:
+  /tmp/orbyn-c1-maintenance-authority-upgrade-corrected-v13-focused-20261008.log.
+- Deployment stops the old notifier before schema changes; stop failure prevents
+  migration, and rollout starts its updated image. No production deploy executed.
+- Corrected full-source regression and main promotion remain pending. C1 is active.
+- QA-031 enlargement is unqualified: pinch magnification does not prove reflow,
+  and native Codex app control was explicitly denied. No bypass attempted.

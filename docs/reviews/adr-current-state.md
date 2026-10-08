@@ -16,9 +16,13 @@ application/test files. Docker restoration/cleanup is recorded in accad117.
 Production deployment is unconfirmed.
 Current local C1 work is [chat maintenance authority](c1-chat-maintenance-authority.md):
 Memory extraction and old-chat compaction now capture owner/provider/model and
-recovery identity. The refined maintenance/private/provider cohort passes83/83,
-backend types/build pass; full fresh-source qualification is pending. This
-candidate is not yet merged or delivered. Main remains6351e48a.
+recovery identity. Frozen f5445544 full qualification exposed a chat re-entry
+regression; the failing owned run was stopped with exit1 and no final TAP summary.
+Corrected source passes103/103 focused checks, backend types/build and a fresh
+actual migration258 upgrade1/1. Deployment now pauses the old notifier before
+migration. Corrected full qualification is pending; this candidate is not yet
+merged or delivered. Main remains6351e48a. QA-031 enlarged-text acceptance remains
+open: pinch magnification is insufficient, and native Codex app control was denied.
 Embedding discovery, exact mobile model search and provider redirect protection
 were merged as2fd8e14d, from candidateab01bcc8. That source's fresh full4246/4246
 passes with zero skips/cancellations; focused170/170,

@@ -359,6 +359,19 @@ async function sweepChat(
         claim,
         error instanceof SyntaxError || error instanceof z.ZodError,
       ).catch(() => {});
+    // Human re-entry or pinning revokes compaction; it is not a provider failure.
+    const resumed = await pool.query(
+      `SELECT 1 FROM ai_chats c WHERE c.id=$1 AND c.user_id=$2
+        AND (c.pinned OR c.swept_at IS NOT NULL
+          OR c.last_used_at >= $3::timestamptz - make_interval(days=>$4)
+          OR EXISTS(SELECT 1 FROM ai_jobs j WHERE j.chat_id=c.id
+            AND j.state IN ('queued','running','waiting')))`,
+      [chat.id, chat.user_id, now, CHAT_RETENTION_DAYS],
+    );
+    if (resumed.rowCount) {
+      await cameBack(chat);
+      return false;
+    }
     // Only the error's kind is kept; the conversation never reaches logs.
     const message =
       error instanceof SyntaxError || error instanceof z.ZodError
@@ -390,8 +403,15 @@ async function cameBack(chat: ChatRow) {
     .query(
       `UPDATE ai_chats SET sweep_claimed_at = NULL,
          sweep_attempts = greatest(sweep_attempts - 1, 0)
-       WHERE id = $1 AND user_id = $2 AND swept_at IS NULL`,
-      [chat.id, chat.user_id],
+       WHERE id=$1 AND user_id=$2 AND swept_at IS NULL AND sweep_job_id=$3`,
+      [chat.id, chat.user_id, chat.sweep_job_id],
     )
     .catch(() => undefined);
+  await pool.query(
+    `UPDATE ai_jobs SET state='failed',claimed_by=NULL,lease_until=NULL,
+      error_message='The person resumed this chat; compaction was not applied.'
+     WHERE id=$1 AND user_id=$2 AND state IN ('queued','running')
+       AND run_state->>'version'='6'`,
+    [chat.sweep_job_id, chat.user_id],
+  );
 }

@@ -22,6 +22,8 @@ No vendor request or production database was used.
 | Fallback | Only the user's captured explicit fallback consent allows workspace generation. Preserve actual provider/model/fallback provenance and measured managed/private usage separation. |
 | Recovery | Encrypt completed output for write retries. Unknown completion is not replayed. Confirmed invalid JSON receives a new operation identity with the existing bounded retry limit and the same captured recipient. |
 | Lease | Finish/release require the exact worker claim. Job UPDATE locks precede maintenance snapshot SHARE locks, preventing the reproduced private-poll lock upgrade deadlock. |
+| Deployment | Stop the old notifier before migration; start only its updated image afterward. A failed stop aborts migration. Queued work stays in PostgreSQL. |
+| Re-entry | Reopening or pinning a chat revokes compaction without consuming a failure attempt; settle the old maintenance job. |
 | Offline | Undisclosed calls wait for the selected personal executor without consuming failure attempts or switching provider. |
 | Forget/retention | Removing a pending Memory source settles its maintenance job. Retention preserves job identity while a queue or unswept chat depends on it, preventing a new automatic call after receipt deletion. |
 | Legacy | Existing Memory backlog has no recoverable enqueue-time authority and cannot adopt today's provider. A fresh personal turn captures new authority. |
@@ -35,27 +37,41 @@ claimed. The broader C1 client/provider matrix remains open.
 | Check | Result |
 | --- | --- |
 | Before reproduction | 0/2 pass; both unintended managed callbacks reproduced |
-| Focused maintenance/private/provider/worker/lock cohort | 83/83 pass; no failures, skips or cancellations; exit0, signal:null |
+| Corrected maintenance/private/provider/worker/deployment cohort | 103/103 pass; no failures, skips or cancellations; exit0, signal:null |
+| Actual migration258 upgrade and idempotence | 1/1 pass in a fresh marked database; legacy authority preserved, old writer makes progress under actual schema locking |
 | Backend types | Pass, terminal exit0 |
 | Backend build | Pass, terminal exit0 |
-| Full fresh-source regression | Pending at this checkpoint; must finish before delivery |
+| Frozen f5445544 full regression | Failed at existing chat re-entry assertion; stopped the owned run, exit1, no final TAP summary |
+| Corrected fresh-source full regression | Pending at this checkpoint; must finish before delivery |
 | Main delivery | Not merged or pushed at this checkpoint |
 
 During development, focused runs exposed a bigint preference comparison, invalid
 job cancellation state, source-deletion cleanup and a SHARE-to-UPDATE deadlock.
-The final focused source resolves them. Earlier partial passes are not acceptance
+The corrected focused source resolves them. The f5445544 full run then exposed
+a reopened chat being counted as a failed compaction attempt. The correction
+passes the original worker cohort and two new reopening/pinning checks.
+No successful whole-suite result is inferred from these focused results. Earlier partial passes are not acceptance
 of the refined candidate.
 
 Local evidence:
 
 - `/tmp/orbyn-c1-housekeeping-authority-before-fixed-harness-20261008.log`
-- `/tmp/orbyn-c1-maintenance-authority-v10-focused-20261008.log`
-- `/tmp/orbyn-c1-maintenance-authority-v10-focused-terminal-20261008.json`
-- `/tmp/orbyn-c1-maintenance-v10-types-20261008.log`
-- `/tmp/orbyn-c1-maintenance-v10-build-20261008.log`
+- `/tmp/orbyn-c1-maintenance-authority-full-20261008.log` (failed frozen source)
+- `/tmp/orbyn-c1-maintenance-authority-full-terminal-20261008.json`
+- `/tmp/orbyn-c1-maintenance-authority-v12-focused-20261008.log`
+- `/tmp/orbyn-c1-maintenance-authority-v12-focused-terminal-20261008.json`
+- `/tmp/orbyn-c1-maintenance-v12-types-20261008.log`
+- `/tmp/orbyn-c1-maintenance-v12-build-20261008.log`
+- `/tmp/orbyn-c1-maintenance-authority-upgrade-corrected-v13-focused-20261008.log`
+- `/tmp/orbyn-c1-maintenance-authority-upgrade-corrected-v13-focused-terminal-20261008.json`
 
 Database connection details stay in private local files. Previews still use the
 previous API build until a deliberate refresh; browser acceptance of this
 backend checkpoint is not claimed. Docker is restored, the stock test database
 is healthy, and the stopped pgvector fixture is retained for the next embedding
 checks. No persistent volumes or unrelated project containers were removed.
+
+QA-031 does not establish 200% text enlargement: the diagnostic was pinch
+magnification, and native Codex app control was denied by Computer Use policy.
+Its enlarged-text/browser and native acceptance gates stay open. Scoped normal
+Settings acceptance on main is unchanged. No alternate access route was used.

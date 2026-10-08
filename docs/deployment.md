@@ -3,6 +3,15 @@
 The Compose file in the repository is tuned for local development. This checklist covers what to
 change for a real deployment.
 
+## Maintenance worker upgrades
+
+The deploy script stops the notifier and measuring service before migrations,
+then starts their updated images. This prevents an old notifier from bypassing
+captured provider authority in Memory or chat compaction during rollout. Queued
+work stays in PostgreSQL. If deployment aborts, keep these workers stopped until
+the updated deployment succeeds; restarting the old image restores the bypass.
+Manual deployments must use the same stop/migrate/update order.
+
 ## Assistant runtime processes
 
 Deploy `ai`, `assistant-background` and `assistant-overnight` together with the

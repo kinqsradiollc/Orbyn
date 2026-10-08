@@ -850,3 +850,44 @@ test("appending a later turn preserves the earlier queued Memory authority", asy
     "background",
   );
 });
+
+for (const action of ["reopen", "pin"] as const)
+  test(`human ${action} during compaction does not consume a failure attempt or leave a running maintenance job`, async () => {
+    const owner = await person(),
+      id = await chat(owner, true);
+    await sweepOldChats({
+      ai: fake,
+      budgetMs: 1000,
+      compact: async (_ai, messages) => {
+        if (messages[1].content.includes("Maintenance fixture"))
+          await pool.query(
+            action === "reopen"
+              ? "UPDATE ai_chats SET last_used_at=now() WHERE id=$1"
+              : "UPDATE ai_chats SET pinned=true WHERE id=$1",
+            [id],
+          );
+        return JSON.stringify({
+          asked: ["An earlier question"],
+          decided: [],
+          changed: [],
+        });
+      },
+    });
+    const row = (
+      await pool.query(
+        "SELECT sweep_attempts,swept_at,sweep_claimed_at,sweep_job_id FROM ai_chats WHERE id=$1",
+        [id],
+      )
+    ).rows[0];
+    assert.equal(row.sweep_attempts, 0);
+    assert.equal(row.swept_at, null);
+    assert.equal(row.sweep_claimed_at, null);
+    assert.equal(
+      (
+        await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [
+          row.sweep_job_id,
+        ])
+      ).rows[0].state,
+      "failed",
+    );
+  });
