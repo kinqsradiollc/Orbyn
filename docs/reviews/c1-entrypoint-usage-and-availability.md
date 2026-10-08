@@ -107,3 +107,22 @@ exit0/signal:null (`/tmp/orbyn-c1-entrypoint-usage-copy-focused-20261008.log`).
 Both client typechecks, shared packages build and desktop production build pass.
 Positive-state visual review of corrected wording is assigned to Orbyn Visual
 Check. Do not treat these results as full-stage, native or live-vendor acceptance.
+
+## Scoped visual acceptance
+
+Root reviewed Orbyn Visual Check's final QA-033 report for2f6c7f82. Corrected
+positive-state wording and all five synthetic counters fit on web and mobile
+browser at320×740 and1280×800, Light/Dark; refresh, scrolling and Close work.
+The initial mobile stale bundle was resolved by restarting this task's Metro
+without CI (which disabled reloads). Historical failing frames remain in the
+report. Evidence is delegated actual-pixel review with inline captures, not
+exported originals or root pixel inspection.
+
+Report: `/Users/anhdang/.codex/visualizations/2026/10/08/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-033-positive-usage-copy-2026-10-08/visual-analysis.md`.
+Two explicitly marked synthetic jobs were removed after review; zero fixture
+usage rows remain, and other jobs were preserved. Receipt:
+`/tmp/orbyn-c1-usage-fixture-cleanup-reopened-20261008.json`.
+
+This qualifies the Agenda/page usage correction with cross-client truthful copy.
+It does not close error/overflow, enlarged/native, vendor, scanner availability,
+or overall C1 gates. Next ordered implementation is personal scanner admission.

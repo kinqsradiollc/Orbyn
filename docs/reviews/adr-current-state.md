@@ -20,8 +20,9 @@ Next C1 checkpoint: [managed entrypoint usage](c1-entrypoint-usage-and-availabil
 The branch now corrects missing observed usage receipts for managed Agenda
 briefs and hosted maintained pages. Focused125/125 and backend types/build pass;
 after disk recovery, frozen15c4a8e3 full4300/4300 passes. The subsequent copy/privacy
-correction passes UI/legal15/15, both client types and web build. Corrected positive
-usage visual review and integration remain pending.
+correction passes UI/legal15/15, both client types and web build. QA-033 accepts corrected positive
+usage rendering on web/mobile browser320/1280, both themes. Product2f6c7f82 is
+qualified for scoped integration; receipt below will record main delivery.
 After those are qualified and integrated,
 correct the independently reproduced global-provider availability gate affecting
 all five personal automation scanners. No next-stage implementation has begun.
