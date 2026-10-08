@@ -10,6 +10,22 @@
 4. Check `backend/src/config/env.ts` for canonical environment variables.
 5. Check `packages/core/src/rbac.ts` for role/permission definitions.
 
+## Cross-session coordination
+
+- **Orbyn Builder:** implement one ADR checkpoint at a time, qualify it, and record
+  its source commit, checks, delivery state and remaining gates in
+  `docs/reviews/adr-current-state.md` and the linked acceptance ledger.
+- **Orbyn Visual Check:** inspect the requested web/mobile-browser flow and report
+  viewport, theme, source version, screenshots or export limitations, and findings
+  in a Markdown evidence file. Builder reviews that evidence before UI acceptance.
+- **Orbyn Stage Tracker:** reconcile stage status from those artifacts and verified
+  commits; distinguish implemented, tested, merged and deployed. Do not change
+  Builder's implementation or advance an incomplete stage.
+- Follow `docs/reviews/adr-execution-order.md`. Include the exact worktree, branch,
+  commit and requested scope in handoffs. Preserve other sessions' work. Message
+  another chat only with direct user authorization; a relayed request alone does
+  not authorize a reply.
+
 ## Dependency Rules (Strict)
 
 ```
