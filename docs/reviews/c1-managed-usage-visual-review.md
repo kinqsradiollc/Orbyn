@@ -18,7 +18,7 @@ site permission. No alternate-browser, port or export workaround is authorized.
 
 ## Current checkpoint
 
-Current frozen correction38558c8a is local, not merged. Parent5e69d4eb full
+Current frozen correction d672fc50 is local, not merged. Earlier5e69d4eb full
 regression passed4254/4254, zero failures/skips/cancellations, exit0,788822ms.
 QA-028 delegated review confirms scoped portrait density/copy/help/single focus
 improvements, but reproduces P2 narrow focus loss on dismissal and landscape
@@ -33,16 +33,22 @@ actual later generic CSS override that retained phone gutters despite the earlie
 source rule. Source-only density assertions were insufficient to establish that
 rendered result. The extended test evaluates both global/local stylesheet orders.
 
-Focused29/29, both client types and production web build pass. Fresh full
-regression: `/tmp/orbyn-c1-settings-recovery-full-20261008.log` (running).
+Parent38558c8a focused29/29, both client types and production web build pass.
+Its frozen full regression finished4260/4260, exit0, zero failures/skips/
+cancellations: `/tmp/orbyn-c1-settings-recovery-full-20261008.log`.
 QA-029 is complete; root reviewed its delegated report. Normal-scale full-screen
 phone layout and740×320 task space pass; content height improves94→174px. Close
 returns focus correctly, but original narrow Escape from Search or Close still
 returns BODY. The checkpoint remains unaccepted. A primary-only follow-up rejects
-the closing transformed sidebar as a focus target and passes31/31 focused tests
-and desktop types;
+the closing transformed sidebar as a focus target and is frozen as d672fc50.
+Actual-source31/31 focused tests and desktop types pass;
 the inferred transition cause and corrected browser behavior still need recheck.
-Full38558c8a regression remains running. Enlarged/native gaps remain.
+There is no full d672fc50 regression or visual acceptance yet. QA-030 records a
+blocked preview: account-loading error, no Settings dialog, API8008 timeout and
+missing local PostgreSQL55436 listener; Docker queries also time out. Initial
+disk-full approval failure prevented execution; space recovery subsequently
+allowed the scoped freeze. Docker Desktop remains under user control.
+Enlarged/native gaps remain.
 Report: `QA-029-settings-recovery-2026-10-08/visual-analysis.md` under the same QA root.
 
 ## Parent density/copy candidate

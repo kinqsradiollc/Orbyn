@@ -18,9 +18,18 @@ order. Fresh marked-DB full regression is running:
 recheck is complete. QA-029 accepts the scoped full-screen phone layout,
 landscape task-space correction and Close return. Original narrow Escape from
 Search or Close still returns BODY; QA-028-001 remains open. Root reviewed the
-delegated report, not exported originals. A primary-only closing-sidebar focus
-follow-up passes31/31 focused checks and desktop types; it is not frozen, visually verified or
-merged. The full38558c8a regression remains active. C1 stays open, with
+delegated report, not exported originals. Closing-sidebar focus follow-up
+d672fc50 is frozen locally and passes31/31 focused checks and desktop types.
+The parent full38558c8a regression finished4260/4260, exit0, zero failures/skips/
+cancellations,812881ms; terminal receipt names38558c8a and signal:null. This is
+not a full-suite result from the follow-up source.
+
+Initial freeze was not executed because automatic approval review failed with
+ENOSPC. Space recovered and the scoped copy/commit succeeded. QA-030 then recorded
+a blocked attempt: preview account loading fails, Settings cannot open, API8008
+times out, owned PostgreSQL55436 has no listener and Docker daemon queries time
+out. No engine restart, unrelated container change, visual acceptance or main
+product delivery is claimed. C1 stays open, with
 enlarged/native/external gates explicit.
 
 ## Settings density, focus and copy candidate — 8 October 2026

@@ -36,19 +36,25 @@ and disposable admin were restored. Fresh login works; usage counters are zero.
 Historical positive/error/overflow images remain unreviewed. Details:
 [current usage/Settings review](c1-managed-usage-visual-review.md).
 
-Current C1 Settings UX candidate38558c8a is committed locally, not merged. It uses
+Current C1 Settings UX candidate d672fc50 is committed locally, not merged. It uses
 the available phone modal space, compact padding/rows, one search-focus outline,
 and concise Connected agents copy with optional help on web/mobile. QA-028 accepts
 scoped portrait density/copy/single-focus improvements on parent5e69d4eb but found
 narrow dismissal focus loss and poor landscape task space. Parent full4254/4254
 passes; it is not delivered independently. The corrected candidate adds visible
 navigation focus return, height-aware navigation and backdrop specificity fixes.
-Focused29/29, both client types and web build pass. Its fresh full regression is
-still running. QA-029 is complete: phone modal space, landscape content height
+Parent38558c8a focused29/29, both client types and web build pass. Its frozen full
+regression finished4260/4260, exit0, zero failures/skips/cancellations (812881ms).
+QA-029 is complete: phone modal space, landscape content height
 and Close focus return pass in the inspected scope; narrow Escape still returns
-focus to BODY. Root reviewed the report. A primary-only follow-up skips a closing
-sidebar as a focus target and passes31/31 focused checks and desktop types. Its transition diagnosis
-and browser acceptance remain unverified; it is not frozen or merged. The
+focus to BODY. Root reviewed the report. Follow-up d672fc50 skips a closing
+sidebar as a focus target and passes31/31 focused checks and desktop types on the
+frozen source. Its transition diagnosis and browser acceptance remain unverified.
+QA-030 cannot open Settings because preview account data failed to load: API8008
+times out, PostgreSQL55436 has no listener and Docker daemon queries time out.
+Approval initially failed with disk-full ENOSPC; space recovered and the scoped
+freeze succeeded. No full d672fc50 regression, visual acceptance or delivery is
+claimed. The
 immediate next step is to qualify and recheck that correction, then deliver the
 Settings checkpoint before continuing the remaining C1 gates. No C2 work or
 full-stage completion is claimed.
