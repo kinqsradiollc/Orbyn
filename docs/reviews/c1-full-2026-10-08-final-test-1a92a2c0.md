@@ -7,9 +7,9 @@ Tester run against the consolidated C1 candidate. The counter at Test start was
 **Disposition:** Current-source focused tests, workspace typechecks and web
 production build pass. The user has removed separate desktop-app packaging and
 runtime checks from C1: shared web preview qualifies the web/desktop UI. E1 is
-closed by that scope decision, not by an app test. E2 genuine 200% enlargement
-remains a separate pending user disposition. No Electron/native-app acceptance
-is claimed.
+closed by that scope decision, not by an app test. E2 genuine 200% enlargement is
+removed from C1 by user scope; it remains untested, not passed. No
+Electron/native-app acceptance is claimed.
 
 ## Frozen source and test selection
 
@@ -105,7 +105,7 @@ retest.
 | Consent, document and access races | Retained backend and 69-case access/revision/queue-acknowledgement tests; QA-040 consent DOM check | Deterministic backend evidence applies to unchanged source. No production data or QA consent was changed by Tester. |
 | Migration, worker and recovery | Retained isolated legacy/late-install/maintenance fixtures and actual worker stop/expiry/restart receipt | Prior isolated receipts remain source-scoped; no new database fixture was needed for this client-only delta. |
 | Failure, status and retry | Retained 503/backoff/retry runtime; QA-038 client retry evidence; current focused catalog tests | Synthetic failure and client feedback are evidenced in their recorded scopes; no live-vendor failure or billing behavior is inferred. |
-| Cross-client behavior | Current shared mobile types/build; delegated QA-037/038/039/040 reports for shared web preview and Expo mobile renderer | Web preview is the shared web/desktop UI acceptance surface; Expo web is mobile-browser evidence. Separate app packaging/runtime and native iOS/Android checks are excluded. Genuine 200% enlargement and actual assistive-technology behavior remain unverified. |
+| Cross-client behavior | Current shared mobile types/build; delegated QA-037/038/039/040 reports for shared web preview and Expo mobile renderer | Web preview is the shared web/desktop UI acceptance surface; Expo web is mobile-browser evidence. Separate app packaging/runtime and native iOS/Android checks are excluded. Genuine 200% enlargement is outside C1 by user scope and untested, not passed; actual assistive-technology behavior remains unverified. |
 
 ## Browser evidence and desktop scope
 
@@ -148,9 +148,9 @@ observation applies only to the initial failed artifact, which had no renderer.
 - No iOS build, Android-specific job, native export or device interaction was run,
   per the user's C1 scope change. Shared mobile typechecks and Expo-web parity
   remain in scope and were checked as described above.
-- Genuine 200% enlargement is unsupported by the exposed internal-browser
-  capability and remains pending separate user disposition. No prohibited
-  alternate route, pinch/viewport/DPR substitution or screenshot claim was used.
+- Genuine 200% enlargement is outside C1 by the user's scope decision and remains
+  untested, not passed. No prohibited alternate route, pinch/viewport/DPR
+  substitution or screenshot claim was used.
 - Actual screen-reader announcement/navigation was not tested.
 - OpenAI cache economics and live accepted-vendor embedding measurements were
   not run. Current scope permits the Matilda baseline plus deterministic/runtime
@@ -168,6 +168,7 @@ observation applies only to the initial failed artifact, which had no renderer.
 **Tester result:** current-source focused tests, fresh-install typechecks and web
 production build pass on `1a92a2c0`; the retained backend/runtime receipts remain
 source-applicable. E1 is closed by the user's scope disposition, not by an app
-test. E2 remains pending separately. No C1 acceptance or deployment is claimed.
+test. E2 is removed from C1 by user scope, untested and not passed. No C1
+acceptance or deployment is claimed.
 The current-state record shows Reviewer round 2/3 complete; this impact retest
 did not consume another review round.

@@ -5,19 +5,22 @@ Cycle C1-full-2026-10-08. Round **2/3**, persisted before substantive review on
 `codex/c1-production-checkpoint`, checkout
 `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
 Full round-2 review completed. Reviewer inspected code/ADR/existing evidence only;
-no tests, builds or product/test edits. Full acceptance remains open for E2; E1 is removed by user disposition.
+no tests, builds or product/test edits. Retained C1 scope is accepted within round2 under the final user dispositions.
 Original report committed by Builder in3cb6d402; independently verified D1 closure
-was committed and pushed in86c522f2. E1 scope closure is recorded below; E2 remains open.
+was committed and pushed in86c522f2. E1/E2 scope closures and final acceptance are recorded below.
 
 ## Decision
 
-**Current disposition: E1 excluded by explicit user scope; E2 remains OPEN.**
-Web preview qualifies shared web/desktop UI. The historical packaged Electron
-startup failure is preserved, not relabelled as repaired or passing. No remaining
-product-code defect is identified within the retained reviewed scope. Do not promote the product or
-claim completed-C1 pause under the current full-acceptance workflow yet. This is
-round2/3, not a requirement to consume round3; verified evidence can close these
-round2 items without another full review.
+**APPROVED: retained C1 checkpoint at
+`1a92a2c091e42d350e3b029bf57e932c630b4487`, round2/3.**
+All identified retained-scope findings are resolved. D1 is verified closed;
+E1 separate Electron QA and E2 genuine200% testing are excluded by explicit user
+disposition, not reported as passes. Shared web preview and Expo-web evidence,
+current208/type/build and retained source-equivalent regression/runtime evidence
+support acceptance. Builder may integrate this tested candidate into main and
+then honor the user's pause before C2/M1. Merge/push/deployment are not performed
+or confirmed by this review decision. Historical decisions below retain their
+original scope and are superseded by the final closure where stated.
 
 ## Scope and method
 
@@ -27,7 +30,8 @@ accepted-vendor embedding measurements are approved follow-ups; existing Matilda
 baseline plus deterministic/runtime evidence is the C1 basis. At the initial
 round-2 review, Electron and genuine enlargement remained required. The later
 explicit user disposition removes separate Electron QA and accepts web preview
-for shared web/desktop UI; genuine enlargement remains E2. No expanded vendor/model
+for shared web/desktop UI. The final user instruction also excludes200% testing
+from C1; E2 is closed by disposition, not measurement. No expanded vendor/model
 purchase matrix, full-app U1 sweep or new universal screen-reader certification
 gate is imposed. SIWC/account OAuth delivery remains C2/M1.
 
@@ -216,3 +220,50 @@ Reviewer launch or test. GUI/control/draft/restart interaction was not establish
 by process startup; separate Electron QA was later excluded by the user.
 E1 is closed by scope, E2 remains open, round2/3 unchanged. No new full review,
 tests/builds or product edits; only report wording reconciled.
+
+
+## Final retained C1 acceptance — 8 October 2026, round2/3
+
+**E2 closed by explicit user disposition: “dont need to test 200%”.** Read the
+updated canonical AGENT.md and checkpoint-workflow scope override recording that
+instruction. Genuine200% remains untested, not passed. Earlier E2 pending/blocking
+statements are historical and superseded. E1 separate app QA is already excluded;
+D1 correction is verified. No remaining identified mandatory gate in the user's
+retained C1 scope is open.
+
+Reviewed final consolidated Tester report including fresh-install impact receipts:
+clean exported1a92a2c0 and matching lockfile, workspace types and production build
+exit0,208/208 after required shared packages were built. The initial fresh focused
+attempt failed its generated-package prerequisite and is preserved as such; it is
+not relabelled a product assertion failure or erased. Retained4337/4337, vector69
+and independent migration receipts apply only through recorded unchanged-source
+comparison. Actual synthetic indexing/replacement/failure/recovery/off/word-search
+receipts and source-qualified web/Expo consent/catalog/usage evidence complete the
+retained local evidence basis. Candidate HEAD is exact1a92a2c0 with clean status
+at this closure. Reviewer inspected evidence only; no new execution.
+
+Final finding disposition:
+- R1-001/002/003: independently verified scoped corrections closed.
+- QA040001: full recipient/exclusion consent accessible-name association closed.
+- R2-D1: current-record reconciliation verified closed.
+- R2-E1: removed from C1 by explicit desktop=web acceptance scope; historical
+  missing-lib0 package failure and Builder startup recovery remain documented.
+- R2-E2: removed from C1 by explicit instruction;200% is untested.
+
+**Approve retained C1 completion and candidate main integration.** This is closure
+of the existing round2 assessment, not a new full review or counter reset. Builder
+owns integration and must preserve tested product content and canonical scope/
+role instructions while reconciling documentation. If integration changes product
+behavior, Tester determines necessary impact verification before delivery is
+claimed. Record actual merge/main/push identifiers separately. After delivery,
+pause before C2/M1 as requested; production deployment remains the user's action.
+
+Acceptance does not claim native iOS/Android verification, separate Electron GUI
+qualification, genuine200% or actual screen-reader behavior. Live OpenAI cache
+and accepted-vendor embedding measurements remain approved follow-ups with costs,
+cache benefits and vendor behavior unknown. Matilda evidence is limited to its
+six recorded checks. These exclusions/limits are disclosed, not substituted with
+fabricated passes. No broader ADR completion is asserted.
+
+Only this primary review report was changed, left uncommitted for Builder delivery.
+No source/test edits, tests/builds, app launches or visual sweep by Reviewer.

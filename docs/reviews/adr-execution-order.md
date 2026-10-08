@@ -13,7 +13,7 @@ before starting C2/M1. This does not waive C1 acceptance or reduce the full ADR.
 
 Complete the full active ADR checkpoint before the formal Test → Review handoff:
 currently this means all retained C1 scope. Builder implements, Tester qualifies
-the frozen candidate, and Reviewer reviews it and may fix scoped defects. Follow
+the frozen candidate, and Reviewer reviews code/evidence and guides Builder on fixes without coding or running tests. Follow
 [the checkpoint workflow](checkpoint-workflow.md), including its recorded maximum
 of three review rounds and retesting after fixes. Record native/external gates;
 an incomplete gate keeps the checkpoint open. Only qualified scopes may integrate

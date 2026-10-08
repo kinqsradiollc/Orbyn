@@ -7,7 +7,7 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: clean-install impact retest passed; E1 removed by user scope, E2 disposition pending for frozen1a92a2c0. Review rounds: 2/3.**
+**Active cycle: C1-full-2026-10-08. Phase: clean-install impact retest passed; E1 removed by user scope, E2 removed by user scope; final Reviewer disposition pending for frozen1a92a2c0. Review rounds: 2/3.**
 The user resumed work and removed iOS builds and Android-specific verification on
 8 October. Missing native mobile runtimes/devices and build capacity are no longer
 C1 gates; do not restart those jobs. Previous blocker records are historical.
@@ -28,7 +28,7 @@ Consolidated Tester208/208, workspace types and production build pass; older
 4337/69/migration/runtime receipts retain exact source equivalence and original
 provenance. [Tester report](c1-full-2026-10-08-final-test-1a92a2c0.md) is on
 maine9f90593. [Round2 review](c1-full-2026-10-08-review-r2.md) found no new code
-defect. The user removed separate desktop-app qualification: web preview qualifies shared web/desktop UI. E1 is closed by scope disposition, not a native test pass. Full acceptance remains open for E2 genuine200% evidence or explicit user disposition.
+defect. The user removed separate desktop-app qualification: web preview qualifies shared web/desktop UI. E1 is closed by scope disposition, not a native test pass. The user also explicitly removed200% testing. E2 is closed by scope, untested rather than passed; final Reviewer acceptance and product integration are being completed.
 QA040001 DOM closure is complete; actual AT behavior remains untested. D1 record
 reconciliation is independently closed by Reviewer within round2. Productcandidate1a92a2c0 is
 not on main. No C1 acceptance, production deployment or C2 advancement is claimed.
@@ -37,8 +37,8 @@ not on main. No C1 acceptance, production deployment or C2 advancement is claime
 | --- | --- |
 | Scope/state map | All12 retained groups reconciled in consolidated Tester and round2 Reviewer reports; current user overrides apply. |
 | Implementation | R1/QA040 local defects closed; no new actionable product-code defect found in round2. Frozencandidate1a92a2c0 awaits full acceptance, not product delivery. |
-| Remaining evidence | E1 removed by explicit user scope; E2 genuine200% evidence or user disposition pending. Live cache/embedding are follow-ups; iOS/Android excluded. |
-| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer round2/3 complete; E1 removed by user scope; E2 evidence pending; D1 independently closed within round2. |
+| Remaining evidence | E1 removed by explicit user scope; E2 removed by explicit user scope, untested. Live cache/embedding are follow-ups; iOS/Android excluded. |
+| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer round2/3 complete; E1 removed by user scope; E2 removed by user scope; D1 independently closed within round2. |
 
 ## Current desktop scope disposition — 8 October 2026
 
@@ -55,7 +55,7 @@ web production build on unchanged clean1a92a2c0. Reviewer closed E1 within round
 by explicit user scope. Visual Check re-inspected current internal-browser
 capabilities: only visibility and viewport are exposed, with no actual browser
 zoom control. QA040 records this limitation; no genuine200% capture or substitute
-is claimed. The existing E2 user-disposition question remains unanswered.
+is claimed. The user answered: “dont need to test 200%”. No enlargement pass is claimed; E2 is removed from C1 acceptance.
 
 A non-mutating merge-tree check against main5d6149e1 and the frozen candidate
 exited0 with no conflicts (treeb88cd0c068160862ef6cc77df61c4074dc2174c4).

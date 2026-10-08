@@ -1,3 +1,6 @@
+Latest user scope: “dont need to test 200%”. E2 is removed from C1 acceptance,
+untested rather than passed. Earlier pending E2 statements below are historical.
+
 # Current scope update — 8 October 2026
 
 The user removed iOS builds and Android-specific verification from C1. Their
@@ -10,7 +13,7 @@ evidence can qualify C1, with unknown cost/vendor outcomes reported honestly. Fu
 
 # C1 Builder readiness
 
-Status: **Clean-install impact retest passed; E1 removed by user scope, E2 disposition pending**.
+Status: **Clean-install impact retest passed; E1 removed by user scope, E2 removed by user scope; final acceptance disposition pending**.
 Review counter is **2/3**; no reset or automatic third review.
 Frozen full candidate: `1a92a2c0` (contains product correction `0fe6b087`) on `codex/c1-production-checkpoint`
 in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.

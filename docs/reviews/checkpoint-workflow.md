@@ -7,7 +7,8 @@ then honor the user's requested pause before C2/M1.
 Latest user scope: web preview qualifies shared web/desktop UI. Separate desktop-app
 visual, packaging and runtime checks are excluded unless explicitly requested again.
 C1 R2-E1 is removed by user disposition, not recorded as a test pass. Historical
-native receipts remain historical; R2-E2 genuine 200% enlargement is unchanged.
+native receipts remain historical; R2-E2 genuine 200% enlargement is also removed from C1 acceptance by the
+user’s explicit instruction; it remains untested, not passed.
 
 ## Current verification scope
 

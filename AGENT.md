@@ -14,6 +14,8 @@ role/task; their instructions are part of these rules.
 - **Use web preview to qualify the shared web/desktop UI.** Do not require
   separate desktop-app visual, packaging or runtime checks unless the user
   explicitly requests them again. This is scope, not proof of native integrations.
+- **Do not require 200% enlargement testing for C1.** The user removed this
+  acceptance check on 8 October; record it as untested, not passed.
 - Preserve unrelated work. Record exact source, evidence and delivery separately.
 - **Do not build iOS or perform Android-specific verification unless the user
   requests it again.** These are removed from C1 acceptance by the user's
