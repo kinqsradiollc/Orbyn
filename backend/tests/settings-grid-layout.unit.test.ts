@@ -117,3 +117,32 @@ test("phone settings expose exactly one navigation control through the final CSS
     "the evaluator must detect later regressions rather than merely finding the media rule",
   );
 });
+
+test("phone theme controls use three shrinkable columns inside their card", async () => {
+  const css = await readFile(cssUrl, "utf8");
+  for (const width of [320, 390, 560, 600]) {
+    const property = (name: string) =>
+      gridColumns(css, width, false, name, "theme-preference > .segmented");
+    assert.equal(property("display"), "grid");
+    assert.equal(property("grid-template-columns"), "repeat(3, minmax(0, 1fr))");
+    assert.equal(property("width"), "100%");
+    assert.equal(property("min-width"), "0");
+  }
+  assert.notEqual(
+    gridColumns(css, 601, false, "display", "theme-preference > .segmented"),
+    "grid",
+    "wide settings retain the existing compact theme control",
+  );
+});
+
+test("theme labels can wrap at enlarged text sizes without hiding their content", async () => {
+  const css = await readFile(cssUrl, "utf8");
+  const property = (name: string) =>
+    gridColumns(css, 320, false, name, "theme-preference > .segmented button");
+  assert.equal(property("min-width"), "0");
+  assert.equal(property("flex-wrap"), "wrap");
+  assert.equal(property("overflow-wrap"), "anywhere");
+  assert.equal(property("padding-inline"), "6px");
+  assert.notEqual(property("overflow"), "hidden");
+  assert.equal(property("font-size"), "", "retain shared readable text size");
+});

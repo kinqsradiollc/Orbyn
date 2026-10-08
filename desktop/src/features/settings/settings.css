@@ -369,6 +369,24 @@
   flex-wrap: wrap;
   gap: 12px 20px;
 }
+.theme-preference > .segmented {
+  min-width: 0;
+  max-width: 100%;
+}
+@media (max-width: 600px) {
+  .theme-preference > .segmented {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+  .theme-preference > .segmented button {
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: center;
+    overflow-wrap: anywhere;
+    padding-inline: 6px;
+  }
+}
 
 /* Habits editor: routine list, the inline form, and the weekly proposal. */
 .habit-form {
