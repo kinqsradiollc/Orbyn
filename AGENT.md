@@ -25,5 +25,8 @@ role/task; their instructions are part of these rules.
 | Checkpoint delivery | [Workflow](docs/reviews/checkpoint-workflow.md), [execution order](docs/reviews/adr-execution-order.md) |
 | Stage reporting | [Tracker guide](docs/reviews/stage-tracker-guide.md), [current state](docs/reviews/adr-current-state.md) |
 
+Use **Expo web** for mobile visual checks (the mobile app renderer, usually port 8083);
+record it as mobile-browser evidence, not native verification.
+
 Visual checks are on demand, through **Orbyn Visual Check**, for a concrete
 bounded risk. Reuse valid evidence; no automatic sweep per edit or checkpoint.

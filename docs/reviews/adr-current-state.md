@@ -11,8 +11,9 @@ Detailed qualification and historical failures remain in
 The user resumed work and removed iOS builds and Android-specific verification on
 8 October. Missing native mobile runtimes/devices and build capacity are no longer
 C1 gates; do not restart those jobs. Previous blocker records are historical.
-Shared mobile source/types and mobile-browser parity remain required. Reconcile
-live-provider/cache/embedding evidence without claiming results not measured.
+Shared mobile source/types and mobile-browser parity remain required. The user also approved live OpenAI cache and live embedding qualification as
+follow-ups. Use the existing Matilda live baseline plus deterministic/runtime
+evidence for C1; unmeasured costs and vendor embedding behavior remain unknown.
 Builder's complete requirement-group preparation map is
 [`c1-builder-readiness-2026-10-08.md`](c1-builder-readiness-2026-10-08.md).
 User clarification applied: complete every C1 implementation state and prepare all
@@ -25,7 +26,7 @@ preparation and all code; Tester/Reviewer wait. Current review counter is retain
 | --- | --- |
 | Scope/state map | Retained C1 contract and round-1 full requirement audit remain governing; reconcile every row before handoff. |
 | Implementation | Reviewed local correction findings closed; current code is delivered. Builder must resolve any remaining implementation state discovered during full reconciliation. |
-| Test prerequisites | Reconcile authorized live/cache/embedding inputs and targeted browser evidence. Native iOS/Android jobs are excluded by the latest user instruction. |
+| Test prerequisites | Live cache/embedding probes are approved follow-ups, not handoff blockers. Existing Matilda baseline and synthetic runtime receipts are available. Complete bounded browser evidence; native iOS/Android jobs are excluded. |
 | Freeze/handoff | Not ready. Freeze one complete candidate and full test plan only after every readiness item is satisfied. |
 
 Frozen candidate `3ccf8f578d3e355238ee55478e7d5e02b2b68b67` is clean on
@@ -41,7 +42,7 @@ repair is independently tested and Reviewer has closed QA038001/002 within
 round1. R1-001/002/003 local correction findings are closed; full gates stay open. Its earlier
 Reviewer coding ownership is historical: maina5e5028a now assigns every source fix
 to Builder, all formal execution to Tester, and review-only inspection to Reviewer.
-No new full review/counter increment or product edits are underway.
+No new full review/counter increment has started. Builder corrected the QA040 consent accessible name on candidate0fe6b087.
 
 QA039 is finalized/stopped: isolated login and scoped cross-client provider
 create/cancel/edit/key/toggle/manual/default outcomes are recorded. API cleanup
@@ -50,8 +51,7 @@ full CRUD matrix is claimed. New cadence94284ab7 is on demand, not a blanket
 sweep. API/worker qualification separately proves synthetic3D indexing, sanitized
 503/scheduled recovery,7D replacement/deletion/requeue; actual worker offline/heartbeat expiry/restart and7D indexing pass. Stale
 provider/settings and in-flight revision changes refuse409 and require revalidation. See [runtime evidence](c1-full-2026-10-08-runtime-qualification.md).
-Live-provider/cache/live embedding, installed-client, genuine enlargement and
-other explicit unverified gates remain open. Qualified code merged and pushed to main as `f7a48abf632157d368ac8e75e22117b42c8c581e`.
+Live OpenAI cache/live embedding are approved follow-ups. Installed Electron interaction and genuine200% enlargement remain unverified limitations for consolidated qualification; native iOS/Android gates are excluded. QA040 scoped consent/status/off passes and its accessibility correction awaits targeted closure. Qualified code merged and pushed to main as `f7a48abf632157d368ac8e75e22117b42c8c581e`.
 Application/test/dependency paths match tested3cc exactly; canonical role/visual rules
 are retained. Runtime indexing after revalidation, off cleanup and word search with
 the local provider stopped also pass. No full C1 acceptance, production deployment,
@@ -90,17 +90,13 @@ Local entrypoint/recovery reconciliation is recorded in
 first-party text routing bypass was found. Next checkpoint is saved-connection
 and catalog client interaction coverage. External/native acceptance stays open.
 
-Remaining C1 execution order: finish saved-connection/catalog interaction coverage;
-qualify permitted live provider and cache benchmarks; complete embedding recipient,
-dimension/reindex/permission/recovery acceptance; close remaining cross-client,
-enlargement and installed-native gates. Preserve unresolved external gates rather
-than claiming C1 complete, then honor the requested pause before C2/M1.
-
-QA-034 confirms genuine enlargement remains unavailable in the internal browser;
-no enlarged Settings/mobile acceptance is claimed. Stage Tracker reporting sources
-and format are defined in [its guide](stage-tracker-guide.md).
-No next-stage implementation has begun. Remaining enlarged/native, error/overflow,
-live-provider/cache and embedding acceptance gates remain open.
+Remaining C1 execution order: close QA040's named accessible-consent defect;
+freeze the whole candidate and consolidated evidence; Tester qualifies the retained
+scope, then Reviewer reviews it (next full round2/3). Resolve findings as a batch,
+record full acceptance/main push, then pause before C2/M1. The approved live
+follow-ups remain unknown, not claimed measured. Native iOS/Android jobs stay
+excluded. Genuine200% enlargement is unsupported by the exposed internal-browser
+controls; retain that limitation without repeated visual attempts.
 
 Compact Settings density/copy/focus checkpoint7260db93 remains qualified by its
 full4262/4262, focused31/31, desktop types/web build and scoped QA-030 review.
@@ -274,7 +270,7 @@ User/character changes and unmerged work remain preserved.
 ## C1 completion gates
 
 This is the current C1 checklist; historical ledger rows describe earlier source.
-A passing fixture or sampled view does not close its named external/native gate.
+The8 October user scope override governs these rows: native iOS/Android verification is excluded, and live OpenAI cache/live embedding are follow-ups. A fixture or sampled view does not prove live vendor, installed Electron or genuine enlarged-text behavior.
 
 | C1 requirement                           | Implemented / qualified evidence                                                                                         | Open acceptance                                                                                |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
@@ -282,14 +278,14 @@ A passing fixture or sampled view does not close its named external/native gate.
 | Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Current-source browser/native management and credential-test interactions                      |
 | Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching |
 | Generation wire formats                  | Main native Responses/Messages, Zen and Perplexity Agent recovery; compatible/Azure/Matilda fixtures                     | Broader actual supported-model qualification                                                   |
-| Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Permitted OpenAI cache/latency/cost/quality benchmark; unsupported models remain explicit      |
+| Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Approved follow-up: live OpenAI cache/latency/cost/quality benchmark; deterministic wire/control tests retained      |
 | Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | QA033/035/036 scoped positive/large/unknown/loading/503/retry browser states accepted; enlarged/native remain open; no billing/plan inference                 |
-| Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted embedding connection and full operational/client matrix                          |
+| Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted vendor probe is an approved follow-up; synthetic runtime and QA040 client evidence retained                          |
 | Vector dimensions and replacement        | Flexible pgvector storage,3072-dimension Azure fixture, replacement/requeue and old-result rejection                     | Broader authorized model/dimension runtime matrix                                              |
 | Consent/document/visibility races        | Pre-click/in-flight provider, A→B→A, edits, disable, keep-out and queue-revision tests                                   | Remaining ownership/permission/recovery acceptance                                             |
 | Migration and worker deployment          | Legacy upgrade, late extension, idempotence and profile lifecycle checks                                                 | Wider mixed-version/operational acceptance; production deployment is user-owned                |
-| Indexing failure/status/retry            | Sanitized persistent backoff, newer-work fencing and healthy-page progress on maind4da3d41                               | Real enabled/error/loading client interactions and native review                               |
-| Responsive and native clients            | Scoped web wide/narrow, mobile browser390 and earlier controls/zero-usage samples reviewed                               | Remaining full-surface coverage, large text/keyboard/overlays and installed-native acceptance  |
+| Indexing failure/status/retry            | Sanitized persistent backoff, newer-work fencing and healthy-page progress on maind4da3d41                               | QA040 enabled/status/off browser flow and synthetic failure/retry receipts; consolidate with focused fixtures                               |
+| Responsive and native clients            | Scoped web wide/narrow, mobile browser390 and earlier controls/zero-usage samples reviewed                               | Consolidate bounded browser evidence; record unsupported200% and unexecuted Electron interaction honestly; iOS/Android excluded  |
 
 Finish these gates, record final C1 evidence and main delivery, then pause with the
 remaining ADR table. C2/M1 stays queued until the user resumes after that pause.

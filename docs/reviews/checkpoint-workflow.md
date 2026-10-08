@@ -10,7 +10,10 @@ The user removed iOS builds and Android-specific verification on8 October2026.
 Do not run or require these jobs for C1. Historical native attempts remain evidence
 only; missing watchOS runtime, Android devices and native-build disk capacity no
 longer block C1. Shared mobile source/types and mobile-browser behavior remain in
-scope. Other retained acceptance requirements are unchanged.
+scope. The user also approved recording live OpenAI cache measurements and accepted live
+embedding qualification as follow-ups. Close C1 using the existing Matilda live
+baseline plus deterministic/runtime evidence; do not claim unmeasured cache costs
+or live embedding behavior. Other retained acceptance requirements are unchanged.
 
 ## Implement → Test → Review
 
