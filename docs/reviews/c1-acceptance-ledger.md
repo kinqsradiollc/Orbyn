@@ -1,5 +1,23 @@
 # C1 acceptance ledger
 
+## Settings density, focus and copy candidate — 8 October 2026
+
+Frozen local5e69d4eb follows qualified main b0c7696a. It changes only Settings
+presentation and help: available phone modal space, reduced gutters/section
+padding, a neutral search border with the shared focus outline, short connected
+agent intro/empty copy and optional context help on both clients. Connection
+grants, authorization, setup and user state are preserved.
+
+Focused23/23, desktop/mobile typechecks and web production build pass. Initial
+22/23 failed an over-broad new CSS test; the corrected assertion preserves the
+existing18px title and prohibits narrow font/scale overrides. Initial and fixed
+logs remain in `/tmp/orbyn-c1-settings-density-focused*-20261008.log`.
+Fresh full regression is running on its own marked database, log
+`/tmp/orbyn-c1-settings-density-full-20261008.log`; terminal acceptance is pending.
+Orbyn Visual Check's QA-028 review is active, with actual pixel/interaction checks
+and separate enlargement/native limits. Candidate is not merged; V02/V03/V04
+remain open pending recheck. Full C1 remains active before the requested pause.
+
 ## Settings containment and UX rules — 8 October 2026
 
 Qualified candidate dbcf8c84 includes c69f342f compact Settings navigation

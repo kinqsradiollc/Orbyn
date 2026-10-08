@@ -31,6 +31,13 @@ and disposable admin were restored. Fresh login works; usage counters are zero.
 Historical positive/error/overflow images remain unreviewed. Details:
 [current usage/Settings review](c1-managed-usage-visual-review.md).
 
+Next C1 Settings UX candidate5e69d4eb is committed locally, not merged. It uses
+the available phone modal space, compact padding/rows, one search-focus outline,
+and concise Connected agents copy with optional help on web/mobile. Focused23/23,
+both client types and web build pass. Fresh full regression and QA-028 delegated
+browser review are running; density, copy and focus findings remain open until
+their recheck. No C2 work or full-stage completion is claimed.
+
 The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.
 The C1 catalog checkpoint is merged and pushed to main as `8ab6c822`; provider controls and manual-model preservation were inspected in web/mobile browser captures.

@@ -18,6 +18,31 @@ site permission. No alternate-browser, port or export workaround is authorized.
 
 ## Current checkpoint
 
+Current follow-up5e69d4eb is frozen locally, not merged. Phone-width Settings
+uses the available modal screen with compact gutters/section padding and existing
+font/control tokens. Search retains the shared outer outline and neutral border;
+QA-027's diagnostic confirmed the second frame was the wrapper's accent border,
+not an input shadow. Connected agents uses a short helper, short empty state and
+optional permission/context explanation on web/mobile; the existing connection
+and authorization controls remain intact.
+
+Focused23/23, desktop/mobile types and web build pass. The initial22/23 focused
+run failed a new test's overly broad assertion against the existing18px header
+font declaration; corrected checks verify unchanged normal/narrow heading size
+and no font/scale overrides in the compact media block. Both logs are retained:
+`/tmp/orbyn-c1-settings-density-focused-initial-20261008.log` and corrected
+`/tmp/orbyn-c1-settings-density-focused-20261008.log`.
+Actual mobile help closed/open state and its accessible toggle are executed by
+the new component harness; CSS tests do not establish rendered usability.
+
+Full regression is running in `orbyn_c1_settings_density_20261008_test`:
+`/tmp/orbyn-c1-settings-density-full-20261008.log`. QA-028 internal-browser review
+is assigned for V02/V03/V04, both clients/themes, narrow/wide, scrolling,
+dismissal/focus return and actual enlargement where supported. No current full
+pass, visual acceptance or main delivery is inferred from the focused checks.
+
+## Qualified navigation and Theme checkpoint
+
 Frozen candidate dbcf8c84 adds a narrow Theme control correction to c69f342f.
 Focused23/23, desktop types and web build pass. Fresh full4250/4250 passes with
 zero failures/skips/cancellations, exit0,815595ms on the marked stock database.
