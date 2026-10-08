@@ -1,6 +1,16 @@
+# Current scope update — 8 October 2026
+
+The user removed iOS builds and Android-specific verification from C1. Their
+runtime/device/disk prerequisites no longer gate acceptance; do not repeat native
+mobile packaging or Android-specific jobs. Shared mobile code/types and mobile
+browser checks remain in scope. Historical native preparation receipts below are
+retained, not active requirements. Remaining live/cache/embedding evidence must
+still be reported honestly. Full-checkpoint Test → Review and counter1/3 remain.
+
 # C1 Builder readiness
 
-Status: **preparation, no formal handoff**. Review counter remains **1/3**.
+Status: **Builder completion preparation under revised verification scope, no formal handoff**.
+Review counter remains **1/3**.
 Latest Builder code candidate: `10d3d1e3` on `codex/c1-production-checkpoint`
 (native Android capture Gradle correction); preparation receipt commit
 `f74ecc5c`. This source delta is not qualified or promoted to main.
@@ -82,6 +92,9 @@ capture module's legacy Expo Gradle setup omitted `compileSdk`. Builder migrated
 that module to the current Expo plugin on the C1 branch. The revised assembly
 passed configuration and reached compilation/bundling, but stopped for disk
 capacity (exit143); no mobile package or native acceptance is claimed.
+Retained-log inspection also confirms the capture module's Kotlin/Java compile,
+library bundling and manifest tasks completed; this scopes the repair evidence
+without turning an interrupted APK build into a pass.
 
 Builder removed only its own new native build outputs, recovering space from
 390MiB to1.9GiB. More free disk, the missing runtime and an Android execution

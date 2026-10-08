@@ -7,7 +7,12 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: Builder full-checkpoint preparation; not ready for formal handoff. Review rounds: 1/3.**
+**Active cycle: C1-full-2026-10-08. Phase: Builder completing remaining C1 readiness under revised verification scope. Review rounds: 1/3.**
+The user resumed work and removed iOS builds and Android-specific verification on
+8 October. Missing native mobile runtimes/devices and build capacity are no longer
+C1 gates; do not restart those jobs. Previous blocker records are historical.
+Shared mobile source/types and mobile-browser parity remain required. Reconcile
+live-provider/cache/embedding evidence without claiming results not measured.
 Builder's complete requirement-group preparation map is
 [`c1-builder-readiness-2026-10-08.md`](c1-builder-readiness-2026-10-08.md).
 User clarification applied: complete every C1 implementation state and prepare all
@@ -20,7 +25,7 @@ preparation and all code; Tester/Reviewer wait. Current review counter is retain
 | --- | --- |
 | Scope/state map | Retained C1 contract and round-1 full requirement audit remain governing; reconcile every row before handoff. |
 | Implementation | Reviewed local correction findings closed; current code is delivered. Builder must resolve any remaining implementation state discovered during full reconciliation. |
-| Test prerequisites | Authorized live/cache/embedding inputs and source-matched installed/enlargement setup remain unavailable or not yet established; prepare them before formal handoff. |
+| Test prerequisites | Reconcile authorized live/cache/embedding inputs and targeted browser evidence. Native iOS/Android jobs are excluded by the latest user instruction. |
 | Freeze/handoff | Not ready. Freeze one complete candidate and full test plan only after every readiness item is satisfied. |
 
 Frozen candidate `3ccf8f578d3e355238ee55478e7d5e02b2b68b67` is clean on
