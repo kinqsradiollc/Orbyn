@@ -6,8 +6,8 @@ Cycle C1-full-2026-10-08. Round **2/3**, persisted before substantive review on
 `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
 Full round-2 review completed. Reviewer inspected code/ADR/existing evidence only;
 no tests, builds or product/test edits. Full acceptance remains open for E1/E2.
-Original report committed by Builder in3cb6d402; closure updates remain uncommitted
-in primary for Builder delivery.
+Original report committed by Builder in3cb6d402; independently verified D1 closure
+was committed and pushed in86c522f2. E1/E2 remain open.
 
 ## Decision
 

@@ -7,7 +7,7 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: round2 code review complete; evidence closure pending for frozen1a92a2c0. Review rounds: 2/3.**
+**Active cycle: C1-full-2026-10-08. Phase: blocked on external C1 evidence/approval for frozen1a92a2c0. Review rounds: 2/3.**
 The user resumed work and removed iOS builds and Android-specific verification on
 8 October. Missing native mobile runtimes/devices and build capacity are no longer
 C1 gates; do not restart those jobs. Previous blocker records are historical.
@@ -40,6 +40,20 @@ not on main. No C1 acceptance, production deployment or C2 advancement is claime
 | Implementation | R1/QA040 local defects closed; no new actionable product-code defect found in round2. Frozencandidate1a92a2c0 awaits full acceptance, not product delivery. |
 | Remaining evidence | E1 bounded Electron check pending app approval; E2 genuine200% evidence or user disposition pending. Live cache/embedding are follow-ups; iOS/Android excluded. |
 | Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer round2/3 complete; E1/E2 evidence pending; D1 independently closed within round2. |
+
+## Current blocking audit — 8 October 2026
+
+The same external C1 approval/evidence dependency persisted for three consecutive
+goal turns. Latest authoritative Visual Check snapshot remains `waitingOnApproval`
+on turn `01a11b16-093c-7a11-8e57-2f3eed810095`; the pending Computer Use request
+is not denied or terminal, and must not be restarted or bypassed. E2 also needs
+supported genuine200% evidence or the answer to the existing user scope question.
+No answer/waiver has arrived. All current code/test/review/documentation work is
+complete; no further C1 code fix is prescribed. Candidate1a92a2c0 remains clean.
+C2 stays queued under the requested checkpoint order and conditional pause.
+Resume after the pending app approval and enlargement disposition/evidence,
+then finish E1/E2 within review2, merge/push accepted product and pause before C2.
+This is blocked work, not full C1 acceptance or the completed-C1 pause.
 
 ## Historical predecessor evidence — retained source scopes
 
