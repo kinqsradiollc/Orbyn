@@ -6,16 +6,24 @@ then honor the user's requested pause before C2/M1.
 
 ## Implement → Test → Review
 
+**The unit of work is the complete checkpoint.** For C1, Builder finishes all C1
+implementation states and prepares the entire qualification environment before
+handoff. A passing provider fix, one UI state or a packaging subset is not a
+handoff milestone. Earlier partial deliveries remain historical; this rule governs
+future work. Workflow documentation updates do not start a product review cycle.
+
 1. **Builder implements the full checkpoint.** Reconcile every retained requirement,
    including applicable backend, shared packages and all clients. Use development
    checks to catch defects; do not repeat formal full-suite handoffs for each feature.
    Builder is the software engineer and owns all product/test-code changes,
-   including fixes from review and testing. Record missing external/native gates.
+   including fixes from review and testing. Use one full-state readiness ledger,
+   not a series of individually handed-off sub-checkpoints.
 2. **Builder freezes and hands off a candidate.** Include cycle ID, exact checkout,
    branch and commit, scope/acceptance matrix, changed files, run instructions,
-   evidence links and known gaps. All required code must be committed. One session
+   evidence links and readiness checklist below. All required code must be committed. One session
    owns writes at a time; no competing edits or duplicate full test runs.
-3. **Tester qualifies that commit.** Run appropriate focused/regression/build/runtime
+3. **Tester qualifies the whole ready checkpoint at that commit.** Wait for the
+   consolidated handoff; do not start formal per-state jobs. Run appropriate focused/regression/build/runtime
    checks and coordinate required visual evidence. Publish a Markdown report with
    exact source, commands, terminal results, failures and unverified acceptance gates.
    Tester owns formal execution and reports failures to Builder for correction;
@@ -32,7 +40,8 @@ then honor the user's requested pause before C2/M1.
    Three rounds is a ceiling, not a required sequence: approve in round 1, 2 or 3
    when the evidence supports the decision.
 5. **Builder fixes → Tester retests → Reviewer inspects.** Builder implements and
-   commits the requested fixes, then freezes the revised candidate for Tester.
+   commits all returned findings as one complete revision, then freezes it for
+   Tester. Do not hand off each corrected finding separately.
    Prior results remain historical; Tester records what was rerun and why.
    Reviewer inspects the revised diff and Tester receipts to close existing findings
    within the same round; Reviewer does not execute verification commands.
@@ -50,6 +59,27 @@ then honor the user's requested pause before C2/M1.
    open: record it and report the blocker to the user. Do not advance, waive gates,
    restart the counter under a new cycle ID or claim completion to meet the limit.
    Further review cycles require explicit user direction.
+
+## Builder's mandatory readiness check
+
+Before formal Test → Review, record all of the following for the full checkpoint:
+
+| Readiness item | Required before handoff |
+| --- | --- |
+| Full scope | Every retained requirement/state mapped to implementation and planned verification; no missing feature or client path. |
+| Implementation | All required code, recovery/failure states and returned fixes complete; no known unfinished state hidden behind a green subset. |
+| Test prerequisites | Required runtime, fixture, permitted provider/model inputs and platform artifacts available, with executable instructions. |
+| Frozen candidate | One committed source, sole owner, complete test plan and existing evidence with its limits. |
+
+If any item is missing, Builder continues implementation/preparation or records
+the concrete external dependency. Tester/Reviewer wait; do not send them a partial
+checkpoint to rediscover the same gap. Development diagnostics are allowed during
+building, but they are not repeated formal handoffs. Formal tests and review may
+still uncover defects: return all findings to Builder, fix the full set, then
+retest the complete revision with an impact-based plan. Keep the maximum of three
+counted review rounds, with earlier approval and verified same-round closure.
+Do not reset the current counter. Product promotion occurs after full checkpoint
+acceptance; do not label a partial state release as completion of C1.
 
 ## Visual review cadence
 
