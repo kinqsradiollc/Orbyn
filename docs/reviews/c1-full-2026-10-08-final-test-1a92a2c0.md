@@ -1,12 +1,15 @@
 # C1 consolidated Tester qualification — 1a92a2c0
 
 Cycle `C1-full-2026-10-08`, 8 October 2026. This report records the formal
-Tester run against the consolidated C1 candidate. Review counter remains **1/3**.
+Tester run against the consolidated C1 candidate. The counter at Test start was
+**1/3**; this run does not consume a review round.
 
-**Disposition:** Current-source focused tests, workspace typechecks and production
-build pass. C1 acceptance remains open pending the bounded Electron interaction
-check now assigned to Visual Check, followed by Reviewer disposition. This report
-does not claim the unexecuted check or any explicitly unavailable capability.
+**Disposition:** Current-source focused tests, workspace typechecks and web
+production build pass. The user has removed separate desktop-app packaging and
+runtime checks from C1: shared web preview qualifies the web/desktop UI. E1 is
+closed by that scope decision, not by an app test. E2 genuine 200% enlargement
+remains a separate pending user disposition. No Electron/native-app acceptance
+is claimed.
 
 ## Frozen source and test selection
 
@@ -53,6 +56,30 @@ no build failure. The full `npm test` command was not repeated: the retained
 dependencies, while both changed/new backend test files were exercised in the
 current 208-case run. No current-candidate full-suite aggregate is claimed.
 
+## Fresh-install impact retest on the same source
+
+After the environment handoff, I exported the clean frozen commit with
+`git archive HEAD` to `/tmp/orbyn-c1-tester-fresh-install-1a92a2c0` and ran the
+impact retest there, leaving the candidate checkout and active Visual Check
+session untouched. Source remains `1a92a2c091e42d350e3b029bf57e932c630b4487`;
+runtime is Node `v22.16.0`, npm `10.9.2`. The fresh-install lockfile SHA256
+`4b7cf6441f140f52f6b071bbc74c562cef3c034a0694b4b501eae1fae78a6350` matches
+the frozen Git object.
+
+| Check | Command | Result | Log |
+| --- | --- | --- | --- |
+| Fresh dependency install | `npm ci --prefer-offline` | **PASS**, exit 0; 1,101 packages installed, 1,107 audited. npm reported 46 audit findings (2 low, 20 moderate, 23 high, 1 critical); no audit fix or dependency change was applied. | `/tmp/orbyn-tester-1a92a2c0-fresh-install.log` |
+| First focused invocation before workspace package build | Same eight-file `npx tsx --test --test-concurrency=1` cohort | **Failed setup attempt:** 83 discovered tests, 45 pass, 38 file-level failures, 0 cancelled/skipped. Failures were `ERR_MODULE_NOT_FOUND` for generated `@orbyn/core/dist/index.js`; no failing product assertions. | `/tmp/orbyn-tester-1a92a2c0-fresh-focused.log` |
+| Workspace typechecks after fresh install | `npm run typecheck` | **PASS**, exit 0; builds `@orbyn/core` and `@orbyn/api-client`, then typechecks backend, desktop and mobile. | `/tmp/orbyn-tester-1a92a2c0-fresh-typecheck.log` |
+| Focused cohort after shared package build | Same eight-file command | **208/208 pass**, 0 fail/cancel/skip, exit 0; 5.61 s. | `/tmp/orbyn-tester-1a92a2c0-fresh-focused-after-packages.log` |
+| Web production build after fresh install | `npm run build` | **PASS**, exit 0; shared packages, backend and web renderer/prerender. Existing large-chunk warning only. No Electron packaging command ran. | `/tmp/orbyn-tester-1a92a2c0-fresh-build.log` |
+
+The first focused attempt ran before generated shared-package outputs existed.
+The documented package/typecheck setup resolved that test-loader prerequisite;
+the same cohort then passed on the clean install. This was not a source defect.
+No test database, QA setting, vendor endpoint or app package was used in this
+retest.
+
 ## Retained source-scoped evidence
 
 | Evidence | Original result and source | Why it remains applicable; boundary |
@@ -67,7 +94,7 @@ current 208-case run. No current-candidate full-suite aggregate is claimed.
 
 | Requirement group | Evidence applied to this candidate | Disposition and boundary |
 | --- | --- | --- |
-| Managed/BYO/personal authority and entrypoints | Retained full backend suite and entrypoint/recovery matrix; current focused provider probe/control tests | Backend authority evidence remains applicable by exact source match. Electron persisted selection/restart/recovery is still pending the bounded check below. |
+| Managed/BYO/personal authority and entrypoints | Retained full backend suite and entrypoint/recovery matrix; current focused provider probe/control tests | Backend authority evidence remains applicable by exact source match. Separate desktop-app checks were removed by user scope; no app-level test is claimed. |
 | Independent saved connections and credentials | Retained backend/provider tests; scoped QA-039 web/mobile observations | QA-039 observed create/cancel/edit, synthetic-key replacement/removal, enable/disable and explicit default readback in selected cases. It did not complete the full two-client CRUD/delete/default/security matrix. No live key or real inference claim. |
 | Catalog, manual model, default and stale response | Current 208-case catalog/probe cohort; QA-037/038 scoped loading, empty, 503/retry and recovery evidence; QA-039 model/default observations | Current callbacks and lifecycle regressions pass. Browser captures are scoped, not a complete all-viewports interaction sweep. |
 | Generation protocols and provider inventory | Retained full regression and 20-provider runtime inventory fixtures; Matilda six-check baseline | Fixture coverage does not certify every vendor/model's current eligibility or availability. Matilda is not broad provider qualification. |
@@ -78,9 +105,9 @@ current 208-case run. No current-candidate full-suite aggregate is claimed.
 | Consent, document and access races | Retained backend and 69-case access/revision/queue-acknowledgement tests; QA-040 consent DOM check | Deterministic backend evidence applies to unchanged source. No production data or QA consent was changed by Tester. |
 | Migration, worker and recovery | Retained isolated legacy/late-install/maintenance fixtures and actual worker stop/expiry/restart receipt | Prior isolated receipts remain source-scoped; no new database fixture was needed for this client-only delta. |
 | Failure, status and retry | Retained 503/backoff/retry runtime; QA-038 client retry evidence; current focused catalog tests | Synthetic failure and client feedback are evidenced in their recorded scopes; no live-vendor failure or billing behavior is inferred. |
-| Cross-client behavior | Current shared mobile types/build; delegated QA-037/038/039/040 reports for desktop web and Expo mobile renderer | Desktop web and Expo-web are browser evidence. The source-bound Electron interaction is pending below. Native iOS builds and Android-specific verification are excluded. Genuine 200% enlargement and actual assistive-technology behavior remain unverified. |
+| Cross-client behavior | Current shared mobile types/build; delegated QA-037/038/039/040 reports for shared web preview and Expo mobile renderer | Web preview is the shared web/desktop UI acceptance surface; Expo web is mobile-browser evidence. Separate app packaging/runtime and native iOS/Android checks are excluded. Genuine 200% enlargement and actual assistive-technology behavior remain unverified. |
 
-## Browser evidence and Electron gate
+## Browser evidence and desktop scope
 
 Tester read the delegated Markdown reports; no screenshots were exported or
 independently pixel-inspected in this run. QA-037/038/039 reports contain scoped
@@ -95,24 +122,26 @@ QA-040 used Expo web at `http://127.0.0.1:8083/`, the mobile app renderer, at
 source `0fe6b087`, whose mobile UI source matches this candidate. The report
 records web 320x740 pre-enable readability, a mobile enabled/status/off case,
 and the accessible-name closure. Captures are inline-only (`savedPath:null`).
-These are mobile-browser results, not native proof.
+These are mobile-browser results, not native proof. The user subsequently
+clarified that the web preview qualifies shared web/desktop UI and removed
+separate desktop-app visual, packaging and runtime checks from C1. No new visual
+sweep was performed.
 
-The unsigned Electron package is
-`/tmp/orbyn-c1-desktop-source-package-unsigned-20261008/mac-arm64/Orbyn.app`.
-Its manifest records source `f7a48abf632157d368ac8e75e22117b42c8c581e`, clean
-source, build/package exit 0, app.asar SHA256
-`63e9a0a4269c80d8edec44a5d35ea14082d27fbf7df6df7a51b68ebefd30645f`, and
-`formalQualification:false` / `nativeInteractionsVerified:false`. Desktop source
-and package manifests are unchanged between that source and `1a92a2c0`, so the
-artifact is source-bound for this candidate. It had not previously been launched.
+### Historical app observations, not acceptance evidence
 
-Builder assigned Visual Check one bounded Electron capability/control/draft/
-restart check using this artifact and the isolated QA account. The assignment
-prohibits changes to saved providers, model/default, keys or consent and prohibits
-inference. Visual Check owns the QA UI fixture; Tester has made no settings
-mutations. Its Computer Use request is currently **waiting on approval**, not
-denied or terminal. No retry or bypass was attempted. Record the result here
-before closing this gate.
+Builder first reported `ERR_MODULE_NOT_FOUND` for packaged `lib0` imported by
+`yjs`, with no renderer. A later clean-package manifest for the same source
+`1a92a2c0` reports shared/renderer/package exits 0 and `startupVerified:true`
+(artifact SHA256 `b5dd4e4450722625d7f448ccc5252b12b2ee22301a935e672776b4fc21e782e2`).
+Those failure/recovery records are preserved as environment history only. Tester
+did not package or launch either artifact, and neither record is an app-level C1
+test claim. E1 is closed by the user's scope decision, not by an app pass.
+Visual Check separately reports that its clean app completed a normal disposable
+QA login, rendered the interface, and closed/reopened Settings. These are
+historical observations only and do not qualify app-level C1 acceptance; E1 is
+closed by scope. That run did not exercise a model draft, restart recovery or
+inference, and made no saved settings or provider mutation. The earlier no-login
+observation applies only to the initial failed artifact, which had no renderer.
 
 ## Explicit exclusions and unresolved limits
 
@@ -120,23 +149,25 @@ before closing this gate.
   per the user's C1 scope change. Shared mobile typechecks and Expo-web parity
   remain in scope and were checked as described above.
 - Genuine 200% enlargement is unsupported by the exposed internal-browser
-  capability. No prohibited alternate route, pinch/viewport/DPR substitution or
-  screenshot claim was used.
+  capability and remains pending separate user disposition. No prohibited
+  alternate route, pinch/viewport/DPR substitution or screenshot claim was used.
 - Actual screen-reader announcement/navigation was not tested.
 - OpenAI cache economics and live accepted-vendor embedding measurements were
   not run. Current scope permits the Matilda baseline plus deterministic/runtime
   evidence for C1; vendor/cost unknowns remain explicit follow-ups.
-- Electron capability/control/draft/restart evidence is pending Visual Check;
-  persisted saved-provider switch, revocation and secure-storage recovery are not
-  inferred from that bounded draft check. Retained backend/process tests cover
-  their own deterministic authority/recovery contracts.
+- Separate Electron app packaging/runtime acceptance is removed from C1 by user
+  scope. The initial artifact failure/recovery and Visual Check's limited
+  disposable QA interaction remain historical context, not C1 app-level
+  acceptance. The shared web preview remains the web/desktop UI acceptance
+  surface.
 - No current-candidate full `npm test` run is claimed. The 4,337-case receipt is
   retained only for exact unchanged backend implementation/dependency source;
   current changed test files have their own 208/208 current-source run.
 - No merge, push, deployment, C1 stage completion or C2/M1 advancement is claimed.
 
-**Tester result:** current-source executable checks pass and retained backend/
-runtime evidence is source-applicable. Whole C1 remains open pending the Electron
-result and Reviewer disposition of the remaining cross-client coverage and the
-genuine 200% capability limitation. Review counter remains 1/3; Tester execution
-does not consume a review round.
+**Tester result:** current-source focused tests, fresh-install typechecks and web
+production build pass on `1a92a2c0`; the retained backend/runtime receipts remain
+source-applicable. E1 is closed by the user's scope disposition, not by an app
+test. E2 remains pending separately. No C1 acceptance or deployment is claimed.
+The current-state record shows Reviewer round 2/3 complete; this impact retest
+did not consume another review round.

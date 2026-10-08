@@ -10,7 +10,7 @@ evidence can qualify C1, with unknown cost/vendor outcomes reported honestly. Fu
 
 # C1 Builder readiness
 
-Status: **Shared-source environment impact retest; E1 removed by user scope, E2 pending**.
+Status: **Clean-install impact retest passed; E1 removed by user scope, E2 disposition pending**.
 Review counter is **2/3**; no reset or automatic third review.
 Frozen full candidate: `1a92a2c0` (contains product correction `0fe6b087`) on `codex/c1-production-checkpoint`
 in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
@@ -58,7 +58,8 @@ a new product-code defect. E1 failed actual package startup with missinglib0; Bu
 from the lockfile and rebuilt the unsigned package, exit0. lib0/yjs are included;
 actual renderer starts in isolated temporary profile with no module-load error.
 Source1a92a2c0 remains unchanged. Tester has the complete source/environment/artifact
-impact handoff. The user removed E1 desktop-app qualification; Visual was told to stop and owned QA app PID44923 was stopped. This is scope disposition, not a native pass. E2 genuine200% evidence or explicit user disposition remains open.
+impact handoff. Tester repeated208/208, workspace types and web production build
+after a fresh lockfile install, with unchanged source. The user removed E1 desktop-app qualification; Visual was told to stop and owned QA app PID44923 was stopped. This is scope disposition, not a native pass. E2 genuine200% evidence or explicit user disposition remains open.
 Current records are reconciled for D1; Reviewer inspects closure within round2.
 
 The read-only installed inventory is in

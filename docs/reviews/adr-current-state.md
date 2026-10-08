@@ -7,7 +7,7 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: shared-source environment impact retest; E1 removed by user scope, E2 pending for frozen1a92a2c0. Review rounds: 2/3.**
+**Active cycle: C1-full-2026-10-08. Phase: clean-install impact retest passed; E1 removed by user scope, E2 disposition pending for frozen1a92a2c0. Review rounds: 2/3.**
 The user resumed work and removed iOS builds and Android-specific verification on
 8 October. Missing native mobile runtimes/devices and build capacity are no longer
 C1 gates; do not restart those jobs. Previous blocker records are historical.
@@ -47,6 +47,19 @@ UI. Separate desktop-app visual, package and runtime checks are no longer requir
 Visual Check was told to stop; Builder stopped only owned QA app PID44923. No
 restart, model-draft or native integration pass is claimed. Shared-source Tester
 impact retest remains appropriate; review counter stays2/3. E2 is unchanged.
+
+### Latest retained acceptance evidence
+
+Tester reports the clean-install repeat passed208/208, workspace typechecks and
+web production build on unchanged clean1a92a2c0. Reviewer closed E1 within round2
+by explicit user scope. Visual Check re-inspected current internal-browser
+capabilities: only visibility and viewport are exposed, with no actual browser
+zoom control. QA040 records this limitation; no genuine200% capture or substitute
+is claimed. The existing E2 user-disposition question remains unanswered.
+
+A non-mutating merge-tree check against main5d6149e1 and the frozen candidate
+exited0 with no conflicts (treeb88cd0c068160862ef6cc77df61c4074dc2174c4).
+This proves merge feasibility at those sources, not acceptance or delivery.
 
 ### Historical E1 recovery
 
