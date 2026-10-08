@@ -7,22 +7,28 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-Latest delivered product checkpoint: compact Settings density, concise connection
-help and visible dismissal focus, merged as7260db93 from frozen d672fc50.
-Its full4262/4262 regression passes, zero failures/skips/cancellations, exit0;
-focused31/31, desktop types and web build pass. QA-030 accepts the scoped browser
-correction. Main promotion preserved unrelated changes and matched all11 tested
-application/test files. Docker restoration/cleanup is recorded in accad117.
+Latest delivered product checkpoint: chat maintenance provider authority, merged
+and pushed as a5d2274f. Frozen full4286/4286, focused103/103, actual migration258
+upgrade1/1 and backend types/build pass. Memory and chat compaction now retain
+captured owner/provider/model authority and recovery identity. Reopening/pinning
+revokes compaction without counting a failed attempt. Deployment pauses the old
+notifier before migration. The earlier f5445544 full failure remains recorded;
+its corrected re-entry assertion passes in the final full suite. See
+[the maintenance receipt](c1-chat-maintenance-authority.md).
+
+Next C1 checkpoint: [managed entrypoint usage](c1-entrypoint-usage-and-availability.md).
+Local HTTP fixtures reproduce missing observed usage receipts for managed Agenda
+briefs and hosted maintained pages. After those are qualified and integrated,
+correct the independently reproduced global-provider availability gate affecting
+all five personal automation scanners. No next-stage implementation has begun.
+
+Compact Settings density/copy/focus checkpoint7260db93 remains qualified by its
+full4262/4262, focused31/31, desktop types/web build and scoped QA-030 review.
+QA-031 enlarged-text acceptance remains open: pinch magnification is insufficient
+and native Codex app control was denied. Docker restoration/cleanup is recorded
+in accad117; Docker and the active stock PostgreSQL fixture are healthy.
 Production deployment is unconfirmed.
-Current local C1 work is [chat maintenance authority](c1-chat-maintenance-authority.md):
-Memory extraction and old-chat compaction now capture owner/provider/model and
-recovery identity. Frozen f5445544 full qualification exposed a chat re-entry
-regression; the failing owned run was stopped with exit1 and no final TAP summary.
-Corrected source passes103/103 focused checks, backend types/build and a fresh
-actual migration258 upgrade1/1. Deployment now pauses the old notifier before
-migration. Corrected full qualification is pending; this candidate is not yet
-merged or delivered. Main remains6351e48a. QA-031 enlarged-text acceptance remains
-open: pinch magnification is insufficient, and native Codex app control was denied.
+
 Embedding discovery, exact mobile model search and provider redirect protection
 were merged as2fd8e14d, from candidateab01bcc8. That source's fresh full4246/4246
 passes with zero skips/cancellations; focused170/170,

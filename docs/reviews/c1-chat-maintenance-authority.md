@@ -1,7 +1,7 @@
 # C1 chat maintenance provider authority
 
-8 October 2026. Scoped candidate on `codex/c1-chat-maintenance-authority`,
-based on main `6351e48a`. This checkpoint belongs to the first remaining C1
+8 October 2026. Qualified checkpoint `a5d2274f`, merged and pushed to main.
+Built from main `6351e48a` on `codex/c1-chat-maintenance-authority`. This checkpoint belongs to the first remaining C1
 entrypoint/recovery gate. It does not complete C1 or start C2.
 
 ## Finding and scope
@@ -42,8 +42,8 @@ claimed. The broader C1 client/provider matrix remains open.
 | Backend types | Pass, terminal exit0 |
 | Backend build | Pass, terminal exit0 |
 | Frozen f5445544 full regression | Failed at existing chat re-entry assertion; stopped the owned run, exit1, no final TAP summary |
-| Corrected fresh-source full regression | Pending at this checkpoint; must finish before delivery |
-| Main delivery | Not merged or pushed at this checkpoint |
+| Corrected frozen a5d2274f full regression | 4286/4286 pass; exit0, signal:null, zero failures/skips/cancellations; 821581ms |
+| Main delivery | Fast-forwarded and pushed as a5d2274f; unrelated primary changes preserved |
 
 During development, focused runs exposed a bigint preference comparison, invalid
 job cancellation state, source-deletion cleanup and a SHARE-to-UPDATE deadlock.
@@ -75,3 +75,9 @@ QA-031 does not establish 200% text enlargement: the diagnostic was pinch
 magnification, and native Codex app control was denied by Computer Use policy.
 Its enlarged-text/browser and native acceptance gates stay open. Scoped normal
 Settings acceptance on main is unchanged. No alternate access route was used.
+
+Final regression evidence: `/tmp/orbyn-c1-maintenance-authority-corrected-full-20261008.log`
+and `/tmp/orbyn-c1-maintenance-authority-corrected-full-terminal-20261008.json`.
+The receipt identifies a5d2274f,465 files and a clean source tree. Production
+deployment remains user-owned and unconfirmed. The deploy script will stop the
+old notifier before applying migration258, then roll out the updated worker.

@@ -2038,3 +2038,19 @@ input counters after capture quiescence; original records must be cleaned at end
 - Corrected full-source regression and main promotion remain pending. C1 is active.
 - QA-031 enlargement is unqualified: pinch magnification does not prove reflow,
   and native Codex app control was explicitly denied. No bypass attempted.
+
+
+### 8 October: maintenance authority delivered as a5d2274f
+
+- Corrected full regression:4286/4286, exit0, signal:null, zero failures/skips/
+  cancellations,821580.947125ms.465 files, source clean at terminal.
+- Evidence:/tmp/orbyn-c1-maintenance-authority-corrected-full-20261008.log and
+  corresponding corrected-full-terminal receipt. Earlier failed f544 remains
+  historical; its exact worker re-entry assertion715 passes in the corrected run.
+- Focused103/103, independent actual repository upgrade1/1, backend types/build
+  pass. Production deployment has not been executed by this session.
+- Main fast-forward/push a5d2274f succeeded. Primary mobile/app.json hash and
+  unrelated untracked files remain unchanged. No merge conflict.
+- Next in the C1 entrypoint gate: managed Agenda/page usage receipts, then
+  configured personal scanner availability; before-fix fixtures are recorded
+  in c1-entrypoint-usage-and-availability.md. C1 remains incomplete.
