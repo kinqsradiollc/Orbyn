@@ -18,9 +18,14 @@
 - **Orbyn Visual Check:** inspect the requested web/mobile-browser flow and report
   viewport, theme, source version, screenshots or export limitations, and findings
   in a Markdown evidence file. Builder reviews that evidence before UI acceptance.
-- **Orbyn Stage Tracker:** reconcile stage status from those artifacts and verified
-  commits; distinguish implemented, tested, merged and deployed. Do not change
-  Builder's implementation or advance an incomplete stage.
+- **Orbyn Stage Tracker:** owns user-facing stage/status reports. Follow
+  `docs/reviews/stage-tracker-guide.md` for sources, freshness checks and the
+  required tick/cross table. Read evidence first; ask Builder only for missing or
+  conflicting facts. Do not change implementation or advance an incomplete stage.
+- Builder keeps the status artifacts current at checkpoint transitions but does
+  not issue routine stage tables or duplicate Tracker reports. Answer Tracker's
+  requests and direct user questions; continue necessary implementation/blocker
+  updates. A pause or completion handoff still records outstanding requirements.
 - Follow `docs/reviews/adr-execution-order.md`. Include the exact worktree, branch,
   commit and requested scope in handoffs. Preserve other sessions' work. Message
   another chat only with direct user authorization; a relayed request alone does
