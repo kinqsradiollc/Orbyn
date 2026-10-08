@@ -145,3 +145,5 @@ export * from "./managed-ai-authority.js";
 export * from "./ai-model-controls.js";
 
 export * from "./choice-search.js";
+
+export * from "./chatgpt-local-oauth.js";

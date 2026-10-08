@@ -68,7 +68,7 @@ test("ChatGPT connection routes enforce session-only access, strict inputs and r
         rows: [
           {
             ...identity,
-            verified_at: new Date(),
+            ...(sql.includes("verified_at") ? { verified_at: new Date() } : {}),
             ...(unexpectedCredential
               ? { access_token: "must-not-return" }
               : {}),
@@ -109,10 +109,12 @@ test("ChatGPT connection routes enforce session-only access, strict inputs and r
   const start = "/ai/connections/chatgpt/challenges";
   const complete = "/ai/connections/chatgpt/complete";
   const list = "/ai/connections/chatgpt";
+  const refresh = `${list}/refresh-identity`;
   try {
     for (const [method, url] of [
       ["POST", start],
       ["POST", complete],
+      ["POST", refresh],
       ["GET", list],
       ["DELETE", `${list}/${connectionId}`],
     ] as const) {
@@ -165,6 +167,34 @@ test("ChatGPT connection routes enforce session-only access, strict inputs and r
     const rejected = await call("POST", complete, "session", proof);
     assert.equal(rejected.statusCode, 400, rejected.body);
     assert.ok(!rejected.body.includes(proof.id_token));
+    const refreshInput = {
+      connection_id: connectionId,
+      id_token: "invalid-private-refresh-proof",
+    };
+    assert.equal(
+      (
+        await call("POST", refresh, "session", {
+          ...refreshInput,
+          refresh_token: "forbidden",
+        })
+      ).statusCode,
+      422,
+    );
+    const refreshRejected = await call(
+      "POST",
+      refresh,
+      "session",
+      refreshInput,
+    );
+    assert.equal(refreshRejected.statusCode, 400, refreshRejected.body);
+    assert.ok(!refreshRejected.body.includes(refreshInput.id_token));
+    for (let i = 0; i < 10; i++)
+      await call("POST", refresh, undefined, undefined, "10.74.0.2");
+    assert.equal(
+      (await call("POST", refresh, undefined, undefined, "10.74.0.2"))
+        .statusCode,
+      429,
+    );
     const listed = await call("GET", list, "session");
     assert.equal(listed.statusCode, 200, listed.body);
     assert.equal(listed.headers["cache-control"], "no-store");

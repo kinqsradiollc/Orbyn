@@ -82,6 +82,7 @@ export const chatgptInferenceReceipt = z
 export const chatgptInferencePublication = z
   .object({
     receipt: chatgptInferenceReceipt,
+    proof_format: z.literal("sha256_v2").optional(),
     signature: chatgptExecutorFinish.shape.signature,
   })
   .strict();
@@ -89,6 +90,16 @@ export const chatgptInferencePublication = z
 export function chatgptInferenceReceiptMessage(value: unknown): string {
   return JSON.stringify([
     "orbyn:executor:inference-result:v1",
+    chatgptInferenceReceipt.parse(value),
+  ]);
+}
+
+/** V2 signs a bounded digest of every receipt field; hashing stays in the credential-owning runtime. */
+export const CHATGPT_INFERENCE_SIGNATURE_DOMAIN =
+  "orbyn:executor:inference-result:v2";
+export function chatgptInferenceSigningInput(value: unknown): string {
+  return JSON.stringify([
+    CHATGPT_INFERENCE_SIGNATURE_DOMAIN,
     chatgptInferenceReceipt.parse(value),
   ]);
 }

@@ -5,6 +5,8 @@ import {
   chatgptExecutorStart,
   chatgptExecutorChallenge,
   chatgptExecutorFinish,
+  chatgptConnectionRefreshIdentity,
+  chatgptConnection,
   fail,
 } from "@orbyn/core";
 import {
@@ -14,6 +16,7 @@ import {
 import { pool, transaction, type Db } from "../../db/pool.js";
 import {
   createOpenAiIdentityVerifier,
+  createOpenAiRefreshIdentityVerifier,
   type VerifiedOpenAiIdentity,
 } from "./openai-identity.js";
 
@@ -26,6 +29,7 @@ type Challenge = {
   consumed_at: Date | null;
 };
 const verifyIdentity = createOpenAiIdentityVerifier();
+const verifyRefreshIdentity = createOpenAiRefreshIdentityVerifier();
 
 /** Enroll a public device key only after an exact-session, one-time proof. */
 export async function beginChatgptExecutorEnrollment(
@@ -552,5 +556,53 @@ export async function writeChatgptModelPreferenceLocked(
     binding,
     model: saved.model,
     version: Number(saved.version),
+  });
+}
+
+/** Verify refreshed ID proof against a live owned registration; cannot create, revive or alter identity. */
+export async function verifyChatgptConnectionRefreshIdentity(
+  binding: SessionBinding,
+  value: unknown,
+  verifier = verifyRefreshIdentity,
+) {
+  const input = chatgptConnectionRefreshIdentity.parse(value);
+  const read = async (db: Db) => {
+    await requireLiveSession(db, binding);
+    const row = (
+      await db.query<{
+        id: string;
+        issuer: string;
+        subject: string;
+        client_id: string;
+      }>(
+        `SELECT id,issuer,subject,client_id FROM chatgpt_identity_connections
+       WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL FOR SHARE`,
+        [input.connection_id, binding.userId],
+      )
+    ).rows[0];
+    if (!row) fail(404, "That ChatGPT connection is not available.");
+    return chatgptConnection.parse(row);
+  };
+  const original = await transaction(read);
+  let identity: VerifiedOpenAiIdentity;
+  try {
+    identity = await verifier(input.id_token, {
+      clientId: original.client_id,
+      subject: original.subject,
+    });
+  } catch {
+    fail(400, "The refreshed ChatGPT identity could not be verified.");
+  }
+  if (
+    identity.issuer !== original.issuer ||
+    identity.subject !== original.subject ||
+    identity.clientId !== original.client_id
+  )
+    fail(400, "The refreshed ChatGPT identity could not be verified.");
+  return transaction(async (db) => {
+    const live = await read(db);
+    if (JSON.stringify(live) !== JSON.stringify(original))
+      fail(409, "The ChatGPT registration changed. Reconnect this account.");
+    return live;
   });
 }

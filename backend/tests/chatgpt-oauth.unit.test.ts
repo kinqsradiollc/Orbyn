@@ -415,3 +415,43 @@ test("exchange cancellation and deadlines fence a late provider response", async
     status("AUTH_ABORTED"),
   );
 });
+
+test("desktop refresh recognizes terminal grant errors without confusing server outages", async () => {
+  const { refreshChatgptTokens } = createRequire(import.meta.url)(
+    "../../desktop/chatgpt-oauth.cjs",
+  );
+  const saved = {
+    clientId: "oaiapp_fixture",
+    idToken: "private-id",
+    refreshToken: "private-refresh",
+    scopes: ["openid"],
+  };
+  for (const code of [
+    "invalid_grant",
+    "invalid_refresh_token",
+    "token_expired",
+    "refresh_token_expired",
+    "refresh_token_invalidated",
+    "refresh_token_reused",
+  ])
+    for (const error of [code, { code, message: "private-refresh" }])
+      await assert.rejects(
+        refreshChatgptTokens(saved, {
+          fetch: async () => Response.json({ error }, { status: 400 }),
+        }),
+        (e: any) =>
+          e.code === "AUTH_REFRESH_EXPIRED" && !e.message.includes("private-"),
+      );
+  for (const [http, code] of [
+    [503, "invalid_grant"],
+    [429, "refresh_token_reused"],
+    [400, "invalid_client"],
+  ])
+    await assert.rejects(
+      refreshChatgptTokens(saved, {
+        fetch: async () =>
+          Response.json({ error: code }, { status: http as number }),
+      }),
+      status("AUTH_FAILED"),
+    );
+});

@@ -7,6 +7,9 @@ import {
 import {
   chatgptCatalogSigningInput,
   CHATGPT_CATALOG_SIGNATURE_DOMAIN,
+  chatgptInferenceReceiptMessage,
+  chatgptInferenceSigningInput,
+  CHATGPT_INFERENCE_SIGNATURE_DOMAIN,
 } from "@orbyn/core";
 
 const invalid = () => new Error("The executor proof could not be verified.");
@@ -33,20 +36,31 @@ export function verifyChatgptCatalogProof(
   }
 }
 
-/** Validate a canonical Ed25519 SPKI; no private keys or other algorithms are accepted. */
+/** Validate canonical Ed25519 or uncompressed P-256 SPKI; reject private keys and other curves. */
 export function parseChatgptExecutorKey(value: unknown): {
   key: KeyObject;
   fingerprint: string;
 } {
   try {
-    if (typeof value !== "string" || !/^[A-Za-z0-9_-]{59}$/.test(value))
+    if (
+      typeof value !== "string" ||
+      !/^(?:[A-Za-z0-9_-]{59}|[A-Za-z0-9_-]{122})$/.test(value)
+    )
       throw invalid();
     const bytes = Buffer.from(value, "base64url");
-    if (bytes.length !== 44 || bytes.toString("base64url") !== value)
+    if (
+      ![44, 91].includes(bytes.length) ||
+      bytes.toString("base64url") !== value
+    )
       throw invalid();
     const key = createPublicKey({ key: bytes, format: "der", type: "spki" });
+    const ed25519 = key.asymmetricKeyType === "ed25519" && bytes.length === 44;
+    const p256 =
+      key.asymmetricKeyType === "ec" &&
+      bytes.length === 91 &&
+      key.asymmetricKeyDetails?.namedCurve === "prime256v1";
     if (
-      key.asymmetricKeyType !== "ed25519" ||
+      (!ed25519 && !p256) ||
       !key.export({ type: "spki", format: "der" }).equals(bytes)
     )
       throw invalid();
@@ -79,11 +93,28 @@ export function verifyChatgptExecutorProof(
     if (
       bytes.length !== 64 ||
       bytes.toString("base64url") !== signature ||
-      !verify(null, Buffer.from(savedMessage, "utf8"), key, bytes)
+      !verify(
+        key.asymmetricKeyType === "ed25519" ? null : "sha256",
+        Buffer.from(savedMessage, "utf8"),
+        key.asymmetricKeyType === "ed25519"
+          ? key
+          : { key, dsaEncoding: "ieee-p1363" },
+        bytes,
+      )
     )
       throw invalid();
     return fingerprint;
   } catch {
     throw invalid();
   }
+}
+
+/** Explicit version prevents a digest proof being treated as a legacy raw-message proof. */
+export function chatgptInferenceProofMessage(
+  receipt: unknown,
+  format?: "sha256_v2",
+): string {
+  if (format === undefined) return chatgptInferenceReceiptMessage(receipt);
+  if (format !== "sha256_v2") throw invalid();
+  return `${CHATGPT_INFERENCE_SIGNATURE_DOMAIN}\n${createHash("sha256").update(chatgptInferenceSigningInput(receipt), "utf8").digest("base64url")}`;
 }

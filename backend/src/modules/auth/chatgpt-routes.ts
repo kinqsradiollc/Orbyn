@@ -20,6 +20,7 @@ import {
 import type { FastifyInstance } from "fastify";
 import {
   chatgptConnectionStart,
+  chatgptConnectionRefreshIdentity,
   chatgptConnectRequestFinish,
   chatgptConnectionFinish,
   chatgptConnectionChallenge,
@@ -31,6 +32,7 @@ import { authenticateSessionBinding } from "../../lib/auth.js";
 import { idParam, strictRateLimit } from "../../lib/params.js";
 import {
   beginChatgptConnection,
+  verifyChatgptConnectionRefreshIdentity,
   finishChatgptConnection,
   listChatgptConnections,
   revokeChatgptConnection,
@@ -158,6 +160,18 @@ export async function chatgptConnectionRoutes(app: FastifyInstance) {
           clientId: input.client_id,
           idToken: input.id_token,
         }),
+      );
+    },
+  );
+  app.post(
+    "/ai/connections/chatgpt/refresh-identity",
+    strictRateLimit,
+    async (r, reply) => {
+      const binding = await authenticateSessionBinding(r);
+      const input = chatgptConnectionRefreshIdentity.parse(r.body);
+      reply.header("Cache-Control", "no-store");
+      return chatgptConnection.parse(
+        await verifyChatgptConnectionRefreshIdentity(binding, input),
       );
     },
   );

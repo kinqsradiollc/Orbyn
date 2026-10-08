@@ -376,3 +376,41 @@ test("a proof that expires while secure storage is opening is never signed", asy
     await f.cleanup();
   }
 });
+
+test("desktop signer signs bounded v2 digests for large inference receipts", async () => {
+  const f = await fixture();
+  try {
+    const { chatgptInferenceProofMessage, verifyChatgptExecutorProof } =
+      await import("../src/modules/auth/chatgpt-executor-proof.js");
+    const receipt = {
+      request_id: randomUUID(),
+      executor_id: randomUUID(),
+      binding: f.binding,
+      enrollment_epoch: 1,
+      lease_epoch: 1,
+      model: "fixture-model",
+      nonce: "n".repeat(43),
+      request_hash: "a".repeat(64),
+      result: { status: "completed", text: "x".repeat(10000), usage: null },
+    };
+    const signed = await f.signer.signInference(receipt);
+    const metadata = await f.signer.metadata();
+    assert.equal(signed.proof_format, "sha256_v2");
+    assert.equal(
+      verifyChatgptExecutorProof(
+        metadata.public_key,
+        chatgptInferenceProofMessage(signed.receipt, signed.proof_format),
+        signed.signature,
+      ),
+      metadata.public_key_fingerprint,
+    );
+    await assert.rejects(
+      f.signer.signInference({
+        ...receipt,
+        binding: { ...f.binding, subject: "other" },
+      }),
+    );
+  } finally {
+    await f.cleanup();
+  }
+});

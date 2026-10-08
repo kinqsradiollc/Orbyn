@@ -349,6 +349,30 @@ async function createChatgptVault({
         return revision;
       });
     },
+    /** Erase only the observed credential revision; preserve a later reconnect. */
+    async revokeObserved(value, expectedRevision, { signal } = {}) {
+      const binding = bindingOf(value),
+        key = keyOf(binding);
+      const epoch = epochs.get(key) ?? 0;
+      return ordered(key, async () => {
+        signal?.throwIfAborted();
+        if ((epochs.get(key) ?? 0) !== epoch) throw conflict();
+        const current = await read(binding, key);
+        signal?.throwIfAborted();
+        if (
+          (epochs.get(key) ?? 0) !== epoch ||
+          current.revision !== expectedRevision
+        )
+          throw conflict();
+        epochs.set(key, epoch + 1);
+        await fs.unlink(filename(key)).catch((error) => {
+          if (error.code !== "ENOENT") throw unavailable();
+        });
+        const revision = randomUUID();
+        revisions.set(key, revision);
+        return revision;
+      });
+    },
     /** Erase without requiring an unlocked keychain; fence any pending refresh/install. */
     async revoke(value) {
       const binding = bindingOf(value),

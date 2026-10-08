@@ -55,7 +55,7 @@ test("private keys, noncanonical encodings and other key algorithms fail generic
   const privateKey = keys.privateKey
     .export({ type: "pkcs8", format: "der" })
     .toString("base64url");
-  const ec = generateKeyPairSync("ec", { namedCurve: "prime256v1" })
+  const ec = generateKeyPairSync("ec", { namedCurve: "secp256k1" })
     .publicKey.export({ type: "spki", format: "der" })
     .toString("base64url");
   const x25519 = generateKeyPairSync("x25519")
@@ -77,4 +77,55 @@ test("private keys, noncanonical encodings and other key algorithms fail generic
     "A".repeat(59),
   ])
     assert.throws(() => parseChatgptExecutorKey(value), rejected);
+});
+
+test("native P-256 proofs bind canonical public key, exact message and fixed P1363 signature", () => {
+  const native = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const der = native.publicKey.export({ type: "spki", format: "der" });
+  const publicKey = der.toString("base64url");
+  const proof = sign("sha256", Buffer.from(message), {
+    key: native.privateKey,
+    dsaEncoding: "ieee-p1363",
+  }).toString("base64url");
+  assert.equal(publicKey.length, 122);
+  assert.equal(proof.length, 86);
+  assert.equal(
+    verifyChatgptExecutorProof(publicKey, message, proof),
+    createHash("sha256").update(der).digest("base64url"),
+  );
+  assert.throws(
+    () => verifyChatgptExecutorProof(publicKey, message + "changed", proof),
+    rejected,
+  );
+  const stranger = generateKeyPairSync("ec", { namedCurve: "prime256v1" })
+    .publicKey.export({ type: "spki", format: "der" })
+    .toString("base64url");
+  assert.throws(
+    () => verifyChatgptExecutorProof(stranger, message, proof),
+    rejected,
+  );
+  const derProof = sign(
+    "sha256",
+    Buffer.from(message),
+    native.privateKey,
+  ).toString("base64url");
+  assert.throws(
+    () => verifyChatgptExecutorProof(publicKey, message, derProof),
+    rejected,
+  );
+  for (const curve of ["secp256k1", "secp384r1", "secp521r1"]) {
+    const unsupported = generateKeyPairSync("ec", { namedCurve: curve })
+      .publicKey.export({ type: "spki", format: "der" })
+      .toString("base64url");
+    assert.throws(() => parseChatgptExecutorKey(unsupported), rejected);
+  }
+  assert.throws(
+    () =>
+      parseChatgptExecutorKey(
+        native.privateKey
+          .export({ type: "pkcs8", format: "der" })
+          .toString("base64url"),
+      ),
+    rejected,
+  );
 });

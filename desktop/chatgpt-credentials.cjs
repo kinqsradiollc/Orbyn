@@ -9,6 +9,7 @@ async function createChatgptCredentialResolver({
   fetch,
   verifyIdentity,
   refresh = refreshChatgptTokens,
+  onInvalidated,
 }) {
   const { chatgptModelBinding } = await import("@orbyn/core");
   const binding = Object.freeze(chatgptModelBinding.parse(input));
@@ -50,10 +51,22 @@ async function createChatgptCredentialResolver({
           throw new Error(
             "Reconnect this ChatGPT account before its next request.",
           );
-        const replacement = await refresh(credentials, {
-          fetch,
-          signal: combined,
-        });
+        let replacement;
+        try {
+          replacement = await refresh(credentials, { fetch, signal: combined });
+        } catch (error) {
+          if (error?.code === "AUTH_REFRESH_EXPIRED") {
+            combined.throwIfAborted();
+            await live();
+            // Conditional erasure must never revoke credentials from a later sign-in.
+            await vault.revokeObserved(binding, saved.revision, {
+              signal: combined,
+            });
+            onInvalidated?.();
+            throw new Error("Reconnect this ChatGPT account.");
+          }
+          throw error;
+        }
         combined.throwIfAborted();
         await live();
         if (replacement.clientId !== binding.client_id)

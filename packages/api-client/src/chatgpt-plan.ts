@@ -1,5 +1,8 @@
+import { throwIfAborted } from "./abort.js";
 import {
   chatgptModel,
+  chatgptModelBinding,
+  type ChatgptModelBinding,
   chatgptPlanUsage,
   type ChatgptPlanUsage,
   parseChatgptModels,
@@ -13,6 +16,18 @@ export type ChatgptAccount = {
   clientId: string;
 };
 export type ChatgptCredential = ChatgptAccount & { accessToken: string };
+/** Exact verified OAuth subject binding for local registrations without separate workspace claims. */
+type ChatgptBoundCredential = {
+  binding: ChatgptModelBinding;
+  accessToken: string;
+};
+type ChatgptPlanOptions = (
+  | { account: ChatgptAccount; credential: () => Promise<ChatgptCredential> }
+  | {
+      binding: ChatgptModelBinding;
+      credential: () => Promise<ChatgptBoundCredential>;
+    }
+) & { fetch?: typeof fetch };
 export type ChatgptPlanRequest = {
   model: string;
   instructions?: string;
@@ -85,24 +100,25 @@ const safeCode = (value: unknown) =>
 
 /** Fixed, credential-owning transport. Never pass this client to the shared backend. */
 export class ChatgptPlanClient {
-  private readonly account: ChatgptAccount;
-  constructor(
-    private readonly options: {
-      account: ChatgptAccount;
-      credential: () => Promise<ChatgptCredential>;
-      fetch?: typeof fetch;
-    },
-  ) {
-    if (
-      !options.account.accountId.trim() ||
-      !options.account.workspaceId.trim() ||
-      !options.account.clientId.trim() ||
-      options.account.clientId === "dynamic_agent_client"
-    )
-      throw new Error(
-        "Choose a ChatGPT account and workspace before continuing.",
-      );
-    this.account = Object.freeze({ ...options.account });
+  private readonly account: ChatgptAccount | null;
+  private readonly binding: ChatgptModelBinding | null;
+  constructor(private readonly options: ChatgptPlanOptions) {
+    if ("binding" in options) {
+      this.binding = Object.freeze(chatgptModelBinding.parse(options.binding));
+      this.account = null;
+    } else {
+      if (
+        !options.account.accountId.trim() ||
+        !options.account.workspaceId.trim() ||
+        !options.account.clientId.trim() ||
+        options.account.clientId === "dynamic_agent_client"
+      )
+        throw new Error(
+          "Choose a ChatGPT account and workspace before continuing.",
+        );
+      this.account = Object.freeze({ ...options.account });
+      this.binding = null;
+    }
   }
 
   private async request(
@@ -110,16 +126,32 @@ export class ChatgptPlanClient {
     init: RequestInit,
     signal?: AbortSignal,
   ) {
-    const credential = await this.options.credential();
-    if (
-      credential.accountId !== this.account.accountId ||
-      credential.workspaceId !== this.account.workspaceId ||
-      credential.clientId !== this.account.clientId
-    )
-      throw new Error("ChatGPT account changed. Reconnect before continuing.");
-    if (!credential.accessToken.trim())
+    let accessToken: string;
+    if ("binding" in this.options) {
+      const credential = await this.options.credential();
+      if (
+        JSON.stringify(chatgptModelBinding.parse(credential.binding)) !==
+        JSON.stringify(this.binding)
+      )
+        throw new Error(
+          "ChatGPT account changed. Reconnect before continuing.",
+        );
+      accessToken = credential.accessToken;
+    } else {
+      const credential = await this.options.credential();
+      if (
+        credential.accountId !== this.account!.accountId ||
+        credential.workspaceId !== this.account!.workspaceId ||
+        credential.clientId !== this.account!.clientId
+      )
+        throw new Error(
+          "ChatGPT account changed. Reconnect before continuing.",
+        );
+      accessToken = credential.accessToken;
+    }
+    if (!accessToken.trim())
       throw new Error("Sign in to ChatGPT before continuing.");
-    signal?.throwIfAborted();
+    throwIfAborted(signal);
     const response = await (this.options.fetch ?? fetch)(
       `https://api.openai.com/v1/${path}`,
       {
@@ -128,7 +160,7 @@ export class ChatgptPlanClient {
         credentials: "omit",
         signal,
         headers: {
-          Authorization: `Bearer ${credential.accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
           ...(path === "responses"
             ? { "Content-Type": "application/json" }
             : {}),
@@ -302,7 +334,7 @@ export class ChatgptPlanClient {
     };
     try {
       while (!completed) {
-        signal.throwIfAborted();
+        throwIfAborted(signal);
         const part = await reader.read();
         if (part.done) break;
         bytes += part.value.byteLength;

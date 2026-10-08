@@ -265,6 +265,15 @@ async function createChatgptManager({
       vault,
       requireLiveConnection: live,
       fetch,
+      onInvalidated: () => {
+        if (ctx !== context || ctx.active?.models !== models) return;
+        ctx.grants.delete(registrationId);
+        ctx.error =
+          "This ChatGPT session has ended. Connect again to continue.";
+        stopActive(ctx);
+        ctx.lastCatalog = null;
+        notify();
+      },
       preferenceStore: {
         read: async (_binding, signal) => {
           await live();
@@ -657,10 +666,15 @@ async function createChatgptManager({
         requireContext(ctx);
         if (!binding)
           throw new Error("This ChatGPT registration is not connected.");
-        const saved = await vault.read(binding);
+        let saved = null;
+        try {
+          saved = await vault.read(binding);
+        } catch {
+          /* Locked/corrupt storage cannot prevent unconditional local erasure. */
+        }
         requireContext(ctx);
         let remoteRevoked = false;
-        if (saved.credentials?.refreshToken) {
+        if (saved?.credentials?.refreshToken) {
           try {
             remoteRevoked = (
               await revoke(saved.credentials, {
@@ -669,22 +683,43 @@ async function createChatgptManager({
               })
             ).revoked;
           } catch {
-            /* Clearing local credentials still completes a local disconnect. */
+            /* Local cleanup still proceeds; report remote revocation as unconfirmed. */
           }
         }
-        await vault.revoke(binding);
+        requireContext(ctx);
+        const failures = [];
+        try {
+          await vault.revoke(binding);
+        } catch {
+          failures.push("credentials");
+        }
+        requireContext(ctx);
         ctx.grants.delete(registrationId);
-        await keyVault.revoke(binding);
+        try {
+          await keyVault.revoke(binding);
+        } catch {
+          failures.push("signing_key");
+        }
         requireContext(ctx);
-        await ctx.client.revokeChatgptConnection(binding.connection_id);
+        try {
+          await ctx.client.revokeChatgptConnection(binding.connection_id);
+        } catch {
+          failures.push("server");
+        }
         requireContext(ctx);
-        const selected = await ctx.store.selection();
-        if (selected.registrationId === registrationId)
-          await ctx.store.select(null, selected.revision);
+        try {
+          const selected = await ctx.store.selection();
+          requireContext(ctx);
+          if (selected.registrationId === registrationId)
+            await ctx.store.select(null, selected.revision);
+        } catch {
+          failures.push("selection");
+        }
         requireContext(ctx);
         return {
           state: await snapshot(),
           remote_revocation_confirmed: remoteRevoked,
+          cleanup_failures: failures,
         };
       });
     },

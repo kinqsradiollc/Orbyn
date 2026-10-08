@@ -1,0 +1,5 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": { "modules": ["OrbynChatgptModule"] },
+  "android": { "modules": ["expo.modules.orbynchatgpt.OrbynChatgptModule"] }
+}

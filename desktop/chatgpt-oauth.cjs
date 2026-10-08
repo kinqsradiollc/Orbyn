@@ -482,15 +482,27 @@ async function requestTokens(
     } catch {
       throw failure("AUTH_RESPONSE", "ChatGPT sign-in could not be completed.");
     }
-    if (!response.ok)
+    if (!response.ok) {
+      const code =
+        typeof body?.error === "string" ? body.error : body?.error?.code;
+      const terminal = response.status === 400 || response.status === 401;
+      const unusable = new Set([
+        "invalid_grant",
+        "invalid_refresh_token",
+        "token_expired",
+        "refresh_token_expired",
+        "refresh_token_invalidated",
+        "refresh_token_reused",
+      ]);
       throw failure(
-        body?.error === "invalid_grant"
-          ? saved
-            ? "AUTH_REFRESH_EXPIRED"
-            : "AUTH_CODE_EXPIRED"
-          : "AUTH_FAILED",
+        saved && terminal && unusable.has(code)
+          ? "AUTH_REFRESH_EXPIRED"
+          : !saved && terminal && code === "invalid_grant"
+            ? "AUTH_CODE_EXPIRED"
+            : "AUTH_FAILED",
         "ChatGPT sign-in could not be completed. Try again.",
       );
+    }
     const token = (value) =>
       typeof value === "string" &&
       value.length > 0 &&
