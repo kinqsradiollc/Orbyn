@@ -63,6 +63,7 @@ export function Topbar({
       {onToggleRail && (
         <button
           className="icon-button workspace-rail-toggle"
+          data-settings-focus-return
           aria-label={railed ? "Expand navigation" : "Collapse navigation"}
           aria-expanded={!railed}
           aria-controls="workspace-navigation"
@@ -73,6 +74,7 @@ export function Topbar({
       )}
       <button
         className="icon-button mobile-menu"
+        data-settings-focus-return
         aria-label="Toggle navigation"
         aria-expanded={navigationOpen}
         aria-controls="workspace-navigation"

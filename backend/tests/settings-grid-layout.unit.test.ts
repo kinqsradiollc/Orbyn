@@ -17,7 +17,13 @@ test("phone Settings uses the available modal space without shrinking controls",
   );
   for (const width of [320, 390, 560, 600]) {
     assert.equal(
-      gridColumns(css, width, false, "padding", "settings-backdrop"),
+      gridColumns(
+        css,
+        width,
+        false,
+        "padding",
+        "modal-backdrop.settings-backdrop",
+      ),
       "0",
     );
     assert.equal(
@@ -44,7 +50,7 @@ test("phone Settings uses the available modal space without shrinking controls",
     );
   }
   assert.equal(
-    gridColumns(css, 601, false, "padding", "settings-backdrop"),
+    gridColumns(css, 601, false, "padding", "modal-backdrop.settings-backdrop"),
     "12px",
   );
   assert.equal(
@@ -69,6 +75,141 @@ test("phone Settings uses the available modal space without shrinking controls",
   );
 });
 
+test("short Settings windows use a compact category row while portrait remains unchanged", async () => {
+  const css = await readFile(
+    new URL(
+      "../../desktop/src/features/settings/settings-modal.css",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  for (const [width, height] of [
+    [740, 320],
+    [900, 480],
+  ]) {
+    assert.equal(
+      gridColumns(
+        css,
+        width,
+        false,
+        "grid-template-columns",
+        "settings-dialog .settings-sidebar",
+        height,
+      ),
+      "minmax(0, 1fr) minmax(0, 180px)",
+    );
+    assert.equal(
+      gridColumns(
+        css,
+        width,
+        false,
+        "display",
+        "settings-dialog .settings-navigation-wide",
+        height,
+      ),
+      "none",
+    );
+    assert.equal(
+      gridColumns(
+        css,
+        width,
+        false,
+        "display",
+        "settings-dialog .settings-navigation-compact",
+        height,
+      ),
+      "block",
+    );
+    assert.equal(
+      gridColumns(
+        css,
+        width,
+        false,
+        "padding",
+        "settings-dialog-header",
+        height,
+      ),
+      "8px 12px",
+    );
+  }
+  assert.equal(
+    gridColumns(
+      css,
+      320,
+      false,
+      "grid-template-columns",
+      "settings-dialog .settings-sidebar",
+      320,
+    ),
+    "minmax(0, 1fr)",
+  );
+  assert.equal(
+    gridColumns(
+      css,
+      740,
+      false,
+      "grid-template-columns",
+      "settings-dialog .settings-sidebar",
+      481,
+    ),
+    "",
+  );
+  assert.equal(
+    gridColumns(
+      css,
+      901,
+      false,
+      "grid-template-columns",
+      "settings-dialog .settings-sidebar",
+      320,
+    ),
+    "",
+  );
+});
+
+test("Settings backdrop density wins even when generic modal CSS loads later", async () => {
+  const modal = await readFile(
+    new URL(
+      "../../desktop/src/features/settings/settings-modal.css",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  const global = await readFile(
+    new URL("../../desktop/src/styles/global.css", import.meta.url),
+    "utf8",
+  );
+  for (const css of [modal + global, global + modal]) {
+    for (const [width, expected] of [
+      [320, "0"],
+      [390, "0"],
+      [600, "0"],
+      [740, "12px"],
+      [1280, "20px"],
+    ] as const)
+      assert.equal(
+        gridColumns(
+          css,
+          width,
+          false,
+          "padding",
+          "modal-backdrop.settings-backdrop",
+        ),
+        expected,
+      );
+    assert.equal(
+      gridColumns(
+        css,
+        320,
+        false,
+        "z-index",
+        "modal-backdrop.settings-backdrop",
+      ),
+      "4",
+    );
+  }
+});
+
 /** Evaluate the relevant class rules in source order, including media nesting. */
 function gridColumns(
   css: string,
@@ -76,6 +217,7 @@ function gridColumns(
   pairs = false,
   property = "grid-template-columns",
   className = "",
+  height = 740,
 ) {
   let result = "";
   let specificity = -1;
@@ -95,7 +237,13 @@ function gridColumns(
       blocks.lastIndex = end;
       if (selector.startsWith("@")) {
         const max = /max-width:\s*(\d+)px/.exec(selector);
-        visit(body, enabled && (!max || width <= Number(max[1])));
+        const maxHeight = /max-height:\s*(\d+)px/.exec(selector);
+        visit(
+          body,
+          enabled &&
+            (!max || width <= Number(max[1])) &&
+            (!maxHeight || height <= Number(maxHeight[1])),
+        );
         continue;
       }
       if (!enabled) continue;
@@ -104,10 +252,22 @@ function gridColumns(
         .trim();
       if (!value) continue;
       for (const part of selector.split(",").map((item) => item.trim())) {
+        const simpleClasses = /^\.[\w-]+(?:\.[\w-]+)*$/;
+        const classScore =
+          simpleClasses.test(part) &&
+          simpleClasses.test("." + className) &&
+          part
+            .slice(1)
+            .split(".")
+            .every((name) => className.split(".").includes(name))
+            ? part.slice(1).split(".").length
+            : -1;
         const score = className
-          ? part === "." + className
-            ? 1
-            : -1
+          ? classScore >= 0
+            ? classScore
+            : part === "." + className
+              ? 1
+              : -1
           : part === ".settings-grid"
             ? 1
             : pairs && part === ".settings-grid.settings-pairs"
