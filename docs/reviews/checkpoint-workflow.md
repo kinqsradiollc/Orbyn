@@ -1,8 +1,16 @@
 # Full ADR checkpoint workflow
 
-Updated 8 October 2026. Canonical agent roles are in `AGENT.md`. Follow the
+Updated 8 October 2026. Canonical agent roles are in `docs/agents/coordination.md`, indexed by `AGENT.md`. Follow the
 retained ADR contract and `adr-execution-order.md`; currently complete all C1,
 then honor the user's requested pause before C2/M1.
+
+## Current verification scope
+
+The user removed iOS builds and Android-specific verification on8 October2026.
+Do not run or require these jobs for C1. Historical native attempts remain evidence
+only; missing watchOS runtime, Android devices and native-build disk capacity no
+longer block C1. Shared mobile source/types and mobile-browser behavior remain in
+scope. Other retained acceptance requirements are unchanged.
 
 ## Implement → Test → Review
 

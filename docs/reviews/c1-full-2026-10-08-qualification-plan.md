@@ -1,3 +1,13 @@
+# Current scope override — 8 October 2026
+
+The user explicitly removed iOS builds and Android-specific verification. Do not
+execute or require native iOS/Android packaging, device installation or Android
+interaction jobs from the historical plan below. Missing native mobile capacity,
+watchOS runtime and Android execution targets no longer block C1. Preserve shared
+mobile source/type checks and mobile-browser acceptance. Follow the compact
+`AGENT.md` and linked role/workflow guides. Counter remains1/3, not the historical
+0/3 below. Wait for the consolidated complete candidate handoff.
+
 # Full C1 qualification plan
 
 Prepared 8 October 2026 by Orbyn Tester. Cycle: `C1-full-2026-10-08`.

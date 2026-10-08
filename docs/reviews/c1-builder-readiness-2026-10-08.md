@@ -1,6 +1,15 @@
+# Current scope update — 8 October 2026
+
+The user removed iOS builds and Android-specific verification from C1. Their
+runtime/device/disk prerequisites no longer gate acceptance; do not repeat native
+mobile packaging or Android-specific jobs. Shared mobile code/types and mobile
+browser checks remain in scope. Historical native preparation receipts below are
+retained, not active requirements. Remaining live/cache/embedding evidence must
+still be reported honestly. Full-checkpoint Test → Review and counter1/3 remain.
+
 # C1 Builder readiness
 
-Status: **preparation blocked on external prerequisites, no formal handoff**.
+Status: **Builder completion preparation under revised verification scope, no formal handoff**.
 Review counter remains **1/3**.
 Latest Builder code candidate: `10d3d1e3` on `codex/c1-production-checkpoint`
 (native Android capture Gradle correction); preparation receipt commit
