@@ -30,6 +30,14 @@
 - **Orbyn Visual Check:** inspect the requested web/mobile-browser flow and report
   viewport, theme, source version, screenshots or export limitations, and findings
   in a Markdown evidence file. Builder reviews that evidence before UI acceptance.
+- **Visual cadence:** batch checks on a stable checkpoint candidate after builds
+  and preview reloads settle. Do not request screenshots after every edit, test,
+  commit or status update. Use the changed-flow matrix; recheck only failed or
+  affected cases. Reuse recorded evidence for unchanged UI/runtime behavior with
+  explicit source equivalence. Backend/docs-only changes need no new screenshots
+  unless they affect visible behavior. Coordinate one visual batch and fixture
+  owner at a time. Required acceptance states stay open until evidenced; see the
+  visual protocol in `docs/reviews/checkpoint-workflow.md`.
 - **Orbyn Stage Tracker:** owns user-facing stage/status reports. Follow
   `docs/reviews/stage-tracker-guide.md` for sources, freshness checks and the
   required tick/cross table. Read evidence first; ask Builder only for missing or
@@ -76,7 +84,8 @@ From `conventions-skill`: kebab-case.ts files, PascalCase components/types, came
 - **Mobile type is light, like the web:** `fonts.semibold` renders at 500 and `fonts.bold` at 600; controls are drawn at 34pt and reach 44pt through `hitSlop`. Selected chips are a soft accent tint, not a solid fill.
 - **Spacing:** anything with a border or fill has inner padding — nothing touches its box's edge. Siblings that repeat (chips, pickers, rows) share one height and line up.
 - **Room to work:** the web sidebar collapses to an icon rail (⌘\\, remembered per browser); the Docs library can be hidden for a full-width page. On mobile, tapping the tab you're on scrolls to the top and refreshes.
-- **Verify in the preview** on web (5174) and mobile web (8083) before calling UI done.
+- **Verify changed UI in a batched preview review** on web (5174) and mobile web
+  (8083) before calling it done; follow the visual cadence above.
 
 ## Testing Rules (from `testing-skill`)
 

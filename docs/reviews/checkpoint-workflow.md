@@ -36,6 +36,50 @@ then honor the user's requested pause before C2/M1.
    restart the counter under a new cycle ID or claim completion to meet the limit.
    Further review cycles require explicit user direction.
 
+## Visual review cadence
+
+Visual review is a checkpoint gate, not a task after every edit. Builder sends
+one consolidated request to Orbyn Visual Check once the candidate UI and compiled
+API are stable, package builds are complete, preview reloads have settled, and
+fixture ownership is agreed. Code/unit/type checks can run during implementation
+without repeatedly opening screens. Do not change fixtures underneath a live
+visual batch or trigger package rebuilds that disrupt its account/session.
+
+- **Choose cases by impact.** List changed flows, affected shared controls, known
+  defects and required acceptance states before requesting captures. Layout or
+  typography changes need affected narrow/wide/short-height and enlarged-text
+  cases; theme changes need both themes; behavior changes need the relevant
+  success/loading/error/recovery, draft, keyboard and overlay paths. Shared shell
+  or token changes need representative affected surfaces across both clients.
+- **Batch evidence.** Cover distinct layout boundaries and meaningful states,
+  rather than every combination of viewport, theme and action. Use the smallest
+  matrix that proves the changed scope, retaining all explicit ADR requirements.
+  Capture images at meaningful checkpoints or reproduced defects; do not export
+  duplicate unchanged frames or repeat login/navigation for each assertion.
+- **Target rechecks.** After fixes, rerun failed cases and flows affected by the
+  fix. Repeat the wider matrix only when shared layout/navigation/styles or
+  runtime behavior changed enough to invalidate it. Do not rerun visual checks
+  merely because tests, documentation or commit metadata changed.
+- **Reuse honestly.** Link prior reports and record relevant UI/shared-control/
+  runtime source equivalence, viewport/state and limitations. A different SHA
+  alone does not invalidate unchanged visual evidence; matching screenshots
+  alone do not establish functional equivalence. New or changed states still
+  need evidence. Backend-only changes that alter visible status/errors require
+  affected-flow checks; purely invisible backend or prose-doc changes do not.
+- **Stop churn.** If the preview, account or fixture fails, record the failure,
+  notify its owner and settle requests. Resume after confirmed recovery with one
+  explicit retry. Do not repeatedly refresh, rebuild, restart or capture the same
+  blocked screen. Permission/export restrictions remain in force.
+
+Visual Check writes one source-qualified Markdown report per batch, appending
+rechecks and retaining failures. Separate browser rendering, accessible markup,
+actual assistive-technology behavior and installed-native evidence. Builder
+reviews the delegated evidence; Tester references it instead of duplicating
+browser work; Reviewer requests only specific missing or invalidated cases.
+Stage Tracker reports evidence coverage without initiating repeat captures.
+Unverified required states remain open: this cadence reduces duplicate work,
+not the full ADR scope or its acceptance standard.
+
 ## Shared record and handoffs
 
 `docs/reviews/adr-current-state.md` is the current cycle index; its linked acceptance
