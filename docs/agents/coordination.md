@@ -39,7 +39,11 @@ canonical rules indexed by `AGENT.md`.
   diff and receipts to close findings. A new full review consumes the next
   round. Code-review approval does not waive remaining checkpoint acceptance gates.
   Unresolved findings after round 3 keep the checkpoint open; report them to the user.
-- **Orbyn Visual Check:** use the desktop/web preview for web and **Expo web**
+- **Web/desktop acceptance:** web preview qualifies the shared UI. Separate
+  desktop-app visual, packaging and runtime checks are excluded unless the user
+  explicitly requests them again. Preserve historical receipts without claiming
+  untested native integrations passed.
+- **Orbyn Visual Check:** use the web preview for shared web/desktop UI and **Expo web**
   (normally port 8083) for the mobile app renderer. A narrow desktop-web viewport alone
   is not the mobile app preview. Record renderer, URL, source and viewport; mobile
   browser evidence does not prove native-only behavior. Native iOS builds and

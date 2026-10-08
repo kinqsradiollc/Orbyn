@@ -10,6 +10,11 @@ follow-ups; use the existing Matilda baseline and deterministic/runtime receipts
 for C1 without fabricating vendor/cost results. Counter remains1/3, not the historical
 0/3 below. Wait for the consolidated complete candidate handoff.
 
+Latest user scope: web preview qualifies shared web/desktop UI. Separate desktop-app
+visual, packaging and runtime checks are excluded unless explicitly requested again.
+C1 R2-E1 is removed by user disposition, not recorded as a test pass. Historical
+native receipts remain historical; R2-E2 genuine 200% enlargement is unchanged.
+
 # Full C1 qualification plan
 
 Prepared 8 October 2026 by Orbyn Tester. Cycle: `C1-full-2026-10-08`.

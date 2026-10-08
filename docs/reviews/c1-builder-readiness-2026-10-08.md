@@ -10,7 +10,7 @@ evidence can qualify C1, with unknown cost/vendor outcomes reported honestly. Fu
 
 # C1 Builder readiness
 
-Status: **Corrected desktop startup ready; consolidated environment impact retest and bounded E1 check assigned**.
+Status: **Shared-source environment impact retest; E1 removed by user scope, E2 pending**.
 Review counter is **2/3**; no reset or automatic third review.
 Frozen full candidate: `1a92a2c0` (contains product correction `0fe6b087`) on `codex/c1-production-checkpoint`
 in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
@@ -42,7 +42,7 @@ current scope override. This record and `adr-current-state.md` govern readiness.
 | Consent/document/access races | Ownership/visibility/edit/delete/revoke and in-flight revision suites available. |
 | Migration/worker | Independent upgrade/late-install fixtures and operational restart receipts available. |
 | Failure/status/retry | Synthetic persistent backoff, scheduled recovery, heartbeat expiry/restart, off cleanup and exact-search receipts available. |
-| Cross-client behavior | Shared mobile types and Expo web preview; web/Electron source-bound artifact available. iOS builds/Android verification excluded. Genuine200% tool limitation and unexecuted Electron interaction must remain explicit for Tester/Reviewer disposition. |
+| Cross-client behavior | Shared mobile types and Expo web preview; web preview qualifies shared web/desktop UI; separate desktop-app checks and iOS builds/Android verification are excluded. Genuine200% tool limitation remains explicit for Tester/Reviewer disposition. |
 
 QA040 cleanup is verified in the marked isolated database: search off, consent
 null, queue/vectors/failures zero. Owned measuring worker stopped. Expo8083
@@ -58,7 +58,7 @@ a new product-code defect. E1 failed actual package startup with missinglib0; Bu
 from the lockfile and rebuilt the unsigned package, exit0. lib0/yjs are included;
 actual renderer starts in isolated temporary profile with no module-load error.
 Source1a92a2c0 remains unchanged. Tester has the complete source/environment/artifact
-impact handoff; Visual owns only the existing bounded C1 desktop check. E2 genuine200% evidence or explicit user disposition remains open.
+impact handoff. The user removed E1 desktop-app qualification; Visual was told to stop and owned QA app PID44923 was stopped. This is scope disposition, not a native pass. E2 genuine200% evidence or explicit user disposition remains open.
 Current records are reconciled for D1; Reviewer inspects closure within round2.
 
 The read-only installed inventory is in

@@ -1,5 +1,9 @@
 # UI and UX rules
 
+Use web preview to qualify the shared web/desktop UI; do not require a separate
+desktop-app check unless the user explicitly requests it again. Browser evidence
+does not establish native integration behavior.
+
 Use Expo web to preview the mobile app UI. Record mobile-browser results
 separately from responsive desktop/web and native-device results.
 

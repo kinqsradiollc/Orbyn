@@ -7,7 +7,7 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: corrected desktop artifact ready; consolidated impact retest and bounded E1 check for frozen1a92a2c0. Review rounds: 2/3.**
+**Active cycle: C1-full-2026-10-08. Phase: shared-source environment impact retest; E1 removed by user scope, E2 pending for frozen1a92a2c0. Review rounds: 2/3.**
 The user resumed work and removed iOS builds and Android-specific verification on
 8 October. Missing native mobile runtimes/devices and build capacity are no longer
 C1 gates; do not restart those jobs. Previous blocker records are historical.
@@ -28,7 +28,7 @@ Consolidated Tester208/208, workspace types and production build pass; older
 4337/69/migration/runtime receipts retain exact source equivalence and original
 provenance. [Tester report](c1-full-2026-10-08-final-test-1a92a2c0.md) is on
 maine9f90593. [Round2 review](c1-full-2026-10-08-review-r2.md) found no new code
-defect. Full acceptance remains open for E1 Electron corrected-package startup and bounded interaction and E2 genuine200% evidence or explicit user disposition.
+defect. The user removed separate desktop-app qualification: web preview qualifies shared web/desktop UI. E1 is closed by scope disposition, not a native test pass. Full acceptance remains open for E2 genuine200% evidence or explicit user disposition.
 QA040001 DOM closure is complete; actual AT behavior remains untested. D1 record
 reconciliation is independently closed by Reviewer within round2. Productcandidate1a92a2c0 is
 not on main. No C1 acceptance, production deployment or C2 advancement is claimed.
@@ -37,21 +37,28 @@ not on main. No C1 acceptance, production deployment or C2 advancement is claime
 | --- | --- |
 | Scope/state map | All12 retained groups reconciled in consolidated Tester and round2 Reviewer reports; current user overrides apply. |
 | Implementation | R1/QA040 local defects closed; no new actionable product-code defect found in round2. Frozencandidate1a92a2c0 awaits full acceptance, not product delivery. |
-| Remaining evidence | E1 corrected desktop packaging/startup and bounded check pending; E2 genuine200% evidence or user disposition pending. Live cache/embedding are follow-ups; iOS/Android excluded. |
-| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer round2/3 complete; E1/E2 evidence pending; D1 independently closed within round2. |
+| Remaining evidence | E1 removed by explicit user scope; E2 genuine200% evidence or user disposition pending. Live cache/embedding are follow-ups; iOS/Android excluded. |
+| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer round2/3 complete; E1 removed by user scope; E2 evidence pending; D1 independently closed within round2. |
 
-## Current E1 recovery — 8 October 2026
+## Current desktop scope disposition — 8 October 2026
+
+The user explicitly made web preview the acceptance surface for shared web/desktop
+UI. Separate desktop-app visual, package and runtime checks are no longer required.
+Visual Check was told to stop; Builder stopped only owned QA app PID44923. No
+restart, model-draft or native integration pass is claimed. Shared-source Tester
+impact retest remains appropriate; review counter stays2/3. E2 is unchanged.
+
+### Historical E1 recovery
 
 External state changed after resume: Visual Check selection timed out but launched
 QA artifact; isolated startup revealed missinglib0 from packagedyjs, no renderer.
 Builder stopped only owned QA processes and completed clean lockfile dependency
 installation (exit0). Shared/renderer build and unsigned desktop packaging exit0; archive now contains
-lib0/yjs, actual isolated-profile renderer44928 is live and no module-load error
+lib0/yjs, actual isolated-profile renderer44928 started and no module-load error
 is logged. No product/lockfile edits or native iOS/Android jobs. See
 [candidate artifact recovery](c1-electron-package-recovery-2026-10-08.md).
-E1 startup is corrected; the existing bounded UI check and Tester environment
-impact retest are assigned,
-not a repeated pending-app approval claim. E2 genuine200% evidence/disposition
+E1 startup was corrected before the user removed separate desktop qualification.
+The bounded native job is stopped; only appropriate shared-source impact retesting remains. E2 genuine200% evidence/disposition
 remains pending. All earlier blocking snapshots below are historical.
 
 ## Historical blocking audit before desktop startup reproduction
