@@ -1,6 +1,9 @@
 # C1 Builder readiness
 
 Status: **preparation, no formal handoff**. Review counter remains **1/3**.
+Latest Builder code candidate: `10d3d1e3` on `codex/c1-production-checkpoint`
+(native Android capture Gradle correction); preparation receipt commit
+`f74ecc5c`. This source delta is not qualified or promoted to main.
 Scope: all retained C1 requirements, not just the latest fixes. Product source
 at main `e6c4c75b` is equivalent to `3ccf8f57` for product/test/dependency paths.
 The current rules require full readiness before one Test → Review handoff.
@@ -68,3 +71,21 @@ not a release or a Tester handoff. iOS/Android prerequisites remain open.
 Live provider/cache/embedding configuration is a pending external prerequisite.
 No fabricated vendor, installed-device, text-enlargement or full-C1 acceptance
 is recorded. C2 remains unstarted and the pause stays conditional on full C1.
+
+### Mobile preparation outcome
+
+Builder generated both native projects from tracked app configuration. iOS
+prebuild and CocoaPods installation succeeded; both simulator build destinations
+failed because Xcode requires the missing watchOS26.5 runtime for the embedded
+Watch app. Android prebuild succeeded, then a real assembly attempt found the
+capture module's legacy Expo Gradle setup omitted `compileSdk`. Builder migrated
+that module to the current Expo plugin on the C1 branch. The revised assembly
+passed configuration and reached compilation/bundling, but stopped for disk
+capacity (exit143); no mobile package or native acceptance is claimed.
+
+Builder removed only its own new native build outputs, recovering space from
+390MiB to1.9GiB. More free disk, the missing runtime and an Android execution
+target are still required. The detailed retained commands/results are in
+`docs/reviews/c1-native-package-preparation-2026-10-08.md` on the candidate branch
+at `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
+No formal Tester/Reviewer job or extra visual batch was dispatched.
