@@ -24,14 +24,22 @@ then honor the user's requested pause before C2/M1.
    full ADR coverage and test/visual evidence. Publish a Markdown report naming the
    commit, round, findings, fixes and acceptance decision. Reviewer may fix defects
    within the checkpoint after taking sole write ownership from Builder.
+   Three rounds is a ceiling, not a required sequence: approve in round 1, 2 or 3
+   when the evidence supports the decision.
 5. **Retest every revised candidate.** Commit fixes and return the new source to
    Tester. Prior results remain historical; Tester records what was rerun and why.
-   Review the verified revision in the next numbered round. A final round-3 fix
-   still requires Tester verification and Reviewer closure of that round's findings;
-   new unresolved findings require escalation, not an unrecorded fourth review.
+   Reviewer may verify fixes and close the existing findings within the same round
+   after Tester verification; another full review is not automatically required.
+   Record the revised commit, retest evidence and closure decision in that round's
+   report. A newly initiated full candidate review consumes the next numbered
+   round; do not relabel full reviews as closure to bypass the limit. A round-3
+   closure still requires verified fixes; unresolved findings require escalation,
+   not an unrecorded fourth review.
 6. **Close only on evidence.** All required gates, test results and review findings
    must be resolved before full checkpoint acceptance. Record commit/main/push
-   separately from production deployment. After round 3, unresolved work remains
+   separately from production deployment. Code-review approval can precede full
+   checkpoint acceptance; required external/native/visual gates remain open until
+   evidenced. After round 3, unresolved work remains
    open: record it and report the blocker to the user. Do not advance, waive gates,
    restart the counter under a new cycle ID or claim completion to meet the limit.
    Further review cycles require explicit user direction.

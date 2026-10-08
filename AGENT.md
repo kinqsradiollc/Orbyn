@@ -15,7 +15,9 @@
 - **Full-checkpoint workflow:** complete the whole active ADR checkpoint (currently
   all C1), then **Test → Review**. Follow `docs/reviews/checkpoint-workflow.md`.
   Do not repeatedly hand off individual features as if they completed the checkpoint.
-  Review/fix cycles have a shared, recorded maximum of **3 review rounds**; no silent reset.
+  Review/fix cycles have a shared, recorded maximum of **3 review rounds**, not
+  three required rounds. Reviewer may approve in any round when evidence supports
+  it; verified fixes can close that same round. No silent counter reset.
 - **Orbyn Builder:** implement the full checkpoint across backend/shared/web/desktop/
   mobile as applicable, freeze the candidate, and hand it to Tester. Record scope,
   source commit, phase, review counter, evidence, delivery and remaining gates in
@@ -26,6 +28,8 @@
 - **Orbyn Reviewer:** review the tested candidate against the full contract and
   test/visual evidence; publish findings and the numbered round. May make scoped
   fixes while holding sole write ownership, then return the new candidate to Tester.
+  Close that round's findings after retesting; a new full review consumes the next
+  round. Code-review approval does not waive remaining checkpoint acceptance gates.
   Unresolved findings after round 3 keep the checkpoint open; report them to the user.
 - **Orbyn Visual Check:** inspect the requested web/mobile-browser flow and report
   viewport, theme, source version, screenshots or export limitations, and findings
