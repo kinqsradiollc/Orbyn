@@ -66,8 +66,12 @@ Private local metadata receipts contain no printed environment credentials:
 `/tmp/orbyn-docker-cleanup-receipt-20261008.json`, and
 `/tmp/orbyn-c1-preview-docker-recovery-account-20261008.json`.
 
-Fresh full d672fc50 regression now runs in its own marked test database:
+Fresh full d672fc50 regression completed4262/4262, exit0, signal:null, zero
+failures/skips/cancellations,794219ms, in its own marked test database:
 `/tmp/orbyn-c1-settings-escape-full-20261008.log`. Orbyn Visual Check is assigned to
-resume QA-030 using fresh sign-in and the unchanged candidate. The browser recheck,
-new full terminal, product merge and remaining C1 acceptance are still pending.
+resume QA-030 using fresh sign-in and the unchanged candidate. That resumed
+internal-browser recheck now accepts the scoped Escape/Close correction and
+normal-scale containment/help spot-checks; root reviewed the delegated report.
+The qualified Settings product is merged as7260db93. Remaining C1 acceptance
+is still open.
 Earlier38558c8a4260/4260 is not a full-suite result from d672fc50.

@@ -18,7 +18,9 @@ site permission. No alternate-browser, port or export workaround is authorized.
 
 ## Current checkpoint
 
-Current frozen correction d672fc50 is local, not merged. Earlier5e69d4eb full
+Current frozen correction d672fc50 is merged as7260db93. Fresh full4262/4262
+passes, zero failures/skips/cancellations, exit0, signal:null,794219ms. All11
+promoted source/test files match the tested candidate. Earlier5e69d4eb full
 regression passed4254/4254, zero failures/skips/cancellations, exit0,788822ms.
 QA-028 delegated review confirms scoped portrait density/copy/help/single focus
 improvements, but reproduces P2 narrow focus loss on dismissal and landscape
@@ -42,18 +44,23 @@ returns focus correctly, but original narrow Escape from Search or Close still
 returns BODY. The checkpoint remains unaccepted. The follow-up rejects
 the closing transformed sidebar as a focus target and is frozen as d672fc50.
 Actual-source31/31 focused tests, desktop types and web build pass;
-the inferred transition cause and corrected browser behavior still need recheck.
-There is no full d672fc50 terminal or visual acceptance yet. QA-030 records a
+QA-030 now accepts the corrected browser behavior in its targeted matrix.
+The full d672fc50 terminal and scoped main integration now pass. QA-030 first recorded a
 blocked preview: account-loading error, no Settings dialog, API8008 timeout and
 missing local PostgreSQL55436 listener; Docker queries also time out. Initial
 disk-full approval failure prevented execution; space recovery subsequently
 allowed the scoped freeze. The user then authorized Docker restoration and unused
 Orbyn container cleanup. Recovery and cleanup completed with persistent volumes
 retained; preview migrations and health200/register201/me200 admin pass. QA-030
-is assigned to resume with fresh sign-in against unchanged d672fc50. Its fresh
-full regression is running separately; no prior-source result is relabelled.
+resumed against unchanged d672fc50: independent narrow Search/Close Escape and
+Close Enter, settled sidebar, wide expanded/collapsed and wide-to-narrow resize
+return focus to visible navigation. Nested category Escape closes only the picker.
+Normal-scale Theme/single-search-outline and mobile help spot-checks pass. Root
+reviewed that delegated analysis, not exported pixels. Its fresh full regression
+completed separately; no prior-source result is relabelled.
 Enlarged/native gaps remain.
-Report: `QA-029-settings-recovery-2026-10-08/visual-analysis.md` under the same QA root.
+Reports: `QA-029-settings-recovery-2026-10-08/visual-analysis.md` and
+`QA-030-settings-escape-2026-10-08/visual-analysis.md` under the same QA root.
 
 ## Parent density/copy candidate
 
@@ -98,9 +105,9 @@ images, not exported originals or personal root inspection.
 | Finding | Current state | Next action |
 | --- | --- | --- |
 | V01: Theme clipping | Corrected at normal web320/390/1280 and mobile-browser320/390, both themes; pointer/keyboard checked on web; qualified on main994d6de3 | Keep enlarged/native gates open |
-| V02: double search focus | Open P3, web1280 Dark | One visible focus owner, targeted recheck |
-| V03: Settings density | Open P2, actual CSS320×740; 192px header/navigation, 54.5px collapsed rows plus12–14px gaps | Compact chrome/rows while retaining readable text and touch targets |
-| V04: Connected agents copy | Open P2;165px introduction pushes Connect to y601; another110px explanation | Short helper and immediate action; optional detail in disclosure |
+| V02: double search focus | Scoped correction accepted in QA-028/030; main7260db93 | Keep wider/enlarged/native gates open |
+| V03: Settings density | Scoped portrait/landscape correction accepted in QA-028/029; main7260db93 | Complete wider task matrix, retain readable text and touch targets |
+| V04: Connected agents copy | Short helper/empty state and optional help accepted in QA-028/030; main7260db93 | Complete remaining connection interactions/native review |
 | Enlarged text | Unverified; zoom shortcut had no actual effect | Supported measured enlargement, no inferred pass |
 | Overall Settings/full C1/native | Not accepted | Complete remaining flow and platform matrices |
 

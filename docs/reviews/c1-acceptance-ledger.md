@@ -2,6 +2,14 @@
 
 ## Corrected Settings focus/landscape candidate — 8 October 2026
 
+**Delivered as main7260db93 from clean frozen d672fc50.** Full4262/4262 passes,
+zero failures/skips/cancellations, exit0, signal:null,794219ms. Terminal receipt:
+`/tmp/orbyn-c1-settings-escape-full-terminal-20261008.json`. Focused31/31,
+desktop types and web build pass. QA-030 accepts the scoped browser correction;
+root reviewed its delegated report, not exported originals. All11 promoted source/
+test files match the tested candidate and unrelated mobile/app.json is preserved.
+The source history below retains failed attempts and prior-source qualification.
+
 Parent5e69d4eb frozen regression passed4254/4254 with zero failures/skips/
 cancellations, exit0,788822ms; log `/tmp/orbyn-c1-settings-density-full-20261008.log`.
 QA-028 delegated review accepts the scoped portrait/single-focus/copy improvements
@@ -34,10 +42,16 @@ deleting persistent volumes. The owned disposable database was recreated after
 a stale socket-lock failure, preview migrations pass and the restored QA admin
 has health200/register201/me200. The API recovered without restart.
 
-d672fc50 web build now passes. Fresh frozen full regression is running in its own
+d672fc50 web build passes. Fresh frozen full regression completed4262/4262 in its own
 marked database, log `/tmp/orbyn-c1-settings-escape-full-20261008.log`.
-QA-030 is assigned to resume with fresh QA sign-in. Neither the new full terminal
-nor visual acceptance/main product delivery is claimed. Recovery details:
+QA-030 resumed after fresh sign-in and accepts the scoped browser correction:
+independent Search Escape, Close Escape and Close Enter at actual CSS320×740
+return to visible navigation, including after the sidebar transition settles.
+Expanded/collapsed1280, wide-to-narrow resize and nested-picker Escape also pass.
+Theme/search containment and unchanged mobile help spot-checks pass at normal
+scale. Root reviewed the delegated report, not exported originals. Report:
+`QA-030-settings-escape-2026-10-08/visual-analysis.md` in the Visual Check QA root.
+The new full terminal and scoped main integration are complete. Recovery details:
 [Docker restoration](docker-restoration-2026-10-08.md). C1 stays open, with
 enlarged/native/external gates explicit.
 
