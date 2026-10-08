@@ -18,7 +18,10 @@ Fresh regression4248/4248, separate vector69/69, legacy upgrade1/1 and restored
 stock-schema late vector-install1/1 pass with zero failures/skips/cancellations.
 Workspace typechecks and web build pass. Candidate is not merged or pushed.
 Visual Check reports successful disposable-admin sign-in in Codex's internal
-browser at `/app` following explicit human approval; Settings captures are active.
+browser at `/app` following explicit human approval; Settings/overflow and representative loading,
+error and Refresh recovery captures are complete. Their inline-only images still
+await root inspection. The temporary gateway and two synthetic usage jobs have
+been removed; the normal local API8008 is healthy.
 The earlier sign-in blocker is resolved. Inline captures are not saved originals
 or root visual acceptance. Details: [current usage/Settings review](c1-managed-usage-visual-review.md).
 

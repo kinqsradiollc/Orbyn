@@ -9,23 +9,37 @@ billing, plan limits, cost or live inference is established by this fixture.
 
 Candidate c69f342f is frozen locally and not merged. Fresh4248/4248 regression,
 69/69 vector cohort, upgrade1/1 and late-install1/1 pass; types/web build pass.
-Preview API health200 and ownership were rechecked without mutation:
-/tmp/orbyn-c1-preview-usage-guard-receipt-20261008.json.
+The usage-only loading/error gateway has been removed after capture completion.
+Direct preview API8008 is restored and healthy; upstream8009 is released.
+Ownership/readiness receipt: /tmp/orbyn-c1-preview-usage-lifecycle-state-20261008.json.
+Its initial graceful gateway shutdown closed the listener but retained the process;
+root rechecked exact PID/command/cwd and stopped only that owned fixture before
+restoring the API. This was local test infrastructure, not a product fix.
 
 Visual Check reports authenticated internal-browser web captures at320/390 and
 1280 widths in Light/Dark. They are inline-only, not available to root as saved
 originals, and are not accepted by metadata alone. One390Dark identity-containing
 image is invalid and excluded; its separately named corrected retake is eligible
-for later review. Mobile login succeeded and its usage capture batch is still
-active. Root requested valid images be attached here for inspection; the blocked
-file-export route is not retried. Keyboard/focus and remaining client states are
+for later review. Mobile login succeeded and the initial Settings/overflow
+capture batch is complete. QA-027 loading/error/successful Refresh captures are also complete.
+Each phase covers web320Light/1280Dark and mobile-browser320Light/390Dark.
+Only wide web and390mobile captured independent error-to-success transitions;
+the320views repeated Refresh after their shared tabs had recovered. This does
+not prove independent320error recovery or installed-native behavior. Root
+requested valid images be attached here for inspection; the blocked file-export
+route is not retried. Keyboard/focus and remaining client states are
 not accepted by inference.
 
-Current synthetic rows belong to the fresh disposable admin; ownership metadata
-is /tmp/orbyn-c1-usage-visual-fixture-fresh-admin-20261008.json. Input overflow is
-unknown, not zero. Cleanup is prepared but must wait for capture quiescence and
-target only those two rows. Old fixture identifiers below describe the lost
-pre-recovery database and must not be used for current cleanup.
+The fresh disposable-admin synthetic rows were removed after capture completion.
+Cleanup deleted exactly the two owned terminal jobs, left zero fixture usage rows
+and preserved all other jobs; /tmp/orbyn-c1-usage-fixture-cleanup-fresh-admin-20261008.json.
+Before cleanup, authenticated pass-mode API200 returned requests2/window30,
+input unknown, output200/reasoning40/cached1000/cache-write100:
+/tmp/orbyn-c1-usage-pass-recovery-api-20261008.json. No vendor inference occurred.
+QA-026/QA-027 images remain inline-only and unavailable for root pixel inspection.
+A manually attached image handoff is still pending; metadata is not acceptance.
+Old fixture identifiers below describe the lost pre-recovery database and must
+not be used for current cleanup.
 
 The sections below retain chronological evidence, failed attempts and superseded
 states. Their earlier live/pending descriptions are historical, not current.
