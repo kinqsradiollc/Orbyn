@@ -48,3 +48,19 @@ changes, session revocation, owner separation, explicit fallback, private usage
 exclusion, approval reuse and existing lease/recovery behavior. Backend typecheck
 and build pass. These are local inert provider fixtures, not vendor acceptance.
 Full frozen regression and browser usage-state acceptance are not yet complete.
+
+### Full-run interruption
+
+Frozen candidate c1dde1d3 was launched in a fresh marked database. The runner
+terminated with exit1 when writing its terminal JSON failed with ENOSPC. The log
+ends after1384 passing checks with no final TAP summary; the child exit/signal was
+not persisted and is unknown. This is incomplete qualification, not a full pass.
+Evidence: `/tmp/orbyn-c1-entrypoint-usage-full-20261008.log`; tool session56499
+contains the ENOSPC failure. No main merge occurred.
+
+Ten earlier completed C1 logs were compressed losslessly, with decompressed
+SHA-256 verified before deleting their originals, recovering68005724 bytes.
+Archive mapping and hashes: `/tmp/orbyn-c1-compressed-log-index-20261008.json`.
+Earlier log paths in this ledger resolve to the same name plus `.gz` when listed
+in that index. About280MiB remains free; more headroom is needed before restarting
+the full regression. User has been asked to free several GiB.
