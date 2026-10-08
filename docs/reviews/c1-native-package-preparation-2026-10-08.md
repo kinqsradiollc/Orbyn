@@ -47,8 +47,13 @@ Initial log: `/tmp/orbyn-c1-android-build-20261008.log`. Revised build uses
 `:app:assembleRelease --no-daemon --max-workers=2
 -PreactNativeArchitectures=arm64-v8a`; log/terminal receipt:
 `/tmp/orbyn-c1-android-build-plugin-20261008.log` and `.state.json`.
-Revised execution is still in progress at this preparation record. Do not claim
-an APK, native behavior or full build pass from configuration progress.
+Revised execution passed configuration and reached native module compilation
+and JavaScript bundling, then stopped for disk capacity (exit143, elapsed190s).
+The receipt records the 1.2GiB disk guard; available space subsequently reached
+390MiB before all children exited. No APK, native behavior or full build pass is
+claimed. Builder removed only this worktree's newly generated Pods, iOS build
+outputs, Android app build/C++ outputs, capture-module build outputs and the
+owned temporary iOS DerivedData. Logs and source changes are retained.
 
 Both build wrappers stop their own process group if available disk drops below
 1.2GiB. Terminal results must be read before retrying. The Android package uses
