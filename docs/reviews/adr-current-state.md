@@ -7,7 +7,12 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-Latest delivered checkpoint: managed Agenda/page usage and truthful client copy,
+Latest delivered checkpoint: personal scanner admission, merged and pushed as
+0c19e330 (productfed13851), full4322/4322, focused98/98 and backend types/build
+pass. Stage Tracker reporting rules are included. Production deployment remains
+user-owned and unconfirmed.
+
+Previous delivered checkpoint: managed Agenda/page usage and truthful client copy,
 merged and pushed as e90699c4 (product2f6c7f82). Frozen backend candidate15c4a8e3
 passed4300/4300; post-full copy/legal checks15/15, both client types and web build
 pass. QA-033 delegated review accepts positive usage on both browser clients at
@@ -21,8 +26,8 @@ authority and deployment notifier pause remain qualified.
 
 Active C1 checkpoint: per-owner provider admission covers goals, ideas, routines,
 tasks and Overnight. Productfed13851 passes focused98/98, backend types/build,
-and full4322/4322 (exit0, no failures/skips/cancellations). Main integration is
-pending; application/test source stayed frozen through qualification. See
+and full4322/4322 (exit0, no failures/skips/cancellations). Merged and pushed to main0c19e330; application/test source stayed frozen
+through qualification. See
 [scanner qualification](c1-personal-scanner-admission.md).
 QA-034 confirms genuine enlargement remains unavailable in the internal browser;
 no enlarged Settings/mobile acceptance is claimed. Stage Tracker reporting sources

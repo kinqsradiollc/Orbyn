@@ -36,7 +36,7 @@ owner, without starting inference. Overnight expiry/notice cleanup is unchanged.
 | Backend typecheck / production build | Passed |
 | Diff whitespace | Passed |
 | Full backend regression | 4322/4322 on fed13851; exit0/signal:null; no failures/skips/cancellations; 811917.458ms |
-| Main delivery | Qualified; integration pending |
+| Main delivery | Fast-forwarded and pushed as 0c19e330 |
 
 Focused log: `/tmp/orbyn-c1-scanner-admission-v3-focused-20261008.log`.
 The cohort verifies all five personal/offline/disabled/unavailable cases,
@@ -54,3 +54,7 @@ Terminal receipt: `/tmp/orbyn-c1-scanner-admission-full-focused-terminal-2026100
 The live tool session84118 terminated with exit0. Changes after fed13851 are
 repository instructions and evidence documentation only; application/test source
 is identical to the frozen candidate. Production deployment remains user-owned.
+
+Main integration verified local and origin/main0c19e330. No merge conflict.
+The primary checkout's existing mobile/app.json checksum remains
+`dacd602172347441f2fd92f16d8772b3ba1ef7a8`; unrelated untracked files remain.
