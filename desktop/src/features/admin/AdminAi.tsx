@@ -133,11 +133,13 @@ export function AdminAi({ busy, revision, act, report }: Props) {
 
   const loadModels = (p: AiProvider) =>
     void act(async () => {
+      const generation = loadRequest.current;
       const { models: list } = await client.listAiModels(
         p.id,
         p.controls_revision,
       );
       if (
+        generation !== loadRequest.current ||
         !dataRef.current?.providers.some(
           (current) =>
             current.id === p.id &&
@@ -151,6 +153,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
 
   const test = (p: AiProvider) =>
     void act(async () => {
+      const generation = loadRequest.current;
       const requestedModel = modelFor(p).trim();
       if (!requestedModel || !p.controls_revision) return;
       setTests(({ [p.id]: _, ...rest }) => rest);
@@ -160,6 +163,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         p.controls_revision,
       );
       if (
+        generation !== loadRequest.current ||
         !dataRef.current?.providers.some(
           (current) =>
             current.id === p.id &&

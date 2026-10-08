@@ -45,12 +45,14 @@ for (const scenario of [
   "revised",
   "deleted",
   "same-timestamp",
+  "refreshed",
 ] as const) {
   test(`web catalog ${scenario} preserves model choice and rejects stale results`, async () => {
     let pending: Promise<void> | undefined;
     let resolve!: (result: { models: string[] }) => void;
     let catalogs: Record<string, string[]> = {};
     let changes = 0;
+    const loadRequest = { current: 1 };
     const dataRef = {
       current: {
         providers: [{ id: "p", updated_at: "v1", controls_revision: "7" }],
@@ -70,6 +72,7 @@ for (const scenario of [
         },
       },
       dataRef,
+      loadRequest,
       models: {},
       modelFor: () => "saved-unlisted-model",
       setModels: () => changes++,
@@ -82,6 +85,7 @@ for (const scenario of [
     if (scenario === "deleted") dataRef.current.providers = [];
     if (scenario === "same-timestamp")
       dataRef.current.providers[0].controls_revision = "8";
+    if (scenario === "refreshed") loadRequest.current++;
     resolve({ models: ["first-other-model"] });
     await pending;
     assert.equal(changes, 0);
@@ -243,3 +247,56 @@ test("API client sends exact catalog generation without changing legacy calls", 
     );
   }
 });
+
+for (const outcome of ["success", "error"] as const) {
+  for (const lifecycle of ["current", "superseded", "unmounted"] as const) {
+    test(`mobile provider list ${outcome} after ${lifecycle} respects lifecycle`, async () => {
+      let expression: string | undefined;
+      function visit(node: ts.Node) {
+        if (
+          ts.isVariableDeclaration(node) &&
+          node.name.getText(mobileTree) === "load" &&
+          node.initializer &&
+          ts.isCallExpression(node.initializer)
+        )
+          expression = node.initializer.arguments[0].getText(mobileTree);
+        ts.forEachChild(node, visit);
+      }
+      visit(mobileTree);
+      assert.ok(expression);
+      let resolve!: (value: unknown) => void;
+      let reject!: (error: Error) => void;
+      const loadRequest = { current: 0 };
+      const data: unknown[] = [];
+      const failures: boolean[] = [];
+      const callback = evaluate(expression, {
+        loadRequest,
+        client: {
+          listAiProviders: () =>
+            new Promise((yes, no) => {
+              resolve = yes;
+              reject = no;
+            }),
+        },
+        setData: (value: unknown) => data.push(value),
+        setFailed: (value: boolean) => failures.push(value),
+      });
+      const pending = callback();
+      if (lifecycle !== "current") loadRequest.current++;
+      const error = new Error("offline");
+      if (outcome === "success") resolve({ providers: [] });
+      else reject(error);
+      if (outcome === "error" && lifecycle === "current")
+        await assert.rejects(pending, /offline/);
+      else await pending;
+      assert.equal(
+        data.length,
+        outcome === "success" && lifecycle === "current" ? 1 : 0,
+      );
+      assert.deepEqual(
+        failures,
+        lifecycle === "current" ? [outcome === "error"] : [],
+      );
+    });
+  }
+}

@@ -1,5 +1,5 @@
 import { AiModelControls } from "./AiModelControls";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SemanticSetup } from "./SemanticSetup";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Switch } from "../components/Switch";
@@ -68,27 +68,43 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
     [data?.settings.night_token_budget],
   );
 
-  const load = async () => setData(await client.listAiProviders());
+  const loadRequest = useRef(0);
+  const load = useCallback(async () => {
+    const request = ++loadRequest.current;
+    try {
+      const next = await client.listAiProviders();
+      if (request !== loadRequest.current) return;
+      setData(next);
+      setFailed(false);
+    } catch (error) {
+      if (request !== loadRequest.current) return;
+      setFailed(true);
+      throw error;
+    }
+  }, []);
   const firstLoad = () =>
     act(async () => {
       setFailed(false);
-      try {
-        await load();
-      } catch (e) {
-        setFailed(true);
-        throw e;
-      }
+      await load();
     });
   const run = (fn: () => Promise<unknown>) =>
     act(async () => {
-      await fn();
-      await load();
+      try {
+        await fn();
+      } finally {
+        await load();
+      }
     });
-  const setSettings = (settings: AiSettings) =>
+  const setSettings = (settings: AiSettings) => {
+    loadRequest.current++;
     setData((prev) => (prev ? { ...prev, settings } : prev));
+  };
 
   useEffect(() => {
     void firstLoad();
+    return () => {
+      loadRequest.current++;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
