@@ -1,6 +1,6 @@
 # ADR implementation tracker
 
-Updated 8 October 2026. Follow the full contract in
+Updated 9 October 2026. Follow the full contract in
 [the implementation review](devday-2026-implementation-review.md) and
 [the top-down execution order](adr-execution-order.md).
 Detailed qualification and historical failures remain in
@@ -13,6 +13,9 @@ Review rounds: 0/3; no frozen candidate or formal handoff yet.**
 Candidate checkout: `adr-release-qualification/Orbyn`, branch
 `codex/c2-chatgpt-completion`, based on main `10e9938f`.
 See [C2 scope and readiness](c2-full-2026-10-08.md).
+Current candidate `babf1434`: bounded web320 Dark/Expo320 Light checks close
+C2-001/002 copy findings. Connected-account/inference and standalone hosted
+web connection remain open; no formal handoff, main merge or C3 advancement.
 C1 acceptance remains round2/3; its evidence below is unchanged.
 
 Reviewer approved frozen candidate `1a92a2c0` within round2. Product integration
