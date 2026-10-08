@@ -1,3 +1,6 @@
+Final disposition: retained C1 approved in round2/3 and merged to main6f56c548.
+See c1-closeout-2026-10-08.md. Earlier readiness/pending statements below are historical.
+
 Latest user scope: “dont need to test 200%”. E2 is removed from C1 acceptance,
 untested rather than passed. Earlier pending E2 statements below are historical.
 

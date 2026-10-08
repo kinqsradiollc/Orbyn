@@ -6,39 +6,42 @@ Updated 8 October 2026. Follow the full contract in
 Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
-**Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: clean-install impact retest passed; E1 removed by user scope, E2 removed by user scope; final Reviewer disposition pending for frozen1a92a2c0. Review rounds: 2/3.**
-The user resumed work and removed iOS builds and Android-specific verification on
-8 October. Missing native mobile runtimes/devices and build capacity are no longer
-C1 gates; do not restart those jobs. Previous blocker records are historical.
-Shared mobile source/types and mobile-browser parity remain required. The user also approved live OpenAI cache and live embedding qualification as
-follow-ups. Use the existing Matilda live baseline plus deterministic/runtime
-evidence for C1; unmeasured costs and vendor embedding behavior remain unknown.
-Builder's complete requirement-group preparation map is
-[`c1-builder-readiness-2026-10-08.md`](c1-builder-readiness-2026-10-08.md).
-User clarification applied: complete every C1 implementation state and prepare all
-qualification prerequisites before one consolidated Test → Review handoff. No more
-formal partial-state jobs or per-fix handoffs. Earlier qualified main delivery and
-retest receipts remain historical evidence, not full-C1 completion. Builder owns all code and freezes application/test source. Tester owns consolidated
-qualification; Reviewer has completed the full round-2 code/evidence assessment. Review counter is 2/3.
+**C1 complete under the final user-approved scope. C2/M1 has not started.**
+**Cycle: C1-full-2026-10-08. Phase: accepted and merged; requested pause before C2.
+Review rounds: 2/3.**
 
-Current handoff: `c1-consolidated-final-handoff-2026-10-08.md` on candidate
-`1a92a2c0` in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
-Consolidated Tester208/208, workspace types and production build pass; older
-4337/69/migration/runtime receipts retain exact source equivalence and original
-provenance. [Tester report](c1-full-2026-10-08-final-test-1a92a2c0.md) is on
-maine9f90593. [Round2 review](c1-full-2026-10-08-review-r2.md) found no new code
-defect. The user removed separate desktop-app qualification: web preview qualifies shared web/desktop UI. E1 is closed by scope disposition, not a native test pass. The user also explicitly removed200% testing. E2 is closed by scope, untested rather than passed; final Reviewer acceptance and product integration are being completed.
-QA040001 DOM closure is complete; actual AT behavior remains untested. D1 record
-reconciliation is independently closed by Reviewer within round2. Productcandidate1a92a2c0 is
-not on main. No C1 acceptance, production deployment or C2 advancement is claimed.
+Reviewer approved frozen candidate `1a92a2c0` within round2. Product integration
+is merge `6f56c548`; comparison against the tested source confirms unchanged
+backend, shared packages, desktop, mobile source, capture Gradle configuration and
+root dependency manifests/lockfile. No conflicts. User-owned `mobile/app.json`
+and unrelated files are preserved.
 
-| Full-checkpoint readiness | Current evidence / action |
+Current-source208/208, workspace typechecks and web production build pass,
+including fresh-install requalification. The4337-case backend regression and
+69-case vector/migration/runtime receipts retain their original source-scoped
+provenance; no new aggregate run or production deployment is claimed.
+
+E1 separate desktop-app checks and E2 genuine200% testing are removed by explicit
+user disposition, not passed. Web qualifies shared web/desktop UI; Expo web is the
+mobile browser renderer. Native iOS builds/Android verification are excluded.
+Live OpenAI cache and accepted-vendor embedding measurements are approved
+follow-ups; unknown billing/cache/vendor results remain unknown. Actual screen-reader
+behavior is untested. See [C1 closeout](c1-closeout-2026-10-08.md),
+[Tester evidence](c1-full-2026-10-08-final-test-1a92a2c0.md) and
+[final Reviewer acceptance](c1-full-2026-10-08-review-r2.md).
+
+| State | Remaining implementation / next action |
 | --- | --- |
-| Scope/state map | All12 retained groups reconciled in consolidated Tester and round2 Reviewer reports; current user overrides apply. |
-| Implementation | R1/QA040 local defects closed; no new actionable product-code defect found in round2. Frozencandidate1a92a2c0 awaits full acceptance, not product delivery. |
-| Remaining evidence | E1 removed by explicit user scope; E2 removed by explicit user scope, untested. Live cache/embedding are follow-ups; iOS/Android excluded. |
-| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer round2/3 complete; E1 removed by user scope; E2 removed by user scope; D1 independently closed within round2. |
+| ✓ C1 | Accepted and merged; push delivery recorded in the closeout. User deploys main manually. |
+| ✗ C2/M1 | Next after resume: ChatGPT sign-in, account-specific models/defaults, verified plan/usage, token lifecycle, explicit fallback and inference. |
+| ✗ C3 | Rules, authority, budgets, separate Background/Overnight agents, collaboration and reflection. |
+| ✗ C4/D1 | Normal Docs editing/recovery/history/collaboration and required Markdown/Mermaid rendering. |
+| ✗ C5 | Bound pages, schedules, publication consent and channels. |
+| ✗ C6 | Separate plugin backend/UI integrations and security qualification. |
+| ✗ U1 / cleanup | Whole-app parity and final integration; preserve character work and remove only safe merged branches/worktrees. |
+
+The detailed records below are historical snapshots, superseded by this final
+C1 scope and acceptance. They do not impose removed acceptance gates.
 
 ## Current desktop scope disposition — 8 October 2026
 

@@ -32,12 +32,12 @@ is `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd2
 
 The user explicitly requires the full ADR from top down (7 October 2026).
 This supersedes the earlier Docs-first queue. QA-006 remains a completed scoped
-checkpoint, not evidence that an entire ADR stage is complete. C1 is now active;
+checkpoint, not evidence that an entire ADR stage is complete. C1 is complete under the final user-approved scope; C2 remains queued during the requested pause;
 normal Docs activation stays queued under C4. Existing work is retained.
 
 | Order | Scope                                                | Current state                                                          | Exit condition                                                                                                                                                                           |
 | ----- | ---------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | C1: model/provider/connection contracts              | Active; implementations need complete contract audit and qualification | Managed/BYO/plan boundaries, supported models/request capabilities, explicit fallback, caching evaluation, multiple-provider and embedding configuration/migration requirements verified |
+| 1     | C1: model/provider/connection contracts              | Complete; accepted round2/3, merged main6f56c548 | Managed/BYO/plan boundaries, supported models/request capabilities, explicit fallback, caching evaluation, multiple-provider and embedding configuration/migration requirements verified |
 | 2     | C2/M1: SIWC, account catalogs/defaults and execution | Partial; standalone web and installed OAuth/inference acceptance open  | Correct platform connection, verified account/plan permissions, truthful usage, catalog/default persistence, protected tokens, lifecycle/revocation and actual inference acceptance      |
 | 3     | C3: rules, ownership, activity and budgets           | Foundations implemented                                                | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                    |
 | 4     | C4/D1: Docs parity and UI regressions                | Foundation candidate; normal editor activation unfinished              | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
