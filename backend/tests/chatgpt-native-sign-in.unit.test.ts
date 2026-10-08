@@ -309,6 +309,16 @@ function mount(
                 { headers: { "content-type": "text/event-stream" } },
               );
             }
+            if (
+              url === "https://auth.openai.com/.well-known/openid-configuration"
+            ) {
+              assert.equal(init.body, undefined);
+              return Response.json({
+                issuer: "https://auth.openai.com",
+                revocation_endpoint:
+                  "https://auth.openai.com/api/accounts/oauth/revoke",
+              });
+            }
             if (url === "https://auth.openai.com/api/accounts/oauth/revoke") {
               calls.providerRevoked.push(init.body.get("token"));
               assert.equal(

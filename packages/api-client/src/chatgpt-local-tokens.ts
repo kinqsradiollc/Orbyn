@@ -349,8 +349,34 @@ export async function revokeChatgptLocalGrant(
       }
     }) as typeof fetch;
     try {
+      const discovery = await requestJson(
+        "https://auth.openai.com/.well-known/openid-configuration",
+        { method: "GET", headers: { Accept: "application/json" } },
+        { ...options, fetch: transport, timeoutMs: options.timeoutMs ?? 5000 },
+      );
+      const config = z
+        .object({
+          issuer: z.literal("https://auth.openai.com"),
+          revocation_endpoint: z.string().max(2048),
+        })
+        .safeParse(discovery);
+      if (!config.success) throw new ChatgptLocalTokenError("unavailable");
+      let endpoint: URL;
+      try {
+        endpoint = new URL(config.data.revocation_endpoint);
+      } catch {
+        throw new ChatgptLocalTokenError("unavailable");
+      }
+      if (
+        endpoint.origin !== "https://auth.openai.com" ||
+        endpoint.username ||
+        endpoint.password ||
+        endpoint.search ||
+        endpoint.hash
+      )
+        throw new ChatgptLocalTokenError("unavailable");
       await requestJson(
-        "https://auth.openai.com/api/accounts/oauth/revoke",
+        endpoint.href,
         {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
