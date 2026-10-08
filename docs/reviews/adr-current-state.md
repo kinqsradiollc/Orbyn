@@ -8,6 +8,16 @@ Detailed qualification and historical failures remain in
 
 **Active stage: C1. No entire ADR stage is complete.**
 **Active cycle: C1-full-2026-10-08. Phase: implementation. Review rounds: 0/3.**
+Implementation owner: Orbyn Builder. Checkout:
+`/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`, branch
+`codex/c1-full-completion`, current product source `98b82af6` (not on main).
+Provider reload/retry parity and embedding search-strategy reporting are implemented.
+Development checks: lifecycle17/17, pgvector operational cohort30/30; backend,
+desktop and mobile types pass. These are not formal full-cycle qualification.
+Orbyn Visual Check is gathering saved-provider/catalog/keyboard evidence; Orbyn
+Tester is preparing the full qualification plan and has not received a frozen
+candidate. Full C1 acceptance and review remain pending.
+
 Builder acknowledges the full-checkpoint **Implement → Test → Review** workflow;
 see [the handoff and iteration rules](checkpoint-workflow.md). The full C1 candidate
 is not frozen or handed off yet. Tester and Reviewer reports for this cycle are

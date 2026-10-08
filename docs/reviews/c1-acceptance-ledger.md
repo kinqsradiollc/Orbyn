@@ -2095,3 +2095,40 @@ input counters after capture quiescence; original records must be cleaned at end
 - Next in the C1 entrypoint gate: managed Agenda/page usage receipts, then
   configured personal scanner availability; before-fix fixtures are recorded
   in c1-entrypoint-usage-and-availability.md. C1 remains incomplete.
+
+
+## Full C1 cycle resumed — 8 October 2026
+
+Cycle `C1-full-2026-10-08`; review counter0/3, Builder owns implementation in
+`codex/c1-full-completion` at `/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`.
+This follows the full checkpoint workflow, not a new per-feature qualification cycle.
+
+- `5c975a42`: mobile provider-list reload rejects superseded/unmounted outcomes;
+  failed mutations reload current server state. Web catalog/test callbacks reject
+  results from a replaced list generation.
+- `98b82af6`: web initial load distinguishes loading/error from empty configuration;
+  both clients retain loaded rows and offer persistent refresh retry. Embedding
+  settings report the configured exact search strategy separately from dimensions.
+  This describes Orbyn's migration-managed strategy, not a database query plan or
+  an acceptance claim for administrator-created custom ANN indexes.
+- Development checks: lifecycle17/17, actual pgvector operational cohort30/30,
+  zero failures/skips/cancellations; backend/desktop/mobile typechecks pass.
+  Logs: `/tmp/orbyn-c1-full-client-lifecycle-focused-20261008.log`,
+  `/tmp/orbyn-c1-full-vector-dev-20261008.log`, terminal receipt
+  `/tmp/orbyn-c1-full-vector-dev-terminal-20261008.json` (exit0, signal:null).
+  Separate fresh upgrade/late-install tests and full frozen-source regression are
+  reserved for Tester; these30 cases do not include those fresh-fixture gates.
+- Owned web5174/mobile8083 restored and HTTP200; API8008 healthy. Retained local
+  pgvector container on55437 restored; other databases and primary user changes
+  preserved. Marked inert UI connection `2b7a6d20-92e2-42ed-bb0b-82077203a067`
+  supplies250 models and fixed ping only; no managed/embedding default changed.
+  Cleanup remains required after captures; do not delete original providers.
+- Visual Check is reviewing browser interactions. Tester is preparing a full-C1
+  qualification plan, with no formal run until the exact candidate handoff.
+- Current checked env files contain no configured OpenAI evaluation key/model.
+  Matilda's earlier6/6 functional baseline remains valid for its named source,
+  but cannot establish OpenAI cache economics. Vendor/live embeddings, genuine
+  enlargement and installed-native acceptance remain explicit pending gates.
+
+Primary source for the configured exact-search interpretation:
+[pgvector indexing documentation](https://github.com/pgvector/pgvector#exact-search).
