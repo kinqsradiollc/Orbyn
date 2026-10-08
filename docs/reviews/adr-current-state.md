@@ -7,17 +7,27 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: testing handoff. Review rounds: 0/3.**
-Builder's full local C1 implementation pass is recorded in
-[the complete candidate handoff](c1-full-2026-10-08-handoff.md), with
-[the Tester plan](c1-full-2026-10-08-qualification-plan.md).
-Checkout `/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`, branch
-`codex/c1-full-completion`: freeze the commit containing this handoff; not on main.
-Builder stops product/test edits during Tester execution. Reviewer has not started.
-Development lifecycle17/17, pgvector30/30 and provider-receipt20/20 pass; these
-are not full-cycle qualification. Full C1 acceptance and formal review remain
-pending, including explicit live-provider/cache, enlargement and installed gates.
-Existing receipts remain scoped historical evidence.
+**Active cycle: C1-full-2026-10-08. Phase: retesting handoff ready. Review rounds: 1/3.**
+Round 1 reviewed frozen `aa10d566d5c11b8e3c1aa06063e60c4799c12e54` in
+`/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`, branch
+`codex/c1-full-completion`. Revised candidate is the commit containing the
+[round-1 report](c1-full-2026-10-08-review-r1.md); resolve exact HEAD for retest.
+Reviewer freezes product/test source and relinquishes writes for Tester retesting.
+No competing Builder product edits. Handoff is file-backed; Reviewer has not sent
+cross-chat messages without direct human authorization in this chat.
+
+Historical [Tester attempt 1](c1-full-2026-10-08-test-r1.md):4322/4329 pass,
+7fail, zero skip/cancel, exit1; types/build/export, vector69/69 and three separate
+migration1/1 pass. Round-1 fixes supply stale web probe harness refs, add refresh
+invalidation coverage, and provide accessible catalog loading and persistent inline
+error/retry on both clients. Final focused202/202, workspace types and web build
+pass. Tester full regression and delegated revised-source rendered checks pending.
+QA037001 single duration retains delegated scoped aa10 pass. Live-provider/cache,
+accepted embedding recipient, genuine enlargement, installed-client and full
+browser management/embedding matrix remain open. See report's requirement audit
+and executable visual/runtime tasks. No C1 acceptance/main merge/push/deployment.
+Next numbered review needs tested-source handoff and recorded2/3; maximum3.
+See [workflow](checkpoint-workflow.md) and [original handoff](c1-full-2026-10-08-handoff.md).
 
 Latest delivered checkpoint: personal scanner admission, merged and pushed as
 0c19e330 (productfed13851), full4322/4322, focused98/98 and backend types/build

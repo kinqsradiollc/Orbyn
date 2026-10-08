@@ -76,6 +76,8 @@ for (const scenario of [
       models: {},
       modelFor: () => "saved-unlisted-model",
       setModels: () => changes++,
+      setCatalogLoading: () => {},
+      setCatalogErrors: () => {},
       setLoaded: (fn: (value: typeof catalogs) => typeof catalogs) => {
         catalogs = fn(catalogs);
       },
@@ -161,6 +163,8 @@ for (const scenario of [
       providerGeneration: {
         current: scenario === "same-timestamp" ? "8" : "7",
       },
+      setCatalogLoading: () => {},
+      setCatalogError: () => {},
       setModels: () => calls++,
     });
     callback();
@@ -297,6 +301,98 @@ for (const outcome of ["success", "error"] as const) {
         failures,
         lifecycle === "current" ? [false, outcome === "error"] : [false],
       );
+    });
+  }
+}
+
+for (const platform of ["web", "mobile"] as const) {
+  for (const lifecycle of ["current", "revised", "unmounted"] as const) {
+    test(`${platform} catalog failure ${lifecycle} retains prior catalog and retry state`, async () => {
+      let pending: Promise<void> | undefined;
+      let reject!: (error: Error) => void;
+      let resolve!: (result: { models: string[] }) => void;
+      const p = { id: "p", updated_at: "v1", controls_revision: "7" };
+      const dataRef: any = { current: { providers: [{ ...p }] } };
+      const providerRevision: { current: string | null } = { current: "v1" };
+      const providerGeneration: { current: string | null } = { current: "7" };
+      const loadRequest = { current: 1 };
+      let catalog = ["previous-model"];
+      let loading = false;
+      let error: string | null = null;
+      let draftWrites = 0;
+      const callback = evaluate(
+        platform === "web"
+          ? webCallback("loadModels")
+          : mobileCallback("Load models"),
+        {
+          p,
+          dataRef,
+          providerRevision,
+          providerGeneration,
+          loadRequest,
+          act: (fn: () => Promise<void>) => {
+            pending = fn();
+          },
+          client: {
+            listAiModels: () =>
+              new Promise((yes, no) => {
+                resolve = yes;
+                reject = no;
+              }),
+          },
+          setCatalogLoading: (value: any) => {
+            loading =
+              typeof value === "function" ? !!value({ p: loading }).p : value;
+          },
+          setCatalogErrors: (fn: any) => {
+            error = fn(error ? { p: error } : {}).p ?? null;
+          },
+          setCatalogError: (value: string | null) => {
+            error = value;
+          },
+          setLoaded: (fn: any) => {
+            catalog = fn({ p: catalog }).p;
+          },
+          setModels: (value: string[]) => {
+            if (platform === "mobile") catalog = value;
+            else draftWrites++;
+          },
+        },
+      );
+      const start = () => (platform === "web" ? callback(p) : callback());
+      start();
+      assert.equal(loading, true);
+      assert.equal(error, null);
+      if (lifecycle !== "current") {
+        if (platform === "web") {
+          loadRequest.current++;
+          if (lifecycle === "unmounted") dataRef.current = null;
+        } else {
+          providerRevision.current = lifecycle === "unmounted" ? null : "v2";
+          providerGeneration.current = lifecycle === "unmounted" ? null : "8";
+        }
+      }
+      reject(new Error("private upstream payload"));
+      if (lifecycle === "current")
+        await assert.rejects(pending!, /private upstream payload/);
+      else await pending;
+      assert.deepEqual(catalog, ["previous-model"]);
+      assert.equal(draftWrites, 0);
+      assert.equal(
+        error,
+        lifecycle === "current" ? "Couldn't load models. Try again." : null,
+      );
+      assert.equal(loading, lifecycle !== "current");
+      if (lifecycle === "current") {
+        start();
+        assert.equal(error, null);
+        assert.equal(loading, true);
+        resolve({ models: ["recovered-model"] });
+        await pending;
+        assert.deepEqual(catalog, ["recovered-model"]);
+        assert.equal(loading, false);
+        assert.equal(draftWrites, 0);
+      }
     });
   }
 }

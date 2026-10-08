@@ -2132,3 +2132,24 @@ This follows the full checkpoint workflow, not a new per-feature qualification c
 
 Primary source for the configured exact-search interpretation:
 [pgvector indexing documentation](https://github.com/pgvector/pgvector#exact-search).
+
+
+## Full C1 round 1 — Reviewer correction and retest handoff, 8 October 2026
+
+Cycle `C1-full-2026-10-08`; shared counter1/3 persisted before review.
+Tested sourceaa10d566; Tester terminal4322/4329,7fail,0skip/cancel,exit1;
+466 hashes frozen. Complete report copied unchanged into candidate.
+Reviewer held sole source writes, fixed missing web probe harness loadRequest,
+retained existing assertions/fences and added refresh invalidation. Both clients
+now expose catalog loading/status and persistent inline failure/retry without
+losing prior catalog/manual choice or accepting stale feedback. Final focused
+202/202, workspace types and web production build pass; full retest and delegated
+rendered recheck pending. No full acceptance; external/native/enlargement gates
+and browser management/embedding matrix remain open. Report includes original
+requirement mapping and exact next runtime/visual tasks.
+
+See `c1-full-2026-10-08-review-r1.md`; revised source is its containing commit on
+codex/c1-full-completion in the c1-perplexity-embeddings checkout. Reviewer freezes
+source and relinquishes writes for Tester; cross-chat messages not sent without
+direct human authorization. No merge/push/deploy or round reset. Prior failures
+remain intact. Next formal review must record2/3 after tested-source handoff.

@@ -358,6 +358,8 @@ function ProviderRow({
   const def = AI_PROVIDERS[p.kind];
   const [model, setModel] = useState(active ? activeModel : "");
   const [models, setModels] = useState<string[] | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [test, setTest] = useState<AiTestResult | null>(null);
   const savedModel = useRef(active ? activeModel : "");
   useEffect(() => {
@@ -376,6 +378,8 @@ function ProviderRow({
     providerGeneration.current = p.controls_revision ?? null;
     setTest(null);
     setModels(null);
+    setCatalogLoading(false);
+    setCatalogError(null);
     return () => {
       providerRevision.current = null;
       providerGeneration.current = null;
@@ -523,22 +527,39 @@ function ProviderRow({
             busy={busy}
             onSave={onControlsSaved}
           />
-          <View style={s.actions}>
+          <View style={s.actions} accessibilityState={{ busy: catalogLoading }}>
             {def.listsModels && (
               <SmallAction
-                label={models ? "Reload models" : "Load models"}
+                label={
+                  catalogLoading
+                    ? "Loading models…"
+                    : catalogError
+                      ? "Retry loading models"
+                      : models
+                        ? "Reload models"
+                        : "Load models"
+                }
                 disabled={busy}
                 onPress={() =>
                   act(async () => {
-                    const result = await client.listAiModels(
-                      p.id,
-                      p.controls_revision,
-                    );
-                    if (
+                    const current = () =>
                       providerRevision.current === p.updated_at &&
-                      providerGeneration.current === p.controls_revision
-                    )
-                      setModels(result.models);
+                      providerGeneration.current === p.controls_revision;
+                    setCatalogLoading(true);
+                    setCatalogError(null);
+                    try {
+                      const result = await client.listAiModels(
+                        p.id,
+                        p.controls_revision,
+                      );
+                      if (current()) setModels(result.models);
+                    } catch (error) {
+                      if (!current()) return;
+                      setCatalogError("Couldn't load models. Try again.");
+                      throw error;
+                    } finally {
+                      if (current()) setCatalogLoading(false);
+                    }
                   })
                 }
               />
@@ -571,6 +592,18 @@ function ProviderRow({
               onPress={() => onUse(typed)}
             />
           </View>
+          <Text accessibilityLiveRegion="polite" style={shared.small}>
+            {catalogLoading ? "Loading models…" : ""}
+          </Text>
+          {catalogError && (
+            <Text
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              style={[shared.small, { color: colors.danger }]}
+            >
+              {catalogError}
+            </Text>
+          )}
           {!typed && (
             <Text style={[shared.small, s.chipCaption]}>
               Pick or type a model to use this provider for the assistant.
