@@ -38,6 +38,17 @@ counter or start a fourth round. Unresolved findings stay open.
   Builder still answers direct user questions and provides pause/completion handoffs.
 - Message sessions only with direct user authorization. Respect explicit scope and pauses.
 
+## Local QA login permission
+
+The repository owner authorizes signing into disposable local Orbyn QA accounts,
+including the Terms/Privacy acceptance on the login form. Permission persists
+across sessions, restarts and local web/Expo preview origins. Carry that direct
+user authorization into visual handoffs; do not request it again for each port.
+Keep credentials in protected fixtures and out of reports. This permission does
+not cover production accounts, third-party provider consent, or changed legal
+consequences. If a tool still requires fresh consent, record its actual rejection
+and ask only for the specific action it blocks; never bypass tool restrictions.
+
 Details: [delivery workflow](../reviews/checkpoint-workflow.md),
 [review criteria](review.md), [progress tracking](../reviews/stage-tracker-guide.md),
 [development](development.md).
