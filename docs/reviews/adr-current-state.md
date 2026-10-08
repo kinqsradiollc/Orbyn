@@ -7,7 +7,7 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: Builder completing remaining C1 readiness under revised verification scope. Review rounds: 1/3.**
+**Active cycle: C1-full-2026-10-08. Phase: consolidated Tester qualification of frozen1a92a2c0. Review rounds: 1/3.**
 The user resumed work and removed iOS builds and Android-specific verification on
 8 October. Missing native mobile runtimes/devices and build capacity are no longer
 C1 gates; do not restart those jobs. Previous blocker records are historical.
@@ -19,15 +19,21 @@ Builder's complete requirement-group preparation map is
 User clarification applied: complete every C1 implementation state and prepare all
 qualification prerequisites before one consolidated Test → Review handoff. No more
 formal partial-state jobs or per-fix handoffs. Earlier qualified main delivery and
-retest receipts remain historical evidence, not full-C1 completion. Builder owns
-preparation and all code; Tester/Reviewer wait. Current review counter is retained.
+retest receipts remain historical evidence, not full-C1 completion. Builder owns all code and freezes application/test source. Tester owns consolidated
+qualification; Reviewer waits for its Markdown report. Current review counter is retained.
+
+Current handoff: `c1-consolidated-final-handoff-2026-10-08.md` on candidate
+`1a92a2c0` in `/Users/anhdang/.codex/worktrees/adr-release-qualification/Orbyn`.
+Development34/34 consent/control tests and mobile TypeScript pass; formal Tester
+results remain pending. Main9768f350 contains role/scope docs, not this product
+candidate. No C1 acceptance, production deployment or C2 advancement is claimed.
 
 | Full-checkpoint readiness | Current evidence / action |
 | --- | --- |
 | Scope/state map | Retained C1 contract and round-1 full requirement audit remain governing; reconcile every row before handoff. |
 | Implementation | Reviewed local correction findings closed; current code is delivered. Builder must resolve any remaining implementation state discovered during full reconciliation. |
 | Test prerequisites | Live cache/embedding probes are approved follow-ups, not handoff blockers. Existing Matilda baseline and synthetic runtime receipts are available. Complete bounded browser evidence; native iOS/Android jobs are excluded. |
-| Freeze/handoff | Not ready. Freeze one complete candidate and full test plan only after every readiness item is satisfied. |
+| Freeze/handoff | Complete retained candidate1a92a2c0 frozen/pushed on codex/c1-production-checkpoint; consolidated Tester handoff dispatched. Reviewer waits; next full review2/3. |
 
 Frozen candidate `3ccf8f578d3e355238ee55478e7d5e02b2b68b67` is clean on
 `codex/c1-full-completion` in
@@ -51,7 +57,7 @@ full CRUD matrix is claimed. New cadence94284ab7 is on demand, not a blanket
 sweep. API/worker qualification separately proves synthetic3D indexing, sanitized
 503/scheduled recovery,7D replacement/deletion/requeue; actual worker offline/heartbeat expiry/restart and7D indexing pass. Stale
 provider/settings and in-flight revision changes refuse409 and require revalidation. See [runtime evidence](c1-full-2026-10-08-runtime-qualification.md).
-Live OpenAI cache/live embedding are approved follow-ups. Installed Electron interaction and genuine200% enlargement remain unverified limitations for consolidated qualification; native iOS/Android gates are excluded. QA040 scoped consent/status/off passes and its accessibility correction awaits targeted closure. Qualified code merged and pushed to main as `f7a48abf632157d368ac8e75e22117b42c8c581e`.
+Live OpenAI cache/live embedding are approved follow-ups. Installed Electron interaction and genuine200% enlargement remain unverified limitations for consolidated qualification; native iOS/Android gates are excluded. QA040 scoped consent/status/off passes; its accessible-name correction is independently closed in Expo web DOM. Actual assistive-technology announcement remains untested. Qualified code merged and pushed to main as `f7a48abf632157d368ac8e75e22117b42c8c581e`.
 Application/test/dependency paths match tested3cc exactly; canonical role/visual rules
 are retained. Runtime indexing after revalidation, off cleanup and word search with
 the local provider stopped also pass. No full C1 acceptance, production deployment,
@@ -90,8 +96,8 @@ Local entrypoint/recovery reconciliation is recorded in
 first-party text routing bypass was found. Next checkpoint is saved-connection
 and catalog client interaction coverage. External/native acceptance stays open.
 
-Remaining C1 execution order: close QA040's named accessible-consent defect;
-freeze the whole candidate and consolidated evidence; Tester qualifies the retained
+Remaining C1 execution order: frozen1a92a2c0 and consolidated evidence are with
+Tester. QA040's named accessible-consent defect is closed; Tester qualifies the retained
 scope, then Reviewer reviews it (next full round2/3). Resolve findings as a batch,
 record full acceptance/main push, then pause before C2/M1. The approved live
 follow-ups remain unknown, not claimed measured. Native iOS/Android jobs stay
