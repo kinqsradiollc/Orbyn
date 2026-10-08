@@ -50,6 +50,10 @@ export function SemanticSetup({
       provider.enabled && AI_PROVIDERS[provider.kind].format !== "anthropic",
   );
   const selected = eligible.find((provider) => provider.id === providerId);
+  const consentText =
+    "I understand that the words of every page (except projects and teams kept out of the assistant) are sent to " +
+    (selected?.name ?? "the selected embedding provider") +
+    " to be measured.";
   const discovery = useEmbeddingModelCatalog(selected);
   const [catalogSearch, setCatalogSearch] = useState("");
   useEffect(() => {
@@ -313,14 +317,11 @@ export function SemanticSetup({
           )}
           <View style={s.accept}>
             <Text style={[shared.small, { flex: 1 }]}>
-              I understand that the words of every page (except projects and
-              teams kept out of the assistant) are sent to{" "}
-              {selected?.name ?? "the selected embedding provider"} to be
-              measured.
+              {consentText}
             </Text>
             <Switch
               trackColor={{ true: colors.accent }}
-              accessibilityLabel="I understand every page is sent to be measured"
+              accessibilityLabel={consentText}
               disabled={!ready}
               value={accept}
               onValueChange={setAccept}
