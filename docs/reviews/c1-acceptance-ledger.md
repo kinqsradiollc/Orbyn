@@ -2,11 +2,12 @@
 
 ## Settings containment and UX rules — 8 October 2026
 
-Current frozen candidate dbcf8c84 includes c69f342f compact Settings navigation
+Qualified candidate dbcf8c84 includes c69f342f compact Settings navigation
 and the reproduced QA-027-V01 Theme containment correction. Focused23/23,
-desktop types and web build pass. Fresh full regression is running:
-`/tmp/orbyn-c1-theme-containment-full-20261008.log`. No newer full pass or main
-product integration is claimed. Parent4248/4248/vector69/69/upgrade1/1/
+desktop types and web build pass. Fresh frozen full4250/4250 passes, zero
+failures/skips/cancellations, exit0,815595ms:
+`/tmp/orbyn-c1-theme-containment-full-20261008.log`. Merged as994d6de3 with
+identical tested application/test source. Parent4248/4248/vector69/69/upgrade1/1/
 late-install1/1 remain historical results for c69f342f.
 
 User-authorized delegated Visual Check recheck accepts the normal-scale Theme

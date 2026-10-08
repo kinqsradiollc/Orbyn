@@ -13,9 +13,10 @@ Fresh full4246/4246 passes with zero skips/cancellations; focused170/170,
 catalog/inventory10/10, vector repeat34/34, workspace types/backend/web builds
 and scoped web/mobile browser review pass. Remaining C1 gates below stay open.
 
-Current frozen local candidate: dbcf8c84, containing compact Settings navigation
-c69f342f and a narrow Theme control correction. Focused23/23, desktop types and
-web build pass; its fresh full regression is running, not qualified or merged.
+Settings checkpoint dbcf8c84, containing compact navigation c69f342f and a narrow
+Theme control correction, is merged as994d6de3. Focused23/23, desktop types and
+web build pass; frozen full4250/4250 passes, zero failures/skips/cancellations,
+exit0,815595ms. Promoted application/test source matches the tested candidate.
 Parent c69f342f independently passed4248/4248, vector69/69, upgrade1/1 and
 late-install1/1; these are not results from the newer source.
 The user now authorizes Visual Check's analysis. Its delegated normal-scale

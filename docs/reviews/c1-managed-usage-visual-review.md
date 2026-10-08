@@ -19,10 +19,11 @@ site permission. No alternate-browser, port or export workaround is authorized.
 ## Current checkpoint
 
 Frozen candidate dbcf8c84 adds a narrow Theme control correction to c69f342f.
-Focused23/23, desktop types and web build pass. Fresh full regression is running
-in `orbyn_c1_theme_containment_20261008_test`; no terminal pass or main delivery
-is claimed. Logs: `/tmp/orbyn-c1-theme-containment-full-20261008.log` and the
-corresponding terminal JSON when complete.
+Focused23/23, desktop types and web build pass. Fresh full4250/4250 passes with
+zero failures/skips/cancellations, exit0,815595ms on the marked stock database.
+Integrated as994d6de3, with application/test source identical to the tested
+candidate and unrelated mobile changes preserved. Logs:
+`/tmp/orbyn-c1-theme-containment-full-20261008.log` and terminal JSON.
 
 Delegated review report:
 `/Users/anhdang/.codex/visualizations/2026/10/08/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-027-c1-usage-loading-error-retry-2026-10-08/visual-analysis.md`.
@@ -31,7 +32,7 @@ images, not exported originals or personal root inspection.
 
 | Finding | Current state | Next action |
 | --- | --- | --- |
-| V01: Theme clipping | Corrected at normal web320/390/1280 and mobile-browser320/390, both themes; pointer/keyboard checked on web | Finish exact-source qualification; keep enlarged/native gates open |
+| V01: Theme clipping | Corrected at normal web320/390/1280 and mobile-browser320/390, both themes; pointer/keyboard checked on web; qualified on main994d6de3 | Keep enlarged/native gates open |
 | V02: double search focus | Open P3, web1280 Dark | One visible focus owner, targeted recheck |
 | V03: Settings density | Open P2, actual CSS320×740; 192px header/navigation, 54.5px collapsed rows plus12–14px gaps | Compact chrome/rows while retaining readable text and touch targets |
 | V04: Connected agents copy | Open P2;165px introduction pushes Connect to y601; another110px explanation | Short helper and immediate action; optional detail in disclosure |
