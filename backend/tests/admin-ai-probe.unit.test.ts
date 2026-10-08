@@ -73,6 +73,7 @@ for (const platform of ["web", "mobile"] as const) {
     "current",
     "same-timestamp",
     "unmounted",
+    "refreshed",
     "wrong-receipt",
     "wrong-model",
     "missing-receipt",
@@ -84,12 +85,14 @@ for (const platform of ["web", "mobile"] as const) {
       };
       const providerRevision: { current: string | null } = { current: "same" };
       const providerGeneration: { current: string | null } = { current: "7" };
+      const loadRequest = { current: 1 };
       let pending: Promise<void> | undefined;
       let resolve!: (result: any) => void;
       const published: any[] = [];
       const callback = evaluate(platform === "web" ? web : mobile, {
         p,
         dataRef,
+        loadRequest,
         providerRevision,
         providerGeneration,
         typed: "chosen-model",
@@ -126,6 +129,13 @@ for (const platform of ["web", "mobile"] as const) {
         providerRevision.current = null;
         providerGeneration.current = null;
       }
+      if (scenario === "refreshed") {
+        if (platform === "web") loadRequest.current++;
+        else {
+          providerRevision.current = null;
+          providerGeneration.current = null;
+        }
+      }
       resolve({
         ok: true,
         latency_ms: 1,
@@ -146,6 +156,7 @@ for (const platform of ["web", "mobile"] as const) {
     let calls = 0;
     let pending: Promise<void> | undefined;
     const callback = evaluate(platform === "web" ? web : mobile, {
+      loadRequest: { current: 1 },
       p: { id: "p", updated_at: "same" },
       typed: "chosen-model",
       modelFor: () => "chosen-model",

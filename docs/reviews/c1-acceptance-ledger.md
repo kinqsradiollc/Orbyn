@@ -2095,3 +2095,73 @@ input counters after capture quiescence; original records must be cleaned at end
 - Next in the C1 entrypoint gate: managed Agenda/page usage receipts, then
   configured personal scanner availability; before-fix fixtures are recorded
   in c1-entrypoint-usage-and-availability.md. C1 remains incomplete.
+
+
+## Full C1 cycle resumed — 8 October 2026
+
+Cycle `C1-full-2026-10-08`; review counter0/3, Builder owns implementation in
+`codex/c1-full-completion` at `/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`.
+This follows the full checkpoint workflow, not a new per-feature qualification cycle.
+
+- `5c975a42`: mobile provider-list reload rejects superseded/unmounted outcomes;
+  failed mutations reload current server state. Web catalog/test callbacks reject
+  results from a replaced list generation.
+- `98b82af6`: web initial load distinguishes loading/error from empty configuration;
+  both clients retain loaded rows and offer persistent refresh retry. Embedding
+  settings report the configured exact search strategy separately from dimensions.
+  This describes Orbyn's migration-managed strategy, not a database query plan or
+  an acceptance claim for administrator-created custom ANN indexes.
+- Development checks: lifecycle17/17, actual pgvector operational cohort30/30,
+  zero failures/skips/cancellations; backend/desktop/mobile typechecks pass.
+  Logs: `/tmp/orbyn-c1-full-client-lifecycle-focused-20261008.log`,
+  `/tmp/orbyn-c1-full-vector-dev-20261008.log`, terminal receipt
+  `/tmp/orbyn-c1-full-vector-dev-terminal-20261008.json` (exit0, signal:null).
+  Separate fresh upgrade/late-install tests and full frozen-source regression are
+  reserved for Tester; these30 cases do not include those fresh-fixture gates.
+- Owned web5174/mobile8083 restored and HTTP200; API8008 healthy. Retained local
+  pgvector container on55437 restored; other databases and primary user changes
+  preserved. Marked inert UI connection `2b7a6d20-92e2-42ed-bb0b-82077203a067`
+  supplies250 models and fixed ping only; no managed/embedding default changed.
+  Cleanup remains required after captures; do not delete original providers.
+- Visual Check is reviewing browser interactions. Tester is preparing a full-C1
+  qualification plan, with no formal run until the exact candidate handoff.
+- Current checked env files contain no configured OpenAI evaluation key/model.
+  Matilda's earlier6/6 functional baseline remains valid for its named source,
+  but cannot establish OpenAI cache economics. Vendor/live embeddings, genuine
+  enlargement and installed-native acceptance remain explicit pending gates.
+
+Primary source for the configured exact-search interpretation:
+[pgvector indexing documentation](https://github.com/pgvector/pgvector#exact-search).
+
+
+## Full C1 round 1 — Reviewer correction and retest handoff, 8 October 2026
+
+Cycle `C1-full-2026-10-08`; shared counter1/3 persisted before review.
+Tested sourceaa10d566; Tester terminal4322/4329,7fail,0skip/cancel,exit1;
+466 hashes frozen. Complete report copied unchanged into candidate.
+Reviewer held sole source writes, fixed missing web probe harness loadRequest,
+retained existing assertions/fences and added refresh invalidation. Both clients
+now expose catalog loading/status and persistent inline failure/retry without
+losing prior catalog/manual choice or accepting stale feedback. Final focused
+202/202, workspace types and web production build pass; full retest and delegated
+rendered recheck pending. No full acceptance; external/native/enlargement gates
+and browser management/embedding matrix remain open. Report includes original
+requirement mapping and exact next runtime/visual tasks.
+
+See `c1-full-2026-10-08-review-r1.md`; revised source is its containing commit on
+codex/c1-full-completion in the c1-perplexity-embeddings checkout. Reviewer freezes
+source and relinquishes writes for Tester; cross-chat messages not sent without
+direct human authorization. No merge/push/deploy or round reset. Prior failures
+remain intact. Next formal review must record2/3 after tested-source handoff.
+
+
+### Same-round QA038001/002 mobile accessibility/content repair — 8 October
+
+Round1/3 unchanged; explicit sole Reviewer source ownership. On244abc21, RN Web
+actual-renderer regression reproduces absent busy mapping (1pass/2fail). Repair
+adds supported aria-busy alongside native accessibilityState and forwards polite
+live-region onto existing catalog action label, removing duplicate visible status.
+Prior authority callbacks unchanged. Final205/205 focused and mobile types pass;
+see round-1 report/logs. Revised source is the containing commit. Frozen for Tester
+impact-based retest; scoped rendered recheck only if needed for these named defects.
+No additional browser sweep, full acceptance, merge/push/deploy or round increment.

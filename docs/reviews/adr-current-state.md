@@ -7,11 +7,32 @@ Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
 **Active stage: C1. No entire ADR stage is complete.**
-**Active cycle: C1-full-2026-10-08. Phase: implementation. Review rounds: 0/3.**
-Builder acknowledges the full-checkpoint **Implement → Test → Review** workflow;
-see [the handoff and iteration rules](checkpoint-workflow.md). The full C1 candidate
-is not frozen or handed off yet. Tester and Reviewer reports for this cycle are
-pending. Existing receipts remain scoped historical evidence, not full C1 acceptance.
+**Active cycle: C1-full-2026-10-08. Phase: scoped round-1 closure and runtime qualification. Review rounds: 1/3.**
+Frozen candidate `3ccf8f578d3e355238ee55478e7d5e02b2b68b67` is clean on
+`codex/c1-full-completion` in
+`/Users/anhdang/.codex/worktrees/c1-perplexity-embeddings/Orbyn`.
+Tester independently passed205/205, workspace typechecks and iOS/Android exports.
+The244abc21 full4337/4337 remains backend evidence by exact relevant source and
+dependency equivalence; the new three accessibility cases are covered separately.
+See [retest receipts](c1-full-2026-10-08-retest-r1.md).
+
+Same-round closure has resolved R1-001 and scoped R1-003; the mobile busy/progress
+repair is independently tested and Reviewer has closed QA038001/002 within
+round1. R1-001/002/003 local correction findings are closed; full gates stay open. Its earlier
+Reviewer coding ownership is historical: maina5e5028a now assigns every source fix
+to Builder, all formal execution to Tester, and review-only inspection to Reviewer.
+No new full review/counter increment or product edits are underway.
+
+QA039 is finalized/stopped: isolated login and scoped cross-client provider
+create/cancel/edit/key/toggle/manual/default outcomes are recorded. API cleanup
+restored generation default off; backup remains. No embedding visual StageB or
+full CRUD matrix is claimed. New cadence94284ab7 is on demand, not a blanket
+sweep. API/worker qualification separately proves synthetic3D indexing, sanitized
+503/scheduled recovery,7D replacement/deletion/requeue; actual worker offline/heartbeat expiry/restart and7D indexing pass. Stale
+provider/settings and in-flight revision changes refuse409 and require revalidation. See [runtime evidence](c1-full-2026-10-08-runtime-qualification.md).
+Live-provider/cache/live embedding, installed-client, genuine enlargement and
+other explicit unverified gates remain open. No full C1 acceptance, candidate
+main merge/push/deployment, C2 advancement or completed-C1 pause.
 
 Latest delivered checkpoint: personal scanner admission, merged and pushed as
 0c19e330 (productfed13851), full4322/4322, focused98/98 and backend types/build

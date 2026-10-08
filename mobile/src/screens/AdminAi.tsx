@@ -1,5 +1,5 @@
 import { AiModelControls } from "./AiModelControls";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SemanticSetup } from "./SemanticSetup";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Switch } from "../components/Switch";
@@ -68,27 +68,44 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
     [data?.settings.night_token_budget],
   );
 
-  const load = async () => setData(await client.listAiProviders());
+  const loadRequest = useRef(0);
+  const load = useCallback(async () => {
+    const request = ++loadRequest.current;
+    setFailed(false);
+    try {
+      const next = await client.listAiProviders();
+      if (request !== loadRequest.current) return;
+      setData(next);
+      setFailed(false);
+    } catch (error) {
+      if (request !== loadRequest.current) return;
+      setFailed(true);
+      throw error;
+    }
+  }, []);
   const firstLoad = () =>
     act(async () => {
       setFailed(false);
-      try {
-        await load();
-      } catch (e) {
-        setFailed(true);
-        throw e;
-      }
+      await load();
     });
   const run = (fn: () => Promise<unknown>) =>
     act(async () => {
-      await fn();
-      await load();
+      try {
+        await fn();
+      } finally {
+        await load();
+      }
     });
-  const setSettings = (settings: AiSettings) =>
+  const setSettings = (settings: AiSettings) => {
+    loadRequest.current++;
     setData((prev) => (prev ? { ...prev, settings } : prev));
+  };
 
   useEffect(() => {
     void firstLoad();
+    return () => {
+      loadRequest.current++;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -133,6 +150,17 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
 
   return (
     <>
+      {failed && (
+        <View style={shared.card} accessibilityLiveRegion="polite">
+          <Text style={shared.body}>Couldn't refresh AI providers.</Text>
+          <Button
+            secondary
+            title="Try again"
+            disabled={busy}
+            onPress={firstLoad}
+          />
+        </View>
+      )}
       <FadeIn style={shared.card}>
         <View style={s.cardHead}>
           <Text style={[shared.sectionTitle, { flex: 1 }]}>Assistant</Text>
@@ -330,6 +358,8 @@ function ProviderRow({
   const def = AI_PROVIDERS[p.kind];
   const [model, setModel] = useState(active ? activeModel : "");
   const [models, setModels] = useState<string[] | null>(null);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [test, setTest] = useState<AiTestResult | null>(null);
   const savedModel = useRef(active ? activeModel : "");
   useEffect(() => {
@@ -348,6 +378,8 @@ function ProviderRow({
     providerGeneration.current = p.controls_revision ?? null;
     setTest(null);
     setModels(null);
+    setCatalogLoading(false);
+    setCatalogError(null);
     return () => {
       providerRevision.current = null;
       providerGeneration.current = null;
@@ -495,22 +527,44 @@ function ProviderRow({
             busy={busy}
             onSave={onControlsSaved}
           />
-          <View style={s.actions}>
+          <View
+            style={s.actions}
+            accessibilityState={{ busy: catalogLoading }}
+            aria-busy={catalogLoading}
+          >
             {def.listsModels && (
               <SmallAction
-                label={models ? "Reload models" : "Load models"}
+                accessibilityLiveRegion="polite"
+                label={
+                  catalogLoading
+                    ? "Loading models…"
+                    : catalogError
+                      ? "Retry loading models"
+                      : models
+                        ? "Reload models"
+                        : "Load models"
+                }
                 disabled={busy}
                 onPress={() =>
                   act(async () => {
-                    const result = await client.listAiModels(
-                      p.id,
-                      p.controls_revision,
-                    );
-                    if (
+                    const current = () =>
                       providerRevision.current === p.updated_at &&
-                      providerGeneration.current === p.controls_revision
-                    )
-                      setModels(result.models);
+                      providerGeneration.current === p.controls_revision;
+                    setCatalogLoading(true);
+                    setCatalogError(null);
+                    try {
+                      const result = await client.listAiModels(
+                        p.id,
+                        p.controls_revision,
+                      );
+                      if (current()) setModels(result.models);
+                    } catch (error) {
+                      if (!current()) return;
+                      setCatalogError("Couldn't load models. Try again.");
+                      throw error;
+                    } finally {
+                      if (current()) setCatalogLoading(false);
+                    }
                   })
                 }
               />
@@ -543,6 +597,15 @@ function ProviderRow({
               onPress={() => onUse(typed)}
             />
           </View>
+          {catalogError && (
+            <Text
+              accessibilityRole="alert"
+              accessibilityLiveRegion="polite"
+              style={[shared.small, { color: colors.danger }]}
+            >
+              {catalogError}
+            </Text>
+          )}
           {!typed && (
             <Text style={[shared.small, s.chipCaption]}>
               Pick or type a model to use this provider for the assistant.

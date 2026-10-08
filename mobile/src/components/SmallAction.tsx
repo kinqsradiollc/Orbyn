@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text } from "react-native";
+import { StyleSheet, Text, type TextProps } from "react-native";
 import { PressableScale } from "../motion";
 import { controls, colors, fonts, radii, themed } from "../theme";
 
@@ -9,11 +9,13 @@ export function SmallAction({
   onPress,
   disabled,
   destructive = false,
+  accessibilityLiveRegion,
 }: {
   label: string;
   onPress: () => void;
   disabled: boolean;
   destructive?: boolean;
+  accessibilityLiveRegion?: TextProps["accessibilityLiveRegion"];
 }) {
   return (
     <PressableScale
@@ -29,6 +31,7 @@ export function SmallAction({
       ]}
     >
       <Text
+        accessibilityLiveRegion={accessibilityLiveRegion}
         style={[
           s.actionText,
           { color: destructive ? colors.danger : colors.accent },

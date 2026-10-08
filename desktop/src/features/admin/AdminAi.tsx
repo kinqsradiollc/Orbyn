@@ -55,11 +55,18 @@ const offered = (kinds: readonly AiProviderKind[], current: AiProviderKind) =>
 export function AdminAi({ busy, revision, act, report }: Props) {
   const { ask, tell } = useConfirm();
   const [data, setData] = useState<AiProvidersResponse | null>(null);
+  const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<AiProvider | "new" | null>(null);
   /** Model chosen per provider row. */
   const [models, setModels] = useState<Record<string, string>>({});
   /** Models returned by "Load models", per provider. */
   const [loaded, setLoaded] = useState<Record<string, string[]>>({});
+  const [catalogLoading, setCatalogLoading] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [catalogErrors, setCatalogErrors] = useState<Record<string, string>>(
+    {},
+  );
   const [tests, setTests] = useState<Record<string, AiTestResult>>({});
   const [nightBudget, setNightBudget] = useState("1000000");
   useEffect(
@@ -75,6 +82,9 @@ export function AdminAi({ busy, revision, act, report }: Props) {
 
   const load = useCallback(async () => {
     const request = ++loadRequest.current;
+    setFailed(false);
+    setCatalogLoading({});
+    setCatalogErrors({});
     try {
       const next = await client.listAiProviders();
       if (request !== loadRequest.current) return;
@@ -83,7 +93,10 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       setLoaded({});
       setTests({});
     } catch (e) {
-      if (request === loadRequest.current) reportRef.current(e);
+      if (request === loadRequest.current) {
+        setFailed(true);
+        reportRef.current(e);
+      }
     }
   }, []);
 
@@ -133,24 +146,39 @@ export function AdminAi({ busy, revision, act, report }: Props) {
 
   const loadModels = (p: AiProvider) =>
     void act(async () => {
-      const { models: list } = await client.listAiModels(
-        p.id,
-        p.controls_revision,
-      );
-      if (
-        !dataRef.current?.providers.some(
-          (current) =>
-            current.id === p.id &&
-            current.updated_at === p.updated_at &&
-            current.controls_revision === p.controls_revision,
-        )
-      )
-        return;
-      setLoaded((m) => ({ ...m, [p.id]: list }));
+      const generation = loadRequest.current;
+      const current = () =>
+        generation === loadRequest.current &&
+        dataRef.current?.providers.some(
+          (row) =>
+            row.id === p.id &&
+            row.updated_at === p.updated_at &&
+            row.controls_revision === p.controls_revision,
+        );
+      setCatalogLoading((state) => ({ ...state, [p.id]: true }));
+      setCatalogErrors(({ [p.id]: _, ...rest }) => rest);
+      try {
+        const { models: list } = await client.listAiModels(
+          p.id,
+          p.controls_revision,
+        );
+        if (current()) setLoaded((m) => ({ ...m, [p.id]: list }));
+      } catch (error) {
+        if (!current()) return;
+        setCatalogErrors((state) => ({
+          ...state,
+          [p.id]: "Couldn't load models. Try again.",
+        }));
+        throw error;
+      } finally {
+        if (current())
+          setCatalogLoading((state) => ({ ...state, [p.id]: false }));
+      }
     });
 
   const test = (p: AiProvider) =>
     void act(async () => {
+      const generation = loadRequest.current;
       const requestedModel = modelFor(p).trim();
       if (!requestedModel || !p.controls_revision) return;
       setTests(({ [p.id]: _, ...rest }) => rest);
@@ -160,6 +188,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         p.controls_revision,
       );
       if (
+        generation !== loadRequest.current ||
         !dataRef.current?.providers.some(
           (current) =>
             current.id === p.id &&
@@ -208,8 +237,26 @@ export function AdminAi({ busy, revision, act, report }: Props) {
     void mutate(() => client.updateAiSettings({ provider_id: null }), "", true);
   };
 
+  const loadError = (
+    <section className="card" role="alert">
+      <p>Couldn't load AI providers.</p>
+      <button className="secondary" disabled={busy} onClick={() => void load()}>
+        Try again
+      </button>
+    </section>
+  );
+  if (!data)
+    return failed ? (
+      loadError
+    ) : (
+      <section className="card" aria-busy="true">
+        <p className="muted">Loading AI providers…</p>
+      </section>
+    );
+
   return (
     <>
+      {failed && loadError}
       <section className="card ai-assistant fade-up">
         <div className="section-heading">
           <h2>Assistant</h2>
@@ -426,7 +473,10 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                       />
                     </td>
                     <td data-label="Model">
-                      <div className="ai-model">
+                      <div
+                        className="ai-model"
+                        aria-busy={!!catalogLoading[p.id]}
+                      >
                         {choices && choices.length > 0 && (
                           <Select
                             searchable
@@ -496,8 +546,25 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                             disabled={busy}
                             onClick={() => loadModels(p)}
                           >
-                            <RefreshCw size={12} /> Load models
+                            <RefreshCw size={12} />
+                            {catalogLoading[p.id]
+                              ? "Loading models…"
+                              : catalogErrors[p.id]
+                                ? "Retry loading models"
+                                : "Load models"}
                           </button>
+                        )}
+                        <span
+                          role="status"
+                          aria-live="polite"
+                          className="sr-only"
+                        >
+                          {catalogLoading[p.id] ? "Loading models…" : ""}
+                        </span>
+                        {catalogErrors[p.id] && (
+                          <small role="alert" className="ai-test fail">
+                            {catalogErrors[p.id]}
+                          </small>
                         )}
                         {choices && !choices.length && (
                           <small className="muted">
