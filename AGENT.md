@@ -8,7 +8,8 @@ role/task; their instructions are part of these rules.
 - Read [development rules](docs/agents/development.md) before changing code.
 - Read [roles and coordination](docs/agents/coordination.md) for all session work.
 - Complete the **whole ADR checkpoint → Test → Review**. Builder owns source;
-  Tester executes tests; Reviewer inspects code/evidence without coding or tests.
+  Tester executes tests; Reviewer reviews code quality, test code and test evidence,
+  then guides Builder on fixes without coding or running tests.
 - Maximum **3 counted review rounds**, with earlier approval allowed. Preserve
   the counter; batch findings rather than handing off individual fixes.
 - **Use web preview to qualify the shared web/desktop UI.** Do not require
@@ -23,12 +24,13 @@ role/task; their instructions are part of these rules.
 
 ## Task guides
 
-| Work | Read |
-| --- | --- |
-| Product UI or copy | [UI/UX rules](docs/agents/ui-ux.md), linked design/content skills |
-| Services, privacy, imports, deployment | [Operations](docs/agents/operations.md) |
-| Checkpoint delivery | [Workflow](docs/reviews/checkpoint-workflow.md), [execution order](docs/reviews/adr-execution-order.md) |
-| Stage reporting | [Tracker guide](docs/reviews/stage-tracker-guide.md), [current state](docs/reviews/adr-current-state.md) |
+| Work                                   | Read                                                                                                     |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Product UI or copy                     | [UI/UX rules](docs/agents/ui-ux.md), linked design/content skills                                        |
+| Services, privacy, imports, deployment | [Operations](docs/agents/operations.md)                                                                  |
+| Checkpoint delivery                    | [Workflow](docs/reviews/checkpoint-workflow.md), [execution order](docs/reviews/adr-execution-order.md)  |
+| Code and test-evidence review          | [Reviewer guide](docs/agents/review.md)                                                                  |
+| Stage reporting                        | [Tracker guide](docs/reviews/stage-tracker-guide.md), [current state](docs/reviews/adr-current-state.md) |
 
 Use **Expo web** for mobile visual checks (the mobile app renderer, usually port 8083);
 record it as mobile-browser evidence, not native verification.
