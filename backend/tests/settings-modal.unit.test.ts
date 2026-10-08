@@ -48,11 +48,16 @@ function harness() {
     hidden: false,
     disabled: false,
     inert: false,
+    sidebar: null as any,
     getClientRects() {
       return this.hidden ? [] : [{}];
     },
-    closest() {
-      return this.disabled || this.inert ? {} : null;
+    closest(selector: string) {
+      return selector === ".sidebar"
+        ? this.sidebar
+        : this.disabled || this.inert
+          ? {}
+          : null;
     },
     focus() {
       document.activeElement = this;
@@ -112,6 +117,7 @@ function harness() {
       getComputedStyle: (element: any) => ({
         zIndex: String(element.layer ?? 0),
         visibility: element.hidden ? "hidden" : "visible",
+        transform: element.transform ?? "none",
       }),
       requestAnimationFrame: (fn: () => void) => fn(),
       CustomEvent: class {
@@ -254,6 +260,29 @@ test("both responsive workspace navigation controls expose a Settings return tar
     source,
     /className="icon-button mobile-menu"\s+data-settings-focus-return/,
   );
+});
+test("closing off-canvas navigation cannot recapture Settings focus before visibility hides", () => {
+  const view = harness();
+  view.opener.sidebar = {
+    classList: { contains: () => false },
+    transform: "matrix(1, 0, 0, 1, -10, 0)",
+  };
+  const navigation = view.control();
+  view.fallbacks.push(navigation);
+  view.cleanup();
+  assert.equal(view.document.activeElement, navigation);
+});
+test("visible desktop navigation and an open phone sidebar retain their valid opener", () => {
+  for (const open of [false, true]) {
+    const view = harness();
+    view.opener.sidebar = {
+      classList: { contains: () => open },
+      transform: open ? "matrix(1, 0, 0, 1, 0, 0)" : "none",
+    };
+    view.fallbacks.push(view.control());
+    view.cleanup();
+    assert.equal(view.document.activeElement, view.opener);
+  }
 });
 test("Tab remains inside Settings and Escape closes only when no nested overlay owns focus", () => {
   const view = harness();

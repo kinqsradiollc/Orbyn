@@ -67,6 +67,15 @@ export function restoreSettingsFocus(opener: HTMLElement | null): void {
       getComputedStyle(element).visibility !== "visible"
     )
       return false;
+    const navigation = element.closest<HTMLElement>(".sidebar");
+    // Closing phone navigation keeps visibility until its slide finishes.
+    // Focus must not return there during that transient visible frame.
+    if (
+      navigation &&
+      !navigation.classList.contains("open") &&
+      getComputedStyle(navigation).transform !== "none"
+    )
+      return false;
     element.focus({ preventScroll: true });
     return document.activeElement === element;
   };
