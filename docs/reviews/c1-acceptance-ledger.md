@@ -16,8 +16,13 @@ See [the scoped receipt](c1-personal-scanner-admission.md).
 
 Documentation-only follow-up `db896872` defines Builder/Visual Check/Stage Tracker
 responsibilities. It does not change the frozen application or test source.
-Visual Check has been assigned an actual enlargement/keyboard Settings review
-against the unchanged UI; that acceptance remains pending. No C1 completion,
+Root read QA-034's capability report. Actual CSS1280×720/DPR2/visual scale1
+and body15px remained unchanged after four browser zoom shortcuts; DPR2 was the
+baseline and does not prove200%. No supported genuine enlargement control was
+available. The denied native route was not retried. Enlarged Settings/keyboard
+and mobile acceptance remain blocked byENV031001, not accepted or waived.
+Report: `/Users/anhdang/.codex/visualizations/2026/10/08/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-034-enlargement-capability-2026-10-08/visual-analysis.md`.
+No screenshot exists for an enlarged state and no source/account data changed. No C1 completion,
 installed-native qualification or production deployment is claimed.
 
 
