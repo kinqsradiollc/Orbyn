@@ -1,6 +1,6 @@
 # ADR execution order
 
-Updated 7 October 2026. This orders the complete retained ADR; it does not replace
+Updated 8 October 2026. This orders the complete retained ADR; it does not replace
 its acceptance contract in `devday-2026-implementation-review.md`.
 
 ## Requested stop
@@ -18,15 +18,13 @@ then commit and integrate a production-ready scope into main. Do not describe
 candidate-only or unverified behavior as shipped. A failing or incomplete gate
 keeps that checkpoint open. External gates remain explicit and do not erase scope.
 
-Orbyn Visual Check captures screenshots only. Request one checkpoint at a time,
-with the page, UI state, viewport and theme to capture. Its Markdown handoff lists
-image paths, URLs, viewport sizes, themes and actions needed to reach each state;
-messages contain a short file-path handoff or a capture blocker. Do not ask that
-session to analyze layouts, compare designs or write findings.
-
-This session inspects the saved images, diagnoses issues and records findings in
-the checkpoint ledger. It owns implementation, qualification and integration.
-Existing visual reports remain historical evidence. The current capture manifest
+On 8 October the user authorized Orbyn Visual Check to analyze the rendered UI
+and report findings, superseding its capture-only assignment for this checkpoint.
+Request one checkpoint at a time with source ref, page, states, viewport/theme,
+and a Markdown handoff. The implementation session reviews the evidence and owns
+corrections, qualification and integration. Identify delegated pixel review
+accurately; inaccessible historical images remain unreviewed.
+Existing visual reports remain historical evidence. The earlier capture manifest
 is `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/review-tracking.md`.
 
 ## Canonical top-down delivery queue
@@ -78,10 +76,10 @@ visual QA could not establish safe dismissal. Browser review accepts390/320 conf
 
 ## Visual coordination requirement
 
-All visual capture requests from the implementation session must be sent to
-**Orbyn Visual Check**. That session captures original screenshots and writes a
-Markdown manifest; the implementation session inspects the originals and owns
-findings, changes and acceptance. Do not delegate design analysis to the capture
-session. Preserve source checkout, URL, viewport and exact image paths in each
-manifest. A blocked permission or stale preview is an open gate, never acceptance;
+All visual requests must be sent to **Orbyn Visual Check**. Its current authorized
+assignment includes analysis and a Markdown report. Preserve source checkout,
+URL, actual viewport/scale and original image paths or inline capture IDs; state
+when export or root inspection is unavailable. Assess task space, concise copy,
+interaction and recovery alongside containment, using `skills/orbyn-ui-design`.
+A blocked permission or stale preview is an open gate, never acceptance;
 respect tool restrictions without alternate-port/browser or indirect workarounds.

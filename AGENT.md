@@ -23,15 +23,18 @@ Never import from apps into packages, backend into packages, or packages into ap
 
 From `conventions-skill`: kebab-case.ts files, PascalCase components/types, camelCase functions, Prettier formatting, single quotes, 2-space indent, 100-char lines, no console.log, JSDoc for public APIs.
 
-## UI Conventions
+## UI and UX Conventions
 
-- **Design skill:** read `skills/orbyn-ui-design/SKILL.md` for visible UI changes.
-  Its referenced rules cover compact type, responsive panels, AI controls and visual acceptance.
+- **Design skill:** read `skills/orbyn-ui-design/SKILL.md` for UI/UX changes.
+  Its rules cover task flows, concise copy, compact layout, recovery and acceptance.
 - **Compact and readable:** use shared text roles; reserve display headings for deliberate
   hero content. Keep user text scaling enabled and reflow layouts instead of shrinking text.
 - **No unintended overlap:** adapt to the remaining pane width, wrap or stack controls,
   and collapse secondary panels before they obscure the main task. Verify open overlays,
   short heights, long labels, both themes and enlarged text in the changed flow.
+- **Brief copy, usable space:** use a label and only a necessary short helper.
+  Put optional explanations behind disclosure; keep consent/consequences visible.
+  Review density and task completion at narrow sizes, not just whether boxes fit.
 
 - **Colours:** never change the palette. Use theme tokens (`var(--color-*)` on web, `colors.*` on mobile); no colour literals in new code.
 - **Corners:** web uses the radius scale in `desktop/src/styles/global.css` — `--radius-xs` (4, bars and marks), `--radius-sm` (8, controls), `--radius-md` (12, cards and panels), `--radius-lg` (16, dialogs), `--radius-pill`. Mobile uses `radii.input` / `radii.card` / `radii.pill` (and `radii.check` for checkboxes). No raw pixel radii.

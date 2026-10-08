@@ -6,7 +6,7 @@ Skills are used by the BrainRouter agent to guide its behavior when working on t
 ## Enabled Skills
 
 - [`orbyn-ui-design/SKILL.md`](orbyn-ui-design/SKILL.md) - Orbyn UI/UX rules,
-  responsive layouts, compact typography, AI interactions and visual review
+  task flows, concise copy, responsive density, recovery and visual review
 
 - `planning-skill.md` - Breaks work into ordered tasks
 - `spec-driven-skill.md` - Creates specs before coding

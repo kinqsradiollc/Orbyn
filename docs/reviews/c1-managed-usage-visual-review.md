@@ -5,7 +5,51 @@ Capture session: Orbyn Visual Check. Root inspects originals and owns findings.
 Synthetic counters are confined to the disposable local QA account; no vendor
 billing, plan limits, cost or live inference is established by this fixture.
 
+## Current review responsibility
+
+On 8 October the user authorized Orbyn Visual Check to analyze the rendered UI
+and write findings, superseding its earlier capture-only role for this checkpoint.
+Its scoped report belongs in QA-027/visual-analysis.md. The implementation session
+reviews that report, owns corrections and integration, and distinguishes delegated
+pixel review from its own image inspection. Inaccessible historical screenshots
+remain unreviewed; capture manifests alone do not establish layout acceptance.
+Direct browser access in the implementation session was rejected by the saved
+site permission. No alternate-browser, port or export workaround is authorized.
+
 ## Current checkpoint
+
+Frozen candidate dbcf8c84 adds a narrow Theme control correction to c69f342f.
+Focused23/23, desktop types and web build pass. Fresh full regression is running
+in `orbyn_c1_theme_containment_20261008_test`; no terminal pass or main delivery
+is claimed. Logs: `/tmp/orbyn-c1-theme-containment-full-20261008.log` and the
+corresponding terminal JSON when complete.
+
+Delegated review report:
+`/Users/anhdang/.codex/visualizations/2026/10/08/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/QA-027-c1-usage-loading-error-retry-2026-10-08/visual-analysis.md`.
+Root reviewed the report; this is delegated pixel review, with inline-only
+images, not exported originals or personal root inspection.
+
+| Finding | Current state | Next action |
+| --- | --- | --- |
+| V01: Theme clipping | Corrected at normal web320/390/1280 and mobile-browser320/390, both themes; pointer/keyboard checked on web | Finish exact-source qualification; keep enlarged/native gates open |
+| V02: double search focus | Open P3, web1280 Dark | One visible focus owner, targeted recheck |
+| V03: Settings density | Open P2, actual CSS320×740; 192px header/navigation, 54.5px collapsed rows plus12–14px gaps | Compact chrome/rows while retaining readable text and touch targets |
+| V04: Connected agents copy | Open P2;165px introduction pushes Connect to y601; another110px explanation | Short helper and immediate action; optional detail in disclosure |
+| Enlarged text | Unverified; zoom shortcut had no actual effect | Supported measured enlargement, no inferred pass |
+| Overall Settings/full C1/native | Not accepted | Complete remaining flow and platform matrices |
+
+After the local container stopped, its temporary DB was lost. Only the owned
+stock test container was started; missing `orbyn_ui_preview` was migrated and the
+same disposable QA account recreated. Health200/register201/authenticated-me200
+receipt: `/tmp/orbyn-c1-preview-after-stop-recovery-20261008.json`.
+Fresh browser sign-in succeeded. Current usage is zero; historical synthetic
+usage/recovery captures below remain unreviewed and were not recreated.
+
+The user's supplied Settings screenshots also reject density and explanatory
+paragraphs. `skills/orbyn-ui-design` now records researched UI and UX rules;
+changing guidance does not itself fix or accept the application UI.
+
+## Previous checkpoint and fixture cleanup
 
 Candidate c69f342f is frozen locally and not merged. Fresh4248/4248 regression,
 69/69 vector cohort, upgrade1/1 and late-install1/1 pass; types/web build pass.

@@ -1,9 +1,9 @@
 ---
 name: orbyn-ui-design
-description: "Design, implement, or review Orbyn web, desktop, and mobile interfaces, including responsive layouts, typography, overlays, and AI interactions. Use for changes to visible product flows; not for backend-only work."
+description: "Design, implement, or review Orbyn UI and UX across web, desktop, and mobile: task flows, concise copy, responsive layouts, overlays, and AI interactions. Use for visible product flows; not backend-only work."
 ---
 
-# Orbyn Ui Design
+# Orbyn UI and UX Design
 
 Make Orbyn easy to scan and operate at real window sizes. Keep its palette and
 shared components. Compact default text must remain readable and grow with user
@@ -14,6 +14,8 @@ accessibility settings.
 - Read `AGENT.md` and the active ADR checkpoint; preserve scope and stage order.
 - Read [design rules](references/design-rules.md) for typography, layout, copy,
   AI behavior, and the visual acceptance matrix.
+- Read [UX rules](references/ux-rules.md) when changing navigation, task steps,
+  forms, onboarding, feedback, recovery, or explanatory content.
 - Read [research](references/research.md) when choosing or revising a rule. It
   distinguishes accessibility requirements, research guidance, and Orbyn choices.
 - Inspect the owning screen and shared controls before adding a local override.
@@ -22,8 +24,8 @@ accessibility settings.
 
 ## Design and implement
 
-1. State the person's main task and the screen's main action. Sketch the content
-   hierarchy and behavior with sidebars, keyboard, or dialogs open.
+1. State the person's main task, starting state, and observable success. Map the
+   steps, cancellation, failure, and return path before arranging controls.
 2. Use existing text roles, spacing, and controls. Reduce competing headings,
    repeated actions, and explanatory copy before changing font sizes.
 3. Adapt to the actual content width: collapse secondary panels, stack forms,
@@ -44,7 +46,8 @@ do not label it personal inspection.
 Use the matrix in the rules for the changed feature. Verify actual CSS viewport,
 zoom, and screenshot provenance before diagnosing a cropped or scaled image.
 Passing builds, DOM dimensions, and screenshot metadata alone do not prove a
-usable layout. Browser review does not prove installed-native behavior.
+usable layout. Review density, discoverability, and task completion as well as
+containment. Browser review does not prove installed-native behavior.
 
 Fix reproduced problems and request a targeted recheck. Retain failed attempts
 and unverified states. If browser permission or export is rejected, report the

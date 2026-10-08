@@ -39,6 +39,25 @@ guidance. Our sampled preview matrix is not a full conformance assessment.
   supports editing, opting out, and a manual path alongside automation.
   Orbyn keeps suggestion review/dismissal and manual task/doc editing reachable.
 
+## UX: task flow, concise content, and recovery
+
+Additional primary guidance reviewed 8 October 2026 before extending the skill:
+
+| Source | Guidance applied to Orbyn |
+| --- | --- |
+| [Nielsen Norman Group: usability heuristics](https://www.nngroup.com/articles/ten-usability-heuristics/) | Observable state, familiar terms, recognizable actions, efficient paths, cancellation, and relevant content. These are heuristics, not proof of usability or a mandatory aesthetic. |
+| [GOV.UK: text input hints](https://design-system.service.gov.uk/components/text-input/#hint-text) | Brief, relevant field help; long explanations make repeated field interaction harder. Orbyn defaults to one short helper sentence when needed. |
+| [GOV.UK: details](https://design-system.service.gov.uk/components/details/) | Disclose optional help; keep information needed by most users visible. Orbyn keeps consent and important consequences beside their action. |
+| [GOV.UK: error messages](https://design-system.service.gov.uk/components/error-message/) | Distinguish correctable field validation from service/permission failures. Orbyn offers an appropriate retry or next action while retaining input. |
+| [Google PAIR: errors and graceful failure](https://pair.withgoogle.com/chapter/errors-failing/) | Failures include wrong assumptions about context; give people a way forward. Orbyn preserves manual editing and review when AI is unavailable or wrong. |
+| [GOV.UK: moderated usability testing](https://www.gov.uk/service-manual/user-research/using-moderated-usability-testing) | Use believable task goals without revealing the solution. Orbyn distinguishes an agent walkthrough from research with actual or likely users. |
+
+The user's 320×740 Settings examples establish a local density/copy requirement:
+containment alone is insufficient, large repeated headers waste task space, and
+routine cards should not carry explanatory essays. Review CSS dimensions and
+interaction outcomes; screenshot image pixels may differ from the CSS viewport.
+The compact targets are Orbyn decisions, not dimensions mandated by these sources.
+
 ## Local decisions and source anchors
 
 These are Orbyn choices, not externally mandated sizes or universal AI rules:

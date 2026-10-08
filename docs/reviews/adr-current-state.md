@@ -13,17 +13,22 @@ Fresh full4246/4246 passes with zero skips/cancellations; focused170/170,
 catalog/inventory10/10, vector repeat34/34, workspace types/backend/web builds
 and scoped web/mobile browser review pass. Remaining C1 gates below stay open.
 
-Current local candidate: compact phone-width Settings navigation, c69f342f.
-Fresh regression4248/4248, separate vector69/69, legacy upgrade1/1 and restored
-stock-schema late vector-install1/1 pass with zero failures/skips/cancellations.
-Workspace typechecks and web build pass. Candidate is not merged or pushed.
-Visual Check reports successful disposable-admin sign-in in Codex's internal
-browser at `/app` following explicit human approval; Settings/overflow and representative loading,
-error and Refresh recovery captures are complete. Their inline-only images still
-await root inspection. The temporary gateway and two synthetic usage jobs have
-been removed; the normal local API8008 is healthy.
-The earlier sign-in blocker is resolved. Inline captures are not saved originals
-or root visual acceptance. Details: [current usage/Settings review](c1-managed-usage-visual-review.md).
+Current frozen local candidate: dbcf8c84, containing compact Settings navigation
+c69f342f and a narrow Theme control correction. Focused23/23, desktop types and
+web build pass; its fresh full regression is running, not qualified or merged.
+Parent c69f342f independently passed4248/4248, vector69/69, upgrade1/1 and
+late-install1/1; these are not results from the newer source.
+The user now authorizes Visual Check's analysis. Its delegated normal-scale
+recheck accepts Theme containment on web320/390/1280 and mobile-browser320/390,
+Light/Dark. Root reviewed its report; exported originals remain unavailable.
+Overall Settings UX is not accepted: duplicate search focus, excessive narrow
+chrome/rows and Connected agents copy remain open. 200% enlargement and native
+acceptance remain unverified. The researched repository skill now covers UI and
+UX task flows, concise copy, density, recovery and cross-client acceptance.
+The local test container stopped and lost its temporary DB; the owned preview DB
+and disposable admin were restored. Fresh login works; usage counters are zero.
+Historical positive/error/overflow images remain unreviewed. Details:
+[current usage/Settings review](c1-managed-usage-visual-review.md).
 
 The controls/usage checkpoint is merged and pushed to main as `9a869240`.
 The requested CodeHype badge is pushed to main; revised hero placement is `7e28f2bc`.

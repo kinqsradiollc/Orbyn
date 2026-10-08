@@ -30,6 +30,13 @@ Use the shared scale by role at normal text settings:
 
 ## Layout, panels, and overlays
 
+- Check density as well as fit. At normal 320×740 settings, the header, search,
+  category selector, and section chrome must leave useful room for the setting
+  being changed. Fitting an oversized control is not sufficient acceptance.
+- Use compact single-line section headers and existing control heights. Reduce
+  redundant card wrappers, accumulated gaps, and decorative padding before
+  reducing readable text or touch targets. Never scale the entire desktop layout
+  into a narrow window. Enlarged text may legitimately require taller rows.
 - Measure the main pane after navigation and secondary panels consume space.
   Breakpoints must work with sidebars expanded, collapsed, and open together.
 - If panes cannot fit, turn secondary navigation into a drawer or switch between
@@ -62,6 +69,10 @@ Use the shared scale by role at normal text settings:
 
 - Put the task, current state, and main action first. Use a brief helper only
   where it changes the person's decision; reveal advanced details on demand.
+- Default to a clear label and, only when needed, one short helper sentence.
+  Do not put product tutorials or repeated paragraphs on task/settings cards.
+  Put optional setup, developer, and background explanation behind a named
+  disclosure or help link; keep material consent and consequences visible.
 - Empty states say what is missing and offer the relevant action. Avoid slogans,
   greeting essays, large decorative cards, and repeating the same explanation.
 - Remove duplicate buttons for the same action in one context. Rare management
@@ -103,6 +114,7 @@ Inspect representative states, not just a clean empty page:
 | --- | --- |
 | Width/height | Web 320/390/768/1280; mobile browser 320/390; short window and landscape where relevant |
 | Containers | Expanded/collapsed main nav, secondary panel, nested picker/dialog, actual pane width |
+| Density/UX | Useful task space at 320×740; concise copy; clear first action; complete, cancel, recover and return without losing work |
 | Appearance | Light/Dark, normal and 200% web text/zoom; native enlarged text settings |
 | Content | Empty/populated, long/localized labels, large catalogs, selected/manual values |
 | Network/state | Loading, offline/error, retry, success, disabled, stale/revoked where relevant |
@@ -121,3 +133,6 @@ state/actions, image path or inline capture ID, inspected outcome, severity,
 reproduction, and unverified scope. Separate confirmed defects from capture/DPR
 errors. Acceptance requires the changed flow to remain readable, reachable, and
 free of unintended clipping/overlap, with supported feature parity preserved.
+Record excessive chrome, repeated explanations, and unnecessary steps as UX
+defects even when all boxes fit. Resize through intermediate widths and near
+breakpoints; passing a few fixed screenshots does not prove every size works.

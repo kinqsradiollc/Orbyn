@@ -1,5 +1,27 @@
 # C1 acceptance ledger
 
+## Settings containment and UX rules — 8 October 2026
+
+Current frozen candidate dbcf8c84 includes c69f342f compact Settings navigation
+and the reproduced QA-027-V01 Theme containment correction. Focused23/23,
+desktop types and web build pass. Fresh full regression is running:
+`/tmp/orbyn-c1-theme-containment-full-20261008.log`. No newer full pass or main
+product integration is claimed. Parent4248/4248/vector69/69/upgrade1/1/
+late-install1/1 remain historical results for c69f342f.
+
+User-authorized delegated Visual Check recheck accepts the normal-scale Theme
+control on web320/390/1280 and mobile browser320/390, Light/Dark. Root reviewed
+its Markdown report. 200% enlargement did not occur and remains unverified;
+native checks and historical usage-fixture images remain open. V02 duplicate
+focus, V03 narrow density and V04 long Connected agents copy are recorded in
+[the current visual review](c1-managed-usage-visual-review.md).
+
+The repository skill and AGENT.md now cover UI and UX: concise helper text,
+optional disclosure, compact responsive task space, navigation, observable
+feedback, cancellation and recovery. Primary-source research precedes the rules;
+skill validation and diff checks pass. This documentation does not close any
+product acceptance gate. C1 remains active; finish it before the requested pause.
+
 ## Independent embedding discovery candidate — 8 October 2026
 
 Local checkpoint1941fe13 adds a purpose-specific catalog route using the
