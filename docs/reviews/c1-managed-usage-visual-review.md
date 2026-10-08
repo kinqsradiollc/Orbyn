@@ -504,3 +504,6 @@ failure, explicit unknown-field labels, transport cancellation, installed-native
 genuine enlarged text, live vendor behavior, billing/plan data or complete C1.
 Application/test source is unchanged from qualified main0bad2971 (full4322/4322);
 this checkpoint changes evidence only, so no redundant regression was run.
+
+Main delivery: evidence checkpoint5b427293 fast-forwarded and pushed; primary
+user changes, including mobile/app.json checksum, remain unchanged.

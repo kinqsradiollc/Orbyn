@@ -33,7 +33,7 @@ Usage-state browser acceptance checkpoint completed on
 `codex/c1-usage-state-acceptance`: root reviewed QA-035 large/unknown and QA-036
 loading/503/explicit retry reports. Scoped normal-browser checks pass; two marked
 fixtures are removed with other jobs preserved, direct API8008 restored, and
-API/web/mobile return200. Evidence-only integration is pending. No new UI fix or
+API/web/mobile return200. Evidence-only checkpoint5b427293 is merged and pushed. No new UI fix or
 vendor request was made. See [usage review](c1-managed-usage-visual-review.md).
 Next implementation checkpoint is entrypoint/recovery matrix reconciliation.
 
