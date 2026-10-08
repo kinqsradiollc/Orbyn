@@ -38,16 +38,22 @@ counter or start a fourth round. Unresolved findings stay open.
   Builder still answers direct user questions and provides pause/completion handoffs.
 - Message sessions only with direct user authorization. Respect explicit scope and pauses.
 
-## Local QA login permission
+## Local development and QA authorization
 
-The repository owner authorizes signing into disposable local Orbyn QA accounts,
-including the Terms/Privacy acceptance on the login form. Permission persists
-across sessions, restarts and local web/Expo preview origins. Carry that direct
-user authorization into visual handoffs; do not request it again for each port.
-Keep credentials in protected fixtures and out of reports. This permission does
-not cover production accounts, third-party provider consent, or changed legal
-consequences. If a tool still requires fresh consent, record its actual rejection
-and ask only for the specific action it blocks; never bypass tool restrictions.
+The repository owner gives standing permission for local actions needed for the
+agreed task: edit code/configuration, run checks, inspect and operate previews,
+create/sign into QA accounts, accept local Orbyn Terms/Privacy, change disposable
+test data, and start/restart/rebuild/clean up owned disposable test services.
+This covers web, shared desktop UI and Expo web across local origins, sessions
+and restarts. Do not request permission again for these actions; carry this
+authorization into agent handoffs. Explicit user pauses or exclusions still apply.
+
+Keep credentials protected and preserve unrelated work and non-disposable data.
+Local authorization does not extend to production changes, third-party account
+consent, purchases or external messages; use the user's separate authorization
+for those. Honor enforced tool restrictions. If a tool rejects an authorized
+action, report its actual reason and request only the missing tool permission;
+never bypass the restriction.
 
 Details: [delivery workflow](../reviews/checkpoint-workflow.md),
 [review criteria](review.md), [progress tracking](../reviews/stage-tracker-guide.md),
