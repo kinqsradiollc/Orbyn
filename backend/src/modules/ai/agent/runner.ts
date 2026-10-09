@@ -1,5 +1,6 @@
 import { assistantRuntimeHasRoom } from "./runtime-slots.js";
 import { reserveAssistantJobWork } from "./work-budget.js";
+import { LEAD_TOKEN_BUDGET } from "./lead.js";
 import { flushAssistantAwayNotices } from "./notices.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
@@ -31,6 +32,20 @@ export async function claimAssistantJob(
          WHERE candidate.state = 'queued' AND candidate.runtime_lane = $1 AND candidate.run_state->>'version' = '1'
            AND candidate.run_state->'request' IS NOT NULL
            AND ($1='interactive' OR assistant_lane_budget_available(candidate.user_id,$1,clock_timestamp()))
+           -- Skip a run whose cumulative allowance is exhausted. Otherwise its
+           -- oldest queued row blocks every later owner in this runtime lane.
+           AND ($1='interactive' OR greatest(
+             CASE WHEN candidate.run_state#>>'{state,token_estimate}' ~ '^[0-9]{1,8}$'
+               THEN (candidate.run_state#>>'{state,token_estimate}')::integer ELSE 0 END,
+             coalesce((SELECT sum(coalesce(r.reported_tokens,r.reserved_tokens))
+               FROM assistant_work_reservations r WHERE r.job_id=candidate.id),0)
+           ) < least(
+             coalesce((SELECT s.per_run_token_limit FROM assistant_lane_budget_settings s
+               WHERE s.user_id=candidate.user_id AND s.lane=$1),200000),
+             CASE WHEN candidate.run_state#>>'{request,automation,token_budget}' ~ '^[1-9][0-9]{0,8}$'
+               THEN least((candidate.run_state#>>'{request,automation,token_budget}')::integer,$2::integer)
+               ELSE $2::integer END
+           ))
            AND ($1<>'overnight' OR candidate.run_origin<>'handoff'
              OR assistant_handoff_window_open(candidate.user_id,clock_timestamp()))
            AND (
@@ -78,7 +93,7 @@ export async function claimAssistantJob(
                AND busy.work_source_kind=candidate.work_source_kind AND busy.work_source_id=candidate.work_source_id
                AND busy.state IN ('running','waiting')))
          ORDER BY candidate.created_at, candidate.id FOR UPDATE OF candidate SKIP LOCKED LIMIT 1`,
-        [lane],
+        [lane, LEAD_TOKEN_BUDGET],
       )
     ).rows[0];
     if (!candidate) return null;

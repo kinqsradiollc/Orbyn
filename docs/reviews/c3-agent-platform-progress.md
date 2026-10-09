@@ -3,7 +3,9 @@
 **State:** Whole C3 candidate implemented on `codex/c3-agent-platform` from
 main `88b49d88`. Test round 1 found a legacy-checkpoint recovery regression;
 Builder corrected it and Tester retest passed. Reviewer round 1 found two more
-gaps; Builder corrected them and Tester retest passed. Reviewer closure is pending.
+gaps; Builder corrected them and Tester retest passed. Reviewer closed those
+findings but found a queue-progress edge case (R3); Builder corrected it,
+pending Tester retest and Reviewer closure.
 No C3 code is on main yet.
 The user asked to pause the goal after C3 is accepted, merged and pushed.
 
@@ -64,4 +66,14 @@ run suites passed **42/42** after these changes; the subsequent budget-only
 concurrency and lowered-limit additions passed **5/5**. [Tester retest](c3-test-r1-review-fixes.md)
 passed **43/43** affected suites, **19/19** recovery/lane checks and **2/2**
 extra Agenda authority phases, plus migration 261 and backend typecheck.
-Reviewer closure is still pending.
+Reviewer closed R1/R2; the queue-progress R3 finding remains pending.
+
+## Queue-progress correction
+
+[Reviewer correction review](c3-review-r1-closure.md) closed R1/R2 and found
+that an exhausted oldest job could block later owners' work. The Background
+and Overnight claim query now skips jobs with no cumulative per-run or
+original-request capacity; a later owner can be claimed, and the held job
+becomes eligible again if its owner raises the limit. Builder's two-owner,
+both-lane and competing-claimer check plus existing budget/lane suites passed
+**12/12**. Tester retest and Reviewer closure of R3 remain pending in round 1/3.

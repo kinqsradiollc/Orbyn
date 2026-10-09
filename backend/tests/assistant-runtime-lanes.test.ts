@@ -9,6 +9,8 @@ const { pool, transaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { initialAssistantRun } = await import("../src/modules/ai/agent/run.js");
 const { claimAssistantJob } = await import("../src/modules/ai/agent/runner.js");
+const { replaceAssistantBudget } =
+  await import("../src/modules/assistant-workspace/budgets.js");
 const { acquireAssistantRuntime } =
   await import("../src/modules/ai/agent/runtime-lanes.js");
 let userId: string;
@@ -29,11 +31,11 @@ after(async () => {
   await pool.end();
 });
 
-async function enqueue(automation?: AssistantAutomation) {
+async function enqueue(automation?: AssistantAutomation, owner = userId) {
   const chat = (
     await pool.query(
       "INSERT INTO ai_chats(id,user_id,title) VALUES(gen_random_uuid(),$1,'Runtime ownership') RETURNING id",
-      [userId],
+      [owner],
     )
   ).rows[0].id;
   const checkpoint = initialAssistantRun({
@@ -48,10 +50,82 @@ async function enqueue(automation?: AssistantAutomation) {
   return (
     await pool.query(
       "INSERT INTO ai_jobs(user_id,chat_id,turn_id,state,run_state) VALUES($1,$2,$3,'queued',$4) RETURNING id,runtime_lane",
-      [userId, chat, checkpoint.request.turn_id, JSON.stringify(checkpoint)],
+      [owner, chat, checkpoint.request.turn_id, JSON.stringify(checkpoint)],
     )
   ).rows[0] as { id: string; runtime_lane: string };
 }
+
+test("requeued exhausted work cannot block later owners in either automation lane", async () => {
+  for (const lane of ["background", "overnight"] as const) {
+    const other = (
+      await pool.query<{ id: string }>(
+        "INSERT INTO users(email,password_hash,name) VALUES($1,'test','Ready owner') RETURNING id",
+        [`runtime-ready-${randomUUID()}@example.test`],
+      )
+    ).rows[0].id;
+    try {
+      await replaceAssistantBudget(userId, lane, {
+        expected_revision: 1,
+        daily_token_limit: 5000,
+        hourly_start_limit: 5,
+        per_run_token_limit: 2000,
+      });
+      const automation: AssistantAutomation =
+        lane === "background" ? { kind: "idea" } : { kind: "night" };
+      const exhausted = await enqueue(automation);
+      assert.equal(
+        (await claimAssistantJob(`initial-${lane}`, lane))?.id,
+        exhausted.id,
+      );
+      await pool.query(
+        `UPDATE ai_jobs SET state='queued',claimed_by=NULL,lease_until=NULL,
+         created_at=now()-interval '1 hour',
+         run_state=jsonb_set(run_state,'{state,token_estimate}','1200'::jsonb)
+         WHERE id=$1`,
+        [exhausted.id],
+      );
+      await replaceAssistantBudget(userId, lane, {
+        expected_revision: 2,
+        daily_token_limit: 5000,
+        hourly_start_limit: 5,
+        per_run_token_limit: 1000,
+      });
+      const ready = await enqueue(automation, other);
+      const claims = await Promise.all([
+        claimAssistantJob(`another-owner-${lane}-1`, lane),
+        claimAssistantJob(`another-owner-${lane}-2`, lane),
+      ]);
+      assert.deepEqual(
+        claims.map((row) => row?.id ?? null).sort(),
+        [null, ready.id].sort(),
+      );
+      assert.equal(await claimAssistantJob(`again-${lane}`, lane), null);
+      assert.equal(
+        (
+          await pool.query("SELECT state FROM ai_jobs WHERE id=$1", [
+            exhausted.id,
+          ])
+        ).rows[0].state,
+        "queued",
+      );
+      assert.deepEqual(
+        (
+          await pool.query(
+            "SELECT reserved_tokens,reported_tokens FROM assistant_work_reservations WHERE job_id=$1",
+            [exhausted.id],
+          )
+        ).rows,
+        [{ reserved_tokens: 2000, reported_tokens: 1200 }],
+      );
+    } finally {
+      await pool.query("DELETE FROM users WHERE id=$1", [other]);
+      await pool.query(
+        "DELETE FROM assistant_lane_budget_settings WHERE user_id=$1 AND lane=$2",
+        [userId, lane],
+      );
+    }
+  }
+});
 
 test("new jobs derive ownership from the request, including night source kinds", async () => {
   assert.equal((await enqueue()).runtime_lane, "interactive");
