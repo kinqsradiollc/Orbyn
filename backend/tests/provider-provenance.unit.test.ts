@@ -1,6 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { providerDetailLines, chatTraceEntry } from "@orbyn/core";
+import {
+  providerDetailLines,
+  chatTraceEntry,
+  chatgptExecutorDevice,
+  chatgptExecutorDeviceLabel,
+} from "@orbyn/core";
 const event = (
   tool: string,
   label: string,
@@ -37,5 +42,18 @@ test("provider receipts distinguish completed use from requested fallback and re
   assert.deepEqual(
     providerDetailLines([...trace, trace[0]]),
     providerDetailLines(trace),
+  );
+});
+
+test("executor display identity names the device and rejects multiline labels", () => {
+  const device = chatgptExecutorDevice.parse({
+    type: "android",
+    name: "Pixel 8",
+  });
+  assert.equal(chatgptExecutorDeviceLabel(device), "Pixel 8 · Android app");
+  assert.equal(
+    chatgptExecutorDevice.safeParse({ type: "ios", name: "iPhone\nspoofed" })
+      .success,
+    false,
   );
 });

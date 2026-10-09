@@ -1,4 +1,5 @@
 const { randomUUID } = require("node:crypto");
+const { hostname } = require("node:os");
 const { createChatgptVault } = require("./chatgpt-vault.cjs");
 const {
   createChatgptRegistrationStore,
@@ -318,6 +319,13 @@ async function createChatgptManager({
         binding,
         client: ctx.client,
         signer,
+        device: {
+          type: "desktop",
+          name:
+            hostname()
+              .replace(/\.(?:local|lan)$/i, "")
+              .slice(0, 60) || "This computer",
+        },
         models: models.models,
         complete: models.completeDefault,
         completeAssigned: models.completeAssigned,

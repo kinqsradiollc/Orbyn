@@ -1,7 +1,7 @@
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
 import { useId, useState } from "react";
-import { CHATGPT_USAGE_URL } from "@orbyn/core";
+import { CHATGPT_USAGE_URL, chatgptExecutorDeviceLabel } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { useChatgptRemote } from "../../hooks/useChatgptRemote";
 
@@ -101,7 +101,9 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
             </option>
             {state.devices.map((d, i) => (
               <option key={d.executor_id} value={d.executor_id}>
-                Device {i + 1} · {d.host_id.slice(0, 8)}
+                {d.device
+                  ? chatgptExecutorDeviceLabel(d.device)
+                  : `Device ${i + 1} · ${d.host_id.slice(0, 8)}`}
               </option>
             ))}
           </Select>

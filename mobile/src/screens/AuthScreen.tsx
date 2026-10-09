@@ -189,9 +189,8 @@ export function AuthScreen({
             )}
             {register && (
               <Text style={s.fine}>
-                Orbyn counts which features you use — never what you write — to
-                keep it running and improve it. Turn that off any time in
-                Settings → Privacy. No ads, no trackers, never sold.
+                Orbyn counts feature use, never what you write. Turn it off in
+                Settings → Privacy.
               </Text>
             )}
             {!!notice && <Text style={s.notice}>{notice}</Text>}

@@ -10,6 +10,7 @@ import {
   type ChatgptInferenceAssignment,
   type ChatgptModelBinding,
   type ChatgptModel,
+  type ChatgptExecutorDevice,
 } from "@orbyn/core";
 import type { OrbynClient } from "./client.js";
 import type { ChatgptExecutorSigner } from "./chatgpt-executor-signer.js";
@@ -27,6 +28,7 @@ export function createChatgptExecutorLifecycle(options: {
     | "publishChatgptModels"
   >;
   signer: ChatgptExecutorSigner;
+  device?: ChatgptExecutorDevice;
   models: (signal: AbortSignal) => Promise<ChatgptModel[]>;
   requireLiveConnection: () => Promise<void>;
   /** Supplied only by a local credential-owning runtime with a working provider adapter. */
@@ -268,6 +270,7 @@ export function createChatgptExecutorLifecycle(options: {
             connection_id: binding.connection_id,
             host_id: metadata.host_id,
             public_key: metadata.public_key,
+            ...(options.device ? { device: options.device } : {}),
           },
           signal,
         );

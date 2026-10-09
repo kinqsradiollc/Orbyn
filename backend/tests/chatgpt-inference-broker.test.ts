@@ -529,6 +529,10 @@ test("only undisclosed expired work can fallback; lost envelopes and uncertain f
 });
 test("assigned input is encrypted; only one claim and signed completed output are accepted", async () => {
   const f = await fixture();
+  await pool.query(
+    "UPDATE chatgpt_executor_enrollments SET device_type='ios',device_name='iPhone 16 Pro' WHERE id=$1",
+    [f.selection.executor_id],
+  );
   const request = await queueChatgptInference(f.owner, f.job, f.selection, {
     instructions: "Private instructions",
     input: [{ role: "user", content: "Private question" }],
@@ -560,7 +564,11 @@ test("assigned input is encrypted; only one claim and signed completed output ar
   ).rows[0].trace;
   assert.equal(trace.filter((e: any) => e.tool?.startsWith("pc_c:")).length, 1);
   assert.ok(
-    trace.some((e: any) => e.label === "ChatGPT · fixture-model · completed"),
+    trace.some(
+      (e: any) =>
+        e.label ===
+        "ChatGPT · fixture-model · iPhone 16 Pro · iOS app · completed",
+    ),
   );
   const { readCompletedChatgptUsage } =
     await import("../src/modules/auth/chatgpt-usage.js");

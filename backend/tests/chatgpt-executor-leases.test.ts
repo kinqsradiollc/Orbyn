@@ -58,7 +58,10 @@ async function person(userId?: string) {
   ).rows[0].id;
   return { userId: id, sessionId, token };
 }
-async function fixture() {
+async function fixture(device?: {
+  type: "desktop" | "ios" | "android";
+  name: string;
+}) {
   const session = await person();
   const attempt = await beginChatgptConnection(session);
   const connection = await finishChatgptConnection(
@@ -80,6 +83,7 @@ async function fixture() {
   const enrollmentInput = {
     connection_id: connection.id,
     host_id: randomUUID(),
+    ...(device ? { device } : {}),
     public_key: keys.publicKey
       .export({ type: "spki", format: "der" })
       .toString("base64url"),
@@ -681,13 +685,21 @@ test("the central sweeper removes expired lease proofs and retains live proofs",
 test("owned device discovery is credential-free, cross-device and excludes revoked/expired registrations", async () => {
   const { listChatgptExecutors } =
     await import("../src/modules/auth/chatgpt-model-catalog.js");
-  const f = await fixture();
+  const f = await fixture({ type: "ios", name: "iPhone 16 Pro" });
   const remote = await person(f.session.userId);
   assert.deepEqual(await listChatgptExecutors(remote), [
     {
       executor_id: f.executor.id,
       connection_id: f.connection.id,
       host_id: f.executor.host_id,
+    },
+  ]);
+  assert.deepEqual(await listChatgptExecutors(remote, true), [
+    {
+      executor_id: f.executor.id,
+      connection_id: f.connection.id,
+      host_id: f.executor.host_id,
+      device: { type: "ios", name: "iPhone 16 Pro" },
     },
   ]);
   assert.deepEqual(await listChatgptExecutors(await person()), []);
@@ -702,8 +714,8 @@ test("owned device discovery is credential-free, cross-device and excludes revok
   assert.deepEqual(await listChatgptExecutors(revoked.session), []);
 });
 
-test("device discovery API enforces session principals, empty query, account restrictions and rate limits", async () => {
-  const f = await fixture();
+test("device discovery API enforces session principals, optional device details, account restrictions and rate limits", async () => {
+  const f = await fixture({ type: "ios", name: "iPhone 16 Pro" });
   const app = await createService("all", [chatgptExecutorRoutes]);
   const path = "/ai/connections/chatgpt/executors";
   const call = (token?: string, url = path, ip = "10.78.5.1") =>
@@ -749,6 +761,16 @@ test("device discovery API enforces session principals, empty query, account res
         executor_id: f.executor.id,
         connection_id: f.connection.id,
         host_id: f.executor.host_id,
+      },
+    ]);
+    const detailed = await call(f.session.token, `${path}?details=device`);
+    assert.equal(detailed.statusCode, 200, detailed.body);
+    assert.deepEqual(detailed.json(), [
+      {
+        executor_id: f.executor.id,
+        connection_id: f.connection.id,
+        host_id: f.executor.host_id,
+        device: { type: "ios", name: "iPhone 16 Pro" },
       },
     ]);
     await pool.query("UPDATE users SET disabled=true WHERE id=$1", [

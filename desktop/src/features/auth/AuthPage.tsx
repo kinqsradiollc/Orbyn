@@ -190,10 +190,8 @@ export function AuthPage({
                   </span>
                 </label>
                 <p>
-                  Orbyn counts which features you use — never what you write —
-                  to keep it running and improve it. You can turn that off in
-                  Settings → Privacy. No ads, no third-party trackers, and your
-                  data is never sold.
+                  Orbyn counts feature use, never what you write. Turn it off in
+                  Settings → Privacy.
                 </p>
               </div>
             )}

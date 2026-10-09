@@ -37,6 +37,7 @@ import {
 } from "../../modules/orbyn-chatgpt";
 import { client } from "./api";
 import { session } from "./session";
+import { deviceLabel } from "./device";
 import { createNativeChatgptProtectedStore } from "./chatgpt-protected-store";
 import { createNativeChatgptAccountDirectory } from "./chatgpt-account-directory";
 import { migrateNativeChatgptSingleton } from "./chatgpt-account-migration";
@@ -1394,6 +1395,10 @@ export async function createNativeChatgptExecutor(userId: string) {
     binding,
     client,
     signer,
+    device: {
+      type: Platform.OS === "ios" ? "ios" : "android",
+      name: deviceLabel(),
+    },
     requireLiveConnection: live,
     models: async (signal) =>
       (await readNativeChatgptModels(userId, { signal })).models,

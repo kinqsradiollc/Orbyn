@@ -641,6 +641,7 @@ export async function finishChatgptInference(session: Session, value: unknown) {
         "completed",
         operation?.operation_id,
         db,
+        r.executor_id,
       );
     }
     return { accepted: true };

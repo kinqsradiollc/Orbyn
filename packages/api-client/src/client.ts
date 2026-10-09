@@ -1801,10 +1801,13 @@ export class OrbynClient {
   /** Discover owned devices without provider credentials or signing keys. */
   async chatgptExecutors(signal?: AbortSignal) {
     return chatgptExecutorList.parse(
-      await this.request<unknown>("/ai/connections/chatgpt/executors", {
-        signal,
-        fresh: true,
-      }),
+      await this.request<unknown>(
+        "/ai/connections/chatgpt/executors?details=device",
+        {
+          signal,
+          fresh: true,
+        },
+      ),
     );
   }
 

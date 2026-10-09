@@ -17,11 +17,20 @@ type Session = { userId: string; sessionId: string };
 type Selection = import("zod").output<typeof chatgptCatalogSelection>;
 
 /** Discover only this person's registrations with an unexpired owning device session. */
-export async function listChatgptExecutors(session: Session) {
+export async function listChatgptExecutors(
+  session: Session,
+  withDevice = false,
+) {
   return transaction(async (db) => {
     await requireLiveSession(db, session);
-    const result = await db.query(
-      `SELECT e.id AS executor_id,e.connection_id,e.host_id
+    const result = await db.query<{
+      executor_id: string;
+      connection_id: string;
+      host_id: string;
+      device: unknown;
+    }>(
+      `SELECT e.id AS executor_id,e.connection_id,e.host_id,
+         CASE WHEN e.device_type IS NULL THEN NULL ELSE jsonb_build_object('type',e.device_type,'name',e.device_name) END AS device
        FROM chatgpt_executor_enrollments e
        JOIN chatgpt_identity_connections c ON c.id=e.connection_id
        JOIN sessions s ON s.id=e.session_id AND s.user_id=c.user_id
@@ -31,7 +40,11 @@ export async function listChatgptExecutors(session: Session) {
       [session.userId],
     );
     await requireLiveSession(db, session);
-    return chatgptExecutorList.parse(result.rows);
+    return chatgptExecutorList.parse(
+      result.rows.map(({ device, ...row }) =>
+        withDevice ? { ...row, device } : row,
+      ),
+    );
   });
 }
 

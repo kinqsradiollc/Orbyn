@@ -1,7 +1,7 @@
 import { AgendaPrivateSettings } from "./AgendaPrivateSettings";
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
-import { CHATGPT_USAGE_URL } from "@orbyn/core";
+import { CHATGPT_USAGE_URL, chatgptExecutorDeviceLabel } from "@orbyn/core";
 import React, { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -562,7 +562,9 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
                 }}
               >
                 <Text style={shared.body}>
-                  Device {i + 1} · {d.host_id.slice(0, 8)}
+                  {d.device
+                    ? chatgptExecutorDeviceLabel(d.device)
+                    : `Device ${i + 1} · ${d.host_id.slice(0, 8)}`}
                 </Text>
               </Pressable>
             ))}
