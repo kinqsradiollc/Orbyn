@@ -76,4 +76,7 @@ and Overnight claim query now skips jobs with no cumulative per-run or
 original-request capacity; a later owner can be claimed, and the held job
 becomes eligible again if its owner raises the limit. Builder's two-owner,
 both-lane and competing-claimer check plus existing budget/lane suites passed
-**12/12**. Tester retest and Reviewer closure of R3 remain pending in round 1/3.
+**12/12**. [Tester retest](c3-test-r1-r3.md) passed **25/25** budget/lane/recovery
+cases, migration 262, backend typecheck, and extra checks for checkpoint-only
+exhaustion and restored eligibility after raising the cap in both lanes.
+Reviewer closure of R3 remains pending in round 1/3.
