@@ -115,6 +115,7 @@ let current: {
   mode: "sign-in" | "refresh" | "migration" | "switch";
   key?: string;
   sessionToken?: string;
+  retired?: string;
 } | null = null;
 let disconnecting = false;
 const executorRequests = new Map<string, symbol>();
@@ -825,6 +826,9 @@ async function renewNativeRegistration(
       grant: null,
       ...(saved.signingAlias ? { signingAlias: saved.signingAlias } : {}),
     });
+    // Only this exact in-flight refresh may maintain its existing lease.
+    // The consumed grant is already unusable for catalogs or inference.
+    if (!parent && current?.id === id) current.retired = retired;
     await writeProtectedItem(key, retired, protectedOptions);
     check();
     if (grant.idToken !== saved.grant.idToken) {
@@ -868,6 +872,7 @@ async function renewNativeRegistration(
       ...(saved.signingAlias ? { signingAlias: saved.signingAlias } : {}),
     });
     await writeProtectedItem(key, installed, protectedOptions);
+    if (!parent && current?.id === id) current.retired = undefined;
     if (
       controller.signal.aborted ||
       session.token !== sessionToken ||
@@ -878,6 +883,7 @@ async function renewNativeRegistration(
     }
     return { original: installed, saved: { ...saved, revision: id, grant } };
   } catch (error) {
+    if (!parent && current?.id === id) current.retired = undefined;
     if (
       error instanceof ChatgptLocalTokenError &&
       error.code === "invalid_refresh"
@@ -1303,27 +1309,47 @@ export async function createNativeChatgptExecutor(userId: string) {
     subject: connection.subject,
     client_id: connection.client_id,
   };
-  const live = async () => {
+  const live = async (heartbeat = false, retry = true): Promise<void> => {
     check();
     if ((await accountKey(userId)) !== key)
       throw new Error("The selected ChatGPT account changed.");
     check();
-    const record = decodeRegistration(
-      await readProtectedItem(key, protectedOptions),
+    const stored = await readProtectedItem(key, protectedOptions);
+    const record = decodeRegistration(stored);
+    const retired = heartbeat ? decodeRetiredRegistration(stored) : null;
+    const refreshing = Boolean(
+      retired &&
+      current?.mode === "refresh" &&
+      current.key === key &&
+      current.sessionToken === token &&
+      !current.controller.signal.aborted &&
+      current.retired === stored &&
+      retired.revision === current.id &&
+      retired.signingAlias === saved.signingAlias,
     );
+    const owned = record ?? (refreshing ? retired : null);
     check();
     if (
-      !record ||
-      !record.grant.sharingGranted ||
-      record.connection.id !== connection.id ||
-      record.connection.client_id !== connection.client_id ||
-      record.connection.subject !== connection.subject ||
-      record.connection.issuer !== connection.issuer ||
-      record.signingAlias !== saved.signingAlias
+      !owned ||
+      (record && !record.grant.sharingGranted) ||
+      owned.connection.id !== connection.id ||
+      owned.connection.client_id !== connection.client_id ||
+      owned.connection.subject !== connection.subject ||
+      owned.connection.issuer !== connection.issuer ||
+      owned.signingAlias !== saved.signingAlias
     )
       throw new Error("The ChatGPT account changed. Reconnect it.");
     const rows = await client.chatgptConnections();
     check();
+    if ((await readProtectedItem(key, protectedOptions)) !== stored) {
+      if (retry) return live(heartbeat, false);
+      throw new Error("The ChatGPT account changed. Reconnect it.");
+    }
+    if (
+      refreshing &&
+      (current?.retired !== stored || current.controller.signal.aborted)
+    )
+      throw new Error("The ChatGPT account changed. Reconnect it.");
     if (
       !rows.some(
         (row) =>
@@ -1341,6 +1367,7 @@ export async function createNativeChatgptExecutor(userId: string) {
     binding,
     hostId: host,
     requireLiveConnection: live,
+    requireHeartbeatConnection: () => live(true),
     keys: {
       metadata: () => nativeChatgptKeyMetadata(alias),
       sign: (fingerprint, message) =>
@@ -1400,6 +1427,7 @@ export async function createNativeChatgptExecutor(userId: string) {
       name: deviceLabel(),
     },
     requireLiveConnection: live,
+    requireHeartbeatConnection: () => live(true),
     models: async (signal) =>
       (await readNativeChatgptModels(userId, { signal })).models,
     inference: {

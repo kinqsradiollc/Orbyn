@@ -28,21 +28,25 @@ export function createChatgptExecutorSigner(options: {
   keys: ChatgptExecutorKeyAdapter;
   digest: (message: string) => Promise<string>;
   requireLiveConnection: () => Promise<void>;
+  /** Lease renewal may continue while a local token replacement is being verified. */
+  requireHeartbeatConnection?: () => Promise<void>;
 }) {
   const binding = Object.freeze(chatgptModelBinding.parse(options.binding));
   const hostId = chatgptModelBinding.shape.connection_id.parse(options.hostId);
   let closed = false;
   const same = (value: unknown) =>
     JSON.stringify(value) === JSON.stringify(binding);
-  const live = async () => {
+  const live = async (heartbeat = false) => {
     if (closed) throw new Error("The executor signing key was disconnected.");
-    await options.requireLiveConnection();
+    await (heartbeat && options.requireHeartbeatConnection
+      ? options.requireHeartbeatConnection()
+      : options.requireLiveConnection());
     if (closed) throw new Error("The executor signing key was disconnected.");
   };
-  const metadata = async () => {
-    await live();
+  const metadata = async (heartbeat = false) => {
+    await live(heartbeat);
     const key = await options.keys.metadata();
-    await live();
+    await live(heartbeat);
     chatgptExecutorStart.parse({
       connection_id: binding.connection_id,
       host_id: hostId,
@@ -52,15 +56,19 @@ export function createChatgptExecutorSigner(options: {
       throw new Error("The executor signing key is unavailable.");
     return { ...key, host_id: hostId };
   };
-  const proof = async (message: string, expiresAt?: string) => {
+  const proof = async (
+    message: string,
+    expiresAt?: string,
+    heartbeat = false,
+  ) => {
     if (expiresAt && Date.parse(expiresAt) <= Date.now())
       throw new Error("The executor proof expired.");
-    const key = await metadata();
+    const key = await metadata(heartbeat);
     const signature = await options.keys.sign(
       key.public_key_fingerprint,
       message,
     );
-    await live();
+    await live(heartbeat);
     if (expiresAt && Date.parse(expiresAt) <= Date.now())
       throw new Error("The executor proof expired.");
     return chatgptExecutorFinish.shape.signature.parse(signature);
@@ -145,7 +153,11 @@ export function createChatgptExecutorSigner(options: {
       const heartbeat = chatgptLeaseHeartbeat.parse(value);
       return {
         heartbeat,
-        signature: await proof(chatgptLeaseHeartbeatMessage(heartbeat)),
+        signature: await proof(
+          chatgptLeaseHeartbeatMessage(heartbeat),
+          undefined,
+          true,
+        ),
       };
     },
     async signCatalog(value: unknown) {

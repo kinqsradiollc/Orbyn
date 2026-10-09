@@ -58,6 +58,7 @@ function mount(
     refreshIdentity?: object;
     failRefreshProof?: boolean;
     onRefresh?: () => Promise<void>;
+    onRefreshProof?: () => Promise<void>;
     refreshError?: { status: number; code: string };
     failMappingStore?: boolean;
     onFinish?: () => void;
@@ -597,6 +598,7 @@ function mount(
             },
             verifyChatgptRefreshIdentity: async (input: object) => {
               calls.refreshProof.push(input);
+              await options.onRefreshProof?.();
               if (options.failRefreshProof)
                 throw new Error("Invalid identity proof");
               return { ...connection, ...options.refreshIdentity };
@@ -1161,6 +1163,137 @@ test("an owned executor heartbeat stays live during its verified refresh but new
   await models;
   await runtime.heartbeat();
   runtime.close();
+});
+test("inference refresh keeps lease heartbeats live after token retirement without reusing the consumed grant", async () => {
+  let entered!: () => void, release!: () => void;
+  const reachedProof = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const blockedProof = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = mount({
+    signing: true,
+    inference: "success",
+    refreshedId: true,
+    onRefreshProof: async () => {
+      entered();
+      await blockedProof;
+    },
+  });
+  await f.signIn();
+  const runtime = await f.executor();
+  await runtime.start();
+  expireSoon(f);
+  const inference = runtime.executeNext();
+  await reachedProof;
+  const retired = JSON.parse(accounts(f.storage)[0][1]);
+  assert.equal(retired.version, 2);
+  assert.equal(retired.grant, null);
+  const modelCalls = f.calls.modelTokens.length;
+  await runtime.heartbeat();
+  assert.equal(f.calls.modelTokens.length, modelCalls);
+  assert.equal(f.calls.responseTokens.length, 0);
+  release();
+  assert.deepEqual(await inference, { processed: true });
+  assert.equal(
+    JSON.parse(accounts(f.storage)[0][1]).grant.accessToken,
+    "refreshed-access",
+  );
+  assert.equal(f.calls.responseTokens.length, 1);
+  assert.equal(f.calls.responses, 1);
+  await runtime.heartbeat();
+  runtime.close();
+});
+test("foreground scheduler stays ready when a lease heartbeat overlaps native refresh verification", async () => {
+  let entered!: () => void, release!: () => void;
+  const reachedProof = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const blockedProof = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = mount({
+    signing: true,
+    inference: "success",
+    refreshedId: true,
+    onRefreshProof: async () => {
+      entered();
+      await blockedProof;
+    },
+  });
+  await f.signIn();
+  const timers = new Map<object, { delay: number; run: () => Promise<void> }>();
+  const foreground = api.createChatgptForegroundRuntime({
+    available: async () => true,
+    create: () => f.executor(),
+    schedule: ((run: () => Promise<void>, delay: number) => {
+      const timer = {};
+      timers.set(timer, { delay, run });
+      return timer;
+    }) as typeof setTimeout,
+    cancel: ((timer: object) => {
+      timers.delete(timer);
+    }) as typeof clearTimeout,
+  });
+  foreground.update({ userId, token: f.session.token, foreground: true });
+  for (
+    let index = 0;
+    index < 100 && foreground.snapshot().status !== "ready";
+    index++
+  )
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.equal(foreground.snapshot().status, "ready");
+  expireSoon(f);
+  const tick = (delay: number) => {
+    const [timer, task] = [...timers].find(([, item]) => item.delay === delay)!;
+    timers.delete(timer);
+    return task.run();
+  };
+  const inference = tick(10000);
+  await reachedProof;
+  await tick(25000);
+  assert.equal(foreground.snapshot().status, "ready");
+  release();
+  await inference;
+  assert.equal(foreground.snapshot().status, "ready");
+  assert.equal(f.calls.responses, 1);
+  foreground.close();
+});
+test("invalid refresh proof or changed session cannot keep a retired native executor live", async () => {
+  for (const invalid of ["proof", "session"] as const) {
+    let entered!: () => void, release!: () => void;
+    const reachedProof = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const blockedProof = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const f = mount({
+      signing: true,
+      inference: "success",
+      refreshedId: true,
+      failRefreshProof: invalid === "proof",
+      onRefreshProof: async () => {
+        entered();
+        await blockedProof;
+      },
+    });
+    await f.signIn();
+    const runtime = await f.executor();
+    await runtime.start();
+    expireSoon(f);
+    const inference = runtime.executeNext();
+    const rejectedInference = assert.rejects(inference);
+    await reachedProof;
+    if (invalid === "session") f.session.token = "replacement-session";
+    release();
+    await rejectedInference;
+    assert.equal(JSON.parse(accounts(f.storage)[0][1]).grant, null);
+    await assert.rejects(runtime.heartbeat());
+    assert.equal(f.calls.responses, 0);
+    runtime.close();
+  }
 });
 test("queued native catalog reads cannot adopt a replacement Orbyn session", async () => {
   let entered!: (value?: unknown) => void, release!: (value?: unknown) => void;

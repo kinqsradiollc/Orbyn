@@ -31,6 +31,8 @@ export function createChatgptExecutorLifecycle(options: {
   device?: ChatgptExecutorDevice;
   models: (signal: AbortSignal) => Promise<ChatgptModel[]>;
   requireLiveConnection: () => Promise<void>;
+  /** Only lease renewal may accept a locally verified refresh in progress. */
+  requireHeartbeatConnection?: () => Promise<void>;
   /** Supplied only by a local credential-owning runtime with a working provider adapter. */
   inference?: {
     client: Pick<
@@ -56,16 +58,19 @@ export function createChatgptExecutorLifecycle(options: {
   const lifetime = new AbortController();
   const same = (value: unknown) =>
     JSON.stringify(value) === JSON.stringify(binding);
-  const live = async (signal: AbortSignal) => {
+  const live = async (signal: AbortSignal, heartbeat = false) => {
     throwIfAborted(signal);
     if (closed) throw new Error("The ChatGPT executor was stopped.");
-    await options.requireLiveConnection();
+    await (heartbeat && options.requireHeartbeatConnection
+      ? options.requireHeartbeatConnection()
+      : options.requireLiveConnection());
     throwIfAborted(signal);
     if (closed) throw new Error("The ChatGPT executor was stopped.");
   };
   const ordered = <T>(
     work: (signal: AbortSignal) => Promise<T>,
     external?: AbortSignal,
+    heartbeat = false,
   ): Promise<T> => {
     const execute = async () => {
       const controller = new AbortController();
@@ -75,7 +80,7 @@ export function createChatgptExecutorLifecycle(options: {
       if (lifetime.signal.aborted || external?.aborted) abort();
       const timer = setTimeout(abort, 30000);
       try {
-        await live(controller.signal);
+        await live(controller.signal, heartbeat);
         return await work(controller.signal);
       } finally {
         clearTimeout(timer);
@@ -325,25 +330,29 @@ export function createChatgptExecutorLifecycle(options: {
       }, signal);
     },
     heartbeat(signal?: AbortSignal) {
-      return ordered(async (signal) => {
-        const captured = currentLease();
-        const signed = await options.signer.signHeartbeat({
-          executor_id: captured.executor_id,
-          lease_epoch: captured.lease_epoch,
-          sequence: ++heartbeatSequence,
-        });
-        await live(signal);
-        currentLease();
-        const renewed = validateLease(
-          await options.client.renewChatgptExecutorLease(signed, signal),
-        );
-        await live(signal);
-        currentLease();
-        if (renewed.lease_epoch !== captured.lease_epoch)
-          throw new Error("The ChatGPT executor lease generation changed.");
-        lease = renewed;
-        return { ...renewed, binding: { ...renewed.binding } };
-      }, signal);
+      return ordered(
+        async (signal) => {
+          const captured = currentLease();
+          const signed = await options.signer.signHeartbeat({
+            executor_id: captured.executor_id,
+            lease_epoch: captured.lease_epoch,
+            sequence: ++heartbeatSequence,
+          });
+          await live(signal, true);
+          currentLease();
+          const renewed = validateLease(
+            await options.client.renewChatgptExecutorLease(signed, signal),
+          );
+          await live(signal, true);
+          currentLease();
+          if (renewed.lease_epoch !== captured.lease_epoch)
+            throw new Error("The ChatGPT executor lease generation changed.");
+          lease = renewed;
+          return { ...renewed, binding: { ...renewed.binding } };
+        },
+        signal,
+        true,
+      );
     },
     refreshCatalog(signal?: AbortSignal) {
       return ordered(publish, signal);
