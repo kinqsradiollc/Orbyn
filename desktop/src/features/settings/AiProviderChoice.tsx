@@ -125,9 +125,9 @@ export function AiProviderChoiceControls({
     }
   };
   return (
-    <section className="settings-subform" aria-label="AI provider routing">
+    <section className="settings-subform ai-provider-routing" aria-label="AI provider routing">
       <h3>Provider</h3>
-      <div className="button-row start">
+      <div className="button-row start ai-provider-options">
         <button
           type="button"
           className="secondary"
@@ -164,7 +164,7 @@ export function AiProviderChoiceControls({
         </small>
       )}
       {choice?.primary === "chatgpt" && (
-        <label className="settings-checkbox">
+        <label className="settings-checkbox ai-provider-fallback">
           <input
             type="checkbox"
             checked={choice.fallback_to_default}
