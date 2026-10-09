@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -917,6 +917,169 @@ test("desktop request watcher recovers from a poll failure and stops after logou
     assert.equal(f.calls(), 0);
   } finally {
     manager.close();
+    await f.cleanup();
+  }
+});
+
+test("manager stops the selected executor and retains reconnect mapping after terminal refresh", async () => {
+  const f = await fixture();
+  let terminal = true;
+  const manager = await create({
+    ...f.options,
+    signIn: async (input: any) => {
+      const result = await f.options.signIn(input);
+      if (terminal) {
+        const saved = await input.vault.read(result.binding);
+        await input.vault.write(
+          result.binding,
+          { ...saved.credentials, expiresAt: Date.now() + 1000 },
+          saved.revision,
+        );
+      }
+      return result;
+    },
+    fetch: async (url: string, init: RequestInit) => {
+      if (url === "https://auth.openai.com/api/accounts/oauth/token")
+        return Response.json(
+          { error: "refresh_token_reused" },
+          { status: 400 },
+        );
+      return f.options.fetch(url, init);
+    },
+  });
+  try {
+    await manager.setSession("account-a");
+    await assert.rejects(manager.connect());
+    const state = await manager.snapshot();
+    assert.equal(state.status, "unavailable");
+    assert.equal(state.connections.length, 1);
+    assert.equal(state.connections[0].sharing_granted, null);
+    assert.equal(state.selection.executor, undefined);
+    assert.equal(state.catalog, null);
+    assert.equal(f.calls(), 0);
+    terminal = false;
+    const restored = await manager.reconnect(
+      state.connections[0].registration_id,
+    );
+    assert.equal(restored.connections.length, 1);
+    assert.equal(restored.connections[0].sharing_granted, true);
+    assert.equal(restored.catalog.status, "ready");
+  } finally {
+    manager.close();
+    await f.cleanup();
+  }
+});
+
+function credentialFile(
+  f: Awaited<ReturnType<typeof fixture>>,
+  binding: object,
+  purpose?: string,
+) {
+  const namespace = createHash("sha256")
+    .update(f.options.apiBaseUrl)
+    .digest("hex");
+  return path.join(
+    f.options.directory,
+    namespace,
+    ...(purpose ? [purpose] : []),
+    createHash("sha256").update(JSON.stringify(binding)).digest("hex") + ".enc",
+  );
+}
+test("desktop disconnect erases locked credentials and reports OpenAI revocation as unconfirmed", async () => {
+  const f = await fixture();
+  try {
+    await f.manager.setSession("account-a");
+    const connected = await f.manager.connect();
+    f.options.safeStorage.isAsyncEncryptionAvailable = async () => false;
+    const result = await f.manager.disconnect(
+      connected.selection.registrationId,
+    );
+    assert.deepEqual(result.cleanup_failures, []);
+    assert.equal(result.remote_revocation_confirmed, false);
+    assert.equal(result.state.selection.registrationId, null);
+    await assert.rejects(
+      stat(credentialFile(f, connected.connections[0].binding)),
+      (e: any) => e.code === "ENOENT",
+    );
+  } finally {
+    await f.cleanup();
+  }
+});
+test("desktop key removal failure still erases credentials, revokes server and clears selection", async () => {
+  const f = await fixture();
+  try {
+    await f.manager.setSession("account-a");
+    const connected = await f.manager.connect();
+    const keyFile = credentialFile(
+      f,
+      connected.connections[0].binding,
+      "executor-key",
+    );
+    await rm(keyFile);
+    await mkdir(keyFile);
+    const result = await f.manager.disconnect(
+      connected.selection.registrationId,
+    );
+    assert.deepEqual(result.cleanup_failures, ["signing_key"]);
+    assert.equal(result.state.selection.registrationId, null);
+    await assert.rejects(
+      stat(credentialFile(f, connected.connections[0].binding)),
+      (e: any) => e.code === "ENOENT",
+    );
+    assert.equal(result.state.connections[0].sharing_granted, null);
+    assert.doesNotMatch(JSON.stringify(result), /private-fixture/);
+  } finally {
+    await f.cleanup();
+  }
+});
+test("desktop server disconnect failure does not prevent local erasure or selection clearing", async () => {
+  const f = await fixture();
+  const manager = await create({
+    ...f.options,
+    createClient: async (token: string) => {
+      const client = await f.options.createClient(token);
+      client.revokeChatgptConnection = async () => {
+        throw new Error("private-fixture-refresh");
+      };
+      return client;
+    },
+  });
+  try {
+    await manager.setSession("account-a");
+    const connected = await manager.connect();
+    const result = await manager.disconnect(connected.selection.registrationId);
+    assert.deepEqual(result.cleanup_failures, ["server"]);
+    assert.equal(result.state.selection.registrationId, null);
+    await assert.rejects(
+      stat(credentialFile(f, connected.connections[0].binding)),
+      (e: any) => e.code === "ENOENT",
+    );
+    assert.doesNotMatch(JSON.stringify(result), /private-fixture/);
+  } finally {
+    manager.close();
+    await f.cleanup();
+  }
+});
+
+test("desktop failed credential erasure is explicit and does not skip other cleanup", async () => {
+  const f = await fixture();
+  try {
+    await f.manager.setSession("account-a");
+    const connected = await f.manager.connect();
+    const file = credentialFile(f, connected.connections[0].binding);
+    await rm(file);
+    await mkdir(file);
+    const result = await f.manager.disconnect(
+      connected.selection.registrationId,
+    );
+    assert.deepEqual(result.cleanup_failures, ["credentials"]);
+    assert.equal(result.state.selection.registrationId, null);
+    assert.equal(result.state.connections[0].sharing_granted, null);
+    await assert.rejects(
+      stat(credentialFile(f, connected.connections[0].binding, "executor-key")),
+      (e: any) => e.code === "ENOENT",
+    );
+  } finally {
     await f.cleanup();
   }
 });

@@ -38,19 +38,33 @@ test("an unclaimed request explains the missing handoff without asserting device
     /Complete ChatGPT sign-in/,
   );
 });
-test("web and mobile use the same server-state feedback without auto-launching a scheme", async () => {
-  for (const path of [
-    "../../desktop/src/features/settings/ChatgptRemoteModels.tsx",
-    "../../mobile/src/screens/settings/ChatgptModelsSection.tsx",
-  ]) {
-    const source = await readFile(new URL(path, import.meta.url), "utf8");
-    assert.match(source, /chatgptConnectFeedback\(next\.state/);
-    assert.match(source, /connectFeedback\.label/);
-    assert.match(source, /connectFeedback\.message/);
-    assert.match(source, /Requires Orbyn desktop open/);
-    assert.doesNotMatch(
-      source,
-      /window\.location\.href\s*=\s*request\.launch_url/,
-    );
-  }
+test("web does not silently request a desktop while native Settings uses local sign-in", async () => {
+  const web = await readFile(
+    new URL(
+      "../../desktop/src/features/settings/ChatgptRemoteModels.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(web, /Direct web sign-in is unavailable/);
+  assert.doesNotMatch(
+    web,
+    /startChatgptConnectRequest|chatgptConnectRequest|connectFeedback/,
+  );
+  assert.doesNotMatch(web, /window\.location\.href\s*=\s*request\.launch_url/);
+  const native = await readFile(
+    new URL(
+      "../../mobile/src/screens/settings/ChatgptModelsSection.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(native, /await signInNativeChatgpt\(userId, \{/);
+  assert.match(native, /await prepareNativeChatgptAccounts\(userId, \{/);
+  assert.match(native, /chatgptForeground\.restart\(\)/);
+  assert.doesNotMatch(
+    native,
+    /startChatgptConnectRequest|Requires Orbyn desktop open/,
+  );
+  assert.match(native, /Browser connection unavailable/);
 });

@@ -9,6 +9,7 @@ async function createChatgptCredentialResolver({
   fetch,
   verifyIdentity,
   refresh = refreshChatgptTokens,
+  onInvalidated,
 }) {
   const { chatgptModelBinding } = await import("@orbyn/core");
   const binding = Object.freeze(chatgptModelBinding.parse(input));
@@ -50,29 +51,53 @@ async function createChatgptCredentialResolver({
           throw new Error(
             "Reconnect this ChatGPT account before its next request.",
           );
-        const replacement = await refresh(credentials, {
-          fetch,
-          signal: combined,
-        });
-        combined.throwIfAborted();
-        await live();
-        if (replacement.clientId !== binding.client_id)
-          throw new Error("The refreshed ChatGPT registration changed.");
-        if (replacement.idToken !== credentials.idToken) {
-          const identity = await verifier(replacement.idToken, {
-            clientId: binding.client_id,
-            subject: binding.subject,
-          });
-          if (
-            identity.issuer !== binding.issuer ||
-            identity.subject !== binding.subject ||
-            identity.clientId !== binding.client_id
-          )
-            throw new Error("The refreshed ChatGPT account changed.");
+        let replacement;
+        try {
+          replacement = await refresh(credentials, { fetch, signal: combined });
+        } catch (error) {
+          if (error?.code === "AUTH_REFRESH_EXPIRED") {
+            combined.throwIfAborted();
+            await live();
+            // Conditional erasure must never revoke credentials from a later sign-in.
+            await vault.revokeObserved(binding, saved.revision, {
+              signal: combined,
+            });
+            onInvalidated?.();
+            throw new Error("Reconnect this ChatGPT account.");
+          }
+          throw error;
         }
-        combined.throwIfAborted();
-        await live();
-        await vault.write(binding, replacement, saved.revision);
+        // Rotation consumed the observed token. Retire it before cancellable
+        // post-refresh verification; preserve a concurrently newer registration.
+        const retiredRevision = await vault.revokeObserved(
+          binding,
+          saved.revision,
+        );
+        try {
+          combined.throwIfAborted();
+          await live();
+          if (replacement.clientId !== binding.client_id)
+            throw new Error("The refreshed ChatGPT registration changed.");
+          if (replacement.idToken !== credentials.idToken) {
+            const identity = await verifier(replacement.idToken, {
+              clientId: binding.client_id,
+              subject: binding.subject,
+            });
+            if (
+              identity.issuer !== binding.issuer ||
+              identity.subject !== binding.subject ||
+              identity.clientId !== binding.client_id
+            )
+              throw new Error("The refreshed ChatGPT account changed.");
+          }
+          combined.throwIfAborted();
+          await live();
+          await vault.write(binding, replacement, retiredRevision);
+        } catch (error) {
+          // The consumed grant is retired; surface reconnect without restoring it.
+          onInvalidated?.();
+          throw error;
+        }
         combined.throwIfAborted();
         await live();
         saved = await vault.read(binding);

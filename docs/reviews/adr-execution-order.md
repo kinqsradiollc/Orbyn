@@ -3,16 +3,16 @@
 Updated 8 October 2026. This orders the complete retained ADR; it does not replace
 its acceptance contract in `devday-2026-implementation-review.md`.
 
-## Requested stop
+## Current instruction
 
-On 8 October 2026 the user requested a pause **after completing C1**. Finish and
-qualify all retained C1 requirements, provide a remaining-work table, and pause
-before starting C2/M1. This does not waive C1 acceptance or reduce the full ADR.
+The user resumed on 8 October after C1 acceptance. Complete full C2/M1 next,
+then consolidated Test → Review. Do not reopen C1 or advance to C3 before C2
+acceptance. Product work is isolated from current main and unrelated candidates.
 
 ## Working rule
 
 Complete the full active ADR checkpoint before the formal Test → Review handoff:
-currently this means all retained C1 scope. Builder implements, Tester qualifies
+currently this means all retained C2/M1 scope. Builder implements, Tester qualifies
 the frozen candidate, and Reviewer reviews code/evidence and guides Builder on fixes without coding or running tests. Follow
 [the checkpoint workflow](checkpoint-workflow.md), including its recorded maximum
 of three review rounds and retesting after fixes. Record native/external gates;
@@ -32,19 +32,19 @@ is `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd2
 
 The user explicitly requires the full ADR from top down (7 October 2026).
 This supersedes the earlier Docs-first queue. QA-006 remains a completed scoped
-checkpoint, not evidence that an entire ADR stage is complete. C1 is complete under the final user-approved scope; C2 remains queued during the requested pause;
+checkpoint, not evidence that an entire ADR stage is complete. C1 is complete under the final user-approved scope; C2/M1 is now active;
 normal Docs activation stays queued under C4. Existing work is retained.
 
-| Order | Scope                                                | Current state                                                          | Exit condition                                                                                                                                                                           |
-| ----- | ---------------------------------------------------- | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | C1: model/provider/connection contracts              | Complete; accepted round2/3, merged main6f56c548 | Managed/BYO/plan boundaries, supported models/request capabilities, explicit fallback, caching evaluation, multiple-provider and embedding configuration/migration requirements verified |
-| 2     | C2/M1: SIWC, account catalogs/defaults and execution | Partial; standalone web and installed OAuth/inference acceptance open  | Correct platform connection, verified account/plan permissions, truthful usage, catalog/default persistence, protected tokens, lifecycle/revocation and actual inference acceptance      |
-| 3     | C3: rules, ownership, activity and budgets           | Foundations implemented                                                | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                    |
-| 4     | C4/D1: Docs parity and UI regressions                | Foundation candidate; normal editor activation unfinished              | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
-| 5     | C5: bound pages, publication and channels            | Foundations/candidates implemented                                     | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                   |
-| 6     | C6: separate plugin backend/UI and security          | Partial                                                                | Independent connector authority, managed/BYO provider execution and launch contexts, real host OAuth/UI, authorized scan evidence and triage verified                                    |
-| 7     | U1: final whole-app acceptance                       | Required within each stage; sampled checks only so far                 | Every named surface and cross-client feature, themes, narrow/wide/collapsed panels, large text, errors/loading/keyboard/overlays and native parity verified                              |
-| 8     | Final integration and cleanup                        | Pending                                                                | All retained ADR requirements reconciled and qualified on main; preserve user/character work; remove only safe merged branches/worktrees; user deploys manually                          |
+| Order | Scope                                                | Current state                                                         | Exit condition                                                                                                                                                                           |
+| ----- | ---------------------------------------------------- | --------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | C1: model/provider/connection contracts              | Complete; accepted round2/3, merged main6f56c548                      | Managed/BYO/plan boundaries, supported models/request capabilities, explicit fallback, caching evaluation, multiple-provider and embedding configuration/migration requirements verified |
+| 2     | C2/M1: SIWC, account catalogs/defaults and execution | Partial; standalone web and installed OAuth/inference acceptance open | Correct platform connection, verified account/plan permissions, truthful usage, catalog/default persistence, protected tokens, lifecycle/revocation and actual inference acceptance      |
+| 3     | C3: rules, ownership, activity and budgets           | Foundations implemented                                               | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                    |
+| 4     | C4/D1: Docs parity and UI regressions                | Foundation candidate; normal editor activation unfinished             | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
+| 5     | C5: bound pages, publication and channels            | Foundations/candidates implemented                                    | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                   |
+| 6     | C6: separate plugin backend/UI and security          | Partial                                                               | Independent connector authority, managed/BYO provider execution and launch contexts, real host OAuth/UI, authorized scan evidence and triage verified                                    |
+| 7     | U1: final whole-app acceptance                       | Required within each stage; sampled checks only so far                | Every named surface and cross-client feature, themes, narrow/wide/collapsed panels, large text, errors/loading/keyboard/overlays and native parity verified                              |
+| 8     | Final integration and cleanup                        | Pending                                                               | All retained ADR requirements reconciled and qualified on main; preserve user/character work; remove only safe merged branches/worktrees; user deploys manually                          |
 
 Within each stage, implement its full scope in a coherent order before formal
 qualification and review. UI/backend/shared/mobile work belongs to that stage,

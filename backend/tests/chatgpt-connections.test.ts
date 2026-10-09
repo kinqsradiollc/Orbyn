@@ -27,14 +27,16 @@ const verified = async (
   clientId: expected.clientId,
 });
 
-async function executorFixture() {
+async function executorFixture(native = false) {
   const attempt = await beginChatgptConnection(people[0]);
   const connection = await finishChatgptConnection(
     people[0],
     { challengeId: attempt.id, clientId, idToken: "fixture" },
     verified,
   );
-  const keys = generateKeyPairSync("ed25519");
+  const keys = native
+    ? generateKeyPairSync("ec", { namedCurve: "prime256v1" })
+    : generateKeyPairSync("ed25519");
   const input = {
     connection_id: connection.id,
     host_id: randomUUID(),
@@ -50,9 +52,11 @@ async function executorFixture() {
     finishChatgptExecutorEnrollment(person, {
       challenge_id: challenge.id,
       signature: sign(
-        null,
+        native ? "sha256" : null,
         Buffer.from(challenge.proof_message),
-        keys.privateKey,
+        native
+          ? { key: keys.privateKey, dsaEncoding: "ieee-p1363" }
+          : keys.privateKey,
       ).toString("base64url"),
     });
   return { connection, input, start, finish };
@@ -906,4 +910,18 @@ test("account or session changes during catalog validation prevent preference wr
       );
     }
   }
+});
+
+test("native P-256 enrollments pass the migrated key constraints and keep exact proof ownership", async () => {
+  const fixture = await executorFixture(true);
+  assert.equal(fixture.input.public_key.length, 122);
+  const challenge = await fixture.start();
+  await assert.rejects(fixture.finish(challenge, people[1]), status(404));
+  const enrollment = await fixture.finish(challenge);
+  assert.equal(enrollment.binding.connection_id, fixture.connection.id);
+  assert.equal(
+    enrollment.public_key_fingerprint,
+    challenge.public_key_fingerprint,
+  );
+  await assert.rejects(fixture.finish(challenge), status(409));
 });

@@ -2,6 +2,7 @@ import { transaction, type Db } from "../../db/pool.js";
 import { appendChatTrace } from "./chats.js";
 import { assertJobAiProviderChoice } from "../auth/ai-provider-choice.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
+import { chatgptExecutorDevice, chatgptExecutorDeviceLabel } from "@orbyn/core";
 /** Existing trace fields keep older clients compatible; labels are display metadata only. */
 export async function recordProviderUse(
   owner: string,
@@ -12,6 +13,7 @@ export async function recordProviderUse(
   phase: "started" | "completed",
   operationId?: string,
   sharedDb?: Db,
+  executorId?: string,
 ) {
   const record = async (db: Db) => {
     await assertJobAiProviderChoice(db, owner, jobId);
@@ -54,7 +56,30 @@ export async function recordProviderUse(
         : fallback
           ? "Orbyn fallback"
           : "Orbyn default";
-    const label = `${name} · ${model} · ${phase}`.slice(0, 180);
+    let device = "";
+    if (source === "chatgpt" && executorId) {
+      const reported = (
+        await db.query<{
+          device_type: string | null;
+          device_name: string | null;
+        }>(
+          `SELECT e.device_type,e.device_name FROM chatgpt_executor_enrollments e
+           JOIN chatgpt_identity_connections c ON c.id=e.connection_id
+           WHERE e.id=$1 AND c.user_id=$2`,
+          [executorId, owner],
+        )
+      ).rows[0];
+      if (reported?.device_type && reported.device_name) {
+        const parsed = chatgptExecutorDevice.safeParse({
+          type: reported.device_type,
+          name: reported.device_name,
+        });
+        if (parsed.success)
+          device = ` · ${chatgptExecutorDeviceLabel(parsed.data)}`;
+      }
+    }
+    const suffix = `${device} · ${phase}`;
+    const label = `${`${name} · ${model}`.slice(0, 180 - suffix.length)}${suffix}`;
     if (
       Array.isArray(chat.trace) &&
       chat.trace.some(

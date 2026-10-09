@@ -395,3 +395,42 @@ test("a required hard output budget is rejected before any public ChatGPT reques
     "No model lookup or inference is dispatched without budget enforcement",
   );
 });
+
+test("verified local subject bindings need no fabricated workspace metadata and fence replacement credentials", async () => {
+  const binding = {
+    user_id: "fbb2cfcc-7052-407f-9ee5-07a0be261382",
+    connection_id: "36675278-d840-4d35-86ba-6af604b3b52b",
+    issuer: "https://auth.openai.com" as const,
+    subject: "verified-subject",
+    client_id: "oaiapp_local",
+  };
+  let current = { ...binding };
+  let requests = 0;
+  const local = new ChatgptPlanClient({
+    binding,
+    credential: async () => ({
+      binding: current,
+      accessToken: "protected-local-token",
+    }),
+    fetch: async (url, init) => {
+      requests++;
+      assert.equal(url, "https://api.openai.com/v1/models");
+      assert.equal(
+        (init!.headers as Record<string, string>).Authorization,
+        "Bearer protected-local-token",
+      );
+      return Response.json(catalog);
+    },
+  });
+  assert.equal((await local.models()).length, 2);
+  for (const changed of [
+    { ...binding, subject: "replacement" },
+    { ...binding, client_id: "oaiapp_replacement" },
+    { ...binding, user_id: "36675278-d840-4d35-86ba-6af604b3b52b" },
+    { ...binding, connection_id: "fbb2cfcc-7052-407f-9ee5-07a0be261382" },
+  ]) {
+    current = changed;
+    await assert.rejects(local.models(), /account changed/);
+  }
+  assert.equal(requests, 1);
+});

@@ -1,14 +1,24 @@
 # ADR implementation tracker
 
-Updated 8 October 2026. Follow the full contract in
+Updated 9 October 2026. Follow the full contract in
 [the implementation review](devday-2026-implementation-review.md) and
 [the top-down execution order](adr-execution-order.md).
 Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
-**C1 complete under the final user-approved scope. C2/M1 has not started.**
-**Cycle: C1-full-2026-10-08. Phase: accepted and merged; requested pause before C2.
-Review rounds: 2/3.**
+**C1 complete under the final user-approved scope. C2/M1 blocked on hosted ChatGPT-plan integration.**
+**Active cycle: C2-full-2026-10-08. Phase: blocked pending hosted integration contract or explicit scope disposition.
+Review rounds: 0/3; no frozen candidate or formal handoff yet.**
+
+Candidate checkout: `adr-release-qualification/Orbyn`, branch
+`codex/c2-chatgpt-completion`, based on main `10e9938f`.
+See [C2 scope and readiness](c2-full-2026-10-08.md).
+Rendered evidence source `babf1434`: bounded web320/1280 Dark and Expo320 Light checks close
+C2-001/002 copy findings. Latest product `175834f2` corrects C2-003 copy;
+12/12 focused checks passed; C2-003 was rechecked on web1280 Light and
+Expo320 Light. Connected-account/inference and standalone hosted
+web connection remain open; no formal handoff, main merge or C3 advancement.
+C1 acceptance remains round2/3; its evidence below is unchanged.
 
 Reviewer approved frozen candidate `1a92a2c0` within round2. Product integration
 is merge `6f56c548`; comparison against the tested source confirms unchanged
@@ -30,15 +40,15 @@ behavior is untested. See [C1 closeout](c1-closeout-2026-10-08.md),
 [Tester evidence](c1-full-2026-10-08-final-test-1a92a2c0.md) and
 [final Reviewer acceptance](c1-full-2026-10-08-review-r2.md).
 
-| State | Remaining implementation / next action |
-| --- | --- |
-| ✓ C1 | Accepted and merged; push delivery recorded in the closeout. User deploys main manually. |
-| ✗ C2/M1 | Next after resume: ChatGPT sign-in, account-specific models/defaults, verified plan/usage, token lifecycle, explicit fallback and inference. |
-| ✗ C3 | Rules, authority, budgets, separate Background/Overnight agents, collaboration and reflection. |
-| ✗ C4/D1 | Normal Docs editing/recovery/history/collaboration and required Markdown/Mermaid rendering. |
-| ✗ C5 | Bound pages, schedules, publication consent and channels. |
-| ✗ C6 | Separate plugin backend/UI integrations and security qualification. |
-| ✗ U1 / cleanup | Whole-app parity and final integration; preserve character work and remove only safe merged branches/worktrees. |
+| State          | Remaining implementation / next action                                                                                                 |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| ✓ C1           | Accepted and merged; push delivery recorded in the closeout. User deploys main manually.                                               |
+| ✗ C2/M1        | In progress: ChatGPT sign-in, account-specific models/defaults, verified plan/usage, token lifecycle, explicit fallback and inference. |
+| ✗ C3           | Rules, authority, budgets, separate Background/Overnight agents, collaboration and reflection.                                         |
+| ✗ C4/D1        | Normal Docs editing/recovery/history/collaboration and required Markdown/Mermaid rendering.                                            |
+| ✗ C5           | Bound pages, schedules, publication consent and channels.                                                                              |
+| ✗ C6           | Separate plugin backend/UI integrations and security qualification.                                                                    |
+| ✗ U1 / cleanup | Whole-app parity and final integration; preserve character work and remove only safe merged branches/worktrees.                        |
 
 The detailed records below are historical snapshots, superseded by this final
 C1 scope and acceptance. They do not impose removed acceptance gates.
@@ -337,20 +347,20 @@ User/character changes and unmerged work remain preserved.
 This is the current C1 checklist; historical ledger rows describe earlier source.
 The8 October user scope override governs these rows: native iOS/Android verification is excluded, and live OpenAI cache/live embedding are follow-ups. A fixture or sampled view does not prove live vendor, installed Electron or genuine enlarged-text behavior.
 
-| C1 requirement                           | Implemented / qualified evidence                                                                                         | Open acceptance                                                                                |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| Managed, BYO and personal authority      | Immutable job choice, private/managed isolation and explicit fallback/provenance checkpoints on main                     | Local source/test entrypoint matrix reconciled; actual permitted provider and installed recovery acceptance open                  |
-| Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Current-source browser/native management and credential-test interactions                      |
-| Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching |
-| Generation wire formats                  | Main native Responses/Messages, Zen and Perplexity Agent recovery; compatible/Azure/Matilda fixtures                     | Broader actual supported-model qualification                                                   |
-| Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Approved follow-up: live OpenAI cache/latency/cost/quality benchmark; deterministic wire/control tests retained      |
-| Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | QA033/035/036 scoped positive/large/unknown/loading/503/retry browser states accepted; enlarged/native remain open; no billing/plan inference                 |
-| Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted vendor probe is an approved follow-up; synthetic runtime and QA040 client evidence retained                          |
-| Vector dimensions and replacement        | Flexible pgvector storage,3072-dimension Azure fixture, replacement/requeue and old-result rejection                     | Broader authorized model/dimension runtime matrix                                              |
-| Consent/document/visibility races        | Pre-click/in-flight provider, A→B→A, edits, disable, keep-out and queue-revision tests                                   | Remaining ownership/permission/recovery acceptance                                             |
-| Migration and worker deployment          | Legacy upgrade, late extension, idempotence and profile lifecycle checks                                                 | Wider mixed-version/operational acceptance; production deployment is user-owned                |
-| Indexing failure/status/retry            | Sanitized persistent backoff, newer-work fencing and healthy-page progress on maind4da3d41                               | QA040 enabled/status/off browser flow and synthetic failure/retry receipts; consolidate with focused fixtures                               |
-| Responsive and native clients            | Scoped web wide/narrow, mobile browser390 and earlier controls/zero-usage samples reviewed                               | Consolidate bounded browser evidence; record unsupported200% and unexecuted Electron interaction honestly; iOS/Android excluded  |
+| C1 requirement                           | Implemented / qualified evidence                                                                                         | Open acceptance                                                                                                                               |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Managed, BYO and personal authority      | Immutable job choice, private/managed isolation and explicit fallback/provenance checkpoints on main                     | Local source/test entrypoint matrix reconciled; actual permitted provider and installed recovery acceptance open                              |
+| Multiple independent saved connections   | All20 kinds resolve from saved rows; duplicate-kind/custom destinations, enabled/revised/deleted catalog fencing covered | Current-source browser/native management and credential-test interactions                                                                     |
+| Catalogs and manual/default preservation | Main pagination, Together array normalization, bounded validation and revision fencing; manual draft checks              | Remaining vendor default availability, large/slow/error catalog, keyboard and native switching                                                |
+| Generation wire formats                  | Main native Responses/Messages, Zen and Perplexity Agent recovery; compatible/Azure/Matilda fixtures                     | Broader actual supported-model qualification                                                                                                  |
+| Reasoning and caching                    | Supported controls/persistence/request mapping and observed usage on main                                                | Approved follow-up: live OpenAI cache/latency/cost/quality benchmark; deterministic wire/control tests retained                               |
+| Usage honesty and separation             | Native/compatible usage counters, unknown values and private exclusion covered                                           | QA033/035/036 scoped positive/large/unknown/loading/503/retry browser states accepted; enlarged/native remain open; no billing/plan inference |
+| Independent embedding recipient          | Provider-bound consent and displayed revision fences on main43fa8f57                                                     | Live accepted vendor probe is an approved follow-up; synthetic runtime and QA040 client evidence retained                                     |
+| Vector dimensions and replacement        | Flexible pgvector storage,3072-dimension Azure fixture, replacement/requeue and old-result rejection                     | Broader authorized model/dimension runtime matrix                                                                                             |
+| Consent/document/visibility races        | Pre-click/in-flight provider, A→B→A, edits, disable, keep-out and queue-revision tests                                   | Remaining ownership/permission/recovery acceptance                                                                                            |
+| Migration and worker deployment          | Legacy upgrade, late extension, idempotence and profile lifecycle checks                                                 | Wider mixed-version/operational acceptance; production deployment is user-owned                                                               |
+| Indexing failure/status/retry            | Sanitized persistent backoff, newer-work fencing and healthy-page progress on maind4da3d41                               | QA040 enabled/status/off browser flow and synthetic failure/retry receipts; consolidate with focused fixtures                                 |
+| Responsive and native clients            | Scoped web wide/narrow, mobile browser390 and earlier controls/zero-usage samples reviewed                               | Consolidate bounded browser evidence; record unsupported200% and unexecuted Electron interaction honestly; iOS/Android excluded               |
 
 Finish these gates, record final C1 evidence and main delivery, then pause with the
 remaining ADR table. C2/M1 stays queued until the user resumes after that pause.
@@ -369,7 +379,7 @@ A completed checkpoint does not complete its entire stage.
 | 5                      | C5 pages/publication/channels    | ✓ Block bindings/jobs, comments, publication boundaries and separate Slack/Teams installation/outbox/reply/lifecycle foundations.                                                                                                                                                                                                          | ✗ Human-edit conflicts/source revocation/public consent; authorized real channel delivery/exact-question replies; tenant/lifecycle/reconnect and both-client acceptance.                                                          |
 | 6                      | C6 separate plugin backend       | ✓ Separate service/principal/grants, managed inference broker/permissions, launch context/UI/import/reconnect foundations.                                                                                                                                                                                                                 | ✗ Real host OAuth/UI/account switching/reconnect; production configuration; managed/BYO execution; authorized security scan and triage.                                                                                           |
 | Throughout; final gate | U1 whole-app UI                  | ✓ Settings modal, assistant/agent separation, selected Home/navigation/task controls. ✓ Current C1 provider controls/management and zero-usage states inspected on wide/narrow web and320/390 mobile browser, Light/Dark.                                                                                                                  | ✗ Every-page web/desktop/mobile matrix, positive/overflow/error/loading states, collapsed/nested panels, keyboard/large text and native acceptance. Browser checks do not prove installed-native parity.                          |
-| Last                   | Integration/cleanup              | ✓ Qualified scoped checkpoints pushed to main, latest product7260db93; unrelated local changes preserved.                                                                                                                                                                                                                                          | ✗ Qualify/promote remaining retained scope; reconcile branches/worktrees; remove only safe merged work after full acceptance.                                                                                                     |
+| Last                   | Integration/cleanup              | ✓ Qualified scoped checkpoints pushed to main, latest product7260db93; unrelated local changes preserved.                                                                                                                                                                                                                                  | ✗ Qualify/promote remaining retained scope; reconcile branches/worktrees; remove only safe merged work after full acceptance.                                                                                                     |
 
 Voice, computer-use product features and speculative Decisions remain excluded.
 Computer-use tools may capture QA. MCP/plugin authority and personal ChatGPT

@@ -1,12 +1,39 @@
 import { z } from "zod";
 import { chatgptModel, chatgptModelBinding } from "./chatgpt-models.js";
 
-/** Public Ed25519 SPKI only; binary/algorithm validation belongs to the server. */
+/** Display-only executor identity reported by the credential-owning app. */
+export const chatgptExecutorDevice = z
+  .object({
+    type: z.enum(["desktop", "ios", "android"]),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(60)
+      .regex(/^[^\r\n\t]+$/),
+  })
+  .strict();
+export type ChatgptExecutorDevice = z.output<typeof chatgptExecutorDevice>;
+
+export function chatgptExecutorDeviceLabel(
+  device: ChatgptExecutorDevice,
+): string {
+  const kind =
+    device.type === "desktop"
+      ? "desktop app"
+      : device.type === "ios"
+        ? "iOS app"
+        : "Android app";
+  return `${device.name} · ${kind}`;
+}
+
+/** Public Ed25519 or P-256 SPKI only; canonical DER/curve validation belongs to the server. */
 export const chatgptExecutorStart = z
   .object({
     connection_id: z.uuid(),
     host_id: z.uuid(),
-    public_key: z.string().regex(/^[A-Za-z0-9_-]{59}$/),
+    public_key: z.string().regex(/^(?:[A-Za-z0-9_-]{59}|[A-Za-z0-9_-]{122})$/),
+    device: chatgptExecutorDevice.optional(),
   })
   .strict();
 
@@ -72,6 +99,7 @@ export const chatgptExecutorList = z
         executor_id: z.uuid(),
         connection_id: z.uuid(),
         host_id: z.uuid(),
+        device: chatgptExecutorDevice.nullable().optional(),
       })
       .strict(),
   )

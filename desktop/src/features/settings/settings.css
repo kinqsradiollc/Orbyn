@@ -262,6 +262,21 @@
   padding-top: 16px;
   border-top: 1px solid var(--color-divider);
 }
+.ai-provider-routing .ai-provider-options {
+  flex-wrap: wrap;
+  margin: 12px 0 0;
+}
+.ai-provider-routing .ai-provider-fallback {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  line-height: 1.4;
+}
+.ai-provider-fallback input {
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+}
 .settings-subform.inline-form input {
   margin: 0;
   flex: 1 1 220px;

@@ -52,7 +52,7 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
       </h2>
       <p className="muted">
         {state.status === "unsupported"
-          ? "Connect ChatGPT as a personal AI provider."
+          ? "Choose your AI provider and default model."
           : "Connect your ChatGPT account and choose a default model."}
       </p>
       <ManagedAiUsage userId={userId} />
@@ -135,6 +135,19 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
                         ⋯
                       </summary>
                       <div>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            run({
+                              action: "reconnect",
+                              registrationId: account.registration_id,
+                              requestPlanConsent: true,
+                            })
+                          }
+                        >
+                          Enable ChatGPT plan usage
+                        </button>
                         <button
                           type="button"
                           disabled={busy}

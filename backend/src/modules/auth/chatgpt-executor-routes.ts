@@ -63,8 +63,13 @@ export async function chatgptExecutorRoutes(app: FastifyInstance) {
     async (r, reply) => {
       reply.header("Cache-Control", "no-store");
       const session = await authenticateSessionBinding(r);
-      z.object({}).strict().parse(r.query);
-      return chatgptExecutorList.parse(await listChatgptExecutors(session));
+      const query = z
+        .object({ details: z.literal("device").optional() })
+        .strict()
+        .parse(r.query);
+      return chatgptExecutorList.parse(
+        await listChatgptExecutors(session, query.details === "device"),
+      );
     },
   );
   app.post(

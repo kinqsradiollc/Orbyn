@@ -457,3 +457,29 @@ without uninstalling the bot for other owners. Unknown sends are not replayed.
 This remains an unmerged implementation candidate until its qualification gates
 pass. Teams question replies, real tenant delivery and client visual/native
 acceptance remain open. Decisions currently open the owned Orbyn review.
+
+## Personal ChatGPT provider
+
+ChatGPT provider access is separate from MCP/Connected agents. Orbyn's managed
+provider remains available; using it as a fallback requires an explicit user choice.
+
+| Surface                             | Connection and execution                                                                                                                                 |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Desktop app                         | Local OAuth callback and protected credential runtime; settings receives metadata only.                                                                  |
+| Installed mobile app                | The OrbynChatgpt native module owns the local callback and signing key. Credentials stay in protected device storage; work runs while the app is active. |
+| Web / Expo web                      | Manage owned published catalogs and defaults. Direct hosted plan connection is unavailable; do not queue an invisible desktop handoff.                   |
+| Expo Go / older mobile installation | Cannot assume the custom callback/signing module exists. Show an unavailable/update state instead of delegating sign-in to a laptop.                     |
+
+Local first sign-in uses OpenAI's dynamic registration and requires no pre-issued
+application client ID. Reconnect uses that verified account's issued ID. Keep each
+account registration, rotating refresh token and selected model separate. The
+API receives identity proof and signed executor metadata, never access/refresh tokens.
+
+Plan permission is the granted `chatgpt.tokens.use.direct` scope, not an identity
+login or inferred subscription tier. “Usage in Orbyn” counts recorded completed
+calls; account allowances and app limits stay in [ChatGPT Usage](https://chatgpt.com/settings/usage).
+
+The [official OSS guide](https://developers.openai.com/siwc/token-sharing-open-source)
+covers local apps and directs remotely hosted applications to a separate interest
+program. Its loopback callback cannot be replaced by a production website URL.
+Do not confuse the separate website identity trial with hosted plan permission.

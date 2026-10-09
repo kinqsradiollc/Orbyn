@@ -18,7 +18,7 @@ function fixture() {
     calls = 0,
     writes = 0,
     live = true;
-  let credentials = {
+  let credentials: any = {
     clientId: binding.client_id,
     idToken: "old-id",
     accessToken: "old-access",
@@ -36,6 +36,12 @@ function fixture() {
         revision,
         credentials: structuredClone(credentials),
       }),
+      revokeObserved: async (_binding: unknown, expected: string) => {
+        assert.equal(expected, revision);
+        credentials = null;
+        revision = randomUUID();
+        return revision;
+      },
       write: async (_binding: unknown, next: any, expected: string) => {
         assert.equal(expected, revision);
         credentials = structuredClone(next);
@@ -122,7 +128,7 @@ test("wrong refreshed identity or registration cannot replace the stored grant",
     }
     const resolver = await create(f.options);
     await assert.rejects(resolver.current(), /changed/);
-    assert.deepEqual(f.snapshot(), original);
+    assert.equal(f.snapshot(), null);
     assert.equal(f.writes(), 0);
     resolver.close();
   }
@@ -152,6 +158,7 @@ test("connection revocation or local stop during refresh prevents storage and la
     await assert.rejects(pending);
     await assert.rejects(resolver.current());
     assert.equal(f.writes(), 0);
+    assert.equal(f.snapshot(), null);
     resolver.close();
   }
 });
@@ -187,5 +194,86 @@ test("a competing credential replacement is not overwritten by a late refresh", 
   await assert.rejects(resolver.current());
   assert.equal(f.snapshot().accessToken, "competing-access");
   assert.equal(f.writes(), 1);
+  resolver.close();
+});
+
+test("confirmed terminal desktop refresh erases only its observed vault revision", async () => {
+  const f = fixture();
+  f.options.refresh = async () => {
+    throw Object.assign(new Error("safe failure"), {
+      code: "AUTH_REFRESH_EXPIRED",
+    });
+  };
+  let invalidated = 0;
+  const resolver = await create({
+    ...f.options,
+    onInvalidated: () => invalidated++,
+  });
+  await assert.rejects(resolver.current(), /Reconnect/);
+  assert.equal(invalidated, 1);
+  assert.equal(f.snapshot(), null);
+  await assert.rejects(resolver.current(), /Reconnect/);
+  resolver.close();
+});
+test("desktop terminal refresh preserves a concurrently installed credential revision", async () => {
+  const f = fixture();
+  f.options.refresh = async () => {
+    await f.options.vault.write(
+      f.options.binding,
+      { ...f.snapshot(), accessToken: "newer-sign-in" },
+      "original",
+    );
+    throw Object.assign(new Error("safe failure"), {
+      code: "AUTH_REFRESH_EXPIRED",
+    });
+  };
+  const resolver = await create(f.options);
+  await assert.rejects(resolver.current());
+  assert.equal(f.snapshot().accessToken, "newer-sign-in");
+  resolver.close();
+});
+test("desktop temporary refresh failure retains credentials", async () => {
+  const f = fixture(),
+    original = f.snapshot();
+  f.options.refresh = async () => {
+    throw Object.assign(new Error("safe failure"), { code: "AUTH_FAILED" });
+  };
+  const resolver = await create(f.options);
+  await assert.rejects(resolver.current());
+  assert.deepEqual(f.snapshot(), original);
+  resolver.close();
+});
+test("desktop late terminal refresh cannot erase after its connection changes", async () => {
+  const f = fixture(),
+    original = f.snapshot();
+  f.options.refresh = async () => {
+    f.disconnect();
+    throw Object.assign(new Error("safe failure"), {
+      code: "AUTH_REFRESH_EXPIRED",
+    });
+  };
+  const resolver = await create(f.options);
+  await assert.rejects(resolver.current(), /changed/);
+  assert.deepEqual(f.snapshot(), original);
+  resolver.close();
+});
+
+test("post-rotation identity outage retires R1 so a later call cannot reuse it", async () => {
+  const f = fixture();
+  let consumed = false;
+  const refresh = f.options.refresh;
+  f.options.refresh = async (...args) => {
+    assert.equal(consumed, false, "provider rejects reuse of R1");
+    consumed = true;
+    return refresh(...args);
+  };
+  f.options.verifyIdentity = async () => {
+    throw new Error("verification unavailable");
+  };
+  const resolver = await create(f.options);
+  await assert.rejects(resolver.current(), /verification unavailable/);
+  assert.equal(f.snapshot(), null);
+  await assert.rejects(resolver.current(), /Reconnect/);
+  assert.equal(f.calls(), 1);
   resolver.close();
 });

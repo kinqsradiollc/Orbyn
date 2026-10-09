@@ -759,3 +759,27 @@ without uninstalling the provider app. Empty unreferenced vault metadata expires
 after30 days. Legacy candidate pairs/pending exchanges require explicit reconnect
 on upgrade. Signed exact-card replies and Teams remain separate implementation
 requirements; the channel candidate is not yet promoted to main.
+
+## Personal ChatGPT credential boundary
+
+A personal provider is a credential-owning local runtime, distinct from portable
+MCP grants and Orbyn's managed server provider. Desktop and installed mobile own
+OpenAI OAuth, protected token rotation, account-specific model discovery and the
+Responses stream. First-party API sessions bind verified registrations and executor
+keys to an Orbyn user. A signed catalog is bound to its account, host, lease and
+publication sequence; a cached/offline catalog does not establish current inference
+permission.
+
+The server queues private work only for the explicitly selected owned executor.
+The runtime rechecks the selected registration and live model before execution.
+Receipts bind completion to the exact assignment, lease, model and result; native
+P-256 proofs use a versioned SHA-256 digest while existing Ed25519 proofs remain
+supported. Switching accounts, logout or backgrounding mobile cancels the old
+runtime. Provider choice captured at enqueue time prevents a later preference
+change from silently rerouting a job.
+
+Web and Expo web cannot host the OSS loopback listener or store plan tokens in
+browser storage. They may manage verified published account metadata. Direct
+hosted plan execution remains a separate OpenAI eligibility/integration boundary.
+Identity, granted plan permission, local usage totals and account-wide allowance
+are distinct facts; unavailable plan-tier or quota values remain unknown.

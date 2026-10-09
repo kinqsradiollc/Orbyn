@@ -881,7 +881,7 @@ export const SETTINGS_INDEX: SettingEntry[] = [
   setting(
     "chatgpt-models",
     "ChatGPT connections and models",
-    "Connect a ChatGPT account and choose its default model",
+    "ChatGPT account status and default model",
     "account",
     "AI connections & models",
     { section: "AI connections & models" },

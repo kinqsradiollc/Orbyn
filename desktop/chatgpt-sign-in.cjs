@@ -40,6 +40,7 @@ async function runSignIn({
   signal,
   expectedSubject,
   reconnectBinding,
+  requestPlanConsent = false,
   prepare = prepareChatgptAuthorization,
   exchange = exchangeChatgptCode,
 }) {
@@ -104,6 +105,7 @@ async function runSignIn({
       clientId: registration.clientId ?? undefined,
       nonce: challenge.nonce,
       idTokenHint: previous?.credentials?.idToken,
+      requestPlanConsent,
       signal,
     });
     cancelled();

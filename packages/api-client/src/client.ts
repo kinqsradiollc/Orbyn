@@ -60,6 +60,7 @@ import {
   type ChatgptCatalogSelection,
   type ChatgptCatalogDefaultUpdate,
   chatgptConnectionStart,
+  chatgptConnectionRefreshIdentity,
   chatgptConnectionFinish,
   chatgptConnectionChallenge,
   chatgptConnection,
@@ -1144,8 +1145,8 @@ export class OrbynClient {
   }
 
   // ---- profile ----
-  me() {
-    return this.request<User>("/me");
+  me(options: Pick<RequestOptions, "fresh" | "signal"> = {}) {
+    return this.request<User>("/me", options);
   }
   updatePreferences(input: { email_reminders: boolean }) {
     return this.request<User>("/me", { method: "PUT", body: input });
@@ -1800,11 +1801,32 @@ export class OrbynClient {
   /** Discover owned devices without provider credentials or signing keys. */
   async chatgptExecutors(signal?: AbortSignal) {
     return chatgptExecutorList.parse(
-      await this.request<unknown>("/ai/connections/chatgpt/executors", {
+      await this.request<unknown>(
+        "/ai/connections/chatgpt/executors?details=device",
+        {
+          signal,
+          fresh: true,
+        },
+      ),
+    );
+  }
+
+  /** Verify replacement identity only; access/refresh credentials are never sent. */
+  async verifyChatgptRefreshIdentity(
+    input: { connection_id: string; id_token: string },
+    signal?: AbortSignal,
+  ) {
+    const value = chatgptConnectionRefreshIdentity.parse(input);
+    const result = chatgptConnection.parse(
+      await this.request<unknown>("/ai/connections/chatgpt/refresh-identity", {
+        method: "POST",
+        body: value,
         signal,
-        fresh: true,
       }),
     );
+    if (result.id !== value.connection_id)
+      throw new Error("The ChatGPT registration changed.");
+    return result;
   }
 
   async chatgptConnections(signal?: AbortSignal) {

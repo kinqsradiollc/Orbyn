@@ -5,6 +5,8 @@ import {
   chatgptExecutorStart,
   chatgptExecutorChallenge,
   chatgptExecutorFinish,
+  chatgptConnectionRefreshIdentity,
+  chatgptConnection,
   fail,
 } from "@orbyn/core";
 import {
@@ -14,6 +16,7 @@ import {
 import { pool, transaction, type Db } from "../../db/pool.js";
 import {
   createOpenAiIdentityVerifier,
+  createOpenAiRefreshIdentityVerifier,
   type VerifiedOpenAiIdentity,
 } from "./openai-identity.js";
 
@@ -26,6 +29,7 @@ type Challenge = {
   consumed_at: Date | null;
 };
 const verifyIdentity = createOpenAiIdentityVerifier();
+const verifyRefreshIdentity = createOpenAiRefreshIdentityVerifier();
 
 /** Enroll a public device key only after an exact-session, one-time proof. */
 export async function beginChatgptExecutorEnrollment(
@@ -101,8 +105,8 @@ export async function beginChatgptExecutorEnrollment(
     await requireLiveSession(db, session);
     const row = (
       await db.query<{ expires_at: Date }>(
-        `INSERT INTO chatgpt_executor_challenges(id,user_id,session_id,connection_id,host_id,public_key,public_key_fingerprint,expected_epoch,proof_message,expected_enrollment_id)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING expires_at`,
+        `INSERT INTO chatgpt_executor_challenges(id,user_id,session_id,connection_id,host_id,public_key,public_key_fingerprint,expected_epoch,proof_message,expected_enrollment_id,device_type,device_name)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING expires_at`,
         [
           id,
           session.userId,
@@ -114,6 +118,8 @@ export async function beginChatgptExecutorEnrollment(
           epoch,
           message,
           current?.id ?? null,
+          input.device?.type ?? null,
+          input.device?.name ?? null,
         ],
       )
     ).rows[0];
@@ -158,11 +164,13 @@ export async function finishChatgptExecutorEnrollment(
         public_key_fingerprint: string;
         expected_epoch: string;
         expected_enrollment_id: string | null;
+        device_type: "desktop" | "ios" | "android" | null;
+        device_name: string | null;
         proof_message: string;
         consumed_at: Date | null;
         expired: boolean;
       }>(
-        "SELECT host_id,public_key,public_key_fingerprint,expected_epoch,expected_enrollment_id,proof_message,consumed_at,expires_at<=clock_timestamp() AS expired FROM chatgpt_executor_challenges WHERE id=$1 AND user_id=$2 AND session_id=$3 FOR UPDATE",
+        "SELECT host_id,public_key,public_key_fingerprint,expected_epoch,expected_enrollment_id,device_type,device_name,proof_message,consumed_at,expires_at<=clock_timestamp() AS expired FROM chatgpt_executor_challenges WHERE id=$1 AND user_id=$2 AND session_id=$3 FOR UPDATE",
         [input.challenge_id, session.userId, session.sessionId],
       )
     ).rows[0];
@@ -209,8 +217,8 @@ export async function finishChatgptExecutorEnrollment(
     await requireLiveSession(db, session);
     const enrollment = (
       await db.query<{ id: string }>(
-        `INSERT INTO chatgpt_executor_enrollments(connection_id,host_id,session_id,public_key,public_key_fingerprint,epoch) VALUES($1,$2,$3,$4,$5,$6)
-       ON CONFLICT(connection_id,host_id) DO UPDATE SET session_id=EXCLUDED.session_id,public_key=EXCLUDED.public_key,public_key_fingerprint=EXCLUDED.public_key_fingerprint,epoch=EXCLUDED.epoch,enrolled_at=now() RETURNING id`,
+        `INSERT INTO chatgpt_executor_enrollments(connection_id,host_id,session_id,public_key,public_key_fingerprint,epoch,device_type,device_name) VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+       ON CONFLICT(connection_id,host_id) DO UPDATE SET session_id=EXCLUDED.session_id,public_key=EXCLUDED.public_key,public_key_fingerprint=EXCLUDED.public_key_fingerprint,epoch=EXCLUDED.epoch,device_type=EXCLUDED.device_type,device_name=EXCLUDED.device_name,enrolled_at=now() RETURNING id`,
         [
           parent.connection_id,
           challenge.host_id,
@@ -218,6 +226,8 @@ export async function finishChatgptExecutorEnrollment(
           challenge.public_key,
           fingerprint,
           epoch + 1,
+          challenge.device_type,
+          challenge.device_name,
         ],
       )
     ).rows[0];
@@ -552,5 +562,53 @@ export async function writeChatgptModelPreferenceLocked(
     binding,
     model: saved.model,
     version: Number(saved.version),
+  });
+}
+
+/** Verify refreshed ID proof against a live owned registration; cannot create, revive or alter identity. */
+export async function verifyChatgptConnectionRefreshIdentity(
+  binding: SessionBinding,
+  value: unknown,
+  verifier = verifyRefreshIdentity,
+) {
+  const input = chatgptConnectionRefreshIdentity.parse(value);
+  const read = async (db: Db) => {
+    await requireLiveSession(db, binding);
+    const row = (
+      await db.query<{
+        id: string;
+        issuer: string;
+        subject: string;
+        client_id: string;
+      }>(
+        `SELECT id,issuer,subject,client_id FROM chatgpt_identity_connections
+       WHERE id=$1 AND user_id=$2 AND revoked_at IS NULL FOR SHARE`,
+        [input.connection_id, binding.userId],
+      )
+    ).rows[0];
+    if (!row) fail(404, "That ChatGPT connection is not available.");
+    return chatgptConnection.parse(row);
+  };
+  const original = await transaction(read);
+  let identity: VerifiedOpenAiIdentity;
+  try {
+    identity = await verifier(input.id_token, {
+      clientId: original.client_id,
+      subject: original.subject,
+    });
+  } catch {
+    fail(400, "The refreshed ChatGPT identity could not be verified.");
+  }
+  if (
+    identity.issuer !== original.issuer ||
+    identity.subject !== original.subject ||
+    identity.clientId !== original.client_id
+  )
+    fail(400, "The refreshed ChatGPT identity could not be verified.");
+  return transaction(async (db) => {
+    const live = await read(db);
+    if (JSON.stringify(live) !== JSON.stringify(original))
+      fail(409, "The ChatGPT registration changed. Reconnect this account.");
+    return live;
   });
 }

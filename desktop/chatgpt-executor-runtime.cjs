@@ -3,6 +3,7 @@ async function createChatgptExecutorRuntime({
   binding: input,
   client,
   signer,
+  device,
   models,
   complete,
   completeAssigned,
@@ -111,6 +112,7 @@ async function createChatgptExecutorRuntime({
             connection_id: binding.connection_id,
             host_id: metadata.host_id,
             public_key: metadata.public_key,
+            ...(device ? { device } : {}),
           },
           combined,
         );

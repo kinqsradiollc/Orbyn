@@ -140,11 +140,27 @@ test("ChatGPT models are discoverable in both settings search indexes", () => {
     );
 });
 
-function view(app: "desktop" | "mobile", state: any) {
+function view(
+  app: "desktop" | "mobile",
+  state: any,
+  connectOutcome: "success" | "cancel" | "failure" = "success",
+  nativeOptions: {
+    account?: object;
+    disconnect?: () => Promise<void>;
+    prepare?: () => Promise<void>;
+    accounts?: object;
+    choose?: () => Promise<void>;
+  } = {},
+) {
   let slot = 0;
   const values: any[] = [];
   const saved: (string | null)[] = [];
   const selected: unknown[] = [];
+  const localCalls: string[] = [];
+  const connectActions: unknown[] = [];
+  const cleanupTargets: unknown[] = [];
+  const effects: (() => void | (() => void))[] = [];
+  let sessionToken = "fixture-session";
   const source =
     app === "desktop"
       ? "desktop/src/features/settings/ChatgptRemoteModels.tsx"
@@ -164,6 +180,7 @@ function view(app: "desktop" | "mobile", state: any) {
   const jsx = (type: unknown, props: unknown) => ({ type, props });
   runInNewContext(compiled, {
     exports,
+    AbortController,
     require(id: string) {
       if (id === "react/jsx-runtime") return { jsx, jsxs: jsx };
       if (id === "react")
@@ -187,7 +204,7 @@ function view(app: "desktop" | "mobile", state: any) {
             if (!(index in values)) values[index] = { current: initial };
             return values[index];
           },
-          useEffect: () => {},
+          useEffect: (fn: () => void | (() => void)) => effects.push(fn),
         };
       if (id === "@orbyn/core") return core;
       if (id.endsWith("/lib/api"))
@@ -200,7 +217,12 @@ function view(app: "desktop" | "mobile", state: any) {
         };
       if (id.endsWith("/lib/session"))
         return {
-          session: { get: () => "fixture-session", token: "fixture-session" },
+          session: {
+            get: () => sessionToken,
+            get token() {
+              return sessionToken;
+            },
+          },
         };
       if (id.endsWith("/lib/errors"))
         return { errorText: () => "Fixture error" };
@@ -213,16 +235,82 @@ function view(app: "desktop" | "mobile", state: any) {
             select: (selection: unknown) => selected.push(selection),
           }),
         };
+      if (id.endsWith("/lib/chatgpt-local-sign-in"))
+        return {
+          prepareNativeChatgptAccounts: async (
+            _: string,
+            options: { signal: AbortSignal },
+          ) => {
+            localCalls.push("prepare");
+            assert.ok(options.signal instanceof AbortSignal);
+            await nativeOptions.prepare?.();
+          },
+          signInNativeChatgpt: async (
+            _: string,
+            options: { signal: AbortSignal; action?: unknown },
+          ) => {
+            connectActions.push(options.action);
+            localCalls.push("sign-in");
+            if (connectOutcome !== "success")
+              throw new Error(
+                connectOutcome === "cancel" ? "Cancelled" : "Unavailable",
+              );
+            return { sharingGranted: true };
+          },
+          readNativeChatgptAccounts: async () => nativeOptions.accounts ?? null,
+          selectNativeChatgptAccount: async (
+            _: string,
+            id: string,
+            revision: string,
+            options: { signal: AbortSignal },
+          ) => {
+            localCalls.push(`choose:${id}:${revision}`);
+            assert.ok(options.signal instanceof AbortSignal);
+            await nativeOptions.choose?.();
+          },
+          readNativeChatgptAccountState: async () =>
+            nativeOptions.account ?? { status: "missing" },
+          disconnectNativeChatgpt: async (
+            _: string,
+            options: { target?: unknown },
+          ) => {
+            cleanupTargets.push(options.target);
+            localCalls.push("disconnect");
+            await nativeOptions.disconnect?.();
+          },
+          cancelNativeChatgptSignIn: () => {},
+        };
+      if (id.endsWith("/lib/chatgpt-foreground"))
+        return {
+          chatgptForeground: {
+            snapshot: () => ({
+              userId: "person",
+              status: "idle",
+              selection: null,
+            }),
+            subscribe: () => () => {},
+            suspend: () => {
+              localCalls.push("suspend");
+            },
+            restart: () => {
+              localCalls.push("restart");
+            },
+          },
+        };
       if (id === "react-native")
-        return Object.fromEntries(
-          ["ScrollView", "Text", "TextInput", "View"].map((name) => [
-            name,
-            name,
-          ]),
-        );
+        return {
+          Platform: { OS: "ios" },
+          ...Object.fromEntries(
+            ["ScrollView", "Text", "TextInput", "View"].map((name) => [
+              name,
+              name,
+            ]),
+          ),
+        };
       if (id.endsWith("/motion")) return { Pressable: "Pressable" };
       if (id.endsWith("/Select")) return { Select: "Select" };
       if (id.endsWith("/SmallAction")) return { SmallAction: "SmallAction" };
+      if (id.endsWith("/MoreMenu")) return { MoreMenu: "MoreMenu" };
       if (id.endsWith("/SettingsSection"))
         return { SettingsSection: "SettingsSection" };
       if (id === "./AiProviderChoice")
@@ -235,13 +323,28 @@ function view(app: "desktop" | "mobile", state: any) {
       throw new Error(`Unexpected module ${id}`);
     },
   });
-  const render = () => {
+  const render = (userId = "person") => {
     slot = 0;
     return exports[
       app === "desktop" ? "ChatgptRemoteModels" : "ChatgptModelsSection"
-    ]({ userId: "person" });
+    ]({ userId });
   };
-  return { render, saved, selected };
+  return {
+    render,
+    saved,
+    selected,
+    localCalls,
+    connectActions,
+    cleanupTargets,
+    setToken: (value: string) => {
+      sessionToken = value;
+    },
+    flushEffects: async () => {
+      const cleanup = effects.splice(0).map((fn) => fn());
+      await new Promise((resolve) => setImmediate(resolve));
+      return () => cleanup.forEach((fn) => fn?.());
+    },
+  };
 }
 function elements(node: any): any[] {
   if (Array.isArray(node)) return node.flatMap(elements);
@@ -390,3 +493,359 @@ for (const app of ["desktop", "mobile"] as const) {
     }
   });
 }
+
+test("native Connect invokes local sign-in and resumes the app-owned executor without desktop handoff", async () => {
+  const f = view("mobile", viewState());
+  const action = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+  );
+  assert.ok(action);
+  assert.equal(action.props.disabled, false);
+  action.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, [
+    "suspend",
+    "prepare",
+    "sign-in",
+    "prepare",
+    "restart",
+  ]);
+});
+
+test("failed or cancelled native reconnect restores the previous executor without repeating sign-in", async () => {
+  for (const outcome of ["cancel", "failure"] as const) {
+    const f = view("mobile", viewState(), outcome);
+    const action = elements(f.render()).find(
+      (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+    );
+    action.props.onPress();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(f.localCalls, [
+      "suspend",
+      "prepare",
+      "sign-in",
+      "restart",
+    ]);
+    assert.equal(
+      elements(f.render()).find(
+        (n) =>
+          n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+      ).props.disabled,
+      false,
+    );
+  }
+});
+
+test("native Settings keeps Disconnect available when saved plan permission is off and executor idle", async () => {
+  const f = view("mobile", viewState(), "success", {
+    account: { status: "saved", planUseAllowed: false },
+  });
+  f.render();
+  await f.flushEffects();
+  const tree = elements(f.render());
+  const action = tree.find(
+    (n) =>
+      n.type === "SmallAction" && n.props.label === "Disconnect this device",
+  );
+  assert.ok(action);
+  assert.equal(action.props.disabled, false);
+  assert.ok(
+    tree.some((n) =>
+      String(n.props.children).includes("ChatGPT plan use is off"),
+    ),
+  );
+  action.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, ["suspend", "disconnect", "restart"]);
+});
+test("native Settings permits removal of a saved corrupt record", async () => {
+  const f = view("mobile", viewState(), "success", {
+    account: { status: "unreadable" },
+  });
+  f.render();
+  await f.flushEffects();
+  assert.ok(
+    elements(f.render()).some(
+      (n) =>
+        n.type === "SmallAction" && n.props.label === "Disconnect this device",
+    ),
+  );
+});
+test("native Settings rejects retained disconnect callbacks after owner or session changes", async () => {
+  for (const change of ["owner", "token"]) {
+    const f = view("mobile", viewState(), "success", {
+      account: { status: "saved", planUseAllowed: true },
+    });
+    f.render();
+    await f.flushEffects();
+    const action = elements(f.render()).find(
+      (n) =>
+        n.type === "SmallAction" && n.props.label === "Disconnect this device",
+    );
+    if (change === "token") f.setToken("new-session");
+    const next = elements(
+      f.render(change === "owner" ? "new-person" : "person"),
+    );
+    assert.equal(
+      next.some(
+        (n) =>
+          n.type === "SmallAction" &&
+          n.props.label === "Disconnect this device",
+      ),
+      false,
+    );
+    action.props.onPress();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(f.localCalls, []);
+  }
+});
+test("native disconnect serializes clicks and cannot restart or show an error in a replacement session", async () => {
+  let reject!: (error: Error) => void;
+  const pending = new Promise<void>((_resolve, fail) => {
+    reject = fail;
+  });
+  const f = view("mobile", viewState(), "success", {
+    account: { status: "saved", planUseAllowed: true },
+    disconnect: () => pending,
+  });
+  f.render();
+  await f.flushEffects();
+  const action = elements(f.render()).find(
+    (n) =>
+      n.type === "SmallAction" && n.props.label === "Disconnect this device",
+  );
+  action.props.onPress();
+  action.props.onPress();
+  f.setToken("replacement-session");
+  f.render();
+  reject(new Error("old-owner failure"));
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, ["suspend", "disconnect"]);
+  assert.equal(
+    elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
+    false,
+  );
+});
+
+test("native Settings shows ended-session recovery with Connect and Disconnect available", async () => {
+  const f = view("mobile", viewState(), "success", {
+    account: { status: "reconnect" },
+  });
+  f.render();
+  await f.flushEffects();
+  const tree = elements(f.render());
+  assert.ok(
+    tree.some((n) => String(n.props.children).includes("session has ended")),
+  );
+  for (const label of ["Connect to ChatGPT", "Disconnect this device"]) {
+    const action = tree.find(
+      (n) => n.type === "SmallAction" && n.props.label === label,
+    );
+    assert.ok(action);
+    assert.equal(action.props.disabled, false);
+  }
+});
+test("native Settings never starts OAuth when protected migration fails", async () => {
+  const f = view("mobile", viewState(), "success", {
+    prepare: async () => {
+      throw new Error("migration failed");
+    },
+  });
+  const action = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+  );
+  action.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, ["suspend", "prepare", "restart"]);
+  assert.ok(
+    elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
+  );
+});
+test("native Settings does not authorize or restart an old owner after migration awaits", async () => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = view("mobile", viewState(), "success", { prepare: () => pending });
+  const action = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+  );
+  action.props.onPress();
+  action.props.onPress();
+  f.setToken("new-owner-session");
+  f.render();
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, ["suspend", "prepare"]);
+  assert.equal(
+    elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
+    false,
+  );
+});
+const pickerAccounts = {
+  revision: "picker-revision",
+  selected: "account-one",
+  accounts: [
+    { connection: { id: "account-one" }, status: "connected" },
+    { connection: { id: "account-two" }, status: "connected" },
+    { connection: { id: "account-three" }, status: "reconnect" },
+  ],
+};
+test("native saved account picker binds explicit choices and reconnects to the displayed revision", async () => {
+  const f = view("mobile", viewState(), "success", {
+    accounts: pickerAccounts,
+  });
+  f.render();
+  await f.flushEffects();
+  const nodes = elements(f.render());
+  const scroll = nodes.find(
+    (n) => n.type === "ScrollView" && n.props.style?.maxHeight === 200,
+  );
+  assert.equal(scroll.props.contentContainerStyle.gap, 16);
+  assert.equal(scroll.props.contentContainerStyle.paddingVertical, 8);
+  const current = nodes.find(
+    (n) => n.type === "SmallAction" && n.props.label === "Account 1 · current",
+  );
+  const choice = nodes.find(
+    (n) => n.type === "SmallAction" && n.props.label === "Account 2",
+  );
+  const unavailable = nodes.find(
+    (n) => n.type === "SmallAction" && n.props.label === "Reconnect account 3",
+  );
+  assert.equal(current.props.disabled, true);
+  assert.equal(unavailable.props.disabled, false);
+  assert.equal(choice.props.disabled, false);
+  choice.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, [
+    "suspend",
+    "choose:account-two:picker-revision",
+    "restart",
+  ]);
+});
+test("native picker fences repeated clicks and old-owner completion during selection", async () => {
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = view("mobile", viewState(), "success", {
+    accounts: pickerAccounts,
+    choose: () => pending,
+  });
+  f.render();
+  await f.flushEffects();
+  const choice = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Account 2",
+  );
+  choice.props.onPress();
+  choice.props.onPress();
+  assert.ok(
+    elements(f.render()).some(
+      (n) => n.type === "SmallAction" && n.props.label === "Cancel switch",
+    ),
+  );
+  f.setToken("replacement-session");
+  f.render();
+  release();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, [
+    "suspend",
+    "choose:account-two:picker-revision",
+  ]);
+  assert.equal(
+    elements(f.render()).some((n) =>
+      String(n.props.label).startsWith("Account "),
+    ),
+    false,
+  );
+});
+test("failed native selection resumes preserved runtime and reports an owned error", async () => {
+  const f = view("mobile", viewState(), "success", {
+    accounts: pickerAccounts,
+    choose: async () => {
+      throw new Error("failed");
+    },
+  });
+  f.render();
+  await f.flushEffects();
+  const choice = elements(f.render()).find(
+    (n) => n.type === "SmallAction" && n.props.label === "Account 2",
+  );
+  choice.props.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.localCalls, [
+    "suspend",
+    "choose:account-two:picker-revision",
+    "restart",
+  ]);
+  assert.ok(
+    elements(f.render()).some((n) => n.props.accessibilityRole === "alert"),
+  );
+});
+test("native Settings distinguishes Add from a targeted unavailable-account reconnect", async () => {
+  for (const action of ["add", "reconnect"] as const) {
+    const f = view("mobile", viewState(), "success", {
+      accounts: pickerAccounts,
+    });
+    f.render();
+    await f.flushEffects();
+    const label =
+      action === "add" ? "Add ChatGPT account" : "Reconnect account 3";
+    const button = elements(f.render()).find(
+      (n) => n.type === "SmallAction" && n.props.label === label,
+    );
+    assert.equal(button.props.disabled, false);
+    button.props.onPress();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(
+      JSON.parse(JSON.stringify(f.connectActions[0])),
+      action === "add"
+        ? { kind: "add", expectedRevision: "picker-revision" }
+        : {
+            kind: "reconnect",
+            connectionId: "account-three",
+            expectedRevision: "picker-revision",
+          },
+    );
+  }
+});
+test("native account menu binds rare cleanup to its displayed identity and revision", async () => {
+  const f = view("mobile", viewState(), "success", {
+    accounts: pickerAccounts,
+  });
+  f.render();
+  await f.flushEffects();
+  const menu = elements(f.render()).find(
+    (n) => n.type === "MoreMenu" && n.props.label === "Account 3 options",
+  );
+  const cleanup = menu.props.actions.find(
+    (a: any) => a.label === "Disconnect account",
+  );
+  assert.equal(cleanup.destructive, true);
+  cleanup.onPress();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(JSON.parse(JSON.stringify(f.cleanupTargets[0])), {
+    connectionId: "account-three",
+    expectedRevision: "picker-revision",
+  });
+  assert.deepEqual(f.localCalls, ["suspend", "disconnect", "restart"]);
+});
+
+// A browser must not imply local OAuth or enqueue an invisible desktop dependency.
+test("web account management does not offer a nonfunctional connect action", () => {
+  const screen = view("desktop", viewState());
+  const nodes = elements(screen.render());
+  assert.ok(
+    !nodes.some(
+      (node) =>
+        node.type === "button" && /Connect/.test(String(node.props.children)),
+    ),
+  );
+  assert.ok(
+    nodes.some(
+      (node) =>
+        node.type === "p" &&
+        /Direct web sign-in is unavailable/.test(String(node.props.children)),
+    ),
+  );
+});

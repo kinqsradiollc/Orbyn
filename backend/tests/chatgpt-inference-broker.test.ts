@@ -22,7 +22,7 @@ after(async () => {
   await pool.query("DELETE FROM users WHERE id=ANY($1::uuid[])", [owners]);
   await pool.end();
 });
-async function fixture(fallback = false) {
+async function fixture(fallback = false, native = false) {
   const owner = randomUUID(),
     session = randomUUID(),
     connection = randomUUID(),
@@ -40,7 +40,9 @@ async function fixture(fallback = false) {
     "INSERT INTO chatgpt_identity_connections(id,user_id,issuer,subject,client_id) VALUES($1,$2,'https://auth.openai.com',$3,'oaiapp_fixture')",
     [connection, owner, randomUUID()],
   );
-  const keys = generateKeyPairSync("ed25519"),
+  const keys = native
+      ? generateKeyPairSync("ec", { namedCurve: "prime256v1" })
+      : generateKeyPairSync("ed25519"),
     publicKey = keys.publicKey
       .export({ format: "der", type: "spki" })
       .toString("base64url");
@@ -116,9 +118,11 @@ async function fixture(fallback = false) {
       return {
         receipt,
         signature: sign(
-          null,
+          native ? "sha256" : null,
           Buffer.from(chatgptInferenceReceiptMessage(receipt)),
-          keys.privateKey,
+          native
+            ? { key: keys.privateKey, dsaEncoding: "ieee-p1363" }
+            : keys.privateKey,
         ).toString("base64url"),
       };
     },
@@ -525,6 +529,10 @@ test("only undisclosed expired work can fallback; lost envelopes and uncertain f
 });
 test("assigned input is encrypted; only one claim and signed completed output are accepted", async () => {
   const f = await fixture();
+  await pool.query(
+    "UPDATE chatgpt_executor_enrollments SET device_type='ios',device_name='iPhone 16 Pro' WHERE id=$1",
+    [f.selection.executor_id],
+  );
   const request = await queueChatgptInference(f.owner, f.job, f.selection, {
     instructions: "Private instructions",
     input: [{ role: "user", content: "Private question" }],
@@ -556,7 +564,11 @@ test("assigned input is encrypted; only one claim and signed completed output ar
   ).rows[0].trace;
   assert.equal(trace.filter((e: any) => e.tool?.startsWith("pc_c:")).length, 1);
   assert.ok(
-    trace.some((e: any) => e.label === "ChatGPT · fixture-model · completed"),
+    trace.some(
+      (e: any) =>
+        e.label ===
+        "ChatGPT · fixture-model · iPhone 16 Pro · iOS app · completed",
+    ),
   );
   const { readCompletedChatgptUsage } =
     await import("../src/modules/auth/chatgpt-usage.js");
@@ -1163,4 +1175,51 @@ test("bounded private calls require current output-limit capability before queue
     (await readChatgptInference(f.owner, f.job, queued.id)).status,
     "completed",
   );
+});
+
+test("v2 digest receipts complete large results for desktop and native keys without weakening legacy verification", async () => {
+  const { chatgptInferenceProofMessage } =
+    await import("../src/modules/auth/chatgpt-executor-proof.js");
+  for (const native of [false, true]) {
+    const f = await fixture(false, native);
+    await queueChatgptInference(
+      f.owner,
+      f.job,
+      f.selection,
+      { instructions: "fixture", input: [] },
+      "fixture-model",
+      1,
+      randomUUID(),
+    );
+    const assignment = await claimChatgptInference(
+      f.binding,
+      f.selection.executor_id,
+    );
+    assert.ok(assignment);
+    const publication = f.receipt(assignment);
+    publication.receipt.result.text = "x".repeat(10000);
+    const signature = sign(
+      native ? "sha256" : null,
+      Buffer.from(
+        chatgptInferenceProofMessage(publication.receipt, "sha256_v2"),
+      ),
+      native
+        ? { key: f.keys.privateKey, dsaEncoding: "ieee-p1363" }
+        : f.keys.privateKey,
+    ).toString("base64url");
+    await assert.rejects(
+      finishChatgptInference(f.binding, {
+        receipt: publication.receipt,
+        signature,
+      }),
+      status(400),
+    );
+    await finishChatgptInference(f.binding, {
+      receipt: publication.receipt,
+      signature,
+      proof_format: "sha256_v2",
+    });
+    const result = await readChatgptInference(f.owner, f.job, assignment.id);
+    assert.deepEqual(result, publication.receipt.result);
+  }
 });

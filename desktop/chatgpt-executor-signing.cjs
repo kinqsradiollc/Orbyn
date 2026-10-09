@@ -186,15 +186,22 @@ async function createChatgptExecutorSigner({
       return { catalog, signature: await proof(record, message) };
     },
     async signInference(value) {
-      const { chatgptInferenceReceipt, chatgptInferenceReceiptMessage } =
-        await import("@orbyn/core");
+      const {
+        chatgptInferenceReceipt,
+        chatgptInferenceSigningInput,
+        CHATGPT_INFERENCE_SIGNATURE_DOMAIN,
+      } = await import("@orbyn/core");
       const receipt = chatgptInferenceReceipt.parse(value);
       if (!same(receipt.binding))
         throw new Error("The inference account changed.");
       const record = await key();
       return {
         receipt,
-        signature: await proof(record, chatgptInferenceReceiptMessage(receipt)),
+        proof_format: "sha256_v2",
+        signature: await proof(
+          record,
+          `${CHATGPT_INFERENCE_SIGNATURE_DOMAIN}\n${createHash("sha256").update(chatgptInferenceSigningInput(receipt), "utf8").digest("base64url")}`,
+        ),
       };
     },
     async revoke() {

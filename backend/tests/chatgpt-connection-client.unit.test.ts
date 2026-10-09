@@ -89,3 +89,47 @@ test("connection client refuses unexpected plan tokens and invalid server metada
   assert.equal(count, 0);
   await assert.rejects(client.chatgptConnections());
 });
+
+test("refresh identity client sends only proof and rejects a substituted connection", async () => {
+  let replace = false;
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    getToken: () => "owned-session",
+    fetch: async (url, init) => {
+      assert.equal(
+        new URL(String(url)).pathname,
+        "/ai/connections/chatgpt/refresh-identity",
+      );
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        connection_id: id,
+        id_token: "proof-only",
+      });
+      return Response.json({
+        ...identity,
+        ...(replace ? { id: randomUUID() } : {}),
+      });
+    },
+  });
+  assert.deepEqual(
+    await client.verifyChatgptRefreshIdentity({
+      connection_id: id,
+      id_token: "proof-only",
+    }),
+    identity,
+  );
+  replace = true;
+  await assert.rejects(
+    client.verifyChatgptRefreshIdentity({
+      connection_id: id,
+      id_token: "proof-only",
+    }),
+    /registration changed/,
+  );
+  await assert.rejects(
+    client.verifyChatgptRefreshIdentity({
+      connection_id: id,
+      id_token: "proof-only",
+      access_token: "forbidden",
+    } as never),
+  );
+});

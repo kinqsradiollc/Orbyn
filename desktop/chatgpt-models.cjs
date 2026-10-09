@@ -7,6 +7,7 @@ async function createChatgptModelRuntime({
   fetch,
   preferenceStore,
   credentialResolver,
+  onInvalidated,
 }) {
   const { chatgptModelBinding } = await import("@orbyn/core");
   const { ChatgptPlanClient, ChatgptModelPicker } =
@@ -52,6 +53,7 @@ async function createChatgptModelRuntime({
         vault,
         requireLiveConnection: live,
         fetch,
+        onInvalidated,
       },
     ));
   const transport = new ChatgptPlanClient({
