@@ -6,15 +6,23 @@ Updated 9 October 2026. Follow the full contract in
 Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
-**C1 and C2/M1 complete under their user-approved scopes.** C2/M1 passed
+**C1, C2/M1 and C3 complete under their user-approved scopes.** C2/M1 passed
 Test → Review in round **1/3** and was merged and pushed to `main` at
 `c778c25f`. Local desktop and phone connection is in scope; the user confirmed
 phone Connect and declined another authorization check. Phone-owned executor
 enrollment/inference is not independently verified. Independent hosted web
 sign-in is explicitly deferred. Production deployment remains user-owned.
 
-**Next stage:** C3. The user-requested product content cleanup across
-web/desktop and mobile passed Test → Review in round **1/3** and was pushed to
+**C3** passed Test → Review in round **1/3** and was pushed to `main` at
+`db0913e6`. It delivers separate Background/Overnight agent profiles and
+activity, typed rules and authority rechecks, bounded handoffs, and cumulative
+lane budgets. See [C3 closeout](c3-closeout-2026-10-09.md). The user requested
+the broader goal be paused after C3.
+
+**Next stage when resumed:** C4/D1.
+
+The user-requested product content cleanup across web/desktop and mobile
+passed Test → Review in round **1/3** and was pushed to
 main at `70e7e687`. Visual Check was stopped for that batch at the user's
 request. See [content handoff](content-density-2026-10-09.md),
 [Tester report](content-density-test-00098f37-2026-10-09.md),
@@ -46,7 +54,7 @@ behavior is untested. See [C1 closeout](c1-closeout-2026-10-08.md),
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | ✓ C1           | Accepted and merged; push delivery recorded in the closeout. User deploys main manually.                                       |
 | ✓ C2/M1        | Accepted and pushed to main `c778c25f` under revised scope. Hosted web sign-in and phone-owned execution proof are follow-ups. |
-| ✗ C3           | Rules, authority, budgets, separate Background/Overnight agents, collaboration and reflection.                                 |
+| ✓ C3           | Accepted round 1/3 and pushed to main `db0913e6`; separate agents, rules, handoffs and lane budgets qualified.                 |
 | ✗ C4/D1        | Normal Docs editing/recovery/history/collaboration and required Markdown/Mermaid rendering.                                    |
 | ✗ C5           | Bound pages, schedules, publication consent and channels.                                                                      |
 | ✗ C6           | Separate plugin backend/UI integrations and security qualification.                                                            |

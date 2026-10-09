@@ -3,8 +3,8 @@
 **State:** Whole C3 scope implemented on `codex/c3-agent-platform` from main
 `88b49d88`. The legacy-checkpoint, Agenda authority, per-run budget and queue
 progress findings were corrected and retested. [Reviewer final acceptance](c3-review-r1-final.md)
-closed all findings in round **1/3** on code `1fce0b66`. Main integration is
-the remaining delivery action.
+closed all findings in round **1/3** on code `1fce0b66`. The accepted
+checkpoint, tests and review record were pushed to main at `db0913e6`.
 The user asked to pause the goal after C3 is accepted, merged and pushed.
 
 | Area                | Candidate                                                                                                                                                                                                                                                                                                                                                                                                              |

@@ -8,7 +8,8 @@ its acceptance contract in `devday-2026-implementation-review.md`.
 C1 and C2/M1 are accepted under their final user-approved scopes. C2/M1 was
 merged and pushed to main at `c778c25f`. The user-requested content cleanup
 before C3 passed Test → Review in round 1/3 and was pushed to main at
-`70e7e687`. C3 is next. Hosted
+`70e7e687`. C3 then passed Test → Review in round 1/3 and was pushed to main
+at `db0913e6`. C4/D1 is next when the user resumes the paused goal. Hosted
 independent web sign-in is deferred; phone-owned inference has no independent
 proof. Production deployment is user-owned.
 The user explicitly stopped Visual Check for the content cleanup; source and
@@ -43,7 +44,7 @@ normal Docs activation stays queued under C4. Existing work is retained.
 | ----- | ---------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1     | C1: model/provider/connection contracts              | Complete; accepted round2/3, merged main6f56c548                                   | Managed/BYO/plan boundaries, supported models/request capabilities, explicit fallback, caching evaluation, multiple-provider and embedding configuration/migration requirements verified |
 | 2     | C2/M1: SIWC, account catalogs/defaults and execution | Accepted round1/3, pushed main `c778c25f` under revised scope; hosted web deferred | Correct platform connection, verified account/plan permissions, truthful usage, catalog/default persistence, protected tokens, lifecycle/revocation and actual inference acceptance      |
-| 3     | C3: rules, ownership, activity and budgets           | Foundations implemented                                                            | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                    |
+| 3     | C3: rules, ownership, activity and budgets           | Accepted round 1/3; pushed main `db0913e6`                                         | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                    |
 | 4     | C4/D1: Docs parity and UI regressions                | Foundation candidate; normal editor activation unfinished                          | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
 | 5     | C5: bound pages, publication and channels            | Foundations/candidates implemented                                                 | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                   |
 | 6     | C6: separate plugin backend/UI and security          | Partial                                                                            | Independent connector authority, managed/BYO provider execution and launch contexts, real host OAuth/UI, authorized scan evidence and triage verified                                    |
