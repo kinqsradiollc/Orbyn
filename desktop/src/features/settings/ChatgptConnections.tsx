@@ -52,7 +52,7 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
       </h2>
       <p className="muted">
         {state.status === "unsupported"
-          ? "Connect ChatGPT as a personal AI provider."
+          ? "Choose your AI provider and default model."
           : "Connect your ChatGPT account and choose a default model."}
       </p>
       <ManagedAiUsage userId={userId} />
