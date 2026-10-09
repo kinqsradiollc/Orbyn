@@ -41,5 +41,12 @@ assertion and the six content findings in its first report. Reviewer should
 assess the cross-client copy, retention of material consent/consequences, test
 evidence and any UI logic changes. One full review round starts after Tester
 reports on the corrected candidate.
+
+Review round 1 identified two further issues after the six Tester findings
+closed: an unavailable morning-summary connection had no way to refresh its
+status, and usage's empty state implied no requests rather than no recorded
+completions. Builder restored a focused connection check on both clients and
+qualified the usage empty state. The corrected candidate requires an affected
+behavior retest and Reviewer closure within round 1.
 The user excluded further Visual Check, iOS/Android builds and broad repeated
 testing. Production deployment remains user-owned.

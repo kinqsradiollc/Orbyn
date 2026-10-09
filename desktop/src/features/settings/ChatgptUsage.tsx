@@ -81,7 +81,7 @@ export function ChatgptUsage({ userId }: { userId: string }) {
                   </p>
                 )}
                 {!data.completed_requests && (
-                  <p className="muted">No ChatGPT requests yet.</p>
+                  <p className="muted">No completed ChatGPT calls recorded.</p>
                 )}
                 {data.recent.map((row) => (
                   <p key={row.request_id} className="muted">

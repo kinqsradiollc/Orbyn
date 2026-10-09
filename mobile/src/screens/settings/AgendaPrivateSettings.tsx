@@ -69,9 +69,11 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
           {error}
         </Text>
       )}
-      {(data?.permission.enabled || error) && (
+      {(data?.permission.enabled || (data && !canEnable) || error) && (
         <SmallAction
-          label="Refresh summary"
+          label={
+            data?.permission.enabled ? "Refresh summary" : "Check connection"
+          }
           disabled={busy}
           onPress={refresh}
         />

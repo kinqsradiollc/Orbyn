@@ -64,14 +64,14 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
         </>
       )}
       {error && <p role="alert">{error}</p>}
-      {(data?.permission.enabled || error) && (
+      {(data?.permission.enabled || (data && !canEnable) || error) && (
         <button
           type="button"
           className="secondary"
           disabled={busy}
           onClick={refresh}
         >
-          Refresh summary
+          {data?.permission.enabled ? "Refresh summary" : "Check connection"}
         </button>
       )}
     </section>
