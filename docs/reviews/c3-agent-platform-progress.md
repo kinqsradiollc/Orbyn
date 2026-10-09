@@ -1,12 +1,10 @@
 # C3 agent platform — candidate handoff
 
-**State:** Whole C3 candidate implemented on `codex/c3-agent-platform` from
-main `88b49d88`. Test round 1 found a legacy-checkpoint recovery regression;
-Builder corrected it and Tester retest passed. Reviewer round 1 found two more
-gaps; Builder corrected them and Tester retest passed. Reviewer closed those
-findings but found a queue-progress edge case (R3); Builder corrected it,
-pending Tester retest and Reviewer closure.
-No C3 code is on main yet.
+**State:** Whole C3 scope implemented on `codex/c3-agent-platform` from main
+`88b49d88`. The legacy-checkpoint, Agenda authority, per-run budget and queue
+progress findings were corrected and retested. [Reviewer final acceptance](c3-review-r1-final.md)
+closed all findings in round **1/3** on code `1fce0b66`. Main integration is
+the remaining delivery action.
 The user asked to pause the goal after C3 is accepted, merged and pushed.
 
 | Area                | Candidate                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -29,16 +27,14 @@ The user asked to pause the goal after C3 is accepted, merged and pushed.
   for this checkpoint. Existing user-confirmed C2/M1 ChatGPT connection is not
   requalified here.
 
-## Qualification handoff
+## Qualification record
 
-Tester: execute the current candidate's relevant runtime, migration, rule,
-budget/recovery and client checks; write an evidence report. Reviewer: inspect
-the candidate and Tester's evidence for source authority, state transitions,
-budget races, UI contracts and code quality; give Builder a concise fix plan or
-accept. Maximum three full review rounds, with earlier acceptance allowed.
-Builder owns fixes and main integration. Preserve unrelated changes in the
-primary checkout. The disposable fixture `orbyn-c3-qa` on port 55438 belongs to
-Builder until qualification is finished.
+Tester qualified the current candidate's runtime, migrations, rules,
+budget/recovery and unchanged client scope. Reviewer inspected source authority,
+state transitions, budget races, UI contracts and code quality, then accepted
+within round 1/3. Builder owns main integration. The unrelated changes in the
+primary checkout remain untouched. The disposable fixture `orbyn-c3-qa` on port
+55438 belongs to Builder until delivery cleanup.
 
 ## Round 1 correction
 
@@ -50,7 +46,7 @@ resume only while its rules remain at revision 1 with an empty ruleset;
 edited-rule states still hold. The unchanged recovery suite now passes
 `13/13` on the corrected candidate. Tester independently confirmed that
 result plus `29/29` typed-rule checks and backend typecheck in
-[the retest report](c3-test-r1-retest.md). Reviewer assessment remains required.
+[the retest report](c3-test-r1-retest.md). These results supported round-1 review.
 
 ## Review round 1 corrections
 
@@ -66,7 +62,7 @@ run suites passed **42/42** after these changes; the subsequent budget-only
 concurrency and lowered-limit additions passed **5/5**. [Tester retest](c3-test-r1-review-fixes.md)
 passed **43/43** affected suites, **19/19** recovery/lane checks and **2/2**
 extra Agenda authority phases, plus migration 261 and backend typecheck.
-Reviewer closed R1/R2; the queue-progress R3 finding remains pending.
+Reviewer closed R1/R2 and then raised the queue-progress R3 finding below.
 
 ## Queue-progress correction
 
@@ -79,4 +75,7 @@ both-lane and competing-claimer check plus existing budget/lane suites passed
 **12/12**. [Tester retest](c3-test-r1-r3.md) passed **25/25** budget/lane/recovery
 cases, migration 262, backend typecheck, and extra checks for checkpoint-only
 exhaustion and restored eligibility after raising the cap in both lanes.
-Reviewer closure of R3 remains pending in round 1/3.
+[Reviewer final acceptance](c3-review-r1-final.md) closed R3 and accepted C3
+for main integration in round **1/3**. Routine visuals and separate native
+desktop/iOS/Android builds remained outside this checkpoint; the full 103-case
+aggregate was not rerun as one command. Production deployment is user-owned.
