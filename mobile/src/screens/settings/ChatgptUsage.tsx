@@ -90,9 +90,7 @@ export function ChatgptUsage({ userId }: { userId: string }) {
                   </Text>
                 )}
                 {!data.completed_requests && (
-                  <Text style={shared.small}>
-                    No completed ChatGPT requests yet.
-                  </Text>
+                  <Text style={shared.small}>No ChatGPT requests yet.</Text>
                 )}
                 {data.recent.map((row) => (
                   <Text key={row.request_id} style={shared.small}>
@@ -104,7 +102,7 @@ export function ChatgptUsage({ userId }: { userId: string }) {
                   </Text>
                 ))}
                 <Text style={shared.small}>
-                  Recorded assistant calls only. Account limits stay in ChatGPT.
+                  Orbyn calls only. Plan limits are in ChatGPT.
                 </Text>
               </>
             ))}

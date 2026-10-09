@@ -38,7 +38,7 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
   return (
     <View style={{ gap: 10 }}>
       <SmallAction
-        label="Workspace provider usage"
+        label="Workspace usage"
         disabled={!userId || !token}
         onPress={() => setOpen(expanded ? null : identity)}
       />
@@ -61,7 +61,7 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
                 </Text>
               )}
               <Text style={shared.small}>
-                Recorded responses only. Not billing or ChatGPT plan limits.
+                Orbyn usage only; billing and ChatGPT limits are separate.
               </Text>
             </>
           )}

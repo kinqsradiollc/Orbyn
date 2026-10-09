@@ -189,8 +189,7 @@ export function AdminAgents({ report }: { report: Report }) {
           </button>
         </div>
         <p className="muted agents-admin-lead">
-          AI agents people connect to Orbyn over MCP (Claude, ChatGPT, coding
-          tools). These switches apply to everyone within a few seconds.
+          Control MCP agents for everyone. Changes apply within seconds.
         </p>
         <div className="agents-admin-switches">
           <Switch

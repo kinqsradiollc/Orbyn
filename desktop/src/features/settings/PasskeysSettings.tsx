@@ -48,8 +48,7 @@ export function PasskeysSettings({ report }: { report: (e: unknown) => void }) {
       <hr />
       <h2>Passkeys</h2>
       <p className="muted">
-        Sign in with your device — Touch ID, Windows Hello, a phone or a
-        security key — instead of your password. Your password still works.
+        Sign in with your device or security key. Your password still works.
       </p>
       {keys === null ? (
         <p className="muted">Loading…</p>

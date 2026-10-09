@@ -156,9 +156,8 @@ export function InboxEdit({
             </button>
           </div>
           <small className="muted">
-            For agents that run on a schedule. Orbyn sends a signed call with
-            how many things wait and where to read them, never what they say, at
-            most every {AGENT_WAKE_MINUTES} minutes.
+            Scheduled agents get a signed count and link, never item contents,
+            at most every {AGENT_WAKE_MINUTES} minutes.
           </small>
         </div>
         {secret && (
@@ -316,10 +315,7 @@ export function AgentRules({ report }: { report: (e: unknown) => void }) {
   return (
     <div className="agents-rules">
       <h3>Standing rules</h3>
-      <p className="muted">
-        Plain rules every agent follows when something reaches it, like “Always
-        accept bookings from my team”.
-      </p>
+      <p className="muted">Rules agents follow when work arrives.</p>
       {rules === null ? (
         <p className="muted">Loading…</p>
       ) : rules.length ? (

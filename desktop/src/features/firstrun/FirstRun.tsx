@@ -143,9 +143,8 @@ export function FirstRun({
               Connect a calendar (optional)
             </h2>
             <p className="muted">
-              Paste the private address (ending .ics) of a calendar you already
-              use, such as your timetable or Google Calendar, and its events
-              show beside your plans. You can add more in Settings.
+              Paste a private .ics calendar link. Its events appear beside your
+              plans. Add more later in Settings.
             </p>
             <label className="first-run-field">
               Calendar address

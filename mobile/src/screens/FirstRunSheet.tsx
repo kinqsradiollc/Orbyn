@@ -161,9 +161,8 @@ export function FirstRunSheet({
                 Connect a calendar (optional)
               </Text>
               <Text style={s.blurb}>
-                Paste the private address (ending .ics) of a calendar you
-                already use, such as your timetable or Google Calendar, and its
-                events show beside your plans. You can add more in Settings.
+                Paste a private .ics calendar link. Its events appear beside
+                your plans. Add more later in Settings.
               </Text>
               <Text style={shared.label}>Calendar address</Text>
               <TextInput

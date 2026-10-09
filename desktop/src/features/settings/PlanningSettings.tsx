@@ -373,8 +373,8 @@ export function PlanningSettings({ teams, report }: Props) {
 
           <h3 className="settings-subtitle">Planner notices</h3>
           <p className="muted">
-            Heads-ups about unfinished sessions, tasks at risk, tasks due soon
-            and clashes. They always show in Notifications.
+            Rollovers, due tasks, risks and clashes also appear in
+            Notifications.
           </p>
           <div className="settings-grid">
             <div className="settings-field">
@@ -447,9 +447,8 @@ export function PlanningSettings({ teams, report }: Props) {
 
           <h3 className="settings-subtitle">What Orbyn has learned</h3>
           <p className="muted">
-            The planner learns from your own finished tasks, sessions and focus
-            time, and nobody else’s. Your tasks aren’t changed; only where and
-            how long they’re planned.
+            Only your completed work shapes future estimates and timing. Tasks
+            themselves stay unchanged.
           </p>
           <div className="settings-grid">
             <label className="switch-line settings-field">
@@ -522,9 +521,7 @@ export function PlanningSettings({ teams, report }: Props) {
 
           <h3 className="settings-subtitle">Daily digest</h3>
           <p className="muted">
-            A short email with your day. Sent from the workspace’s own mail
-            server, at the times below in your zone. The morning and evening
-            emails are off until you turn them on.
+            Choose when to receive your agenda and evening review by email.
           </p>
           <div className="settings-grid settings-pairs">
             <label className="switch-line settings-field">
@@ -874,8 +871,7 @@ function FramesEditor({ teams, report }: Props) {
       <div className="settings-head">
         <div>
           <p className="muted">
-            Time set aside for a kind of work, like “Deep work, weekday
-            mornings”. The planner fills frames with matching tasks.
+            Reserve time for matching tasks, such as weekday focus work.
           </p>
         </div>
         {editing === null && (
@@ -1032,8 +1028,7 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
       <div className="settings-head">
         <div>
           <p className="muted">
-            When an event&apos;s location mentions a place, the calendar keeps
-            its travel time free before and after.
+            Matching event locations reserve travel time before and after.
           </p>
         </div>
         {editing === null && (

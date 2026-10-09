@@ -155,8 +155,7 @@ function Body() {
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.subtitle, s.intro]}>
-          Routines like “Gym 3× a week”. The planner fits them into free time
-          and moves them as your week changes.
+          The planner fits routines into free time as your week changes.
         </Text>
 
         {(habits ?? []).map((h) => (

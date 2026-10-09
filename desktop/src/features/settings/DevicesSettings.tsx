@@ -162,9 +162,8 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
           <span>
             Let my teams see when I&apos;m active
             <small>
-              They see “active” or “away” — never when you were last on, or what
-              you&apos;re working on. Anyone on a shared page you have open sees
-              you there either way.
+              Teams see active or away, never your work or last visit. People on
+              an open shared page still see you there.
             </small>
           </span>
         </label>

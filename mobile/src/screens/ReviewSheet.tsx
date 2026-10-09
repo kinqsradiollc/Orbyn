@@ -204,8 +204,7 @@ export function ReviewSheet({
                   <Icon name="inbox" size={28} color={colors.muted} />
                   <Text style={shared.sectionTitle}>Nothing waits for you</Text>
                   <Text style={[shared.small, s.center]}>
-                    When an agent suggests something risky, like deleting a task
-                    or emailing people, it waits here until you approve it.
+                    Agent changes that need approval appear here.
                   </Text>
                 </View>
               )}
@@ -304,8 +303,7 @@ export function ReviewSheet({
             )}
             {chosenStale && open.status === "pending" && (
               <Text style={[shared.small, s.gap]}>
-                Something changed since this was suggested. Leave out the
-                changes marked, or decline it and ask again.
+                Some changes are stale. Omit them, or decline and ask again.
               </Text>
             )}
             {!!done && <Text style={s.done}>{done}</Text>}

@@ -177,8 +177,8 @@ export function DocHistory({
           <Text style={styles.empty}>Loading…</Text>
         ) : versions.length === 0 ? (
           <Text style={styles.empty}>
-            Nothing to go back to yet. Each time you sit down and change the
-            page, the version you started from is kept here.
+            No earlier version yet. Editing a page saves the version you started
+            from.
           </Text>
         ) : (
           <View style={styles.list}>

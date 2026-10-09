@@ -225,8 +225,7 @@ export function LineToolbar({
     <View style={s.dock}>
       {suggesting && (
         <Text style={s.hint}>
-          While you are suggesting, a line’s words are yours to change. Moving
-          and removing lines are the page’s to keep.
+          Suggest mode changes words only. Leave it to move or delete lines.
         </Text>
       )}
       {panel === "kinds" && (

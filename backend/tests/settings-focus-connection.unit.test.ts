@@ -42,18 +42,14 @@ test("compound settings searches override focus-visible on the inner input", asy
   assert.ok(section.includes("var(--color-focus)"));
   assert.ok(section.includes(".settings-dialog"));
 });
-test("web offers one provider authorization action separate from usage and MCP settings", async () => {
+test("web shows remote ChatGPT models separately from MCP settings", async () => {
   const web = (
     await file("../../desktop/src/features/settings/ChatgptRemoteModels.tsx")
   ).replace(/\s+/g, " ");
-  assert.ok(web.includes("Connect to ChatGPT"));
-  assert.ok(/startChatgptConnectRequest\(\s*controller\.signal/.test(web));
+  assert.ok(!web.includes("Connect to ChatGPT"));
+  assert.ok(!web.includes("startChatgptConnectRequest"));
   assert.ok(!web.includes("window.location.href = request.launch_url"));
-  assert.ok(web.includes("client.chatgptConnectRequest("));
-  assert.ok(web.includes("connectFeedback.message"));
-  assert.ok(web.includes("chatgptConnectFeedback(next.state"));
-  assert.ok(!web.includes("Connect on desktop"));
-  assert.ok(!web.includes("Open ChatGPT sign-in settings"));
   assert.ok(!web.includes("startOAuth"));
-  assert.ok(web.includes("Manage ChatGPT usage"));
+  assert.ok(web.includes("View ChatGPT usage"));
+  assert.ok(web.includes("AiProviderChoiceControls"));
 });

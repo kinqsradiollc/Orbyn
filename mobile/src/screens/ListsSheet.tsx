@@ -156,8 +156,7 @@ function Body({
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.subtitle, s.intro]}>
-          Group tasks into lists. Team lists are shared with everyone in the
-          team. Tap a list to see what’s in it.
+          Group tasks into lists. Team lists are shared.
         </Text>
 
         {sections.length === 0 && (

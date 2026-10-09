@@ -187,15 +187,15 @@ function TrustEdit({
       {!changes ? (
         <p className="muted">
           {grant.access === "read"
-            ? "It can only read. To let it change things, connect it again and allow changes."
-            : "It can only suggest: every change waits in your Review inbox. To give it more, connect it again and allow changes."}
+            ? "Read only. Reconnect to allow changes."
+            : "Changes need your review. Reconnect to allow more."}
         </p>
       ) : (
         <>
           {assistantGrant && (
             <p className="muted">
-              {grant.name} is built in, so it cannot be disconnected. Its trust
-              can only be lowered. Protected actions stay ask-first.
+              {grant.name} is built in. You can lower its access; protected
+              actions still need approval.
             </p>
           )}
           <div className="settings-field">
@@ -717,14 +717,13 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                   </div>
                   {g.suspended_at && (
                     <p className="muted agents-paused">
-                      Orbyn paused it on{" "}
+                      Paused on{" "}
                       {new Date(g.suspended_at).toLocaleDateString([], {
                         day: "numeric",
                         month: "short",
                       })}{" "}
-                      because it kept going over its limits or asking for things
-                      it can’t reach. Check its activity, then restore it or
-                      revoke it.
+                      after repeated access or usage failures. Check activity
+                      before restoring or revoking it.
                     </p>
                   )}
                   <div className="agents-acts">
@@ -1112,9 +1111,9 @@ function ConnectAgent({
           )}
           <li className="agents-step-note">
             <small className="muted">
-              No key needed: {AGENT_SETUP_LABELS[tab]} signs in with Orbyn, and
-              Orbyn asks you what it may do and in which spaces. Giving it write
-              access asks for your password or passkey again.
+              No key needed. {AGENT_SETUP_LABELS[tab]} signs in with Orbyn; you
+              choose its spaces and access. Write access needs another password
+              or passkey check.
             </small>
           </li>
         </ol>
@@ -1290,8 +1289,8 @@ function ConnectAgent({
           ))}
         </div>
         <small className="muted">
-          Opens the app with Orbyn’s address filled in. It then signs in with
-          Orbyn, or asks for an agent key. No key is ever part of the link.
+          Opens the app with Orbyn's address. It signs in or asks for an agent
+          key; the link contains no key.
         </small>
       </div>
     </div>

@@ -20,8 +20,7 @@ export function ReminderNudges({
     <section className="agents-rules night-shift">
       <h3>Reminder nudges</h3>
       <p className="muted">
-        A reminder when your own work needs attention, with no AI request. At
-        most three a day, and one per thing in 24 hours.
+        No AI request. At most three a day, once per item in 24 hours.
       </p>
       <form
         className="agents-identity-form"

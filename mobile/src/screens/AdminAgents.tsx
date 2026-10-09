@@ -191,8 +191,7 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
       <View style={[shared.card, s.card]}>
         <Text style={s.title}>Outside agents</Text>
         <Text style={[shared.small, s.lead]}>
-          AI agents people connect to Orbyn over MCP (Claude, ChatGPT, coding
-          tools). These switches apply to everyone within a few seconds.
+          Control MCP agents for everyone. Changes apply within seconds.
         </Text>
         <Toggle
           label="Outside agents"
@@ -276,8 +275,7 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
           accessibilityLabel="Only allow apps from these websites"
         />
         <Text style={[shared.small, s.lead]}>
-          One per line. An app that registered itself must be allowed for every
-          address it sends people back to.
+          One address per line. Include every redirect address an app uses.
         </Text>
         <Button
           secondary

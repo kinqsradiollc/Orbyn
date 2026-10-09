@@ -286,9 +286,8 @@ export function AgendaView({
       </div>
       {doc && (
         <p className="agenda-note muted">
-          <Sparkles size={14} aria-hidden="true" /> Written from your calendar,
-          including the calendars you subscribe to. Notes are yours: a rewrite
-          leaves them alone.
+          <Sparkles size={14} aria-hidden="true" /> Written from your calendars.
+          A rewrite keeps your notes.
           {note && <strong role="status"> {note}</strong>}
         </p>
       )}

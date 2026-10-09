@@ -268,8 +268,8 @@ export function RecordingSummarySheet({
         {!result ? (
           <>
             <Text style={s.note}>
-              Summaries use your selected AI provider. Paste a transcript to use
-              ChatGPT; audio transcription requires the Orbyn provider.
+              Summaries use your selected AI. ChatGPT accepts transcripts; audio
+              transcription needs Orbyn's provider.
             </Text>
             <Text style={s.label}>Transcript (optional)</Text>
             <TextInput

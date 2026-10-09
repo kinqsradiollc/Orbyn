@@ -6,18 +6,18 @@ Updated 9 October 2026. Follow the full contract in
 Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
-**C1 complete under the final user-approved scope. C2/M1 blocked on hosted ChatGPT-plan integration.**
-**Active cycle: C2-full-2026-10-08. Phase: blocked pending hosted integration contract or explicit scope disposition.
-Review rounds: 0/3; no frozen candidate or formal handoff yet.**
+**C1 and C2/M1 complete under their user-approved scopes.** C2/M1 passed
+Test → Review in round **1/3** and was merged and pushed to `main` at
+`c778c25f`. Local desktop and phone connection is in scope; the user confirmed
+phone Connect and declined another authorization check. Phone-owned executor
+enrollment/inference is not independently verified. Independent hosted web
+sign-in is explicitly deferred. Production deployment remains user-owned.
 
-Candidate checkout: `adr-release-qualification/Orbyn`, branch
-`codex/c2-chatgpt-completion`, based on main `10e9938f`.
-See [C2 scope and readiness](c2-full-2026-10-08.md).
-Rendered evidence source `babf1434`: bounded web320/1280 Dark and Expo320 Light checks close
-C2-001/002 copy findings. Latest product `175834f2` corrects C2-003 copy;
-12/12 focused checks passed; C2-003 was rechecked on web1280 Light and
-Expo320 Light. Connected-account/inference and standalone hosted
-web connection remain open; no formal handoff, main merge or C3 advancement.
+**Active work:** user-requested product content cleanup across web/desktop and
+mobile before C3. Visual Check is stopped for this batch at the user's request.
+The content candidate is isolated on `codex/content-density`; its Test → Review
+handoff has not yet occurred. See [C2 scope and acceptance](c2-full-2026-10-08.md)
+and [Reviewer closure](c2-r1-closure-b7b05211.md).
 C1 acceptance remains round2/3; its evidence below is unchanged.
 
 Reviewer approved frozen candidate `1a92a2c0` within round2. Product integration
@@ -40,15 +40,15 @@ behavior is untested. See [C1 closeout](c1-closeout-2026-10-08.md),
 [Tester evidence](c1-full-2026-10-08-final-test-1a92a2c0.md) and
 [final Reviewer acceptance](c1-full-2026-10-08-review-r2.md).
 
-| State          | Remaining implementation / next action                                                                                                 |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| ✓ C1           | Accepted and merged; push delivery recorded in the closeout. User deploys main manually.                                               |
-| ✗ C2/M1        | In progress: ChatGPT sign-in, account-specific models/defaults, verified plan/usage, token lifecycle, explicit fallback and inference. |
-| ✗ C3           | Rules, authority, budgets, separate Background/Overnight agents, collaboration and reflection.                                         |
-| ✗ C4/D1        | Normal Docs editing/recovery/history/collaboration and required Markdown/Mermaid rendering.                                            |
-| ✗ C5           | Bound pages, schedules, publication consent and channels.                                                                              |
-| ✗ C6           | Separate plugin backend/UI integrations and security qualification.                                                                    |
-| ✗ U1 / cleanup | Whole-app parity and final integration; preserve character work and remove only safe merged branches/worktrees.                        |
+| State          | Remaining implementation / next action                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| ✓ C1           | Accepted and merged; push delivery recorded in the closeout. User deploys main manually.                                       |
+| ✓ C2/M1        | Accepted and pushed to main `c778c25f` under revised scope. Hosted web sign-in and phone-owned execution proof are follow-ups. |
+| ✗ C3           | Rules, authority, budgets, separate Background/Overnight agents, collaboration and reflection.                                 |
+| ✗ C4/D1        | Normal Docs editing/recovery/history/collaboration and required Markdown/Mermaid rendering.                                    |
+| ✗ C5           | Bound pages, schedules, publication consent and channels.                                                                      |
+| ✗ C6           | Separate plugin backend/UI integrations and security qualification.                                                            |
+| ✗ U1 / cleanup | Whole-app parity and final integration; preserve character work and remove only safe merged branches/worktrees.                |
 
 The detailed records below are historical snapshots, superseded by this final
 C1 scope and acceptance. They do not impose removed acceptance gates.

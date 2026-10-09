@@ -205,9 +205,8 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
               <HardDrive size={16} /> Files on the server
             </h3>
             <p className="muted">
-              Uploads waiting to be imported. Each is deleted when its import
-              ends, and always within a day. Admins can delete a file, but
-              can&apos;t open one.
+              Pending uploads are deleted after import or within a day. Admins
+              can delete them, but cannot open them.
             </p>
           </div>
           <div className="storage-actions">

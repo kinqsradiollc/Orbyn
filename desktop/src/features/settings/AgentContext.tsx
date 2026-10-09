@@ -281,9 +281,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
       <ReminderNudges report={report} />
       <h3>About me for agents</h3>
       <p className="muted">
-        One page your agents read before they help: your courses and exams, how
-        you like notes and cards, when you study and for how long. Change it
-        like any page; your agents can fill it in too.
+        A page of context for your agents. Edit it like any other page.
       </p>
       <div className="agents-about">
         <button
@@ -304,8 +302,8 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
 
       <h3>Instructions</h3>
       <p className="muted">
-        A few lines agents follow in each space, like “In Biology, cards are
-        cloze”. A team’s instructions are shared by every member’s agents.
+        Space-specific rules for agents. Team rules apply to every member’s
+        agents.
       </p>
       {data === null ? (
         <p className="muted">Loading…</p>

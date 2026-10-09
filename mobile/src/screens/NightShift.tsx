@@ -66,8 +66,8 @@ export function NightShift({
     <View style={shared.card}>
       <Text style={shared.label}>Night shift</Text>
       <Text style={shared.small}>
-        Your assistant can work while you’re away. Changes wait for your morning
-        review unless you turn that off.
+        Work runs while you're away. Changes wait for review unless you turn
+        that off.
       </Text>
       {toggle("Work overnight", value.enabled, (enabled) =>
         setValue({ ...value, enabled }),
@@ -123,8 +123,8 @@ export function NightShift({
         (wait_for_ok) => setValue({ ...value, wait_for_ok }),
       )}
       <Text style={shared.small}>
-        Deletes, publishing, messages to other people, and work that needs
-        permission always wait in Review.
+        Deletes, publishing, messages and permission requests always wait in
+        Review.
       </Text>
       <Button
         title="Save night shift"

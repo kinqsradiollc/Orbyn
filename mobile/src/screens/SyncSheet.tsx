@@ -124,9 +124,8 @@ function Body({ state }: { state: Outbox }) {
           )}
         </View>
         <Text style={[shared.small, s.note]}>
-          Without a connection you can add, change, tick off and delete tasks
-          and events, change habits, and answer booking requests. The assistant,
-          search and making a plan need a connection.
+          Tasks, events, habits and booking replies work offline. Assistant,
+          search and planning need a connection.
         </Text>
 
         <Text style={[shared.eyebrow, s.eyebrow]}>YOUR DEVICES</Text>

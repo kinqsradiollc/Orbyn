@@ -251,8 +251,7 @@ export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
     <View style={shared.card}>
       <Text style={shared.label}>Standing rules</Text>
       <Text style={[shared.small, s.gap]}>
-        Plain rules every agent follows when something reaches it, like “Always
-        accept bookings from my team”.
+        Rules agents follow when work arrives.
       </Text>
       {rules === null ? (
         <Text style={shared.small}>Loading…</Text>

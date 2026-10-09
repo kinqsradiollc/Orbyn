@@ -51,8 +51,7 @@ export function ClipperSettings({ report }: { report: (e: unknown) => void }) {
     <SettingsSection className="card settings-card">
       <h2>Orbyn Clipper</h2>
       <p className="muted">
-        Save articles, papers, assignments and highlights from your browser with
-        a Clipper key, which can save clips but never open your pages.
+        Save pages from your browser. A Clipper key cannot read your pages.
       </p>
       {made && (
         <div className="clip-key-made" role="status">

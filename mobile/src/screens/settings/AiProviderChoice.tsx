@@ -156,20 +156,20 @@ export function AiProviderChoiceControls({
       </View>
       {!selection && (
         <Text style={shared.small}>
-          ChatGPT needs a ready connection and default model.
+          Connect ChatGPT on a device and choose a model.
         </Text>
       )}
       {choice?.primary === "chatgpt" && !inspectedIsSaved && (
         <Text style={shared.small}>
           {savedSelection
-            ? "Another ChatGPT device is your current provider."
-            : "Your saved ChatGPT device is unavailable."}
+            ? "ChatGPT uses another device."
+            : "Your ChatGPT device is unavailable."}
         </Text>
       )}
       {choice?.primary === "chatgpt" && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
           <Text style={[shared.body, { flex: 1 }]}>
-            Use Orbyn default if ChatGPT is unavailable
+            Use Orbyn if ChatGPT is unavailable
           </Text>
           <Switch
             value={choice.fallback_to_default}
@@ -183,8 +183,8 @@ export function AiProviderChoiceControls({
       )}
       {choice?.primary === "chatgpt" && (
         <Text style={shared.small}>
-          Fallback uses Orbyn's configured provider. Interrupted or unknown
-          ChatGPT results are not retried through it.
+          Uses the workspace provider. Interrupted or uncertain results are not
+          retried.
         </Text>
       )}
       {error && (

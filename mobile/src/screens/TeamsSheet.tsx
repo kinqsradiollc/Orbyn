@@ -85,8 +85,7 @@ export function TeamsSheet({
           <View style={sheetStyles.column}>
             {banner}
             <Text style={[shared.subtitle, s.intro]}>
-              Share plans with the people you work with. Viewers can read,
-              members can edit, admins and owners manage the team.
+              Share plans with a team. Access depends on each person's role.
             </Text>
             {teams.length > 0 ? (
               <TeamList teams={teams} onSelect={(t) => setSelected(t.id)} />

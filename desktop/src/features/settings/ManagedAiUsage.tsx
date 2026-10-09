@@ -40,7 +40,7 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
         aria-expanded={expanded}
         onClick={() => setOpen(expanded ? null : identity)}
       >
-        Workspace provider usage
+        Workspace usage
       </button>
       {expanded && (
         <div role="status">
@@ -57,7 +57,7 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
                 <p>Usage collection is off in Privacy.</p>
               )}
               <p className="muted">
-                Recorded responses only. Not billing or ChatGPT plan limits.
+                Orbyn usage only; billing and ChatGPT limits are separate.
               </p>
             </>
           )}

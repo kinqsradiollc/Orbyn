@@ -120,8 +120,8 @@ function WhoAsks({ check }: { check: OAuthCheck }) {
       {!c.verified && (
         <p className="oauth-warn">
           <AlertTriangle size={14} aria-hidden="true" /> This app registered
-          itself, so Orbyn can’t confirm who made it. Only continue if you
-          started this from an app you trust.
+          itself. Orbyn can't verify who made it. Continue only if you trust the
+          app and started this connection.
         </p>
       )}
       <div className="oauth-app-line muted">
@@ -145,9 +145,8 @@ function WhoAsks({ check }: { check: OAuthCheck }) {
       )}
       {c.redirect_local && (
         <p className="oauth-warn">
-          <AlertTriangle size={14} aria-hidden="true" /> It sends you back to an
-          app on this device. Continue only if you just started connecting from
-          that app yourself.
+          <AlertTriangle size={14} aria-hidden="true" /> It returns you to an
+          app on this device. Continue only if you started this connection.
         </p>
       )}
     </div>
@@ -656,8 +655,8 @@ function Consent({
         </button>
       </div>
       <p className="muted oauth-foot">
-        You’ll get an email about this connection. Change or disconnect it any
-        time in Settings → Connected agents.
+        We'll email you about this connection. Manage it in Settings → Connected
+        agents.
       </p>
     </Shell>
   );

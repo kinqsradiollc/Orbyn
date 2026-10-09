@@ -415,7 +415,7 @@ function ProviderRow({
             {active && <Pill label="Active" tone="accent" />}
           </View>
           <Text style={shared.small} numberOfLines={1}>
-            {def.label} · {p.has_key ? `Key saved (${p.key_hint})` : "No key"}
+            {def.label} · {p.has_key ? "Key saved" : "No key"}
           </Text>
         </PressableScale>
         <Switch
@@ -591,11 +591,13 @@ function ProviderRow({
                 })
               }
             />
-            <SmallAction
-              label="Use for assistant"
-              disabled={busy || !typed}
-              onPress={() => onUse(typed)}
-            />
+            {(!active || activeModel !== typed || !p.enabled) && (
+              <SmallAction
+                label="Use for assistant"
+                disabled={busy || !typed}
+                onPress={() => onUse(typed)}
+              />
+            )}
           </View>
           {catalogError && (
             <Text

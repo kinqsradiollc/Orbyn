@@ -104,8 +104,7 @@ function Body({ teams }: { teams: Team[] }) {
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.subtitle, s.intro]}>
-          Tags cut across lists, like calls, errands or waiting. Team tags are
-          shared with everyone in the team.
+          Tags organize work across lists. Team tags are shared.
         </Text>
 
         {sections.length === 0 && (

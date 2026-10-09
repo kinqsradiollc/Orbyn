@@ -214,9 +214,8 @@ export function TeamDetail({
 
       {override && (
         <p className="rbac-note">
-          You&apos;re not a member of this team. As a system admin you can
-          manage its settings and members, but its items stay private to
-          members.
+          You aren't a member. As system admin, you can manage the team, but its
+          items stay private to members.
         </p>
       )}
 

@@ -50,28 +50,13 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
         <Sparkles size={18} aria-hidden="true" />
         AI connections &amp; models
       </h2>
-      <p className="muted">
-        {state.status === "unsupported"
-          ? "Choose your AI provider and default model."
-          : "Connect your ChatGPT account and choose a default model."}
-      </p>
-      <ManagedAiUsage userId={userId} />
+      {state.status === "unsupported" && (
+        <p className="muted">Connect ChatGPT in Orbyn on a phone or desktop.</p>
+      )}
       {state.status === "unsupported" ? (
         <ChatgptRemoteModels userId={userId} />
       ) : (
         <>
-          <AiProviderChoiceControls
-            userId={userId}
-            selection={
-              connection?.selection?.executor
-                ? {
-                    connection_id: connection.selection.executor.connection_id,
-                    executor_id: connection.selection.executor.executor_id,
-                  }
-                : null
-            }
-          />
-          <ChatgptUsage userId={userId} />
           <div className="settings-head ai-connection-heading">
             <div>
               <h3>ChatGPT</h3>
@@ -184,9 +169,6 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
               <div className="settings-head">
                 <div>
                   <h3>Default model</h3>
-                  <p className="muted">
-                    Choices come from this account’s live model catalog.
-                  </p>
                 </div>
                 <button
                   type="button"
@@ -306,12 +288,11 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Manage ChatGPT usage
+                View ChatGPT usage
               </a>
             </div>
             <small className="field-hint">
-              Verification sends a short test request using your plan. Remaining
-              allowance is shown in ChatGPT.
+              Verification sends a test request using your plan.
             </small>
           </div>
           {(state.error || connection?.error || catalog?.error) && (
@@ -331,14 +312,28 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
           )}
         </>
       )}
+      {state.status !== "unsupported" && (
+        <AiProviderChoiceControls
+          userId={userId}
+          selection={
+            connection?.selection?.executor
+              ? {
+                  connection_id: connection.selection.executor.connection_id,
+                  executor_id: connection.selection.executor.executor_id,
+                }
+              : null
+          }
+        />
+      )}
+      <AgendaPrivateSettings userId={userId} />
+      {state.status !== "unsupported" && <ChatgptUsage userId={userId} />}
+      <ManagedAiUsage userId={userId} />
       <div className="ai-connection-note">
         <strong>Workspace providers</strong>
         <p className="muted">
-          Workspace AI providers are configured by an administrator in Admin →
-          AI. Their API keys stay on the server.
+          Admins manage providers in Admin → AI; keys stay on the server.
         </p>
       </div>
-      <AgendaPrivateSettings userId={userId} />
     </SettingsSection>
   );
 }

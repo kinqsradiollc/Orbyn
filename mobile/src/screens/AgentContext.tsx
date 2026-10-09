@@ -235,9 +235,7 @@ export function AgentWarmStartCards({
       <View style={shared.card}>
         <Text style={shared.label}>About me for agents</Text>
         <Text style={[shared.small, s.gap]}>
-          One page your agents read before they help: your courses and exams,
-          how you like notes and cards, when you study and for how long. Change
-          it like any page; your agents can fill it in too.
+          A page of context for your agents. Edit it like any other page.
         </Text>
         <Button
           secondary
@@ -256,8 +254,8 @@ export function AgentWarmStartCards({
       <View style={shared.card}>
         <Text style={shared.label}>Instructions</Text>
         <Text style={[shared.small, s.gap]}>
-          A few lines agents follow in each space, like “In Biology, cards are
-          cloze”. A team’s instructions are shared by every member’s agents.
+          Space-specific rules for agents. Team rules apply to every member’s
+          agents.
         </Text>
         {data === null ? (
           <Text style={shared.small}>Loading…</Text>

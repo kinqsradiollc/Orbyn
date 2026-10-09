@@ -108,8 +108,7 @@ export function CalendarFeedCard() {
           <View style={{ flex: 1 }}>
             <Text style={s.title}>Include sessions</Text>
             <Text style={shared.small}>
-              Sessions show as “Session: task” with its deadline. All-day tasks
-              and events show as all-day, with no time.
+              Sessions appear with task names and deadlines in the full feed.
             </Text>
           </View>
           <Switch
@@ -168,8 +167,7 @@ function FeedLink({
       )}
       {on && !url && (
         <Text style={[shared.small, s.gap]}>
-          The link is on. It’s only shown when it’s made; make a new one to see
-          it again (the old one stops working).
+          This link was shown only once. Make a new one to replace it.
         </Text>
       )}
       <View style={s.actions}>
@@ -403,9 +401,7 @@ export function SubscriptionsCard() {
       <View style={shared.card}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.small, s.gap]}>
-          Add calendars from other apps by their link: a class timetable, exams,
-          work shifts, meetings, public holidays. Orbyn reads each one straight
-          away and every hour after. Their events are read-only.
+          Add read-only calendars by link. They refresh hourly.
         </Text>
         {!!note && <Text style={[shared.small, s.gap]}>{note}</Text>}
         {subs === null && (

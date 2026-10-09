@@ -129,8 +129,8 @@ export function AdminStorage({ act, busy }: { act: Act; busy: boolean }) {
       <View style={shared.card}>
         <Text style={s.title}>Files on the server</Text>
         <Text style={shared.small}>
-          Each is deleted when its import ends, and always within a day. You can
-          delete a file, but not open one.
+          Pending uploads are deleted after import or within a day. You can
+          delete them, but cannot open them.
         </Text>
         {!!note && <Text style={[shared.small, s.note]}>{note}</Text>}
         {data.stored.length === 0 ? (

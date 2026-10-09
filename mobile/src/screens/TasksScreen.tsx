@@ -1023,9 +1023,7 @@ export function TasksScreen({
           )}
           {manual && layout === "list" && visible.length > 1 && (
             <Text style={[shared.small, s.manualHint]}>
-              Long-press a task and drag it to reorder, or hold it for Move up
-              and Move down. Tasks move among others in the same list, or under
-              the same task.
+              Hold and drag to reorder within the same list or parent task.
             </Text>
           )}
         </>

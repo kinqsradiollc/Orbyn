@@ -50,32 +50,32 @@ const PLANNING: Point[] = [
   {
     icon: Target,
     title: "Focus hours, kept for focus",
-    body: "Set aside the hours you do your best work. Orbyn saves them for the tasks that need them.",
+    body: "Reserve your best hours for focused tasks.",
   },
   {
     icon: CalendarDays,
     title: "Planned around your meetings",
-    body: "It reads your calendar and the calendars you subscribe to, and leaves busy time alone.",
+    body: "Plans around your calendar and subscribed calendars.",
   },
   {
     icon: GitBranch,
     title: "First things first",
-    body: "When one task waits on another, it waits in the plan too — and Orbyn says which one is in the way.",
+    body: "Dependent tasks wait until their blockers clear.",
   },
   {
     icon: Timer,
     title: "Estimates that learn",
-    body: "It compares how long you guessed with how long things took, and plans the next week with that in mind.",
+    body: "Past estimates help shape future plans.",
   },
   {
     icon: Repeat,
     title: "Room for your habits",
-    body: "A walk, a weekly review, practice time: habits find their own space in the days you leave free.",
+    body: "Make room for recurring habits.",
   },
   {
     icon: Check,
     title: "You have the last word",
-    body: "See the whole plan before it lands. Move what you like, keep what you don’t want touched, and roll unfinished work forward.",
+    body: "Review the plan, move tasks and carry unfinished work forward.",
   },
 ];
 
@@ -84,7 +84,7 @@ const CONNECTS: Point[] = [
   {
     icon: CalendarSync,
     title: "Your calendars",
-    body: "Subscribe to any iCal link, publish your own feed, or see your events in Apple Calendar, Thunderbird or DAVx5 over CalDAV.",
+    body: "Subscribe or publish a calendar feed; sync with CalDAV apps.",
   },
   {
     icon: Mail,
@@ -94,7 +94,7 @@ const CONNECTS: Point[] = [
   {
     icon: Bot,
     title: "Your own AI tools",
-    body: "Connect Claude Code, Codex, Cursor or another MCP agent with an agent key. It can search and read your tasks, calendar, projects and pages, only in the spaces you choose.",
+    body: "Connect MCP agents to the spaces you choose.",
   },
   {
     icon: MessageSquare,
@@ -109,7 +109,7 @@ const CONNECTS: Point[] = [
   {
     icon: Download,
     title: "Import and export",
-    body: "Bring your data in, take all of it out, and download any page as PDF, Word or Markdown.",
+    body: "Import your data or export pages and your full space.",
   },
 ];
 
@@ -118,7 +118,7 @@ const YOURS: Point[] = [
   {
     icon: Users,
     title: "Personal stays personal",
-    body: "Teammates see only what you share with a team — and when you’re busy, never what you’re doing.",
+    body: "Teammates see shared work and availability, not private plans.",
   },
   {
     icon: Sparkles,
@@ -128,12 +128,12 @@ const YOURS: Point[] = [
   {
     icon: Fingerprint,
     title: "Passkeys and two-factor",
-    body: "Sign in with a passkey or an authenticator app, and end any session you don’t recognise.",
+    body: "Use a passkey or authenticator; end sessions you don't recognise.",
   },
   {
     icon: ShieldCheck,
     title: "Always know it’s working",
-    body: "A live status page shows whether every part of Orbyn is up, right now.",
+    body: "Check service health on the status page.",
   },
 ];
 
@@ -210,9 +210,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               Keep work <em>moving.</em>
             </h1>
             <p>
-              Keep tasks, calendar and project notes together. Plan around your
-              available time, delegate a task to Background, or queue work for
-              Overnight and review it in the morning.
+              Plan tasks, calendar and projects together. Delegate work to
+              Background or Overnight.
             </p>
             <div className="home-hero-actions">
               <button className="primary" onClick={start}>
@@ -327,9 +326,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             <span className="eyebrow">BACKGROUND AND OVERNIGHT</span>
             <h2>Work you can hand over.</h2>
             <p>
-              Give Background a task during the day. Put longer work in your
-              Overnight queue. Each keeps its own progress and brings the work
-              back for you to review.
+              Give Background a task now, or queue it for Overnight. Review the
+              result when it's ready.
             </p>
           </div>
           <div className="home-agent-grid">
@@ -386,10 +384,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               <br />
               Find the work behind it.
             </h2>
-            <p>
-              Follow a task from its project notes to a time on your calendar.
-              Keep the details close when plans change.
-            </p>
+            <p>Keep each task, its notes and its time together.</p>
           </div>
           <div className="home-feature-grid">
             <article className="home-feature large reveal" style={stagger(0)}>
@@ -398,10 +393,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </span>
               <h3>Tasks and calendar, in one place.</h3>
               <p>
-                Tasks with priorities, subtasks and checklists sit beside your
-                events, invitees and reminders. Sort them into lists and tags,
-                make them repeat, and add anything in plain words — “lunch with
-                Anna tomorrow 1pm” lands on your calendar as just that.
+                Add tasks and events in plain words. Organize work with lists,
+                tags, checklists and reminders.
               </p>
               <div className="home-mini-week" aria-hidden="true">
                 {["M", "T", "W", "T", "F", "S", "S"].map((d, n) => (
@@ -419,9 +412,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </span>
               <h3>Ask about your work.</h3>
               <p>
-                Ask for a summary of your week, a plan for tomorrow, or a change
-                of direction. Review its suggestions, or explicitly delegate a
-                task. You control its access and the changes it can make.
+                Ask for a summary or a plan. Review suggestions before changes;
+                delegate a task when you're ready.
               </p>
               <div className="home-mini-chat">
                 “What needs my attention this week?”
@@ -434,9 +426,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </span>
               <h3>Reminders you schedule.</h3>
               <p>
-                Choose when to be reminded — in the app, by email or on your
-                phone — and start each morning with a short digest of the day
-                ahead, in your inbox, Slack or Discord.
+                Set reminders in the app, by email or on your phone. Choose
+                where your morning digest arrives.
               </p>
               <div className="home-feature-note">
                 <span /> Choose the time and delivery channel.
@@ -447,11 +438,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <Clock />
               </span>
               <h3>Focus on a task.</h3>
-              <p>
-                Focus mode keeps one task in front of you. The time you spend is
-                counted as you go, so you can see where the week went — and
-                where you’d like it to go instead.
-              </p>
+              <p>Keep one task in view and track the time you spend on it.</p>
               <div className="home-feature-note">
                 <span /> One task. The rest can wait.
               </div>
@@ -463,10 +450,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           <div className="home-section-heading reveal">
             <span className="eyebrow">MEET YOUR COMPANION</span>
             <h2>Choose a face. Give it a name.</h2>
-            <p>
-              Start with a familiar face, then choose its look, accessories and
-              movement. Keep it animated, still, or tucked away.
-            </p>
+            <p>Choose a face, look and movement. Show it or tuck it away.</p>
           </div>
           <ul
             className="home-companion-grid"
@@ -490,9 +474,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               You have the last word.
             </h2>
             <p>
-              Tell Orbyn how long things take and when you like to work. It
-              finds the time between your meetings, in an order that makes
-              sense, and shows you the plan before anything moves.
+              Set your focus hours and estimates. Review the proposed schedule
+              before anything moves.
             </p>
             <WeekDemo />
           </div>
@@ -514,11 +497,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </span>
               <h3>Projects, from brief to done.</h3>
               <p>
-                Move work through stages on a board, see it on a timeline, and
-                know which projects are at risk before their deadline. Say
-                “break this project into tasks” and Orbyn drafts the subtasks
-                with estimates and an order, already fitted into your focus
-                hours — you approve it before anything is created.
+                Track stages on a board or timeline. Orbyn can draft subtasks
+                and estimates for your approval.
               </p>
               <div className="home-feature-note">
                 <span /> From one sentence to a plan you can start on.
@@ -530,11 +510,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </span>
               <h3>Docs and notes that stay with the work.</h3>
               <p>
-                Write briefs and meeting notes with headings, checklists that
-                become tasks, code and maths. Edit together live, comment on the
-                exact words, suggest changes for someone else to accept, and go
-                back to any earlier version. Ask a page a question, or ask it to
-                rewrite a line.
+                Write and edit together. Comment, suggest changes, restore
+                versions and turn checklists into tasks.
               </p>
               <LinkDemo />
               <div className="home-feature-note">
@@ -557,10 +534,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </span>
               <h3>Plans are better together.</h3>
               <p>
-                Share tasks, events and pages with a team. Owners, admins,
-                members and viewers each know what they can change. See when
-                people are free — never what they’re doing — balance the
-                workload, and let Orbyn suggest a time to meet.
+                Share tasks, events and pages with your team. See availability
+                without revealing private plans.
               </p>
               <div className="home-avatars" aria-hidden="true">
                 <span>A</span>
@@ -575,10 +550,8 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               </span>
               <h3>Let people find a time.</h3>
               <p>
-                Share a booking page with your own hours, questions and
-                reminders. Share one across a team so bookings go round in turn,
-                approve the ones you want, and let people reschedule or cancel
-                from a link.
+                Set your hours and share a booking page. Guests can reschedule
+                or cancel from their link.
               </p>
               <div className="home-feature-note">
                 <span /> No back and forth.
@@ -611,11 +584,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               <br />
               <em>Kept that way.</em>
             </h2>
-            <p>
-              A planner knows where you’ll be and what you’re working on. Orbyn
-              shares only what you choose, and changes nothing you haven’t
-              approved.
-            </p>
+            <p>Choose what to share and what Orbyn can change.</p>
           </div>
           <PointList points={YOURS} />
         </section>
@@ -660,9 +629,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
               <em>Still in your orbit.</em>
             </h2>
             <p>
-              Your plans belong together, even when your day takes you somewhere
-              else. Web, desktop, iOS and Android connect to the same planner,
-              and your phone keeps your plans on hand when the signal drops.
+              Your plans stay together across web, desktop, iOS and Android.
             </p>
             <div className="home-device-chips">
               <span>

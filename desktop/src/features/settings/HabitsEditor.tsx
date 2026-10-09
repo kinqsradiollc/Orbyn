@@ -142,8 +142,7 @@ export function HabitsEditor({ report }: Props) {
       <div className="settings-head">
         <div>
           <p className="muted">
-            Routines like “Gym 3× a week”. The planner fits them into free time
-            and moves them when your week changes — no rigid recurring event.
+            The planner fits routines into free time as your week changes.
           </p>
         </div>
         {editing === null && (

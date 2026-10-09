@@ -1067,8 +1067,8 @@ export function TasksView({
       )}
       {manual && layout === "list" && (
         <p className="tasks-hint">
-          Drag rows, or use their arrows, to set the order. Items move within
-          their own list, team or parent task.
+          Drag rows or use the arrows. Order stays within each list, team or
+          parent task.
         </p>
       )}
       {!visible.length && !owners ? (

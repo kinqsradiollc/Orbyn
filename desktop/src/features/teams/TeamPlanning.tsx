@@ -246,8 +246,7 @@ export function TeamPlanning({
       <section className="team-block" aria-labelledby="capacity-title">
         <h4 id="capacity-title">Who has room</h4>
         <p className="muted team-block-lead">
-          Free working time each day, after meetings, bookings and planned work.
-          Nobody sees what anyone&apos;s time is for.
+          Available time after commitments. Task details stay private.
         </p>
         <TeamCapacity
           teamId={team.id}

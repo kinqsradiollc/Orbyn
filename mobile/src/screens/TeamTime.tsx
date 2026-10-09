@@ -269,8 +269,8 @@ export function TeamTime({
       <Text style={[shared.eyebrow, s.eyebrow]}>AVAILABILITY</Text>
       <View style={shared.card}>
         <Text style={[shared.small, s.gap]}>
-          Each bar is a whole day, midnight to midnight. Shaded is working
-          hours; dark marks are busy. Event details are never shared.
+          Each bar shows a day. Shaded means work hours; dark means busy. Event
+          details stay private.
         </Text>
         {availability === null && (
           <Text style={shared.small}>Loading availability…</Text>

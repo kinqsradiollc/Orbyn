@@ -131,8 +131,8 @@ function Body() {
         <View style={[shared.softCard, s.privacy]}>
           <Icon name="shieldCheck" size={18} color={colors.accent} />
           <Text style={[shared.body, { flex: 1 }]}>
-            Nothing here sends your data anywhere until you connect it, and you
-            can turn each one off at any time.
+            Data is shared only after you connect a service. Disconnect any
+            time.
           </Text>
         </View>
 
@@ -143,10 +143,9 @@ function Body() {
         <Text style={[shared.eyebrow, s.eyebrow]}>API KEYS</Text>
         <View style={shared.card}>
           <Text style={[shared.small, s.gap]}>
-            Let scripts, automation tools and calendar apps work with your
-            tasks, pages and calendar as you. A key can’t make or remove other
-            keys, or change your account settings, sign-in or webhooks. Treat it
-            like a password. For AI agents, use an agent key above.
+            API keys act as you on tasks, pages and calendars. Keep them secret.
+            They cannot manage other keys, account settings or webhooks. For AI
+            agents, use an agent key.
           </Text>
           {newKey && (
             <FadeIn style={s.secret}>
@@ -241,8 +240,7 @@ function Body() {
         <Text style={[shared.eyebrow, s.eyebrow]}>WEBHOOKS</Text>
         <View style={shared.card}>
           <Text style={[shared.small, s.gap]}>
-            Orbyn posts to your URL when these things happen. Each delivery is
-            signed with the webhook’s secret.
+            Orbyn sends signed event notices to your URL.
           </Text>
           {secret && (
             <FadeIn style={s.secret}>
@@ -453,9 +451,8 @@ function Body() {
         <Text style={[shared.eyebrow, s.eyebrow]}>FROM A CALENDAR APP</Text>
         <View style={shared.card}>
           <Text style={[shared.small, s.gap]}>
-            Add your Orbyn events to Apple Calendar, Thunderbird or DAVx5 over
-            CalDAV, read-only for now. Your email is the username and a personal
-            API key above is the password.
+            Read Orbyn events in a CalDAV app. Use your email as username and an
+            API key as password. Sync is read only.
           </Text>
           <Text selectable style={s.code}>
             {`${webOrigin}/dav/`}

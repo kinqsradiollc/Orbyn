@@ -215,9 +215,8 @@ export function UploadsPanel({
   return (
     <div className="uploads">
       <p className="uploads-intro muted">
-        PDFs, Word files and photos of notes become pages here. Orbyn reads the
-        file, then deletes it; only the page stays, unless you keep the
-        original. Move a page to a folder when you&apos;re ready.
+        Import PDFs, Word files or photos as pages. The original is deleted
+        after import unless you choose to keep it.
       </p>
       {/* "Keep the original" is your account's setting, on every device. */}
       <KeepOriginalsSwitch report={report ?? (() => {})} />

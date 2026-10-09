@@ -29,22 +29,9 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
     !models.some((m) => m.slug === catalog.preference.model);
   return (
     <div className="ai-model-settings">
-      <AiProviderChoiceControls
-        userId={userId}
-        selection={
-          providerReady && state.selection
-            ? {
-                connection_id: state.selection.connection_id,
-                executor_id: state.selection.executor_id,
-              }
-            : null
-        }
-      />
-      <ChatgptUsage userId={userId} />
       <div className="settings-head">
         <div>
           <h3>ChatGPT</h3>
-          <p className="muted">Direct web sign-in is unavailable.</p>
         </div>
         <div className="ai-connection-actions">
           <button
@@ -57,24 +44,12 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
           </button>
         </div>
       </div>
-      <a
-        className="text-button"
-        href={CHATGPT_USAGE_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        Manage ChatGPT usage
-      </a>
-      <small className="field-hint">
-        Choose the same ChatGPT account to view its current allowance and app
-        limits.
-      </small>
       {state.status === "loading" && (
         <p role="status">Loading ChatGPT devices and models…</p>
       )}
       {state.error && <p role="alert">{state.error}</p>}
       {state.status === "ready" && !state.devices.length && (
-        <p>No ChatGPT model catalog is available yet.</p>
+        <p>No connected devices yet.</p>
       )}
       {!!state.devices.length && (
         <label className="settings-field" htmlFor={`${id}-device`}>
@@ -117,7 +92,7 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
               : catalog.status === "offline"
                 ? "This device is offline. Reconnect it before choosing a model."
                 : catalog.status === "stale"
-                  ? "This device’s catalog needs refreshing from its desktop app."
+                  ? "Refresh the catalog on the connected device."
                   : "This device has not published a model catalog."}
           </p>
           <label className="settings-field" htmlFor={`${id}-search`}>
@@ -171,6 +146,26 @@ export function ChatgptRemoteModels({ userId }: { userId: string }) {
           )}
         </>
       )}
+      <AiProviderChoiceControls
+        userId={userId}
+        selection={
+          providerReady && state.selection
+            ? {
+                connection_id: state.selection.connection_id,
+                executor_id: state.selection.executor_id,
+              }
+            : null
+        }
+      />
+      <ChatgptUsage userId={userId} />
+      <a
+        className="text-button"
+        href={CHATGPT_USAGE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        View ChatGPT usage
+      </a>
     </div>
   );
 }

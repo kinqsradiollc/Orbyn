@@ -1210,9 +1210,8 @@ function Plan({
     <>
       <Text style={s.title}>{exam.title}</Text>
       <Text style={shared.small}>
-        One session a day in your free working time, around classes and events,
-        a little longer in the last three days. Nothing is added until you apply
-        it.
+        One session each free day, longer near the exam. Review before adding
+        anything.
       </Text>
       <ChipRow label="Session length" style={s.gapTop}>
         {[20, 30, 45, 60].map((m) => (

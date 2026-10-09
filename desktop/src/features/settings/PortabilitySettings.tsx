@@ -57,10 +57,8 @@ function PageImport({
     <>
       <h3 className="settings-subtitle">Pages from Markdown or Notion</h3>
       <p className="muted">
-        A folder of Markdown notes as a .zip (or one .md file), or a Notion
-        export (Markdown &amp; CSV). Pages keep their folders, [[links]] between
-        them work, and Notion databases become projects with their rows as
-        tasks.
+        Import Markdown or Notion. Folders and links stay; Notion databases
+        become projects with tasks.
       </p>
       <div className="settings-grid">
         <label className="settings-field">
@@ -239,10 +237,7 @@ export function PortabilitySettings({
       aria-labelledby="portability-title"
     >
       <h2 id="portability-title">Import &amp; export</h2>
-      <p className="muted">
-        Take everything with you — every page as Markdown in its folders — or
-        bring tasks and pages in from another app.
-      </p>
+      <p className="muted">Export your space or import tasks and pages.</p>
 
       <div className="portability-actions">
         <button

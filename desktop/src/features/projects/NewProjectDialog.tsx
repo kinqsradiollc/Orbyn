@@ -378,9 +378,8 @@ export function NewProjectDialog({
                 </label>
               </div>
               <p className="muted new-project-note">
-                The assistant drafts the tasks, their order and estimates, and a
-                schedule around your time. You review everything before anything
-                is created.
+                Orbyn drafts tasks, estimates and a schedule. Review before
+                anything is created.
               </p>
               {error && <p className="new-project-error">{error}</p>}
               <div className="button-row">

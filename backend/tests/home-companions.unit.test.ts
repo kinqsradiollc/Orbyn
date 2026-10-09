@@ -221,27 +221,29 @@ for (const mobile of [false, true]) {
     );
     guideAction(view.first)!();
     const html = renderToStaticMarkup(view.render());
-    assert.match(html, /Example request/);
-    for (const agent of core.HOME_AGENT_GUIDE)
-      for (const step of agent.steps) {
-        assert.ok(html.includes(step.title));
-        assert.ok(html.includes(step.body));
-      }
+    assert.doesNotMatch(html, /Example request/);
+    for (const agent of core.HOME_AGENT_GUIDE) {
+      assert.ok(html.includes(agent.timing));
+      assert.ok(html.includes(agent.result));
+      assert.ok(html.includes(agent.pause));
+      for (const step of agent.steps) assert.ok(!html.includes(step.body));
+    }
     assert.match(html, /Hide guide/);
     assert.match(html, /Background/);
     assert.match(html, /When you delegate a task/);
     assert.match(html, /needs an answer or approval/);
-    assert.match(html, /Give it the project notes/);
     assert.match(html, /sources in agent activity/);
     assert.match(html, /Overnight/);
     assert.match(html, /Inside your chosen night window/);
     assert.match(html, /work budget limit the run/);
-    assert.match(html, /In the morning, see what finished/);
     assert.match(html, /unfinished tasks in Overnight/);
     assert.match(html, /idle until they have authorized work/);
     assert.doesNotMatch(html, /Working now|Active now|Reflection complete/);
     guideAction(view.render())!();
-    assert.doesNotMatch(renderToStaticMarkup(view.render()), /Example request/);
+    assert.doesNotMatch(
+      renderToStaticMarkup(view.render()),
+      /sources in agent activity/,
+    );
     assert.equal(view.reads(), 2);
     view.cleanup();
   });

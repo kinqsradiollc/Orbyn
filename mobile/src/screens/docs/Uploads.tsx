@@ -349,8 +349,8 @@ export function UploadsList({
   return (
     <View style={s.list}>
       <Text style={s.intro}>
-        PDFs, Word files and photos of notes become pages here. Orbyn reads the
-        file, then deletes it, unless you keep the original.
+        Import PDFs, Word files or photos as pages. The original is deleted
+        after import unless you choose to keep it.
       </Text>
       {/* "Keep the original" is your account's setting, on every device. */}
       <KeepOriginals report={report ?? (() => {})} />
@@ -362,8 +362,7 @@ export function UploadsList({
           </View>
           <Text style={s.emptyTitle}>Import a lecture PDF or Word file</Text>
           <Text style={s.emptyBody}>
-            Scanned pages take a few minutes each to read. You can close the app
-            meanwhile; you&apos;ll get a notification.
+            Scans can take a few minutes. You can leave; we'll notify you.
           </Text>
           <View style={s.actions}>
             <SmallAction

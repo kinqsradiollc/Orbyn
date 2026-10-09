@@ -34,8 +34,7 @@ export function ReminderNudges({
     <View style={shared.card}>
       <Text style={shared.label}>Reminder nudges</Text>
       <Text style={shared.small}>
-        A reminder when your own work needs attention, with no AI request. At
-        most three a day, and one per thing in 24 hours.
+        No AI request. At most three a day, once per item in 24 hours.
       </Text>
       {(["enabled", "chat", "push", "email"] as const).map((key) => {
         const label = {

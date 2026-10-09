@@ -153,8 +153,8 @@ export function DocHistory({
         <p className="muted small">Loading…</p>
       ) : versions.length === 0 ? (
         <p className="muted small">
-          Nothing to go back to yet. Each time you sit down and change the page,
-          the version you started from is kept here.
+          No earlier version yet. Editing a page saves the version you started
+          from.
         </p>
       ) : (
         <ol className="doc-history-list">

@@ -152,8 +152,8 @@ export function DocBlockMenu({
         </div>
         {!structural && (
           <p className="doc-menu-note">
-            While you are suggesting, a line's words are yours to change.
-            Moving, copying and removing lines are the page's to keep.
+            Suggest mode changes words only. Leave it to move, copy or delete
+            lines.
           </p>
         )}
         <div className="doc-menu-row">

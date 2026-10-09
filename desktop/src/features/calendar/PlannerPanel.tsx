@@ -638,8 +638,8 @@ export function PlannerPanel({
             </ul>
           )}
           <p className="panel-hint">
-            Drag across empty time in week or day view to keep it free. Drag a
-            planned session to pin it; × leaves it out.
+            Drag empty time to keep it free, or drag a session to pin it. Use ×
+            to exclude one.
           </p>
         </div>
       )}

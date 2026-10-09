@@ -168,8 +168,7 @@ export function ProjectMilestones({
       </div>
       {list.length === 0 ? (
         <p className="muted">
-          Dated checkpoints, like “Draft ready”. Each one shows whether its
-          tasks are planned to finish by then.
+          Dated checkpoints show whether their tasks will finish on time.
         </p>
       ) : (
         <ul className="milestone-list">

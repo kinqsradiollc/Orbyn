@@ -278,8 +278,8 @@ export function RecordingSummaryDialog({
         {!result ? (
           <>
             <p className="recorder-note">
-              Summaries use your selected AI provider. Paste a transcript to use
-              ChatGPT; audio transcription requires the Orbyn provider.
+              Summaries use your selected AI. ChatGPT accepts transcripts; audio
+              transcription needs Orbyn's provider.
             </p>
             <label className="recorder-transcript">
               Transcript (optional)

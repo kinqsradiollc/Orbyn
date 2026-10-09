@@ -10,9 +10,7 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
       aria-label="Scheduled Agenda summaries"
     >
       <h3>Morning summary</h3>
-      <p className="muted">
-        Use your selected ChatGPT model for scheduled Agenda summaries.
-      </p>
+      <p className="muted">Scheduled summaries use your ChatGPT plan.</p>
       {!data && !error && <p role="status">Loading summary settings…</p>}
       {data && (
         <>
@@ -25,15 +23,15 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
               disabled={busy || (!data.permission.enabled && !canEnable)}
               onChange={(e) => void save(e.target.checked)}
             />
-            Allow scheduled ChatGPT summaries
+            Use ChatGPT
           </label>
-          <p className="muted">
-            {data.permission.enabled && !data.permission.active
-              ? "Permission needs review after your AI settings changed."
-              : data.permission.active
-                ? `Enabled · ${data.permission.model}`
-                : "Off"}
-          </p>
+          {data.permission.enabled && (
+            <p className="muted">
+              {data.permission.active
+                ? `On · ${data.permission.model}`
+                : "Review your model choice to resume."}
+            </p>
+          )}
           {!canEnable && !data.permission.active && (
             <small className="field-hint">{enablementMessage}</small>
           )}
@@ -47,30 +45,33 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
               Use reviewed model
             </button>
           )}
-          {canEnable && (
+          {canEnable && data.permission.enabled && (
             <small className="field-hint">
-              {data.catalog?.preference.model}
+              {data.catalog?.preference.model} ·{" "}
               {data.choice.fallback_to_default
-                ? " · Orbyn fallback allowed"
-                : " · No fallback"}
-              . Your desktop app must be online.
+                ? "Orbyn fallback"
+                : "No fallback"}
             </small>
           )}
-          <p role="status">
-            {data.summary.run ? `${data.summary.run.local_day} · ` : ""}
-            {agendaPrivateSummaryText(data.summary)}
-          </p>
+          {data.permission.enabled && (
+            <p role="status">
+              {data.summary.run ? `${data.summary.run.local_day} · ` : ""}
+              {agendaPrivateSummaryText(data.summary)}
+            </p>
+          )}
         </>
       )}
       {error && <p role="alert">{error}</p>}
-      <button
-        type="button"
-        className="secondary"
-        disabled={busy}
-        onClick={refresh}
-      >
-        Refresh summary settings
-      </button>
+      {(data?.permission.enabled || error) && (
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          onClick={refresh}
+        >
+          Refresh summary
+        </button>
+      )}
     </section>
   );
 }

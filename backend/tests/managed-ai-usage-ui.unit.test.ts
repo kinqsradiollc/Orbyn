@@ -135,8 +135,7 @@ function content(value: any): string {
 function open(tree: any) {
   const button = nodes(tree).find(
     (n) =>
-      n.props?.label === "Workspace provider usage" ||
-      content(n) === " Workspace provider usage",
+      n.props?.label === "Workspace usage" || content(n) === " Workspace usage",
   );
   assert.ok(button);
   (button.props.onPress ?? button.props.onClick)();
@@ -163,7 +162,7 @@ for (const app of ["desktop", "mobile"] as const) {
       assert.match(text, /Usage collection is off in Privacy/);
       assert.match(
         text,
-        /Recorded responses only. Not billing or ChatGPT plan limits/,
+        /Orbyn usage only; billing and ChatGPT limits are separate/,
       );
       f.setToken("session-b");
       const changed = content(f.render("b"));

@@ -167,8 +167,7 @@ export function AvailabilityEditor({
       </Field>
       {!custom ? (
         <Text style={[shared.small, s.note]}>
-          Each host’s working days and hours from Settings → Planning. Busy time
-          on their calendars is always left out.
+          Uses each host's work hours and excludes busy calendar time.
         </Text>
       ) : (
         <>

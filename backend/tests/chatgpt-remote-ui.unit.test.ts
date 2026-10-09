@@ -316,6 +316,8 @@ function view(
       if (id === "./AiProviderChoice")
         return { AiProviderChoiceControls: "AiProviderChoiceControls" };
       if (id === "./ChatgptUsage") return { ChatgptUsage: "ChatgptUsage" };
+      if (id === "./ManagedAiUsage")
+        return { ManagedAiUsage: "ManagedAiUsage" };
       if (id === "./AgendaPrivateSettings")
         return { AgendaPrivateSettings: "AgendaPrivateSettings" };
       if (id.endsWith("/theme")) return { colors: {} };
@@ -843,9 +845,7 @@ test("web account management does not offer a nonfunctional connect action", () 
   );
   assert.ok(
     nodes.some(
-      (node) =>
-        node.type === "p" &&
-        /Direct web sign-in is unavailable/.test(String(node.props.children)),
+      (node) => node.type === "h3" && node.props.children === "ChatGPT",
     ),
   );
 });

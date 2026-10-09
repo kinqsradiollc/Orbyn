@@ -1327,8 +1327,8 @@ export function DocsView({
             )}
             {archivedOnly && (
               <p className="docs-trash-note">
-                Archived pages stay whole and their links still open. They're
-                left out of the library and search until you bring them back.
+                Archived pages and links remain. Restore them to return them to
+                the library and search.
               </p>
             )}
             {!uploadsOnly && !trashOnly && !archivedOnly && (

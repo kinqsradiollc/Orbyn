@@ -1,4 +1,3 @@
-import { ManagedAiUsage } from "./settings/ManagedAiUsage";
 import { ChatgptModelsSection } from "./settings/ChatgptModelsSection";
 import {
   SettingsAnchor,
@@ -398,7 +397,6 @@ export function SettingsScreen({
       </View>
 
       <SettingsAnchor name="AI connections & models">
-        <ManagedAiUsage userId={user?.id ?? ""} />
         <ChatgptModelsSection userId={user?.id ?? ""} />
       </SettingsAnchor>
 
@@ -499,8 +497,7 @@ export function SettingsScreen({
           <View style={{ flex: 1 }}>
             <Text style={s.prefTitle}>Hide the header while reading</Text>
             <Text style={shared.small}>
-              On a long page the header steps aside as you read down, and comes
-              back when you scroll up.
+              Hides as you scroll down; returns when you scroll up.
             </Text>
           </View>
           <Switch
@@ -556,8 +553,7 @@ export function SettingsScreen({
             <View style={s.divider} />
             <Text style={s.prefTitle}>Planner notices</Text>
             <Text style={[shared.small, s.prefText]}>
-              Work to roll forward, tasks at risk or due soon, and clashes,
-              which always show in your inbox too.
+              Rollovers, due tasks, risks and clashes also appear in your inbox.
             </Text>
             {(["push", "email"] as const).map((channel) => (
               <View key={channel} style={[s.preference, { marginBottom: 10 }]}>
@@ -862,8 +858,8 @@ export function SettingsScreen({
 
       <SettingsSection title="Email to task">
         <Text style={shared.body}>
-          Mail from your own address sent to your private address becomes a
-          task: the subject is the title and the body its notes.
+          Email your private address to create a task. Subject becomes title;
+          body becomes notes.
         </Text>
         {inbox === null ? null : !inbox.configured ? (
           <Text style={[shared.small, { marginTop: 8 }]}>
@@ -914,8 +910,7 @@ export function SettingsScreen({
 
       <SettingsSection title="Import & export">
         <Text style={shared.body}>
-          Take everything with you — every page as Markdown in its folders — or
-          bring tasks and pages in from another app.
+          Export your space or import tasks and pages.
         </Text>
         <Button
           secondary
@@ -953,8 +948,8 @@ export function SettingsScreen({
         )}
         <Text style={[shared.label, { marginTop: 16 }]}>Tasks</Text>
         <Text style={[shared.small, { marginTop: 4 }]}>
-          An Orbyn export, a Todoist or TickTick CSV, or any CSV with a title
-          column, written only once you confirm.
+          Orbyn, Todoist, TickTick or CSV with a title column. Review before
+          importing.
         </Text>
         <View style={{ marginTop: 8 }}>
           <Segmented
@@ -1055,8 +1050,8 @@ export function SettingsScreen({
           Pages from Markdown or Notion
         </Text>
         <Text style={[shared.small, { marginTop: 4 }]}>
-          Markdown notes (a .zip or one .md) or a Notion export, keeping folders
-          and [[links]], with Notion databases becoming projects.
+          Import Markdown or Notion. Folders and links stay; Notion databases
+          become projects.
         </Text>
         <View style={{ marginTop: 8 }}>
           <Segmented
@@ -1166,8 +1161,7 @@ export function SettingsScreen({
 
       <SettingsSection title="AI provider">
         <Text style={shared.body}>
-          An admin connects the AI provider in Admin → AI, and its keys stay on
-          the server, never on this device.
+          Admins set up AI in Admin → AI. Keys stay on the server.
         </Text>
       </SettingsSection>
 

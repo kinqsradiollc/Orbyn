@@ -158,23 +158,10 @@ export function HomeCompanions({
             <Text style={shared.small}>{agent.brief}</Text>
             {guideOpen && (
               <View style={{ gap: 8, marginTop: 6 }}>
-                <Text style={shared.small}>
-                  {agent.timing}. {agent.summary}
-                </Text>
+                <Text style={shared.small}>{agent.timing}</Text>
                 <Text style={shared.small}>
                   {agent.result} {agent.pause}
                 </Text>
-                <Text style={shared.small}>
-                  Example request: “{agent.request}”
-                </Text>
-                {agent.steps.map((step, index) => (
-                  <View key={step.title} style={{ gap: 4 }}>
-                    <Text style={shared.sectionTitle}>
-                      {index + 1}. {step.title}
-                    </Text>
-                    <Text style={shared.small}>{step.body}</Text>
-                  </View>
-                ))}
               </View>
             )}
           </View>

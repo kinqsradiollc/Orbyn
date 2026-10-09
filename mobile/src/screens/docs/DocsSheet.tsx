@@ -1943,9 +1943,8 @@ export function DocsSheet({
                 {archivedOnly && !hits && (
                   <View style={styles.list}>
                     <Text style={styles.empty}>
-                      Archived pages stay whole and their links still open.
-                      They're left out of the library and search until you bring
-                      them back.
+                      Archived pages and links remain. Restore them to return
+                      them to the library and search.
                     </Text>
                     {folders
                       .filter((f) => f.archived_at)

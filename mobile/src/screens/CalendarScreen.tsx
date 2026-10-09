@@ -1464,9 +1464,8 @@ export function CalendarScreen({
             {movesTicked
               ? `, and ${movesTicked} late session${movesTicked === 1 ? "" : "s"} moved before ${movesTicked === 1 ? "its deadline" : "their deadlines"}`
               : ""}
-            . Hold a faint session to move it (sideways for another day; it
-            stays where you put it), or for options. Hold empty time and drag to
-            keep it free. Nothing is saved until you apply the plan.
+            . Hold a proposed session to move it or see options. Drag empty time
+            to keep it free. Apply the plan to save.
           </Text>
           {stale && (
             <View style={s.stale} accessibilityRole="alert">

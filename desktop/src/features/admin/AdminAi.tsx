@@ -308,8 +308,8 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         </summary>
         <div className="ai-budget-body">
           <p className="muted">
-            The shared allowance for one person’s night, across up to ten runs.
-            Remaining work appears in the morning review.
+            Shared across a person's night runs. Unfinished work appears in
+            morning review.
           </p>
           <label className="settings-field">
             Tokens per night

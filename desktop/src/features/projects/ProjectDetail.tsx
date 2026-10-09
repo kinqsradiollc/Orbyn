@@ -1268,8 +1268,7 @@ export function ProjectDetail({
                 {canWrite && project.team_id && unassigned.length > 0 && (
                   <fieldset className="project-unassigned">
                     <legend className="muted">
-                      Unassigned tasks: tick the ones you'll take on, and they
-                      are yours and planned with Plan this project.
+                      Choose tasks to claim and include in Plan this project.
                     </legend>
                     {unassigned.map((item) => (
                       <label key={item.id}>

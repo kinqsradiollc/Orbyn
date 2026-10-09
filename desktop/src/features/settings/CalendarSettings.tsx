@@ -157,8 +157,7 @@ export function CalendarFeedCard({ report }: Props) {
         <CalendarSync size={16} aria-hidden="true" /> Calendar feed
       </h2>
       <p className="muted">
-        In Apple Calendar, Google Calendar or Outlook, choose “Subscribe to
-        calendar” (or “From URL”) and paste a link.
+        Paste a feed link into your calendar app's Subscribe or From URL option.
       </p>
       {!settings ? (
         <p className="muted">Loading your feed settings…</p>
@@ -178,8 +177,7 @@ export function CalendarFeedCard({ report }: Props) {
             <span>
               Include sessions
               <small>
-                Shown as “Session: task name” with its deadline in the full
-                feed. All-day tasks and events show as all-day, with no time.
+                Sessions appear with task names and deadlines in the full feed.
               </small>
             </span>
           </label>
@@ -495,8 +493,7 @@ export function CalendarSubscriptions({ report }: Props) {
         <CalendarPlus size={16} aria-hidden="true" /> Subscribed calendars
       </h2>
       <p className="muted">
-        Add calendars from other apps by their link, like a timetable or public
-        holidays; they refresh every hour and can&apos;t be changed here.
+        Add read-only calendars by link. They refresh hourly.
       </p>
       {subs === null ? (
         <p className="muted">Loading your calendars…</p>

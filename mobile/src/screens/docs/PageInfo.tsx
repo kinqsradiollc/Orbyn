@@ -375,9 +375,8 @@ function FilesBlock({
           </View>
           <Text style={s.small}>
             {fileSize(usage.used_bytes)} of {fileSize(usage.quota_bytes)} used
-            in all your pages. A picture whose line you remove frees its space
-            30 days later; pages in Trash keep theirs until the Trash is
-            emptied.
+            across your pages. Removed pictures free space after 30 days; Trash
+            keeps files until emptied.
           </Text>
         </View>
       )}

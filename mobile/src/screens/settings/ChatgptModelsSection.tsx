@@ -1,6 +1,7 @@
 import { AgendaPrivateSettings } from "./AgendaPrivateSettings";
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
+import { ManagedAiUsage } from "./ManagedAiUsage";
 import { CHATGPT_USAGE_URL, chatgptExecutorDeviceLabel } from "@orbyn/core";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -279,48 +280,39 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
   const selected = models.find((m) => m.slug === catalog?.preference.model);
   return (
     <SettingsSection title="AI connections & models">
-      <AiProviderChoiceControls
-        userId={userId}
-        selection={
-          providerReady && state.selection
-            ? {
-                connection_id: state.selection.connection_id,
-                executor_id: state.selection.executor_id,
-              }
-            : null
-        }
-      />
-      <ChatgptUsage userId={userId} />
-      <AgendaPrivateSettings userId={userId} />
       <Text style={shared.body}>ChatGPT</Text>
-      <Text style={shared.small}>
-        {Platform.OS === "web"
-          ? "Direct browser connection is not available yet."
-          : account?.status === "unsupported"
-            ? "Update Orbyn to connect ChatGPT on this device."
-            : "Connect your account in the browser. ChatGPT work runs while this app is open."}
-      </Text>
-      {(!savedAccounts || savedAccounts.selected !== null) && (
-        <SmallAction
-          label={
-            Platform.OS === "web"
-              ? "Browser connection unavailable"
-              : connecting
+      {Platform.OS === "web" ? (
+        <Text style={shared.small}>
+          Connect in Orbyn on a phone or desktop.
+        </Text>
+      ) : account?.status === "unsupported" ? (
+        <Text style={shared.small}>
+          Update Orbyn to connect on this device.
+        </Text>
+      ) : (
+        <Text style={shared.small}>
+          Sign in with ChatGPT in your browser. Work runs while Orbyn is open.
+        </Text>
+      )}
+      {Platform.OS !== "web" &&
+        (!savedAccounts || savedAccounts.selected !== null) && (
+          <SmallAction
+            label={
+              connecting
                 ? "Connecting…"
                 : savedAccounts?.selected
                   ? "Reconnect current account"
                   : "Connect to ChatGPT"
-          }
-          disabled={
-            !userId ||
-            !token ||
-            localBusy ||
-            account?.status === "unsupported" ||
-            Platform.OS === "web"
-          }
-          onPress={() => void connect()}
-        />
-      )}
+            }
+            disabled={
+              !userId ||
+              !token ||
+              localBusy ||
+              account?.status === "unsupported"
+            }
+            onPress={() => void connect()}
+          />
+        )}
       {connecting && (
         <SmallAction
           label="Cancel"
@@ -331,41 +323,45 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
           }}
         />
       )}
-      {Platform.OS !== "web" && hasLocalAccount && (
-        <Text style={shared.small}>
-          {account?.status === "reconnect"
-            ? "This ChatGPT session has ended. Connect again to continue."
-            : account?.status === "unreadable"
-              ? "Saved connection needs attention. Reconnect or disconnect it."
-              : account?.status === "saved" && !account.planUseAllowed
-                ? "ChatGPT plan use is off."
-                : "Account saved on this device."}
-        </Text>
-      )}
-      {Platform.OS !== "web" && localRuntime.userId === userId && (
-        <>
-          <Text accessibilityLiveRegion="polite" style={shared.small}>
-            {localRuntime.status === "ready"
-              ? "This device is ready."
-              : localRuntime.status === "starting"
-                ? "Preparing this device…"
-                : localRuntime.status === "paused"
-                  ? "Work paused."
-                  : localRuntime.status === "error"
-                    ? "Reconnect this device to resume work."
-                    : hasLocalAccount
-                      ? "This device is not running ChatGPT work."
-                      : "No local ChatGPT connection."}
+      {Platform.OS !== "web" &&
+        hasLocalAccount &&
+        (account?.status !== "saved" || !account.planUseAllowed) && (
+          <Text style={shared.small}>
+            {account?.status === "reconnect"
+              ? "This ChatGPT session has ended. Connect again to continue."
+              : account?.status === "unreadable"
+                ? "Saved connection needs attention. Reconnect or disconnect it."
+                : account?.status === "saved" && !account.planUseAllowed
+                  ? "ChatGPT plan use is off."
+                  : "Account saved on this device."}
           </Text>
-          {localRuntime.status === "error" && (
-            <SmallAction
-              label="Retry connection"
-              disabled={localBusy}
-              onPress={() => chatgptForeground.restart()}
-            />
-          )}
-        </>
-      )}
+        )}
+      {Platform.OS !== "web" &&
+        localRuntime.userId === userId &&
+        (hasLocalAccount || localRuntime.status !== "idle") && (
+          <>
+            <Text accessibilityLiveRegion="polite" style={shared.small}>
+              {localRuntime.status === "ready"
+                ? "This device is ready."
+                : localRuntime.status === "starting"
+                  ? "Preparing this device…"
+                  : localRuntime.status === "paused"
+                    ? "Work paused."
+                    : localRuntime.status === "error"
+                      ? "Reconnect this device to resume work."
+                      : hasLocalAccount
+                        ? "This device is not running ChatGPT work."
+                        : "Not connected."}
+            </Text>
+            {localRuntime.status === "error" && (
+              <SmallAction
+                label="Retry connection"
+                disabled={localBusy}
+                onPress={() => chatgptForeground.restart()}
+              />
+            )}
+          </>
+        )}
       {Platform.OS !== "web" &&
         (hasLocalAccount ||
           (localRuntime.userId === userId &&
@@ -455,22 +451,24 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
             </ScrollView>
           </View>
         )}
-      {Platform.OS !== "web" && savedAccounts && (
-        <SmallAction
-          label="Add ChatGPT account"
-          disabled={
-            localBusy ||
-            savedAccounts.accounts.length >= 100 ||
-            account?.status === "unsupported"
-          }
-          onPress={() =>
-            void connect({
-              kind: "add",
-              expectedRevision: savedAccounts.revision,
-            })
-          }
-        />
-      )}
+      {Platform.OS !== "web" &&
+        savedAccounts &&
+        savedAccounts.accounts.length > 0 && (
+          <SmallAction
+            label="Add ChatGPT account"
+            disabled={
+              localBusy ||
+              savedAccounts.accounts.length >= 100 ||
+              account?.status === "unsupported"
+            }
+            onPress={() =>
+              void connect({
+                kind: "add",
+                expectedRevision: savedAccounts.revision,
+              })
+            }
+          />
+        )}
       {choosing && (
         <SmallAction
           label="Cancel switch"
@@ -491,22 +489,6 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         disabled={busy || !userId}
         onPress={refresh}
       />
-      <SmallAction
-        label="Manage ChatGPT usage"
-        disabled={!userId}
-        onPress={() => {
-          void Linking.openURL(CHATGPT_USAGE_URL).catch(() =>
-            Alert.alert(
-              "Could not open ChatGPT",
-              "Open ChatGPT Settings → Usage in your browser.",
-            ),
-          );
-        }}
-      />
-      <Text style={shared.small}>
-        Choose the same ChatGPT account to view its current allowance and app
-        limits.
-      </Text>
       {state.status === "loading" && (
         <Text accessibilityLiveRegion="polite" style={shared.small}>
           Loading ChatGPT devices and models…
@@ -521,9 +503,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         </Text>
       )}
       {state.status === "ready" && !state.devices.length && (
-        <Text style={shared.small}>
-          No ChatGPT model catalog is available yet.
-        </Text>
+        <Text style={shared.small}>No connected devices yet.</Text>
       )}
       {!!state.devices.length && (
         <>
@@ -659,6 +639,32 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
           )}
         </>
       )}
+      <AiProviderChoiceControls
+        userId={userId}
+        selection={
+          providerReady && state.selection
+            ? {
+                connection_id: state.selection.connection_id,
+                executor_id: state.selection.executor_id,
+              }
+            : null
+        }
+      />
+      <AgendaPrivateSettings userId={userId} />
+      <ChatgptUsage userId={userId} />
+      <SmallAction
+        label="View ChatGPT usage"
+        disabled={!userId}
+        onPress={() => {
+          void Linking.openURL(CHATGPT_USAGE_URL).catch(() =>
+            Alert.alert(
+              "Could not open ChatGPT",
+              "Open ChatGPT Settings → Usage in your browser.",
+            ),
+          );
+        }}
+      />
+      <ManagedAiUsage userId={userId} />
     </SettingsSection>
   );
 }

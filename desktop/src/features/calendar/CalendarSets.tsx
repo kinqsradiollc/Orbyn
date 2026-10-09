@@ -94,8 +94,8 @@ export function CalendarSetsDialog({
         </div>
         <div className="modal-body">
           <p className="muted modal-lead">
-            A set shows only what you pick. Switch sets with the number keys on
-            the calendar (0 shows everything).
+            Each set shows selected calendars. Use number keys to switch; 0
+            shows all.
           </p>
           {draft.map((s, n) => (
             <fieldset key={s.id} className="set-card">

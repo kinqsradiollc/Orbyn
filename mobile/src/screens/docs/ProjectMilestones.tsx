@@ -166,8 +166,7 @@ export function ProjectMilestones({
       </View>
       {!list.length && !draft && (
         <Text style={shared.small}>
-          Dated checkpoints, like “Draft ready”. Each one shows whether its
-          tasks are planned to finish by then.
+          Dated checkpoints show whether their tasks will finish on time.
         </Text>
       )}
       {list.map((m) => (

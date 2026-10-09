@@ -615,9 +615,8 @@ function HostReschedule({
         />
       </label>
       <small className="field-hint">
-        It has to be free: inside the page's hours (or the invite's windows) and
-        free on every required host's calendar. If it isn't, nothing moves and
-        you'll see why below.
+        Choose a free time within the booking hours and every host's calendar.
+        If it conflicts, nothing moves.
       </small>
       <div className="booking-step-actions">
         <button

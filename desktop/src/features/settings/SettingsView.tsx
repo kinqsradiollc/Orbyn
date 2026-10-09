@@ -226,9 +226,8 @@ export function SettingsView({
                   <BookOpen size={14} aria-hidden="true" /> Open pages for
                   reading
                   <small>
-                    Pages open without editing handles; press Edit, or ⌘⇧R, to
-                    change one. Saved on this device only, so a phone and a
-                    computer can differ.
+                    Opens pages for reading. Use Edit or ⌘⇧R to change them.
+                    This setting is saved on this device.
                   </small>
                 </span>
               </label>
@@ -258,8 +257,8 @@ export function SettingsView({
                 </span>
               </label>
               <p className="muted">
-                Mobile push notifications can be enabled in the Orbyn mobile
-                app. Each item has its own reminder timing.
+                Set push notifications in the mobile app. Each item has its own
+                reminder time.
               </p>
             </SettingsSection>
           )}

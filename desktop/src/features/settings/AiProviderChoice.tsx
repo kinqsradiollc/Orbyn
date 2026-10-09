@@ -125,7 +125,10 @@ export function AiProviderChoiceControls({
     }
   };
   return (
-    <section className="settings-subform ai-provider-routing" aria-label="AI provider routing">
+    <section
+      className="settings-subform ai-provider-routing"
+      aria-label="AI provider routing"
+    >
       <h3>Provider</h3>
       <div className="button-row start ai-provider-options">
         <button
@@ -153,14 +156,14 @@ export function AiProviderChoiceControls({
       </div>
       {!selection && (
         <small className="field-hint">
-          ChatGPT needs a ready connection and default model.
+          Connect ChatGPT on a device and choose a model.
         </small>
       )}
       {choice?.primary === "chatgpt" && !inspectedIsSaved && (
         <small className="field-hint">
           {savedSelection
-            ? "Another ChatGPT device is your current provider."
-            : "Your saved ChatGPT device is unavailable."}
+            ? "ChatGPT uses another device."
+            : "Your ChatGPT device is unavailable."}
         </small>
       )}
       {choice?.primary === "chatgpt" && (
@@ -173,13 +176,13 @@ export function AiProviderChoiceControls({
               void save("chatgpt", e.target.checked, savedSelection)
             }
           />
-          Use Orbyn default if ChatGPT is unavailable
+          Use Orbyn if ChatGPT is unavailable
         </label>
       )}
       {choice?.primary === "chatgpt" && (
         <small className="field-hint">
-          Fallback uses Orbyn's configured provider. Interrupted or unknown
-          ChatGPT results are not retried through it.
+          Uses the workspace provider. Interrupted or uncertain results are not
+          retried.
         </small>
       )}
       {error && <p role="alert">{error}</p>}

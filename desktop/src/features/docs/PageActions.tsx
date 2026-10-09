@@ -94,9 +94,8 @@ export function MergeDialog({
           </button>
         </div>
         <p className="muted">
-          “{doc.title || "Untitled"}” goes to the end of the page you choose,
-          with its comments and task lines. Links to it will open that page, and
-          this one moves to Trash, where it can be brought back.
+          “{doc.title || "Untitled"}” joins the target with comments and tasks.
+          Links redirect; this page moves to Trash and can be restored.
         </p>
         {error && (
           <div className="error" role="alert">

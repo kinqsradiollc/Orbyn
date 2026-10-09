@@ -772,9 +772,8 @@ function Body({ teams }: { teams: Team[] }) {
                 detail="Estimates, your best hours and a usual day"
               >
                 <Text style={[shared.small, s.sectionHint]}>
-                  The planner learns from your own finished tasks, sessions and
-                  focus time. Your tasks aren’t changed; only where and how long
-                  they’re planned.
+                  Only your completed work shapes future estimates and timing.
+                  Tasks themselves stay unchanged.
                 </Text>
                 {(
                   [
@@ -821,9 +820,8 @@ function Body({ teams }: { teams: Team[] }) {
                 detail="Your morning agenda and evening review"
               >
                 <Text style={[shared.small, s.sectionHint]}>
-                  A short email with your day, sent from the workspace’s own
-                  mail server. The morning and evening emails are off until you
-                  turn them on.
+                  Choose when to receive your agenda and evening review by
+                  email.
                 </Text>
                 <View style={s.switchRow}>
                   <View style={{ flex: 1 }}>
@@ -923,8 +921,7 @@ function Body({ teams }: { teams: Team[] }) {
             detail="Reserve time for the right kind of work"
           >
             <Text style={[shared.small, s.sectionHint]}>
-              Time kept for a kind of work, like high-priority tasks on weekday
-              mornings. The planner puts matching tasks there first.
+              Reserve time for matching tasks, such as weekday focus work.
             </Text>
             <View style={s.card}>
               {frames.map((f, n) =>
@@ -1014,8 +1011,7 @@ function Body({ teams }: { teams: Team[] }) {
             detail="Travel time for the places you visit"
           >
             <Text style={[shared.small, s.sectionHint]}>
-              How long it takes to get somewhere. Events whose location contains
-              the match text get that travel time before and after.
+              Matching event locations reserve travel time before and after.
             </Text>
             <View style={s.card}>
               {places.map((p, n) =>

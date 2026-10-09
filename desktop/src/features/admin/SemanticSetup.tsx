@@ -113,8 +113,7 @@ export function SemanticSetup({
         <ChevronDown size={16} aria-hidden="true" />
       </summary>
       <p className="muted">
-        Uses an embedding provider to index pages. Projects and teams kept out
-        of the assistant are excluded.
+        Indexes pages through the selected provider. Excluded spaces stay out.
       </p>
       <ul className="semantic-steps">
         {steps.map((step) => (
@@ -130,8 +129,7 @@ export function SemanticSetup({
       </ul>
       {settings.embedding_needs_validation && (
         <p role="status" className="muted">
-          The saved provider changed or was removed. Select a provider and
-          validate it again before any more page text is sent.
+          Provider changed. Choose and validate one before indexing resumes.
         </p>
       )}
       {on ? (
@@ -295,10 +293,9 @@ export function SemanticSetup({
               onChange={(e) => setAccept(e.target.checked)}
             />
             <span>
-              I understand that the words of every page in this workspace
-              (except projects and teams kept out of the assistant) are sent to{" "}
-              {selected?.name ?? "the selected embedding provider"} to be
-              measured, and that this is described in the Privacy Policy.
+              I agree to send workspace page text, except excluded spaces, to{" "}
+              {selected?.name ?? "the selected embedding provider"} for
+              indexing, as described in the Privacy Policy.
             </span>
           </label>
           <button

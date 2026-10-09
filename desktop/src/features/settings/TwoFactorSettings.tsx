@@ -55,8 +55,7 @@ export function TwoFactorSettings({
       <hr />
       <h2>Two-step verification</h2>
       <p className="muted">
-        Ask for a code from an authenticator app at sign-in, on top of your
-        password. Works with Google Authenticator, Aegis, 1Password and others.
+        Add a code from an authenticator app to password sign-in.
       </p>
 
       {enabled === null ? (

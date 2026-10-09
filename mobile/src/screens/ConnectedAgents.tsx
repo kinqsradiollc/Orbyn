@@ -170,15 +170,15 @@ function TrustPanel({
       {!changes ? (
         <Text style={shared.small}>
           {grant.access === "read"
-            ? "It can only read. To let it change things, connect it again and allow changes."
-            : "It can only suggest: every change waits in your Review inbox. To give it more, connect it again and allow changes."}
+            ? "Read only. Reconnect to allow changes."
+            : "Changes need your review. Reconnect to allow more."}
         </Text>
       ) : (
         <>
           {assistantGrant && (
             <Text style={shared.small}>
-              {grant.name} is built in, so it cannot be disconnected. Its trust
-              can only be lowered. Protected actions stay ask-first.
+              {grant.name} is built in. You can lower its access; protected
+              actions still need approval.
             </Text>
           )}
           <Field
@@ -742,9 +742,8 @@ export function ConnectedAgentsCard({
                 </View>
                 {g.suspended_at && (
                   <Text style={shared.small}>
-                    Orbyn paused it because it kept going over its limits or
-                    asking for things it can’t reach. Check its activity, then
-                    restore it or revoke it.
+                    Paused after repeated access or usage failures. Check
+                    activity before restoring or revoking it.
                   </Text>
                 )}
                 <View style={[s.actions, s.wrap]}>
@@ -928,8 +927,8 @@ export function ConnectedAgentsCard({
               ),
             )}
             <Text style={[shared.small, s.step]}>
-              No key needed: Orbyn asks you what it may do and in which spaces.
-              Giving it write access asks for your password or passkey again.
+              No key needed. Choose its spaces and access. Write access needs
+              another password or passkey check.
             </Text>
           </>
         ) : (
@@ -1080,9 +1079,8 @@ export function ConnectedAgentsCard({
 
         <Text style={[shared.label, s.step]}>Or add Orbyn in one click</Text>
         <Text style={[shared.small, s.gap]}>
-          These apps run on a computer: send yourself the link and open it
-          there. The app then signs in with Orbyn, or asks for an agent key. No
-          key is ever part of the link.
+          Open this link on your computer. It signs in or asks for an agent key;
+          the link contains no key.
         </Text>
         {agentInstallLinks(url).map((l) => (
           <View key={l.app} style={s.installRow}>

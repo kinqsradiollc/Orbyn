@@ -509,8 +509,7 @@ function PageList({
   return (
     <>
       <Text style={[shared.subtitle, s.intro]}>
-        Share a link and people can pick a time that works for you. Your
-        calendar stays private; they only see free times.
+        Share a booking link. Guests see free times, not your calendar.
       </Text>
       {pages === null ? (
         <Text style={shared.small}>{busy ? "Loading…" : ""}</Text>

@@ -1087,9 +1087,8 @@ function RevisionDialog({
         </div>
         <div className="modal-body">
           <p className="muted">
-            One session a day in your free working time, around classes and
-            events, a little longer in the last three days. Nothing is added
-            until you apply it.
+            One session each free day, longer near the exam. Review before
+            adding anything.
           </p>
           <div
             className="study-plan-length"

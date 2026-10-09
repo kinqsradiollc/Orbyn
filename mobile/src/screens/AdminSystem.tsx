@@ -282,8 +282,7 @@ function SettingsCard({
     <FadeIn index={1} style={shared.card}>
       <Text style={shared.sectionTitle}>Settings</Text>
       <Text style={[shared.small, s.gapBelow]}>
-        Changes apply on every service within about 10 seconds, with no restart.
-        Reset returns a setting to its .env value.
+        Changes apply within 10 seconds. Reset restores the .env value.
       </Text>
 
       <FieldHead
@@ -427,8 +426,7 @@ function SettingsCard({
       <View style={s.divider} />
       <Text style={shared.label}>Test email</Text>
       <Text style={[shared.small, s.hint]}>
-        Sends a message to your admin address with the saved settings. On a
-        local setup it arrives in the Mailpit test inbox.
+        Sends saved settings to your admin address. Local mail goes to Mailpit.
       </Text>
       {!!sent && (
         <Text

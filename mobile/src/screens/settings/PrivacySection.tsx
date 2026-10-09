@@ -110,8 +110,8 @@ export function PrivacySection({
           <View style={{ flex: 1 }}>
             <Text style={s.rowTitle}>Usage analytics</Text>
             <Text style={shared.small}>
-              Counts your requests, changes and questions per day, never what
-              you write; turning it off clears the counts.
+              Counts feature use, never your words. Turning off clears counts;
+              security logs remain for 7 days.
             </Text>
           </View>
           <Switch

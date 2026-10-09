@@ -130,9 +130,8 @@ export function PrivacySettings({
       <SettingsSection className="card settings-card">
         <h2>Usage analytics</h2>
         <p className="muted">
-          Orbyn counts how many requests, changes and questions your account
-          makes each day, never what you write; admins see only the totals, and
-          there are no ads or trackers.
+          Orbyn counts feature use, never what you write. Admins see totals
+          only. No ads or trackers.
         </p>
         <label className="switch-line settings-field">
           <input
@@ -146,8 +145,7 @@ export function PrivacySettings({
           <span>
             Count my usage
             <small>
-              Turning this off stops counting and clears what was counted.
-              Request logs are still kept for 7 days for security.
+              Turning off clears usage counts. Security logs remain for 7 days.
             </small>
           </span>
         </label>
@@ -157,9 +155,7 @@ export function PrivacySettings({
       <SettingsSection className="card settings-card">
         <h2>Your data</h2>
         <p className="muted">
-          Download everything that&apos;s yours as a .zip: every page as
-          Markdown in its folders, your projects and folders, tasks, lists, tags
-          and habits, and your consent history.
+          Download your pages, plans and consent history as a .zip.
         </p>
         <button
           className="secondary"
@@ -193,9 +189,8 @@ export function PrivacySettings({
       <SettingsSection className="card settings-card">
         <h2>Delete my account</h2>
         <p className="muted">
-          This deletes your account and everything only you can see, for good;
-          teams you own pass to another member, so download your data first if
-          you want a copy.
+          Permanently deletes your account and private data. Owned teams pass to
+          another member. Download a copy first if you need one.
         </p>
         {!confirming ? (
           <button className="danger" onClick={() => setConfirming(true)}>

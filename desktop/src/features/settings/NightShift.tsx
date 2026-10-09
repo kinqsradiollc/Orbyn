@@ -28,8 +28,8 @@ export function NightShift({ report }: { report: (error: unknown) => void }) {
     <section className="agents-rules night-shift">
       <h3>Night shift</h3>
       <p className="muted">
-        Your assistant can work while you’re away. Changes wait for your morning
-        review unless you turn that off.
+        Work runs while you're away. Changes wait for review unless you turn
+        that off.
       </p>
       <form
         className="agents-identity-form"
@@ -110,8 +110,8 @@ export function NightShift({ report }: { report: (error: unknown) => void }) {
           />
         </label>
         <p className="muted">
-          Deletes, publishing, messages to other people, and work that needs
-          permission always wait in Review.
+          Deletes, publishing, messages and permission requests always wait in
+          Review.
         </p>
         <div className="button-row start">
           <button className="primary" disabled={action.pending}>

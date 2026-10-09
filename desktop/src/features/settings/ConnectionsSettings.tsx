@@ -83,8 +83,7 @@ export function ConnectionsSettings({ report }: Props) {
           <ShieldCheck size={16} aria-hidden="true" /> Connections
         </h2>
         <p className="muted">
-          Connect scripts, automation tools and calendar apps; nothing is sent
-          anywhere until you connect it, and each can be turned off.
+          Connect tools and calendars when you need them. Disconnect any time.
         </p>
         <p className="muted">
           Building an integration? See the{" "}

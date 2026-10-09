@@ -63,8 +63,7 @@ export function ForgotPasswordPage({
         <>
           <h2>Check your inbox.</h2>
           <p>
-            If an account uses that address, a link to set a new password is on
-            its way. The link is good for one hour.
+            If that account exists, we'll send a reset link valid for one hour.
           </p>
           <button className="text-button" onClick={() => onNavigate("/login")}>
             Back to sign in

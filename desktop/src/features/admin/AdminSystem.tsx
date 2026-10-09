@@ -891,8 +891,7 @@ function AnnouncementCard({ report }: { report: Report }) {
             }}
           />
           <small className="field-hint">
-            Shown at the top of the web, desktop and mobile apps. People can
-            dismiss it; a new announcement shows again.
+            Appears across Orbyn. People can dismiss it; a new notice reappears.
           </small>
         </label>
         <label className="system-field system-label">
@@ -1029,9 +1028,7 @@ function RetentionCard({ report }: { report: Report }) {
         )}
       </div>
       <p className="muted system-lead">
-        The sweeper clears records past their keep time every hour, a few
-        thousand at a time, so the database doesn&apos;t fill with outdated
-        data. 0 keeps a kind of record forever.
+        Expired records are cleared hourly. Set 0 to keep a record type forever.
       </p>
       {!view ? (
         <p className="muted system-loading">Loading…</p>

@@ -46,7 +46,14 @@ test("web does not silently request a desktop while native Settings uses local s
     ),
     "utf8",
   );
-  assert.match(web, /Direct web sign-in is unavailable/);
+  const parent = await readFile(
+    new URL(
+      "../../desktop/src/features/settings/ChatgptConnections.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(parent, /Connect ChatGPT in Orbyn on a phone or desktop/);
   assert.doesNotMatch(
     web,
     /startChatgptConnectRequest|chatgptConnectRequest|connectFeedback/,
@@ -66,5 +73,5 @@ test("web does not silently request a desktop while native Settings uses local s
     native,
     /startChatgptConnectRequest|Requires Orbyn desktop open/,
   );
-  assert.match(native, /Browser connection unavailable/);
+  assert.match(native, /Connect in Orbyn on a phone or desktop/);
 });

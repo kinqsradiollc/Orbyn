@@ -130,21 +130,10 @@ export function HomeCompanions({
               <p>{agent.brief}</p>
               {guideOpen && (
                 <div className="home-companions-guide">
-                  <p>
-                    {agent.timing}. {agent.summary}
-                  </p>
+                  <p>{agent.timing}</p>
                   <p>
                     {agent.result} {agent.pause}
                   </p>
-                  <p>Example request: “{agent.request}”</p>
-                  <ol className="home-companions-steps">
-                    {agent.steps.map((step) => (
-                      <li key={step.title}>
-                        <strong>{step.title}</strong>
-                        <p>{step.body}</p>
-                      </li>
-                    ))}
-                  </ol>
                 </div>
               )}
             </article>

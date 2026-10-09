@@ -12,7 +12,7 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
     <View style={{ gap: 12 }}>
       <Text style={shared.body}>Morning summary</Text>
       <Text style={shared.small}>
-        Use your selected ChatGPT model for scheduled Agenda summaries.
+        Scheduled summaries use your ChatGPT plan.
       </Text>
       {!data && !error && (
         <Text accessibilityLiveRegion="polite" style={shared.small}>
@@ -22,24 +22,22 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
       {data && (
         <>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <Text style={[shared.small, { flex: 1 }]}>
-              Allow scheduled ChatGPT summaries
-            </Text>
+            <Text style={[shared.small, { flex: 1 }]}>Use ChatGPT</Text>
             <Switch
-              accessibilityLabel="Allow scheduled ChatGPT summaries"
+              accessibilityLabel="Use ChatGPT for morning summaries"
               value={data.permission.enabled}
               trackColor={{ true: colors.accent }}
               disabled={busy || (!data.permission.enabled && !canEnable)}
               onValueChange={(value) => void save(value)}
             />
           </View>
-          <Text style={shared.small}>
-            {data.permission.enabled && !data.permission.active
-              ? "Permission needs review after your AI settings changed."
-              : data.permission.active
-                ? `Enabled · ${data.permission.model}`
-                : "Off"}
-          </Text>
+          {data.permission.enabled && (
+            <Text style={shared.small}>
+              {data.permission.active
+                ? `On · ${data.permission.model}`
+                : "Review your model choice to resume."}
+            </Text>
+          )}
           {!canEnable && !data.permission.active && (
             <Text style={shared.small}>{enablementMessage}</Text>
           )}
@@ -50,19 +48,20 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
               onPress={() => void save(true)}
             />
           )}
-          {canEnable && (
+          {canEnable && data.permission.enabled && (
             <Text style={shared.small}>
-              {data.catalog?.preference.model}
+              {data.catalog?.preference.model} ·{" "}
               {data.choice.fallback_to_default
-                ? " · Orbyn fallback allowed"
-                : " · No fallback"}
-              . Your desktop app must be online.
+                ? "Orbyn fallback"
+                : "No fallback"}
             </Text>
           )}
-          <Text accessibilityLiveRegion="polite" style={shared.small}>
-            {data.summary.run ? `${data.summary.run.local_day} · ` : ""}
-            {agendaPrivateSummaryText(data.summary)}
-          </Text>
+          {data.permission.enabled && (
+            <Text accessibilityLiveRegion="polite" style={shared.small}>
+              {data.summary.run ? `${data.summary.run.local_day} · ` : ""}
+              {agendaPrivateSummaryText(data.summary)}
+            </Text>
+          )}
         </>
       )}
       {error && (
@@ -70,11 +69,13 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
           {error}
         </Text>
       )}
-      <SmallAction
-        label="Refresh summary settings"
-        disabled={busy}
-        onPress={refresh}
-      />
+      {(data?.permission.enabled || error) && (
+        <SmallAction
+          label="Refresh summary"
+          disabled={busy}
+          onPress={refresh}
+        />
+      )}
     </View>
   );
 }

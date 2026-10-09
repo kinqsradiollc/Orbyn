@@ -129,14 +129,12 @@ export function SemanticSetup({
     >
       {settings.embedding_needs_validation && (
         <Text style={shared.small}>
-          The saved provider changed or was removed. Validate a provider again
-          before any more page text is sent.
+          Provider changed. Validate one before indexing resumes.
         </Text>
       )}
       <Text style={shared.small}>
-        Finds a page that says the same thing in other words. It stays off
-        unless you set it up: every page is sent to the provider to be measured,
-        not just the pages a question needs.
+        Finds pages by meaning. When enabled, all non-excluded pages are sent to
+        the selected provider for indexing.
       </Text>
       <View style={s.steps}>
         {steps.map((x) => (
@@ -316,9 +314,7 @@ export function SemanticSetup({
             </>
           )}
           <View style={s.accept}>
-            <Text style={[shared.small, { flex: 1 }]}>
-              {consentText}
-            </Text>
+            <Text style={[shared.small, { flex: 1 }]}>{consentText}</Text>
             <Switch
               trackColor={{ true: colors.accent }}
               accessibilityLabel={consentText}

@@ -35,18 +35,14 @@ export function EmailToTask({ report }: { report: (e: unknown) => void }) {
         <Mail size={18} aria-hidden="true" /> Email to task
       </h2>
       <p className="muted">
-        Mail from your own address sent to your private address becomes a task:
-        the subject (with its dates and #tags) is the title and the body its
-        notes.
+        Email your private address to create a task. Subject becomes title; body
+        becomes notes.
       </p>
 
       {inbox === null ? (
         <p className="muted">Loading…</p>
       ) : !inbox.configured ? (
-        <p className="muted">
-          Email to task isn’t turned on for this workspace yet. An admin can set
-          it up (see the deployment guide).
-        </p>
+        <p className="muted">An admin needs to enable inbound mail first.</p>
       ) : inbox.address ? (
         <>
           <code className="two-factor-secret">{inbox.address}</code>

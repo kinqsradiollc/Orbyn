@@ -324,8 +324,8 @@ function OverviewPanel({
           <ShieldCheck size={20} />
           <h2>Changes stay deliberate</h2>
           <p>
-            Admin actions show a warning before they apply. The audit log
-            records changes, and database previews mask private content.
+            Admin changes are confirmed and logged. Database previews mask
+            private content.
           </p>
           {canManageSystem && (
             <button

@@ -111,8 +111,8 @@ export function InviteList({ onNew }: { onNew: () => void }) {
     <>
       <ErrorBanner error={error} onDismiss={() => setError("")} />
       <Text style={[shared.subtitle, s.intro]}>
-        Offer a few times to one person. They pick one inside them and it’s
-        booked at once; the link works once.
+        Offer times to one person. Their choice books immediately; the link
+        works once.
       </Text>
       <Button title="Offer times" icon="plus" onPress={onNew} />
       {invites === null ? (

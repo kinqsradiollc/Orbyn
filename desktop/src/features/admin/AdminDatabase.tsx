@@ -266,8 +266,8 @@ export function AdminDatabase({
           </span>
           <h2>Database explorer</h2>
           <p>
-            Inspect tables, columns, indexes and redacted row previews. Edit
-            mode supports validated user fields and team names.
+            Inspect schema and redacted rows. Edit validated user fields and
+            team names.
           </p>
         </div>
         <div className="db-intro-actions">

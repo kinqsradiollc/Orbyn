@@ -317,8 +317,7 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
             )}
             {chosenStale && open.status === "pending" && (
               <p className="muted review-hint">
-                Something changed since this was suggested. Leave out the
-                changes marked, or decline it and ask again.
+                Some changes are stale. Omit them, or decline and ask again.
               </p>
             )}
             <OutcomeNote outcome={action.outcome} />
