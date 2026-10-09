@@ -1,8 +1,8 @@
 # Product content cleanup — accepted handoff
 
-Status: Reviewer accepted `fbcac938` on `codex/content-density` in round 1/3,
-based on main `c778c25f`. The Tester report and Reviewer round/closure records
-are in this directory. Integration to main is the next action. The user
+Status: Reviewer accepted `fbcac938` in round 1/3; the accepted content pass
+and its reports were pushed to main at `70e7e687`. The Tester report and
+Reviewer round/closure records are in this directory. The user
 requested this pass after C2/M1 and explicitly stopped Visual Check. No
 browser or native visual acceptance is claimed.
 

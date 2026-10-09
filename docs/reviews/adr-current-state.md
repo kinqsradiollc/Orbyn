@@ -13,10 +13,10 @@ phone Connect and declined another authorization check. Phone-owned executor
 enrollment/inference is not independently verified. Independent hosted web
 sign-in is explicitly deferred. Production deployment remains user-owned.
 
-**Active work:** user-requested product content cleanup across web/desktop and
-mobile before C3. Visual Check is stopped for this batch at the user's request.
-The content candidate `fbcac938` passed Test → Review in round **1/3** and is
-ready for main integration. See [content handoff](content-density-2026-10-09.md),
+**Next stage:** C3. The user-requested product content cleanup across
+web/desktop and mobile passed Test → Review in round **1/3** and was pushed to
+main at `70e7e687`. Visual Check was stopped for that batch at the user's
+request. See [content handoff](content-density-2026-10-09.md),
 [Tester report](content-density-test-00098f37-2026-10-09.md),
 [Reviewer round](content-density-review-r1-2026-10-09.md) and
 [closure](content-density-closure-fbcac938-2026-10-09.md).
