@@ -187,7 +187,7 @@ export async function beginChatTurn(
     scope: ChatScope | null;
     legacyHistory: ChatTurn[];
     /** A background run's chat: its origin and list title. */
-    origin?: "idea" | "goal" | "routine" | "task" | "night";
+    origin?: "idea" | "goal" | "routine" | "task" | "night" | "handoff";
     title?: string;
   },
   sharedDb?: Queryable,

@@ -1,4 +1,5 @@
 import { assistantRuntimeHasRoom } from "./runtime-slots.js";
+import { reserveAssistantJobWork } from "./work-budget.js";
 import { flushAssistantAwayNotices } from "./notices.js";
 import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
@@ -24,12 +25,14 @@ export async function claimAssistantJob(
 ) {
   return transaction(async (db) => {
     if (!(await assistantRuntimeHasRoom(db, lane))) return null;
-    const row = (
+    const candidate = (
       await db.query<{ id: string; user_id: string; run_state: unknown }>(
-        `WITH candidate AS (
-         SELECT candidate.id FROM ai_jobs candidate
-         WHERE candidate.state = 'queued' AND candidate.runtime_lane = $2 AND candidate.run_state->>'version' = '1'
+        `SELECT candidate.id,candidate.user_id,candidate.run_state FROM ai_jobs candidate
+         WHERE candidate.state = 'queued' AND candidate.runtime_lane = $1 AND candidate.run_state->>'version' = '1'
            AND candidate.run_state->'request' IS NOT NULL
+           AND ($1='interactive' OR assistant_lane_budget_available(candidate.user_id,$1,clock_timestamp()))
+           AND ($1<>'overnight' OR candidate.run_origin<>'handoff'
+             OR assistant_handoff_window_open(candidate.user_id,clock_timestamp()))
            AND (
              candidate.runtime_lane='interactive'
              OR coalesce(candidate.provider_choice_snapshot->>'primary','default')<>'chatgpt'
@@ -74,16 +77,30 @@ export async function claimAssistantJob(
              SELECT 1 FROM ai_jobs busy WHERE busy.id<>candidate.id
                AND busy.work_source_kind=candidate.work_source_kind AND busy.work_source_id=candidate.work_source_id
                AND busy.state IN ('running','waiting')))
-         ORDER BY candidate.created_at, candidate.id FOR UPDATE OF candidate SKIP LOCKED LIMIT 1
-       )
-       UPDATE ai_jobs j SET state = 'running', claimed_by = $1,
-         lease_until = now() + interval '60 seconds', heartbeat_at = now()
-       FROM candidate WHERE j.id = candidate.id
-       RETURNING j.id, j.user_id, j.run_state`,
-        [claimedBy, lane],
+         ORDER BY candidate.created_at, candidate.id FOR UPDATE OF candidate SKIP LOCKED LIMIT 1`,
+        [lane],
       )
     ).rows[0];
-    return row ?? null;
+    if (!candidate) return null;
+    const budget =
+      lane === "interactive"
+        ? null
+        : await reserveAssistantJobWork(db, candidate, lane);
+    if (lane !== "interactive" && budget === null) return null;
+    const row = (
+      await db.query<{ id: string; user_id: string; run_state: unknown }>(
+        `UPDATE ai_jobs SET state='running',claimed_by=$2,
+           lease_until=now()+interval '60 seconds',heartbeat_at=now(),
+           run_state=CASE WHEN $3::integer IS NULL THEN run_state ELSE
+             jsonb_set(run_state,'{state,token_budget}',to_jsonb($3::integer),true) END
+         WHERE id=$1 AND state='queued'
+         RETURNING id,user_id,run_state`,
+        [candidate.id, claimedBy, budget],
+      )
+    ).rows[0];
+    if (!row)
+      throw new Error("The reserved assistant job changed during claim.");
+    return row;
   });
 }
 

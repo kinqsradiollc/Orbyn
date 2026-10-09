@@ -223,7 +223,7 @@ export const planSchedule = defineCapability({
   tier: "R",
   async run(ctx, a) {
     const p = ctx.principal;
-    if (!p.personal)
+    if (!ctx.spaces.personal)
       throw new CapabilityError(
         "FORBIDDEN",
         "Plans are made on the person's own calendar, which this connection can't reach.",

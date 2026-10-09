@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const ASSISTANT_RULE_ACTIONS = [
+  "read",
   "any_change",
   "create",
   "edit",

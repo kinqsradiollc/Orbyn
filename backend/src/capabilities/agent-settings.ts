@@ -34,7 +34,7 @@ export const updateAgent = defineCapability({
   tier: "W2",
   async run(ctx, a) {
     const p = ctx.principal;
-    if (!p.personal)
+    if (!ctx.spaces.personal)
       throw new CapabilityError(
         "FORBIDDEN",
         "Changing your agent needs access to Personal.",

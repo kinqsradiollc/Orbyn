@@ -30,7 +30,7 @@ export async function maintainedPageNightProgress(
   try {
     principal = await currentAssistantPrincipal(
       db,
-      await assistantPrincipal(user, { db, touch: false }),
+      await assistantPrincipal(user, { db, touch: false, lane: "overnight" }),
       true,
     );
   } catch (error) {

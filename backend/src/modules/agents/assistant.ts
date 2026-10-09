@@ -1,4 +1,10 @@
-import { AGENT_TOOLSETS, type AgentAccess, type SystemRole } from "@orbyn/core";
+import {
+  AGENT_TOOLSETS,
+  assistantActionRules,
+  type AgentAccess,
+  type AssistantActionRule,
+  type SystemRole,
+} from "@orbyn/core";
 import { z } from "zod";
 import { pool, type Queryable } from "../../db/pool.js";
 import { reachableTeams, type Principal } from "../../capabilities/policy.js";
@@ -30,6 +36,7 @@ type AssistantGrantRow = {
   flags: { hide_outside_content?: boolean };
   id: string;
   assistant_rules_revision: number;
+  assistant_rules: unknown;
   trust: "full" | "ask" | "suggest";
   space_trust: Record<string, "full" | "ask" | "suggest">;
   acts_alone: string[];
@@ -61,7 +68,12 @@ export async function assistantPrincipal(
     name: string;
     role: SystemRole;
   },
-  options: { refusePaused?: boolean; db?: Queryable; touch?: boolean } = {},
+  options: {
+    refusePaused?: boolean;
+    db?: Queryable;
+    touch?: boolean;
+    lane?: AssistantActionRule["lane"];
+  } = {},
 ): Promise<Principal> {
   const db = options.db ?? pool;
   const identity = (
@@ -75,7 +87,7 @@ export async function assistantPrincipal(
     options.touch === false
       ? (
           await db.query<AssistantGrantRow>(
-            "SELECT id,access,personal,team_ids,flags,trust,space_trust,acts_alone,toolsets,suspended_at,assistant_rules_revision FROM agent_grants WHERE user_id=$1 AND kind='assistant'",
+            "SELECT id,access,personal,team_ids,flags,trust,space_trust,acts_alone,toolsets,suspended_at,assistant_rules_revision,assistant_rules FROM agent_grants WHERE user_id=$1 AND kind='assistant'",
             [user.id],
           )
         ).rows[0]
@@ -90,7 +102,7 @@ export async function assistantPrincipal(
        ON CONFLICT (user_id) WHERE kind = 'assistant'
        DO UPDATE SET name = EXCLUDED.name, client_name = EXCLUDED.client_name,
                      last_used_at = now()
-       RETURNING id, access, personal, team_ids, flags, trust, space_trust, acts_alone, toolsets, suspended_at, assistant_rules_revision`,
+       RETURNING id, access, personal, team_ids, flags, trust, space_trust, acts_alone, toolsets, suspended_at, assistant_rules_revision, assistant_rules`,
             [user.id, [...DEFAULT_ASSISTANT_TOOLSETS], name],
           )
         ).rows[0];
@@ -100,6 +112,12 @@ export async function assistantPrincipal(
   return {
     user: { id: user.id, name: user.name, role: user.role },
     via: "assistant",
+    ...(options.lane
+      ? {
+          assistant_lane: options.lane,
+          assistant_rules: assistantActionRules.parse(grant.assistant_rules),
+        }
+      : {}),
     assistant_rules_revision: grant.assistant_rules_revision,
     grant_id: grant.id,
     client: { id: null, name },

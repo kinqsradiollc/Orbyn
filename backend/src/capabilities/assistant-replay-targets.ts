@@ -7,7 +7,7 @@ import {
   visibleItems,
   visibleProjects,
 } from "../lib/visibility.js";
-import type { Principal } from "./policy.js";
+import { policy, type Principal } from "./policy.js";
 import { parseRef } from "./refs.js";
 import { CapabilityError } from "./registry.js";
 import type { Recorded } from "./write.js";
@@ -96,9 +96,15 @@ export async function assertAssistantReplayTargets(
   if (p.via !== "assistant") return;
   const refs = assistantReplayReferences(answer);
   if (!refs.length) return;
-  const scope = { user: "$1", teams: "$2", personal: p.personal, ai: true };
+  const spaces = policy.spaces(p);
+  const scope = {
+    user: "$1",
+    teams: "$2",
+    personal: spaces.personal,
+    ai: true,
+  };
   const user = scope.user;
-  const personal = p.personal ? "true" : "false";
+  const personal = spaces.personal ? "true" : "false";
   const id = "r.uuid";
   const source = (kind: string) =>
     assistantSourceVisible(`'${kind}'`, id, user, false, scope);
@@ -211,7 +217,7 @@ export async function assertAssistantReplayTargets(
         AS visible FROM refs r`,
         [
           p.user.id,
-          p.teams.map((t) => t.id),
+          spaces.teamIds ?? [],
           group.map((ref) => ref.id),
           p.grant_id,
         ],

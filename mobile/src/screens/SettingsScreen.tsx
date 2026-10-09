@@ -1,4 +1,6 @@
 import { ChatgptModelsSection } from "./settings/ChatgptModelsSection";
+import { AssistantRulesSection } from "./settings/AssistantRulesSection";
+import { AssistantBudgetSection } from "./settings/AssistantBudgetSection";
 import {
   SettingsAnchor,
   SettingsFocus,
@@ -399,6 +401,10 @@ export function SettingsScreen({
       <SettingsAnchor name="AI connections & models">
         <ChatgptModelsSection userId={user?.id ?? ""} />
       </SettingsAnchor>
+      <SettingsAnchor name="Assistant rules">
+        <AssistantRulesSection userId={user?.id ?? ""} />
+      </SettingsAnchor>
+      <AssistantBudgetSection userId={user?.id ?? ""} />
 
       {analytics && analytics.planned_minutes > 0 && (
         <SettingsAnchor name="Where your time goes">

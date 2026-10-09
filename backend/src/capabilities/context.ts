@@ -122,8 +122,10 @@ export const getContext = defineCapability({
           )
         ).rows[0]
       : undefined;
-    const keptOut = p.personal ? await keptOutFor(ctx.db, p.user.id) : null;
-    const memories = p.personal
+    const personal = ctx.spaces.personal;
+    const teams = p.teams.filter((team) => levelIn(p, team.id) !== null);
+    const keptOut = personal ? await keptOutFor(ctx.db, p.user.id) : null;
+    const memories = personal
       ? await listMemory(ctx.db, p.user.id, {
           limit: 50,
           keptOutProjects: keptOut ? [...keptOut.projects] : [],
@@ -159,17 +161,17 @@ export const getContext = defineCapability({
         client: cleanTitle(p.client.name),
         access: p.access,
         trust: p.access === "suggest" ? "suggest" : p.trust.level,
-        personal_trust: p.personal ? trustIn(p, null) : null,
+        personal_trust: personal ? trustIn(p, null) : null,
         asks_first: AGENT_ASK_FIRST.filter(
           (k) => !p.trust.acts_alone.includes(k),
         ),
-        personal: p.personal,
+        personal,
         toolsets: p.toolsets,
         flags: p.flags,
         expires_at: expires ? expires.toISOString() : null,
       },
       memory: memories.map((entry) => entry.topic),
-      teams: p.teams.map((t) => ({
+      teams: teams.map((t) => ({
         id: t.id,
         name: cleanTitle(t.name),
         role: t.role,
@@ -195,10 +197,10 @@ export const getContext = defineCapability({
     const markdown = [
       `Acting for ${u.name}. It is ${u.now_local} (${u.timezone}); working hours ${u.working_hours.start}–${u.working_hours.end}.`,
       `Their Orbyn assistant is named ${agent.name}${agent.persona ? `: ${agent.persona}` : ""}.`,
-      `Private Memory topics: ${structured.memory.length ? structured.memory.join(", ") : p.personal ? "no notes yet" : "not available to this connection"}.`,
+      `Private Memory topics: ${structured.memory.length ? structured.memory.join(", ") : personal ? "no notes yet" : "not available to this connection"}.`,
       `This connection: ${AGENT_ACCESS_LABELS[p.access].name}${p.access === "write" ? ` (${AGENT_TRUST_LABELS[structured.connection.trust as AgentTrust].name.toLowerCase()})` : ""}, ${
         [
-          ...(p.personal ? ["Personal"] : []),
+          ...(personal ? ["Personal"] : []),
           ...structured.teams.map((t) => t.name),
         ].join(", ") || "no spaces"
       }${structured.connection.expires_at ? `, until ${structured.connection.expires_at.slice(0, 10)}` : ""}.`,

@@ -9,6 +9,7 @@ import {
   visibleViews,
 } from "../lib/visibility.js";
 import { cleanTitle } from "./format.js";
+import { policy } from "./policy.js";
 import type { CapabilityContext } from "./registry.js";
 import { itemSourceSql } from "./sources.js";
 
@@ -98,7 +99,11 @@ export async function completeValues(
   const text = value.trim().slice(0, 100);
   if (source === "team")
     return ctx.principal.teams
-      .filter((t) => t.name.toLowerCase().includes(text.toLowerCase()))
+      .filter(
+        (t) =>
+          policy.levelIn(ctx.principal, t.id) !== null &&
+          t.name.toLowerCase().includes(text.toLowerCase()),
+      )
       .slice(0, MAX_COMPLETIONS)
       .map((t) => (as === "id" ? t.id : cleanTitle(t.name)));
   const t = TABLES[source];

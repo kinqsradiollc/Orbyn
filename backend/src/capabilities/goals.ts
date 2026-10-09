@@ -60,7 +60,7 @@ export const manageGoals = defineCapability({
   mode: "write",
   tier: "W2",
   async run(ctx, args) {
-    if (!ctx.principal.personal)
+    if (!ctx.spaces.personal)
       throw new CapabilityError(
         "FORBIDDEN",
         "Goals are private to Personal; this connection needs Personal access.",

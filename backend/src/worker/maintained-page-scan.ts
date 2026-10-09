@@ -45,7 +45,11 @@ export async function scanMaintainedPages(
           )
         ).rows[0];
         if (!user) return null;
-        const principal = await assistantPrincipal(user, { db, touch: false });
+        const principal = await assistantPrincipal(user, {
+          db,
+          touch: false,
+          lane: "background",
+        });
         return queueMaintainedPageRun(db, user, principal, binding.id, now, {
           kind: "background",
         });

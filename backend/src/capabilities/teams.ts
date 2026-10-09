@@ -294,7 +294,7 @@ export const findTime = defineCapability({
       slots = found.map(out);
     } else if (a.people?.length) {
       // Only people sharing one of this connection's teams.
-      const teamIds = ctx.principal.teams.map((t) => t.id);
+      const teamIds = ctx.spaces.teamIds ?? [];
       const known = (
         await ctx.db.query<{ user_id: string }>(
           `SELECT DISTINCT user_id FROM team_members
@@ -327,7 +327,7 @@ export const findTime = defineCapability({
           }),
         );
     } else {
-      if (!ctx.principal.personal)
+      if (!ctx.spaces.personal)
         throw new CapabilityError(
           "FORBIDDEN",
           "Your own free time needs the Personal space.",

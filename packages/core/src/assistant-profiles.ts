@@ -25,6 +25,12 @@ export const assistantProfile = z
     lane: z.enum(["background", "overnight"]),
     identity: automationAgentIdentity.optional(),
     state: z.enum(["idle", "queued", "working", "waiting", "scheduled"]),
+    runtime: z
+      .object({
+        reporting: z.boolean(),
+        last_seen_at: z.iso.datetime().nullable(),
+      })
+      .strict(),
     counts: assistantProfileCounts,
     last_activity_at: z.iso.datetime().nullable(),
     recent_activity: z.array(assistantActivityEvent).max(8),
@@ -36,6 +42,21 @@ export const assistantProfile = z
             chat_id: z.uuid(),
             title: z.string().max(120),
             completed_at: z.iso.datetime(),
+            handoff: z
+              .object({
+                id: z.uuid(),
+                status: z.enum([
+                  "proposed",
+                  "accepted",
+                  "completed",
+                  "failed",
+                  "cancelled",
+                ]),
+                recipient_chat_id: z.uuid().nullable(),
+              })
+              .strict()
+              .nullable()
+              .optional(),
           })
           .strict(),
       )

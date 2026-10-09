@@ -114,7 +114,7 @@ export const afterSave = (
  * what follows are kept); another day's is written once. H6a.
  */
 async function agendaPage(ctx: CapabilityContext, title: string) {
-  if (!ctx.principal.personal)
+  if (!ctx.spaces.personal)
     throw new CapabilityError(
       "FORBIDDEN",
       "The agenda is the person's own: the connection needs Personal.",
@@ -277,7 +277,7 @@ export const createDocCapability = defineCapability({
  * agent's Markdown or Orbyn's outline; asked again, the page that is there.
  */
 async function profilePage(ctx: CapabilityContext, markdown?: string) {
-  if (!ctx.principal.personal)
+  if (!ctx.spaces.personal)
     throw new CapabilityError(
       "FORBIDDEN",
       "The About me page is the person's own: the connection needs Personal.",

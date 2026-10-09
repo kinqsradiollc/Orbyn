@@ -65,6 +65,17 @@
   font-size: 13px;
   font-weight: 500;
 }
+.assistant-agent-card details {
+  margin-top: 16px;
+}
+.assistant-agent-card summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+.assistant-agent-card details[open] ul {
+  margin-top: 12px;
+}
 .assistant-agent-activity,
 .assistant-agent-outputs {
   display: grid;
@@ -97,4 +108,79 @@
   white-space: normal;
   overflow-wrap: anywhere;
   text-align: left;
+}
+.assistant-handoff-action {
+  min-width: 0;
+  font-size: 12px;
+}
+.assistant-handoff-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.assistant-handoff-action > button {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+.assistant-handoff-form {
+  display: grid;
+  gap: 8px;
+  width: min(100%, 320px);
+}
+.assistant-handoff-form label {
+  display: grid;
+  gap: 6px;
+}
+.assistant-handoff-form textarea {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  font: inherit;
+}
+.assistant-handoff-form > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.assistant-handoff-form button {
+  font-size: 12px;
+}
+.assistant-background-workspace {
+  display: grid;
+  gap: 20px;
+  width: min(100%, 920px);
+  min-width: 0;
+}
+.assistant-background-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.assistant-background-head h2,
+.assistant-background-columns h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+.assistant-background-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.assistant-background-columns > section {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
+}
+.assistant-background-columns p {
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .assistant-background-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

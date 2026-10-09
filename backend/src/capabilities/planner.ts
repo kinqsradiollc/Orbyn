@@ -249,7 +249,7 @@ export const getWorkPatterns = defineCapability({
       loadPlaces(ctx.db as never, me),
       currentFocus(me, ctx.db),
       // Subscribed calendars, never their links (a private link is a key).
-      ctx.principal.personal ? listSubscriptions(ctx.db, me) : [],
+      ctx.spaces.personal ? listSubscriptions(ctx.db, me) : [],
     ]);
     const peak = learning.rhythm.peak;
     const structured = {
@@ -424,7 +424,7 @@ export const whatIfCapability = defineCapability({
   tier: "R",
   limitGroup: "heavy",
   async run(ctx, a) {
-    if (!ctx.principal.personal)
+    if (!ctx.spaces.personal)
       throw new CapabilityError(
         "FORBIDDEN",
         "What-if plans your own calendar, so the connection needs your Personal space.",
@@ -530,7 +530,7 @@ export const logFocus = defineCapability({
         "INVALID",
         "Give both started_at and ended_at.",
       );
-    if (!ctx.principal.personal)
+    if (!ctx.spaces.personal)
       throw new CapabilityError(
         "FORBIDDEN",
         "Focus sessions are the person's own: the connection needs Personal.",

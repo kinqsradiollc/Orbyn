@@ -90,7 +90,7 @@ async function reachablePages(ctx: CapabilityContext, ids: string[]) {
 }
 
 const personal = (ctx: CapabilityContext) => {
-  if (!ctx.principal.personal)
+  if (!ctx.spaces.personal)
     throw new CapabilityError(
       "FORBIDDEN",
       "Study is the person's own, so this connection needs their Personal space.",

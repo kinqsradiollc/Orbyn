@@ -3,6 +3,10 @@ import { claimMaintainedPageWork } from "../worker/maintained-pages.js";
 import { claimScheduledAgendaWork } from "../worker/agenda-summaries.js";
 import { pool } from "../db/pool.js";
 import { startAssistantRunner } from "../modules/ai/agent/runner.js";
+import {
+  dispatchAssistantHandoff,
+  settleAssistantHandoff,
+} from "../modules/assistant-workspace/handoffs.js";
 import { createService } from "./http.js";
 
 /** A private health endpoint and one isolated automation consumer per process. */
@@ -35,6 +39,8 @@ export async function buildAssistantWorker(lane: "background" | "overnight") {
       },
       onTick: async () => {
         const now = Date.now();
+        await settleAssistantHandoff(lane);
+        await dispatchAssistantHandoff(lane);
         if (now - lastHeartbeat >= 10_000) {
           await pool.query(
             `INSERT INTO service_heartbeats(service, last_seen_at) VALUES($1, now())

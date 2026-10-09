@@ -142,7 +142,7 @@ export async function warmContext(ctx: CapabilityContext): Promise<Warm> {
       : cleanTitle(teams.find((t) => t.id === id)?.name) || "a team";
 
   // The page, in Personal and out of keep-out projects.
-  const doc = p.personal ? await profileDoc(ctx.db, me, true) : null;
+  const doc = ctx.spaces.personal ? await profileDoc(ctx.db, me, true) : null;
   let profile: Warm["profile"] = null;
   let learning: Warm["learning"] = {
     card_style: null,
@@ -166,18 +166,20 @@ export async function warmContext(ctx: CapabilityContext): Promise<Warm> {
   }
 
   const instructions = (
-    await instructionsFor(ctx.db, me, p.personal, teamIds)
+    await instructionsFor(ctx.db, me, ctx.spaces.personal, teamIds)
   ).map((i) => ({
     space: i.team_id ?? "personal",
     text: i.text,
   }));
 
-  const rules = (
-    await ctx.db.query<{ kind: AgentInboxKind | null; text: string }>(
-      "SELECT kind, text FROM agent_rules WHERE user_id = $1 ORDER BY created_at, id LIMIT 50",
-      [me],
-    )
-  ).rows;
+  const rules = ctx.spaces.personal
+    ? (
+        await ctx.db.query<{ kind: AgentInboxKind | null; text: string }>(
+          "SELECT kind, text FROM agent_rules WHERE user_id = $1 ORDER BY created_at, id LIMIT 50",
+          [me],
+        )
+      ).rows
+    : [];
 
   const since = await sinceLastSpoke(ctx, teamIds, teamName);
   return { profile, learning, instructions, rules, since };
@@ -203,7 +205,17 @@ async function sinceLastSpoke(
     waiting: 0,
     top: [],
   };
-  if (grant) {
+  // Inbox and pending-review counts have no space filter. With a restrictive
+  // read rule, omit these aggregate counts rather than reveal hidden work.
+  const restrictedRead =
+    p.via === "assistant" &&
+    p.assistant_rules?.some(
+      (rule) =>
+        rule.lane === p.assistant_lane &&
+        rule.action === "read" &&
+        rule.decision !== "allow",
+    );
+  if (grant && !restrictedRead) {
     const w = (
       await ctx.db.query<{ inbox: number; questions: number; reviews: number }>(
         `SELECT
@@ -234,7 +246,7 @@ async function sinceLastSpoke(
     return { params, scope, atP: params.add(at) };
   };
 
-  if (p.personal) {
+  if (ctx.spaces.personal) {
     const t = fresh();
     // Made or finished by an agent (any connection): not the person's own.
     const tasks = (

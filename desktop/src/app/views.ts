@@ -25,6 +25,7 @@ export type View =
   | "Projects"
   | "Booking"
   | "Review"
+  | "Background"
   | "Overnight"
   | "Views";
 
@@ -33,6 +34,11 @@ type Screen = { title: string; subtitle: string; eyebrow: string };
 /** Headings for every view: the shared ones plus the web-only ones. */
 export const SCREENS: Record<View, Screen> = {
   ...screens,
+  Background: {
+    title: "Background",
+    subtitle: "Your agent's current work and results.",
+    eyebrow: "YOUR PERSONAL ORBIT",
+  },
   Overnight: {
     title: "Overnight",
     subtitle: "Review what your assistant worked on while you were away.",
@@ -131,6 +137,7 @@ export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
       { label: "Study", icon: CONCEPT_ICON.study },
       { label: "Lists", icon: ListChecks },
       { label: "AI assistant", icon: Sparkles },
+      { label: "Background", icon: Sparkles },
       { label: "Overnight", icon: Sparkles },
     ],
   },
@@ -173,6 +180,7 @@ export const VIEWS_WITHOUT_NEW_ITEM: View[] = [
   "AI assistant",
   "Notifications",
   "Review",
+  "Background",
   "Overnight",
   "Teams",
   "Admin",

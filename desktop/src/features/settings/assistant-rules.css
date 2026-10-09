@@ -1,0 +1,69 @@
+.assistant-rule-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.assistant-rule-list li {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow-wrap: anywhere;
+}
+.assistant-rule-editor {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.assistant-rule-editor label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.assistant-rule-editor .select {
+  width: 100%;
+}
+.assistant-rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.assistant-rule-list li > .assistant-rule-actions {
+  justify-content: flex-end;
+}
+@media (max-width: 520px) {
+  .assistant-rule-editor {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.assistant-budget-lanes,
+.assistant-budget-fields .assistant-rule-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.assistant-budget-summary {
+  max-width: 58ch;
+}
+.assistant-budget-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 12px;
+}
+.assistant-budget-fields label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.assistant-budget-fields input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+}
+.assistant-budget-fields .assistant-rule-actions {
+  grid-column: 1 / -1;
+}

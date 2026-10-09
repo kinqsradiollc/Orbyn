@@ -1,4 +1,8 @@
 import { assistantRuntimeHasRoom } from "../ai/agent/runtime-slots.js";
+import {
+  reserveAssistantWork,
+  settleStalePageWork,
+} from "../ai/agent/work-budget.js";
 import { assistantNightWindow } from "../../worker/night-window.js";
 import { captureMaintainedPageModelOrigin } from "./maintenance-model.js";
 import { randomUUID } from "node:crypto";
@@ -257,11 +261,13 @@ export async function claimMaintainedPageRun(
     WHERE lane=$2 AND state='running' AND lease_expires_at<=$1 AND (attempts>=5 OR reserved_tokens>0)`,
     [now, lane],
   );
-  const row = (
-    await db.query<PageRun>(
-      `SELECT r.* FROM assistant_page_runs r JOIN assistant_page_bindings b ON b.id=r.binding_id
+  const candidates = (
+    await db.query<PageRun & { binding_budget: number }>(
+      `SELECT r.*,b.token_budget AS binding_budget FROM assistant_page_runs r JOIN assistant_page_bindings b ON b.id=r.binding_id
      WHERE r.lane=$1 AND r.attempts<5 AND ($3::uuid IS NULL OR r.id=$3)
        AND (r.retry_after IS NULL OR r.retry_after<=CASE WHEN $4::boolean THEN $2::timestamptz ELSE clock_timestamp() END) AND (r.state='queued' OR (r.state='running' AND r.lease_expires_at<=$2))
+       AND (assistant_lane_budget_available(r.user_id,r.lane,$2,greatest(1,1000-r.token_estimate))
+         OR (r.state='running' AND r.lease_expires_at<=$2))
        AND NOT b.paused AND b.revision=r.binding_revision AND b.snapshot->>'doc_version'=r.doc_version::text
        AND (r.end_at IS NULL OR r.end_at>$2)
        AND (r.lane<>'overnight' OR (
@@ -271,18 +277,42 @@ export async function claimMaintainedPageRun(
          AND NOT EXISTS(SELECT 1 FROM assistant_page_runs busy WHERE busy.user_id=r.user_id
            AND busy.id<>r.id AND busy.lane='overnight' AND busy.state='running'
            AND busy.lease_expires_at>$2)))
-     ORDER BY r.created_at,r.id LIMIT 1 FOR UPDATE OF r SKIP LOCKED`,
+     ORDER BY r.created_at,r.id LIMIT 100 FOR UPDATE OF r SKIP LOCKED`,
       [lane, now, runId ?? null, suppliedNow !== undefined],
     )
-  ).rows[0];
-  if (!row) return null;
-  return (
-    await db.query<PageRun>(
-      `UPDATE assistant_page_runs SET state='running',lease_token=$2,lease_expires_at=$3,
-      attempts=attempts+1,updated_at=$4 WHERE id=$1 RETURNING *`,
-      [row.id, randomUUID(), new Date(now.getTime() + PAGE_RUN_LEASE_MS), now],
-    )
-  ).rows[0];
+  ).rows;
+  for (const row of candidates) {
+    if (row.state === "running")
+      await settleStalePageWork(db, row.id, row.token_estimate);
+    const limit = await reserveAssistantWork(
+      db,
+      {
+        kind: "page",
+        id: row.id,
+        userId: row.user_id,
+        lane,
+        startingEstimate: row.token_estimate,
+        originalLimit: row.binding_budget,
+        minimumReservation: Math.max(1, 1000 - row.token_estimate),
+      },
+      now,
+    );
+    if (limit === null) continue;
+    return (
+      await db.query<PageRun>(
+        `UPDATE assistant_page_runs SET state='running',lease_token=$2,lease_expires_at=$3,
+      attempts=attempts+1,token_budget=$5,updated_at=$4 WHERE id=$1 RETURNING *`,
+        [
+          row.id,
+          randomUUID(),
+          new Date(now.getTime() + PAGE_RUN_LEASE_MS),
+          now,
+          limit,
+        ],
+      )
+    ).rows[0];
+  }
+  return null;
 }
 
 function assertRunLease(run: PageRun, leaseToken: string | null, now: Date) {
@@ -344,7 +374,7 @@ export async function guardMaintainedPageRun(
   ).rows[0];
   if (!user) fail(403, "This account is unavailable.");
   const principal: Principal = {
-    ...(await assistantPrincipal(user, { db, touch: false })),
+    ...(await assistantPrincipal(user, { db, touch: false, lane: seen.lane })),
     assistant_lane: seen.lane,
     unattended: seen.lane === "overnight",
     assistant_rules_revision: seen.assistant_rules_revision,

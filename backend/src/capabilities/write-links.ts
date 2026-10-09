@@ -832,8 +832,8 @@ async function deletion(
     if (!row) throw notFound();
     team = row.team_id;
     const reach = row.team_id
-      ? ctx.principal.teams.some((x) => x.id === row.team_id)
-      : ctx.principal.personal && row.user_id === ctx.principal.user.id;
+      ? ctx.spaces.teamIds?.includes(row.team_id)
+      : ctx.spaces.personal && row.user_id === ctx.principal.user.id;
     if (!reach) throw notFound();
     title = row.title;
     owner = row.user_id;

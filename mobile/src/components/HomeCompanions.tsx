@@ -13,7 +13,6 @@ import { Character } from "./Character";
 import { Pressable } from "../motion";
 import { controls, colors } from "../theme";
 import { AssistantAgents } from "../screens/AssistantAgents";
-import { Button } from "./Button";
 
 /** Same read-only character browsing as desktop, with wrapping native content. */
 export function HomeCompanions({
@@ -31,6 +30,9 @@ export function HomeCompanions({
     identityState.binding === accountBinding ? identityState.values : {};
   const [expanded, setExpanded] = useState(false);
   const [agentsOpen, setAgentsOpen] = useState(false);
+  const [openLane, setOpenLane] = useState<"background" | "overnight">(
+    "background",
+  );
   const [guideOpen, setGuideOpen] = useState(false);
   useEffect(() => {
     let live = true;
@@ -71,6 +73,7 @@ export function HomeCompanions({
     <View style={[shared.card, { gap: 14 }]}>
       <AssistantAgents
         visible={agentsOpen}
+        lane={openLane}
         canOpen={canOpen}
         onClose={() => setAgentsOpen(false)}
         onOpenChat={onOpenChat}
@@ -96,19 +99,11 @@ export function HomeCompanions({
             {expanded ? "Hide companions" : "Companions"}
           </Text>
         </Pressable>
-      </View>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        <Button
-          title="Activity"
-          secondary
-          style={{ flex: 1, marginBottom: 0 }}
-          onPress={() => setAgentsOpen(true)}
-        />
         <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: guideOpen }}
           onPress={() => setGuideOpen(!guideOpen)}
-          style={{ flex: 1, minHeight: controls.tap, justifyContent: "center" }}
+          style={{ minHeight: controls.tap, justifyContent: "center" }}
         >
           <Text style={shared.small}>
             {guideOpen ? "Hide guide" : "How agents work"}
@@ -126,8 +121,21 @@ export function HomeCompanions({
               borderTopColor: colors.border,
             }}
           >
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 10 }}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Open ${agent.name} work`}
+              onPress={() => {
+                setOpenLane(
+                  agent.name === "Background" ? "background" : "overnight",
+                );
+                setAgentsOpen(true);
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 10,
+                minHeight: controls.tap,
+              }}
             >
               <Character
                 appearance={
@@ -154,10 +162,16 @@ export function HomeCompanions({
                   <Text style={shared.small}>{agent.name}</Text>
                 )}
               </View>
-            </View>
-            <Text style={shared.small}>{agent.brief}</Text>
+              <Text style={shared.small}>View work</Text>
+            </Pressable>
+            <Text style={shared.small}>
+              {agent.name === "Background"
+                ? "Assigned work between sessions"
+                : "Work during your night window"}
+            </Text>
             {guideOpen && (
               <View style={{ gap: 8, marginTop: 6 }}>
+                <Text style={shared.small}>{agent.brief}</Text>
                 <Text style={shared.small}>{agent.timing}</Text>
                 <Text style={shared.small}>
                   {agent.result} {agent.pause}

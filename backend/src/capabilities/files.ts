@@ -40,7 +40,7 @@ import {
  */
 
 const personal = (ctx: CapabilityContext) => {
-  if (!ctx.principal.personal)
+  if (!ctx.spaces.personal)
     throw new CapabilityError(
       "FORBIDDEN",
       "Imports are the person's own, so this connection needs their Personal space.",
@@ -53,13 +53,13 @@ const personal = (ctx: CapabilityContext) => {
  */
 async function reachableJobs(ctx: CapabilityContext, id?: string) {
   const list = await jobs(ctx.db, ctx.principal.user.id, id);
-  if (ctx.principal.personal || !list.length) return list;
+  if (ctx.spaces.personal || !list.length) return list;
   const inTeams = new Set(
     (
       await ctx.db.query<{ id: string }>(
         `SELECT id FROM imports WHERE id = ANY ($1::uuid[])
             AND project_team_id = ANY ($2::uuid[])`,
-        [list.map((j) => j.id), ctx.principal.teams.map((t) => t.id)],
+        [list.map((j) => j.id), ctx.spaces.teamIds ?? []],
       )
     ).rows.map((r) => r.id),
   );

@@ -6,6 +6,7 @@ const profile = {
   recent_activity: [],
   outputs: [],
   state: "idle",
+  runtime: { reporting: false, last_seen_at: null },
   counts,
   last_activity_at: null,
   window: null,

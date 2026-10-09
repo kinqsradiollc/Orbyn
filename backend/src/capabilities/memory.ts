@@ -156,11 +156,7 @@ async function checkedSources(
                JOIN team_members other ON other.team_id = own.team_id
                 WHERE own.user_id = $2 AND other.user_id = u.id
                   AND own.team_id = ANY($3::uuid[])))`,
-          [
-            source.id,
-            ctx.principal.user.id,
-            ctx.principal.teams.map((team) => team.id),
-          ],
+          [source.id, ctx.principal.user.id, ctx.spaces.teamIds ?? []],
         )
       ).rows[0];
       label = row?.name;
@@ -204,7 +200,7 @@ export const manageMemory = defineCapability({
   mode: "write",
   tier: "W2",
   async run(ctx, a) {
-    if (!ctx.principal.personal)
+    if (!ctx.spaces.personal)
       throw new CapabilityError(
         "FORBIDDEN",
         "Memory is private to Personal; this connection needs Personal access.",

@@ -105,6 +105,13 @@ export async function readAssistantProfiles(
   ).rows[0];
   const profiles: AssistantProfile[] = [];
   for (const lane of ["background", "overnight"] as const) {
+    const heartbeat = (
+      await db.query<{ last_seen_at: Date | null; reporting: boolean }>(
+        `SELECT last_seen_at,last_seen_at BETWEEN $2::timestamptz - interval '30 seconds' AND $2::timestamptz AS reporting
+         FROM service_heartbeats WHERE service=$1`,
+        [`assistant-${lane}`, observed],
+      )
+    ).rows[0];
     const counts = (
       await db.query<AssistantProfileCounts>(
         `SELECT count(*) FILTER(WHERE j.state='running' AND j.lease_until>$2)::int AS working,
@@ -123,8 +130,18 @@ export async function readAssistantProfiles(
         chat_id: string;
         title: string;
         completed_at: Date;
+        handoff: {
+          id: string;
+          status:
+            "proposed" | "accepted" | "completed" | "failed" | "cancelled";
+          recipient_chat_id: string | null;
+        } | null;
       }>(
-        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at
+        `SELECT j.id AS job_id,j.chat_id,left(c.title,120) AS title,max(e.created_at) AS completed_at,
+         (SELECT jsonb_build_object('id',h.id,'status',h.status,'recipient_chat_id',r.chat_id)
+          FROM assistant_handoffs h LEFT JOIN ai_jobs r ON r.id=h.recipient_job_id
+          WHERE h.producer_job_id=j.id AND h.owner_id=$1
+          ORDER BY h.created_at DESC,h.id DESC LIMIT 1) AS handoff
        FROM assistant_activity_events e JOIN ai_jobs j ON j.id=e.job_id
        JOIN ai_chats c ON c.id=j.chat_id WHERE e.owner_id=$1 AND e.runtime_lane=$2
        AND e.kind='done' AND j.state='done' AND j.result IS NOT NULL
@@ -137,6 +154,10 @@ export async function readAssistantProfiles(
     profiles.push({
       lane,
       identity: await readAutomationIdentity(db, owner, lane),
+      runtime: {
+        reporting: heartbeat?.reporting ?? false,
+        last_seen_at: heartbeat?.last_seen_at?.toISOString() ?? null,
+      },
       counts,
       state: assistantProfileState(
         counts,

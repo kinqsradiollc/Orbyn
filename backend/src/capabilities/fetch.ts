@@ -768,7 +768,7 @@ async function fetchView(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
 
 /** An import into Docs: its status, and the page it became once ready. */
 async function fetchImport(ctx: CapabilityContext, ref: Ref): Promise<Fetched> {
-  if (!ctx.principal.personal) throw notFound();
+  if (!ctx.spaces.personal) throw notFound();
   const job = (await jobs(ctx.db, ctx.principal.user.id, ref.id))[0];
   if (!job) throw notFound();
   const page = job.doc_id ? refs({ type: "doc", id: job.doc_id }) : null;

@@ -56,6 +56,32 @@ test("idle profiles remain idle; refresh never becomes activity", async () => {
   assert.equal(response.headers["cache-control"], "private, no-store");
   assert.deepEqual(response.json().profiles, first.profiles);
 });
+test("profile runtime availability follows worker heartbeats without inventing activity", async () => {
+  const user = await person();
+  await pool.query(
+    "DELETE FROM service_heartbeats WHERE service IN ('assistant-background','assistant-overnight')",
+  );
+  let page = await readAssistantProfiles(pool, user.id);
+  assert.deepEqual(
+    page.profiles.map((profile) => profile.runtime.reporting),
+    [false, false],
+  );
+  await pool.query(
+    "INSERT INTO service_heartbeats(service,last_seen_at) VALUES('assistant-background',now()),('assistant-overnight',now()-interval '31 seconds')",
+  );
+  page = await readAssistantProfiles(pool, user.id);
+  assert.deepEqual(
+    page.profiles.map((profile) => profile.runtime.reporting),
+    [true, false],
+  );
+  assert.ok(page.profiles.every((profile) => profile.state === "idle"));
+  assert.ok(
+    page.profiles.every((profile) => profile.last_activity_at === null),
+  );
+  await pool.query(
+    "DELETE FROM service_heartbeats WHERE service IN ('assistant-background','assistant-overnight')",
+  );
+});
 test("working requires an unexpired lease; recovery is queued and lanes stay separate", async () => {
   const user = await person();
   const background = await job(user.id, "background");

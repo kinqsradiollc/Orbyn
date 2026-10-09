@@ -58,6 +58,7 @@ export * from "./agent-inbox.js";
 export * from "./agent-context.js";
 export * from "./agent-settings.js";
 export * from "./assistant-rules.js";
+export * from "./assistant-budgets.js";
 export * from "./character.js";
 export * from "./assistant-ideas.js";
 export * from "./goals.js";
@@ -121,6 +122,7 @@ export * from "./mermaid.js";
 export * from "./diagram-export.js";
 
 export * from "./assistant-profiles.js";
+export * from "./assistant-handoffs.js";
 
 export * from "./doc-source.js";
 export * from "./maintained-pages.js";

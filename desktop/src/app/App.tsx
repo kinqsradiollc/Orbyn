@@ -162,6 +162,7 @@ import type { EditOptions, OccurrenceRef } from "../components/ScopeDialog";
 import { NAV, navName, type View } from "./views";
 import { ReviewView } from "../features/review/ReviewView";
 import { OvernightView } from "../features/assistant/OvernightView";
+import { BackgroundView } from "../features/assistant/BackgroundView";
 import { onOpenReview } from "../lib/review";
 import { onLive } from "../lib/live";
 import "../styles/planning.css";
@@ -2143,6 +2144,14 @@ export function App() {
                           : { kind, id },
                       )
                     }
+                  />
+                )}
+                {view === "Background" && (
+                  <BackgroundView
+                    onOpenChat={(id) => {
+                      navigate("AI assistant");
+                      void assistant.openChat(id).catch(report);
+                    }}
                   />
                 )}
               </div>

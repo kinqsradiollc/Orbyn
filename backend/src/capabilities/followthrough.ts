@@ -199,7 +199,7 @@ export const getFollowThrough = defineCapability({
         p.values,
       )
     ).rows;
-    const risky = ctx.principal.personal
+    const risky = ctx.spaces.personal
       ? await atRiskFor(ctx.db as never, me, ctx.now)
       : [];
     const riskSeen = await reachableItems(
@@ -239,7 +239,7 @@ export const getFollowThrough = defineCapability({
         }))
       : [];
     const since = new Date(ctx.now.getTime() - a.days * 86_400_000);
-    const report = ctx.principal.personal
+    const report = ctx.spaces.personal
       ? await progressReport(
           ctx.db,
           me,
@@ -276,8 +276,8 @@ export const getFollowThrough = defineCapability({
       if (
         !rec ||
         (rec.team_id
-          ? !ctx.principal.teams.some((t) => t.id === rec.team_id)
-          : !ctx.principal.personal)
+          ? !ctx.spaces.teamIds?.includes(rec.team_id)
+          : !ctx.spaces.personal)
       )
         throw notReachable();
       const ev = await recordEvidence(ctx.db, actor, id);
@@ -591,9 +591,9 @@ export const saveRecord = defineCapability({
       const rec = await readRecord(db, id, actor).catch(() => null);
       if (!rec) throw notReachable();
       const teamId = rec.team_id;
-      if (teamId !== null && !ctx.principal.teams.some((t) => t.id === teamId))
+      if (teamId !== null && !ctx.spaces.teamIds?.includes(teamId))
         throw notReachable();
-      if (teamId === null && !ctx.principal.personal) throw notReachable();
+      if (teamId === null && !ctx.spaces.personal) throw notReachable();
       if (a.respond) {
         const where = destination(ctx, teamId, "W2", ["notify_member"]);
         if (where === "review")
@@ -781,7 +781,7 @@ export async function markNotices(
   ctx: CapabilityContext,
   notices: string[] | "all",
 ): Promise<number> {
-  if (!ctx.principal.personal)
+  if (!ctx.spaces.personal)
     throw new CapabilityError(
       "FORBIDDEN",
       "Notices are the person's own: the connection needs Personal.",

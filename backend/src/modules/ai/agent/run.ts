@@ -27,12 +27,15 @@ import { registry } from "../../../capabilities/index.js";
 import { checkPlan, type PlanStep } from "../../../capabilities/plan-run.js";
 import type { CapabilityResult } from "../../../capabilities/registry.js";
 import { policy, type Principal } from "../../../capabilities/policy.js";
+import { currentAssistantPrincipal } from "../../../capabilities/assistant-principal.js";
 import { pool, transaction } from "../../../db/pool.js";
 import type { Queryable, Db } from "../../../db/pool.js";
 import { keptOutFor } from "../../../lib/assistant-off.js";
 import { recordAssistantSources } from "../../../lib/assistant-job-sources.js";
 import { assistantChatVisible } from "../../../lib/assistant-visibility.js";
 import {
+  Params,
+  scopeFor,
   visibleItems,
   visibleProjects,
   visibleDocs,
@@ -58,6 +61,7 @@ import {
 } from "./lead.js";
 import { checkMergedPlan, nightPlanNeedsReview } from "./checker.js";
 import { appendChatTrace, beginChatTurn, finishChatTurn } from "../chats.js";
+import { assertReceivingHandoffCurrent } from "../../assistant-workspace/handoffs.js";
 import {
   AssistantPausedError,
   assistantApprovalScopes,
@@ -85,7 +89,9 @@ const approvalInput = z
 
 export type AssistantAutomation = {
   /** A task handed to the agent (W3) carries its item's id. */
-  kind: "idea" | "goal" | "routine" | "task" | "night";
+  kind: "idea" | "goal" | "routine" | "task" | "night" | "handoff";
+  recipient_lane?: "background" | "overnight";
+  handoff_id?: string;
   night_id?: string;
   night_kind?: string;
   reflection_sources?: ReflectionSource[];
@@ -123,6 +129,7 @@ function isAutomation(
 
 type RunEnvelope = {
   version: 1;
+  assistant_rules_revision?: number;
   checkpoint_step?: number;
   started_at?: number;
   elapsed_ms?: number;
@@ -413,32 +420,50 @@ async function principalFor(
   jobId: string,
 ) {
   await currentNightConsent(pool, user.id, request);
-  const principal = await assistantPrincipal(user, { refusePaused: true });
-  principal.assistant_job_id = jobId;
-  principal.assistant_lane =
-    request.automation?.kind === "night" || request.automation?.night_id
+  const lane =
+    request.automation?.kind === "night" ||
+    request.automation?.night_id ||
+    (request.automation?.kind === "handoff" &&
+      request.automation.recipient_lane === "overnight")
       ? "overnight"
       : request.automation
         ? "background"
         : "interactive";
+  const principal = await assistantPrincipal(user, {
+    refusePaused: true,
+    lane,
+  });
+  principal.assistant_job_id = jobId;
   if (isAutomation(request, "task") && request.automation.id) {
+    const params = new Params(request.automation.id);
+    const scope = scopeFor(policy.spaces(principal), params);
     const visible = await pool.query(
-      `SELECT 1 FROM items i WHERE i.id=$1 AND ${visibleItems("i", { user: "$2", ai: true })}`,
-      [request.automation.id, user.id],
+      `SELECT 1 FROM items i WHERE i.id=$1 AND ${visibleItems("i", scope)}`,
+      params.values,
     );
     if (!visible.rowCount)
       throw new Error("This task is no longer available to the assistant.");
   }
   if (isAutomation(request, "goal") && request.automation.id) {
+    // A goal is owned by a person even when it links to a team project.
+    if (!policy.spaces(principal).personal)
+      fail(409, "This goal is outside the assistant's permitted spaces.");
+    const params = new Params(request.automation.id);
+    const scope = scopeFor(policy.spaces(principal), params);
     const visible = await pool.query(
-      `SELECT 1 FROM goals g WHERE g.id=$1 AND g.user_id=$2
-       AND (g.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id=g.project_id AND ${visibleProjects("p", { user: "$2", ai: true })}))
-       AND (g.plan_doc_id IS NULL OR EXISTS(SELECT 1 FROM docs d WHERE d.id=g.plan_doc_id AND ${visibleDocs("d", { user: "$2", ai: true })}))`,
-      [request.automation.id, user.id],
+      `SELECT 1 FROM goals g WHERE g.id=$1 AND g.user_id=${scope.user}
+       AND (g.project_id IS NULL OR EXISTS(SELECT 1 FROM projects p WHERE p.id=g.project_id AND ${visibleProjects("p", scope)}))
+       AND (g.plan_doc_id IS NULL OR EXISTS(SELECT 1 FROM docs d WHERE d.id=g.plan_doc_id AND ${visibleDocs("d", scope)}))`,
+      params.values,
     );
     if (!visible.rowCount)
       throw new Error("This goal is no longer available to the assistant.");
   }
+  if (
+    (isAutomation(request, "routine") || isAutomation(request, "idea")) &&
+    !policy.spaces(principal).personal
+  )
+    fail(409, "This work is outside the assistant's permitted spaces.");
   if (isAutomation(request, "idea"))
     principal.trust = { level: "suggest", spaces: {}, acts_alone: [] };
   return principal;
@@ -525,6 +550,9 @@ function envelopeOf(value: unknown): RunEnvelope | null {
       : [];
     return {
       version: 1,
+      ...(typeof row.assistant_rules_revision === "number"
+        ? { assistant_rules_revision: row.assistant_rules_revision }
+        : {}),
       checkpoint_step:
         typeof row.checkpoint_step === "number" ? row.checkpoint_step : 0,
       ...(typeof row.started_at === "number"
@@ -564,6 +592,7 @@ function checkPlanStep(value: unknown): PlanStep {
 async function contextFor(
   user: UserRow,
   request: PersistedChatRequest,
+  principal: Principal,
   recordSources: (value: unknown, targets?: string[]) => Promise<void>,
 ) {
   const identity = request.automation
@@ -587,6 +616,37 @@ async function contextFor(
     cited: new Map(),
     keptOut,
   };
+  // The legacy overview and semantic recall are scoped to the user's whole
+  // workspace. With any restrictive read rule, start from the capability
+  // registry's current space-filtered context instead. The lead and its
+  // specialists use only capability reads after this initial snapshot.
+  const restricted = principal.assistant_rules?.some(
+    (rule) =>
+      rule.lane === principal.assistant_lane &&
+      rule.action === "read" &&
+      (rule.decision === "ask" || rule.decision === "deny"),
+  );
+  if (restricted) {
+    const result = await execute(
+      registry,
+      principal,
+      "get_context",
+      {},
+      {
+        primary: true,
+      },
+    );
+    if (result.result.isError || !result.result.structuredContent)
+      fail(409, "The assistant cannot load its permitted workspace context.");
+    await recordSources(result.result.structuredContent, result.targets);
+    return {
+      identity,
+      context,
+      memory: "",
+      snapshot: result.result.structuredContent,
+      restricted: true,
+    };
+  }
   const [memory, snapshot] = await Promise.all([
     recallMemory(
       pool,
@@ -602,7 +662,7 @@ async function contextFor(
     ),
     overview(context),
   ]);
-  return { identity, context, memory, snapshot };
+  return { identity, context, memory, snapshot, restricted: false };
 }
 
 const saveChains = new Map<string, Promise<void>>();
@@ -1529,6 +1589,16 @@ export async function runAssistantJob(
       );
       return;
     }
+    if (request.automation?.kind === "handoff") {
+      if (!request.automation.handoff_id)
+        fail(409, "This handoff has no accepted request.");
+      await assertReceivingHandoffCurrent(
+        user.id,
+        jobId,
+        request.automation.handoff_id,
+        envelope.assistant_rules_revision,
+      );
+    }
     const ai = await resolveUserAi(
       user.id,
       jobId,
@@ -1542,6 +1612,24 @@ export async function runAssistantJob(
     );
     if (!ai) throw new Error("The AI assistant is not set up yet.");
     principal = await principalFor(user, request, jobId);
+    const savedRulesRevision = envelope.assistant_rules_revision;
+    const progressed =
+      envelope.state.lead_steps > 0 ||
+      envelope.state.specialist_runs > 0 ||
+      envelope.state.token_estimate > 0 ||
+      envelope.state.reports.length > 0 ||
+      envelope.state.plan.length > 0 ||
+      envelope.state.waiting !== null;
+    if (
+      (savedRulesRevision !== undefined &&
+        savedRulesRevision !== principal.assistant_rules_revision) ||
+      (savedRulesRevision === undefined && progressed)
+    )
+      fail(
+        409,
+        "Assistant rules changed. Review this work before resuming it.",
+      );
+    envelope.assistant_rules_revision = principal.assistant_rules_revision;
     const recordSources = (value: unknown, targets?: string[]) =>
       recordAssistantSources(jobId, user.id, value, targets);
     const reflecting = request.automation?.night_kind === "reflection";
@@ -1565,7 +1653,17 @@ export async function runAssistantJob(
         "The evidence for this reflection changed or is no longer available.",
       );
     if (reflecting) await recordSources(evidence);
-    const prepared = await contextFor(user, request, recordSources);
+    const prepared = await contextFor(user, request, principal, recordSources);
+    // Do not send an initial snapshot to a provider after the owner changed
+    // its rule revision while that snapshot was being assembled.
+    await currentAssistantPrincipal(pool, principal);
+    if (request.automation?.kind === "handoff")
+      await assertReceivingHandoffCurrent(
+        user.id,
+        jobId,
+        request.automation.handoff_id!,
+        envelope.assistant_rules_revision,
+      );
     const snapshot = reflecting
       ? {
           reflection_evidence: evidence.map((entry, index) => ({
@@ -1573,7 +1671,9 @@ export async function runAssistantJob(
             ...entry,
           })),
         }
-      : (scoped ?? prepared.snapshot);
+      : prepared.restricted
+        ? prepared.snapshot
+        : (scoped ?? prepared.snapshot);
     await recordSources([snapshot, request.automation, request.scope]);
     envelope.state.memory = prepared.memory;
     envelope.state.context = snapshot;
@@ -1630,6 +1730,14 @@ export async function runAssistantJob(
             },
             signal: controller.signal,
             checkpoint: async () => {
+              await currentAssistantPrincipal(pool, principal!);
+              if (request.automation?.kind === "handoff")
+                await assertReceivingHandoffCurrent(
+                  user.id,
+                  jobId,
+                  request.automation.handoff_id!,
+                  envelope.assistant_rules_revision,
+                );
               if (reflecting) {
                 await currentNightConsent(pool, user.id, request);
                 const current = await reflectionEvidence(

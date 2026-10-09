@@ -28,6 +28,7 @@ import {
 } from "./agenda-ai-snapshot.js";
 import { agendaSnapshotSchema } from "../ai/providers/agenda-call.js";
 import { assistantRuntimeHasRoom } from "../ai/agent/runtime-slots.js";
+import { reserveAssistantWork } from "../ai/agent/work-budget.js";
 import { requireLiveSession } from "../auth/chatgpt-connections.js";
 
 /** Owner-only status omits source facts, captured permission and operation credentials. */
@@ -279,7 +280,10 @@ export async function claimScheduledAgenda(runId?: string) {
     const candidate = (
       await db.query<{ id: string; user_id: string }>(
         `SELECT id,user_id FROM agenda_summary_runs WHERE ($1::uuid IS NULL OR id=$1)
-      AND ((state IN ('queued','waiting') AND next_attempt_at<=clock_timestamp()) OR (state='running' AND lease_expires_at<=clock_timestamp())) ORDER BY created_at,id LIMIT 1`,
+      AND ((state IN ('queued','waiting') AND next_attempt_at<=clock_timestamp()) OR (state='running' AND lease_expires_at<=clock_timestamp()))
+      AND (expires_at<=clock_timestamp() OR state='running'
+        OR assistant_lane_budget_available(user_id,'background',clock_timestamp(),20000))
+      ORDER BY created_at,id LIMIT 1`,
         [runId ?? null],
       )
     ).rows[0];
@@ -325,6 +329,31 @@ export async function claimScheduledAgenda(runId?: string) {
     ) {
       await db.query(
         "UPDATE agenda_summary_runs SET state='failed',reason='completion_unknown',lease_token=NULL,lease_expires_at=NULL,updated_at=now() WHERE id=$1",
+        [run.id],
+      );
+      return null;
+    }
+    if (run.state === "running")
+      await db.query(
+        `UPDATE assistant_work_reservations SET state='settled',settled_at=clock_timestamp()
+         WHERE agenda_run_id=$1 AND state='active'`,
+        [run.id],
+      );
+    const budget = await reserveAssistantWork(db, {
+      kind: "agenda",
+      id: run.id,
+      userId: run.user_id,
+      lane: "background",
+      startingEstimate: 0,
+      originalLimit: 20_000,
+      minimumReservation: 20_000,
+    });
+    if (budget === null) {
+      await db.query(
+        `UPDATE agenda_summary_runs SET state='waiting',reason='budget',
+          next_attempt_at=least(expires_at,clock_timestamp()+interval '5 minutes'),
+          lease_token=NULL,lease_expires_at=NULL,updated_at=now()
+         WHERE id=$1`,
         [run.id],
       );
       return null;

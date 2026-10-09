@@ -254,7 +254,7 @@ export const getLinks = defineCapability({
     const subject = subjectOf(a.of);
     const p = new Params();
     const scope = scopeFor(ctx.spaces, p);
-    const teams = p.add(ctx.principal.teams.map((t) => t.id));
+    const teams = p.add(ctx.spaces.teamIds ?? []);
     // The subject itself must be visible (NOT_FOUND otherwise, either way).
     const k = p.add(subject.kind);
     const id = p.add(subject.id);
@@ -339,7 +339,7 @@ export const getLinks = defineCapability({
     const o = new Params();
     const os = scopeFor(ctx.spaces, o);
     const opid = o.add(subject.id);
-    const oteams = o.add(ctx.principal.teams.map((t) => t.id));
+    const oteams = o.add(ctx.spaces.teamIds ?? []);
     const orphanIds = wantOrphans
       ? (
           await ctx.db.query<{ id: string }>(

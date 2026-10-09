@@ -122,7 +122,11 @@ async function available(
         )
       ).rows[0];
       if (!user || !next.id) return false;
-      const principal = await assistantPrincipal(user, { db, touch: false });
+      const principal = await assistantPrincipal(user, {
+        db,
+        touch: false,
+        lane: "overnight",
+      });
       const context = await maintainedPageContext(db, user, principal, next.id);
       const binding = context.binding;
       if (
@@ -602,7 +606,9 @@ export async function scanNightShift(
       const prefs = parsed.data;
       const window = assistantNightWindow(now, prefs);
       if (!window) continue;
-      const reflectionScope = policy.spaces(await assistantPrincipal(person));
+      const reflectionScope = policy.spaces(
+        await assistantPrincipal(person, { lane: "overnight" }),
+      );
       queued += await transaction(async (db) => {
         const lock = (
           await db.query<{ locked: boolean }>(
@@ -753,6 +759,7 @@ export async function scanNightShift(
           const principal = await assistantPrincipal(user, {
             db,
             touch: false,
+            lane: "overnight",
           });
           const pageRun = await queueMaintainedPageRun(
             db,

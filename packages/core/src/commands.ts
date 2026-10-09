@@ -585,7 +585,7 @@ export function arrangeBarRows<T>(
 
 /** The web's Settings tabs. */
 export type SettingsTabId =
-  "account" | "planning" | "tags" | "connections" | "privacy";
+  "account" | "planning" | "assistants" | "tags" | "connections" | "privacy";
 
 /** Where a setting lives on the phone: a section of Settings, or its own sheet. */
 export type PhoneSettingPlace =
@@ -805,6 +805,15 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "Connected agents",
     { sheet: "connections" },
     "mcp claude chatgpt ai agent",
+  ),
+  setting(
+    "assistant-rules",
+    "Assistant rules",
+    "Limits for Orbyn's own agents",
+    "assistants",
+    "Assistant rules",
+    { section: "Assistant rules" },
+    "background overnight chat read write handoff",
   ),
   setting(
     "agent-channels",

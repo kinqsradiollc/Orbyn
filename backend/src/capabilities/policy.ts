@@ -1,6 +1,7 @@
 import {
   AGENT_ACCESS_RANK,
   AGENT_TOOLSETS,
+  assistantRuleDecision,
   trustIn as grantTrustIn,
   type AgentAccess,
   type AgentAskFirst,
@@ -137,6 +138,18 @@ export function levelIn(
   p: Principal,
   teamId: string | null,
 ): AgentAccess | null {
+  // A read restriction removes the entire space from capabilities. There is no
+  // unattended read approval flow, so "ask" is held until the owner edits it.
+  if (
+    p.via === "assistant" &&
+    p.assistant_lane &&
+    ["deny", "ask"].includes(
+      assistantRuleDecision(p.assistant_rules ?? [], p.assistant_lane, teamId, [
+        "read",
+      ]) ?? "",
+    )
+  )
+    return null;
   const ceiling: AgentAccess = p.flags.readonly ? "read" : "write";
   if (teamId === null) {
     if (!p.personal) return null;
@@ -197,8 +210,8 @@ function allows(
 function spaces(p: Principal): Spaces {
   return {
     userId: p.user.id,
-    teamIds: p.teams.map((t) => t.id),
-    personal: p.personal,
+    teamIds: p.teams.filter((t) => levelIn(p, t.id) !== null).map((t) => t.id),
+    personal: levelIn(p, null) !== null,
   };
 }
 

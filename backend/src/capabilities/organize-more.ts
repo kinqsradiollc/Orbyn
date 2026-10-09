@@ -150,8 +150,8 @@ async function fieldFor(ctx: CapabilityContext, id: string | undefined) {
   ).catch(() => null);
   const reach = f
     ? f.team_id
-      ? ctx.principal.teams.some((t) => t.id === f.team_id)
-      : ctx.principal.personal
+      ? ctx.spaces.teamIds?.includes(f.team_id)
+      : ctx.spaces.personal
     : false;
   if (!f || !reach)
     throw new CapabilityError(
@@ -569,7 +569,7 @@ export async function organizeMore(
       // A team's instructions steer every member's agents: asked first.
       if (space !== "personal")
         return teamChange(ctx, { ...c, value: text }, st);
-      if (!ctx.principal.personal)
+      if (!ctx.spaces.personal)
         throw new CapabilityError(
           "FORBIDDEN",
           "Personal's instructions need a connection with Personal.",

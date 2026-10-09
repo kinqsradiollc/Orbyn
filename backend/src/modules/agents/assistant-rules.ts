@@ -7,10 +7,13 @@ import {
   fail,
   type AgentAccess,
 } from "@orbyn/core";
-import { transaction, type Queryable } from "../../db/pool.js";
+import type { FastifyInstance } from "fastify";
+import { readTransaction, transaction, type Queryable } from "../../db/pool.js";
 import { assistantChatVisible } from "../../lib/assistant-visibility.js";
 import { assistantJobSourcesVisible } from "../../lib/assistant-job-sources.js";
 import { reachableTeams } from "../../capabilities/policy.js";
+import { firstParty } from "../proposals/service.js";
+import { assistantPrincipal } from "./assistant.js";
 
 /** Review does not change the producing runtime or silently accept edited rules. */
 export async function checkAssistantProposalRules(
@@ -105,6 +108,14 @@ export async function checkAssistantProposalRules(
         403,
         "The assistant can no longer suggest this change in its source space.",
       );
+    const readDecision = assistantRuleDecision(
+      rules,
+      guard.lane,
+      check.team_id,
+      ["read"],
+    );
+    if (readDecision === "deny" || readDecision === "ask")
+      fail(403, "A reviewed assistant rule now restricts the source space.");
     if (
       assistantRuleDecision(rules, guard.lane, check.team_id, check.actions) ===
       "deny"
@@ -166,5 +177,26 @@ export async function replaceAssistantRules(ownerId: string, value: unknown) {
       )
     ).rows[0];
     return assistantRulesSnapshot.parse(row);
+  });
+}
+
+/** Account-owned rule controls; the backend still applies the normal hard stops. */
+export async function assistantRulesRoutes(app: FastifyInstance) {
+  const config = { rateLimit: { max: 60, timeWindow: "1 minute" } };
+  app.get("/me/assistant/rules", { config }, async (request, reply) => {
+    const user = await firstParty(request);
+    if (Object.keys(request.query as object).length)
+      fail(400, "This route takes no query parameters.");
+    await assistantPrincipal(user);
+    reply.header("Cache-Control", "private, no-store");
+    return readTransaction((db) => readAssistantRules(db, user.id), {
+      primary: true,
+    });
+  });
+  app.put("/me/assistant/rules", { config }, async (request, reply) => {
+    const user = await firstParty(request);
+    await assistantPrincipal(user);
+    reply.header("Cache-Control", "private, no-store");
+    return replaceAssistantRules(user.id, request.body);
   });
 }

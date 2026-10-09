@@ -33,6 +33,19 @@ import {
   type MaintainedPageBindingUpdate,
   assistantActivityLane,
   assistantProfiles,
+  assistantRulesInput,
+  assistantRulesSnapshot,
+  assistantBudgetLane,
+  assistantBudgetUpdate,
+  assistantBudgetView,
+  assistantBudgets,
+  assistantHandoff,
+  assistantHandoffInput,
+  assistantHandoffSource,
+  assistantHandoffLane,
+  type AssistantHandoffLane,
+  type AssistantBudgetView,
+  type AssistantActionRule,
   assistantActivityQuery,
   assistantActivityPage,
   type AssistantActivityLane,
@@ -4058,6 +4071,89 @@ export class OrbynClient {
         fresh: true,
         signal,
       }),
+    );
+  }
+  /** Owner-visible restrictions; saving requires the revision just read. */
+  async assistantRules() {
+    return assistantRulesSnapshot.parse(
+      await this.request<unknown>("/me/assistant/rules", { fresh: true }),
+    );
+  }
+  async replaceAssistantRules(
+    expectedRevision: number,
+    rules: AssistantActionRule[],
+  ) {
+    const body = assistantRulesInput.parse({
+      expected_revision: expectedRevision,
+      rules,
+    });
+    return assistantRulesSnapshot.parse(
+      await this.request<unknown>("/me/assistant/rules", {
+        method: "PUT",
+        body,
+      }),
+    );
+  }
+  /** Durable per-agent work estimates and start limits. */
+  async assistantBudgets() {
+    return assistantBudgets.parse(
+      await this.request<unknown>("/me/assistant/budgets", { fresh: true }),
+    );
+  }
+  async replaceAssistantBudget(
+    lane: "background" | "overnight",
+    value: Pick<
+      AssistantBudgetView,
+      | "revision"
+      | "daily_token_limit"
+      | "hourly_start_limit"
+      | "per_run_token_limit"
+    >,
+  ) {
+    const parsedLane = assistantBudgetLane.parse(lane);
+    const body = assistantBudgetUpdate.parse({
+      expected_revision: value.revision,
+      daily_token_limit: value.daily_token_limit,
+      hourly_start_limit: value.hourly_start_limit,
+      per_run_token_limit: value.per_run_token_limit,
+    });
+    return assistantBudgetView.parse(
+      await this.request<unknown>(`/me/assistant/budgets/${parsedLane}`, {
+        method: "PUT",
+        body,
+      }),
+    );
+  }
+  async requestAssistantHandoff(value: {
+    producer_job_id: string;
+    expected_producer_revision: string;
+    recipient_lane: AssistantHandoffLane;
+    title: string;
+    instruction: string;
+  }) {
+    return assistantHandoff.parse(
+      await this.request<unknown>("/me/assistant/handoffs", {
+        method: "POST",
+        body: assistantHandoffInput.parse(value),
+      }),
+    );
+  }
+  async assistantHandoffSource(jobId: string) {
+    const result = await this.request<{ source: unknown; lane: unknown }>(
+      `/me/assistant/handoffs/source/${encodeURIComponent(jobId)}`,
+      { fresh: true },
+    );
+    return {
+      source: assistantHandoffSource.parse(result.source),
+      lane: assistantHandoffLane.parse(result.lane),
+    };
+  }
+  async assistantHandoff(id: string) {
+    return assistantHandoff.parse(
+      await this.request<unknown>(
+        `/me/assistant/handoffs/${encodeURIComponent(id)}`,
+        { fresh: true },
+      ),
     );
   }
   // ---- The Review inbox ----

@@ -1,4 +1,6 @@
 import { ChatgptConnections } from "./ChatgptConnections";
+import { AssistantRulesSettings } from "./AssistantRulesSettings";
+import { AssistantBudgetSettings } from "./AssistantBudgetSettings";
 import { SettingsFocus, SettingsSection } from "./SettingsSection";
 import { useEffect, useState } from "react";
 import { settingsExitAllowed } from "./SettingsModal";
@@ -296,6 +298,12 @@ export function SettingsView({
           )}
           {tab === "planning" && (
             <PlanningSettings teams={teams} report={report} />
+          )}
+          {tab === "assistants" && (
+            <>
+              <AssistantBudgetSettings userId={user?.id ?? ""} />
+              <AssistantRulesSettings userId={user?.id ?? ""} teams={teams} />
+            </>
           )}
           {tab === "tags" && <TagSettings teams={teams} report={report} />}
           {tab === "connections" && <ConnectionsSettings report={report} />}

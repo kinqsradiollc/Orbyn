@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { client } from "../../lib/api";
 import { session, onSessionChange } from "../../lib/session";
 import { Character } from "../../components/Character";
+import { AssistantHandoffAction } from "./AssistantHandoffAction";
 import "./assistant-agents.css";
 
 /** Separate runtime profiles; an idle companion never implies an active worker. */
@@ -62,10 +63,6 @@ export function AssistantAgents({
         </button>
       </header>
       <div className="assistant-agents-body">
-        <p className="muted">
-          Background and Overnight work independently. They start when
-          authorized work is ready.
-        </p>
         {snapshot.error && (
           <p role="alert">Agent status could not be refreshed. Try again.</p>
         )}
@@ -96,9 +93,18 @@ export function AssistantAgents({
               />
               <div>
                 <h3>
-                  {profile.lane === "background" ? "Background" : "Overnight"}
+                  {profile.identity?.name ??
+                    (profile.lane === "background"
+                      ? "Background"
+                      : "Overnight")}
                 </h3>
                 <p>
+                  {profile.identity?.name &&
+                    profile.identity.name !==
+                      (profile.lane === "background"
+                        ? "Background"
+                        : "Overnight") &&
+                    `${profile.lane === "background" ? "Background" : "Overnight"} · `}
                   {profile.state === "queued" &&
                   profile.counts.recovering > 0 &&
                   profile.counts.queued === 0
@@ -113,21 +119,39 @@ export function AssistantAgents({
                 </p>
               </div>
             </header>
-            <p className="muted">
-              {profile.last_activity_at
-                ? `Last work ${new Date(profile.last_activity_at).toLocaleString()}`
-                : "No recent work"}
-            </p>
-            <p>
-              {profile.counts.working} working · {profile.counts.waiting}{" "}
-              waiting · {profile.counts.queued} queued
-              {profile.counts.recovering > 0 &&
-                ` · ${profile.counts.recovering} recovering`}
-            </p>
+            {profile.last_activity_at && (
+              <p className="muted">
+                Last work {new Date(profile.last_activity_at).toLocaleString()}
+              </p>
+            )}
+            {!profile.runtime.reporting && (
+              <p className="muted" role="status">
+                Worker not responding
+              </p>
+            )}
+            {(profile.counts.working > 0 ||
+              profile.counts.waiting > 0 ||
+              profile.counts.queued > 0 ||
+              profile.counts.recovering > 0) && (
+              <p>
+                {[
+                  profile.counts.working > 0 &&
+                    `${profile.counts.working} working`,
+                  profile.counts.waiting > 0 &&
+                    `${profile.counts.waiting} waiting`,
+                  profile.counts.queued > 0 &&
+                    `${profile.counts.queued} queued`,
+                  profile.counts.recovering > 0 &&
+                    `${profile.counts.recovering} recovering`,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
             {profile.window && (
               <p className="muted">
                 {profile.window.enabled
-                  ? `Night window ${profile.window.start}–${profile.window.end} (${profile.window.timezone})`
+                  ? `Night shift ${profile.window.start}–${profile.window.end} · ${profile.window.timezone}`
                   : "Night shift is off"}
               </p>
             )}
@@ -139,55 +163,60 @@ export function AssistantAgents({
             )}
             {profile.budget && (
               <p className="muted">
-                {profile.budget.estimated_tokens.toLocaleString()} estimated
-                tokens
-                {profile.budget.local_day
-                  ? ` for ${profile.budget.local_day}`
-                  : " this night"}{" "}
-                · current night limit{" "}
-                {profile.budget.limit_tokens.toLocaleString()}. Estimates are
-                not billed usage.
+                Night estimate{" "}
+                {profile.budget.estimated_tokens.toLocaleString()}/
+                {profile.budget.limit_tokens.toLocaleString()} tokens
               </p>
             )}
-            <h4>Recent activity</h4>
-            {profile.recent_activity.length === 0 ? (
-              <p className="muted">No recent activity</p>
-            ) : (
-              <ul className="assistant-agent-activity">
-                {profile.recent_activity.map((event) => (
-                  <li key={event.sequence}>
-                    <span>{ASSISTANT_ACTIVITY_LABELS[event.kind]}</span>
-                    <time dateTime={event.created_at}>
-                      {new Date(event.created_at).toLocaleString()}
-                    </time>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <h4>Outputs</h4>
-            {profile.outputs.length === 0 ? (
-              <p className="muted">No recent outputs</p>
-            ) : (
-              <ul className="assistant-agent-outputs">
-                {profile.outputs.map((output) => (
-                  <li key={output.job_id}>
-                    <button
-                      type="button"
-                      className="secondary"
-                      disabled={!canOpen}
-                      onClick={() => {
-                        onClose();
-                        onOpenChat(output.chat_id);
-                      }}
-                    >
-                      {output.title || "Completed work"}
-                    </button>
-                    <time dateTime={output.completed_at}>
-                      {new Date(output.completed_at).toLocaleString()}
-                    </time>
-                  </li>
-                ))}
-              </ul>
+            {(profile.recent_activity.length > 0 ||
+              profile.outputs.length > 0) && (
+              <details>
+                <summary>Activity and results</summary>
+                {profile.recent_activity.length > 0 && (
+                  <ul className="assistant-agent-activity">
+                    {profile.recent_activity.map((event) => (
+                      <li key={event.sequence}>
+                        <span>{ASSISTANT_ACTIVITY_LABELS[event.kind]}</span>
+                        <time dateTime={event.created_at}>
+                          {new Date(event.created_at).toLocaleString()}
+                        </time>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {profile.outputs.length > 0 && (
+                  <ul className="assistant-agent-outputs">
+                    {profile.outputs.map((output) => (
+                      <li key={output.job_id}>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={!canOpen}
+                          onClick={() => {
+                            onClose();
+                            onOpenChat(output.chat_id);
+                          }}
+                        >
+                          {output.title || "Completed work"}
+                        </button>
+                        <time dateTime={output.completed_at}>
+                          {new Date(output.completed_at).toLocaleString()}
+                        </time>
+                        <AssistantHandoffAction
+                          jobId={output.job_id}
+                          title={output.title}
+                          lane={profile.lane}
+                          existing={output.handoff}
+                          onOpenChat={(id) => {
+                            onClose();
+                            onOpenChat(id);
+                          }}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </details>
             )}
           </section>
         ))}

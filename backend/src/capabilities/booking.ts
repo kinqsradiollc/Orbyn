@@ -58,12 +58,10 @@ import {
 /** Booking pages this connection's spaces reach, by id, with their team. */
 async function reachablePages(ctx: CapabilityContext) {
   const pages = await listBookingPages(ctx.db, ctx.principal.user.id);
-  const teams = new Set(ctx.principal.teams.map((t) => t.id));
+  const teams = new Set(ctx.spaces.teamIds ?? []);
   return new Map(
     pages
-      .filter((p) =>
-        p.team_id ? teams.has(p.team_id) : ctx.principal.personal,
-      )
+      .filter((p) => (p.team_id ? teams.has(p.team_id) : ctx.spaces.personal))
       .map((p) => [p.id, p]),
   );
 }
@@ -172,7 +170,7 @@ export const getBookings = defineCapability({
     // Only what this connection reaches is listed and counted, in SQL, so
     // totals and pages are right: its booking pages, and open invites (no
     // page) only with the personal space.
-    const reach = { pages: [...pages.keys()], invites: ctx.principal.personal };
+    const reach = { pages: [...pages.keys()], invites: ctx.spaces.personal };
     const found = await listBookings(ctx.db, me, {
       view: a.view,
       ...(a.page ? { page_id: a.page } : {}),
@@ -181,7 +179,7 @@ export const getBookings = defineCapability({
       reach,
     });
     const allowed = (b: { page_id: string | null }) =>
-      b.page_id ? pages.has(b.page_id) : ctx.principal.personal;
+      b.page_id ? pages.has(b.page_id) : ctx.spaces.personal;
     const rows = found.rows;
     const inReach = async (id: string) => {
       const row = (
@@ -239,7 +237,7 @@ export const getBookings = defineCapability({
         .map((x) => ({ start: when(ctx, x.start_at) }));
     }
     const stats = await bookingStats(ctx.db, me, a.page ?? null, reach);
-    const invites = ctx.principal.personal
+    const invites = ctx.spaces.personal
       ? (await listOpenInvites(ctx.db, me)).filter(
           (i) => i.status === "open" || i.status === "booked",
         )
@@ -378,7 +376,7 @@ export const bookingActionCapability = defineCapability({
       ).rows[0];
       if (
         !row ||
-        (row.page_id ? !pages.has(row.page_id) : !ctx.principal.personal)
+        (row.page_id ? !pages.has(row.page_id) : !ctx.spaces.personal)
       )
         throw new CapabilityError(
           "NOT_FOUND",
