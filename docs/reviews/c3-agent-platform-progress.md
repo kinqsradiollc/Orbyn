@@ -3,7 +3,7 @@
 **State:** Whole C3 candidate implemented on `codex/c3-agent-platform` from
 main `88b49d88`. Test round 1 found a legacy-checkpoint recovery regression;
 Builder corrected it and Tester retest passed. Reviewer round 1 found two more
-gaps; Builder has corrected them, pending Tester retest and Reviewer closure.
+gaps; Builder corrected them and Tester retest passed. Reviewer closure is pending.
 No C3 code is on main yet.
 The user asked to pause the goal after C3 is accepted, merged and pushed.
 
@@ -61,5 +61,7 @@ rule evidence fail closed. Per-run reservations count all earlier segments;
 lowered limits take effect before the next segment. The same reservation path
 serves jobs and maintained pages. Builder's focused Agenda, budget and page
 run suites passed **42/42** after these changes; the subsequent budget-only
-concurrency and lowered-limit additions passed **5/5**. Formal Tester retest
-and Reviewer closure are still pending.
+concurrency and lowered-limit additions passed **5/5**. [Tester retest](c3-test-r1-review-fixes.md)
+passed **43/43** affected suites, **19/19** recovery/lane checks and **2/2**
+extra Agenda authority phases, plus migration 261 and backend typecheck.
+Reviewer closure is still pending.
