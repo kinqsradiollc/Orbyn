@@ -23,6 +23,7 @@ import {
   ChatgptPlanClient,
   ChatgptPlanError,
   ChatgptLocalTokenError,
+  ChatgptRefreshPendingError,
   type ChatgptLocalGrant,
 } from "@orbyn/api-client";
 import {
@@ -1316,7 +1317,7 @@ export async function createNativeChatgptExecutor(userId: string) {
     check();
     const stored = await readProtectedItem(key, protectedOptions);
     const record = decodeRegistration(stored);
-    const retired = heartbeat ? decodeRetiredRegistration(stored) : null;
+    const retired = decodeRetiredRegistration(stored);
     const refreshing = Boolean(
       retired &&
       current?.mode === "refresh" &&
@@ -1329,6 +1330,7 @@ export async function createNativeChatgptExecutor(userId: string) {
     );
     const owned = record ?? (refreshing ? retired : null);
     check();
+    if (refreshing && !heartbeat) throw new ChatgptRefreshPendingError();
     if (
       !owned ||
       (record && !record.grant.sharingGranted) ||

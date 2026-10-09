@@ -1,4 +1,11 @@
 /** App-owned scheduler: suspended apps never keep claiming private work. */
+export class ChatgptRefreshPendingError extends Error {
+  constructor() {
+    super("ChatGPT connection is refreshing.");
+    this.name = "ChatgptRefreshPendingError";
+  }
+}
+
 export function createChatgptForegroundRuntime(options: {
   available: (userId: string) => Promise<boolean>;
   create: (userId: string) => Promise<{
@@ -79,7 +86,11 @@ export function createChatgptForegroundRuntime(options: {
         return;
       }
       emit("ready", started.selection);
-      const queue = (work: () => Promise<unknown>, delay: number) => {
+      const queue = (
+        work: () => Promise<unknown>,
+        delay: number,
+        nextDelay = delay,
+      ) => {
         if (!live()) return;
         const timer = (options.schedule ?? setTimeout)(async () => {
           timers.delete(timer);
@@ -87,13 +98,17 @@ export function createChatgptForegroundRuntime(options: {
           try {
             await work();
             if (live()) queue(work, delay);
-          } catch {
+          } catch (error) {
             if (live()) {
-              stop();
-              emit("error");
+              if (error instanceof ChatgptRefreshPendingError)
+                queue(work, delay, 3000);
+              else {
+                stop();
+                emit("error");
+              }
             }
           }
-        }, delay);
+        }, nextDelay);
         timers.add(timer);
       };
       // Claim and heartbeat timers are separate; model work cannot starve lease renewal.

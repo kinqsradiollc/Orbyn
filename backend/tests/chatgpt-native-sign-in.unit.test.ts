@@ -1253,11 +1253,75 @@ test("foreground scheduler stays ready when a lease heartbeat overlaps native re
   const inference = tick(10000);
   await reachedProof;
   await tick(25000);
+  await tick(120000);
   assert.equal(foreground.snapshot().status, "ready");
   release();
   await inference;
+  await tick(3000);
   assert.equal(foreground.snapshot().status, "ready");
   assert.equal(f.calls.responses, 1);
+  foreground.close();
+});
+test("catalog refresh defers inference polling without stopping the foreground executor", async () => {
+  let entered!: () => void, release!: () => void;
+  const reachedProof = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const blockedProof = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = mount({
+    signing: true,
+    inference: "success",
+    refreshedId: true,
+    onRefreshProof: async () => {
+      entered();
+      await blockedProof;
+    },
+  });
+  await f.signIn();
+  const timers = new Map<object, { delay: number; run: () => Promise<void> }>();
+  const foreground = api.createChatgptForegroundRuntime({
+    available: async () => true,
+    create: () => f.executor(),
+    schedule: ((run: () => Promise<void>, delay: number) => {
+      const timer = {};
+      timers.set(timer, { delay, run });
+      return timer;
+    }) as typeof setTimeout,
+    cancel: ((timer: object) => {
+      timers.delete(timer);
+    }) as typeof clearTimeout,
+  });
+  foreground.update({ userId, token: f.session.token, foreground: true });
+  for (
+    let index = 0;
+    index < 100 && foreground.snapshot().status !== "ready";
+    index++
+  )
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  assert.equal(foreground.snapshot().status, "ready");
+  expireSoon(f);
+  const tick = (delay: number) => {
+    const [timer, task] = [...timers].find(([, item]) => item.delay === delay)!;
+    timers.delete(timer);
+    return task.run();
+  };
+  const catalog = tick(120000);
+  await reachedProof;
+  await tick(10000);
+  assert.equal(foreground.snapshot().status, "ready");
+  assert.equal(f.calls.responses, 0);
+  assert.equal(JSON.parse(accounts(f.storage)[0][1]).grant, null);
+  release();
+  await catalog;
+  await tick(3000);
+  assert.equal(foreground.snapshot().status, "ready");
+  assert.equal(f.calls.responses, 1);
+  assert.equal(
+    JSON.parse(accounts(f.storage)[0][1]).grant.accessToken,
+    "refreshed-access",
+  );
   foreground.close();
 });
 test("invalid refresh proof or changed session cannot keep a retired native executor live", async () => {
