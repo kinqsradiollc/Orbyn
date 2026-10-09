@@ -15,7 +15,8 @@ Candidate checkout: `adr-release-qualification/Orbyn`, branch
 See [C2 scope and readiness](c2-full-2026-10-08.md).
 Rendered evidence source `babf1434`: bounded web320/1280 Dark and Expo320 Light checks close
 C2-001/002 copy findings. Latest product `175834f2` corrects C2-003 copy;
-12/12 focused checks passed, with no fresh visual recheck. Connected-account/inference and standalone hosted
+12/12 focused checks passed; C2-003 was rechecked on web1280 Light and
+Expo320 Light. Connected-account/inference and standalone hosted
 web connection remain open; no formal handoff, main merge or C3 advancement.
 C1 acceptance remains round2/3; its evidence below is unchanged.
 
