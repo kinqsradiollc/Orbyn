@@ -177,6 +177,11 @@ function mount(
       if (id === "react-native")
         return { Platform: { OS: options.platform ?? "ios" } };
       if (id === "./session") return { session };
+      if (id === "./device")
+        return {
+          deviceLabel: () =>
+            options.platform === "android" ? "Pixel QA" : "iPhone QA",
+        };
       if (id === "expo-crypto")
         return {
           randomUUID,
@@ -471,6 +476,11 @@ function mount(
                 (row) => row.id === input.connection_id,
               );
               assert.ok(owned, "enrollment must use an owned connection");
+              assert.equal(input.device?.type, options.platform ?? "ios");
+              assert.equal(
+                input.device?.name,
+                options.platform === "android" ? "Pixel QA" : "iPhone QA",
+              );
               executorId = randomUUID();
               executorBinding = {
                 user_id: userId,
