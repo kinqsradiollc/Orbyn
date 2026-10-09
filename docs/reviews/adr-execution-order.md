@@ -7,7 +7,8 @@ its acceptance contract in `devday-2026-implementation-review.md`.
 
 C1 and C2/M1 are accepted under their final user-approved scopes. C2/M1 was
 merged and pushed to main at `c778c25f`. The user asked for a whole-app content
-cleanup before C3; finish its Test → Review cycle before advancing. Hosted
+cleanup before C3; its candidate `fbcac938` has completed Test → Review in round
+1/3 and is ready for main integration. Hosted
 independent web sign-in is deferred; phone-owned inference has no independent
 proof. Production deployment is user-owned.
 The user explicitly stopped Visual Check for the content cleanup; source and

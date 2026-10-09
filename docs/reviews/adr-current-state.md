@@ -15,9 +15,11 @@ sign-in is explicitly deferred. Production deployment remains user-owned.
 
 **Active work:** user-requested product content cleanup across web/desktop and
 mobile before C3. Visual Check is stopped for this batch at the user's request.
-The content candidate is isolated on `codex/content-density`; its Test → Review
-handoff has not yet occurred. See [C2 scope and acceptance](c2-full-2026-10-08.md)
-and [Reviewer closure](c2-r1-closure-b7b05211.md).
+The content candidate `fbcac938` passed Test → Review in round **1/3** and is
+ready for main integration. See [content handoff](content-density-2026-10-09.md),
+[Tester report](content-density-test-00098f37-2026-10-09.md),
+[Reviewer round](content-density-review-r1-2026-10-09.md) and
+[closure](content-density-closure-fbcac938-2026-10-09.md).
 C1 acceptance remains round2/3; its evidence below is unchanged.
 
 Reviewer approved frozen candidate `1a92a2c0` within round2. Product integration

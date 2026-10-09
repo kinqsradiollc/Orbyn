@@ -1,12 +1,10 @@
-# Product content cleanup — candidate handoff
+# Product content cleanup — accepted handoff
 
-Status: Builder candidate on `codex/content-density`, based on main
-`c778c25f`. Tester qualified the first frozen candidate `00098f37` and
-reported six copy/test findings in
-`content-density-test-00098f37-2026-10-09.md`. Builder corrected those
-findings for a focused retest. The user requested this pass after C2/M1 and
-explicitly stopped Visual Check. No browser or native visual acceptance is
-claimed.
+Status: Reviewer accepted `fbcac938` on `codex/content-density` in round 1/3,
+based on main `c778c25f`. The Tester report and Reviewer round/closure records
+are in this directory. Integration to main is the next action. The user
+requested this pass after C2/M1 and explicitly stopped Visual Check. No
+browser or native visual acceptance is claimed.
 
 ## Scope and decisions
 
@@ -36,17 +34,13 @@ was reviewed at the changed call sites; user-authored content was not edited.
 - Focused admin/provider/embedding UI tests: **91/91 passed**.
   Output: `/tmp/orbyn-content-admin-tests.log`.
 
-Tester should retest the corrected source, especially the ChatGPT usage UI
-assertion and the six content findings in its first report. Reviewer should
-assess the cross-client copy, retention of material consent/consequences, test
-evidence and any UI logic changes. One full review round starts after Tester
-reports on the corrected candidate.
-
 Review round 1 identified two further issues after the six Tester findings
 closed: an unavailable morning-summary connection had no way to refresh its
 status, and usage's empty state implied no requests rather than no recorded
 completions. Builder restored a focused connection check on both clients and
-qualified the usage empty state. The corrected candidate requires an affected
-behavior retest and Reviewer closure within round 1.
+qualified the usage empty state. Tester retested the affected behavior with
+8/8 focused tests, and Reviewer closed both findings within round 1. The
+existing rendered fixtures do not exercise the zero-call branch; the Tester
+and Reviewer recorded that source-review limit.
 The user excluded further Visual Check, iOS/Android builds and broad repeated
 testing. Production deployment remains user-owned.
