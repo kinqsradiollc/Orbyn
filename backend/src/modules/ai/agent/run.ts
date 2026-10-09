@@ -1623,7 +1623,13 @@ export async function runAssistantJob(
     if (
       (savedRulesRevision !== undefined &&
         savedRulesRevision !== principal.assistant_rules_revision) ||
-      (savedRulesRevision === undefined && progressed)
+      // Pre-C3 checkpoints have no rule revision. They can resume only when
+      // the grant still has its untouched default rules; any edited ruleset
+      // holds the run because its enqueue-time authority cannot be recovered.
+      (savedRulesRevision === undefined &&
+        progressed &&
+        (principal.assistant_rules_revision !== 1 ||
+          (principal.assistant_rules?.length ?? 0) > 0))
     )
       fail(
         409,

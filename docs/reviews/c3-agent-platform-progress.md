@@ -1,7 +1,9 @@
 # C3 agent platform — candidate handoff
 
 **State:** Whole C3 candidate implemented on `codex/c3-agent-platform` from
-main `88b49d88`. Formal Test → Review is next; no C3 code is on main yet.
+main `88b49d88`. Test round 1 found a legacy-checkpoint recovery regression;
+Builder has applied a targeted correction for retest. Review has not begun and
+no C3 code is on main yet.
 The user asked to pause the goal after C3 is accepted, merged and pushed.
 
 | Area | Candidate |
@@ -34,3 +36,14 @@ accept. Maximum three full review rounds, with earlier acceptance allowed.
 Builder owns fixes and main integration. Preserve unrelated changes in the
 primary checkout. The disposable fixture `orbyn-c3-qa` on port 55438 belongs to
 Builder until qualification is finished.
+
+## Round 1 correction
+
+Tester recorded `41/41` focused checks, all workspace typechecks and a
+`93/103` wider integration run in [the report](c3-test-r1.md). Ten failures
+were all in legacy process recovery: progressed pre-C3 checkpoints did not
+carry a typed-rules revision. The Builder correction lets such a checkpoint
+resume only while its rules remain at revision 1 with an empty ruleset;
+edited-rule states still hold. The unchanged recovery suite now passes
+`13/13` on the corrected candidate. Tester retest and Reviewer assessment
+remain required.
