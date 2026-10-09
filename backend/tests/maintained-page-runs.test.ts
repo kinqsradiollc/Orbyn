@@ -8,6 +8,8 @@ const { pool, transaction } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { assistantPrincipal } =
   await import("../src/modules/agents/assistant.js");
+const { replaceAssistantBudget } =
+  await import("../src/modules/assistant-workspace/budgets.js");
 const { createMaintainedPageBinding, updateMaintainedPageBinding } =
   await import("../src/modules/docs/maintenance.js");
 const {
@@ -106,6 +108,41 @@ const proposal = {
   ],
 };
 const status = (code: number) => (error: any) => error.statusCode === code;
+
+test("page reclaim keeps the same cumulative per-run limit", async () => {
+  const f = await fixture("FREQ=DAILY", 5000);
+  await replaceAssistantBudget(f.user.id, "background", {
+    expected_revision: 1,
+    daily_token_limit: 5000,
+    hourly_start_limit: 5,
+    per_run_token_limit: 1000,
+  });
+  const queuedRun = await queued(f);
+  const first = await transaction((db) =>
+    claimMaintainedPageRun(db, "background", time, queuedRun.id),
+  );
+  assert.equal(first?.token_budget, 1000);
+  await pool.query(
+    `UPDATE assistant_page_runs SET state='queued',token_estimate=600,
+      lease_token=NULL,lease_expires_at=NULL WHERE id=$1`,
+    [queuedRun.id],
+  );
+  const resumed = await transaction((db) =>
+    claimMaintainedPageRun(db, "background", later(1000), queuedRun.id),
+  );
+  assert.equal(resumed?.token_budget, 1000);
+  await pool.query(
+    `UPDATE assistant_page_runs SET state='queued',token_estimate=1000,
+      lease_token=NULL,lease_expires_at=NULL WHERE id=$1`,
+    [queuedRun.id],
+  );
+  assert.equal(
+    await transaction((db) =>
+      claimMaintainedPageRun(db, "background", later(2000), queuedRun.id),
+    ),
+    null,
+  );
+});
 
 test("page budgets persist across updates and bind each queued run", async () => {
   const f = await fixture("FREQ=DAILY", 5000);

@@ -73,7 +73,9 @@ export async function claimScheduledAgendaWork(
           error instanceof ProviderError &&
           error.reason === "chatgpt_usage_limit"
             ? "usage_limit"
-            : (error as { statusCode?: number })?.statusCode === 409
+            : [403, 409].includes(
+                  (error as { statusCode?: number })?.statusCode ?? 0,
+                )
               ? "authority_changed"
               : "provider_failed";
         await failScheduledAgenda(run.user_id, run.id, token, reason).catch(

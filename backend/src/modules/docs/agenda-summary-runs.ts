@@ -7,9 +7,18 @@ import {
   aiProviderChoice,
   aiFeatureProvider,
   agendaPrivateSummary,
+  assistantRuleDecision,
   type DocBlock,
 } from "@orbyn/core";
 import { pool, transaction, type Db } from "../../db/pool.js";
+import type { UserRow } from "../../lib/auth.js";
+import { policy } from "../../capabilities/policy.js";
+import { currentAssistantPrincipal } from "../../capabilities/assistant-principal.js";
+import { CapabilityError } from "../../capabilities/registry.js";
+import {
+  assistantPrincipal,
+  AssistantPausedError,
+} from "../agents/assistant.js";
 import {
   lockAgendaSources,
   lockAgendaSourcePage,
@@ -25,6 +34,7 @@ import {
 import {
   captureAgendaAiSnapshot,
   assertAgendaAiSnapshot,
+  type AgendaAiSnapshot,
 } from "./agenda-ai-snapshot.js";
 import { agendaSnapshotSchema } from "../ai/providers/agenda-call.js";
 import { assistantRuntimeHasRoom } from "../ai/agent/runtime-slots.js";
@@ -88,6 +98,7 @@ export type AgendaSummaryRun = {
   target_block_id: string;
   target_hash: string;
   snapshot: unknown;
+  assistant_rules_revision: number | null;
   permission: unknown;
   operation_id: string;
   state: "queued" | "running" | "waiting" | "done" | "failed";
@@ -108,6 +119,92 @@ const targetHash = (block: DocBlock) =>
     )
     .digest("hex");
 const targetSql = `SELECT d.id,d.content,d.version,d.agenda_date::text FROM docs d WHERE d.id=$2 AND d.user_id=$1 AND d.kind='agenda' AND d.team_id IS NULL AND d.project_id IS NULL AND ${visibleDocs("d", { user: "$1", ai: true })} AND ${assistantMayRead("d")}`;
+
+/** Separate Agenda consent never overrides the Background assistant's current rules. */
+async function assertScheduledAgendaAssistant(
+  db: Db,
+  owner: string,
+  expectedRevision?: number | null,
+  snapshot?: AgendaAiSnapshot,
+  createGrant = false,
+) {
+  const user = (
+    await db.query<UserRow>(
+      "SELECT * FROM users WHERE id=$1 AND NOT disabled FOR SHARE",
+      [owner],
+    )
+  ).rows[0];
+  if (!user) fail(403, "This account is unavailable.");
+  let principal;
+  try {
+    principal = await currentAssistantPrincipal(
+      db,
+      await assistantPrincipal(user, {
+        db,
+        touch: createGrant,
+        refusePaused: true,
+        lane: "background",
+      }),
+      true,
+    );
+  } catch (error) {
+    if (
+      error instanceof CapabilityError ||
+      error instanceof AssistantPausedError ||
+      (error instanceof Error &&
+        error.message.includes("assistant grant is unavailable"))
+    )
+      fail(409, "The Background assistant is unavailable.");
+    throw error;
+  }
+  if (
+    expectedRevision !== undefined &&
+    expectedRevision !== principal.assistant_rules_revision
+  )
+    fail(409, "Assistant rules changed. Start a fresh Agenda summary.");
+  const rules = principal.assistant_rules ?? [];
+  const allowed = (
+    teamId: string | null,
+    actions: ("read" | "any_change" | "edit")[],
+  ) => {
+    const decision = assistantRuleDecision(
+      rules,
+      "background",
+      teamId,
+      actions,
+    );
+    return decision !== "deny" && decision !== "ask";
+  };
+  if (policy.levelIn(principal, null) === null || !allowed(null, ["read"]))
+    fail(403, "Background rules restrict this Agenda summary's sources.");
+  if (
+    policy.levelIn(principal, null) !== "write" ||
+    !allowed(null, ["any_change", "edit"])
+  )
+    fail(403, "Background rules restrict this Agenda summary's update.");
+  if (snapshot) {
+    const docs = snapshot.sources
+      .filter((source) => source.kind === "doc")
+      .map((source) => source.id);
+    const tasks = snapshot.sources
+      .filter((source) => source.kind === "task")
+      .map((source) => source.id);
+    const spaces = await db.query<{ team_id: string }>(
+      `SELECT DISTINCT team_id FROM (
+        SELECT team_id FROM docs WHERE id=ANY($1::uuid[])
+        UNION ALL SELECT team_id FROM items WHERE id=ANY($2::uuid[])
+       ) sources WHERE team_id IS NOT NULL`,
+      [docs, tasks],
+    );
+    for (const space of spaces.rows)
+      if (
+        policy.levelIn(principal, space.team_id) === null ||
+        !allowed(space.team_id, ["read"])
+      )
+        fail(403, "Background rules restrict an Agenda source space.");
+  }
+  return principal.assistant_rules_revision!;
+}
 
 /** Enqueue one scoped private summary per local day; page generation alone grants nothing. */
 export async function enqueueScheduledAgenda(
@@ -140,9 +237,16 @@ export async function enqueueScheduledAgenda(
       )
     ).rows[0];
     if (existing) return existing.id as string;
+    await assertScheduledAgendaAssistant(db, owner, undefined, undefined, true);
     await lockAgendaSources(db, owner);
     const snapshot = agendaSnapshotSchema.parse(
       await captureAgendaAiSnapshot(owner, now, db),
+    );
+    const rulesRevision = await assertScheduledAgendaAssistant(
+      db,
+      owner,
+      undefined,
+      snapshot,
     );
     const page = (
       await lockAgendaSourcePage(db, targetSql + " FOR UPDATE OF d", [
@@ -169,8 +273,8 @@ export async function enqueueScheduledAgenda(
     }
     const row = (
       await db.query(
-        `INSERT INTO agenda_summary_runs(user_id,doc_id,local_day,target_block_id,target_hash,snapshot,permission,expires_at)
-      VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8) RETURNING id`,
+        `INSERT INTO agenda_summary_runs(user_id,doc_id,local_day,target_block_id,target_hash,snapshot,permission,expires_at,assistant_rules_revision)
+      VALUES($1,$2,$3,$4,$5,$6::jsonb,$7::jsonb,$8,$9) RETURNING id`,
         [
           owner,
           docId,
@@ -180,6 +284,7 @@ export async function enqueueScheduledAgenda(
           JSON.stringify(snapshot),
           JSON.stringify(permission),
           expiry,
+          rulesRevision,
         ],
       )
     ).rows[0];
@@ -210,10 +315,16 @@ export async function guardScheduledAgendaRun(
     )
   ).rowCount;
   if (!live) fail(409, "This scheduled Agenda summary expired.");
-  await lockAgendaSources(db, owner);
   const permission = permissionSchema.parse(run.permission);
   await assertAgendaScheduleGrant(db, owner, permission);
   const snapshot = agendaSnapshotSchema.parse(run.snapshot);
+  await assertScheduledAgendaAssistant(
+    db,
+    owner,
+    run.assistant_rules_revision,
+    snapshot,
+  );
+  await lockAgendaSources(db, owner);
   try {
     await assertAgendaAiSnapshot(
       owner,

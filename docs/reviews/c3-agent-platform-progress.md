@@ -2,8 +2,9 @@
 
 **State:** Whole C3 candidate implemented on `codex/c3-agent-platform` from
 main `88b49d88`. Test round 1 found a legacy-checkpoint recovery regression;
-Builder has applied a targeted correction and Tester retest passed. Review has not begun and
-no C3 code is on main yet.
+Builder corrected it and Tester retest passed. Reviewer round 1 found two more
+gaps; Builder has corrected them, pending Tester retest and Reviewer closure.
+No C3 code is on main yet.
 The user asked to pause the goal after C3 is accepted, merged and pushed.
 
 | Area                | Candidate                                                                                                                                                                                                                                                                                                                                                                                                              |
@@ -48,3 +49,17 @@ edited-rule states still hold. The unchanged recovery suite now passes
 `13/13` on the corrected candidate. Tester independently confirmed that
 result plus `29/29` typed-rule checks and backend typecheck in
 [the retest report](c3-test-r1-retest.md). Reviewer assessment remains required.
+
+## Review round 1 corrections
+
+[Reviewer round 1](c3-review-r1.md) found that scheduled Agenda summaries did
+not intersect current Background read/effect rules, and recovery could refresh
+the advertised per-run token limit. Builder now captures and rechecks the
+Background rule revision and source-space access through enqueue, provider
+dispatch and result application. Existing queued summaries lacking captured
+rule evidence fail closed. Per-run reservations count all earlier segments;
+lowered limits take effect before the next segment. The same reservation path
+serves jobs and maintained pages. Builder's focused Agenda, budget and page
+run suites passed **42/42** after these changes; the subsequent budget-only
+concurrency and lowered-limit additions passed **5/5**. Formal Tester retest
+and Reviewer closure are still pending.

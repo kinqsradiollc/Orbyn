@@ -18,6 +18,10 @@ const { enqueueScheduledAgenda, claimScheduledAgenda, applyScheduledAgenda } =
   await import("../src/modules/docs/agenda-summary-runs.js");
 const { saveAgendaPrivatePermission } =
   await import("../src/modules/auth/agenda-private-permission.js");
+const { replaceAssistantRules } =
+  await import("../src/modules/agents/assistant-rules.js");
+const { assistantPrincipal } =
+  await import("../src/modules/agents/assistant.js");
 const { claimScheduledAgendaWork } =
   await import("../src/worker/agenda-summaries.js");
 const { claimChatgptInference, finishChatgptInference } =
@@ -126,6 +130,34 @@ async function grant(f: Awaited<ReturnType<typeof fixture>>) {
     expected_preference_version: 1,
   });
 }
+async function backgroundRule(
+  f: Awaited<ReturnType<typeof fixture>>,
+  action: "read" | "edit",
+  decision: "ask" | "deny",
+) {
+  await assistantPrincipal(
+    { id: f.owner, name: "Scheduled Agenda", role: "member" },
+    { db: pool, touch: true, lane: "background" },
+  );
+  const revision = (
+    await pool.query<{ assistant_rules_revision: number }>(
+      "SELECT assistant_rules_revision FROM agent_grants WHERE user_id=$1 AND kind='assistant'",
+      [f.owner],
+    )
+  ).rows[0].assistant_rules_revision;
+  await replaceAssistantRules(f.owner, {
+    expected_revision: revision,
+    rules: [
+      {
+        id: randomUUID(),
+        lane: "background",
+        action,
+        scope: { kind: "personal" },
+        decision,
+      },
+    ],
+  });
+}
 async function queue(f: Awaited<ReturnType<typeof fixture>>) {
   const id = await enqueueScheduledAgenda(
     f.owner,
@@ -179,6 +211,68 @@ async function publish(
   ).toString("base64url");
   return finishChatgptInference(f.binding, { receipt, signature });
 }
+test("scheduled Agenda respects Background read rules before and after enqueue", async () => {
+  const denied = await fixture();
+  await grant(denied);
+  await backgroundRule(denied, "read", "deny");
+  await assert.rejects(
+    enqueueScheduledAgenda(
+      denied.owner,
+      denied.page.doc.id,
+      denied.now,
+      denied.timezone,
+    ),
+    (error: unknown) => (error as { statusCode?: number }).statusCode === 403,
+  );
+  const changed = await fixture();
+  await grant(changed);
+  const id = await queue(changed);
+  await backgroundRule(changed, "read", "ask");
+  assert.equal(await claimScheduledAgenda(id), null);
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT state,reason FROM agenda_summary_runs WHERE id=$1",
+        [id],
+      )
+    ).rows[0],
+    { state: "failed", reason: "authority_changed" },
+  );
+});
+
+test("a changed Background edit rule holds a pending scheduled inference result", async () => {
+  const f = await fixture();
+  await grant(f);
+  const id = await queue(f);
+  const { run } = await start(id);
+  const assignmentResult = await assignment(f);
+  const before = (
+    await pool.query<{ content: unknown }>(
+      "SELECT content FROM docs WHERE id=$1",
+      [f.page.doc.id],
+    )
+  ).rows[0].content;
+  await backgroundRule(f, "edit", "deny");
+  await assert.rejects(
+    publish(f, assignmentResult),
+    (error: unknown) => (error as { statusCode?: number }).statusCode === 409,
+  );
+  await run;
+  assert.deepEqual(
+    (
+      await pool.query(
+        "SELECT state,reason FROM agenda_summary_runs WHERE id=$1",
+        [id],
+      )
+    ).rows[0],
+    { state: "failed", reason: "authority_changed" },
+  );
+  assert.deepEqual(
+    (await pool.query("SELECT content FROM docs WHERE id=$1", [f.page.doc.id]))
+      .rows[0].content,
+    before,
+  );
+});
 test("scheduled summaries share Background capacity without consuming interactive slots", async () => {
   const f = await fixture();
   await grant(f);

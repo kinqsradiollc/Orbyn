@@ -108,3 +108,105 @@ test("reservations count active estimates, settle once, and stop at a lane limit
     0,
   );
 });
+
+test("a resumed run keeps its cumulative per-run ceiling after settlement", async () => {
+  const userId = await owner();
+  await replaceAssistantBudget(userId, "background", {
+    expected_revision: 1,
+    daily_token_limit: 5000,
+    hourly_start_limit: 5,
+    per_run_token_limit: 1000,
+  });
+  const id = await job(userId);
+  const reserve = (startingEstimate: number) =>
+    transaction((db) =>
+      reserveAssistantWork(db, {
+        kind: "job",
+        id,
+        userId,
+        lane: "background",
+        startingEstimate,
+        originalLimit: 4000,
+      }),
+    );
+  assert.equal(await reserve(0), 1000);
+  await pool.query(
+    `UPDATE assistant_work_reservations SET state='settled',reported_tokens=600,
+      settled_at=clock_timestamp() WHERE job_id=$1 AND state='active'`,
+    [id],
+  );
+  assert.equal(await reserve(600), 1000);
+  await pool.query(
+    `UPDATE assistant_work_reservations SET state='settled',reported_tokens=400,
+      settled_at=clock_timestamp() WHERE job_id=$1 AND state='active'`,
+    [id],
+  );
+  assert.equal(await reserve(1000), null);
+  // A stale checkpoint cannot replenish already accounted work.
+  assert.equal(await reserve(600), null);
+});
+
+test("lowering the per-run limit applies to an existing run before its next segment", async () => {
+  const userId = await owner();
+  await replaceAssistantBudget(userId, "background", {
+    expected_revision: 1,
+    daily_token_limit: 5000,
+    hourly_start_limit: 5,
+    per_run_token_limit: 2000,
+  });
+  const id = await job(userId);
+  const reserve = (startingEstimate: number) =>
+    transaction((db) =>
+      reserveAssistantWork(db, {
+        kind: "job",
+        id,
+        userId,
+        lane: "background",
+        startingEstimate,
+        originalLimit: 4000,
+      }),
+    );
+  assert.equal(await reserve(0), 2000);
+  await pool.query(
+    `UPDATE assistant_work_reservations SET state='settled',reported_tokens=1200,
+      settled_at=clock_timestamp() WHERE job_id=$1 AND state='active'`,
+    [id],
+  );
+  await replaceAssistantBudget(userId, "background", {
+    expected_revision: 2,
+    daily_token_limit: 5000,
+    hourly_start_limit: 5,
+    per_run_token_limit: 1000,
+  });
+  assert.equal(await reserve(1200), null);
+});
+
+test("competing claims cannot reserve the same daily allowance", async () => {
+  const userId = await owner();
+  await replaceAssistantBudget(userId, "background", {
+    expected_revision: 1,
+    daily_token_limit: 1000,
+    hourly_start_limit: 5,
+    per_run_token_limit: 1000,
+  });
+  const ids = [await job(userId), await job(userId)];
+  const results = await Promise.all(
+    ids.map((id) =>
+      transaction((db) =>
+        reserveAssistantWork(db, {
+          kind: "job",
+          id,
+          userId,
+          lane: "background",
+          startingEstimate: 0,
+          originalLimit: 1000,
+          minimumReservation: 1000,
+        }),
+      ),
+    ),
+  );
+  assert.deepEqual(
+    results.sort((a, b) => Number(a) - Number(b)),
+    [null, 1000],
+  );
+});

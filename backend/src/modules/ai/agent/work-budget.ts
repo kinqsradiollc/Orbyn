@@ -46,6 +46,20 @@ export async function reserveAssistantWork(
       [userId, lane],
     )
   ).rows[0];
+  const reference = {
+    job: "job_id",
+    page: "page_run_id",
+    agenda: "agenda_run_id",
+  }[work.kind];
+  // A worker lease is only a segment of one run. Unknown usage retains its
+  // reservation, so neither recovery nor an approval wait resets this cap.
+  const prior = (
+    await db.query<{ consumed: string }>(
+      `SELECT coalesce(sum(coalesce(reported_tokens,reserved_tokens)),0)::text AS consumed
+       FROM assistant_work_reservations WHERE ${reference}=$1`,
+      [work.id],
+    )
+  ).rows[0];
   const budget = (
     await db.query<{ day: string; spent: string; started: string }>(
       `SELECT assistant_lane_budget_day($1,$3) AS day,
@@ -64,15 +78,14 @@ export async function reserveAssistantWork(
     return null;
   const reserved = Math.min(
     Math.max(0, originalLimit - startingEstimate),
-    settings.per_run_token_limit,
+    Math.max(
+      0,
+      settings.per_run_token_limit -
+        Math.max(startingEstimate, Number(prior.consumed)),
+    ),
     settings.daily_token_limit - Number(budget.spent),
   );
-  if (reserved < (work.minimumReservation ?? 0)) return null;
-  const reference = {
-    job: "job_id",
-    page: "page_run_id",
-    agenda: "agenda_run_id",
-  }[work.kind];
+  if (reserved === 0 || reserved < (work.minimumReservation ?? 0)) return null;
   await db.query(
     `INSERT INTO assistant_work_reservations
       (user_id,lane,${reference},budget_day,reserved_tokens,starting_estimate,started_at)
