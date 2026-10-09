@@ -1028,7 +1028,8 @@ function RetentionCard({ report }: { report: Report }) {
         )}
       </div>
       <p className="muted system-lead">
-        Expired records are cleared hourly. Set 0 to keep a record type forever.
+        Expired records are swept hourly in batches. Set 0 to keep a type
+        forever.
       </p>
       {!view ? (
         <p className="muted system-loading">Loading…</p>

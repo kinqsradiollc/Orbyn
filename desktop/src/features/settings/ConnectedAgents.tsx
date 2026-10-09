@@ -194,8 +194,8 @@ function TrustEdit({
         <>
           {assistantGrant && (
             <p className="muted">
-              {grant.name} is built in. You can lower its access; protected
-              actions still need approval.
+              {grant.name} is built in and cannot be disconnected. You can lower
+              its access; protected actions still need approval.
             </p>
           )}
           <div className="settings-field">

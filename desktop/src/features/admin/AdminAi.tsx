@@ -308,7 +308,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         </summary>
         <div className="ai-budget-body">
           <p className="muted">
-            Shared across a person's night runs. Unfinished work appears in
+            Shared across up to ten runs each night. Unfinished work appears in
             morning review.
           </p>
           <label className="settings-field">

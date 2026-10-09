@@ -858,8 +858,8 @@ export function SettingsScreen({
 
       <SettingsSection title="Email to task">
         <Text style={shared.body}>
-          Email your private address to create a task. Subject becomes title;
-          body becomes notes.
+          Email your private address from your account email to create a task.
+          Subject becomes title; body becomes notes.
         </Text>
         {inbox === null ? null : !inbox.configured ? (
           <Text style={[shared.small, { marginTop: 8 }]}>

@@ -12,7 +12,7 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
     <View style={{ gap: 12 }}>
       <Text style={shared.body}>Morning summary</Text>
       <Text style={shared.small}>
-        Scheduled summaries use your ChatGPT plan.
+        Uses your ChatGPT plan. Keep Orbyn desktop online for morning summaries.
       </Text>
       {!data && !error && (
         <Text accessibilityLiveRegion="polite" style={shared.small}>

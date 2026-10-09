@@ -10,7 +10,9 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
       aria-label="Scheduled Agenda summaries"
     >
       <h3>Morning summary</h3>
-      <p className="muted">Scheduled summaries use your ChatGPT plan.</p>
+      <p className="muted">
+        Uses your ChatGPT plan. Keep Orbyn desktop online for morning summaries.
+      </p>
       {!data && !error && <p role="status">Loading summary settings…</p>}
       {data && (
         <>

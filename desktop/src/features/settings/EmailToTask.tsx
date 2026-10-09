@@ -35,8 +35,8 @@ export function EmailToTask({ report }: { report: (e: unknown) => void }) {
         <Mail size={18} aria-hidden="true" /> Email to task
       </h2>
       <p className="muted">
-        Email your private address to create a task. Subject becomes title; body
-        becomes notes.
+        Email your private address from your account email to create a task.
+        Subject becomes title; body becomes notes.
       </p>
 
       {inbox === null ? (

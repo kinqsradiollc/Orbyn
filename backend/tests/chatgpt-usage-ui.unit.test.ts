@@ -148,7 +148,7 @@ for (const app of ["desktop", "mobile"] as const) {
       assert.match(text, /9,007,199,254,740,994/);
       assert.match(text, /reported tokens/);
       assert.match(text, /1 request did not report/);
-      assert.match(text, /Account limits stay in ChatGPT/);
+      assert.match(text, /Plan limits are in ChatGPT/);
       f.setToken("session-b");
       const changed = content(f.render("b"));
       assert.ok(!changed.includes("9,007"));

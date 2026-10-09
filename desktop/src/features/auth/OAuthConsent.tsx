@@ -146,7 +146,8 @@ function WhoAsks({ check }: { check: OAuthCheck }) {
       {c.redirect_local && (
         <p className="oauth-warn">
           <AlertTriangle size={14} aria-hidden="true" /> It returns you to an
-          app on this device. Continue only if you started this connection.
+          app on this device. Continue only if you just started connecting from
+          that app.
         </p>
       )}
     </div>
