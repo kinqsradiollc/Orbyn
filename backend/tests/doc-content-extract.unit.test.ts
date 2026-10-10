@@ -1,13 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  extractDocContent,
+  extractDocContent as extractWithContext,
   parseDocContainers,
   docContainerBlocks,
   docContainerTaskBlocks,
   type VersionedDocContent,
   type DocBlock,
 } from "@orbyn/core";
+const sourceId = "00000000-0000-4000-8000-000000000002";
+const destinationId = "00000000-0000-4000-8000-000000000001";
+const extractDocContent = (
+  value: VersionedDocContent,
+  ids: string[],
+  link: DocBlock,
+) => {
+  let index = 0;
+  return extractWithContext(value, ids, link, {
+    sourceId,
+    destinationId,
+    freshId: () => `anchor-${++index}`,
+  });
+};
 const link: DocBlock = {
   type: "paragraph",
   id: "link",
@@ -104,4 +118,93 @@ test("ordered extraction starts at the first selected item and retains marker st
   const list = (result.extracted as any).nodes[0];
   assert.equal(list.start, 8);
   assert.equal(list.delimiter, ")");
+});
+
+test("extraction relocates local and explicit source links in both directions", () => {
+  const value: VersionedDocContent = {
+    format: 2,
+    nodes: parseDocContainers(
+      `> ## Moved ^moved\n> [kept](#kept) [self](#moved) [explicit](orbyn://doc/${sourceId}#moved) ^moved-links\n\n## Kept ^kept\n[follow](#moved) [stay](#kept) [explicit](orbyn://doc/${sourceId}#moved) ^kept-links`,
+      { anchors: true },
+    ),
+  };
+  const before = structuredClone(value);
+  const result = extractDocContent(value, ["moved", "moved-links"], link);
+  const moved = leaves(result.extracted).find((b) => b.id === "moved-links")!;
+  const kept = leaves(result.source).find((b) => b.id === "kept-links")!;
+  assert.equal(
+    "text" in moved && moved.text,
+    `[kept](orbyn://doc/${sourceId}#kept) [self](#moved) [explicit](orbyn://doc/${destinationId}#moved)`,
+  );
+  assert.equal(
+    "text" in kept && kept.text,
+    `[follow](orbyn://doc/${destinationId}#moved) [stay](#kept) [explicit](orbyn://doc/${destinationId}#moved)`,
+  );
+  assert.deepEqual(value, before);
+});
+
+test("moved links to anonymous source headings retain the exact heading through stable anchors", () => {
+  const value: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      {
+        type: "paragraph",
+        id: "move",
+        text: "[slug](#heading) [position](#h-1) [unknown](#missing) `[literal](#heading)`",
+      },
+      { type: "heading", level: 2, text: "Heading" },
+      { type: "code", lang: "md", text: "[literal](#heading)" },
+    ],
+  };
+  const result = extractDocContent(value, ["move"], link);
+  const heading = leaves(result.source).find((b) => b.type === "heading")!;
+  assert.equal(heading.id, "anchor-1");
+  const moved = leaves(result.extracted)[0];
+  assert.equal(
+    "text" in moved && moved.text,
+    `[slug](orbyn://doc/${sourceId}#anchor-1) [position](orbyn://doc/${sourceId}#anchor-1) [unknown](#missing) \`[literal](#heading)\``,
+  );
+  assert.ok(
+    leaves(result.source).some(
+      (b) => b.type === "code" && b.text === "[literal](#heading)",
+    ),
+  );
+  assert.equal(value.blocks[1].id, undefined);
+});
+
+test("extraction refuses invalid pages and generated anchors that collide with stored owners", () => {
+  const value: VersionedDocContent = {
+    format: 2,
+    nodes: parseDocContainers(
+      "> ## Heading\n^anchor-1\n\n[Heading](#heading) ^move",
+      { anchors: true },
+    ),
+  };
+  assert.throws(
+    () =>
+      extractWithContext(value, ["move"], link, {
+        sourceId,
+        destinationId,
+        freshId: () => "anchor-1",
+      }),
+    /already used/,
+  );
+  assert.throws(
+    () =>
+      extractWithContext(value, ["move"], link, {
+        sourceId,
+        destinationId: sourceId,
+        freshId: () => "fresh",
+      }),
+    /identity/,
+  );
+  assert.throws(
+    () =>
+      extractWithContext(value, ["move"], link, {
+        sourceId: "invalid",
+        destinationId,
+        freshId: () => "fresh",
+      }),
+    /identity/,
+  );
 });
