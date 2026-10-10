@@ -196,3 +196,106 @@ test("legacy pending edits update an explicit format1 projection without carryin
   });
   assert.throws(() => withPendingSave(page(), edit), /flat offline edit/);
 });
+
+const checklist = (
+  first = false,
+  second = true,
+  text = "First",
+): VersionedDocContent & { format: 2 } => ({
+  format: 2,
+  nodes: parseDocContainers(
+    `> - [${first ? "x" : " "}] ${text} ^first\n>   - [${second ? "x" : " "}] Nested ^nested\n> - Plain ^plain`,
+    { anchors: true },
+  ),
+});
+
+test("nested checkbox edits merge with remote text in either direction and replay offline", () => {
+  const base = checklist(),
+    mine = checklist(true),
+    remote = checklist(false, true, "Remote");
+  const expected = checklist(true, true, "Remote");
+  const before = JSON.stringify([base, mine, remote]);
+  assert.deepEqual(mergeVersionedDocContent(base, mine, remote), expected);
+  assert.deepEqual(mergeVersionedDocContent(base, remote, mine), expected);
+  assert.equal(JSON.stringify([base, mine, remote]), before);
+  const save = resolvePageSave(pending(mine, base), page(remote, 2));
+  assert.deepEqual(save.document, expected);
+  assert.deepEqual(save.content, projection(expected));
+  assert.equal(save.version, 2);
+});
+
+test("independent parent and child ticks merge without changing plain list items", () => {
+  const base = checklist();
+  assert.deepEqual(
+    mergeVersionedDocContent(base, checklist(true), checklist(false, false)),
+    checklist(true, false),
+  );
+  // Both sides check the same item, and one also edits its text.
+  assert.deepEqual(
+    mergeVersionedDocContent(
+      base,
+      checklist(true),
+      checklist(true, true, "Edited"),
+    ),
+    checklist(true, true, "Edited"),
+  );
+});
+
+test("checkbox merging cannot conceal overlapping text or changed item kinds", () => {
+  const base = checklist();
+  assert.throws(
+    () =>
+      mergeVersionedDocContent(
+        base,
+        checklist(true, true, "Local"),
+        checklist(false, true, "Remote"),
+      ),
+    DocContentMergeConflict,
+  );
+  const removed = checklist();
+  const quote = removed.nodes[0];
+  if (quote.kind !== "quote" || quote.children[0].kind !== "list")
+    throw new Error("Missing fixture list");
+  delete quote.children[0].items[0].checked;
+  assert.throws(
+    () => mergeVersionedDocContent(base, checklist(true), removed),
+    DocContentMergeConflict,
+  );
+  const reordered = checklist();
+  const owner = reordered.nodes[0];
+  if (owner.kind !== "quote" || owner.children[0].kind !== "list")
+    throw new Error("Missing fixture list");
+  owner.children[0].items.reverse();
+  assert.throws(
+    () => mergeVersionedDocContent(base, checklist(true), reordered),
+    DocContentMergeConflict,
+  );
+});
+
+test("concurrent ticks on empty items without a stable leaf remain conflicts", () => {
+  const base = checklist();
+  const quote = base.nodes[0];
+  if (quote.kind !== "quote" || quote.children[0].kind !== "list")
+    throw new Error("Missing fixture list");
+  quote.children[0].items[0].children = [];
+  const mine = structuredClone(base),
+    remote = structuredClone(base);
+  const localQuote = mine.nodes[0],
+    remoteQuote = remote.nodes[0];
+  if (
+    localQuote.kind !== "quote" ||
+    localQuote.children[0].kind !== "list" ||
+    remoteQuote.kind !== "quote" ||
+    remoteQuote.children[0].kind !== "list"
+  )
+    throw new Error("Missing fixture list");
+  localQuote.children[0].items[0].checked = true;
+  const block = remoteQuote.children[0].items[1].children[0];
+  if (block.kind !== "block" || !("text" in block.block))
+    throw new Error("Missing text");
+  block.block.text = "Remote";
+  assert.throws(
+    () => mergeVersionedDocContent(base, mine, remote),
+    DocContentMergeConflict,
+  );
+});

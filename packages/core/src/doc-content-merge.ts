@@ -26,8 +26,8 @@ const blockKey = (block: DocBlock) => key({ format: 1, blocks: [block] });
 
 /**
  * Merge complete ownership, not a flattened projection. Disjoint named leaf edits
- * merge under unchanged containers. Overlapping or concurrent ownership changes
- * refuse, retaining both revisions instead of inventing a parent for copied text.
+ * and checklist ticks merge under unchanged containers. Overlapping or concurrent
+ * ownership changes refuse, retaining both revisions instead of inventing parents.
  */
 export function mergeVersionedDocContent(
   baseValue: unknown,
@@ -64,7 +64,15 @@ export function mergeVersionedDocContent(
       return {
         ...node,
         items: node.items.map((item) => ({
-          ...item,
+          // A checkbox value is editable state; adding/removing the checkbox
+          // changes the item's kind and still requires conflict review.
+          task: item.checked !== undefined,
+          // Empty items have no stable leaf identity to distinguish a reorder.
+          // Keep their tick in the shape rather than guess which item moved.
+          ...(docContainerBlocks(item.children, { projected: true }).length ===
+          0
+            ? { emptyChecked: item.checked }
+            : {}),
           children: shape(item.children),
         })),
       };
@@ -85,18 +93,53 @@ export function mergeVersionedDocContent(
   const before = blocks(base),
     own = blocks(mine),
     theirs = blocks(remote);
-  const walk = (nodes: readonly DocContainerNode[]): DocContainerNode[] =>
-    nodes.map((node) => {
-      if (node.kind === "quote")
-        return { ...node, children: walk(node.children) };
-      if (node.kind === "list")
+  const walk = (
+    nodes: readonly DocContainerNode[],
+    localNodes: readonly DocContainerNode[],
+    remoteNodes: readonly DocContainerNode[],
+  ): DocContainerNode[] =>
+    nodes.map((node, index) => {
+      const localNode = localNodes[index],
+        remoteNode = remoteNodes[index];
+      if (node.kind === "quote") {
+        if (localNode.kind !== "quote" || remoteNode.kind !== "quote")
+          return conflict();
         return {
           ...node,
-          items: node.items.map((item) => ({
-            ...item,
-            children: walk(item.children),
-          })),
+          children: walk(
+            node.children,
+            localNode.children,
+            remoteNode.children,
+          ),
         };
+      }
+      if (node.kind === "list") {
+        if (localNode.kind !== "list" || remoteNode.kind !== "list")
+          return conflict();
+        return {
+          ...node,
+          items: node.items.map((item, itemIndex) => {
+            const ownItem = localNode.items[itemIndex],
+              remoteItem = remoteNode.items[itemIndex];
+            return {
+              ...item,
+              ...(item.checked === undefined
+                ? {}
+                : {
+                    checked:
+                      ownItem.checked === item.checked
+                        ? remoteItem.checked
+                        : ownItem.checked,
+                  }),
+              children: walk(
+                item.children,
+                ownItem.children,
+                remoteItem.children,
+              ),
+            };
+          }),
+        };
+      }
       const id = node.block.id!,
         first = before.get(id)!,
         left = own.get(id)!,
@@ -108,7 +151,7 @@ export function mergeVersionedDocContent(
       return { kind: "block", block: a === initial ? right : left };
     });
   return parseVersionedDocContent(
-    { format: 2, nodes: walk(base.nodes) },
+    { format: 2, nodes: walk(base.nodes, mine.nodes, remote.nodes) },
     { projected: true },
   );
 }
