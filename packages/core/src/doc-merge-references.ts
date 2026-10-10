@@ -12,14 +12,32 @@ const normalized = (label: string) =>
 export function mergeDocReferences(
   target: readonly DocBlock[],
   source: readonly DocBlock[],
-): DocBlock[] {
+): { target: DocBlock[]; source: DocBlock[] } {
   const destination = docReferenceLinks([...target]);
   const references = docReferenceLinks([...source]);
+  // An unsafe definition still occupies its label in Markdown's first-definition
+  // rule. Do not let it suppress a valid moved source definition.
+  const destinationDefinitions = new Set(
+    target.flatMap((block) => {
+      const definition =
+        block.type === "paragraph" ? docReferenceDefinition(block.text) : null;
+      return definition ? [normalized(definition.label)] : [];
+    }),
+  );
   const reserved = new Set([...destination.keys(), ...references.keys()]);
+  // Generated labels must not turn an existing unresolved shortcut into a link.
+  // Reserve literal examples too; over-reserving a name is harmless.
+  for (const block of [...target, ...source]) {
+    if (!("text" in block)) continue;
+    for (const match of block.text.matchAll(
+      /\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?/g,
+    ))
+      reserved.add(normalized(match[2] || match[1]));
+  }
   const renamed = new Map<string, string>();
   let nextReference = 0;
   for (const [label, href] of references) {
-    if (!destination.has(label)) continue;
+    if (!destinationDefinitions.has(label)) continue;
     if (
       destination.get(label) === href &&
       destination.titleFor?.(label, href) === references.titleFor?.(label, href)
@@ -60,7 +78,7 @@ export function mergeDocReferences(
     reservedNotes.add(next);
     renamedNotes.set(label, next);
   }
-  return source.map((block) => {
+  const boundSource = source.map((block) => {
     if (
       !("text" in block) ||
       ["code", "math", "image", "file"].includes(block.type)
@@ -107,4 +125,31 @@ export function mergeDocReferences(
         : {}),
     };
   });
+  const combined = docReferenceLinks([...target, ...boundSource]);
+  const preserveUnresolved = (blocks: readonly DocBlock[]): DocBlock[] => {
+    const before = docReferenceLinks([...blocks]);
+    return blocks.map((block) => {
+      if (
+        !("text" in block) ||
+        ["code", "math", "image", "file"].includes(block.type) ||
+        (block.type === "paragraph" && docReferenceDefinition(block.text))
+      )
+        return block;
+      const activated = docReferenceSpans(block.text, combined).filter(
+        (span) => !before.has(span.reference),
+      );
+      let text = block.text;
+      for (const span of activated.reverse()) {
+        const literal = text
+          .slice(span.start, span.end)
+          .replace(/[\[\]]/g, "\\$&");
+        text = text.slice(0, span.start) + literal + text.slice(span.end);
+      }
+      return text === block.text ? block : { ...block, text };
+    });
+  };
+  return {
+    target: preserveUnresolved(target),
+    source: preserveUnresolved(boundSource),
+  };
 }

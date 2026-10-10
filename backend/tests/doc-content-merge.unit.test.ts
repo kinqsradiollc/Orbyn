@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   mergeDocContents,
+  docReferenceLinks,
+  parseDocInline,
   parseDocContainers,
   docContainerBlocks,
   serializeDocContainers,
@@ -277,4 +279,110 @@ test("identical reference definitions can share a label; generated labels avoid 
     (renamed.document.blocks.at(-1) as any).text,
     "[same][merged-reference-2]",
   );
+});
+
+test("merging preserves unresolved reference text on both pages instead of activating links", () => {
+  const target: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      {
+        type: "paragraph",
+        id: "target-text",
+        text: "[**Source**][source-ref] and [source-ref]",
+      },
+      { type: "paragraph", text: "[target-ref]: https://target.test" },
+    ],
+  };
+  const source: VersionedDocContent = {
+    format: 2,
+    nodes: parseDocContainers(
+      "> [**Target**][target-ref] and [target-ref] and `[target-ref]` ^source-text\n>\n> [source-ref]: https://source.test",
+      { anchors: true },
+    ),
+  };
+  const originals = [target.blocks[0], docContainerBlocks(source.nodes)[0]];
+  const before = structuredClone({ target, source });
+  const result = mergeDocContents(target, source, "", ids());
+  if (result.document.format !== 2) throw new Error("Missing nested result");
+  const blocks = docContainerBlocks(result.document.nodes),
+    references = docReferenceLinks(blocks);
+  for (const original of originals) {
+    const moved = blocks.find((b) => b.id === original.id)!;
+    if (!("text" in original) || !("text" in moved))
+      throw new Error("Missing text");
+    const beforeRuns = parseDocInline(original.text),
+      afterRuns = parseDocInline(moved.text, references);
+    assert.equal(
+      afterRuns.map((run) => run.text).join(""),
+      beforeRuns.map((run) => run.text).join(""),
+    );
+    assert.equal(afterRuns.filter((run) => run.link).length, 0);
+    assert.match(moved.text, /\\\[/);
+  }
+  assert.deepEqual({ target, source }, before);
+});
+
+test("generated reference labels avoid unresolved shortcuts and dangling footnotes stay unbound", () => {
+  const target: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", text: "[same]: https://target.test" },
+      { type: "paragraph", text: "Unbound note[^n]" },
+    ],
+  };
+  const source: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", text: "[same]: https://source.test" },
+      {
+        type: "paragraph",
+        text: "[same] and [merged-reference-1] and note[^n]",
+      },
+      { type: "footnote", label: "n", text: "Source note" },
+    ],
+  };
+  const result = mergeDocContents(target, source, "", ids());
+  if (result.document.format !== 1) throw new Error("Wrong format");
+  const blocks = result.document.blocks;
+  assert.equal((blocks[1] as any).text, "Unbound note[^n]");
+  assert.ok(
+    blocks.some(
+      (b) =>
+        "text" in b &&
+        b.text ===
+          "[same][merged-reference-2] and [merged-reference-1] and note[^merged-note-1]",
+    ),
+  );
+  assert.ok(
+    blocks.some((b) => b.type === "footnote" && b.label === "merged-note-1"),
+  );
+  assert.equal(
+    blocks.some((b) => b.type === "footnote" && b.label === "n"),
+    false,
+  );
+});
+
+test("unsafe destination definitions cannot suppress valid moved source references", () => {
+  const target: VersionedDocContent = {
+    format: 1,
+    blocks: [{ type: "paragraph", text: "[same]: javascript:alert(1)" }],
+  };
+  const source: VersionedDocContent = {
+    format: 1,
+    blocks: [
+      { type: "paragraph", text: "[same]: https://source.test" },
+      { type: "paragraph", text: "[same]" },
+    ],
+  };
+  const result = mergeDocContents(target, source, "", ids());
+  if (result.document.format !== 1) throw new Error("Wrong format");
+  const blocks = result.document.blocks,
+    refs = docReferenceLinks(blocks);
+  const text = (blocks.at(-1) as any).text;
+  assert.equal(text, "[same][merged-reference-1]");
+  assert.equal(
+    parseDocInline(text, refs).find((run) => run.link)?.link,
+    "https://source.test",
+  );
+  assert.equal(refs.has("same"), false);
 });

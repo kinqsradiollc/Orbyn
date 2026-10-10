@@ -102,7 +102,11 @@ export function mergeDocContents(
   const bound = mergeDocReferences(docContainerBlocks(destination), leaves);
   let leafIndex = 0;
   visitDocContainers(incoming, (node) => {
-    if (node.kind === "block") node.block = bound[leafIndex++];
+    if (node.kind === "block") node.block = bound.source[leafIndex++];
+  });
+  leafIndex = 0;
+  visitDocContainers(destination, (node) => {
+    if (node.kind === "block") node.block = bound.target[leafIndex++];
   });
   const heading: DocBlock | null =
     title.trim() && leaves[0]?.type !== "heading"
