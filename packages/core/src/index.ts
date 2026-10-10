@@ -139,7 +139,6 @@ export * from "./agenda-permission.js";
 
 export * from "./doc-versioned-source.js";
 export * from "./doc-content-operations.js";
-
 export * from "./doc-container-tasks.js";
 
 export * from "./managed-ai-authority.js";
@@ -149,3 +148,4 @@ export * from "./ai-model-controls.js";
 export * from "./choice-search.js";
 
 export * from "./chatgpt-local-oauth.js";
+export * from "./doc-content-merge.js";

@@ -1,4 +1,40 @@
 import { mergeDocs, type Doc, type DocBlock } from "./docs.js";
+import { docContainerBlocks } from "./doc-containers.js";
+import {
+  parseVersionedDocContent,
+  versionedDocContentKey,
+  type VersionedDocContent,
+} from "./doc-content-format.js";
+import {
+  mergeVersionedDocContent,
+  DocContentMergeConflict,
+} from "./doc-content-merge.js";
+
+/** Validate a complete cached owner and its authorized flat projection together. */
+function ownedDocument(value: {
+  content: DocBlock[];
+  document?: VersionedDocContent;
+}): VersionedDocContent {
+  const options = { projected: true };
+  const document = parseVersionedDocContent(
+    value.document === undefined
+      ? { format: 1, blocks: value.content }
+      : value.document,
+    options,
+  );
+  const blocks =
+    document.format === 1
+      ? document.blocks
+      : docContainerBlocks(document.nodes, options);
+  if (
+    versionedDocContentKey({ format: 1, blocks }, options) !==
+    versionedDocContentKey({ format: 1, blocks: value.content }, options)
+  )
+    throw new Error(
+      "The offline page projection does not match its complete content.",
+    );
+  return document;
+}
 
 /**
  * Pages on a phone with no signal (SHR-03).
@@ -58,6 +94,15 @@ export function decodePageCache(
           now - p.opened_at <= PAGE_CACHE_MAX_AGE_MS &&
           looksLikeDoc(p.doc),
       )
+      .filter((p) => {
+        if (p.doc.document === undefined) return true;
+        try {
+          ownedDocument(p.doc);
+          return true;
+        } catch {
+          return false;
+        }
+      })
       .slice(0, PAGE_CACHE_SIZE);
   } catch {
     return [];
@@ -105,8 +150,14 @@ export type PageSave = {
   id: string;
   title: string;
   content: DocBlock[];
+  document?: VersionedDocContent;
   /** The page as it was when the edit began: what "changed" is measured from. */
-  base: { version: number; title: string; content: DocBlock[] };
+  base: {
+    version: number;
+    title: string;
+    content: DocBlock[];
+    document?: VersionedDocContent;
+  };
 };
 
 /**
@@ -115,6 +166,10 @@ export type PageSave = {
  * really began.
  */
 export function combinePageSaves(earlier: PageSave, later: PageSave): PageSave {
+  if (earlier.id !== later.id)
+    throw new Error("Cannot combine edits from different pages.");
+  if (!!earlier.document !== !!later.document)
+    throw new Error("Cannot combine different offline editor protocols.");
   return { ...later, base: earlier.base };
 }
 
@@ -127,8 +182,57 @@ export function combinePageSaves(earlier: PageSave, later: PageSave): PageSave {
  */
 export function resolvePageSave(
   save: PageSave,
-  server: Pick<Doc, "version" | "title" | "content">,
-): { title: string; content: DocBlock[]; version: number; conflicts: number } {
+  server: Pick<Doc, "version" | "title" | "content" | "document"> & {
+    id?: string;
+  },
+): {
+  title: string;
+  content: DocBlock[];
+  version: number;
+  conflicts: number;
+  document?: VersionedDocContent;
+} {
+  if (server.id !== undefined && server.id !== save.id)
+    throw new DocContentMergeConflict(
+      "The offline edit belongs to another page.",
+    );
+  if (save.document || save.base.document || server.document?.format === 2) {
+    if (!save.document || !save.base.document || !server.document)
+      throw new DocContentMergeConflict(
+        "The offline edit does not contain complete document ownership.",
+      );
+    const base = ownedDocument(save.base),
+      mine = ownedDocument(save),
+      remote = ownedDocument(server);
+    if (
+      server.version < save.base.version ||
+      (server.version === save.base.version &&
+        versionedDocContentKey(remote, { projected: true }) !==
+          versionedDocContentKey(base, { projected: true }))
+    )
+      throw new DocContentMergeConflict(
+        "The saved page revision does not match the offline edit.",
+      );
+    if (
+      save.title !== save.base.title &&
+      server.title !== save.base.title &&
+      save.title !== server.title
+    )
+      throw new DocContentMergeConflict(
+        "The page title changed in both copies. Your edit is kept for review.",
+      );
+    const document = mergeVersionedDocContent(base, mine, remote);
+    return {
+      title: save.title !== save.base.title ? save.title : server.title,
+      content:
+        document.format === 1
+          ? document.blocks
+          : docContainerBlocks(document.nodes, { projected: true }),
+      version: server.version,
+      conflicts: 0,
+      document,
+    };
+  }
   const title =
     save.title !== save.base.title ? save.title : server.title || save.title;
   if (server.version === save.base.version)
@@ -150,5 +254,20 @@ export function resolvePageSave(
 /** The page as the phone should show it: kept, with its waiting edit laid on. */
 export function withPendingSave(doc: Doc, save: PageSave | null): Doc {
   if (!save || save.id !== doc.id) return doc;
-  return { ...doc, title: save.title, content: save.content };
+  if (save.document) {
+    const document = ownedDocument(save);
+    return { ...doc, title: save.title, content: save.content, document };
+  }
+  if (doc.document?.format === 2)
+    throw new DocContentMergeConflict(
+      "A flat offline edit cannot replace nested ownership.",
+    );
+  return {
+    ...doc,
+    title: save.title,
+    content: save.content,
+    ...(doc.document
+      ? { document: { format: 1 as const, blocks: save.content } }
+      : {}),
+  };
 }

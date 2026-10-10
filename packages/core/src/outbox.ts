@@ -189,7 +189,8 @@ export function queueChange(
       (e) =>
         e.state === "pending" &&
         e.op.type === "doc.save" &&
-        e.op.save.id === op.save.id,
+        e.op.save.id === op.save.id &&
+        !!e.op.save.document === !!op.save.document,
     );
     if (at >= 0) {
       const waiting = entries[at].op as { type: "doc.save"; save: PageSave };
