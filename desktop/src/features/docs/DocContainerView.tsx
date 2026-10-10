@@ -8,6 +8,7 @@ import {
   footnoteTexts,
   type DocContainerNode,
   type DocBlock,
+  type DocContentOperation,
 } from "@orbyn/core";
 import { BlockView } from "./DocBlocks";
 import { FootnoteContext } from "./RichBlocks";
@@ -17,10 +18,20 @@ import "./doc-containers.css";
 export function DocContainerView({
   nodes,
   renderLeaf,
+  onOperation,
 }: {
   nodes: readonly DocContainerNode[];
   /** Existing editor widgets receive their complete-page leaf position. */
-  renderLeaf?: (block: DocBlock, index: number) => React.ReactNode;
+  renderLeaf?: (
+    block: DocBlock,
+    index: number,
+    path: number[],
+  ) => React.ReactNode;
+  /** The owner applies this operation against these exact rendered nodes. */
+  onOperation?: (
+    operation: DocContentOperation,
+    expectedNodes: readonly DocContainerNode[],
+  ) => void;
 }) {
   const blocks = useMemo(
     () => docContainerBlocks(nodes, { projected: true }),
@@ -50,7 +61,9 @@ export function DocContainerView({
         const position = leafIndex++;
         if (renderLeaf)
           return (
-            <Fragment key={key}>{renderLeaf(node.block, position)}</Fragment>
+            <Fragment key={key}>
+              {renderLeaf(node.block, position, here)}
+            </Fragment>
           );
         return (
           <div
@@ -97,7 +110,21 @@ export function DocContainerView({
                 <input
                   type="checkbox"
                   checked={item.checked}
-                  disabled
+                  disabled={!onOperation}
+                  onChange={
+                    onOperation
+                      ? (event) =>
+                          onOperation(
+                            {
+                              kind: "check-item",
+                              list: here,
+                              item: itemIndex,
+                              checked: event.currentTarget.checked,
+                            },
+                            nodes,
+                          )
+                      : undefined
+                  }
                   aria-label="Checklist item"
                 />
               )}
