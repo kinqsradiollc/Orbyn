@@ -151,3 +151,5 @@ export * from "./chatgpt-local-oauth.js";
 export * from "./doc-content-merge.js";
 
 export * from "./doc-content-extract.js";
+
+export * from "./doc-container-append.js";

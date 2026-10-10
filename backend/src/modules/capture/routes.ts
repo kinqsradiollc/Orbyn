@@ -2,6 +2,9 @@ import type { FastifyInstance } from "fastify";
 import type { z } from "zod";
 import {
   addToAgendaNotes,
+  appendDocContainerBlocks,
+  appendDocContainerSection,
+  AGENDA_NOTES_ID,
   captureBlocks,
   captureInput,
   capturePageTitle,
@@ -181,8 +184,20 @@ async function capture(
   if (to.kind === "agenda") {
     if (body.timezone) await adoptDeviceZone(u.id, body.timezone);
     const agenda = await todaysAgenda(u.id);
-    const saved = await addToPage(u, agenda.id, (content) =>
-      addToAgendaNotes(content, captureBlocks(c, true)),
+    const added = captureBlocks(c, true);
+    const saved = await addToPage(
+      u,
+      agenda.id,
+      (content) => addToAgendaNotes(content, added),
+      (document) => ({
+        format: 2,
+        nodes: appendDocContainerSection(
+          document.nodes,
+          { type: "heading", level: 2, text: "Notes", id: AGENDA_NOTES_ID },
+          added,
+          { last: true, stopAtAnyHeading: true },
+        ),
+      }),
     );
     return {
       to: "agenda",
@@ -192,14 +207,22 @@ async function capture(
   }
 
   if (to.kind === "page") {
-    const saved = await addToPage(u, to.doc_id, (content) => {
-      // A page that is one empty line takes the share in its place.
-      const blank =
-        content.length === 1 &&
-        content[0].type === "paragraph" &&
-        !content[0].text.trim();
-      return [...(blank ? [] : content), ...captureBlocks(c)];
-    });
+    const saved = await addToPage(
+      u,
+      to.doc_id,
+      (content) => {
+        // A page that is one empty line takes the share in its place.
+        const blank =
+          content.length === 1 &&
+          content[0].type === "paragraph" &&
+          !content[0].text.trim();
+        return [...(blank ? [] : content), ...captureBlocks(c)];
+      },
+      (document) => ({
+        format: 2,
+        nodes: appendDocContainerBlocks(document.nodes, captureBlocks(c)),
+      }),
+    );
     return {
       to: "page",
       doc: { id: saved.id, title: saved.title },

@@ -8,6 +8,7 @@ import {
   mapDocContainerBlocks,
   replaceVersionedDocLeaf,
   HttpError,
+  appendDocContainerBlocks,
 } from "@orbyn/core";
 import type { UserRow } from "../src/lib/auth.js";
 const { migrate } = await import("../src/db/migrate.js");
@@ -15,6 +16,7 @@ const { pool, transaction } = await import("../src/db/pool.js");
 const { buildApp } = await import("../src/app.js");
 const { readVersionedDoc, saveVersionedDoc } =
   await import("../src/modules/docs/content-format.js");
+const { addToPage } = await import("../src/modules/docs/service.js");
 const { closeLive } = await import("../src/modules/docs/live.js");
 
 const app = await buildApp();
@@ -1502,4 +1504,70 @@ test("extract keeps nested task ownership and complete source history", async ()
   ).rows[0];
   assert.deepEqual(history.content_nodes, nodes);
   assert.equal(remaining.version, 3);
+});
+
+test("capture-style append uses structured writer, retains containers and snapshots full history", async () => {
+  const id = await page();
+  const nodes = parseDocContainers(
+    "> Existing **quote** ^words\n>\n> - Nested list\n^outer",
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const saved = await addToPage(
+    owner,
+    id,
+    () => {
+      throw new Error("Nested page must not enter the flat writer");
+    },
+    (document) => ({
+      format: 2,
+      nodes: appendDocContainerBlocks(document.nodes, [
+        { type: "paragraph", id: "capture", text: "Captured words" },
+      ]),
+    }),
+  );
+  assert.equal(saved.version, 3);
+  const current = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(current.document.format, 2);
+  if (current.document.format !== 2) throw new Error("Lost structured format");
+  assert.deepEqual(current.document.nodes.slice(0, -1), nodes);
+  assert.equal((current.document.nodes.at(-1) as any).block.id, "capture");
+  const history = (
+    await pool.query(
+      "SELECT content_format,content_nodes FROM doc_versions WHERE doc_id=$1 AND version=2",
+      [id],
+    )
+  ).rows[0];
+  assert.equal(history.content_format, 2);
+  assert.deepEqual(history.content_nodes, nodes);
+});
+
+test("unsupported or unauthorized append cannot mutate a structured page", async () => {
+  const id = await page();
+  const nodes = parseDocContainers("> Preserved ^words\n^outer", {
+    anchors: true,
+  });
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  await assert.rejects(
+    addToPage(owner, id, () => []),
+    refuses(409),
+  );
+  await assert.rejects(
+    addToPage(
+      stranger,
+      id,
+      () => [],
+      () => {
+        throw new Error("Unauthorized callback");
+      },
+    ),
+    refuses(404),
+  );
+  const current = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(current.version, 2);
+  assert.deepEqual(current.document, { format: 2, nodes });
 });

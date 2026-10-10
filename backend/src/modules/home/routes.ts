@@ -4,6 +4,9 @@ import {
   appendReflection,
   docContainerTaskBlocks,
   parseVersionedDocContent,
+  appendDocContainerSection,
+  docContainerSectionBlocks,
+  REFLECTION_HEADING,
   localDateKey,
   reflectionInput,
   reflectionLines,
@@ -12,6 +15,7 @@ import {
   type HomeGoal,
   type HomeRoutine,
   type HomeSummary,
+  type VersionedDocContent,
 } from "@orbyn/core";
 import { pool, reader, type Queryable } from "../../db/pool.js";
 import { authenticate } from "../../lib/auth.js";
@@ -22,6 +26,7 @@ import { listAgentRoutines } from "../assistant-workspace/routines.js";
 import { dayZoneFor } from "../planner/timezone.js";
 import { todaysAgendaIfWritten, writeTodaysAgenda } from "../docs/agenda.js";
 import { addToPage } from "../docs/service.js";
+import { readVersionedDoc } from "../docs/content-format.js";
 
 /**
  * Home (W1): the panels under the hubs in one read — the person's active
@@ -34,6 +39,16 @@ import { addToPage } from "../docs/service.js";
  * out of AI (or whose plan note is in one) is left out, since check-ins
  * and the brief come from the assistant.
  */
+
+/** Read only the page-owned Reflection section of already privacy-projected content. */
+function reflectionFor(document: VersionedDocContent | null): string[] {
+  return document?.format === 2
+    ? docContainerSectionBlocks(document.nodes, REFLECTION_HEADING).flatMap(
+        (block) =>
+          "text" in block && block.text.trim() ? [block.text.trim()] : [],
+      )
+    : reflectionLines(document?.blocks ?? []);
+}
 
 const ROUTINES_SHOWN = 5;
 
@@ -196,6 +211,10 @@ export async function homeRoutes(app: FastifyInstance) {
       ),
       todaysAgendaIfWritten(u.id, now),
     ]);
+    const agendaContent = agenda
+      ? (await readVersionedDoc(db, u, agenda.id, [1, 2])).document
+      : null;
+    const reflection = reflectionFor(agendaContent);
     return {
       today,
       timezone,
@@ -214,7 +233,7 @@ export async function homeRoutes(app: FastifyInstance) {
           }
         : null,
       agenda_doc_id: agenda?.id ?? null,
-      reflection: agenda ? reflectionLines(agenda.content ?? []) : [],
+      reflection,
     };
   });
 
@@ -227,13 +246,21 @@ export async function homeRoutes(app: FastifyInstance) {
     const u = await authenticate(r);
     const { text } = reflectionInput.parse(r.body ?? {});
     const { doc } = await writeTodaysAgenda(u.id);
-    let lines: string[] = [];
-    await addToPage(u, doc.id, (content) => {
-      const next = appendReflection(content, text);
-      lines = reflectionLines(next);
-      return next;
-    });
+    await addToPage(
+      u,
+      doc.id,
+      (content) => appendReflection(content, text),
+      (document) => {
+        const nodes = appendDocContainerSection(
+          document.nodes,
+          { type: "heading", level: 2, text: REFLECTION_HEADING },
+          [{ type: "bullet", text: text.trim().replace(/\s+/g, " ") }],
+        );
+        return { format: 2, nodes };
+      },
+    );
     reply.code(201);
-    return { doc_id: doc.id, reflection: lines };
+    const saved = await readVersionedDoc(pool, u, doc.id, [1, 2]);
+    return { doc_id: doc.id, reflection: reflectionFor(saved.document) };
   });
 }
