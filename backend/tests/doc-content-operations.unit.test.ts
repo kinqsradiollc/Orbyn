@@ -2,12 +2,62 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   applyDocContentOperation,
+  DOC_CONTAINER_LIMITS,
   parseVersionedDocContent,
   type DocContainerNode,
 } from "@orbyn/core";
 const leaf = (id: string): DocContainerNode => ({
   kind: "block",
   block: { type: "paragraph", id, text: id },
+});
+
+test("leaf replacement validates the complete tree and does not retain mutable input aliases", () => {
+  const before = fixture();
+  const snapshot = JSON.stringify(before);
+  const fragment = [leaf("first"), leaf("new")];
+  const next = applyDocContentOperation(before, before, {
+    kind: "splice-leaf",
+    path: [0, 0, 0, 0],
+    nodes: fragment,
+  });
+  if (fragment[0].kind !== "block") throw new Error("Expected leaf");
+  fragment[0].block = {
+    type: "paragraph",
+    id: "first",
+    text: "Later mutation",
+  };
+  assert.equal(JSON.stringify(next).includes("Later mutation"), false);
+  assert.equal(JSON.stringify(before), snapshot);
+
+  const malformed: DocContainerNode[] = [
+    {
+      kind: "block",
+      block: {
+        type: "paragraph",
+        id: "first",
+        text: "x",
+        unexpected: true,
+      } as never,
+    },
+  ];
+  const cyclic: DocContainerNode = { kind: "quote", children: [leaf("first")] };
+  cyclic.children.push(cyclic);
+  let deep: DocContainerNode = leaf("first");
+  for (let i = 0; i < DOC_CONTAINER_LIMITS.depth; i++)
+    deep = { kind: "quote", children: [deep] };
+  const oversized = Array.from({ length: DOC_CONTAINER_LIMITS.nodes }, (_, i) =>
+    leaf(i ? `added_${i}` : "first"),
+  );
+  for (const nodes of [malformed, [cyclic], [deep], oversized]) {
+    assert.throws(() =>
+      applyDocContentOperation(before, before, {
+        kind: "splice-leaf",
+        path: [0, 0, 0, 0],
+        nodes,
+      }),
+    );
+    assert.equal(JSON.stringify(before), snapshot);
+  }
 });
 const fixture = () =>
   parseVersionedDocContent({
@@ -291,5 +341,175 @@ test("structural edits retain stored text, depth and ordered marker bounds", () 
         at: 1,
       }),
     /list marker/,
+  );
+});
+
+test("typing into a named nested leaf preserves its exact owner and checklist state", () => {
+  const replacement = {
+    type: "table" as const,
+    id: "first",
+    text: "| A |\n| --- |\n| B |",
+  };
+  const next = edit({
+    kind: "replace-leaf",
+    path: [0, 0, 0, 0],
+    block: replacement,
+  });
+  const before = fixture();
+  if (before.format !== 2) throw new Error("Expected tree");
+  const expected = before.nodes[0];
+  if (expected.kind !== "quote" || expected.children[0].kind !== "list")
+    throw new Error("Missing list");
+  expected.children[0].items[0].children[0] = {
+    kind: "block",
+    block: replacement,
+  };
+  assert.deepEqual(next.nodes, before.nodes);
+});
+
+test("multiline editing replaces one leaf inside its owner without flattening either tree", () => {
+  const fragment: DocContainerNode[] = [
+    { kind: "quote", children: [leaf("first"), leaf("added")] },
+    {
+      kind: "block",
+      block: {
+        type: "code",
+        id: "diagram",
+        lang: "mermaid",
+        text: "flowchart LR\n A-->B",
+      },
+    },
+  ];
+  const snapshot = JSON.stringify(fragment);
+  const next = edit({
+    kind: "splice-leaf",
+    path: [0, 0, 0, 0],
+    nodes: fragment,
+  });
+  const owner = next.nodes[0];
+  if (owner.kind !== "quote" || owner.children[0].kind !== "list")
+    throw new Error("Missing owner");
+  const list = owner.children[0];
+  assert.equal(list.items[0].checked, true);
+  assert.deepEqual(list.items[0].children, [...fragment, leaf("continuation")]);
+  assert.deepEqual(list.items[1], {
+    checked: false,
+    children: [leaf("second")],
+  });
+  assert.equal(list.start, 7);
+  assert.equal(list.delimiter, ")");
+  assert.equal(list.loose, true);
+  assert.equal(JSON.stringify(fragment), snapshot);
+});
+
+test("an anonymous leaf can acquire its first identity while empty owners remain intact", () => {
+  const before = parseVersionedDocContent({
+    format: 2,
+    nodes: [
+      {
+        kind: "quote",
+        children: [{ kind: "block", block: { type: "paragraph", text: "" } }],
+      },
+      { kind: "quote", id: "empty", children: [] },
+    ],
+  });
+  const next = applyDocContentOperation(before, before, {
+    kind: "replace-leaf",
+    path: [0, 0],
+    block: { type: "paragraph", text: "Typed", id: "typed" },
+  });
+  assert.deepEqual(next, {
+    format: 2,
+    nodes: [
+      {
+        kind: "quote",
+        children: [
+          {
+            kind: "block",
+            block: { type: "paragraph", text: "Typed", id: "typed" },
+          },
+        ],
+      },
+      { kind: "quote", id: "empty", children: [] },
+    ],
+  });
+});
+
+test("leaf edits refuse stale owners, identity loss, implicit deletion and duplicate anchors", () => {
+  const before = fixture();
+  const snapshot = JSON.stringify(before);
+  const invalid: Parameters<typeof applyDocContentOperation>[2][] = [
+    {
+      kind: "replace-leaf",
+      path: [0],
+      block: { type: "paragraph", text: "Flattened" },
+    },
+    {
+      kind: "replace-leaf",
+      path: [0, 0],
+      block: { type: "paragraph", text: "Flattened list" },
+    },
+    {
+      kind: "replace-leaf",
+      path: [0, 0, 0, 0],
+      block: { type: "paragraph", text: "Lost identity" },
+    },
+    { kind: "splice-leaf", path: [0, 0, 0, 0], nodes: [] },
+    {
+      kind: "splice-leaf",
+      path: [0, 0, 0, 0],
+      nodes: [leaf("first"), leaf("outside")],
+    },
+  ];
+  for (const operation of invalid) {
+    assert.throws(() => applyDocContentOperation(before, before, operation));
+    assert.equal(JSON.stringify(before), snapshot);
+  }
+  const current = applyDocContentOperation(before, before, {
+    kind: "check-item",
+    list: [0, 0],
+    item: 0,
+    checked: false,
+  });
+  assert.throws(
+    () =>
+      applyDocContentOperation(current, before, {
+        kind: "replace-leaf",
+        path: [0, 0, 0, 0],
+        block: { type: "paragraph", id: "first", text: "Stale draft" },
+      }),
+    /document changed/,
+  );
+});
+
+test("legacy leaf edits stay flat and nested fragments require an explicit format upgrade", () => {
+  const before = parseVersionedDocContent({
+    format: 1,
+    blocks: [
+      { type: "paragraph", id: "first", text: "First" },
+      { type: "paragraph", id: "other", text: "Other" },
+    ],
+  });
+  const next = applyDocContentOperation(before, before, {
+    kind: "splice-leaf",
+    path: [0],
+    nodes: [leaf("first"), leaf("added")],
+  });
+  assert.deepEqual(next, {
+    format: 1,
+    blocks: [
+      (leaf("first") as { kind: "block"; block: unknown }).block,
+      (leaf("added") as { kind: "block"; block: unknown }).block,
+      { type: "paragraph", id: "other", text: "Other" },
+    ],
+  });
+  assert.throws(
+    () =>
+      applyDocContentOperation(before, before, {
+        kind: "splice-leaf",
+        path: [0],
+        nodes: [{ kind: "quote", children: [leaf("first")] }],
+      }),
+    /explicit format upgrade/,
   );
 });
