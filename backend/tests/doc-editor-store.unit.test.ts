@@ -167,3 +167,31 @@ test("an offline failure cannot replace newer invalid source with an acknowledge
   assert.equal(store.state.session?.saved.version, 1);
   assert.equal(canLeaveStructuredDocDraft(store.state, true), false);
 });
+
+test("a failed conflict refresh keeps the newer invalid source error", async () => {
+  let reads = 0;
+  let rejectSave!: (error: Error) => void;
+  const store = new DocEditorStore({
+    getDocForEditor: async () => {
+      if (reads++ === 0) return page();
+      throw Object.assign(new Error("Offline"), { offline: true });
+    },
+    updateDocForEditor: async () =>
+      new Promise<Doc>((_resolve, reject) => {
+        rejectSave = reject;
+      }),
+  } as ConstructorParameters<typeof DocEditorStore>[0]);
+  await store.open(id);
+  store.changeTitle("Page", "First edit");
+  const saving = store.save();
+  const owner = store.state.session!.document;
+  const invalid = "> - [ ] One ^first\n\nTail ^first";
+  store.changeSource(owner, invalid);
+  const validationError = store.state.error;
+  rejectSave(Object.assign(new Error("Conflict"), { statusCode: 409 }));
+  await saving;
+  assert.equal(store.state.source, invalid);
+  assert.equal(store.state.sourceInvalid, true);
+  assert.equal(store.state.error, validationError);
+  assert.equal(canLeaveStructuredDocDraft(store.state, true), false);
+});

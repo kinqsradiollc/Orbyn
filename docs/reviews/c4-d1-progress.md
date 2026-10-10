@@ -70,6 +70,7 @@ found two more cases before final browser qualification: an older offline save
 could acknowledge a newer invalid Source buffer, and an initial mobile fragment
 with no target was silent. Builder now retains the validation error through
 failed save receipts, refuses an offline acknowledgment or leave while Source is
-invalid, and reports a missing initial target in the editor. The focused store
-and caller guard regression passed 6/6; full workspace typecheck passed. These
+invalid, and reports a missing initial target in the editor. A failed conflict
+refresh also keeps that validation error. The focused store and caller guard
+regression passed 7/7; full workspace typecheck passed. These
 edits await exact-candidate Tester retest and Reviewer closure within round 1/3.

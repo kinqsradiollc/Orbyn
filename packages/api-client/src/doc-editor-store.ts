@@ -335,7 +335,7 @@ export class DocEditorStore {
       if (epoch === this.epoch)
         this.publish({
           busy: false,
-          error,
+          error: this.value.sourceInvalid ? this.value.error : error,
           conflict: !isOfflineError(error),
         });
     }
