@@ -15,8 +15,9 @@ const doc = {
 type Api = ConstructorParameters<typeof PageMaintenanceStore>[0];
 function api(overrides: Partial<Api> = {}): Api {
   return {
-    getDoc: async () => doc,
+    getDocForEditor: async () => doc,
     updateDoc: async () => doc,
+    updateDocForEditor: async () => doc,
     listPageMaintenance: async () => [],
     listPageMaintenanceRuns: async () => [],
     createPageMaintenance: async () => ({}) as MaintainedPageBinding,
@@ -35,8 +36,7 @@ test("prepare names missing blocks through a versioned save and reports the auth
   };
   const store = new PageMaintenanceStore(
     api({
-      getDoc: async (_id, opts) => {
-        assert.equal(opts?.fresh, true);
+      getDocForEditor: async (_id) => {
         return saved;
       },
       updateDoc: async (_id, input) => {
@@ -67,7 +67,7 @@ test("switching account during prepare stops its dependent save and hides the ol
   let changed = 0;
   const store = new PageMaintenanceStore(
     api({
-      getDoc: () =>
+      getDocForEditor: () =>
         new Promise((resolve) => {
           finish = resolve;
         }),
@@ -98,7 +98,7 @@ test("effect disposal and replay do not leave the store permanently busy or rest
   let finish!: (value: Doc) => void;
   const store = new PageMaintenanceStore(
     api({
-      getDoc: async () => {
+      getDocForEditor: async () => {
         if (count++ === 0)
           return new Promise((resolve) => {
             finish = resolve;

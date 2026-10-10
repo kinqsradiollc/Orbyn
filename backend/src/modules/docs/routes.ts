@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
+import { createPageCommentRequest } from "./comment-requests.js";
+import { mentionsOrbyn } from "./comment-request-context.js";
 import {
   docCommentInput,
   maintainedPageRunDecision,
@@ -1055,7 +1057,15 @@ export async function docRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const input = docCommentInput.parse(r.body);
     // Places and words come back as this reader is shown them (D3aF).
-    const comment = await transaction((db) => addComment(db, u, id, input));
+    const comment = await transaction(async (db) => {
+      // Acquire assistant authority before page locks, matching the worker's order.
+      const principal = mentionsOrbyn(input.body)
+        ? await assistantPrincipal(u, { db, lane: "background" })
+        : null;
+      const made = await addComment(db, u, id, input);
+      if (principal) await createPageCommentRequest(db, u, made, principal);
+      return made;
+    });
     reply.code(201);
     return comment;
   });

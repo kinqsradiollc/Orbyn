@@ -9,6 +9,23 @@ import { errorText } from "../../lib/errors";
 import { copyText } from "../../lib/share";
 import { shared } from "../../styles";
 import { colors, fonts, radii, themed } from "../../theme";
+import { PagePublicationSheet } from "./PagePublicationSheet";
+
+export function PublishSheet(props: {
+  visible: boolean;
+  kind: "doc" | "folder";
+  id: string;
+  name: string;
+  onClose: () => void;
+}) {
+  return props.kind === "doc" ? (
+    props.visible ? (
+      <PagePublicationSheet id={props.id} onClose={props.onClose} />
+    ) : null
+  ) : (
+    <LegacyPublishSheet {...props} />
+  );
+}
 
 /**
  * Publish to web (SHR-05, SHR-06) on a phone, for a page or a folder: off
@@ -16,7 +33,7 @@ import { colors, fonts, radii, themed } from "../../theme";
  * optional password and a description for the card a shared link shows.
  * Unpublish takes it off at once.
  */
-export function PublishSheet({
+function LegacyPublishSheet({
   visible,
   kind,
   id,

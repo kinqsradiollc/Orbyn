@@ -289,15 +289,19 @@ export function PageMaintenanceSheet({
                   {run.estimated_tokens} estimated tokens
                 </Text>
                 {!!run.error && <Text style={s.text}>{run.error}</Text>}
-                {run.can_review && run.replacements && (
+                {run.can_review && (run.replacements || run.reply) && (
                   <>
-                    <Text style={s.heading}>Proposed replacement blocks</Text>
+                    <Text style={s.heading}>
+                      {run.reply
+                        ? "Proposed reply"
+                        : "Proposed replacement blocks"}
+                    </Text>
                     <Text selectable style={s.source}>
-                      {serializeDoc(run.replacements)}
+                      {run.reply ?? serializeDoc(run.replacements ?? [])}
                     </Text>
                     <View style={s.actions}>
                       <Button
-                        title="Apply update"
+                        title={run.reply ? "Post reply" : "Apply update"}
                         disabled={state.busy}
                         onPress={() => void store.decide(run, true)}
                       />

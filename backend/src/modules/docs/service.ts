@@ -1260,7 +1260,7 @@ export async function saveDoc(
     ]);
   const current = await requireDoc(db, id, u, "items:write");
   const structured = options.structured;
-  if (structured && (body.content !== undefined || options.ownedBlockIds))
+  if (structured && body.content !== undefined)
     fail(400, "Structured and flat edit ownership cannot be combined.");
   if (
     structured &&
@@ -1329,7 +1329,7 @@ export async function saveDoc(
   let content =
     processed &&
     (owned
-      ? body.content!.map((block) =>
+      ? input!.map((block) =>
           block.id && owned.has(block.id)
             ? (changed.get(block.id) ?? block)
             : block,

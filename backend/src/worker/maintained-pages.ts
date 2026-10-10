@@ -11,10 +11,12 @@ import {
 } from "../modules/ai/providers/adapters.js";
 import {
   maintainedPagePatchInput,
+  pageCommentReplyInput,
   type MaintainedPageModelOrigin,
 } from "@orbyn/core";
 import {
   maintainedPageMessages,
+  pageCommentMessages,
   resolveMaintainedPageModel,
   PageModelUnavailable,
   type PageModel,
@@ -118,12 +120,18 @@ export async function processMaintainedPageRun(
       throw new Error("The model selection changed.");
     }
     if (!context.run.proposal) {
-      const messages = maintainedPageMessages(
-        context.binding.instruction,
-        context.blocks,
-        context.binding.revision,
-        { at: now().toISOString(), timezone: context.binding.timezone },
-      );
+      const messages = context.comment
+        ? pageCommentMessages(
+            context.comment.body,
+            context.blocks,
+            context.binding.revision,
+          )
+        : maintainedPageMessages(
+            context.binding.instruction,
+            context.blocks,
+            context.binding.revision,
+            { at: now().toISOString(), timezone: context.binding.timezone },
+          );
       refuseSecrets(JSON.stringify(messages), model.ai.model);
       const inputBudget = Buffer.byteLength(JSON.stringify(messages)) + 1024;
       const maxOutputTokens = Math.min(
@@ -182,7 +190,9 @@ export async function processMaintainedPageRun(
       });
       if (Buffer.byteLength(text) > 262144)
         throw new Error("The model response exceeds the supported size.");
-      const proposal = maintainedPagePatchInput.parse(JSON.parse(text));
+      const proposal = (
+        context.comment ? pageCommentReplyInput : maintainedPagePatchInput
+      ).parse(JSON.parse(text));
       failure = "authority_changed";
       if (
         (

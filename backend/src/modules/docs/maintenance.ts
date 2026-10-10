@@ -3,6 +3,7 @@ import {
   captureMaintainedPage,
   applyMaintainedPagePatch,
   maintainedPagePatchInput,
+  pageCommentReplyInput,
   checkMaintainedPage,
   maintainedPageBindingInput,
   maintainedPageBindingUpdate,
@@ -14,6 +15,10 @@ import {
   HttpError,
   type DocBlock,
   type MaintainedPageBinding,
+  parseVersionedDocContent,
+  docContainerTaskBlocks,
+  applyDocContainerTaskBlocks,
+  type VersionedDocContent,
 } from "@orbyn/core";
 import type { Db } from "../../db/pool.js";
 import type { UserRow } from "../../lib/auth.js";
@@ -28,18 +33,43 @@ import {
   type CapabilityContext,
 } from "../../capabilities/registry.js";
 import { destination, refuseSecrets } from "../../capabilities/write.js";
-import { readDoc, requireDoc, saveDoc, announceDocs } from "./service.js";
+import { requireDoc, saveDoc, announceDocs } from "./service.js";
 import { privacyFrom, readableLinks } from "../links/privacy.js";
 import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js";
+import { readVersionedDoc } from "./content-format.js";
+import {
+  pageCommentRequestContext,
+  type PageCommentSource,
+} from "./comment-request-context.js";
+import { actAs } from "../../lib/actor.js";
+
+type StoredPage = {
+  content: DocBlock[];
+  content_format: 1 | 2;
+  content_nodes: unknown;
+};
+function maintenanceContent(row: StoredPage): VersionedDocContent {
+  return parseVersionedDocContent(
+    row.content_format === 2
+      ? { format: 2, nodes: row.content_nodes }
+      : { format: 1, blocks: row.content ?? [] },
+  );
+}
+function maintenanceBlocks(document: VersionedDocContent): DocBlock[] {
+  return document.format === 2
+    ? docContainerTaskBlocks(document.nodes, { projected: true })
+    : document.blocks;
+}
 
 type BindingRow = Omit<
   MaintainedPageBinding,
   "created_at" | "updated_at" | "next_run_at"
-> & {
-  created_at: Date;
-  updated_at: Date;
-  next_run_at: Date;
-};
+> &
+  PageCommentSource & {
+    created_at: Date;
+    updated_at: Date;
+    next_run_at: Date;
+  };
 const publicBinding = (row: BindingRow): MaintainedPageBinding => ({
   ...row,
   snapshot: maintainedPageSnapshot.parse(row.snapshot),
@@ -97,8 +127,8 @@ async function maintenancePage(
   const params = new Params(docId);
   const scope = scopeFor(policy.spaces(current), params);
   const row = (
-    await db.query<{ content: DocBlock[] }>(
-      `SELECT d.content FROM docs d WHERE d.id=$1 AND ${visibleDocs("d", scope)} AND ${assistantMayRead("d")}`,
+    await db.query<StoredPage>(
+      `SELECT d.content,d.content_format,d.content_nodes FROM docs d WHERE d.id=$1 AND ${visibleDocs("d", scope)} AND ${assistantMayRead("d")}`,
       params.values,
     )
   ).rows[0];
@@ -106,7 +136,7 @@ async function maintenancePage(
   const decision = policy.can(current, "suggest", doc);
   if (!decision.ok)
     fail(decision.code === "NOT_FOUND" ? 404 : 403, decision.message);
-  return { current, doc, content: row.content ?? [] };
+  return { current, doc, content: maintenanceBlocks(maintenanceContent(row)) };
 }
 
 /** Internal storage only: no public route or scheduler consumes bindings before runtime wiring. */
@@ -116,6 +146,7 @@ export async function createMaintainedPageBinding(
   principal: Principal,
   docId: string,
   raw: unknown,
+  sourceComment?: { id: string; revision: number },
 ): Promise<MaintainedPageBinding> {
   const input = maintainedPageBindingInput.parse(raw);
   const { current, doc, content } = await maintenancePage(
@@ -126,6 +157,13 @@ export async function createMaintainedPageBinding(
   );
   if (doc.version !== input.expected_doc_version)
     fail(409, "This page changed. Select its blocks again.");
+  if (sourceComment)
+    await pageCommentRequestContext(db, {
+      doc_id: docId,
+      user_id: user.id,
+      source_comment_id: sourceComment.id,
+      source_comment_revision: sourceComment.revision,
+    });
   try {
     new Intl.DateTimeFormat("en", { timeZone: input.timezone });
   } catch {
@@ -140,22 +178,25 @@ export async function createMaintainedPageBinding(
   );
   const count = (
     await db.query<{ count: number }>(
-      "SELECT count(*)::integer AS count FROM assistant_page_bindings WHERE user_id=$1",
-      [user.id],
+      `SELECT count(*)::integer AS count FROM assistant_page_bindings b WHERE user_id=$1
+       AND (($2::boolean AND b.source_comment_id IS NOT NULL AND
+         (NOT b.schedule_exhausted OR EXISTS(SELECT 1 FROM assistant_page_runs r WHERE r.binding_id=b.id AND r.state IN ('queued','running','waiting'))))
+         OR (NOT $2::boolean AND b.source_comment_id IS NULL))`,
+      [user.id, !!sourceComment],
     )
   ).rows[0].count;
   if (count >= 100) fail(409, "This account already has 100 page bindings.");
   const overlaps = await db.query(
     `SELECT 1 FROM assistant_page_bindings b, jsonb_array_elements(b.snapshot->'blocks') target
-     WHERE b.doc_id=$1 AND target->>'block_id'=ANY($2::text[]) LIMIT 1`,
+     WHERE b.doc_id=$1 AND b.source_comment_id IS NULL AND target->>'block_id'=ANY($2::text[]) LIMIT 1`,
     [docId, input.block_ids],
   );
-  if (overlaps.rowCount)
+  if (!sourceComment && overlaps.rowCount)
     fail(409, "A selected block already has a maintenance binding.");
   const row = (
     await db.query<BindingRow>(
-      `INSERT INTO assistant_page_bindings(doc_id,user_id,agent_grant_id,snapshot,instruction,rrule,timezone,next_run_at,paused,token_budget)
-     VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      `INSERT INTO assistant_page_bindings(doc_id,user_id,agent_grant_id,snapshot,instruction,rrule,timezone,next_run_at,paused,token_budget,source_comment_id,source_comment_revision)
+     VALUES($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
       [
         docId,
         user.id,
@@ -167,6 +208,8 @@ export async function createMaintainedPageBinding(
         input.next_run_at,
         input.paused,
         input.token_budget,
+        sourceComment?.id ?? null,
+        sourceComment?.revision ?? null,
       ],
     )
   ).rows[0];
@@ -208,12 +251,15 @@ export async function maintainedPageContext(
   const checked = checkMaintainedPage(content, doc.version, snapshot);
   if (!checked.ok)
     fail(409, "This page changed. Review its maintenance binding.");
-  const shown = await readDoc(db, row.doc_id, user.id);
+  const comment = await pageCommentRequestContext(db, row);
+  const shown = await readVersionedDoc(db, user, row.doc_id, [1, 2]);
   const ids = new Set(snapshot.blocks.map((block) => block.block_id));
   let blocks = await readableLinks(
     db,
     policy.spaces(current),
-    shown.content.filter((block) => block.id && ids.has(block.id)),
+    maintenanceBlocks(shown.document).filter(
+      (block) => block.id && ids.has(block.id),
+    ),
   );
   // Space projection alone does not cover targets kept out of AI. Check their
   // current source policy before retaining any derived link labels in context.
@@ -241,7 +287,9 @@ export async function maintainedPageContext(
   return {
     binding: publicBinding(row),
     principal: current,
-    blocks,
+    // Shared replies cannot carry labels visible only to the requesting user.
+    blocks: comment ? privacyFrom(() => true).value(blocks) : blocks,
+    comment,
   };
 }
 
@@ -253,7 +301,7 @@ export async function listMaintainedPageBindings(
 ) {
   await requireDoc(db, docId, user, "items:read");
   const rows = await db.query<BindingRow>(
-    "SELECT * FROM assistant_page_bindings WHERE doc_id=$1 AND user_id=$2 ORDER BY created_at,id",
+    "SELECT * FROM assistant_page_bindings WHERE doc_id=$1 AND user_id=$2 AND source_comment_id IS NULL ORDER BY created_at,id",
     [docId, user.id],
   );
   return rows.rows.map(publicBinding);
@@ -283,6 +331,8 @@ export async function updateMaintainedPageBinding(
   ).rows[0];
   if (!existing || existing.agent_grant_id !== current.grant_id)
     fail(404, "Page binding not found.");
+  if (existing.source_comment_id)
+    fail(409, "Comment requests cannot become recurring page updates.");
   if (
     existing.revision !== input.expected_revision ||
     doc.version !== input.expected_doc_version
@@ -298,7 +348,7 @@ export async function updateMaintainedPageBinding(
     fail(409, "The selected blocks changed. Select them again.");
   const overlaps = await db.query(
     `SELECT 1 FROM assistant_page_bindings b, jsonb_array_elements(b.snapshot->'blocks') target
-     WHERE b.doc_id=$1 AND b.id<>$2 AND target->>'block_id'=ANY($3::text[]) LIMIT 1`,
+     WHERE b.doc_id=$1 AND b.id<>$2 AND b.source_comment_id IS NULL AND target->>'block_id'=ANY($3::text[]) LIMIT 1`,
     [docId, bindingId, input.block_ids],
   );
   if (overlaps.rowCount)
@@ -357,6 +407,50 @@ export async function deleteMaintainedPageBinding(
 }
 
 /** A scoped save uses the same current trust/action-rule policy as ordinary agent writes. */
+export async function applyMaintainedPageReply(
+  db: Db,
+  user: UserRow,
+  principal: Principal,
+  bindingId: string,
+  raw: unknown,
+  options: { asking?: Asking } = {},
+) {
+  const input = pageCommentReplyInput.parse(raw);
+  const context = await maintainedPageContext(db, user, principal, bindingId);
+  const { binding, comment } = context;
+  if (
+    !comment ||
+    binding.paused ||
+    binding.revision !== input.expected_revision
+  )
+    fail(409, "This page comment request changed.");
+  const page = await requireDoc(db, binding.doc_id, user, "items:write");
+  const current = await currentAssistantPrincipal(db, context.principal, true);
+  const ctx: CapabilityContext = {
+    principal: current,
+    db,
+    now: new Date(),
+    timezone: binding.timezone,
+    spaces: policy.spaces(current),
+    cursor: cursorCodec(current, "page_comment", { bindingId }),
+    assistant_rule_checks: [],
+    ...(options.asking ? { asking: options.asking } : {}),
+  };
+  if (destination(ctx, page.team_id, "W2") === "review")
+    throw new MaintainedPageReviewRequired("Review this page reply.");
+  const body = privacyFrom(() => true).value(input.reply);
+  refuseSecrets(body);
+  await actAs(db, user.id, current.grant_id);
+  await db.query(
+    `INSERT INTO doc_comments(doc_id,user_id,body,parent_id,assistant_request_id)
+     VALUES($1,$2,$3,$4,$5) ON CONFLICT(assistant_request_id) DO NOTHING`,
+    [page.id, user.id, body, comment.parentId, comment.id],
+  );
+  await announceDocChange(db, page.id, page.version, user.id);
+  return { doc: { id: page.id } };
+}
+
+/** A scoped save uses the same current trust/action-rule policy as ordinary agent writes. */
 export async function applyMaintainedPageUpdate(
   db: Db,
   user: UserRow,
@@ -367,6 +461,7 @@ export async function applyMaintainedPageUpdate(
 ) {
   const input = maintainedPagePatchInput.parse(raw);
   const context = await maintainedPageContext(db, user, principal, bindingId);
+  if (context.comment) fail(409, "Comment requests can only publish replies.");
   const binding = context.binding;
   if (binding.paused || binding.revision !== input.expected_revision)
     fail(
@@ -374,12 +469,14 @@ export async function applyMaintainedPageUpdate(
       "This maintenance binding changed or was paused. Review it again.",
     );
   const page = await requireDoc(db, binding.doc_id, user, "items:write");
-  const content = (
-    await db.query<{ content: DocBlock[] }>(
-      "SELECT content FROM docs WHERE id=$1",
+  const storedPage = (
+    await db.query<StoredPage>(
+      "SELECT content,content_format,content_nodes FROM docs WHERE id=$1",
       [page.id],
     )
-  ).rows[0].content;
+  ).rows[0];
+  const document = maintenanceContent(storedPage);
+  const content = maintenanceBlocks(document);
   assertMaintainedPageFiles(context.blocks, input.replacements);
   const patched = applyMaintainedPagePatch(
     content,
@@ -389,6 +486,17 @@ export async function applyMaintainedPageUpdate(
   );
   if (!patched.ok)
     fail(409, "The page or selected blocks changed. Review them again.");
+  let structured: Extract<VersionedDocContent, { format: 2 }> | undefined;
+  if (document.format === 2) {
+    try {
+      structured = {
+        format: 2,
+        nodes: applyDocContainerTaskBlocks(document.nodes, patched.value),
+      };
+    } catch {
+      fail(409, "Keep each selected block's type and checklist structure.");
+    }
+  }
   const current = await currentAssistantPrincipal(db, context.principal, true);
   const ctx: CapabilityContext = {
     principal: current,
@@ -469,16 +577,30 @@ export async function applyMaintainedPageUpdate(
     db,
     user,
     page.id,
-    { version: page.version, content: patched.value },
-    { always: true, ticksFrom: page.version, ownedBlockIds: ids },
+    {
+      version: page.version,
+      ...(structured ? {} : { content: patched.value }),
+    },
+    {
+      always: true,
+      ticksFrom: page.version,
+      ownedBlockIds: ids,
+      ...(structured
+        ? { structured: { document: structured, supported: [1, 2] as const } }
+        : {}),
+    },
   );
   const stored = (
-    await db.query<{ content: DocBlock[] }>(
-      "SELECT content FROM docs WHERE id=$1",
+    await db.query<StoredPage>(
+      "SELECT content,content_format,content_nodes FROM docs WHERE id=$1",
       [page.id],
     )
-  ).rows[0].content;
-  const snapshot = captureMaintainedPage(stored, saved.version, ids);
+  ).rows[0];
+  const snapshot = captureMaintainedPage(
+    maintenanceBlocks(maintenanceContent(stored)),
+    saved.version,
+    ids,
+  );
   if (!snapshot.ok)
     fail(409, "The selected block identities changed during the save.");
   const updated = (

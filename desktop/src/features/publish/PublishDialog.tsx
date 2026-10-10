@@ -7,6 +7,20 @@ import { copyText } from "../../lib/planning";
 import { webOrigin } from "../../lib/links";
 import { useConfirm } from "../../components/Confirm";
 import "./publish.css";
+import { PagePublicationDialog } from "./PagePublicationDialog";
+
+export function PublishDialog(props: {
+  kind: "doc" | "folder";
+  id: string;
+  name: string;
+  onClose: () => void;
+}) {
+  return props.kind === "doc" ? (
+    <PagePublicationDialog id={props.id} onClose={props.onClose} />
+  ) : (
+    <LegacyPublishDialog {...props} />
+  );
+}
 
 /**
  * "Publish to web" (SHR-05, SHR-06) for a page or a folder: off until
@@ -14,7 +28,7 @@ import "./publish.css";
  * optional password and a description for the card a shared link shows.
  * Unpublish takes it off at once.
  */
-export function PublishDialog({
+function LegacyPublishDialog({
   kind,
   id,
   name,

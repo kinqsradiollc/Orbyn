@@ -12,6 +12,7 @@ export function serializeFileRequest(request: {
     method: request.method,
     url: request.url
       ?.replace(/^\/files\/([upr])(?:\/|%2f).*$/i, "/files/$1/:token")
+      .replace(/^(\/(?:api\/)?s)(?:\/|%2f).*$/i, "$1/:token")
       .replace(
         /^(\/(?:api\/)?agent-channels\/(?:slack|teams)\/(?:callback|interactions|events|activities)\/?)(?:\?.*)?$/i,
         "$1",

@@ -508,7 +508,7 @@ export function DocComments({
               named={namedPage.current}
               onNamed={setPageMentions}
               onChange={setPageDraft}
-              placeholder="Comment on the whole page…"
+              placeholder="Comment or ask @orbyn…"
               onSubmit={() => add(pageDraft, { mentions: pageMentions })}
             />
             <button

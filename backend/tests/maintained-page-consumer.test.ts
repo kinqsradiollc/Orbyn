@@ -237,6 +237,89 @@ const current = async (id: string) =>
   (await pool.query("SELECT * FROM assistant_page_runs WHERE id=$1", [id]))
     .rows[0];
 
+for (const mode of ["reply", "changed", "review"] as const) {
+  test(`scoped comment worker: ${mode}`, async () => {
+    const f = await fixture();
+    const comment = (
+      await pool.query(
+        "INSERT INTO doc_comments(doc_id,user_id,body,block_id) VALUES($1,$2,'@orbyn summarize this','summary') RETURNING id,revision",
+        [f.doc.id, f.user.id],
+      )
+    ).rows[0];
+    await pool.query(
+      "UPDATE assistant_page_bindings SET source_comment_id=$2,source_comment_revision=$3,schedule_exhausted=true WHERE id=$1",
+      [f.binding.id, comment.id, comment.revision],
+    );
+    await pool.query(
+      "INSERT INTO doc_comments(doc_id,user_id,body) VALUES($1,$2,'Other conversation must stay out.')",
+      [f.doc.id, f.user.id],
+    );
+    if (mode === "review")
+      await pool.query("UPDATE agent_grants SET trust='ask' WHERE id=$1", [
+        f.principal.grant_id,
+      ]);
+    responseHook = async (body) => {
+      assert.equal(body.tools, undefined);
+      const transmitted = JSON.stringify(body);
+      assert.ok(!transmitted.includes("Other conversation"));
+      assert.ok(!transmitted.includes("Human private material"));
+      if (mode === "changed")
+        await pool.query(
+          "UPDATE doc_comments SET body='Request withdrawn' WHERE id=$1",
+          [comment.id],
+        );
+      return JSON.stringify({
+        expected_revision: 1,
+        reply: "A concise scoped reply.",
+      });
+    };
+    const result = await processMaintainedPageRun(
+      log,
+      "background",
+      options(f.run.id),
+    );
+    assert.equal(
+      result.state,
+      mode === "changed" ? "failed" : mode === "review" ? "waiting" : "done",
+    );
+    if (mode === "review") {
+      const { listMaintainedPageRuns } =
+        await import("../src/modules/docs/maintenance-runs.js");
+      const list = await transaction((db) =>
+        listMaintainedPageRuns(db, f.user, f.doc.id),
+      );
+      assert.equal(list[0].reply, "A concise scoped reply.");
+      const waiting = await current(f.run.id);
+      await transaction((db) =>
+        decideMaintainedPageRun(
+          db,
+          f.user.id,
+          f.run.id,
+          waiting.waiting_id,
+          true,
+          time,
+        ),
+      );
+    }
+    const replies = (
+      await pool.query(
+        "SELECT body FROM doc_comments WHERE assistant_request_id=$1",
+        [comment.id],
+      )
+    ).rows;
+    assert.equal(replies.length, mode === "changed" ? 0 : 1);
+    const page = (
+      await pool.query("SELECT content,version FROM docs WHERE id=$1", [
+        f.doc.id,
+      ])
+    ).rows[0];
+    assert.equal(page.version, 1);
+    assert.equal(page.content[1].text, "Authorized selected source.");
+    await processMaintainedPageRun(log, "background", options(f.run.id));
+    assert.equal(seen.length, 1);
+  });
+}
+
 test("real hosted completion sends only selected blocks, sets an output cap and commits guarded changes", async () => {
   const f = await fixture();
   const result = await processMaintainedPageRun(

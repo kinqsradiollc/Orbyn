@@ -306,17 +306,23 @@ export function PageMaintenanceDialog({
                     {run.estimated_tokens} estimated tokens
                   </small>
                   {run.error && <p>{run.error}</p>}
-                  {run.can_review && run.replacements && (
+                  {run.can_review && (run.replacements || run.reply) && (
                     <>
-                      <h4>Proposed replacement blocks</h4>
-                      <pre>{serializeDoc(run.replacements)}</pre>
+                      <h4>
+                        {run.reply
+                          ? "Proposed reply"
+                          : "Proposed replacement blocks"}
+                      </h4>
+                      <pre>
+                        {run.reply ?? serializeDoc(run.replacements ?? [])}
+                      </pre>
                       <div className="page-maintenance-actions">
                         <button
                           className="primary"
                           disabled={state.busy}
                           onClick={() => void store.decide(run, true)}
                         >
-                          Apply update
+                          {run.reply ? "Post reply" : "Apply update"}
                         </button>
                         <button
                           className="secondary"

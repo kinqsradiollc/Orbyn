@@ -64,6 +64,87 @@ const input = (version: number) => ({
 const status = (expected: number) => (error: any) =>
   error.statusCode === expected;
 
+test("structured maintenance edits only the selected nested leaf and preserves container ownership", async () => {
+  const { user, principal } = await person();
+  const doc = await page(user);
+  const nodes = [
+    { kind: "block", block: blocks[0] },
+    {
+      kind: "quote",
+      id: "quote",
+      children: [{ kind: "block", block: blocks[1] }],
+    },
+  ];
+  const { saveVersionedDoc } =
+    await import("../src/modules/docs/content-format.js");
+  await transaction((db) =>
+    saveVersionedDoc(
+      db,
+      user,
+      doc.id,
+      doc.version,
+      { format: 2, nodes },
+      [1, 2],
+    ),
+  );
+  doc.version++;
+  const binding = await transaction((db) =>
+    createMaintainedPageBinding(db, user, principal, doc.id, {
+      ...input(doc.version),
+      paused: false,
+    }),
+  );
+  const context = await transaction((db) =>
+    maintainedPageContext(db, user, principal, binding.id),
+  );
+  assert.deepEqual(context.blocks, [blocks[1]]);
+  await transaction((db) =>
+    applyMaintainedPageUpdate(db, user, principal, binding.id, {
+      expected_revision: binding.revision,
+      replacements: [{ ...blocks[1], text: "Updated nested summary." }],
+    }),
+  );
+  const saved = (
+    await pool.query(
+      "SELECT content_format,content_nodes,version FROM docs WHERE id=$1",
+      [doc.id],
+    )
+  ).rows[0];
+  assert.equal(saved.content_format, 2);
+  assert.equal(saved.version, doc.version + 1);
+  assert.deepEqual(saved.content_nodes, [
+    nodes[0],
+    {
+      ...nodes[1],
+      children: [
+        {
+          kind: "block",
+          block: { ...blocks[1], text: "Updated nested summary." },
+        },
+      ],
+    },
+  ]);
+  await transaction((db) =>
+    saveVersionedDoc(
+      db,
+      user,
+      doc.id,
+      saved.version,
+      { format: 2, nodes: saved.content_nodes },
+      [1, 2],
+    ),
+  );
+  await assert.rejects(
+    transaction((db) =>
+      applyMaintainedPageUpdate(db, user, principal, binding.id, {
+        expected_revision: binding.revision + 1,
+        replacements: [{ ...blocks[1], text: "Must not overwrite." }],
+      }),
+    ),
+    status(409),
+  );
+});
+
 test("stored page bindings are owner/grant-bound, paused and contain no copied page text", async () => {
   const { user, principal } = await person();
   const doc = await page(user);

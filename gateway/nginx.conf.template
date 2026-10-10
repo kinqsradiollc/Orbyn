@@ -566,6 +566,26 @@ ${UPSTREAM_MCP}
       proxy_pass http://127.0.0.1:8080/p/;
     }
 
+    # Scoped, revocable page publications and their selected media.
+    location ^~ /s/ {
+      access_log off;
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080/s/;
+    }
+    location ^~ /api/s/ {
+      access_log off;
+      proxy_set_header Connection "";
+      proxy_set_header Host $host;
+      proxy_set_header X-Forwarded-For $remote_addr;
+      proxy_set_header X-Forwarded-Proto $fwd_proto;
+      proxy_set_header X-Request-Id $request_id;
+      proxy_pass http://127.0.0.1:8080/s/;
+    }
+
     # Uploads for importing, through this gateway's own entry point above.
     location /api/files/u/ {
       proxy_set_header Connection "";

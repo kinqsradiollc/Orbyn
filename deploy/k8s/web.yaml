@@ -144,6 +144,14 @@ data:
       location ^~ /p/ {
         proxy_pass http://orbyn_api/p/;
       }
+      location ^~ /s/ {
+        access_log off;
+        proxy_pass http://orbyn_api/s/;
+      }
+      location ^~ /api/s/ {
+        access_log off;
+        proxy_pass http://orbyn_api/s/;
+      }
       # Signing in with Orbyn: the authorization server's metadata (RFC 8414)
       # at the issuer (this host), from the API.
       location = /.well-known/oauth-authorization-server {

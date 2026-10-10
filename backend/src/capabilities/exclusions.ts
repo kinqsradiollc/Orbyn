@@ -401,6 +401,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "GET /ai/agenda/private-summary": "credentials",
   "PUT /ai/agenda/private-permission": "credentials",
   "GET /ai/connections/chatgpt/usage": "credentials",
+  "POST /ai/connections/chatgpt/refresh-identity": "credentials",
   "GET /ai/usage": "account",
   "PUT /ai/provider-choice": "credentials",
   "POST /ai/connections/chatgpt/inference/claim": "credentials",
@@ -411,6 +412,13 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /ai/connections/chatgpt/connect-requests/:id/claim": "credentials",
   "POST /ai/connections/chatgpt/connect-requests/:id/finish": "credentials",
   "GET /me/assistant/identity/:lane": "assistant_control",
+  "GET /me/assistant/budgets": "assistant_control",
+  "PUT /me/assistant/budgets/:lane": "assistant_control",
+  "GET /me/assistant/handoffs/source/:id": "assistant_control",
+  "POST /me/assistant/handoffs": "assistant_control",
+  "GET /me/assistant/handoffs/:id": "assistant_control",
+  "GET /me/assistant/rules": "assistant_control",
+  "PUT /me/assistant/rules": "assistant_control",
   "PUT /me/assistant/identity/:lane": "assistant_control",
   // These configure/inspect owner-approved automation; they never expose model execution.
   "GET /docs/:id/maintenance/runs": "assistant_control",
@@ -614,6 +622,9 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "POST /me/first-run/skip": "account",
   "POST /imports/pages": "bring_in",
   "GET /docs/:id/publish": "publishing",
+  "GET /docs/:id/publication": "publishing",
+  "PUT /docs/:id/publication": "publishing",
+  "DELETE /docs/:id/publication": "publishing",
   "PUT /docs/:id/publish": "publishing",
   "DELETE /docs/:id/publish": "publishing",
   "PUT /docs/:id/web-description": "publishing",
@@ -749,6 +760,8 @@ export const PUBLIC: string[] = [
   // Published pages (SHR-05): read by anyone with the address, with the
   // password form for a page that has one.
   "GET /p/:slug",
+  "GET /s/:token",
+  "GET /s/:token/media/:file",
   "GET /p/:slug/:doc",
   // Publication-scoped media rechecks live publication/password/page/ref authority.
   "GET /p/:slug/media/:doc/:file",

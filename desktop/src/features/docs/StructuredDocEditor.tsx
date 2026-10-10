@@ -30,6 +30,8 @@ import { useConfirm } from "../../components/Confirm";
 import { BlockView } from "./DocBlocks";
 import { DocContainerView } from "./DocContainerView";
 import { DocComments } from "./DocComments";
+import { PageMaintenanceDialog } from "./PageMaintenanceDialog";
+import { PagePublicationDialog } from "../publish/PagePublicationDialog";
 import { DocNavigationContext } from "./doc-navigation";
 import { OPEN_LINK_EVENT } from "./DocLinks";
 import "./structured-doc-editor.css";
@@ -64,6 +66,9 @@ export function StructuredDocEditor({
   const { ask } = useConfirm();
   const [editing, setEditing] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pageAction, setPageAction] = useState<"updates" | "publish" | null>(
+    null,
+  );
   const [historyOpen, setHistoryOpen] = useState(false);
   const [activePane, setActivePane] = useState<"preview" | "source">("preview");
   const [versions, setVersions] = useState<DocVersion[] | null>(null);
@@ -545,10 +550,51 @@ export function StructuredDocEditor({
                   Export {EXPORT_LABELS[format].name}
                 </button>
               ))}
+              {canWrite &&
+                (["updates", "publish"] as const).map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    disabled={
+                      state.busy ||
+                      !!state.error ||
+                      state.conflict ||
+                      !session ||
+                      docEditorSessionDirty(session) ||
+                      state.source !== null
+                    }
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setPageAction(action);
+                    }}
+                  >
+                    {action === "updates" ? "Page updates" : "Publish to web"}
+                  </button>
+                ))}
             </div>
           )}
         </div>
       </header>
+      {pageAction === "updates" && (
+        <PageMaintenanceDialog
+          id={doc.id}
+          onChanged={(next) => {
+            store.adopt(next);
+            onChanged(next);
+          }}
+          onClose={() => setPageAction(null)}
+        />
+      )}
+      {pageAction === "publish" && (
+        <PagePublicationDialog
+          id={doc.id}
+          onChanged={(next) => {
+            store.adopt(next);
+            onChanged(next);
+          }}
+          onClose={() => setPageAction(null)}
+        />
+      )}
       {state.error !== null && (
         <p className="structured-doc-error" role="alert">
           {state.error instanceof Error

@@ -10,6 +10,7 @@ import {
   applyMaintainedPagePatch,
   assistantRuleDecision,
   maintainedPagePatchInput,
+  pageCommentReplyInput,
   nextOccurrence,
   fail,
   HttpError,
@@ -26,6 +27,7 @@ import { refuseSecrets } from "../../capabilities/write.js";
 import { nightShiftOwns } from "../../worker/assistant-scan.js";
 import {
   applyMaintainedPageUpdate,
+  applyMaintainedPageReply,
   assertMaintainedPageFiles,
   maintainedPageContext,
   MaintainedPageReviewRequired,
@@ -155,12 +157,14 @@ export async function queueMaintainedPageRun(
     [bindingId],
   );
   if (active.rowCount) return null;
-  const next = nextOccurrence(
-    new Date(binding.next_run_at),
-    binding.rrule,
-    binding.timezone,
-    now,
-  );
+  const next = context.comment
+    ? null
+    : nextOccurrence(
+        new Date(binding.next_run_at),
+        binding.rrule,
+        binding.timezone,
+        now,
+      );
   const modelOrigin = await captureMaintainedPageModelOrigin(db, user.id);
   const run = (
     await db.query<PageRun>(
@@ -204,7 +208,10 @@ export async function expireMaintainedPageRuns(
      (r.end_at IS NOT NULL AND r.end_at<=$1 AND r.state<>'waiting')
      OR (r.state='waiting' AND r.updated_at<=$1-interval '7 days')
      OR EXISTS(SELECT 1 FROM assistant_page_bindings b JOIN docs d ON d.id=b.doc_id
-       WHERE b.id=r.binding_id AND (b.paused OR b.revision<>r.binding_revision OR d.version<>r.doc_version OR d.deleted_at IS NOT NULL))
+       WHERE b.id=r.binding_id AND (b.paused OR b.revision<>r.binding_revision OR d.version<>r.doc_version OR d.deleted_at IS NOT NULL
+         OR (b.source_comment_id IS NOT NULL AND NOT EXISTS(
+           SELECT 1 FROM doc_comments c WHERE c.id=b.source_comment_id
+             AND c.revision=b.source_comment_revision AND c.resolved_at IS NULL AND NOT c.detached))))
      OR EXISTS(SELECT 1 FROM users u WHERE u.id=r.user_id AND u.disabled)
      OR EXISTS(SELECT 1 FROM agent_grants g WHERE g.id=r.agent_grant_id AND
        (g.revoked_at IS NOT NULL OR g.suspended_at IS NOT NULL OR g.assistant_rules_revision<>r.assistant_rules_revision
@@ -423,6 +430,7 @@ export async function guardMaintainedPageRun(
     principal: context.principal,
     binding: context.binding,
     blocks: context.blocks,
+    comment: context.comment,
     nightAvailableTokens,
     nightWaitForOk,
   };
@@ -456,7 +464,9 @@ export async function stageMaintainedPageRun(
   now = new Date(),
 ) {
   const context = await guardMaintainedPageRun(db, runId, leaseToken, now);
-  const proposal = maintainedPagePatchInput.parse(raw);
+  const proposal = context.comment
+    ? pageCommentReplyInput.parse(raw)
+    : maintainedPagePatchInput.parse(raw);
   if (proposal.expected_revision !== context.run.binding_revision)
     fail(409, "The generated result belongs to another binding revision.");
   if (
@@ -467,23 +477,27 @@ export async function stageMaintainedPageRun(
     (context.run.reserved_tokens > 0 && tokens > context.run.reserved_tokens)
   )
     throw new PageRunBudgetExceeded("This page run reached its token budget.");
-  assertMaintainedPageFiles(context.blocks, proposal.replacements);
+  if ("replacements" in proposal)
+    assertMaintainedPageFiles(context.blocks, proposal.replacements);
   const serialized = JSON.stringify(proposal);
   if (Buffer.byteLength(serialized) > 262144)
     fail(422, "The generated page update is too large.");
   refuseSecrets(serialized);
-  const checked = applyMaintainedPagePatch(
-    context.blocks,
-    context.run.doc_version,
-    {
-      ...context.binding.snapshot,
-      blocks: context.binding.snapshot.blocks.map((b, index) => ({
-        ...b,
-        position: index,
-      })),
-    },
-    proposal.replacements,
-  );
+  const checked =
+    "replacements" in proposal
+      ? applyMaintainedPagePatch(
+          context.blocks,
+          context.run.doc_version,
+          {
+            ...context.binding.snapshot,
+            blocks: context.binding.snapshot.blocks.map((b, index) => ({
+              ...b,
+              position: index,
+            })),
+          },
+          proposal.replacements,
+        )
+      : { ok: true };
   // The provider saw only selected blocks; absolute positions remain authoritative in the binding.
   if (!checked.ok)
     fail(409, "The generated update targets blocks outside this binding.");
@@ -537,7 +551,9 @@ export async function decideMaintainedPageRun(
   }
   // A person applies exactly the saved patch; this never resumes a night model runtime.
   if (!context.run.proposal) fail(409, "This run has no saved update.");
-  const result = await applyMaintainedPageUpdate(
+  const result = await (
+    context.comment ? applyMaintainedPageReply : applyMaintainedPageUpdate
+  )(
     db,
     context.user,
     { ...context.principal, unattended: false },
@@ -568,7 +584,9 @@ export async function applyMaintainedPageRun(
     throw new MaintainedPageReviewRequired(
       "Review this saved Overnight page update.",
     );
-  const result = await applyMaintainedPageUpdate(
+  const result = await (
+    context.comment ? applyMaintainedPageReply : applyMaintainedPageUpdate
+  )(
     db,
     context.user,
     context.principal,
@@ -702,13 +720,23 @@ export async function listMaintainedPageRuns(
   const summaries = [];
   for (const run of rows) {
     let replacements = null;
+    let reply = null;
     let canReview = false;
     if (run.state === "waiting" && run.waiting_id && run.proposal) {
       try {
-        await guardMaintainedPageRun(db, run.id, null, new Date(), user.id);
-        replacements = maintainedPagePatchInput.parse(
-          run.proposal,
-        ).replacements;
+        const context = await guardMaintainedPageRun(
+          db,
+          run.id,
+          null,
+          new Date(),
+          user.id,
+        );
+        if (context.comment)
+          reply = pageCommentReplyInput.parse(run.proposal).reply;
+        else
+          replacements = maintainedPagePatchInput.parse(
+            run.proposal,
+          ).replacements;
         canReview = true;
       } catch {
         /* Changed authority/source holds output; metadata remains owned. */
@@ -726,6 +754,7 @@ export async function listMaintainedPageRuns(
         error: run.error_message,
         waiting_id: canReview ? run.waiting_id : null,
         replacements,
+        reply,
         can_review: canReview,
       }),
     );

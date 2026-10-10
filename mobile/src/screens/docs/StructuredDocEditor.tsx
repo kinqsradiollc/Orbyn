@@ -22,6 +22,8 @@ import { savePageOffline } from "../../lib/outbox";
 import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
 import { DocContainerBody } from "./DocContainerBody";
 import { DocBody } from "./DocBody";
+import { PageMaintenanceSheet } from "./PageMaintenanceSheet";
+import { PagePublicationSheet } from "./PagePublicationSheet";
 import { DocNavigationContext } from "./doc-navigation";
 import { openAppUrl } from "../../hooks/useAppLinks";
 
@@ -65,6 +67,9 @@ export function StructuredDocEditor({
   const [sourceVisible, setSourceVisible] = React.useState(false);
   const [editing, setEditing] = React.useState<string | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [pageAction, setPageAction] = React.useState<
+    "updates" | "publish" | null
+  >(null);
   const [discardOpen, setDiscardOpen] = React.useState(false);
   const [keptOffline, setKeptOffline] = React.useState(false);
   const [navigationError, setNavigationError] = React.useState<string | null>(
@@ -383,7 +388,51 @@ export function StructuredDocEditor({
               <Text style={styles.action}>{downloadLabel(format)}</Text>
             </Pressable>
           ))}
+          {canWrite &&
+            (["updates", "publish"] as const).map((action) => (
+              <Pressable
+                key={action}
+                accessibilityRole="button"
+                disabled={
+                  state.busy ||
+                  !!state.error ||
+                  state.conflict ||
+                  !session ||
+                  docEditorSessionDirty(session) ||
+                  state.source !== null ||
+                  keptOffline
+                }
+                onPress={() => {
+                  setMenuOpen(false);
+                  setPageAction(action);
+                }}
+              >
+                <Text style={styles.action}>
+                  {action === "updates" ? "Page updates" : "Publish to web"}
+                </Text>
+              </Pressable>
+            ))}
         </View>
+      )}
+      {pageAction === "updates" && (
+        <PageMaintenanceSheet
+          id={doc.id}
+          onChanged={(next) => {
+            store.adopt(next);
+            onChanged(next);
+          }}
+          onClose={() => setPageAction(null)}
+        />
+      )}
+      {pageAction === "publish" && (
+        <PagePublicationSheet
+          id={doc.id}
+          onChanged={(next) => {
+            store.adopt(next);
+            onChanged(next);
+          }}
+          onClose={() => setPageAction(null)}
+        />
       )}
       <Text style={styles.status}>
         {state.busy

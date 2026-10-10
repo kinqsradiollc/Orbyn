@@ -82,6 +82,14 @@ export const maintainedPagePatchInput = z
   })
   .strict();
 
+/** A comment answer never contains a page patch or tool call. */
+export const pageCommentReplyInput = z
+  .object({
+    expected_revision: z.number().int().positive(),
+    reply: z.string().trim().min(1).max(8000),
+  })
+  .strict();
+
 export type MaintainedPageBinding = {
   id: string;
   doc_id: string;
@@ -249,6 +257,7 @@ export const maintainedPageRunSummary = z
     error: z.string().max(300).nullable(),
     waiting_id: z.uuid().nullable(),
     replacements: docContent.max(MAX_MAINTAINED_BLOCKS).nullable(),
+    reply: z.string().max(8000).nullable().optional(),
     can_review: z.boolean(),
   })
   .strict();

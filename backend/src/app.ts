@@ -86,6 +86,7 @@ import { mcpListenRoutes } from "./modules/mcp-server/listen.js";
 import { teamChangeRoutes } from "./modules/teams/changes.js";
 import { firstRunRoutes } from "./modules/users/first-run.js";
 import { publishRoutes } from "./modules/publish/routes.js";
+import { scopedPublicationRoutes } from "./modules/publish/scoped-routes.js";
 import { pageImportRoutes } from "./modules/imports/pages.js";
 import { aiCaptureRoutes } from "./modules/ai/capture.js";
 import { aiRecordingRoutes } from "./modules/ai/recording.js";
@@ -191,6 +192,7 @@ export const serviceModules: Record<
     firstRunRoutes,
     // Pages and folders on the web (SHR-05), and /p/<slug> itself.
     publishRoutes,
+    scopedPublicationRoutes,
     // Markdown and Notion exports into pages (DATA-08).
     pageImportRoutes,
     // Choices that follow the account: Arrange, shortcuts, view choices (D5).

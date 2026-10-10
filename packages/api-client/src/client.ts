@@ -5623,6 +5623,24 @@ export class OrbynClient {
   getPublish(kind: "doc" | "folder", id: string) {
     return this.request<PublishState>(`/${kind}s/${id}/publish`);
   }
+  getPagePublication(id: string) {
+    return this.request<import("@orbyn/core").PagePublication | null>(
+      `/docs/${id}/publication`,
+      { fresh: true },
+    );
+  }
+  publishPageSelection(
+    id: string,
+    input: import("@orbyn/core").PagePublicationInput,
+  ) {
+    return this.request<import("@orbyn/core").PagePublication>(
+      `/docs/${id}/publication`,
+      { method: "PUT", body: input },
+    );
+  }
+  revokePagePublication(id: string) {
+    return this.request(`/docs/${id}/publication`, { method: "DELETE" });
+  }
   /** Put a page or folder on the web, or change how (SHR-05, SHR-06). */
   publish(kind: "doc" | "folder", id: string, input: PublishInput) {
     return this.request<PublishState>(`/${kind}s/${id}/publish`, {

@@ -53,7 +53,7 @@ export function DocComments({
         comments={state.loose}
         state={state}
         userId={userId}
-        placeholder="Comment on the whole page…"
+        placeholder="Comment or ask @orbyn…"
       />
 
       {state.resolvedCount > 0 && (

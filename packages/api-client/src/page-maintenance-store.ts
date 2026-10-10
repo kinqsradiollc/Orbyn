@@ -1,5 +1,6 @@
 import {
   newBlockId,
+  visitDocContainers,
   type Doc,
   type MaintainedPageBinding,
   type MaintainedPageBindingInput,
@@ -8,7 +9,8 @@ import {
 import type { OrbynClient } from "./client.js";
 type Api = Pick<
   OrbynClient,
-  | "getDoc"
+  | "getDocForEditor"
+  | "updateDocForEditor"
   | "updateDoc"
   | "listPageMaintenance"
   | "listPageMaintenanceRuns"
@@ -62,7 +64,7 @@ export class PageMaintenanceStore {
   };
   private async take() {
     const [doc, bindings, runs] = await Promise.all([
-      this.api.getDoc(this.id, { fresh: true }),
+      this.api.getDocForEditor(this.id),
       this.api.listPageMaintenance(this.id),
       this.api.listPageMaintenanceRuns(this.id),
     ]);
@@ -124,8 +126,25 @@ export class PageMaintenanceStore {
   /** Called after the editor flush; assign missing stable IDs with normal versioned persistence. */
   prepare = () =>
     this.run(async (current) => {
-      const doc = await this.api.getDoc(this.id, { fresh: true });
+      const doc = await this.api.getDocForEditor(this.id);
       current();
+      if (doc.document?.format === 2) {
+        const document = structuredClone(doc.document);
+        let missing = false;
+        visitDocContainers(document.nodes, (node) => {
+          if (node.kind === "block" && !node.block.id) {
+            node.block.id = newBlockId();
+            missing = true;
+          }
+        });
+        if (missing)
+          await this.api.updateDocForEditor(this.id, {
+            title: doc.title,
+            version: doc.version,
+            document,
+          });
+        return;
+      }
       if (doc.content.some((block) => !block.id))
         await this.api.updateDoc(this.id, {
           title: doc.title,

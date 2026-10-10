@@ -4,6 +4,19 @@ import { PassThrough } from "node:stream";
 import Fastify from "fastify";
 import { serializeFileRequest } from "../src/lib/file-request-log.js";
 
+test("scoped publication capability tokens never enter request URL logs", () => {
+  for (const prefix of ["", "/api"])
+    for (const suffix of [
+      "/secret-token",
+      "/secret-token/media/file?x=secret-token",
+      "%2fsecret-token",
+    ])
+      assert.equal(
+        serializeFileRequest({ url: `${prefix}/s${suffix}` }).url,
+        `${prefix}/s/:token`,
+      );
+});
+
 test("Slack OAuth codes and state never enter the request URL serializer", () => {
   for (const prefix of ["", "/api"]) {
     const path = `${prefix}/agent-channels/slack/callback`;

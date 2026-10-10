@@ -102,6 +102,7 @@ export * from "./first-run.js";
 export * from "./changelog/index.js";
 export * from "./status-page.js";
 export * from "./publish.js";
+export * from "./page-publications.js";
 export * from "./app-imports.js";
 export * from "./capture-assist.js";
 export * from "./prefs.js";

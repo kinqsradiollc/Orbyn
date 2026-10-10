@@ -32,7 +32,7 @@ export default defineConfig({
       },
       // Published pages (SHR-05) are written by the API at /p/<slug>, on
       // the web app's own address, as the gateway does in production.
-      "^/p/": {
+      "^/(p|s)/": {
         target: process.env.API_PROXY_URL || "http://localhost:8008",
       },
     },

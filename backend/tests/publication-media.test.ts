@@ -125,6 +125,59 @@ async function imageUrl(path: string, cookie?: string) {
   return src.startsWith("/api/") ? src.slice(4) : src;
 }
 
+async function scopedFixture() {
+  const f = await fixture();
+  const doc = (await call("GET", `/docs/${f.id}`)).json();
+  const saved = await call("PUT", `/docs/${f.id}`, {
+    version: doc.version,
+    content: doc.content.map((block: object) => ({
+      ...block,
+      id: "selected-image",
+    })),
+  });
+  assert.equal(saved.statusCode, 200, saved.body);
+  await call("DELETE", `/docs/${f.id}/publish`);
+  const published = await call("PUT", `/docs/${f.id}/publication`, {
+    expected_doc_version: saved.json().version,
+    expected_revision: 0,
+    block_ids: ["selected-image"],
+    mode: "snapshot",
+    expires_at: null,
+    consent: true,
+  });
+  assert.equal(published.statusCode, 200, published.body);
+  return { ...f, path: published.json().path };
+}
+
+test("scoped snapshot media serves selected bytes and rejects another publication's file", async () => {
+  const a = await scopedFixture(),
+    b = await scopedFixture();
+  const url = await imageUrl(a.path);
+  const result = await call("GET", url, undefined, false);
+  assert.equal(result.statusCode, 200, result.body);
+  assert.deepEqual(result.rawPayload, png);
+  assert.match(String(result.headers["content-security-policy"]), /sandbox/);
+  assert.equal(
+    (await call("GET", `${a.path}/media/${b.file}`, undefined, false))
+      .statusCode,
+    404,
+  );
+  await call("DELETE", `/docs/${a.id}/publication`);
+  assert.equal((await call("GET", url, undefined, false)).statusCode, 404);
+});
+
+test("scoped publication revocation during storage fetch prevents delivery", async () => {
+  const f = await scopedFixture();
+  const url = await imageUrl(f.path);
+  beforeStoredRead = async () => {
+    const removed = await call("DELETE", `/docs/${f.id}/publication`);
+    assert.equal(removed.statusCode, 200, removed.body);
+  };
+  const result = await call("GET", url, undefined, false);
+  assert.equal(result.statusCode, 404, result.body);
+  assert.notDeepEqual(result.rawPayload, png);
+});
+
 test("unpublishing immediately revokes the image URL issued by the current published page", async () => {
   const doc = await fixture();
   const url = await imageUrl(doc.path);
