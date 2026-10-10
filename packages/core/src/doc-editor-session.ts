@@ -12,6 +12,7 @@ import {
   DocContentMergeConflict,
   mergeVersionedDocContent,
 } from "./doc-content-merge.js";
+import type { DocContainerNode } from "./doc-containers.js";
 
 /** A single authorized page revision, including its complete ownership tree. */
 export interface DocEditorRevision {
@@ -33,6 +34,33 @@ export type DocEditorSaveTicket = DocEditorRevision;
 
 const key = (value: VersionedDocContent) =>
   versionedDocContentKey(value, { projected: true });
+
+function ownership(value: VersionedDocContent): string {
+  const leaf = (block: { type: string; id?: string }) => ({
+    type: block.type,
+    ...(block.id ? { id: block.id } : {}),
+  });
+  const tree = (nodes: DocContainerNode[]): unknown[] =>
+    nodes.map((node) =>
+      node.kind === "block"
+        ? { kind: "block", block: leaf(node.block) }
+        : node.kind === "quote"
+          ? { ...node, children: tree(node.children) }
+          : {
+              ...node,
+              items: node.items.map((item) => ({
+                ...item,
+                ...(item.checked === undefined ? {} : { checked: false }),
+                children: tree(item.children),
+              })),
+            },
+    );
+  return JSON.stringify(
+    value.format === 1
+      ? { format: 1, blocks: value.blocks.map(leaf) }
+      : { format: 2, nodes: tree(value.nodes) },
+  );
+}
 
 function freeze<T>(value: T): T {
   if (value && typeof value === "object") {
@@ -155,7 +183,7 @@ export function acceptDocEditorSave(
     saved.id !== state.saved.id ||
     sent.version !== state.saved.version ||
     saved.version !== sent.version + 1 ||
-    saved.document.format !== sent.document.format
+    ownership(saved.document) !== ownership(sent.document)
   )
     throw new DocContentFormatError(
       "The save receipt does not match this page revision.",

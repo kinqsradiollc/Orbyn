@@ -201,6 +201,27 @@ test("same revision is idempotent only for the exact server baseline", () => {
   );
 });
 
+test("a same-format save receipt cannot flatten, reorder or change list ownership", () => {
+  const state = edit(openDocEditorSession(fixture()), "Keep");
+  const ticket = prepareDocEditorSave(state);
+  const saved = receipt(state);
+  const before = JSON.stringify(state);
+  for (const text of [
+    "Keep ^first\n\nSecond ^second\n\nTail ^tail",
+    "> - Second ^second\n> - [ ] Keep ^first\n\nTail ^tail",
+    "> 1. [ ] Keep ^first\n> 2. Second ^second\n\nTail ^tail",
+  ]) {
+    const document: VersionedDocContent = {
+      format: 2,
+      nodes: parseDocContainers(text, { anchors: true }),
+    };
+    assert.throws(() =>
+      acceptDocEditorSave(state, ticket, { ...saved, document }),
+    );
+  }
+  assert.equal(JSON.stringify(state), before);
+});
+
 test("stale source, rich command and title handlers cannot overwrite a newer draft", () => {
   const opened = openDocEditorSession(fixture());
   const newer = titleDocEditorSession(
