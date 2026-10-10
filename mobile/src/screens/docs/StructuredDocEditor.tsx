@@ -66,6 +66,7 @@ export function StructuredDocEditor({
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [discardOpen, setDiscardOpen] = React.useState(false);
   const [keptOffline, setKeptOffline] = React.useState(false);
+  const [navigationError, setNavigationError] = React.useState<string | null>(null);
   const offlineQueued = React.useRef(false);
   const editGeneration = React.useRef(0);
   const queueInFlight = React.useRef(false);
@@ -118,9 +119,10 @@ export function StructuredDocEditor({
           : [];
       const index = docFragmentIndex(blocks, fragment);
       if (index === null) {
-        report(new Error("This heading or line is no longer in the page."));
+        setNavigationError("This heading or line is no longer in the page.");
         return;
       }
+      setNavigationError(null);
       const leaf = leafRefs.current.get(index);
       if (!leaf || !pageRef.current) return;
       leaf.measureLayout(
@@ -371,6 +373,11 @@ export function StructuredDocEditor({
           {state.error instanceof Error
             ? state.error.message
             : "Could not update this page."}
+        </Text>
+      )}
+      {navigationError && (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {navigationError}
         </Text>
       )}
       {state.conflict && (

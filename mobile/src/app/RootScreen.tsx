@@ -969,7 +969,7 @@ export function RootScreen() {
         return void act(async () => {
           // A link to one line of a page opens the page there (LNK-04).
           setNoteBlockId(link.block ?? null);
-          setNote(await client.getDoc(link.id));
+          setNote(await client.getDocForEditor(link.id));
           present({ sheet: "note" });
         });
       case "project":

@@ -74,6 +74,7 @@ export function StructuredDocEditor({
     quote: string;
   } | null>(null);
   const [activeComment, setActiveComment] = useState<string | null>(null);
+  const [navigationError, setNavigationError] = useState<string | null>(null);
   const [commentTops, setCommentTops] = useState<Record<string, number>>({});
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLElement>(null);
@@ -158,15 +159,16 @@ export function StructuredDocEditor({
     (fragment: string) => {
       const index = docFragmentIndex(leaves, fragment);
       if (index === null) {
-        report(new Error("This heading or line is no longer in the page."));
+        setNavigationError("This heading or line is no longer in the page.");
         return;
       }
+      setNavigationError(null);
       previewRef.current
         ?.querySelector<HTMLElement>(`[data-leaf-index="${index}"]`)
         ?.scrollIntoView({ behavior: "smooth", block: "center" });
       setActiveComment(leaves[index]?.id ?? null);
     },
-    [leaves, report],
+    [leaves],
   );
   useEffect(() => {
     if (!initialBlockId || !leaves.length) return;
@@ -414,6 +416,11 @@ export function StructuredDocEditor({
           {state.error instanceof Error
             ? state.error.message
             : "Could not update this page."}
+        </p>
+      )}
+      {navigationError && (
+        <p className="structured-doc-error" role="status">
+          {navigationError}
         </p>
       )}
       {state.conflict && (

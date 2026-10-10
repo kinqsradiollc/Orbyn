@@ -22,8 +22,8 @@ Android build, or exhaustive 200% retest. The user stopped routine Visual
 Check; no browser screenshot result is claimed here.
 
 Tester execution record for the superseded `c270a9bc` candidate: see
-[`c4-d1-tester-r1-c270a9bc.md`](./c4-d1-tester-r1-c270a9bc.md). The focused
-interactive confirmation retest for current revision `1b76c6c3` remains open.
+[`c4-d1-tester-r1-c270a9bc.md`](./c4-d1-tester-r1-c270a9bc.md). The later
+exact-candidate execution is recorded below.
 
 Reviewer round 1 decision on `1b76c6c3`: **changes required**. Report:
 [`c4-d1-review-r1.md`](./c4-d1-review-r1.md).
@@ -36,3 +36,26 @@ Full workspace typecheck and 52 targeted checks pass on the working revision.
 Tester owns the final source-exact execution, including the app-dialog interaction
 now that the user has approved local QA sign-in. Reviewer owns closure. No
 main-integration acceptance yet.
+
+## Tester execution — 45a80ca
+
+Tester retested the exact frozen candidate `45a80ca14a0de54148e804111642f38c1257aed4`.
+The focused ownership and durable-receipt suites passed 91/91, workspace typecheck
+passed, and section-navigation tests passed 2/2. The History restore modal and
+same-page fragment navigation passed on the available web surfaces. R1 invalid
+source recovery passed interactively on web and Expo web. **Disposition: HOLD**
+because cross-page structured-document links with a fragment still return HTTP
+409 on both surfaces and do not open the initial target. The complete execution
+record, remaining limits, and cleanup evidence are in
+[`c4-d1-tester-r2-45a80ca.md`](./c4-d1-tester-r2-45a80ca.md). No acceptance,
+merge, push, or deployment is claimed.
+
+## Builder correction after the 45a80ca hold
+
+The web and mobile deep-link entry points now read format 2 Docs with the
+editor-capable API before opening a cross-page fragment. The structured editors
+show a concise in-page message for a missing target instead of sending that
+navigation result to the generic global error handler. Full workspace typecheck
+passed after these edits. The revised candidate still needs Tester's focused
+web and Expo web cross-page, initial-target, and missing-target retest, followed
+by Reviewer closure; it is not yet accepted for main.

@@ -448,9 +448,10 @@ export function App() {
   const openDeepLink = (link: DeepLink) => {
     if (link.kind === "task") openItemById(link.id);
     else if (link.kind === "doc")
-      void client.getDoc(link.id).then((doc) => {
+      void client.getDocForEditor(link.id).then((doc) => {
         setNoteDoc(doc);
         setView("Docs");
+        setNoteBlockId(link.block ?? null);
         if (link.block) focusDocBlock(link.block);
       }, report);
     else if (link.kind === "project") {
