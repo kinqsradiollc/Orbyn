@@ -1,6 +1,18 @@
 # C4/D1 delivery record
 
-## Latest Reviewer decision — ccae5a60
+## Latest Reviewer decision — 0b96ad61
+
+**Evidence pending, round 1/3.** The extended-source fixture and bounded
+tasks/collaboration source-equivalence reconciliation close the remaining
+non-browser correction items from the preceding review. R1/R2 remain closed;
+R3/R4 corrections remain accepted at source/regression level. Exact-candidate
+7/7 and backend typecheck supplement retained 8a449bce receipts of 67/67,
+workspace typecheck and 33/33 actual rendered API/publication checks.
+Full C4/D1 acceptance remains held for the retained browser interaction gates;
+blind-design permission is not an acceptance waiver. No further code correction
+is requested. See [the decision](./c4-d1-review-r1-0b96ad61.md).
+
+## Historical Reviewer decision — ccae5a60
 
 **Changes required, round 1/3; full C4/D1 remains unaccepted.** R3 caller
 corrections are accepted at source level, with browser interaction pending.
@@ -242,7 +254,34 @@ Builder added one format-2 import/edit/export fixture for frontmatter, folded
 callout, highlight, references, footnote, heading navigation and unsupported
 raw source. Its first run failed because the serializer canonically moves the
 callout title onto the next quote line; the assertion was corrected to check
-that retained canonical form. The export suite then passed 7/7. Tester must
-qualify the next frozen revision. The disposable test Postgres container was
-removed after the rendered-export retest. Browser interaction remains the
-checkpoint's open external gate.
+that retained canonical form. The export suite then passed 7/7. The disposable
+test Postgres container was removed after the rendered-export retest. Browser
+interaction remains the checkpoint's open external gate.
+
+## Tester retest — `0b96ad61`
+
+Tester qualified exact candidate
+`0b96ad6160d91dd2a5742ef863c9ccf1f1c16130` on
+`codex/c4-docs-parity`. Backend typecheck passed and
+`doc-container-export.unit.test.ts` passed **7/7** on the frozen source. This
+includes the format-2 extended-source edit/export case for frontmatter, folded
+callout, highlight, reference, footnote, heading-fragment lookup, and inert
+unsupported HTML. No database or application service was used.
+
+The `45a80ca..8a449bce` domain-source check returned no paths under
+`backend/src/modules/docs` or `packages/core/src`; the named task/comment/CRDT
+receipt files are also unchanged. The full historical range contains other
+client/editor/API-client changes, so the equivalence applies only to those
+named domains and receipts. The `8a449bce..0b96ad61` change adds tests and
+review documentation only; product source is unchanged.
+
+**Disposition: focused check passed; full checkpoint HOLD.** The browser
+Block still prevents active Preview/TOC interaction and visual inspection.
+Round 1/3 and the broader C4/D1 gates remain open. Exact results and scope are
+in [`c4-d1-tester-0b96ad61.md`](./c4-d1-tester-0b96ad61.md).
+
+The [round-1 Reviewer continuation](./c4-d1-review-r1-0b96ad61.md) found
+no remaining non-browser correction. Format-2 extended-source serialization
+and the bounded tasks/collaboration domain-source equivalence are closed.
+The browser interaction gate remains open. C4/D1 has not been accepted,
+merged, pushed or deployed; pause is requested only after completion.
