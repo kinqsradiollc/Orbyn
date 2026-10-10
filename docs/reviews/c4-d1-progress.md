@@ -204,7 +204,45 @@ permission. The first sandbox attempt passed 41/43 and failed those two at
 `listen EPERM`; no assertion failed. On the disposable marked test database,
 `export.test.ts` and `publication-renderer.test.ts` passed 33/33, including
 actual rendered PDF/HTML ten-family Mermaid and math cases plus revision and
-authorization fences. The test-only Postgres service was started for this run
-and remains owned until the revised Tester pass completes. These receipts do
-not establish application UI rendering or interactions while browser access is
-blocked. Full checkpoint acceptance and main integration remain open.
+authorization fences. These receipts do not establish application UI rendering
+or interactions while browser access is blocked.
+
+## Tester retest — `8a449bce`
+
+Tester qualified exact candidate
+`8a449bce17341fbc0fb2be19d665b4d6b0e734c9` on
+`codex/c4-docs-parity`. Workspace typecheck passed. The focused scroll, source
+map, diagram/privacy/image/math/Mermaid, container-export and revision-client
+run passed **67/67**, including the four scoped media-security suites at
+**43/43**. `export.test.ts` plus `publication-renderer.test.ts` passed **33/33**
+after a preflight verified the dedicated database `orbyn_test` and
+`orbyn.environment=test`. These tests cover rendered ten-family PDF/HTML,
+authorization and revision fences, and publication access changes.
+
+**Disposition: HOLD.** The nested quote/list scroll-selection defect passes the
+focused exact-candidate DOM-geometry and feedback-suppression regression. Real
+browser verification of bidirectional scrolling, responsive panes, rich-link
+draft handoff, and narrow overflow remains blocked by the saved local-preview
+Block; no alternate port or capture path was used. Full C4/D1 acceptance and
+round 1/3 remain open. Exact commands and evidence limits are in
+[`c4-d1-tester-8a449bce.md`](./c4-d1-tester-8a449bce.md).
+
+## Non-visual ledger reconciliation after review
+
+The [8a449bce Reviewer continuation](./c4-d1-review-r1-8a449bce.md)
+identified no new code defect and closed the nested-wrapper finding at
+source/regression level. It retained the browser interactions and two ledger
+questions. For task/collaboration domain behavior, the Docs backend/core and
+relevant task/comment/CRDT tests are unchanged from Tester's 45a80ca
+qualification through 8a449bce (`git diff --name-only 45a80ca..8a449bce`
+returned no matching paths). Current linked-task callers passed the 8a449bce
+focused test. This is source equivalence, not a live multi-client pass.
+
+Builder added one format-2 import/edit/export fixture for frontmatter, folded
+callout, highlight, references, footnote, heading navigation and unsupported
+raw source. Its first run failed because the serializer canonically moves the
+callout title onto the next quote line; the assertion was corrected to check
+that retained canonical form. The export suite then passed 7/7. Tester must
+qualify the next frozen revision. The disposable test Postgres container was
+removed after the rendered-export retest. Browser interaction remains the
+checkpoint's open external gate.

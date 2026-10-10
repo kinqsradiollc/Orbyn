@@ -11,6 +11,7 @@ import {
   docContainersText,
   applyVersionedDocSource,
   versionedDocSource,
+  docFragmentIndex,
 } from "@orbyn/core";
 const privateId = "00000000-0000-4000-8000-000000000001";
 const source = `> # Nested\n>\n> - [Secret title][secret]\n>\n>   code context\n\n[secret]: orbyn://doc/${privateId} "Secret hint"`;
@@ -132,4 +133,48 @@ test("one structured draft imports, edits and exports a mixed Markdown page", ()
   assert.match(markdown, /- \[x\] Read notes/);
   assert.match(markdown, /```mermaid/);
   assert.match(html, /<table>/);
+});
+
+test("format-2 editing preserves extended source and heading navigation", () => {
+  const source = [
+    "---",
+    "title: Field notes",
+    "---",
+    "",
+    "# Findings ^findings",
+    "",
+    "> [!tip]- Review",
+    "> Keep ==focus== and [Guide][ref].",
+    "",
+    "See the note[^one].",
+    "",
+    "[ref]: https://example.test/guide",
+    "[^one]: Source note",
+    "",
+    '<unsupported-widget data-x="1">',
+  ].join("\n");
+  const initial = {
+    format: 2 as const,
+    nodes: parseDocContainers(source, { anchors: true }),
+  };
+  const edited = applyVersionedDocSource(
+    initial,
+    initial,
+    versionedDocSource(initial).replace("Keep ==focus==", "Keep ==context=="),
+  );
+  if (edited.format !== 2) assert.fail("Expected a structured page");
+  const markdown = serializeDocContainers(edited.nodes, { anchors: true });
+  const html = docContainersHtml(edited.nodes, { anchors: true });
+  assert.match(markdown, /title: Field notes/);
+  assert.match(markdown, /\[!tip\]-\n> Review/);
+  assert.match(markdown, /==context==/);
+  assert.match(markdown, /\[Guide\]\[ref\]/);
+  assert.match(markdown, /\[\^one\]: Source note/);
+  assert.match(markdown, /<unsupported-widget data-x="1">/);
+  assert.doesNotMatch(html, /<unsupported-widget/);
+  assert.match(html, /&lt;unsupported-widget/);
+  assert.notEqual(
+    docFragmentIndex(docContainerBlocks(edited.nodes), "findings"),
+    null,
+  );
 });
