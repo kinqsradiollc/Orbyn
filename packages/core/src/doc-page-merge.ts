@@ -1,3 +1,4 @@
+import { mergeDocReferences } from "./doc-merge-references.js";
 import { docFragmentIndex, docLinkDestination } from "./doc-navigation.js";
 import { rewriteDocBlockLinks } from "./doc-link-rewrite.js";
 import type { DocBlock } from "./docs.js";
@@ -98,6 +99,11 @@ export function mergeDocContents(
     }
   });
   const leaves = docContainerBlocks(incoming);
+  const bound = mergeDocReferences(docContainerBlocks(destination), leaves);
+  let leafIndex = 0;
+  visitDocContainers(incoming, (node) => {
+    if (node.kind === "block") node.block = bound[leafIndex++];
+  });
   const heading: DocBlock | null =
     title.trim() && leaves[0]?.type !== "heading"
       ? { type: "heading", level: 2, id: fresh(), text: title.trim() }

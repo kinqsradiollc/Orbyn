@@ -915,11 +915,9 @@ export function docReferenceSpans(
   label: string;
   reference: string;
 }[] {
-  const resolved = new Map(
-    parseDocInline(text, references)
-      .filter((run) => run.link && !run.code && !run.math)
-      .map((run) => [run.start, run.link!]),
-  );
+  const resolved = parseDocInline(text, references)
+    .filter((run) => run.link && !run.code && !run.math)
+    .sort((a, b) => a.start - b.start);
   const spans = [];
   for (const match of text.matchAll(
     /\[([^\]\n]{1,999})\](?:\[([^\]\n]{0,999})\])?/g,
@@ -927,7 +925,26 @@ export function docReferenceSpans(
     const start = match.index;
     const end = start + match[0].length;
     if (text[start - 1] === "!" || text[end] === "(") continue;
-    const href = resolved.get(start + 1);
+    const expected = references.get(referenceLabel(match[2] || match[1]));
+    let lo = 0,
+      hi = resolved.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (resolved[mid].start < start + 1) lo = mid + 1;
+      else hi = mid;
+    }
+    let href: string | undefined;
+    for (
+      let index = lo;
+      index < resolved.length &&
+      resolved[index].start < start + 1 + match[1].length;
+      index++
+    ) {
+      if (resolved[index].link === expected) {
+        href = expected;
+        break;
+      }
+    }
     if (href)
       spans.push({
         start,
