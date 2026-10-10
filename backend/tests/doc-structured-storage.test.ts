@@ -9,6 +9,8 @@ import {
   replaceVersionedDocLeaf,
   HttpError,
   appendDocContainerBlocks,
+  docContainerTaskBlocks,
+  docReferenceLinks,
 } from "@orbyn/core";
 import type { UserRow } from "../src/lib/auth.js";
 const { migrate } = await import("../src/db/migrate.js");
@@ -1465,7 +1467,7 @@ test("stale nested tick cannot undo a task completion change from elsewhere", as
 test("extract keeps nested task ownership and complete source history", async () => {
   const id = await page();
   const nodes = parseDocContainers(
-    "> - [x] Task [self](#task) ^task\n>\n>   Continuation [task](#task) ^continuation\n> - Other ^other",
+    "> - [x] Task [self](#task) [guide] ^task\n>\n>   Continuation [task](#task) ^continuation\n> - Other ^other\n\n[guide]: https://guide.test",
     { anchors: true },
   );
   await transaction((db) =>
@@ -1481,6 +1483,11 @@ test("extract keeps nested task ownership and complete source history", async ()
   const destination = response.json().doc.id;
   const moved = await readVersionedDoc(pool, owner, destination, [1, 2]);
   const remaining = await readVersionedDoc(pool, owner, id, [1, 2]);
+  if (moved.document.format !== 2) throw new Error("Missing moved tree");
+  assert.equal(
+    docReferenceLinks(docContainerBlocks(moved.document.nodes)).get("guide"),
+    "https://guide.test",
+  );
   if (moved.document.format !== 2 || remaining.document.format !== 2)
     throw new Error("Extraction flattened ownership");
   assert.deepEqual(
