@@ -170,14 +170,13 @@ export function StructuredDocEditor({
     }
     ignoredSourceScroll.current = null;
     if (!sourceBlocks.length) return;
-    const sourceRange = Math.max(
-      1,
-      sourcePane.scrollHeight - sourcePane.clientHeight,
-    );
-    const offset =
-      (sourcePane.scrollTop / sourceRange) * sourceMap.source.length;
+    // The source textarea does not wrap, so its visual position maps to a
+    // source line even when adjacent blocks have very different line lengths.
+    const lineHeight =
+      Number.parseFloat(getComputedStyle(sourcePane).lineHeight) || 20;
+    const line = sourcePane.scrollTop / lineHeight + 1;
     const range =
-      sourceBlocks.findLast((entry) => entry.start <= offset) ??
+      sourceBlocks.findLast((entry) => entry.startLine <= line) ??
       sourceBlocks[0];
     const element = [
       ...previewPane.querySelectorAll<HTMLElement>("[data-container-path]"),
@@ -185,17 +184,28 @@ export function StructuredDocEditor({
       (candidate) => candidate.dataset.containerPath === range.path.join("/"),
     );
     if (!element) return;
+    const rect = element.getBoundingClientRect();
+    const progress = Math.max(
+      0,
+      Math.min(
+        1,
+        (line - range.startLine) / Math.max(1, range.endLine - range.startLine),
+      ),
+    );
     const target = Math.max(
       0,
       Math.min(
         previewPane.scrollHeight - previewPane.clientHeight,
         previewPane.scrollTop +
-          element.getBoundingClientRect().top -
-          previewPane.getBoundingClientRect().top,
+          rect.top -
+          previewPane.getBoundingClientRect().top +
+          progress * rect.height,
       ),
     );
-    ignoredPreviewScroll.current = target;
-    previewPane.scrollTop = target;
+    if (Math.abs(previewPane.scrollTop - target) >= 1) {
+      previewPane.scrollTop = target;
+      ignoredPreviewScroll.current = previewPane.scrollTop;
+    }
   };
   const syncSourceFromPreview = () => {
     const sourcePane = sourceRef.current;
@@ -214,25 +224,33 @@ export function StructuredDocEditor({
     ];
     const top = previewPane.getBoundingClientRect().top + 8;
     const visible =
-      [...leaves]
-        .reverse()
-        .find((element) => element.getBoundingClientRect().top <= top) ??
-      leaves[0];
+      leaves.find((element) => element.getBoundingClientRect().bottom > top) ??
+      leaves.at(-1);
     if (!visible) return;
     const range = sourceBlocks.find(
       (entry) => entry.path.join("/") === visible.dataset.containerPath,
     );
     if (!range) return;
+    const rect = visible.getBoundingClientRect();
+    const progress = Math.max(
+      0,
+      Math.min(1, (top - rect.top) / Math.max(1, rect.height)),
+    );
+    const line =
+      range.startLine + progress * Math.max(0, range.endLine - range.startLine);
+    const lineHeight =
+      Number.parseFloat(getComputedStyle(sourcePane).lineHeight) || 20;
     const target = Math.max(
       0,
       Math.min(
         sourcePane.scrollHeight - sourcePane.clientHeight,
-        (range.start / Math.max(1, sourceMap.source.length)) *
-          (sourcePane.scrollHeight - sourcePane.clientHeight),
+        (line - 1) * lineHeight,
       ),
     );
-    ignoredSourceScroll.current = target;
-    sourcePane.scrollTop = target;
+    if (Math.abs(sourcePane.scrollTop - target) >= 1) {
+      sourcePane.scrollTop = target;
+      ignoredSourceScroll.current = sourcePane.scrollTop;
+    }
   };
   const leaves = useMemo(
     () =>
@@ -688,6 +706,7 @@ export function StructuredDocEditor({
                     store.changeSource(document, event.currentTarget.value)
                   }
                   spellCheck={false}
+                  wrap="off"
                 />
               ) : (
                 <pre>{source}</pre>

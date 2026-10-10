@@ -27,6 +27,7 @@ function section(native: boolean) {
   const exports: Record<string, (props: unknown) => React.ReactElement> = {};
   const opened: unknown[] = [];
   const urls: string[] = [];
+  const guarded = (url: string) => urls.push(url);
   const navigation = React.createContext(null);
   const footnotes = React.createContext(null);
   const blocks: core.DocBlock[] = [
@@ -64,7 +65,7 @@ function section(native: boolean) {
         onFragment: () => {
           throw new Error("Used containing page");
         },
-        onAppLink: (url: string) => urls.push(url),
+        onAppLink: guarded,
         report: () => {},
       }),
       DocNavigationContext: navigation,
@@ -72,8 +73,18 @@ function section(native: boolean) {
       FileText: () => null,
       ExternalLink: () => null,
       BlockView: () => null,
-      openObject: (object: unknown, fragment: unknown) =>
-        opened.push([object, fragment]),
+      openObject: (
+        object: unknown,
+        fragment: unknown,
+        onAppLink?: (url: string) => void,
+      ) => {
+        assert.equal(
+          onAppLink,
+          guarded,
+          "Embedded link must retain its parent's guard",
+        );
+        opened.push([object, fragment]);
+      },
       openAppUrl: (url: string) => urls.push(url),
       OPEN_LINK_EVENT: "open-link",
       window: {
@@ -102,7 +113,22 @@ function section(native: boolean) {
   }
   const context = find(tree);
   assert.ok(context, "Section must own its navigation context");
-  return { context, opened, urls };
+  const pressOpenHeader = () => {
+    let press: (() => void) | undefined;
+    function visit(node: React.ReactNode) {
+      if (!React.isValidElement(node)) return;
+      const value = node.props as {
+        children?: React.ReactNode;
+        onClick?: () => void;
+      };
+      if (node.type === "button" && value.onClick) press = value.onClick;
+      React.Children.forEach(value.children, visit);
+    }
+    visit(tree);
+    assert.ok(press, "Expected embedded-section Open button");
+    press();
+  };
+  return { context, opened, urls, pressOpenHeader };
 }
 
 for (const native of [false, true]) {
@@ -115,5 +141,13 @@ for (const native of [false, true]) {
     );
     view.context.onAppLink("orbyn://doc/another-page#heading");
     assert.deepEqual(view.urls, ["orbyn://doc/another-page#heading"]);
+    if (!native) {
+      view.pressOpenHeader();
+      assert.equal(view.opened.length, 2);
+      assert.equal(
+        JSON.stringify(view.opened[1]),
+        JSON.stringify([{ kind: "doc", id: "source-page" }, undefined]),
+      );
+    }
   });
 }

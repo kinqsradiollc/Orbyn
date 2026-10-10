@@ -7,11 +7,35 @@ import * as React from "react";
 import * as core from "@orbyn/core";
 
 /** Run the real desktop effect with a controlled Mermaid engine, without a browser. */
-async function desktopDiagram(source: string, svg = "<svg />") {
+async function desktopDiagram(
+  source: string,
+  svg = "<svg />",
+  onAppLink?: (url: string) => void,
+) {
   const effects: (() => unknown)[] = [];
   const states: unknown[] = [];
   const calls: string[] = [];
+  const opened: { ref: core.ObjectRef; handler?: (url: string) => void }[] = [];
   const configs: Record<string, unknown>[] = [];
+  let clickNode: ((event: { stopPropagation(): void }) => void) | undefined;
+  const node = {
+    style: {} as Record<string, string>,
+    addEventListener: (_name: string, handler: typeof clickNode) => {
+      clickNode = handler;
+    },
+  };
+  const drawing = {
+    viewBox: { baseVal: { width: 300, height: 160 } },
+    style: {} as Record<string, string>,
+  };
+  const box = {
+    clientWidth: 300,
+    innerHTML: "",
+    querySelector: () => drawing,
+    querySelectorAll: (selector: string) =>
+      selector.includes("flowchart-A-") ? [node] : [],
+  };
+  let refIndex = 0;
   const engine = {
     initialize: (config: Record<string, unknown>) => configs.push(config),
     render: async (_id: string, text: string) => {
@@ -23,7 +47,10 @@ async function desktopDiagram(source: string, svg = "<svg />") {
     ...React,
     useId: () => "diagram-fixture",
     useMemo: (fn: () => unknown) => fn(),
-    useRef: () => ({ current: null }),
+    useContext: () => (onAppLink ? { onAppLink } : null),
+    useRef: (value: unknown) => ({
+      current: refIndex++ === 1 && onAppLink ? box : value,
+    }),
     useEffect: (fn: () => unknown) => effects.push(fn),
     useState: (value: unknown) => {
       const index = states.length;
@@ -54,6 +81,10 @@ async function desktopDiagram(source: string, svg = "<svg />") {
       exports,
       React,
       document: { documentElement: {}, getElementById: () => null },
+      ResizeObserver: class {
+        observe() {}
+        disconnect() {}
+      },
       getComputedStyle: () => ({
         getPropertyValue: (name: string) =>
           (core.colors as Record<string, string>)[name.replace("--color-", "")],
@@ -65,14 +96,47 @@ async function desktopDiagram(source: string, svg = "<svg />") {
             ? core
             : name === "mermaid"
               ? { __esModule: true, default: engine }
-              : {},
+              : name === "./DocLinks"
+                ? {
+                    openObject: (
+                      ref: core.ObjectRef,
+                      _block?: string,
+                      handler?: (url: string) => void,
+                    ) => opened.push({ ref, handler }),
+                  }
+                : { DocNavigationContext: {} },
     },
   );
   exports.Diagram({ text: source });
   for (const effect of effects) effect();
   await new Promise((resolve) => setImmediate(resolve));
-  return { calls, configs, failed: states[0] };
+  return {
+    calls,
+    configs,
+    failed: states[0],
+    opened,
+    pressNode: () => {
+      assert.ok(clickNode, "Expected linked diagram node listener");
+      clickNode({ stopPropagation() {} });
+    },
+  };
 }
+
+test("desktop diagram node links use the owning editor's guarded route", async () => {
+  const guarded: string[] = [];
+  const handler = (url: string) => guarded.push(url);
+  const id = "11111111-1111-4111-8111-111111111111";
+  const result = await desktopDiagram(
+    `flowchart LR\nA[Open page]\nclick A "orbyn://doc/${id}"`,
+    "<svg />",
+    handler,
+  );
+  result.pressNode();
+  assert.equal(result.opened.length, 1);
+  assert.equal(result.opened[0].ref.id, id);
+  assert.equal(result.opened[0].handler, handler);
+  assert.deepEqual(guarded, []);
+});
 
 test("desktop Diagram rejects document configuration and huge input before rendering", async () => {
   for (const source of [

@@ -127,3 +127,17 @@ structured editor has paired Source/Preview scroll handlers using its current
 source-to-block map. These changes need bounded visual inspection and Tester
 interaction checks; no closure or main integration is claimed yet. The D1
 requirement-to-evidence ledger is still being assembled.
+
+The [full C4/D1 ledger](./c4-d1-requirements-ledger.md) now maps the governing
+rows to implementation and available test receipts, with uncovered checks left
+explicit. Source/Preview scrolling was refined to use unwrapped source lines
+and rendered block positions instead of a character-count fraction. Desktop
+typecheck passed after the code change. The requested bounded visual check is
+open: Visual Check lacks browser control, and Builder's internal browser is
+blocked from the local preview by a saved site permission. Neither session
+claimed screenshots or a rendered-layout pass. Tester/Reviewer closure remains
+within round 1/3 after the final candidate is frozen.
+
+Builder's focused guard regressions passed: desktop Mermaid 4/4 and web/mobile
+embedded-section routing 2/2. Backend typecheck passed. These are development
+checks on the working tree, not Tester's frozen-candidate qualification.

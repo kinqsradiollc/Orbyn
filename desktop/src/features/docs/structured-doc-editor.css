@@ -36,6 +36,11 @@
   width: 100%;
   height: min(65vh, 680px);
   overflow: auto;
+}
+.structured-doc-source textarea {
+  white-space: pre;
+}
+.structured-doc-source pre {
   white-space: pre-wrap;
 }
 .structured-doc-leaf {
