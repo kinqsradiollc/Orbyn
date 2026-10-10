@@ -189,7 +189,9 @@ export function StructuredDocEditor({
       sourceBlocks.findLast((entry) => entry.startLine <= line) ??
       sourceBlocks[0];
     const element = [
-      ...previewPane.querySelectorAll<HTMLElement>("[data-container-path]"),
+      ...previewPane.querySelectorAll<HTMLElement>(
+        ".structured-doc-leaf[data-container-path]",
+      ),
     ].find(
       (candidate) => candidate.dataset.containerPath === range.path.join("/"),
     );
@@ -230,7 +232,9 @@ export function StructuredDocEditor({
     }
     ignoredPreviewScroll.current = null;
     const leaves = [
-      ...previewPane.querySelectorAll<HTMLElement>("[data-container-path]"),
+      ...previewPane.querySelectorAll<HTMLElement>(
+        ".structured-doc-leaf[data-container-path]",
+      ),
     ];
     const top = previewPane.getBoundingClientRect().top + 8;
     const visible =

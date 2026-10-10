@@ -1,5 +1,19 @@
 # C4/D1 delivery record
 
+## Latest Reviewer decision — ccae5a60
+
+**Changes required, round 1/3; full C4/D1 remains unaccepted.** R3 caller
+corrections are accepted at source level, with browser interaction pending.
+R4 still has a concrete defect: Preview scrolling selects quote/list wrapper
+paths that are absent from its block-only source map, so nested content does
+not synchronize back to Source. The saved Browser Use Block is a separate
+external gate. The full ledger also retains rendered-export, authorization
+and source-equivalence evidence work; the checkpoint is not held solely by
+browser access. Preserve native/exhaustive/routine-visual exclusions.
+
+Correction and qualification guidance:
+[`c4-d1-review-r1-ccae5a60.md`](./c4-d1-review-r1-ccae5a60.md).
+
 Started 10 October 2026 from pushed main `6410c65c` on
 `codex/c4-docs-parity`. Builder owns implementation until the complete stage
 is frozen for Test → Review. Review round: **1/3**. Production deployment is
@@ -155,3 +169,42 @@ A combined format-2 import/edit/Markdown-and-HTML-export fixture now covers a
 nested task list, table, image and Mermaid fence in one draft. The focused
 export suite passed 6/6. Tester must qualify the frozen candidate; Reviewer
 must still close round 1/3 before main integration.
+
+## Tester execution — `ccae5a60`
+
+Tester qualified exact candidate
+`ccae5a609ad79218cfd94069802ab42ea1cbee6c` on
+`codex/c4-docs-parity`. Workspace typecheck passed; the focused navigation,
+source-map, renderer, and export command passed **62/62**. This includes web and
+mobile caller assertions for linked tasks, embedded sections, and Mermaid
+links, plus the combined format-2 Markdown import/edit/export fixture. No
+database tests or application writes were run.
+
+**Disposition: HOLD.** Browser interaction for invalid-Source guarded handoff,
+desktop bidirectional Source/Preview scrolling, and responsive pane behavior
+could not be performed because the saved browser-use Block applies to the local
+preview. No alternate browser or origin was used. Source inspection and unit
+tests do not establish those interaction or visual gates. Round 1/3 and the full
+C4/D1 checkpoint remain open. Exact commands and limits are recorded in
+[`c4-d1-tester-ccae5a60.md`](./c4-d1-tester-ccae5a60.md).
+
+## Reviewer correction and rendered-export evidence
+
+The [round-1 continuation review](./c4-d1-review-r1-ccae5a60.md) accepted the
+rich-link guard wiring at source level, but found nested quote/list wrappers
+shadowing mapped leaves in Preview-to-Source scrolling. Builder now selects
+only editor leaf elements in both scroll directions. A focused DOM-geometry
+regression exercises nested quote/list order and suppression of a synthetic
+reverse scroll; the source-map pair passed 8/8. Backend and desktop typechecks
+passed. These are Builder checks pending a new frozen Tester pass.
+
+For the non-visual D1 ledger, the scoped diagram/privacy/image/math unit run
+passed 43/43 after the two real-loopback image tests were rerun with local HTTP
+permission. The first sandbox attempt passed 41/43 and failed those two at
+`listen EPERM`; no assertion failed. On the disposable marked test database,
+`export.test.ts` and `publication-renderer.test.ts` passed 33/33, including
+actual rendered PDF/HTML ten-family Mermaid and math cases plus revision and
+authorization fences. The test-only Postgres service was started for this run
+and remains owned until the revised Tester pass completes. These receipts do
+not establish application UI rendering or interactions while browser access is
+blocked. Full checkpoint acceptance and main integration remain open.
