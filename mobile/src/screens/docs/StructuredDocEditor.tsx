@@ -2,8 +2,10 @@ import React, { useEffect, useMemo, useSyncExternalStore } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import {
   docContainerBlocks,
+  docFragmentIndex,
   docEditorSessionDirty,
   isOfflineError,
+  parseAppLink,
   versionedDocSource,
   type Doc,
   type DocBlock,
@@ -14,11 +16,13 @@ import { Pressable } from "../../motion";
 import { ActionSheet } from "../../components/MoreMenu";
 import { colors, fonts } from "../../theme";
 import { client } from "../../lib/api";
-import { rememberPage } from "../../lib/pageCache";
+import { rememberPageDurable } from "../../lib/pageCache";
 import { savePageOffline } from "../../lib/outbox";
 import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
 import { DocContainerBody } from "./DocContainerBody";
 import { DocBody } from "./DocBody";
+import { DocNavigationContext } from "./doc-navigation";
+import { openAppUrl } from "../../hooks/useAppLinks";
 
 function sourceOf(document: VersionedDocContent): string | null {
   try {
@@ -32,6 +36,8 @@ function sourceOf(document: VersionedDocContent): string | null {
 export function StructuredDocEditor({
   doc,
   beforeLeave,
+  initialBlockId,
+  onTargetOffset,
   canWrite,
   onChanged,
   onShowHistory,
@@ -41,6 +47,8 @@ export function StructuredDocEditor({
 }: {
   doc: Doc;
   beforeLeave?: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  initialBlockId?: string | null;
+  onTargetOffset?: (y: number) => void;
   canWrite: boolean;
   onChanged: (doc: Doc) => void;
   onShowHistory?: () => void;
@@ -59,6 +67,12 @@ export function StructuredDocEditor({
   const [discardOpen, setDiscardOpen] = React.useState(false);
   const [keptOffline, setKeptOffline] = React.useState(false);
   const offlineQueued = React.useRef(false);
+  const editGeneration = React.useRef(0);
+  const queueInFlight = React.useRef(false);
+  const pageRef = React.useRef<View>(null);
+  const pageOffset = React.useRef(0);
+  const leafRefs = React.useRef(new Map<number, View>());
+  const pendingInitial = React.useRef<string | null>(initialBlockId ?? null);
   useEffect(() => {
     void store.open(doc.id, doc);
     return () => store.close();
@@ -95,7 +109,33 @@ export function StructuredDocEditor({
         : [],
     [document],
   );
+  const goToFragment = React.useCallback(
+    (fragment: string) => {
+      const current = store.state.session?.document;
+      const blocks =
+        current?.format === 2
+          ? docContainerBlocks(current.nodes, { projected: true })
+          : [];
+      const index = docFragmentIndex(blocks, fragment);
+      if (index === null) {
+        report(new Error("This heading or line is no longer in the page."));
+        return;
+      }
+      const leaf = leafRefs.current.get(index);
+      if (!leaf || !pageRef.current) return;
+      leaf.measureLayout(
+        pageRef.current,
+        (_x, y) => onTargetOffset?.(pageOffset.current + y),
+        () => report(new Error("Could not locate this line.")),
+      );
+    },
+    [store, onTargetOffset, report],
+  );
+  useEffect(() => {
+    pendingInitial.current = initialBlockId ?? null;
+  }, [doc.id, initialBlockId]);
   const save = React.useCallback(async () => {
+    if (queueInFlight.current) return;
     const before = store.state.doc?.version;
     await store.save();
     const next = store.state.doc;
@@ -103,6 +143,8 @@ export function StructuredDocEditor({
     if (isOfflineError(store.state.error)) {
       const draft = store.state.session;
       if (!draft) return;
+      const generation = editGeneration.current;
+      queueInFlight.current = true;
       const leavesOf = (value: VersionedDocContent) =>
         value.format === 1
           ? value.blocks
@@ -126,13 +168,20 @@ export function StructuredDocEditor({
           document: draft.document,
           content: leavesOf(draft.document),
         };
-        await rememberPage(kept);
-        onChanged(kept);
+        await rememberPageDurable(kept);
         store.acknowledgeOfflineSave();
-        offlineQueued.current = true;
-        setKeptOffline(true);
+        if (generation === editGeneration.current) {
+          onChanged(kept);
+          offlineQueued.current = true;
+          setKeptOffline(true);
+        } else {
+          offlineQueued.current = false;
+          setKeptOffline(false);
+        }
       } catch (error) {
         report(error);
+      } finally {
+        queueInFlight.current = false;
       }
     } else if (store.state.error) report(store.state.error);
     else {
@@ -191,7 +240,13 @@ export function StructuredDocEditor({
     save,
   ]);
   return (
-    <View style={styles.page}>
+    <View
+      ref={pageRef}
+      style={styles.page}
+      onLayout={(event) => {
+        pageOffset.current = event.nativeEvent.layout.y;
+      }}
+    >
       <ActionSheet
         visible={discardOpen}
         label="Discard page draft"
@@ -341,6 +396,7 @@ export function StructuredDocEditor({
               style={styles.title}
               value={session.title}
               onChangeText={(title) => {
+                editGeneration.current++;
                 offlineQueued.current = false;
                 setKeptOffline(false);
                 store.changeTitle(session.title, title);
@@ -362,6 +418,7 @@ export function StructuredDocEditor({
                 editable={canWrite}
                 value={state.source ?? source}
                 onChangeText={(text) => {
+                  editGeneration.current++;
                   offlineQueued.current = false;
                   setKeptOffline(false);
                   store.changeSource(document, text);
@@ -374,65 +431,100 @@ export function StructuredDocEditor({
           ) : (
             <View style={styles.preview}>
               {document.format === 2 && (
-                <DocContainerBody
-                  nodes={document.nodes}
-                  onOperation={
-                    canWrite
-                      ? (operation, expectedNodes) => {
-                          offlineQueued.current = false;
-                          setKeptOffline(false);
-                          store.changeOperation(
-                            { format: 2, nodes: [...expectedNodes] },
-                            operation,
-                          );
-                        }
-                      : undefined
-                  }
-                  renderLeaf={(block, index, path) => (
-                    <View style={styles.leaf}>
-                      <DocBody
-                        content={[block]}
-                        pageContent={leaves}
-                        pageIndex={index}
-                      />
-                      {canWrite && "text" in block && (
-                        <Pressable
-                          accessibilityRole="button"
-                          onPress={() =>
-                            setEditing(
-                              editing === path.join("/")
-                                ? null
-                                : path.join("/"),
-                            )
+                <DocNavigationContext.Provider
+                  value={{
+                    onFragment: goToFragment,
+                    onAppLink: (url) => {
+                      const link = parseAppLink(url);
+                      if (
+                        link?.kind === "doc" &&
+                        link.id === doc.id &&
+                        link.block
+                      )
+                        goToFragment(link.block);
+                      else openAppUrl(url);
+                    },
+                    report,
+                  }}
+                >
+                  <DocContainerBody
+                    nodes={document.nodes}
+                    onOperation={
+                      canWrite
+                        ? (operation, expectedNodes) => {
+                            editGeneration.current++;
+                            offlineQueued.current = false;
+                            setKeptOffline(false);
+                            store.changeOperation(
+                              { format: 2, nodes: [...expectedNodes] },
+                              operation,
+                            );
                           }
-                        >
-                          <Text style={styles.editAction}>
-                            {editing === path.join("/") ? "Done" : "Edit"}
-                          </Text>
-                        </Pressable>
-                      )}
-                      {canWrite &&
-                        editing === path.join("/") &&
-                        "text" in block && (
-                          <TextInput
-                            accessibilityLabel={`Edit block ${index + 1}`}
-                            style={styles.leafInput}
-                            multiline
-                            value={block.text}
-                            onChangeText={(text) => {
-                              offlineQueued.current = false;
-                              setKeptOffline(false);
-                              store.changeOperation(document, {
-                                kind: "replace-leaf",
-                                path,
-                                block: { ...block, text } as DocBlock,
-                              });
-                            }}
-                          />
+                        : undefined
+                    }
+                    renderLeaf={(block, index, path) => (
+                      <View
+                        ref={(node) => {
+                          if (node) leafRefs.current.set(index, node);
+                          else leafRefs.current.delete(index);
+                        }}
+                        style={styles.leaf}
+                        onLayout={() => {
+                          const target = pendingInitial.current;
+                          if (
+                            !target ||
+                            docFragmentIndex(leaves, target) !== index
+                          )
+                            return;
+                          pendingInitial.current = null;
+                          requestAnimationFrame(() => goToFragment(target));
+                        }}
+                      >
+                        <DocBody
+                          content={[block]}
+                          pageContent={leaves}
+                          pageIndex={index}
+                        />
+                        {canWrite && "text" in block && (
+                          <Pressable
+                            accessibilityRole="button"
+                            onPress={() =>
+                              setEditing(
+                                editing === path.join("/")
+                                  ? null
+                                  : path.join("/"),
+                              )
+                            }
+                          >
+                            <Text style={styles.editAction}>
+                              {editing === path.join("/") ? "Done" : "Edit"}
+                            </Text>
+                          </Pressable>
                         )}
-                    </View>
-                  )}
-                />
+                        {canWrite &&
+                          editing === path.join("/") &&
+                          "text" in block && (
+                            <TextInput
+                              accessibilityLabel={`Edit block ${index + 1}`}
+                              style={styles.leafInput}
+                              multiline
+                              value={block.text}
+                              onChangeText={(text) => {
+                                editGeneration.current++;
+                                offlineQueued.current = false;
+                                setKeptOffline(false);
+                                store.changeOperation(document, {
+                                  kind: "replace-leaf",
+                                  path,
+                                  block: { ...block, text } as DocBlock,
+                                });
+                              }}
+                            />
+                          )}
+                      </View>
+                    )}
+                  />
+                </DocNavigationContext.Provider>
               )}
             </View>
           )}

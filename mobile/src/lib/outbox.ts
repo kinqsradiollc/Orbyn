@@ -57,8 +57,15 @@ function set(patch: Partial<State>) {
   for (const l of listeners) l(state);
 }
 
+let writeTail: Promise<void> = Promise.resolve();
+function persistStrict(): Promise<void> {
+  const snapshot = JSON.stringify(state.entries);
+  const write = writeTail.then(() => AsyncStorage.setItem(KEY, snapshot));
+  writeTail = write.catch(() => {});
+  return write;
+}
 function persist() {
-  void AsyncStorage.setItem(KEY, JSON.stringify(state.entries)).catch(() => {});
+  void persistStrict().catch(() => {});
 }
 
 /** Read the queue saved on the phone. Safe to call more than once. */
@@ -100,6 +107,7 @@ export function whenSent(listener: () => void) {
 /** Forget everything waiting: signing out, or starting over. */
 export async function clearOutbox() {
   set({ entries: [], syncedAt: null, offline: false });
+  await writeTail;
   await AsyncStorage.removeItem(KEY).catch(() => {});
 }
 
@@ -390,7 +398,19 @@ export async function resolve(key: string, choice: "mine" | "retry" | "drop") {
  */
 export async function savePageOffline(save: PageSave) {
   await loadOutbox();
-  enqueue({ type: "doc.save", save });
+  set({
+    entries: queueChange(state.entries, {
+      key: newId(),
+      op: { type: "doc.save", save },
+      queued_at: new Date().toISOString(),
+      attempts: 0,
+      state: "pending",
+    }),
+    offline: true,
+  });
+  // The structured editor may leave only after this write resolves. Unlike
+  // ordinary optimistic queueing, storage failure must reach the caller.
+  await persistStrict();
 }
 
 /** The edit waiting to be sent for a page, to show it with the page. */

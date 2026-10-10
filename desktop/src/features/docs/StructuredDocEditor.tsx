@@ -9,7 +9,9 @@ import {
 } from "react";
 import {
   docContainerBlocks,
+  docFragmentIndex,
   docEditorSessionDirty,
+  parseAppLink,
   EXPORT_FORMATS,
   EXPORT_LABELS,
   versionedDocSourceAt,
@@ -28,6 +30,8 @@ import { useConfirm } from "../../components/Confirm";
 import { BlockView } from "./DocBlocks";
 import { DocContainerView } from "./DocContainerView";
 import { DocComments } from "./DocComments";
+import { DocNavigationContext } from "./doc-navigation";
+import { OPEN_LINK_EVENT } from "./DocLinks";
 import "./structured-doc-editor.css";
 
 function sourceOf(document: VersionedDocContent): string | null {
@@ -44,6 +48,7 @@ export function StructuredDocEditor({
   canWrite,
   onChanged,
   onBack,
+  initialBlockId,
   userId,
   report,
 }: {
@@ -51,6 +56,7 @@ export function StructuredDocEditor({
   canWrite: boolean;
   onChanged: (doc: Doc) => void;
   onBack?: () => void;
+  initialBlockId?: string | null;
   userId?: string;
   report: (error: unknown) => void;
 }) {
@@ -71,6 +77,7 @@ export function StructuredDocEditor({
   const [commentTops, setCommentTops] = useState<Record<string, number>>({});
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLElement>(null);
+  const initialTargetDone = useRef<string | null>(null);
   const state = useSyncExternalStore(
     (listener) => store.subscribe(listener),
     () => store.state,
@@ -147,6 +154,27 @@ export function StructuredDocEditor({
         : [],
     [document],
   );
+  const goToFragment = useCallback(
+    (fragment: string) => {
+      const index = docFragmentIndex(leaves, fragment);
+      if (index === null) {
+        report(new Error("This heading or line is no longer in the page."));
+        return;
+      }
+      previewRef.current
+        ?.querySelector<HTMLElement>(`[data-leaf-index="${index}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setActiveComment(leaves[index]?.id ?? null);
+    },
+    [leaves, report],
+  );
+  useEffect(() => {
+    if (!initialBlockId || !leaves.length) return;
+    const target = `${doc.id}:${initialBlockId}`;
+    if (initialTargetDone.current === target) return;
+    initialTargetDone.current = target;
+    requestAnimationFrame(() => goToFragment(initialBlockId));
+  }, [doc.id, initialBlockId, goToFragment, leaves.length]);
   useLayoutEffect(() => {
     if (!commentsOpen || !previewRef.current) return;
     const preview = previewRef.current;
@@ -433,78 +461,99 @@ export function StructuredDocEditor({
               className="structured-doc-preview"
             >
               {document.format === 2 && (
-                <DocContainerView
-                  nodes={document.nodes}
-                  onOperation={
-                    canWrite
-                      ? (operation, expectedNodes) =>
-                          change(operation, {
-                            format: 2,
-                            nodes: [...expectedNodes],
-                          })
-                      : undefined
-                  }
-                  renderLeaf={(block, index, path) => (
-                    <div
-                      className="structured-doc-leaf"
-                      data-block-id={block.id}
-                      data-container-path={path.join("/")}
-                      onClick={(event) => {
-                        if (
-                          !(event.target as HTMLElement).closest(
-                            "a, button, input, textarea",
+                <DocNavigationContext.Provider
+                  value={{
+                    docId: doc.id,
+                    onFragment: goToFragment,
+                    onAppLink: (url) => {
+                      const link = parseAppLink(url);
+                      if (
+                        link?.kind === "doc" &&
+                        link.id === doc.id &&
+                        link.block
+                      )
+                        goToFragment(link.block);
+                      else
+                        window.dispatchEvent(
+                          new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
+                        );
+                    },
+                  }}
+                >
+                  <DocContainerView
+                    nodes={document.nodes}
+                    onOperation={
+                      canWrite
+                        ? (operation, expectedNodes) =>
+                            change(operation, {
+                              format: 2,
+                              nodes: [...expectedNodes],
+                            })
+                        : undefined
+                    }
+                    renderLeaf={(block, index, path) => (
+                      <div
+                        className="structured-doc-leaf"
+                        data-block-id={block.id}
+                        data-leaf-index={index}
+                        data-container-path={path.join("/")}
+                        onClick={(event) => {
+                          if (
+                            !(event.target as HTMLElement).closest(
+                              "a, button, input, textarea",
+                            )
                           )
-                        )
-                          sourceAtBlock(path);
-                      }}
-                    >
-                      <BlockView block={block} pageBlocks={leaves} />
-                      {canWrite && "text" in block && (
-                        <>
-                          <button
-                            type="button"
-                            className="structured-doc-edit"
-                            onClick={() =>
-                              setEditing(
-                                editing === path.join("/")
-                                  ? null
-                                  : path.join("/"),
-                              )
-                            }
-                          >
-                            {editing === path.join("/") ? "Done" : "Edit"}
-                          </button>
-                          <button
-                            type="button"
-                            className="structured-doc-edit"
-                            onClick={() => void commentOn(block, index)}
-                          >
-                            Comment
-                          </button>
-                          {editing === path.join("/") && (
-                            <textarea
-                              aria-label={`Edit block ${index + 1}`}
-                              value={block.text}
-                              onChange={(event) =>
-                                change(
-                                  {
-                                    kind: "replace-leaf",
-                                    path,
-                                    block: {
-                                      ...block,
-                                      text: event.currentTarget.value,
-                                    } as DocBlock,
-                                  },
-                                  document,
+                            sourceAtBlock(path);
+                        }}
+                      >
+                        <BlockView block={block} pageBlocks={leaves} />
+                        {canWrite && "text" in block && (
+                          <>
+                            <button
+                              type="button"
+                              className="structured-doc-edit"
+                              onClick={() =>
+                                setEditing(
+                                  editing === path.join("/")
+                                    ? null
+                                    : path.join("/"),
                                 )
                               }
-                            />
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-                />
+                            >
+                              {editing === path.join("/") ? "Done" : "Edit"}
+                            </button>
+                            <button
+                              type="button"
+                              className="structured-doc-edit"
+                              onClick={() => void commentOn(block, index)}
+                            >
+                              Comment
+                            </button>
+                            {editing === path.join("/") && (
+                              <textarea
+                                aria-label={`Edit block ${index + 1}`}
+                                value={block.text}
+                                onChange={(event) =>
+                                  change(
+                                    {
+                                      kind: "replace-leaf",
+                                      path,
+                                      block: {
+                                        ...block,
+                                        text: event.currentTarget.value,
+                                      } as DocBlock,
+                                    },
+                                    document,
+                                  )
+                                }
+                              />
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+                  />
+                </DocNavigationContext.Provider>
               )}
             </section>
             <section

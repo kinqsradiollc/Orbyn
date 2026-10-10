@@ -29,13 +29,25 @@ async function load(): Promise<CachedPage[]> {
   return loading;
 }
 
-const save = () =>
-  void AsyncStorage.setItem(KEY, encodePageCache(pages ?? [])).catch(() => {});
+let writeTail: Promise<void> = Promise.resolve();
+const saveStrict = () => {
+  const snapshot = encodePageCache(pages ?? []);
+  const write = writeTail.then(() => AsyncStorage.setItem(KEY, snapshot));
+  writeTail = write.catch(() => {});
+  return write;
+};
+const save = () => void saveStrict().catch(() => {});
 
 /** A page was opened or saved: keep it, newest first. */
 export async function rememberPage(doc: Doc) {
   pages = keepPage(await load(), doc);
   save();
+}
+
+/** A recovery copy with an awaited storage receipt for guarded editor exit. */
+export async function rememberPageDurable(doc: Doc) {
+  pages = keepPage(await load(), doc);
+  await saveStrict();
 }
 
 /** A page went to Trash or is no longer shared: stop keeping it. */
@@ -78,5 +90,6 @@ export async function keptPages(): Promise<Doc[]> {
 export async function clearPageCache() {
   pages = [];
   loading = null;
+  await writeTail;
   await AsyncStorage.removeItem(KEY).catch(() => {});
 }

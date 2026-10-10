@@ -3165,6 +3165,8 @@ export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
     <StructuredDocEditor
       doc={complete}
       beforeLeave={props.beforeLeave}
+      initialBlockId={props.initialBlockId}
+      onTargetOffset={props.onTargetOffset}
       canWrite={props.canWrite ?? true}
       onChanged={props.onChanged}
       onShowHistory={props.onShowHistory}

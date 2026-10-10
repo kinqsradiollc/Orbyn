@@ -20,6 +20,7 @@ export type DocEditorStoreState = Readonly<{
   doc: Doc | null;
   session: DocEditorSession | null;
   source: string | null;
+  sourceInvalid: boolean;
   busy: boolean;
   error: unknown | null;
   conflict: boolean;
@@ -34,6 +35,7 @@ export class DocEditorStore {
     doc: null,
     session: null,
     source: null,
+    sourceInvalid: false,
     busy: false,
     error: null,
     conflict: false,
@@ -67,6 +69,7 @@ export class DocEditorStore {
       doc: null,
       session: null,
       source: null,
+      sourceInvalid: false,
       busy: false,
       error: null,
       conflict: false,
@@ -95,6 +98,7 @@ export class DocEditorStore {
         document: doc.document,
       }),
       source: null,
+      sourceInvalid: false,
       busy: false,
       error: null,
       conflict: false,
@@ -147,7 +151,7 @@ export class DocEditorStore {
     try {
       this.publish({
         session: titleDocEditorSession(session, expected, title),
-        error: null,
+        error: this.value.sourceInvalid ? this.value.error : null,
       });
       this.edit++;
     } catch (error) {
@@ -169,11 +173,12 @@ export class DocEditorStore {
       this.publish({
         session: sourceDocEditorSession(session, expected, document),
         source,
+        sourceInvalid: false,
         error: null,
       });
     } catch (error) {
       // Keep invalid source in the editor, but never send a guessed tree.
-      this.publish({ source, error });
+      this.publish({ source, sourceInvalid: true, error });
     }
   }
 
@@ -187,6 +192,7 @@ export class DocEditorStore {
       this.publish({
         session: editDocEditorSession(session, expected, operation),
         source: null,
+        sourceInvalid: false,
         error: null,
       });
       this.edit++;
@@ -208,6 +214,7 @@ export class DocEditorStore {
     this.publish({
       session: openDocEditorSession(session.saved),
       source: null,
+      sourceInvalid: false,
       error: null,
       conflict: false,
     });
@@ -222,7 +229,8 @@ export class DocEditorStore {
       !docEditorSessionDirty(session) ||
       this.value.busy ||
       this.value.conflict ||
-      this.value.error
+      this.value.error ||
+      this.value.sourceInvalid
     )
       return;
     const epoch = this.epoch;
@@ -254,8 +262,9 @@ export class DocEditorStore {
         doc,
         session: next,
         source: edit === this.edit ? null : this.value.source,
+        sourceInvalid: edit === this.edit ? false : this.value.sourceInvalid,
         busy: false,
-        error: null,
+        error: edit === this.edit ? null : this.value.error,
       });
     } catch (error) {
       if (epoch !== this.epoch) return;
@@ -281,7 +290,7 @@ export class DocEditorStore {
       const current = this.value.session;
       if (!current) return;
       // An unparsed source buffer has no safe tree to merge. Keep it visible.
-      if (this.value.source !== null && this.value.error) {
+      if (this.value.source !== null && this.value.sourceInvalid) {
         this.publish({
           doc,
           busy: false,
@@ -310,6 +319,7 @@ export class DocEditorStore {
         session: next,
         source:
           doc.version === current.saved.version ? this.value.source : null,
+        sourceInvalid: false,
         busy: false,
         error: null,
         conflict: false,

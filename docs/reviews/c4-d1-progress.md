@@ -2,7 +2,7 @@
 
 Started 10 October 2026 from pushed main `6410c65c` on
 `codex/c4-docs-parity`. Builder owns implementation until the complete stage
-is frozen for Test → Review. Review round: **0/3**. Production deployment is
+is frozen for Test → Review. Review round: **1/3**. Production deployment is
 user-owned.
 
 | Area               | Implemented on this branch                                                                                                                                                                                                                                                                      | Qualification still required                                                                       |
@@ -20,3 +20,19 @@ disposable `orbyn_test` database. The candidate is not yet accepted or on main.
 Explicit user exclusions: no separate desktop-app check, installed iOS or
 Android build, or exhaustive 200% retest. The user stopped routine Visual
 Check; no browser screenshot result is claimed here.
+
+Tester execution record for the superseded `c270a9bc` candidate: see
+[`c4-d1-tester-r1-c270a9bc.md`](./c4-d1-tester-r1-c270a9bc.md). The focused
+interactive confirmation retest for current revision `1b76c6c3` remains open.
+
+Reviewer round 1 decision on `1b76c6c3`: **changes required**. Report:
+[`c4-d1-review-r1.md`](./c4-d1-review-r1.md).
+Open findings: invalid-source validation cleared by unrelated edits/receipts;
+mobile offline acknowledgment without durable, draft-specific persistence;
+missing structured-editor fragment navigation. The report also identifies
+targeted test receipts and the pending confirmation-dialog interaction check.
+Builder corrected all three findings in source and added store/storage regressions.
+Full workspace typecheck and 52 targeted checks pass on the working revision.
+Tester owns the final source-exact execution, including the app-dialog interaction
+now that the user has approved local QA sign-in. Reviewer owns closure. No
+main-integration acceptance yet.

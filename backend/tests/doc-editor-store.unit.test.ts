@@ -91,3 +91,51 @@ test("refresh keeps an invalid source buffer and refuses a silent historical ove
   assert.equal(store.state.session?.saved.version, 1);
   assert.throws(() => store.adopt(remote), /Save or discard/);
 });
+
+test("title changes cannot clear an invalid source or send its old tree", async () => {
+  let sent = 0;
+  const store = new DocEditorStore({
+    getDocForEditor: async () => page(),
+    updateDocForEditor: async () => {
+      sent++;
+      return page(2);
+    },
+  } as ConstructorParameters<typeof DocEditorStore>[0]);
+  await store.open(id);
+  const owner = store.state.session!.document;
+  const invalid = "> - [ ] One ^first\n\nTail ^first";
+  store.changeSource(owner, invalid);
+  store.changeTitle("Page", "Renamed");
+  await store.save();
+  assert.equal(sent, 0);
+  assert.equal(store.state.source, invalid);
+  assert.equal(store.state.sourceInvalid, true);
+  assert.ok(store.state.error);
+  store.changeSource(owner, "> - [ ] One ^first\n\nTail ^tail");
+  await store.save();
+  assert.equal(sent, 1);
+  assert.equal(store.state.sourceInvalid, false);
+});
+
+test("an earlier save receipt cannot erase invalid source typed while it was in flight", async () => {
+  let settle!: (doc: Doc) => void;
+  const store = new DocEditorStore({
+    getDocForEditor: async () => page(),
+    updateDocForEditor: async () =>
+      new Promise<Doc>((resolve) => {
+        settle = resolve;
+      }),
+  } as ConstructorParameters<typeof DocEditorStore>[0]);
+  await store.open(id);
+  store.changeTitle("Page", "First edit");
+  const saving = store.save();
+  const owner = store.state.session!.document;
+  const invalid = "> - [ ] One ^first\n\nTail ^first";
+  store.changeSource(owner, invalid);
+  settle({ ...page(2), title: "First edit" });
+  await saving;
+  assert.equal(store.state.source, invalid);
+  assert.equal(store.state.sourceInvalid, true);
+  assert.ok(store.state.error);
+  assert.equal(store.state.session?.saved.version, 2);
+});

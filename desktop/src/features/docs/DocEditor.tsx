@@ -4319,6 +4319,7 @@ export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
       canWrite={props.canWrite ?? true}
       onChanged={props.onChanged}
       onBack={props.onBack}
+      initialBlockId={props.initialBlockId}
       userId={props.userId}
       report={props.report}
     />

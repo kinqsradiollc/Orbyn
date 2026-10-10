@@ -35,7 +35,10 @@ const source = readFileSync(
 const compiled = ts.transpileModule(source, {
   compilerOptions: { module: ts.ModuleKind.CommonJS, esModuleInterop: true },
 }).outputText;
-function fixture(offline = false) {
+function fixture(
+  offline = false,
+  write?: (key: string, value: string) => Promise<void>,
+) {
   const calls: { name: string; args: unknown[] }[] = [];
   const stored: string[] = [];
   const client = {
@@ -62,6 +65,7 @@ function fixture(offline = false) {
     "@react-native-async-storage/async-storage": {
       getItem: async () => null,
       setItem: async (_key: string, value: string) => {
+        if (write) await write(_key, value);
         stored.push(value);
       },
       removeItem: async () => {},
@@ -103,6 +107,35 @@ test("actual native replay uses one owned read and atomic full-format write, wit
   const options = f.calls[1].args[2] as { ticksFrom: number };
   assert.equal(options.ticksFrom, save.base.version);
   assert.deepEqual(Object.keys(options), ["ticksFrom"]);
+});
+
+test("offline page receipt waits for durable storage and rejects failed writes", async () => {
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const f = fixture(false, async () => waiting);
+  let settled = false;
+  const queued = f.exports.savePageOffline!(save).then(() => {
+    settled = true;
+  });
+  await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  assert.equal(settled, false);
+  assert.equal(f.stored.length, 0);
+  release();
+  await queued;
+  assert.equal(settled, true);
+  assert.equal(
+    (JSON.parse(f.stored[0])[0].op as { save: core.PageSave }).save.document
+      ?.format,
+    2,
+  );
+
+  const rejected = fixture(false, async () => {
+    throw new Error("Storage full");
+  });
+  await assert.rejects(rejected.exports.savePageOffline!(save), /Storage full/);
+  assert.equal(rejected.stored.length, 0);
 });
 
 test("legacy queued pages retain their legacy transport", async () => {
