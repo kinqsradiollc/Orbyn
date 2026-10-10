@@ -203,7 +203,8 @@ export class DocEditorStore {
 
   /** Mobile may keep a failed network save in its durable outbox. */
   acknowledgeOfflineSave() {
-    if (isOfflineError(this.value.error)) this.publish({ error: null });
+    if (!this.value.sourceInvalid && isOfflineError(this.value.error))
+      this.publish({ error: null });
   }
 
   /** Explicit user discard; keep the last saved revision until a fresh read succeeds. */
@@ -272,7 +273,13 @@ export class DocEditorStore {
         await this.refresh();
         return;
       }
-      this.publish({ busy: false, error });
+      // A network failure belongs to the older request. A newer, unparsed
+      // source buffer keeps its own validation error and cannot be queued as
+      // the older valid tree by an offline caller.
+      this.publish({
+        busy: false,
+        error: this.value.sourceInvalid ? this.value.error : error,
+      });
     }
   }
 

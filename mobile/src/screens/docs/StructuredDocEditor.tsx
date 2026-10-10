@@ -17,6 +17,7 @@ import { ActionSheet } from "../../components/MoreMenu";
 import { colors, fonts } from "../../theme";
 import { client } from "../../lib/api";
 import { rememberPageDurable } from "../../lib/pageCache";
+import { canLeaveStructuredDocDraft } from "../../lib/structuredDocDraftGuard";
 import { savePageOffline } from "../../lib/outbox";
 import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
 import { DocContainerBody } from "./DocContainerBody";
@@ -66,7 +67,9 @@ export function StructuredDocEditor({
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [discardOpen, setDiscardOpen] = React.useState(false);
   const [keptOffline, setKeptOffline] = React.useState(false);
-  const [navigationError, setNavigationError] = React.useState<string | null>(null);
+  const [navigationError, setNavigationError] = React.useState<string | null>(
+    null,
+  );
   const offlineQueued = React.useRef(false);
   const editGeneration = React.useRef(0);
   const queueInFlight = React.useRef(false);
@@ -136,13 +139,19 @@ export function StructuredDocEditor({
   useEffect(() => {
     pendingInitial.current = initialBlockId ?? null;
   }, [doc.id, initialBlockId]);
+  useEffect(() => {
+    if (!initialBlockId || document?.format !== 2) return;
+    if (docFragmentIndex(leaves, initialBlockId) !== null) return;
+    pendingInitial.current = null;
+    setNavigationError("This heading or line is no longer in the page.");
+  }, [doc.id, initialBlockId, document, leaves]);
   const save = React.useCallback(async () => {
     if (queueInFlight.current) return;
     const before = store.state.doc?.version;
     await store.save();
     const next = store.state.doc;
     if (next && next.version !== before) onChanged(next);
-    if (isOfflineError(store.state.error)) {
+    if (!store.state.sourceInvalid && isOfflineError(store.state.error)) {
       const draft = store.state.session;
       if (!draft) return;
       const generation = editGeneration.current;
@@ -171,6 +180,7 @@ export function StructuredDocEditor({
           content: leavesOf(draft.document),
         };
         await rememberPageDurable(kept);
+        if (store.state.sourceInvalid) return;
         store.acknowledgeOfflineSave();
         if (generation === editGeneration.current) {
           onChanged(kept);
@@ -219,18 +229,13 @@ export function StructuredDocEditor({
     const guard = async () => {
       const current = store.state;
       if (!current.session) return true;
-      if (current.source !== null && current.error) return false;
+      if (current.sourceInvalid || (current.source !== null && current.error))
+        return false;
       if (current.conflict) return false;
       if (docEditorSessionDirty(current.session) && !offlineQueued.current)
         await save();
       const settled = store.state;
-      return (
-        offlineQueued.current ||
-        (!!settled.session &&
-          !docEditorSessionDirty(settled.session) &&
-          !settled.error &&
-          !settled.conflict)
-      );
+      return canLeaveStructuredDocDraft(settled, offlineQueued.current);
     };
     beforeLeave.current = guard;
     return () => {

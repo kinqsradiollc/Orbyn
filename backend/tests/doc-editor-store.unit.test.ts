@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DocEditorStore } from "@orbyn/api-client";
+import { canLeaveStructuredDocDraft } from "../../mobile/src/lib/structuredDocDraftGuard.js";
 import {
   parseDocContainers,
   type Doc,
@@ -138,4 +139,31 @@ test("an earlier save receipt cannot erase invalid source typed while it was in 
   assert.equal(store.state.sourceInvalid, true);
   assert.ok(store.state.error);
   assert.equal(store.state.session?.saved.version, 2);
+});
+
+test("an offline failure cannot replace newer invalid source with an acknowledged old tree", async () => {
+  let rejectSave!: (error: Error) => void;
+  const store = new DocEditorStore({
+    getDocForEditor: async () => page(),
+    updateDocForEditor: async () =>
+      new Promise<Doc>((_resolve, reject) => {
+        rejectSave = reject;
+      }),
+  } as ConstructorParameters<typeof DocEditorStore>[0]);
+  await store.open(id);
+  store.changeTitle("Page", "First edit");
+  const saving = store.save();
+  const owner = store.state.session!.document;
+  const invalid = "> - [ ] One ^first\n\nTail ^first";
+  store.changeSource(owner, invalid);
+  const validationError = store.state.error;
+  rejectSave(Object.assign(new Error("Offline"), { offline: true }));
+  await saving;
+  assert.equal(store.state.source, invalid);
+  assert.equal(store.state.sourceInvalid, true);
+  assert.equal(store.state.error, validationError);
+  store.acknowledgeOfflineSave();
+  assert.equal(store.state.error, validationError);
+  assert.equal(store.state.session?.saved.version, 1);
+  assert.equal(canLeaveStructuredDocDraft(store.state, true), false);
 });
