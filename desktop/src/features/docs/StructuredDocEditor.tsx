@@ -65,6 +65,7 @@ export function StructuredDocEditor({
   const [editing, setEditing] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [activePane, setActivePane] = useState<"preview" | "source">("preview");
   const [versions, setVersions] = useState<DocVersion[] | null>(null);
   const [selected, setSelected] = useState<DocVersion | null>(null);
   const [historyBusy, setHistoryBusy] = useState(false);
@@ -141,21 +142,30 @@ export function StructuredDocEditor({
         "[data-container-path]",
       ) ?? []),
     ].find((element) => element.dataset.containerPath === range.path.join("/"));
-    target?.scrollIntoView({ block: "nearest" });
+    const previewPane = previewRef.current;
+    if (!target || !previewPane) return;
+    const targetRect = target.getBoundingClientRect();
+    const paneRect = previewPane.getBoundingClientRect();
+    if (targetRect.top < paneRect.top)
+      previewPane.scrollTop += targetRect.top - paneRect.top;
+    else if (targetRect.bottom > paneRect.bottom)
+      previewPane.scrollTop += targetRect.bottom - paneRect.bottom;
   };
   const sourceAtBlock = (path: number[]) => {
     const range = sourceMap?.ranges.find(
       (entry) => entry.path.join("/") === path.join("/"),
     );
     if (!range || !sourceRef.current) return;
-    sourceRef.current.focus();
-    sourceRef.current.setSelectionRange(range.start, range.end);
-    const lines = sourceMap!.source.split("\n").length;
-    sourceRef.current.scrollTop = Math.max(
-      0,
-      ((range.startLine - 2) / Math.max(1, lines)) *
-        sourceRef.current.scrollHeight,
-    );
+    setActivePane("source");
+    window.requestAnimationFrame(() => {
+      const input = sourceRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(range.start, range.end);
+      const lineHeight =
+        Number.parseFloat(getComputedStyle(input).lineHeight) || 20;
+      input.scrollTop = Math.max(0, (range.startLine - 2) * lineHeight);
+    });
   };
   const syncPreviewFromSource = () => {
     const sourcePane = sourceRef.current;
@@ -585,7 +595,26 @@ export function StructuredDocEditor({
           ) : (
             <h1>{session.title}</h1>
           )}
-          <div className="structured-doc-columns">
+          <div
+            className="structured-doc-pane-switch"
+            aria-label="Document view"
+          >
+            <button
+              type="button"
+              aria-pressed={activePane === "preview"}
+              onClick={() => setActivePane("preview")}
+            >
+              Preview
+            </button>
+            <button
+              type="button"
+              aria-pressed={activePane === "source"}
+              onClick={() => setActivePane("source")}
+            >
+              Source
+            </button>
+          </div>
+          <div className="structured-doc-columns" data-active-pane={activePane}>
             <section
               ref={previewRef}
               aria-label="Page preview"

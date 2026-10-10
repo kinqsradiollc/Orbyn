@@ -141,3 +141,17 @@ within round 1/3 after the final candidate is frozen.
 Builder's focused guard regressions passed: desktop Mermaid 4/4 and web/mobile
 embedded-section routing 2/2. Backend typecheck passed. These are development
 checks on the working tree, not Tester's frozen-candidate qualification.
+Web and mobile linked-task actions also now have caller-level guard assertions;
+the focused 2/2 run and backend typecheck passed on the next working candidate.
+
+The desktop editor now uses its available content width to choose a two-pane
+layout or a compact Preview/Source switch. Preview clicks open the matching
+source line; source-caret navigation scrolls within the preview instead of
+moving the whole page. The inactive narrow pane retains its scroll geometry.
+This is a code-based correction, not a visual pass: browser permission and
+Visual Check tool availability still block actual rendered inspection.
+
+A combined format-2 import/edit/Markdown-and-HTML-export fixture now covers a
+nested task list, table, image and Mermaid fence in one draft. The focused
+export suite passed 6/6. Tester must qualify the frozen candidate; Reviewer
+must still close round 1/3 before main integration.

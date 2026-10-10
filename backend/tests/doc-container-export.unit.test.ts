@@ -9,6 +9,8 @@ import {
   docContainersHtml,
   docHtmlPage,
   docContainersText,
+  applyVersionedDocSource,
+  versionedDocSource,
 } from "@orbyn/core";
 const privateId = "00000000-0000-4000-8000-000000000001";
 const source = `> # Nested\n>\n> - [Secret title][secret]\n>\n>   code context\n\n[secret]: orbyn://doc/${privateId} "Secret hint"`;
@@ -91,4 +93,43 @@ test("plain text resolves global references once and preserves escaped literal s
   assert.match(text, /> \*\*literal\*\* and Guide \[1\]/);
   assert.match(text, /\[1\] Footnote/);
   assert.doesNotMatch(text, /\[ref\]:|\[Guide\]/);
+});
+
+test("one structured draft imports, edits and exports a mixed Markdown page", () => {
+  const source = [
+    "# Plan",
+    "",
+    "1. Intro",
+    "   - [x] Read notes",
+    "",
+    "| Day | Work |",
+    "| --- | --- |",
+    "| Mon | Draft |",
+    "",
+    "![Plan image](orbyn://file/00000000-0000-4000-8000-000000000001)",
+    "",
+    "```mermaid",
+    "flowchart LR",
+    "A --> B",
+    "```",
+  ].join("\n");
+  const initial = { format: 2 as const, nodes: parseDocContainers(source) };
+  const edited = applyVersionedDocSource(
+    initial,
+    initial,
+    versionedDocSource(initial).replace("Intro", "Outline"),
+  );
+  if (edited.format !== 2) assert.fail("Expected a structured page");
+  const markdown = serializeDocContainers(edited.nodes);
+  const html = docContainersHtml(edited.nodes);
+  for (const value of [markdown, html]) {
+    assert.match(value, /Outline/);
+    assert.match(value, /Read notes/);
+    assert.match(value, /Mon/);
+    assert.match(value, /Plan image/);
+    assert.match(value, /flowchart LR/);
+  }
+  assert.match(markdown, /- \[x\] Read notes/);
+  assert.match(markdown, /```mermaid/);
+  assert.match(html, /<table>/);
 });

@@ -1,47 +1,69 @@
 .structured-doc-editor {
   min-width: 0;
-  padding: 20px;
+  padding: clamp(12px, 2vw, 20px);
+  container-type: inline-size;
 }
 .structured-doc-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   flex-wrap: wrap;
 }
 .structured-doc-status {
   margin-right: auto;
+  min-width: 0;
+  font-size: 13px;
 }
 .structured-doc-title {
   display: block;
   width: 100%;
-  margin: 20px 0;
-  font-size: clamp(1.5rem, 2vw, 2rem);
+  min-width: 0;
+  margin: 12px 0 16px;
+  font-size: clamp(1.5rem, 2vw, 1.75rem);
+}
+.structured-doc-pane-switch {
+  display: none;
 }
 .structured-doc-columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 20px;
+  gap: 16px;
   min-width: 0;
 }
 .structured-doc-columns > section {
   min-width: 0;
 }
 .structured-doc-preview {
-  height: min(65vh, 680px);
+  height: min(65dvh, 680px);
   overflow: auto;
   overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+  padding: 0 8px 12px 0;
+}
+.structured-doc-source > h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  line-height: 20px;
 }
 .structured-doc-source textarea,
 .structured-doc-source pre {
   width: 100%;
-  height: min(65vh, 680px);
+  height: min(65dvh, 680px);
+  min-width: 0;
+  box-sizing: border-box;
   overflow: auto;
 }
 .structured-doc-source textarea {
   white-space: pre;
+  resize: none;
+  padding: 12px;
+  font-family: monospace;
+  font-size: 13px;
+  line-height: 20px;
 }
 .structured-doc-source pre {
   white-space: pre-wrap;
+  padding: 12px;
 }
 .structured-doc-leaf {
   min-width: 0;
@@ -69,6 +91,7 @@
   top: 100%;
   display: grid;
   min-width: 180px;
+  max-width: min(280px, calc(100vw - 24px));
   max-height: min(60vh, 360px);
   overflow: auto;
   padding: 8px;
@@ -106,18 +129,61 @@
 .structured-doc-history ol {
   padding-left: 24px;
 }
-@media (max-width: 700px) {
-  .structured-doc-editor {
-    padding: 12px;
+@container (max-width: 760px) {
+  .structured-doc-pane-switch {
+    display: flex;
+    width: fit-content;
+    max-width: 100%;
+    gap: 4px;
+    margin: 0 0 12px;
+    padding: 4px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surfaceMuted);
+  }
+  .structured-doc-pane-switch button {
+    min-width: 88px;
+    min-height: 40px;
+    padding: 6px 12px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+  }
+  .structured-doc-pane-switch button[aria-pressed="true"] {
+    background: var(--color-surface);
+    font-weight: 600;
   }
   .structured-doc-columns {
-    grid-template-columns: minmax(0, 1fr);
+    display: block;
+    position: relative;
+  }
+  .structured-doc-columns[data-active-pane="preview"] > .structured-doc-source,
+  .structured-doc-columns[data-active-pane="source"] > .structured-doc-preview {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    visibility: hidden;
+    pointer-events: none;
   }
   .structured-doc-source textarea,
   .structured-doc-source pre {
-    height: 35vh;
+    height: min(60dvh, 640px);
   }
   .structured-doc-preview {
-    height: 35vh;
+    height: min(60dvh, 640px);
+    padding-right: 0;
+  }
+  .structured-doc-source > h2 {
+    display: none;
+  }
+}
+@container (max-width: 420px) {
+  .structured-doc-toolbar {
+    gap: 6px;
+  }
+  .structured-doc-toolbar > button,
+  .structured-doc-menu > button {
+    min-height: 40px;
+    padding-inline: 10px;
   }
 }
