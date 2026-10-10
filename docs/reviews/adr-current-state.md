@@ -1,6 +1,6 @@
 # ADR implementation tracker
 
-Updated 9 October 2026. Follow the full contract in
+Updated 10 October 2026. Follow the full contract in
 [the implementation review](devday-2026-implementation-review.md) and
 [the top-down execution order](adr-execution-order.md).
 Detailed qualification and historical failures remain in
@@ -19,7 +19,9 @@ activity, typed rules and authority rechecks, bounded handoffs, and cumulative
 lane budgets. See [C3 closeout](c3-closeout-2026-10-09.md). The user requested
 the broader goal be paused after C3.
 
-**Next stage when resumed:** C4/D1.
+**Next stage when resumed:** C5. C4/D1 is accepted for main under the user's
+10 October scope decision; browser interaction and visual checks are deferred
+to production and remain unverified. See [C4/D1 delivery record](c4-d1-progress.md).
 
 The user-requested product content cleanup across web/desktop and mobile
 passed Test → Review in round **1/3** and was pushed to
@@ -55,7 +57,7 @@ behavior is untested. See [C1 closeout](c1-closeout-2026-10-08.md),
 | ✓ C1           | Accepted and merged; push delivery recorded in the closeout. User deploys main manually.                                       |
 | ✓ C2/M1        | Accepted and pushed to main `c778c25f` under revised scope. Hosted web sign-in and phone-owned execution proof are follow-ups. |
 | ✓ C3           | Accepted round 1/3 and pushed to main `db0913e6`; separate agents, rules, handoffs and lane budgets qualified.                 |
-| ✗ C4/D1        | Normal Docs editing/recovery/history/collaboration and required Markdown/Mermaid rendering.                                    |
+| ✓ C4/D1        | Docs ownership/editing and D1 rendering qualified at code/API level. User deferred browser UI/UX checks to production; no visual or client interaction pass is claimed. |
 | ✗ C5           | Bound pages, schedules, publication consent and channels.                                                                      |
 | ✗ C6           | Separate plugin backend/UI integrations and security qualification.                                                            |
 | ✗ U1 / cleanup | Whole-app parity and final integration; preserve character work and remove only safe merged branches/worktrees.                |

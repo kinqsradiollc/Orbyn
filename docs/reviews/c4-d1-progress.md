@@ -1,5 +1,17 @@
 # C4/D1 delivery record
 
+## User scope decision — 10 October 2026
+
+The user chose to investigate the remaining UI/UX behavior on production.
+This explicitly defers the saved-Block browser interaction and visual checks
+listed in the requirements ledger. They are **not passed**: web and Expo web
+invalid-source/dirty-save navigation, mixed-height bidirectional Source/Preview
+scrolling and feedback, responsive panes/overflow, and active Preview/TOC and
+malformed-source behavior remain production follow-ups. The qualified C4/D1 code
+is accepted for main under this revised scope. Production deployment and those
+follow-up checks are user-owned; no production result is claimed here. Review
+remains round **1/3** with no remaining non-browser code finding.
+
 ## Latest Reviewer decision — 0b96ad61
 
 **Evidence pending, round 1/3.** The extended-source fixture and bounded
