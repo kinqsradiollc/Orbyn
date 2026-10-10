@@ -2,17 +2,21 @@
 
 Started 10 October 2026 from pushed main `6410c65c` on
 `codex/c4-docs-parity`. Builder owns implementation until the complete stage
-is ready for one frozen Test → Review handoff. Review round: **0/3**.
+is frozen for Test → Review. Review round: **0/3**. Production deployment is
+user-owned.
 
-| Area                      | Current evidence                                                                                           | Remaining work                                                                                                    |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| Versioned storage and API | Format 1/2 validation, guarded reads/writes and history already on main.                                   | Complete normal editing and all legacy writer paths without flattening ownership.                                 |
-| Offline recovery          | Integrated candidate `a4b85392`; 11 focused cases, shared build, backend/mobile types and formatting pass. | Connect complete ownership to both active editors and exercise mounted recovery.                                  |
-| Editing and collaboration | Shared `DocContentStore` and container renderers exist; normal editors still keep flat block drafts.       | Full tree load, leaf and structural edits, task identities, source, concurrent saves, comments, history and CRDT. |
-| Markdown and export       | Shared parser/source plus several export adapters exist.                                                   | Round-trip matrix for all required syntax and real Word/PDF/HTML/privacy cases.                                   |
-| Mermaid and math          | Bundled renderers exist on web and mobile.                                                                 | Required family, malformed, zoom/source and export matrix on accepted candidate.                                  |
-| UI                        | Existing source/preview views and nested renderers exist.                                                  | Integrate with one editor draft/revision on both clients; bounded web and Expo-web checks for changed flows.      |
+| Area               | Implemented on this branch                                                                                                                                                                                                                                                                      | Qualification still required                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| Complete ownership | Versioned format 2 creation, reads/writes, leaf and structure operations, extraction, linking, clipping, checklist/task state, history snapshots and restore retain the container tree. Legacy clients receive only the supported projection. | Tester checks the frozen candidate, including auth, conflict and history paths. |
+| Normal editor      | New pages begin in format 2 on web and mobile. Both clients open full ownership and use one title/content revision with source and preview, serialized saves, live revision reconciliation and explicit conflict retention. Mobile queues a failed offline save; navigation waits for a save or queue receipt. | Tester report and functional client checks where available. |
+| Page actions       | Structured web editor has comments, history preview/restore and version-fenced export. Mobile keeps the existing comments/history sections and offers export, move and library actions.                                                                                                         | Confirm rendered layout and keyboard behavior where permitted.                                     |
+| D1 content         | Existing Markdown, reference, frontmatter, math, code and restricted Mermaid renderers and export adapters are retained. Source/preview shares one draft; web source ranges map to preview blocks.                                                                                              | Tester selects the required syntax, diagram, malformed input and export checks for this candidate. |
 
-User excludes separate desktop-app, installed iOS/Android and 200% checks.
-Production deployment remains user-owned. No C4/D1 acceptance or main merge is
-claimed by this record.
+Builder diagnostics so far: `npm run typecheck` passed for shared packages,
+backend, desktop and mobile. Focused structured storage/editor/source/export/
+Markdown/Mermaid/math run: **115 passed, 0 failed, 0 skipped** against the
+disposable `orbyn_test` database. The candidate is not yet accepted or on main.
+
+Explicit user exclusions: no separate desktop-app check, installed iOS or
+Android build, or exhaustive 200% retest. The user stopped routine Visual
+Check; no browser screenshot result is claimed here.

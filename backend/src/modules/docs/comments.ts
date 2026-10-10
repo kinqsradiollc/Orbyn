@@ -3,7 +3,9 @@ import {
   fail,
   overlaps,
   PAGE_TAG_LIMIT,
+  parseVersionedDocContent,
   type DocBlock,
+  type DocContentFormat,
   type DocComment,
   type DocSuggestion,
   type DocVersion,
@@ -492,17 +494,35 @@ export async function docVersion(
   userId: string,
   id: string,
   n: number,
+  supported: readonly DocContentFormat[] = [1],
 ): Promise<DocVersion & { content: DocBlock[] }> {
   await mustSeeDoc(db, userId, id);
   const row = (
-    await db.query<DocVersion & { content: DocBlock[] }>(
-      `SELECT ${VERSION_COLUMNS}, v.content FROM doc_versions v
+    await db.query<
+      DocVersion & {
+        content: DocBlock[];
+        content_format: 1 | 2;
+        content_nodes: unknown;
+      }
+    >(
+      `SELECT ${VERSION_COLUMNS}, v.content, v.content_format, v.content_nodes FROM doc_versions v
          LEFT JOIN users us ON us.id = v.user_id
          WHERE v.doc_id = $1 AND v.version = $2`,
       [id, n],
     )
   ).rows[0];
   if (!row) fail(404, "That version is not kept");
+  const { content_format, content_nodes, ...metadata } = row;
+  const result = supported.includes(content_format)
+    ? {
+        ...metadata,
+        document: parseVersionedDocContent(
+          content_format === 2
+            ? { format: 2, nodes: content_nodes }
+            : { format: 1, blocks: row.content },
+        ),
+      }
+    : metadata;
   // Links to what the reader can't open keep no title (D3aF).
-  return readableLinks(db, userId, row);
+  return readableLinks(db, userId, result);
 }

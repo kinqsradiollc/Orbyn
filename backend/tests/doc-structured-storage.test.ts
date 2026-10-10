@@ -60,6 +60,50 @@ before(async () => {
   stranger = other.row;
   strangerToken = other.token;
 });
+test("capable page creation starts with complete ownership in one revision", async () => {
+  const document = {
+    format: 2,
+    nodes: [{ kind: "block", block: { type: "paragraph", text: "" } }],
+  };
+  const response = await app.inject({
+    method: "POST",
+    url: "/docs",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "x-orbyn-doc-formats": "1,2",
+    },
+    payload: { title: "New page", document },
+  });
+  assert.equal(response.statusCode, 201, response.body);
+  assert.equal(response.json().version, 1);
+  assert.deepEqual(response.json().document, document);
+  const stored = (
+    await pool.query(
+      "SELECT content_format,content_nodes,content FROM docs WHERE id=$1",
+      [response.json().id],
+    )
+  ).rows[0];
+  assert.equal(stored.content_format, 2);
+  assert.deepEqual(stored.content_nodes, document.nodes);
+  assert.deepEqual(stored.content, [document.nodes[0].block]);
+  const unsupported = await app.inject({
+    method: "POST",
+    url: "/docs",
+    headers: { authorization: `Bearer ${token}` },
+    payload: { title: "Unsupported", document },
+  });
+  assert.equal(unsupported.statusCode, 409);
+  const mixed = await app.inject({
+    method: "POST",
+    url: "/docs",
+    headers: {
+      authorization: `Bearer ${token}`,
+      "x-orbyn-doc-formats": "1,2",
+    },
+    payload: { title: "Mixed", document, content: [] },
+  });
+  assert.equal(mixed.statusCode, 400);
+});
 test("a viewer can name one nested leaf atomically without changing content ownership or history", async () => {
   const id = await page();
   const nodes = parseDocContainers(
@@ -1100,6 +1144,68 @@ test("legacy history restore cannot flatten a structured version after a flat do
   assert.deepEqual(stored, { version: 3, content_format: 1 });
 });
 
+test("capable history restore keeps nested ownership and historical format", async () => {
+  const id = await page();
+  const first = parseDocContainers("> - [ ] Original ^first\n\nTail ^tail", {
+    anchors: true,
+  });
+  const second = parseDocContainers("> - [x] Revised ^first\n\nTail ^tail", {
+    anchors: true,
+  });
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes: first }, [1, 2]),
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 2, { format: 2, nodes: second }, [1, 2]),
+  );
+  const historical = await app.inject({
+    method: "GET",
+    url: `/docs/${id}/versions/2`,
+    headers: {
+      authorization: `Bearer ${token}`,
+      "x-orbyn-doc-formats": "1,2",
+    },
+  });
+  assert.equal(historical.statusCode, 200, historical.body);
+  assert.deepEqual(historical.json().document, { format: 2, nodes: first });
+  const legacyHistory = await app.inject({
+    method: "GET",
+    url: `/docs/${id}/versions/2`,
+    headers: { authorization: `Bearer ${token}` },
+  });
+  assert.equal(legacyHistory.statusCode, 200, legacyHistory.body);
+  assert.equal(legacyHistory.json().document, undefined);
+  const strangerHistory = await app.inject({
+    method: "GET",
+    url: `/docs/${id}/versions/2`,
+    headers: {
+      authorization: `Bearer ${strangerToken}`,
+      "x-orbyn-doc-formats": "1,2",
+    },
+  });
+  assert.equal(strangerHistory.statusCode, 404);
+  const response = await app.inject({
+    method: "POST",
+    url: `/docs/${id}/versions/2/restore`,
+    headers: {
+      authorization: `Bearer ${token}`,
+      "x-orbyn-doc-formats": "1,2",
+    },
+  });
+  assert.equal(response.statusCode, 200, response.body);
+  assert.equal(response.json().version, 4);
+  assert.deepEqual(response.json().document, { format: 2, nodes: first });
+  const stored = (
+    await pool.query(
+      "SELECT content_format,content_nodes,content FROM docs WHERE id=$1",
+      [id],
+    )
+  ).rows[0];
+  assert.equal(stored.content_format, 2);
+  assert.deepEqual(stored.content_nodes, first);
+  assert.deepEqual(stored.content, docContainerBlocks(first));
+});
+
 test("Export routes retain nested ownership and private-label projections", async () => {
   const privateId = await page(stranger);
   const id = await page();
@@ -1663,4 +1769,70 @@ test("structured extraction refusals preserve source ownership and create no des
   const retained = await readVersionedDoc(pool, owner, id, [1, 2]);
   assert.equal(retained.version, 2);
   assert.deepEqual(retained.document, { format: 2, nodes });
+});
+
+test("linking a mention preserves its nested owner and complete history", async () => {
+  const id = await page();
+  const target = await page();
+  await pool.query("UPDATE docs SET title='Roadmap' WHERE id=$1", [target]);
+  const nodes = parseDocContainers(
+    "> Review Roadmap ^mention\n\nKeep this root ^root",
+    { anchors: true },
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const linked = await app.inject({
+    method: "POST",
+    url: "/links/mentions/link",
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      doc_id: id,
+      block_id: "mention",
+      matched: "Roadmap",
+      target: { kind: "doc", id: target },
+    },
+  });
+  assert.equal(linked.statusCode, 200, linked.body);
+  const current = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(current.document.format, 2);
+  if (current.document.format !== 2) throw new Error("Structured owner lost");
+  assert.equal(current.document.nodes[0].kind, "quote");
+  assert.match(
+    docContainerBlocks(current.document.nodes)[0].text,
+    /\[Roadmap\]/,
+  );
+  assert.equal(
+    (current.document.nodes.at(-1) as any).block.text,
+    "Keep this root",
+  );
+});
+
+test("clipping highlights into a structured page retains nested content", async () => {
+  const id = await page();
+  const nodes = parseDocContainers("> Keep nested ^nested", { anchors: true });
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes }, [1, 2]),
+  );
+  const clipped = await app.inject({
+    method: "POST",
+    url: "/clips",
+    headers: { authorization: `Bearer ${token}` },
+    payload: {
+      type: "highlights",
+      doc_id: id,
+      url: "https://example.com/reading",
+      highlights: [{ text: "Keep this quote." }],
+    },
+  });
+  assert.equal(clipped.statusCode, 201, clipped.body);
+  const current = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(current.document.format, 2);
+  if (current.document.format !== 2) throw new Error("Structured owner lost");
+  assert.deepEqual(current.document.nodes.slice(0, nodes.length), nodes);
+  assert.ok(
+    docContainerBlocks(current.document.nodes).some(
+      (block) => block.type === "quote",
+    ),
+  );
 });

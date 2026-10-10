@@ -13,6 +13,9 @@ import {
   docContainersHtml,
   docContainersText,
   parseVersionedDocContent,
+  docContainerBlocks,
+  docContainerTaskBlocks,
+  applyDocContainerTaskBlocks,
   projectDocContainers,
   serializeDocContainers,
   type DocContainerNode,
@@ -271,11 +274,41 @@ export async function docRoutes(app: FastifyInstance) {
 
   app.post("/docs", async (r, reply) => {
     const u = await authenticate(r);
-    const data = docInput.parse(r.body ?? {});
-    const doc = await transaction((db) => createDoc(db, u, data));
+    const raw = r.body as Record<string, unknown> | undefined;
+    const structured = raw !== undefined && "document" in raw;
+    const data = structured
+      ? docInput.extend({ document: z.unknown() }).parse(raw)
+      : docInput.parse(r.body ?? {});
+    const document = structured
+      ? parseVersionedDocContent(raw!.document, {
+          projected: true,
+        })
+      : null;
+    if (document && document.format !== 2)
+      fail(400, "Structured creation requires a complete container tree.");
+    if (document && data.kind !== "doc")
+      fail(400, "Structured creation is available for pages.");
+    if (
+      document &&
+      !docContentFormatsHeader(r.headers["x-orbyn-doc-formats"]).includes(2)
+    )
+      fail(409, "This client does not support nested document content.");
+    if (structured && raw && "content" in raw)
+      fail(400, "Specify one document content source.");
+    const content = document
+      ? docContainerBlocks(document.nodes, { projected: true })
+      : data.content;
+    const doc = await transaction((db) =>
+      createDoc(
+        db,
+        u,
+        { ...data, content },
+        document?.format === 2 ? document : undefined,
+      ),
+    );
     await syncSavedPages(doc.id);
     reply.code(201);
-    return doc;
+    return document ? { ...doc, document } : doc;
   });
 
   app.get("/docs/:id", async (r, reply) => {
@@ -298,28 +331,40 @@ export async function docRoutes(app: FastifyInstance) {
       fail(409, "Update this client before opening nested document content.");
     const { content_format, content_nodes, ...metadata } = doc;
     // Never send the unredacted stored tree through a metadata response.
-    const shown = await readableLinks(db, u.id, {
-      ...metadata,
-      content: await withTaskState(db, id, doc.content ?? []),
-    });
-    if (declared === undefined) return shown;
+    if (declared === undefined)
+      return readableLinks(db, u.id, {
+        ...metadata,
+        content: await withTaskState(db, id, doc.content ?? []),
+      });
     const stored = parseVersionedDocContent(
-      content_format === 1
-        ? { format: 1, blocks: doc.content ?? [] }
-        : { format: 2, nodes: content_nodes },
+      content_format === 2
+        ? { format: 2, nodes: content_nodes }
+        : { format: 1, blocks: doc.content ?? [] },
     );
+    const taskView =
+      stored.format === 2
+        ? docContainerTaskBlocks(stored.nodes, { projected: true })
+        : stored.blocks;
+    const state = await withTaskState(db, id, taskView);
+    const privacy = await linkPrivacy(db, u.id, state);
+    const visible = privacy.value(state);
     const document = parseVersionedDocContent(
-      stored.format === 1
-        ? { format: 1, blocks: shown.content }
-        : {
+      stored.format === 2
+        ? {
             format: 2,
-            nodes: projectDocContainers(stored.nodes, () => shown.content, {
+            nodes: applyDocContainerTaskBlocks(stored.nodes, visible, {
               projected: true,
             }),
-          },
+          }
+        : { format: 1, blocks: visible },
       { projected: true },
     );
-    return { ...shown, document };
+    const content =
+      document.format === 2
+        ? docContainerBlocks(document.nodes, { projected: true })
+        : document.blocks;
+    const shownMetadata = await readableLinks(db, u.id, metadata);
+    return { ...shownMetadata, content, document };
   });
 
   /** Export as Markdown, with any LaTeX kept as source. */
@@ -682,7 +727,13 @@ export async function docRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const n = Number((r.params as { version: string }).version);
     if (!Number.isInteger(n) || n < 1) fail(422, "Not a version");
-    return docVersion(reader(r.headers), u.id, id, n);
+    return docVersion(
+      reader(r.headers),
+      u.id,
+      id,
+      n,
+      docContentFormatsHeader(r.headers["x-orbyn-doc-formats"]),
+    );
   });
 
   /**
@@ -737,7 +788,14 @@ export async function docRoutes(app: FastifyInstance) {
     const id = idParam(r);
     const n = Number((r.params as { version: string }).version);
     if (!Number.isInteger(n) || n < 1) fail(422, "Not a version");
-    const restored = await transaction((db) => restoreDocVersion(db, u, id, n));
+    const declared = r.headers["x-orbyn-doc-formats"];
+    const supported = docContentFormatsHeader(declared);
+    const restored = await transaction(async (db) => {
+      const saved = await restoreDocVersion(db, u, id, n, supported);
+      if (declared === undefined) return saved;
+      const read = await readVersionedDoc(db, u, id, supported);
+      return { ...saved, document: read.document };
+    });
     await announceDocChange(pool, id, restored.version, editorOf(r));
     await syncSavedPages(id);
     return restored;

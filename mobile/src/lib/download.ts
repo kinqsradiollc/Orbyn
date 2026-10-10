@@ -54,8 +54,9 @@ export const formatsHere = (): ExportFormat[] => [...EXPORT_FORMATS];
 export async function downloadDoc(
   docId: string,
   format: ExportFormat,
+  version?: number,
 ): Promise<void> {
-  const { blob, name } = await client.exportDoc(docId, format);
+  const { blob, name } = await client.exportDoc(docId, format, { version });
   await saveFile(name, blob, blob.type || EXPORT_LABELS[format].type);
 }
 

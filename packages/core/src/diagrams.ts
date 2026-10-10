@@ -1,9 +1,8 @@
 /**
  * Diagrams in pages (EDT-11): a code block marked `mermaid` is drawn as a
- * diagram. The web app draws every kind with Mermaid itself; the phone has
- * no browser engine to run it in, so flowcharts — what notes use most — are
- * read and laid out here and drawn natively, and other kinds show their
- * source with a note. A node can link to a page or task:
+ * diagram. Web and mobile use a bundled, restricted Mermaid renderer for
+ * supported families; the parser here also supplies a native flowchart
+ * fallback and identifies each family. A node can link to a page or task:
  * `click A "orbyn://doc/<id>"`.
  */
 import { parseObjectHref, type ObjectRef } from "./links.js";

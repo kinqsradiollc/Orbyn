@@ -145,6 +145,13 @@ export function DocsSheet({
   /** Called when ticking a line changed a task in the planner. */
   onItemsChanged?: () => void;
 }) {
+  const beforePageLeave = useRef<(() => Promise<boolean>) | null>(null);
+  const leavePage = (action: () => void) => {
+    void (async () => {
+      if (!beforePageLeave.current || (await beforePageLeave.current()))
+        action();
+    })();
+  };
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
   /** Pages opened in the library's tree to show the pages inside (W5). */
@@ -539,12 +546,20 @@ export function DocsSheet({
   /** Start a page here rather than having to reach for a desktop. */
   const create = (kind: DocKind = fixedKind ?? "doc") =>
     void run(async () => {
-      const made = await client.createDoc({
+      const input = {
         title: "",
         kind,
-        content: [{ type: "paragraph", text: "" }],
         folder_id: folderFilter === "none" ? null : folderFilter,
-      });
+      };
+      const made = await (kind === "doc"
+        ? client.createDocForEditor(input, {
+            format: 2,
+            nodes: [{ kind: "block", block: { type: "paragraph", text: "" } }],
+          })
+        : client.createDoc({
+            ...input,
+            content: [{ type: "paragraph", text: "" }],
+          }));
       setDocs(null);
       setOpen(made);
     });
@@ -565,10 +580,12 @@ export function DocsSheet({
 
   // Coming back to the list should show what was just written.
   const backToList = () => {
-    setOpen(null);
-    setAgendaGap(null);
-    void loadList();
-    if (trashOnly) void loadTrash();
+    leavePage(() => {
+      setOpen(null);
+      setAgendaGap(null);
+      void loadList();
+      if (trashOnly) void loadTrash();
+    });
   };
 
   /** Step to another day's agenda, or to the gap where it would be. */
@@ -1087,7 +1104,7 @@ export function DocsSheet({
   const openHit = (id: string) =>
     void run(async () => {
       try {
-        setOpen(await client.getDoc(id));
+        setOpen(await client.getDocForEditor(id));
       } catch (e) {
         // Deleted for good or no longer shared: stop keeping it.
         await forgetIfGone(id, e);
@@ -1224,10 +1241,12 @@ export function DocsSheet({
                     ? "Agent notes"
                     : "Documents"
       }
-      onClose={onClose}
+      onClose={() => leavePage(onClose)}
       // A page's header is Back, its title, Info and ⋯: with no list
       // behind it, Back closes.
-      onBack={back ?? (open && !navigationOpen ? onClose : undefined)}
+      onBack={
+        back ?? (open && !navigationOpen ? () => leavePage(onClose) : undefined)
+      }
       centerTitle={!!open && !navigationOpen}
       hideClose={!!open && !navigationOpen}
       actions={
@@ -1511,6 +1530,7 @@ export function DocsSheet({
                     <OpenDoc
                       key={open!.id}
                       doc={open!}
+                      beforeLeave={beforePageLeave}
                       onOpenProject={onOpenProject}
                       initialBlockId={
                         initialDoc?.id === open!.id ? initialBlockId : null
@@ -2325,6 +2345,7 @@ export function DocsSheet({
  */
 function OpenDoc({
   doc,
+  beforeLeave,
   isToday = true,
   onOpenProject,
   initialBlockId,
@@ -2344,6 +2365,7 @@ function OpenDoc({
   report,
 }: {
   doc: Doc;
+  beforeLeave?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   onShowInLibrary?: () => void;
   /** "Move to…" in the page's ⋯ (W5). */
   onMoveTo?: () => void;
@@ -2417,6 +2439,7 @@ function OpenDoc({
       )}
       <DocEditor
         doc={doc}
+        beforeLeave={beforeLeave}
         initialBlockId={initialBlockId}
         onTargetOffset={onTargetOffset}
         comments={comments}

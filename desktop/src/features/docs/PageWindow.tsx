@@ -29,7 +29,7 @@ export function PageWindow({
   const [doc, setDoc] = useState<Doc | null | "gone">(null);
   useEffect(() => {
     let live = true;
-    client.getDoc(docId).then(
+    client.getDocForEditor(docId).then(
       (d) => {
         if (!live) return;
         setDoc(d);

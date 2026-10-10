@@ -2,6 +2,7 @@ import { maintainedPageDraftSaved } from "@orbyn/core";
 import { PageMaintenanceSheet } from "./PageMaintenanceSheet";
 import { DocNavigationContext } from "./doc-navigation";
 import { DocSourcePreview } from "./DocSourcePreview";
+import { StructuredDocEditor } from "./StructuredDocEditor";
 import { openAppUrl } from "../../hooks/useAppLinks";
 import React, {
   useCallback,
@@ -193,7 +194,7 @@ const MODE_KEY = "orbyn-doc-mode:";
 const taskNews = (by?: string) =>
   by === "task" ? "" : "A task on this page changed.";
 
-export function DocEditor({
+function LegacyDocEditor({
   doc,
   initialBlockId,
   onTargetOffset,
@@ -213,6 +214,7 @@ export function DocEditor({
   report,
 }: {
   doc: Doc;
+  beforeLeave?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   /** Close the page and show where it is in the library (ORG-03). */
   onShowInLibrary?: () => void;
   /** "Move to…": a folder, or inside another page (W5). */
@@ -762,7 +764,12 @@ export function DocEditor({
           // save again rather than making the writer sort it out by hand.
           if ((e as { statusCode?: number }).statusCode === 409) {
             try {
-              const merged = reconcile(await client.getDoc(doc.id));
+              const remote = await client.getDocForEditor(doc.id);
+              if (remote.document?.format === 2)
+                throw new Error(
+                  "This page changed format. Keep your draft and reopen it before saving.",
+                );
+              const merged = reconcile(remote);
               const mergedTitle = live.current.title;
               // Not theirs.version: a tick kept from before the merge was
               // made on the older copy (see reconcile).
@@ -889,8 +896,18 @@ export function DocEditor({
       return;
     }
     if (remote && remote <= version.current) return;
-    void client.getDoc(doc.id).then((theirs) => {
+    void client.getDocForEditor(doc.id).then((theirs) => {
       if (theirs.version <= version.current) return;
+      if (theirs.document?.format === 2) {
+        if (dirty.current || focusedRef.current !== null) {
+          setNote(
+            "This page changed format. Keep your draft and reopen it before saving.",
+          );
+          return;
+        }
+        onChanged(theirs);
+        return;
+      }
       // A line open for editing counts as ours even before a keystroke.
       if (!dirty.current && focusedRef.current === null) {
         const news =
@@ -3117,6 +3134,46 @@ export function DocEditor({
         />
       </View>
     </RecordingContext.Provider>
+  );
+}
+
+export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
+  const [complete, setComplete] = useState<Doc | null>(
+    props.doc.document ? props.doc : null,
+  );
+  useEffect(() => {
+    if (props.doc.document) {
+      setComplete(props.doc);
+      return;
+    }
+    let active = true;
+    client.getDocForEditor(props.doc.id).then(
+      (doc) => {
+        if (active) setComplete(doc);
+      },
+      (error) => {
+        if (active) props.report(error);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [props.doc.id, props.doc.document, props.report]);
+  if (!complete || complete.id !== props.doc.id)
+    return <Text>Opening page…</Text>;
+  return complete.document?.format === 2 ? (
+    <StructuredDocEditor
+      doc={complete}
+      beforeLeave={props.beforeLeave}
+      canWrite={props.canWrite ?? true}
+      onChanged={props.onChanged}
+      onShowHistory={props.onShowHistory}
+      onShowInLibrary={props.onShowInLibrary}
+      onMoveTo={props.onMoveTo}
+      report={props.report}
+    />
+  ) : (
+    <LegacyDocEditor {...props} doc={complete} />
   );
 }
 

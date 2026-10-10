@@ -1,0 +1,475 @@
+import React, { useEffect, useMemo, useSyncExternalStore } from "react";
+import {
+  Alert,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import {
+  docContainerBlocks,
+  docEditorSessionDirty,
+  isOfflineError,
+  versionedDocSource,
+  type Doc,
+  type DocBlock,
+  type VersionedDocContent,
+} from "@orbyn/core";
+import { DocEditorStore } from "@orbyn/api-client";
+import { Pressable } from "../../motion";
+import { colors, fonts } from "../../theme";
+import { client } from "../../lib/api";
+import { rememberPage } from "../../lib/pageCache";
+import { savePageOffline } from "../../lib/outbox";
+import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
+import { DocContainerBody } from "./DocContainerBody";
+import { DocBody } from "./DocBody";
+
+function sourceOf(document: VersionedDocContent): string | null {
+  try {
+    return versionedDocSource(document, { projected: true });
+  } catch {
+    return null;
+  }
+}
+
+/** A compact native source/preview toggle sharing the full page revision. */
+export function StructuredDocEditor({
+  doc,
+  beforeLeave,
+  canWrite,
+  onChanged,
+  onShowHistory,
+  onShowInLibrary,
+  onMoveTo,
+  report,
+}: {
+  doc: Doc;
+  beforeLeave?: React.MutableRefObject<(() => Promise<boolean>) | null>;
+  canWrite: boolean;
+  onChanged: (doc: Doc) => void;
+  onShowHistory?: () => void;
+  onShowInLibrary?: () => void;
+  onMoveTo?: () => void;
+  report: (error: unknown) => void;
+}) {
+  const store = useMemo(() => new DocEditorStore(client), [doc.id]);
+  const state = useSyncExternalStore(
+    (listener) => store.subscribe(listener),
+    () => store.state,
+  );
+  const [sourceVisible, setSourceVisible] = React.useState(false);
+  const [editing, setEditing] = React.useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  const [keptOffline, setKeptOffline] = React.useState(false);
+  const offlineQueued = React.useRef(false);
+  useEffect(() => {
+    void store.open(doc.id, doc);
+    return () => store.close();
+  }, [store, doc.id]);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sync = (version: number) => {
+      const current = store.state.session;
+      if (!current || version <= current.saved.version) return;
+      if (store.state.busy) timer = setTimeout(() => sync(version), 350);
+      else void store.refresh();
+    };
+    const stop = client.watchDoc(doc.id, sync);
+    return () => {
+      stop();
+      if (timer) clearTimeout(timer);
+    };
+  }, [doc.id, store]);
+  useEffect(() => {
+    const current = store.state.session;
+    if (!doc.document || !current || doc.version <= current.saved.version)
+      return;
+    if (docEditorSessionDirty(current) || store.state.source !== null)
+      void store.refresh();
+    else store.adopt(doc);
+  }, [store, doc]);
+  const session = state.session;
+  const document = session?.document;
+  const source = document ? sourceOf(document) : null;
+  const leaves = useMemo(
+    () =>
+      document?.format === 2
+        ? docContainerBlocks(document.nodes, { projected: true })
+        : [],
+    [document],
+  );
+  const save = React.useCallback(async () => {
+    const before = store.state.doc?.version;
+    await store.save();
+    const next = store.state.doc;
+    if (next && next.version !== before) onChanged(next);
+    if (isOfflineError(store.state.error)) {
+      const draft = store.state.session;
+      if (!draft) return;
+      const leavesOf = (value: VersionedDocContent) =>
+        value.format === 1
+          ? value.blocks
+          : docContainerBlocks(value.nodes, { projected: true });
+      try {
+        await savePageOffline({
+          id: doc.id,
+          title: draft.title,
+          document: draft.document,
+          content: leavesOf(draft.document),
+          base: {
+            version: draft.saved.version,
+            title: draft.saved.title,
+            document: draft.saved.document,
+            content: leavesOf(draft.saved.document),
+          },
+        });
+        const kept = {
+          ...(store.state.doc ?? doc),
+          title: draft.title,
+          document: draft.document,
+          content: leavesOf(draft.document),
+        };
+        await rememberPage(kept);
+        onChanged(kept);
+        store.acknowledgeOfflineSave();
+        offlineQueued.current = true;
+        setKeptOffline(true);
+      } catch (error) {
+        report(error);
+      }
+    } else if (store.state.error) report(store.state.error);
+    else {
+      offlineQueued.current = false;
+      setKeptOffline(false);
+    }
+  }, [store, doc, onChanged, report]);
+  useEffect(() => {
+    if (!beforeLeave) return;
+    const guard = async () => {
+      const current = store.state;
+      if (!current.session) return true;
+      if (current.source !== null && current.error) return false;
+      if (current.conflict) return false;
+      if (docEditorSessionDirty(current.session) && !offlineQueued.current)
+        await save();
+      const settled = store.state;
+      return (
+        offlineQueued.current ||
+        (!!settled.session &&
+          !docEditorSessionDirty(settled.session) &&
+          !settled.error &&
+          !settled.conflict)
+      );
+    };
+    beforeLeave.current = guard;
+    return () => {
+      if (beforeLeave.current === guard) beforeLeave.current = null;
+    };
+  }, [beforeLeave, store, save]);
+  const discard = () => {
+    const go = () => {
+      offlineQueued.current = false;
+      setKeptOffline(false);
+      void store.discardLocal();
+    };
+    if (Platform.OS === "web") {
+      if (globalThis.confirm?.("Discard this draft?")) go();
+    } else
+      Alert.alert("Discard draft?", "This removes your unsaved edits.", [
+        { text: "Keep editing", style: "cancel" },
+        { text: "Discard", style: "destructive", onPress: go },
+      ]);
+  };
+  useEffect(() => {
+    if (
+      !canWrite ||
+      !session ||
+      !docEditorSessionDirty(session) ||
+      state.busy ||
+      state.error ||
+      state.conflict ||
+      keptOffline
+    )
+      return;
+    const timer = setTimeout(() => void save(), 900);
+    return () => clearTimeout(timer);
+  }, [
+    canWrite,
+    session,
+    state.busy,
+    state.error,
+    state.conflict,
+    keptOffline,
+    save,
+  ]);
+  return (
+    <View style={styles.page}>
+      <View style={styles.toolbar}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setSourceVisible((value) => !value)}
+        >
+          <Text style={styles.action}>
+            {sourceVisible ? "Preview" : "Source"}
+          </Text>
+        </Pressable>
+        {canWrite && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ disabled: state.busy || state.conflict }}
+            disabled={
+              state.busy ||
+              state.conflict ||
+              !!state.error ||
+              !session ||
+              !docEditorSessionDirty(session)
+            }
+            onPress={() => void save()}
+          >
+            <Text style={styles.action}>Save</Text>
+          </Pressable>
+        )}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded: menuOpen }}
+          onPress={() => setMenuOpen((value) => !value)}
+        >
+          <Text style={styles.action}>More</Text>
+        </Pressable>
+      </View>
+      {menuOpen && (
+        <View style={styles.menu}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={state.busy}
+            onPress={() => {
+              setMenuOpen(false);
+              void store.refresh();
+            }}
+          >
+            <Text style={styles.action}>Refresh</Text>
+          </Pressable>
+          {onShowHistory && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setMenuOpen(false);
+                onShowHistory();
+              }}
+            >
+              <Text style={styles.action}>History</Text>
+            </Pressable>
+          )}
+          {onShowInLibrary && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setMenuOpen(false);
+                onShowInLibrary();
+              }}
+            >
+              <Text style={styles.action}>Show in library</Text>
+            </Pressable>
+          )}
+          {onMoveTo && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                setMenuOpen(false);
+                onMoveTo();
+              }}
+            >
+              <Text style={styles.action}>Move to…</Text>
+            </Pressable>
+          )}
+          {formatsHere().map((format) => (
+            <Pressable
+              key={format}
+              accessibilityRole="button"
+              disabled={
+                !session ||
+                docEditorSessionDirty(session) ||
+                state.source !== null
+              }
+              onPress={() => {
+                setMenuOpen(false);
+                void downloadDoc(doc.id, format, session?.saved.version).catch(
+                  report,
+                );
+              }}
+            >
+              <Text style={styles.action}>{downloadLabel(format)}</Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
+      <Text style={styles.status}>
+        {state.busy
+          ? "Saving…"
+          : state.conflict
+            ? "Review changes"
+            : session && docEditorSessionDirty(session)
+              ? keptOffline
+                ? "Saved on this phone"
+                : "Unsaved"
+              : "Saved"}
+      </Text>
+      {state.error !== null && (
+        <Text accessibilityRole="alert" style={styles.error}>
+          {state.error instanceof Error
+            ? state.error.message
+            : "Could not update this page."}
+        </Text>
+      )}
+      {state.conflict && (
+        <Text accessibilityRole="alert" style={styles.error}>
+          This page changed elsewhere. Your draft is still here.
+        </Text>
+      )}
+      {(state.conflict || state.error !== null) && session && (
+        <Pressable accessibilityRole="button" onPress={discard}>
+          <Text style={styles.action}>Discard draft</Text>
+        </Pressable>
+      )}
+      {!session || !document ? (
+        <Text>{state.busy ? "Opening page…" : "Page unavailable."}</Text>
+      ) : (
+        <>
+          {canWrite ? (
+            <TextInput
+              accessibilityLabel="Page title"
+              style={styles.title}
+              value={session.title}
+              onChangeText={(title) => {
+                offlineQueued.current = false;
+                setKeptOffline(false);
+                store.changeTitle(session.title, title);
+              }}
+              maxLength={200}
+              placeholder="Untitled"
+            />
+          ) : (
+            <Text style={styles.title}>{session.title}</Text>
+          )}
+          {sourceVisible ? (
+            source === null ? (
+              <Text>Source view is unavailable for this structure.</Text>
+            ) : (
+              <TextInput
+                accessibilityLabel="Markdown source"
+                style={styles.source}
+                multiline
+                editable={canWrite}
+                value={state.source ?? source}
+                onChangeText={(text) => {
+                  offlineQueued.current = false;
+                  setKeptOffline(false);
+                  store.changeSource(document, text);
+                }}
+                textAlignVertical="top"
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            )
+          ) : (
+            <View style={styles.preview}>
+              {document.format === 2 && (
+                <DocContainerBody
+                  nodes={document.nodes}
+                  onOperation={
+                    canWrite
+                      ? (operation, expectedNodes) => {
+                          offlineQueued.current = false;
+                          setKeptOffline(false);
+                          store.changeOperation(
+                            { format: 2, nodes: [...expectedNodes] },
+                            operation,
+                          );
+                        }
+                      : undefined
+                  }
+                  renderLeaf={(block, index, path) => (
+                    <View style={styles.leaf}>
+                      <DocBody
+                        content={[block]}
+                        pageContent={leaves}
+                        pageIndex={index}
+                      />
+                      {canWrite && "text" in block && (
+                        <Pressable
+                          accessibilityRole="button"
+                          onPress={() =>
+                            setEditing(
+                              editing === path.join("/")
+                                ? null
+                                : path.join("/"),
+                            )
+                          }
+                        >
+                          <Text style={styles.editAction}>
+                            {editing === path.join("/") ? "Done" : "Edit"}
+                          </Text>
+                        </Pressable>
+                      )}
+                      {canWrite &&
+                        editing === path.join("/") &&
+                        "text" in block && (
+                          <TextInput
+                            accessibilityLabel={`Edit block ${index + 1}`}
+                            style={styles.leafInput}
+                            multiline
+                            value={block.text}
+                            onChangeText={(text) => {
+                              offlineQueued.current = false;
+                              setKeptOffline(false);
+                              store.changeOperation(document, {
+                                kind: "replace-leaf",
+                                path,
+                                block: { ...block, text } as DocBlock,
+                              });
+                            }}
+                          />
+                        )}
+                    </View>
+                  )}
+                />
+              )}
+            </View>
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  page: { flex: 1, minWidth: 0, padding: 16, gap: 10 },
+  toolbar: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  menu: { gap: 12, padding: 12, borderWidth: 1, borderColor: colors.border },
+  action: { color: colors.accent, fontSize: 15, fontFamily: fonts.medium },
+  status: { color: colors.muted, fontSize: 13 },
+  error: { color: colors.danger, fontSize: 14 },
+  title: { color: colors.text, fontSize: 25, fontFamily: fonts.semibold },
+  source: {
+    flex: 1,
+    minHeight: 250,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.text,
+    padding: 12,
+    fontSize: 14,
+  },
+  preview: { paddingBottom: 24 },
+  leaf: { minWidth: 0 },
+  editAction: { color: colors.accent, fontSize: 13, paddingVertical: 6 },
+  leafInput: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderColor: colors.border,
+    color: colors.text,
+    padding: 8,
+    fontSize: 14,
+  },
+});

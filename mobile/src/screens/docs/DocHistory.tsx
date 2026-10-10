@@ -21,6 +21,7 @@ import { showToast } from "../../components/Toast";
 import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
 import { DocBody } from "./DocBody";
+import { DocContainerBody } from "./DocContainerBody";
 import { Inline } from "./Inline";
 
 const when = (iso: string) => {
@@ -98,9 +99,11 @@ export function DocHistory({
   const pick = (v: DocVersion) => {
     setBusy(true);
     // One read brings the version, the one before it and the ones since.
-    client
-      .getDocVersionChanges(doc.id, v.version)
-      .then(({ version, older: prior, sittings: since }) => {
+    Promise.all([
+      client.getDocVersionChanges(doc.id, v.version),
+      client.getDocVersion(doc.id, v.version),
+    ])
+      .then(([{ older: prior, sittings: since }, version]) => {
         setChosen(version);
         setOlder(prior);
         setSittings(since);
@@ -237,7 +240,11 @@ export function DocHistory({
           </ChipRow>
           <Text style={styles.previewTitle}>{chosen.title || "Untitled"}</Text>
           {compare === "none" ? (
-            <DocBody content={chosen.content} />
+            chosen.document?.format === 2 ? (
+              <DocContainerBody nodes={chosen.document.nodes} />
+            ) : (
+              <DocBody content={chosen.content} />
+            )
           ) : (
             <Changes
               before={
@@ -249,7 +256,7 @@ export function DocHistory({
               by={compare === "previous" && older ? older.author : null}
               sittings={compare === "previous" && older ? undefined : sittings}
               sitting={compare === "previous"}
-              canRestore={canWrite && !busy}
+              canRestore={canWrite && !busy && doc.document?.format !== 2}
               onRestoreLine={putBack}
             />
           )}

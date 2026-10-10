@@ -1,6 +1,7 @@
 import { PageMaintenanceDialog } from "./PageMaintenanceDialog";
 import { DocNavigationContext } from "./doc-navigation";
 import { DocSourcePreview } from "./DocSourcePreview";
+import { StructuredDocEditor } from "./StructuredDocEditor";
 import { docRailLayout, observeDocLayout } from "./doc-layout";
 import {
   Fragment,
@@ -318,7 +319,7 @@ const fitTitle = (el: HTMLTextAreaElement | null) => {
   el.style.height = `${el.scrollHeight}px`;
 };
 
-export function DocEditor({
+function LegacyDocEditor({
   doc,
   initialBlockId,
   onBack,
@@ -837,7 +838,11 @@ export function DocEditor({
           // save again, rather than making the writer sort it out by hand.
           if ((e as { statusCode?: number }).statusCode === 409) {
             try {
-              const theirs = await client.getDoc(doc.id);
+              const theirs = await client.getDocForEditor(doc.id);
+              if (theirs.document?.format === 2)
+                throw new Error(
+                  "This page changed format. Keep your draft and reopen it before saving.",
+                );
               const merged = reconcile(theirs);
               const mergedTitle = live.current.title;
               // Not theirs.version: a tick kept from before the merge was
@@ -989,8 +994,18 @@ export function DocEditor({
       return;
     }
     if (remote && remote <= version.current) return;
-    void client.getDoc(doc.id).then((theirs) => {
+    void client.getDocForEditor(doc.id).then((theirs) => {
       if (theirs.version <= version.current) return;
+      if (theirs.document?.format === 2) {
+        if (dirty.current || focusedRef.current !== null) {
+          setNote(
+            "This page changed format. Keep your draft and reopen it before saving.",
+          );
+          return;
+        }
+        onChanged(theirs);
+        return;
+      }
       // A line open for editing counts as ours even before a keystroke:
       // replacing the whole page would pull the text out from under it.
       if (!dirty.current && focusedRef.current === null) {
@@ -4272,5 +4287,42 @@ export function DocEditor({
         )}
       </div>
     </RecordingContext.Provider>
+  );
+}
+
+export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
+  const [complete, setComplete] = useState<Doc | null>(
+    props.doc.document ? props.doc : null,
+  );
+  useEffect(() => {
+    if (props.doc.document) {
+      setComplete(props.doc);
+      return;
+    }
+    let active = true;
+    client.getDocForEditor(props.doc.id).then(
+      (doc) => {
+        if (active) setComplete(doc);
+      },
+      (error) => {
+        if (active) props.report(error);
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [props.doc.id, props.doc.document, props.report]);
+  if (!complete || complete.id !== props.doc.id) return <p>Opening page…</p>;
+  return complete.document?.format === 2 ? (
+    <StructuredDocEditor
+      doc={complete}
+      canWrite={props.canWrite ?? true}
+      onChanged={props.onChanged}
+      onBack={props.onBack}
+      userId={props.userId}
+      report={props.report}
+    />
+  ) : (
+    <LegacyDocEditor {...props} doc={complete} />
   );
 }

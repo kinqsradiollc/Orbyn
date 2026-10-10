@@ -434,13 +434,22 @@ export function DocsView({
 
   const create = (kind: DocKind = fixedKind ?? "doc") => {
     setBusy(true);
-    client
-      .createDoc({
-        title: "",
-        kind,
-        content: [{ type: "paragraph", text: "" }],
-        folder_id: folderFilter === "none" ? null : folderFilter,
-      })
+    const input = {
+      title: "",
+      kind,
+      folder_id: folderFilter === "none" ? null : folderFilter,
+    };
+    const created =
+      kind === "doc"
+        ? client.createDocForEditor(input, {
+            format: 2,
+            nodes: [{ kind: "block", block: { type: "paragraph", text: "" } }],
+          })
+        : client.createDoc({
+            ...input,
+            content: [{ type: "paragraph", text: "" }],
+          });
+    created
       .then((doc) => {
         setOpen(doc);
         void load();
@@ -679,7 +688,7 @@ export function DocsView({
   const openPage = (id: string) => {
     setBusy(true);
     client
-      .getDoc(id)
+      .getDocForEditor(id)
       .then((doc) => {
         setOpen(doc);
         setNavigationOpen(false);
@@ -851,17 +860,25 @@ export function DocsView({
   /** A new page inside a page, opened to write in. */
   const newInside = (parent: DocSummary) => {
     setBusy(true);
-    client
-      .createDoc({
-        title: "",
-        kind:
-          parent.kind === "memory" || parent.kind === "agent"
-            ? parent.kind
-            : "doc",
-        team_id: parent.team_id,
-        parent_id: parent.id,
-        content: [{ type: "paragraph", text: "" }],
-      })
+    const kind: "memory" | "agent" | "doc" =
+      parent.kind === "memory" || parent.kind === "agent" ? parent.kind : "doc";
+    const input = {
+      title: "",
+      kind,
+      team_id: parent.team_id,
+      parent_id: parent.id,
+    };
+    const created =
+      kind === "doc"
+        ? client.createDocForEditor(input, {
+            format: 2,
+            nodes: [{ kind: "block", block: { type: "paragraph", text: "" } }],
+          })
+        : client.createDoc({
+            ...input,
+            content: [{ type: "paragraph", text: "" }],
+          });
+    created
       .then((doc) => {
         tree.show(parent.id);
         setOpen(doc);

@@ -1,0 +1,110 @@
+.structured-doc-editor {
+  min-width: 0;
+  padding: 20px;
+}
+.structured-doc-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.structured-doc-status {
+  margin-right: auto;
+}
+.structured-doc-title {
+  display: block;
+  width: 100%;
+  margin: 20px 0;
+  font-size: clamp(1.5rem, 2vw, 2rem);
+}
+.structured-doc-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  min-width: 0;
+}
+.structured-doc-columns > section {
+  min-width: 0;
+}
+.structured-doc-source textarea,
+.structured-doc-source pre {
+  width: 100%;
+  min-height: 50vh;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+.structured-doc-leaf {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.structured-doc-leaf textarea {
+  width: 100%;
+  min-height: 72px;
+  margin: 4px 0 10px;
+}
+.structured-doc-edit {
+  font-size: 0.8rem;
+  margin: 0 0 8px;
+}
+.structured-doc-error {
+  color: var(--color-danger);
+}
+.structured-doc-menu {
+  position: relative;
+}
+.structured-doc-menu-items {
+  position: absolute;
+  z-index: 5;
+  right: 0;
+  top: 100%;
+  display: grid;
+  min-width: 180px;
+  max-height: min(60vh, 360px);
+  overflow: auto;
+  padding: 8px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-popover);
+}
+.structured-doc-menu-items button {
+  text-align: left;
+}
+.structured-doc-history {
+  min-width: 0;
+  max-height: 55vh;
+  overflow: auto;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.structured-doc-comments {
+  min-width: 0;
+  max-height: 55vh;
+  overflow: auto;
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+.structured-doc-history-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.structured-doc-history ol {
+  padding-left: 24px;
+}
+@media (max-width: 700px) {
+  .structured-doc-editor {
+    padding: 12px;
+  }
+  .structured-doc-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .structured-doc-source textarea,
+  .structured-doc-source pre {
+    min-height: 35vh;
+  }
+}

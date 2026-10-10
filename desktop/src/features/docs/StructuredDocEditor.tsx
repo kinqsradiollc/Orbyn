@@ -1,0 +1,608 @@
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import {
+  docContainerBlocks,
+  docEditorSessionDirty,
+  EXPORT_FORMATS,
+  EXPORT_LABELS,
+  versionedDocSourceAt,
+  versionedDocSourceMap,
+  versionedDocSource,
+  type Doc,
+  type DocBlock,
+  type DocContentOperation,
+  type DocVersion,
+  type ExportFormat,
+  type VersionedDocContent,
+} from "@orbyn/core";
+import { DocEditorStore } from "@orbyn/api-client";
+import { client } from "../../lib/api";
+import { BlockView } from "./DocBlocks";
+import { DocContainerView } from "./DocContainerView";
+import { DocComments } from "./DocComments";
+import "./structured-doc-editor.css";
+
+function sourceOf(document: VersionedDocContent): string | null {
+  try {
+    return versionedDocSource(document, { projected: true });
+  } catch {
+    return null;
+  }
+}
+
+/** Complete ownership stays in one draft across visual edits, source and saves. */
+export function StructuredDocEditor({
+  doc,
+  canWrite,
+  onChanged,
+  onBack,
+  userId,
+  report,
+}: {
+  doc: Doc;
+  canWrite: boolean;
+  onChanged: (doc: Doc) => void;
+  onBack?: () => void;
+  userId?: string;
+  report: (error: unknown) => void;
+}) {
+  const store = useMemo(() => new DocEditorStore(client), [doc.id]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [versions, setVersions] = useState<DocVersion[] | null>(null);
+  const [selected, setSelected] = useState<DocVersion | null>(null);
+  const [historyBusy, setHistoryBusy] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [pendingComment, setPendingComment] = useState<{
+    blockId: string;
+    quote: string;
+  } | null>(null);
+  const [activeComment, setActiveComment] = useState<string | null>(null);
+  const [commentTops, setCommentTops] = useState<Record<string, number>>({});
+  const sourceRef = useRef<HTMLTextAreaElement>(null);
+  const previewRef = useRef<HTMLElement>(null);
+  const state = useSyncExternalStore(
+    (listener) => store.subscribe(listener),
+    () => store.state,
+  );
+  useEffect(() => {
+    void store.open(doc.id);
+    return () => store.close();
+  }, [store, doc.id]);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const sync = (version: number) => {
+      const current = store.state.session;
+      if (!current || version <= current.saved.version) return;
+      if (store.state.busy) timer = setTimeout(() => sync(version), 350);
+      else void store.refresh();
+    };
+    const stop = client.watchDoc(doc.id, sync);
+    return () => {
+      stop();
+      if (timer) clearTimeout(timer);
+    };
+  }, [doc.id, store]);
+  useEffect(() => {
+    const current = store.state.session;
+    if (!doc.document || !current || doc.version <= current.saved.version)
+      return;
+    if (docEditorSessionDirty(current) || store.state.source !== null)
+      void store.refresh();
+    else store.adopt(doc);
+  }, [store, doc]);
+  const session = state.session;
+  const document = session?.document;
+  const source = document ? sourceOf(document) : null;
+  const sourceMap = useMemo(() => {
+    if (!document || source === null) return null;
+    try {
+      return versionedDocSourceMap(document, state.source ?? source, {
+        projected: true,
+      });
+    } catch {
+      return null;
+    }
+  }, [document, source, state.source]);
+  const previewAtCaret = () => {
+    const at = sourceRef.current?.selectionStart;
+    if (at === undefined || !sourceMap) return;
+    const range = versionedDocSourceAt(sourceMap, at);
+    if (!range) return;
+    const target = [
+      ...(previewRef.current?.querySelectorAll<HTMLElement>(
+        "[data-container-path]",
+      ) ?? []),
+    ].find((element) => element.dataset.containerPath === range.path.join("/"));
+    target?.scrollIntoView({ block: "nearest" });
+  };
+  const sourceAtBlock = (path: number[]) => {
+    const range = sourceMap?.ranges.find(
+      (entry) => entry.path.join("/") === path.join("/"),
+    );
+    if (!range || !sourceRef.current) return;
+    sourceRef.current.focus();
+    sourceRef.current.setSelectionRange(range.start, range.end);
+    const lines = sourceMap!.source.split("\n").length;
+    sourceRef.current.scrollTop = Math.max(
+      0,
+      ((range.startLine - 2) / Math.max(1, lines)) *
+        sourceRef.current.scrollHeight,
+    );
+  };
+  const leaves = useMemo(
+    () =>
+      document?.format === 2
+        ? docContainerBlocks(document.nodes, { projected: true })
+        : [],
+    [document],
+  );
+  useLayoutEffect(() => {
+    if (!commentsOpen || !previewRef.current) return;
+    const preview = previewRef.current;
+    const measure = () => {
+      const origin = preview.getBoundingClientRect().top;
+      const next: Record<string, number> = {};
+      preview
+        .querySelectorAll<HTMLElement>("[data-block-id]")
+        .forEach((element) => {
+          if (element.dataset.blockId)
+            next[element.dataset.blockId] =
+              element.getBoundingClientRect().top - origin;
+        });
+      setCommentTops(next);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(preview);
+    return () => observer.disconnect();
+  }, [commentsOpen, document]);
+  const commentOn = async (block: DocBlock, index: number) => {
+    if (!("text" in block)) return;
+    try {
+      if (store.state.session && docEditorSessionDirty(store.state.session))
+        await save();
+      if (!store.state.session || docEditorSessionDirty(store.state.session))
+        return;
+      const blockId =
+        block.id ??
+        (await client.anchorLine(doc.id, index, block.text)).block_id;
+      if (!block.id) await store.refresh();
+      setPendingComment({ blockId, quote: block.text });
+      setActiveComment(blockId);
+      setCommentsOpen(true);
+    } catch (error) {
+      report(error);
+    }
+  };
+  const change = (
+    operation: DocContentOperation,
+    expected: VersionedDocContent,
+  ) => store.changeOperation(expected, operation);
+  const save = useCallback(async () => {
+    const before = store.state.doc?.version;
+    await store.save();
+    const next = store.state.doc;
+    if (next && next.version !== before) onChanged(next);
+    if (store.state.error) report(store.state.error);
+  }, [store, onChanged, report]);
+  const showHistory = async () => {
+    setMenuOpen(false);
+    setHistoryOpen(true);
+    setVersions(null);
+    try {
+      setVersions(await client.listDocVersions(doc.id));
+    } catch (error) {
+      setVersions([]);
+      report(error);
+    }
+  };
+  const selectVersion = async (version: number) => {
+    setHistoryBusy(true);
+    try {
+      setSelected(await client.getDocVersion(doc.id, version));
+    } catch (error) {
+      report(error);
+    } finally {
+      setHistoryBusy(false);
+    }
+  };
+  const restore = async () => {
+    if (
+      !selected ||
+      !session ||
+      docEditorSessionDirty(session) ||
+      state.source !== null
+    )
+      return;
+    if (
+      !window.confirm(
+        "Restore this version? The current page stays in history.",
+      )
+    )
+      return;
+    setHistoryBusy(true);
+    try {
+      const restored = await client.restoreDocVersion(doc.id, selected.version);
+      store.adopt(restored);
+      onChanged(restored);
+      setHistoryOpen(false);
+      setSelected(null);
+    } catch (error) {
+      report(error);
+    } finally {
+      setHistoryBusy(false);
+    }
+  };
+  const download = async (format: ExportFormat) => {
+    setMenuOpen(false);
+    if (!session || docEditorSessionDirty(session) || state.source !== null)
+      return;
+    try {
+      const { blob, name } = await client.exportDoc(doc.id, format, {
+        version: session.saved.version,
+      });
+      const url = URL.createObjectURL(blob);
+      const link = globalThis.document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    } catch (error) {
+      report(error);
+    }
+  };
+  useEffect(() => {
+    if (
+      !canWrite ||
+      !session ||
+      !docEditorSessionDirty(session) ||
+      state.busy ||
+      state.error ||
+      state.conflict
+    )
+      return;
+    const timer = window.setTimeout(() => void save(), 900);
+    return () => window.clearTimeout(timer);
+  }, [canWrite, session, state.busy, state.error, state.conflict, save]);
+  return (
+    <div className="structured-doc-editor">
+      <header className="structured-doc-toolbar">
+        {onBack && (
+          <button
+            onClick={() => {
+              if (
+                state.source !== null &&
+                (state.error || !session || !docEditorSessionDirty(session))
+              ) {
+                if (window.confirm("Discard the unsaved source draft?"))
+                  onBack();
+              } else if (session && docEditorSessionDirty(session)) {
+                void save().then(() => {
+                  if (
+                    store.state.session &&
+                    !docEditorSessionDirty(store.state.session)
+                  )
+                    onBack();
+                });
+              } else onBack();
+            }}
+          >
+            Back
+          </button>
+        )}
+        <span className="structured-doc-status">
+          {state.busy
+            ? "Saving…"
+            : state.conflict
+              ? "Review changes"
+              : session && docEditorSessionDirty(session)
+                ? "Unsaved"
+                : "Saved"}
+        </span>
+        {canWrite && (
+          <button
+            onClick={() => void save()}
+            disabled={
+              state.busy ||
+              state.conflict ||
+              !!state.error ||
+              !session ||
+              !docEditorSessionDirty(session)
+            }
+          >
+            Save
+          </button>
+        )}
+        <div className="structured-doc-menu">
+          <button
+            type="button"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(!menuOpen)}
+          >
+            More
+          </button>
+          {menuOpen && (
+            <div className="structured-doc-menu-items">
+              <button
+                type="button"
+                disabled={state.busy}
+                onClick={() => {
+                  setMenuOpen(false);
+                  void store.refresh();
+                }}
+              >
+                Refresh
+              </button>
+              <button type="button" onClick={() => void showHistory()}>
+                History
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenuOpen(false);
+                  setCommentsOpen((value) => !value);
+                }}
+              >
+                Comments
+              </button>
+              {EXPORT_FORMATS.map((format) => (
+                <button
+                  type="button"
+                  key={format}
+                  disabled={
+                    !session ||
+                    docEditorSessionDirty(session) ||
+                    state.source !== null
+                  }
+                  onClick={() => void download(format)}
+                >
+                  Export {EXPORT_LABELS[format].name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </header>
+      {state.error !== null && (
+        <p className="structured-doc-error" role="alert">
+          {state.error instanceof Error
+            ? state.error.message
+            : "Could not update this page."}
+        </p>
+      )}
+      {state.conflict && (
+        <p className="structured-doc-error" role="alert">
+          This page changed elsewhere. Your draft is still here for review.
+        </p>
+      )}
+      {(state.conflict || state.error !== null) && session && (
+        <button
+          type="button"
+          onClick={() => {
+            if (window.confirm("Discard this draft?"))
+              void store.discardLocal();
+          }}
+        >
+          Discard draft
+        </button>
+      )}
+      {!session || !document ? (
+        <p>{state.busy ? "Opening page…" : "Page unavailable."}</p>
+      ) : (
+        <>
+          {canWrite ? (
+            <input
+              className="structured-doc-title"
+              aria-label="Page title"
+              value={session.title}
+              onChange={(event) =>
+                store.changeTitle(session.title, event.currentTarget.value)
+              }
+              maxLength={200}
+            />
+          ) : (
+            <h1>{session.title}</h1>
+          )}
+          <div className="structured-doc-columns">
+            <section
+              ref={previewRef}
+              aria-label="Page preview"
+              className="structured-doc-preview"
+            >
+              {document.format === 2 && (
+                <DocContainerView
+                  nodes={document.nodes}
+                  onOperation={
+                    canWrite
+                      ? (operation, expectedNodes) =>
+                          change(operation, {
+                            format: 2,
+                            nodes: [...expectedNodes],
+                          })
+                      : undefined
+                  }
+                  renderLeaf={(block, index, path) => (
+                    <div
+                      className="structured-doc-leaf"
+                      data-block-id={block.id}
+                      data-container-path={path.join("/")}
+                      onClick={(event) => {
+                        if (
+                          !(event.target as HTMLElement).closest(
+                            "a, button, input, textarea",
+                          )
+                        )
+                          sourceAtBlock(path);
+                      }}
+                    >
+                      <BlockView block={block} pageBlocks={leaves} />
+                      {canWrite && "text" in block && (
+                        <>
+                          <button
+                            type="button"
+                            className="structured-doc-edit"
+                            onClick={() =>
+                              setEditing(
+                                editing === path.join("/")
+                                  ? null
+                                  : path.join("/"),
+                              )
+                            }
+                          >
+                            {editing === path.join("/") ? "Done" : "Edit"}
+                          </button>
+                          <button
+                            type="button"
+                            className="structured-doc-edit"
+                            onClick={() => void commentOn(block, index)}
+                          >
+                            Comment
+                          </button>
+                          {editing === path.join("/") && (
+                            <textarea
+                              aria-label={`Edit block ${index + 1}`}
+                              value={block.text}
+                              onChange={(event) =>
+                                change(
+                                  {
+                                    kind: "replace-leaf",
+                                    path,
+                                    block: {
+                                      ...block,
+                                      text: event.currentTarget.value,
+                                    } as DocBlock,
+                                  },
+                                  document,
+                                )
+                              }
+                            />
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
+                />
+              )}
+            </section>
+            <section
+              aria-label="Markdown source"
+              className="structured-doc-source"
+            >
+              <h2>Source</h2>
+              {source === null ? (
+                <p>Source view is unavailable for this structure.</p>
+              ) : canWrite ? (
+                <textarea
+                  ref={sourceRef}
+                  aria-label="Markdown source"
+                  value={state.source ?? source}
+                  onSelect={previewAtCaret}
+                  onChange={(event) =>
+                    store.changeSource(document, event.currentTarget.value)
+                  }
+                  spellCheck={false}
+                />
+              ) : (
+                <pre>{source}</pre>
+              )}
+            </section>
+          </div>
+          {commentsOpen && (
+            <aside
+              className="structured-doc-comments"
+              aria-label="Page comments"
+            >
+              <div className="structured-doc-history-head">
+                <h2>Comments</h2>
+                <button type="button" onClick={() => setCommentsOpen(false)}>
+                  Close
+                </button>
+              </div>
+              <DocComments
+                docId={doc.id}
+                blocks={leaves}
+                tops={commentTops}
+                userId={userId}
+                pending={pendingComment}
+                onPendingChange={setPendingComment}
+                active={activeComment}
+                onActiveChange={setActiveComment}
+                onAnchors={() => {}}
+                report={report}
+              />
+            </aside>
+          )}
+          {historyOpen && (
+            <aside className="structured-doc-history" aria-label="Page history">
+              <div className="structured-doc-history-head">
+                <h2>History</h2>
+                <button type="button" onClick={() => setHistoryOpen(false)}>
+                  Close
+                </button>
+              </div>
+              {versions === null ? (
+                <p>Loading…</p>
+              ) : versions.length === 0 ? (
+                <p>No earlier version.</p>
+              ) : (
+                <ol>
+                  {versions.map((version) => (
+                    <li key={version.version}>
+                      <button
+                        type="button"
+                        disabled={historyBusy}
+                        onClick={() => void selectVersion(version.version)}
+                      >
+                        {new Date(version.created_at).toLocaleString()} ·{" "}
+                        {version.author ?? "Someone"}
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {selected && (
+                <div>
+                  <h3>{selected.title || "Untitled"}</h3>
+                  {selected.document?.format === 2 ? (
+                    <DocContainerView nodes={selected.document.nodes} />
+                  ) : (
+                    <div>
+                      {selected.content?.map((block, index) => (
+                        <BlockView
+                          key={block.id ?? index}
+                          block={block}
+                          pageBlocks={selected.content ?? []}
+                        />
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    disabled={
+                      !canWrite ||
+                      historyBusy ||
+                      docEditorSessionDirty(session) ||
+                      state.source !== null
+                    }
+                    onClick={() => void restore()}
+                  >
+                    Restore this version
+                  </button>
+                </div>
+              )}
+            </aside>
+          )}
+        </>
+      )}
+    </div>
+  );
+}

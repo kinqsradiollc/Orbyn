@@ -2885,6 +2885,20 @@ export class OrbynClient {
   }) {
     return this.request<Doc>("/docs", { method: "POST", body: input });
   }
+  /** Create a page with complete ownership in one server transaction. */
+  async createDocForEditor(
+    input: Parameters<OrbynClient["createDoc"]>[0],
+    document: Extract<VersionedDocContent, { format: 2 }>,
+  ) {
+    if (input.content !== undefined)
+      throw new Error("Specify either content or a complete document.");
+    const result = await this.request<Doc>("/docs", {
+      method: "POST",
+      body: { ...input, document },
+      headers: { "x-orbyn-doc-formats": "1,2" },
+    });
+    return this.docEditorResult(result, result.id.toLowerCase());
+  }
   /**
    * Save a page. An editor passes `ticksFrom`, the version of the page its
    * checklist ticks were taken from (the version it last read or saved when
@@ -2963,6 +2977,7 @@ export class OrbynClient {
   getDocVersion(id: string, version: number) {
     return this.request<Required<DocVersion>>(
       `/docs/${id}/versions/${version}`,
+      { headers: { "x-orbyn-doc-formats": "1,2" } },
     );
   }
   /**
@@ -2975,10 +2990,15 @@ export class OrbynClient {
     );
   }
   /** Put a past state back; it becomes a new version on top. */
-  restoreDocVersion(id: string, version: number) {
-    return this.request<Doc>(`/docs/${id}/versions/${version}/restore`, {
-      method: "POST",
-    });
+  async restoreDocVersion(id: string, version: number) {
+    const result = await this.request<Doc>(
+      `/docs/${id}/versions/${version}/restore`,
+      {
+        method: "POST",
+        headers: { "x-orbyn-doc-formats": "1,2" },
+      },
+    );
+    return this.docEditorResult(result, id.toLowerCase());
   }
 
   /**

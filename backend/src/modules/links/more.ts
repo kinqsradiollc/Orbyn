@@ -30,6 +30,7 @@ import { loadPrefs } from "../planner/calendar.js";
 import { requireDoc, snapshot } from "../docs/service.js";
 import { linkPrivacy, readableLinks } from "./privacy.js";
 import { actAs } from "../../lib/actor.js";
+import { writeDocLeafEdits } from "../docs/leaf-edits.js";
 
 /**
  * More about links (D4b): the hover card a link opens (LNK-07), the pages
@@ -565,13 +566,8 @@ export async function linkMentionIn(
   const next = content.slice();
   next[at] = { ...block, text } as DocBlock;
   await snapshot(db, input.doc_id, u.id, always);
-  const version = (
-    await db.query<{ version: number }>(
-      `UPDATE docs SET content = $2::jsonb, version = version + 1,
-           updated_at = now() WHERE id = $1 RETURNING version`,
-      [input.doc_id, JSON.stringify(next)],
-    )
-  ).rows[0].version;
+  await writeDocLeafEdits(db, input.doc_id, next);
+  const version = doc.version + 1;
   return { before: doc.version, version };
 }
 

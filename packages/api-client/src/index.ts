@@ -53,6 +53,8 @@ export { TeamsChannelStore } from "./teams-channel-store.js";
 
 export { DocContentStore } from "./doc-content-store.js";
 export type { DocContentEditorState } from "./doc-content-store.js";
+export { DocEditorStore } from "./doc-editor-store.js";
+export type { DocEditorStoreState } from "./doc-editor-store.js";
 
 export { throwIfAborted } from "./abort.js";
 export * from "./chatgpt-local-tokens.js";

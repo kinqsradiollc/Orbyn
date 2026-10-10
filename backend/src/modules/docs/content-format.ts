@@ -5,7 +5,8 @@ import {
   requireDocContentCapability,
   downgradeDocContent,
   docContainerBlocks,
-  projectDocContainers,
+  docContainerTaskBlocks,
+  applyDocContainerTaskBlocks,
   type VersionedDocContent,
   type DocContentFormat,
 } from "@orbyn/core";
@@ -71,7 +72,7 @@ export async function readVersionedDoc(
   const leaves =
     content.format === 1
       ? content.blocks
-      : docContainerBlocks(content.nodes, { projected: true });
+      : docContainerTaskBlocks(content.nodes, { projected: true });
   const state = await withTaskState(db, id, leaves);
   const privacy = await linkPrivacy(db, u.id, state);
   const visible = privacy.value(state);
@@ -80,7 +81,7 @@ export async function readVersionedDoc(
       ? { format: 1, blocks: visible }
       : {
           format: 2,
-          nodes: projectDocContainers(content.nodes, () => visible, {
+          nodes: applyDocContainerTaskBlocks(content.nodes, visible, {
             projected: true,
           }),
         };
@@ -130,7 +131,7 @@ export async function saveVersionedDoc(
   const leaves =
     content.format === 1
       ? content.blocks
-      : docContainerBlocks(content.nodes, { projected: true });
+      : docContainerTaskBlocks(content.nodes, { projected: true });
   const preserved = await keepHiddenLabels(db, id, u.id, leaves);
   const processed = await syncTicks(db, u, id, preserved, ticksFrom);
   // Read masks may be longer than storage permits; restore labels first, then enforce exact storage limits.
@@ -141,7 +142,7 @@ export async function saveVersionedDoc(
         ? { format: 1, blocks: processed }
         : {
             format: 2,
-            nodes: projectDocContainers(content.nodes, () => processed, {
+            nodes: applyDocContainerTaskBlocks(content.nodes, processed, {
               projected: true,
             }),
           },
@@ -149,9 +150,13 @@ export async function saveVersionedDoc(
   } catch {
     fail(400, "Document content exceeds its storage limits.");
   }
-  await allowPageFiles(db, u.id, processed);
-  await followComments(db, id, processed);
-  await followSuggestions(db, id, processed);
+  const storedLeaves =
+    stored.format === 2
+      ? docContainerBlocks(stored.nodes, { projected: true })
+      : processed;
+  await allowPageFiles(db, u.id, storedLeaves);
+  await followComments(db, id, storedLeaves);
+  await followSuggestions(db, id, storedLeaves);
   const nodes = stored.format === 2 ? stored.nodes : null;
   await snapshot(db, id, u.id, true);
   await db.query("SELECT set_config('orbyn.doc_content_writer','2',true)");
@@ -159,7 +164,7 @@ export async function saveVersionedDoc(
     "UPDATE docs SET content=$2::jsonb,content_format=$3,content_nodes=$4::jsonb,version=version+1,updated_at=now() WHERE id=$1",
     [
       id,
-      JSON.stringify(processed),
+      JSON.stringify(storedLeaves),
       content.format,
       nodes === null ? null : JSON.stringify(nodes),
     ],

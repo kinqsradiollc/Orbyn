@@ -19,6 +19,8 @@ import {
   keepLinkLabels,
   parseVersionedDocContent,
   docContainerBlocks,
+  docContainerTaskBlocks,
+  applyDocContainerTaskBlocks,
   projectDocContainers,
   downgradeDocContent,
   type VersionedDocContent,
@@ -593,13 +595,23 @@ export async function makeLineTasks(
   options: { only?: string[]; projectId?: string | null } = {},
 ): Promise<Item[] | null> {
   const id = doc.id;
+  const source = (
+    await db.query<{
+      content: DocBlock[] | null;
+      content_format: 1 | 2;
+      content_nodes: unknown;
+    }>("SELECT content,content_format,content_nodes FROM docs WHERE id = $1", [
+      id,
+    ])
+  ).rows[0];
+  const owned =
+    source.content_format === 2
+      ? parseVersionedDocContent({ format: 2, nodes: source.content_nodes })
+      : null;
   const content =
-    (
-      await db.query<{ content: DocBlock[] | null }>(
-        "SELECT content FROM docs WHERE id = $1",
-        [id],
-      )
-    ).rows[0].content ?? [];
+    owned?.format === 2
+      ? docContainerTaskBlocks(owned.nodes)
+      : (source.content ?? []);
   const only = options.only;
   const wanted = content.filter(
     (b): b is Extract<DocBlock, { type: "todo" }> =>
@@ -668,10 +680,20 @@ export async function makeLineTasks(
       ? { ...b, id: ids.get(b as Extract<DocBlock, { type: "todo" }>) }
       : b,
   );
-  await db.query(
-    "UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now() WHERE id = $1",
-    [id, JSON.stringify(next)],
-  );
+  if (owned?.format === 2) {
+    const nodes = applyDocContainerTaskBlocks(owned.nodes, next);
+    await db.query("SELECT set_config('orbyn.doc_content_writer','2',true)");
+    await db.query(
+      `UPDATE docs SET content = $2::jsonb, content_nodes = $3::jsonb,
+         version = version + 1, updated_at = now() WHERE id = $1`,
+      [id, JSON.stringify(docContainerBlocks(nodes)), JSON.stringify(nodes)],
+    );
+  } else {
+    await db.query(
+      "UPDATE docs SET content = $2::jsonb, version = version + 1, updated_at = now() WHERE id = $1",
+      [id, JSON.stringify(next)],
+    );
+  }
   return out;
 }
 
@@ -1133,6 +1155,7 @@ export async function createDoc(
   db: Db,
   u: UserRow,
   data: DocCreate,
+  document?: Extract<VersionedDocContent, { format: 2 }>,
 ): Promise<Doc> {
   if (data.kind === "memory" && (data.team_id || data.project_id))
     fail(403, "Memory notes are private to your Personal library.");
@@ -1165,11 +1188,13 @@ export async function createDoc(
   }
   // Pictures and files the new page shows must be ones its maker can read.
   await allowPageFiles(db, u.id, data.content);
+  if (document)
+    await db.query("SELECT set_config('orbyn.doc_content_writer','2',true)");
   const id = (
     await db.query<{ id: string }>(
       `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,
-         folder_id, project_id, parent_id)
-         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9) RETURNING id`,
+         folder_id, project_id, parent_id, content_format, content_nodes)
+         VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11::jsonb) RETURNING id`,
       [
         u.id,
         data.team_id,
@@ -1180,6 +1205,8 @@ export async function createDoc(
         folderId,
         data.project_id,
         parentId,
+        document ? 2 : 1,
+        document ? JSON.stringify(document.nodes) : null,
       ],
     )
   ).rows[0].id;
@@ -1280,7 +1307,7 @@ export async function saveDoc(
   const input = structured
     ? structured.document.format === 1
       ? structured.document.blocks
-      : docContainerBlocks(structured.document.nodes, { projected: true })
+      : docContainerTaskBlocks(structured.document.nodes, { projected: true })
     : body.content;
   const submitted =
     input &&
@@ -1299,7 +1326,7 @@ export async function saveDoc(
       block.id ? [[block.id, block] as const] : [],
     ) ?? [],
   );
-  const content =
+  let content =
     processed &&
     (owned
       ? body.content!.map((block) =>
@@ -1316,13 +1343,15 @@ export async function saveDoc(
           ? { format: 1, blocks: content }
           : {
               format: 2,
-              nodes: projectDocContainers(
+              nodes: applyDocContainerTaskBlocks(
                 structured.document.nodes,
-                () => content,
+                content,
                 { projected: true },
               ),
             },
       );
+      if (stored.format === 2)
+        content = docContainerBlocks(stored.nodes, { projected: true });
     } catch {
       fail(400, "Document content exceeds its storage limits.");
     }
@@ -1330,7 +1359,7 @@ export async function saveDoc(
   if (content) await followComments(db, id, content);
   if (content) await followSuggestions(db, id, content);
   // A picture or file pasted in is linked only if the saver can read it.
-  if (processed) await allowPageFiles(db, u.id, processed);
+  if (content) await allowPageFiles(db, u.id, content);
   await snapshot(db, id, u.id, options.always || structured !== undefined);
   if (stored)
     await db.query("SELECT set_config('orbyn.doc_content_writer','2',true)");
@@ -1432,26 +1461,46 @@ export async function restoreDocVersion(
   u: UserRow,
   id: string,
   n: number,
+  supported: readonly DocContentFormat[] = [1],
 ): Promise<Doc> {
   await actAs(db, u.id);
   const current = await requireDoc(db, id, u, "items:write");
-  if (current.content_format === 2)
+  if (!supported.includes(current.content_format ?? 1))
     fail(409, "Restore requires an editor that supports nested content.");
   const past = (
     await db.query<{
       title: string;
       content: DocBlock[];
       content_format: 1 | 2;
+      content_nodes: unknown;
     }>(
-      "SELECT title, content, content_format FROM doc_versions WHERE doc_id = $1 AND version = $2",
+      "SELECT title, content, content_format, content_nodes FROM doc_versions WHERE doc_id = $1 AND version = $2",
       [id, n],
     )
   ).rows[0];
   if (!past) fail(404, "That version is not kept");
-  if (past.content_format === 2)
+  if (!supported.includes(past.content_format))
     fail(409, "Restore requires an editor that supports nested content.");
+  const previous = parseVersionedDocContent(
+    past.content_format === 2
+      ? { format: 2, nodes: past.content_nodes }
+      : { format: 1, blocks: past.content },
+  );
   // A restored version's ticks are ones the page said before.
-  const content = await syncTicks(db, u, id, past.content, null);
+  const taskView =
+    previous.format === 2
+      ? docContainerTaskBlocks(previous.nodes)
+      : past.content;
+  const synced = await syncTicks(db, u, id, taskView, null);
+  const document: VersionedDocContent =
+    previous.format === 2
+      ? {
+          format: 2,
+          nodes: applyDocContainerTaskBlocks(previous.nodes, synced),
+        }
+      : { format: 1, blocks: synced };
+  const content =
+    document.format === 2 ? docContainerBlocks(document.nodes) : synced;
   // Going back in time moves the words a remark points at, so the same
   // pass a save makes runs here too — a remark left behind by a restore
   // comes loose rather than pointing at the wrong sentence.
@@ -1461,10 +1510,19 @@ export async function restoreDocVersion(
   await allowPageFiles(db, u.id, content);
   // A restore is a sitting of its own: always keep what it replaces.
   await snapshot(db, id, u.id, true);
+  if (current.content_format === 2 || document.format === 2)
+    await db.query("SELECT set_config('orbyn.doc_content_writer','2',true)");
   await db.query(
-    `UPDATE docs SET title = $2, content = $3::jsonb, version = version + 1,
+    `UPDATE docs SET title = $2, content = $3::jsonb,
+       content_format = $4, content_nodes = $5::jsonb, version = version + 1,
        updated_at = now() WHERE id = $1`,
-    [id, past.title, JSON.stringify(content)],
+    [
+      id,
+      past.title,
+      JSON.stringify(content),
+      document.format,
+      document.format === 2 ? JSON.stringify(document.nodes) : null,
+    ],
   );
   return readDoc(db, id, u.id);
 }

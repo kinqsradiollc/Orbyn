@@ -19,6 +19,11 @@ import {
   readingMinutes,
   withClozeLines,
   wordCount,
+  appendDocContainerBlocks,
+  appendDocContainerSection,
+  docContainerBlocks,
+  parseVersionedDocContent,
+  type VersionedDocContent,
   type ClipDestinations,
   type ClipInput,
   type ClipKey,
@@ -39,6 +44,7 @@ import { visibleFolders, visibleProjects } from "../../lib/visibility.js";
 import { mutate } from "../items/service.js";
 import { announceDocChange } from "../docs/live.js";
 import { checkLinks, requireDoc, snapshot } from "../docs/service.js";
+import { saveVersionedDoc } from "../docs/content-format.js";
 import { actAs } from "../../lib/actor.js";
 
 /**
@@ -150,15 +156,46 @@ async function addToExisting(
   u: UserRow,
   docId: string,
   change: (content: DocBlock[]) => DocBlock[],
+  changeStructured: (
+    document: Extract<VersionedDocContent, { format: 2 }>,
+  ) => Extract<VersionedDocContent, { format: 2 }>,
 ): Promise<{ title: string; version: number; lines: number }> {
   await actAs(db, u.id);
   await requireDoc(db, docId, u, "items:write");
   const doc = (
-    await db.query<{ title: string; content: DocBlock[] }>(
-      "SELECT title, content FROM docs WHERE id = $1",
+    await db.query<{
+      title: string;
+      content: DocBlock[];
+      content_format: 1 | 2;
+      content_nodes: unknown;
+      version: number;
+    }>(
+      "SELECT title, content, content_format, content_nodes, version FROM docs WHERE id = $1",
       [docId],
     )
   ).rows[0];
+  if (doc.content_format === 2) {
+    const document = parseVersionedDocContent({
+      format: 2,
+      nodes: doc.content_nodes,
+    });
+    if (document.format !== 2)
+      fail(409, "Unsupported document content format.");
+    const next = changeStructured(document);
+    const saved = await saveVersionedDoc(
+      db,
+      u,
+      docId,
+      doc.version,
+      next,
+      [1, 2],
+    );
+    return {
+      title: saved.title,
+      version: saved.version,
+      lines: docContainerBlocks(next.nodes).length,
+    };
+  }
   const next = change(doc.content ?? []).slice(0, 2000);
   await snapshot(db, docId, u.id);
   const version = (
@@ -371,10 +408,24 @@ export async function clipRoutes(app: FastifyInstance) {
       if (c.dry_run) return result;
       if (c.doc_id) {
         const saved = await transaction((db) =>
-          addToExisting(db, u, c.doc_id!, (content) =>
-            asCards
-              ? withClozeLines(content, cards)
-              : [...content, source, ...quotes],
+          addToExisting(
+            db,
+            u,
+            c.doc_id!,
+            (content) =>
+              asCards
+                ? withClozeLines(content, cards)
+                : [...content, source, ...quotes],
+            (document) => ({
+              format: 2,
+              nodes: asCards
+                ? appendDocContainerSection(
+                    document.nodes,
+                    { type: "heading", level: 2, text: "Cards" },
+                    withClozeLines([], cards).slice(1),
+                  )
+                : appendDocContainerBlocks(document.nodes, [source, ...quotes]),
+            }),
           ),
         );
         await announceDocChange(pool, c.doc_id, saved.version, "clipper").catch(
