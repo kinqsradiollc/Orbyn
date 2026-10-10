@@ -154,6 +154,7 @@ test("object pill titles require a currently resolved target on both clients", (
         PillContext: React.createContext({
           pills: new Map(state ? [["target", { state, title: "Target" }]] : []),
         }),
+        DocNavigationContext: React.createContext(null),
         Text: ({
           accessibilityHint,
           children,
@@ -180,4 +181,79 @@ test("object pill titles require a currently resolved target on both clients", (
       );
     }
   }
+});
+
+test("mobile object pills use the editor's guarded app-link handler", () => {
+  const path = "../../mobile/src/screens/docs/links.tsx";
+  const source = ts.createSourceFile(
+    path,
+    readFileSync(new URL(path, import.meta.url), "utf8"),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const declarations = source.statements
+    .filter(
+      (node) =>
+        ts.isFunctionDeclaration(node) &&
+        ["openObject", "LinkPillText"].includes(node.name?.text ?? ""),
+    )
+    .map((node) => node.getText(source));
+  assert.equal(declarations.length, 2);
+  const exports: Record<
+    string,
+    React.ComponentType<{ href: string; label: string }>
+  > = {};
+  const direct: string[] = [];
+  const guarded: string[] = [];
+  let press: (() => void) | undefined;
+  const js = ts.transpileModule(declarations.join("\n"), {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.CommonJS,
+      jsx: ts.JsxEmit.ReactJSX,
+    },
+  }).outputText;
+  runInNewContext(js, {
+    exports,
+    require: (id: string) => {
+      assert.equal(id, "react/jsx-runtime");
+      return jsxRuntime;
+    },
+    React,
+    useContext: React.useContext,
+    parseObjectHref,
+    pillKey: () => "target",
+    NOUNS: { doc: "page" },
+    s: {},
+    openAppUrl: (url: string) => direct.push(url),
+    PillContext: React.createContext({ pills: new Map() }),
+    DocNavigationContext: React.createContext({
+      onAppLink: (url: string) => guarded.push(url),
+    }),
+    Text: ({
+      onPress,
+      accessibilityRole,
+      children,
+    }: {
+      onPress?: () => void;
+      accessibilityRole?: string;
+      children: React.ReactNode;
+    }) => {
+      if (accessibilityRole === "link") press = onPress;
+      return React.createElement("span", {}, children);
+    },
+  });
+  renderToStaticMarkup(
+    React.createElement(exports.LinkPillText, {
+      href: "orbyn://doc/11111111-1111-4111-8111-111111111111#target-block",
+      label: "Return to launcher",
+    }),
+  );
+  assert.ok(press, "The object pill must expose a clickable link");
+  press();
+  assert.deepEqual(guarded, [
+    "orbyn://doc/11111111-1111-4111-8111-111111111111#target-block",
+  ]);
+  assert.deepEqual(direct, []);
 });

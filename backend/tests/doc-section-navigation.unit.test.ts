@@ -64,6 +64,7 @@ function section(native: boolean) {
         onFragment: () => {
           throw new Error("Used containing page");
         },
+        onAppLink: (url: string) => urls.push(url),
         report: () => {},
       }),
       DocNavigationContext: navigation,

@@ -929,6 +929,7 @@ export function EmbedBlock({
 }
 
 function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
+  const navigation = useContext(DocNavigationContext);
   const [section, setSection] = useState<Section | null | "gone">(null);
   const load = useCallback(
     () =>
@@ -962,7 +963,11 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
           accessibilityRole="button"
           hitSlop={10}
           onPress={() =>
-            openObject({ kind: "doc", id: section.doc_id }, section.block_id)
+            openObject(
+              { kind: "doc", id: section.doc_id },
+              section.block_id,
+              navigation?.onAppLink,
+            )
           }
         >
           <Text style={s.embedOpen}>Open</Text>
@@ -1019,8 +1024,12 @@ function SectionBody({
     <DocNavigationContext.Provider
       value={{
         onFragment: (fragment) =>
-          openObject({ kind: "doc", id: docId }, fragment),
-        onAppLink: openAppUrl,
+          openObject(
+            { kind: "doc", id: docId },
+            fragment,
+            parentNavigation?.onAppLink,
+          ),
+        onAppLink: parentNavigation?.onAppLink ?? openAppUrl,
         report:
           parentNavigation?.report ??
           ((error) =>
@@ -1038,6 +1047,7 @@ function SectionBody({
 }
 
 function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
+  const navigation = useContext(DocNavigationContext);
   const { pills, onToggle } = usePagePills();
   const refs = useMemo(() => {
     const seen = new Set<string>();
@@ -1077,7 +1087,10 @@ function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
               >
                 {done && <Icon name="check" size={13} color={colors.white} />}
               </Pressable>
-              <Pressable style={{ flex: 1 }} onPress={() => openObject(r)}>
+              <Pressable
+                style={{ flex: 1 }}
+                onPress={() => openObject(r, undefined, navigation?.onAppLink)}
+              >
                 <Text style={[s.embedTaskText, done && s.embedTaskDone]}>
                   {pill?.title ?? "…"}
                 </Text>

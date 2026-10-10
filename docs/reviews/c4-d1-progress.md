@@ -74,3 +74,25 @@ invalid, and reports a missing initial target in the editor. A failed conflict
 refresh also keeps that validation error. The focused store and caller guard
 regression passed 7/7; full workspace typecheck passed. These
 edits await exact-candidate Tester retest and Reviewer closure within round 1/3.
+
+## Tester execution — b556bac
+
+Tester retested the exact candidate `b556bac61702e01dfeafecd5e8fe22cd3c2d40f8`.
+Focused store/replay/navigation tests passed 14/14 and workspace typecheck passed.
+Web and Expo web cross-page heading, explicit-block, missing-target, and valid
+dirty-handoff paths passed. **Disposition: HOLD** because a mobile object link
+bypasses the structured editor leave guard: following a cross-page link with an
+invalid Source buffer navigates away and loses that unsaved buffer. Exact
+execution, route evidence, cleanup, and remaining limits are in
+[`c4-d1-tester-r3-b556bac6.md`](./c4-d1-tester-r3-b556bac6.md). Review remains
+within round 1/3; there is no acceptance, merge, push, or deployment.
+
+## Builder correction after the b556bac6 hold
+
+Mobile object pills now hand their destination to the current document's
+navigation context, so a structured editor can save or refuse departure from
+an invalid Source draft. Links in embedded sections and linked-task embeds use
+the same guarded route. A caller-level pill regression, section-navigation
+checks, and the affected editor-store checks passed 12/12; workspace typecheck
+passed. The revised candidate awaits Tester's focused invalid-Source handoff
+retest and Reviewer closure within round 1/3. It is not yet accepted for main.

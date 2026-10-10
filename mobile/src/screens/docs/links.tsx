@@ -29,6 +29,7 @@ import {
 import { client } from "../../lib/api";
 import { tap } from "../../lib/haptics";
 import { openAppUrl } from "../../hooks/useAppLinks";
+import { DocNavigationContext } from "./doc-navigation";
 import { CONCEPT_ICON, Icon, type IconName } from "../../components/Icon";
 import { colors, controls, fonts, radii, themed } from "../../theme";
 
@@ -39,11 +40,15 @@ import { colors, controls, fonts, radii, themed } from "../../theme";
  */
 
 /** Open a page (at a line), task, event or project in the app. */
-export function openObject(ref: ObjectRef, block?: string | null) {
+export function openObject(
+  ref: ObjectRef,
+  block?: string | null,
+  onAppLink: (url: string) => void = openAppUrl,
+) {
   if (ref.kind === "person" || ref.kind === "date") return;
   const kind = ref.kind === "event" ? "task" : ref.kind;
   const line = block ?? ref.block;
-  openAppUrl(
+  onAppLink(
     `orbyn://${kind}/${ref.id}${kind === "doc" && line ? `#${line}` : ""}`,
   );
 }
@@ -158,6 +163,7 @@ export function LinkPillText({
 }) {
   const ref = parseObjectHref(href);
   const { pills, onToggle, onRestore, onCard } = useContext(PillContext);
+  const navigation = useContext(DocNavigationContext);
   if (!ref) return null;
   const pill = pills.get(pillKey(ref));
   const noun = NOUNS[ref.kind];
@@ -206,7 +212,11 @@ export function LinkPillText({
             ? "Touch and hold for more"
             : undefined
       }
-      onPress={openable ? () => openObject(target) : undefined}
+      onPress={
+        openable
+          ? () => openObject(target, undefined, navigation?.onAppLink)
+          : undefined
+      }
       onLongPress={
         openable && onCard
           ? () => {
