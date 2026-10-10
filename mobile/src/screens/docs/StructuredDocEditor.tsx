@@ -1,12 +1,5 @@
 import React, { useEffect, useMemo, useSyncExternalStore } from "react";
-import {
-  Alert,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import {
   docContainerBlocks,
   docEditorSessionDirty,
@@ -18,6 +11,7 @@ import {
 } from "@orbyn/core";
 import { DocEditorStore } from "@orbyn/api-client";
 import { Pressable } from "../../motion";
+import { ActionSheet } from "../../components/MoreMenu";
 import { colors, fonts } from "../../theme";
 import { client } from "../../lib/api";
 import { rememberPage } from "../../lib/pageCache";
@@ -62,6 +56,7 @@ export function StructuredDocEditor({
   const [sourceVisible, setSourceVisible] = React.useState(false);
   const [editing, setEditing] = React.useState<string | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [discardOpen, setDiscardOpen] = React.useState(false);
   const [keptOffline, setKeptOffline] = React.useState(false);
   const offlineQueued = React.useRef(false);
   useEffect(() => {
@@ -169,18 +164,9 @@ export function StructuredDocEditor({
     };
   }, [beforeLeave, store, save]);
   const discard = () => {
-    const go = () => {
-      offlineQueued.current = false;
-      setKeptOffline(false);
-      void store.discardLocal();
-    };
-    if (Platform.OS === "web") {
-      if (globalThis.confirm?.("Discard this draft?")) go();
-    } else
-      Alert.alert("Discard draft?", "This removes your unsaved edits.", [
-        { text: "Keep editing", style: "cancel" },
-        { text: "Discard", style: "destructive", onPress: go },
-      ]);
+    offlineQueued.current = false;
+    setKeptOffline(false);
+    void store.discardLocal();
   };
   useEffect(() => {
     if (
@@ -206,6 +192,15 @@ export function StructuredDocEditor({
   ]);
   return (
     <View style={styles.page}>
+      <ActionSheet
+        visible={discardOpen}
+        label="Discard page draft"
+        title="Discard draft?"
+        message="This removes your unsaved edits."
+        cancelLabel="Keep editing"
+        actions={[{ label: "Discard", destructive: true, onPress: discard }]}
+        onClose={() => setDiscardOpen(false)}
+      />
       <View style={styles.toolbar}>
         <Pressable
           accessibilityRole="button"
@@ -329,7 +324,10 @@ export function StructuredDocEditor({
         </Text>
       )}
       {(state.conflict || state.error !== null) && session && (
-        <Pressable accessibilityRole="button" onPress={discard}>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setDiscardOpen(true)}
+        >
           <Text style={styles.action}>Discard draft</Text>
         </Pressable>
       )}

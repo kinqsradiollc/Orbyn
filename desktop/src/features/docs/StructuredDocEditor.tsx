@@ -24,6 +24,7 @@ import {
 } from "@orbyn/core";
 import { DocEditorStore } from "@orbyn/api-client";
 import { client } from "../../lib/api";
+import { useConfirm } from "../../components/Confirm";
 import { BlockView } from "./DocBlocks";
 import { DocContainerView } from "./DocContainerView";
 import { DocComments } from "./DocComments";
@@ -54,6 +55,7 @@ export function StructuredDocEditor({
   report: (error: unknown) => void;
 }) {
   const store = useMemo(() => new DocEditorStore(client), [doc.id]);
+  const { ask } = useConfirm();
   const [editing, setEditing] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -224,9 +226,11 @@ export function StructuredDocEditor({
     )
       return;
     if (
-      !window.confirm(
-        "Restore this version? The current page stays in history.",
-      )
+      !(await ask({
+        title: "Restore this version?",
+        body: "The current page stays in history.",
+        confirmLabel: "Restore",
+      }))
     )
       return;
     setHistoryBusy(true);
@@ -283,8 +287,13 @@ export function StructuredDocEditor({
                 state.source !== null &&
                 (state.error || !session || !docEditorSessionDirty(session))
               ) {
-                if (window.confirm("Discard the unsaved source draft?"))
-                  onBack();
+                void ask({
+                  title: "Discard the unsaved source draft?",
+                  confirmLabel: "Discard",
+                  destructive: true,
+                }).then((confirmed) => {
+                  if (confirmed) onBack();
+                });
               } else if (session && docEditorSessionDirty(session)) {
                 void save().then(() => {
                   if (
@@ -387,10 +396,15 @@ export function StructuredDocEditor({
       {(state.conflict || state.error !== null) && session && (
         <button
           type="button"
-          onClick={() => {
-            if (window.confirm("Discard this draft?"))
-              void store.discardLocal();
-          }}
+          onClick={() =>
+            void ask({
+              title: "Discard this draft?",
+              confirmLabel: "Discard",
+              destructive: true,
+            }).then((confirmed) => {
+              if (confirmed) void store.discardLocal();
+            })
+          }
         >
           Discard draft
         </button>
