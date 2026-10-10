@@ -757,8 +757,27 @@ preserves unchanged owner consent. Unlinking one owner preserves other linked
 owners, while the last unlink/account deletion erases the shared credential
 without uninstalling the provider app. Empty unreferenced vault metadata expires
 after30 days. Legacy candidate pairs/pending exchanges require explicit reconnect
-on upgrade. Signed exact-card replies and Teams remain separate implementation
-requirements; the channel candidate is not yet promoted to main.
+on upgrade. Slack signed replies and Teams exact-card replies carry the original
+waiting ID; current owner, consent and source authority are checked again before
+resuming work. Provider acknowledgement is receipt, not approval or completion.
+Live workspace delivery remains unverified; see the current C5 delivery record.
+
+### Maintained and published pages
+
+Page bindings capture selected block IDs, source revisions, assistant authority,
+schedule and provider choice. Structured updates preserve surrounding containers
+and human-owned blocks. A human `@orbyn` comment creates one scoped, one-shot
+request; only its initiating remark and selected blocks enter the prompt. Changed
+or resolved requests cannot publish a stale reply. Approval uses the existing
+page-run review flow, and retries deduplicate replies by originating comment.
+
+Selected publication uses `/s/:token`, separate from legacy `/p` page/folder links.
+Explicit consent covers the title and selected blocks. Snapshot links pin that
+content; live links follow edits only to the selected IDs. Every anonymous read
+rechecks expiry, publisher access, source location and workspace publishing policy.
+Revocation removes the capability; media access is limited to files in the selected
+content and rechecked after storage fetch. Gateway/access logs redact capability
+paths. Implementation and qualification status: [C5 record](reviews/c5-progress.md).
 
 ## Personal ChatGPT credential boundary
 

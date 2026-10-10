@@ -7,6 +7,7 @@ import {
   checkMaintainedPage,
   maintainedPageBindingInput,
   maintainedPageBindingUpdate,
+  maintainedPageBindingControl,
   maintainedPageBindingDelete,
   maintainedPageSnapshot,
   objectRefsInValue,
@@ -39,6 +40,7 @@ import { assistantSourceVisible } from "../../lib/assistant-source-visibility.js
 import { readVersionedDoc } from "./content-format.js";
 import {
   pageCommentRequestContext,
+  retireWithdrawnPageComments,
   type PageCommentSource,
 } from "./comment-request-context.js";
 import { actAs } from "../../lib/actor.js";
@@ -176,6 +178,7 @@ export async function createMaintainedPageBinding(
     "SELECT pg_advisory_xact_lock(hashtext('page-bindings:'||$1))",
     [user.id],
   );
+  if (sourceComment) await retireWithdrawnPageComments(db, [user.id]);
   const count = (
     await db.query<{ count: number }>(
       `SELECT count(*)::integer AS count FROM assistant_page_bindings b WHERE user_id=$1
@@ -316,6 +319,43 @@ export async function updateMaintainedPageBinding(
   bindingId: string,
   raw: unknown,
 ): Promise<MaintainedPageBinding> {
+  const control = maintainedPageBindingControl.safeParse(raw);
+  if (control.success) {
+    // Stopping work must not require accepting edits made since the binding was captured.
+    const doc = control.data.paused
+      ? await requireDoc(db, docId, user, "items:write")
+      : (await maintenancePage(db, user, principal, docId)).doc;
+    const existing = (
+      await db.query<BindingRow>(
+        "SELECT * FROM assistant_page_bindings WHERE id=$1 AND doc_id=$2 AND user_id=$3 FOR UPDATE",
+        [bindingId, docId, user.id],
+      )
+    ).rows[0];
+    if (!existing) fail(404, "Page binding not found.");
+    if (existing.source_comment_id)
+      fail(409, "Comment requests cannot become recurring page updates.");
+    if (existing.revision !== control.data.expected_revision)
+      fail(409, "This binding changed. Reload it.");
+    if (
+      !control.data.paused &&
+      maintainedPageSnapshot.parse(existing.snapshot).doc_version !==
+        doc.version
+    )
+      fail(409, "Page changed. Review and rebind before resuming.");
+    const row = (
+      await db.query<BindingRow>(
+        "UPDATE assistant_page_bindings SET paused=$2,revision=revision+1,updated_at=now() WHERE id=$1 RETURNING *",
+        [bindingId, control.data.paused],
+      )
+    ).rows[0];
+    await db.query(
+      `UPDATE assistant_page_runs SET state='cancelled',lease_token=NULL,lease_expires_at=NULL,
+      waiting_id=NULL,proposal=NULL,error_message='The page binding changed.',updated_at=now()
+      WHERE binding_id=$1 AND state IN ('queued','running','waiting')`,
+      [bindingId],
+    );
+    return publicBinding(row);
+  }
   const input = maintainedPageBindingUpdate.parse(raw);
   const { current, doc, content } = await maintenancePage(
     db,

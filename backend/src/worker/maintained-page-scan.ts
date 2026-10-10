@@ -4,6 +4,7 @@ import type { UserRow } from "../lib/auth.js";
 import { visibleDocs } from "../lib/visibility.js";
 import { assistantPrincipal } from "../modules/agents/assistant.js";
 import { queueMaintainedPageRun } from "../modules/docs/maintenance-runs.js";
+import { retireWithdrawnPageComments } from "../modules/docs/comment-request-context.js";
 import { nightShiftOwns } from "./assistant-scan.js";
 
 let afterBinding: string | null = null;
@@ -14,6 +15,9 @@ export async function scanMaintainedPages(
   options: { limit?: number; only?: string[] } = {},
 ): Promise<number> {
   const limit = Math.max(1, Math.min(options.limit ?? 10, 50));
+  await transaction((db) =>
+    retireWithdrawnPageComments(db, options.only ?? null),
+  );
   // Do not lock a binding here: the context guard owns the canonical lock order.
   const due = (
     await pool.query<{ id: string; user_id: string }>(

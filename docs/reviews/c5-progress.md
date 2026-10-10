@@ -1,7 +1,31 @@
 # C5 delivery record
 
+## Review handoff — round 1/3
+
+**Current: Builder corrections within round 1/3.** Reviewer requested C5-R1
+(pause after human edit) and C5-R2 (withdrawn pre-queue comment quota).
+Product source now has uncommitted corrections after `046c0b85`; do not describe
+the working tree as frozen. Lifecycle control retains snapshots, cancels active
+runs, and requires rebind to resume changed source. Scanner/creation cleanup retires
+irreversibly withdrawn comment sources while retaining dedup records and active
+runs. Initial correction checks passed 15/15; expanded run-state/parent-thread
+checks passed 24/24 and workspace types passed. Revised freeze and Tester retest are next.
+Visual Check was told to retain exact served-source provenance during these edits.
+
+Frozen product source remains `046c0b85a56b82966db7f398c63c8537fbb5bea5`.
+Tester report: [c5-test-report.md](c5-test-report.md): build/types, existing/fresh
+migrations, **471/471** focused contracts and **78/78** structured/docs regressions
+passed. Reviewer now owns code and evidence assessment; full review counter **1/3**.
+Documentation updates in architecture/setup and tracking reports are uncommitted;
+product/test source is unchanged. New Visual Check session
+`01a12831-cdc4-7340-8af3-63f2ccf7aafc` is correcting preview provenance and completing
+the bounded UI batch. Current internal-browser navigation succeeded; the old saved
+Block note is historical, not a newly observed denial. No visual acceptance yet.
+Live Slack/Teams delivery remains user-deferred. No main merge/push yet.
+
 Started 11 October 2026 from main `9c7c3fdb` on `codex/c5-pages-publication`.
-Phase: candidate preparation for Test. Owner: Orbyn Builder. Review round: **0/3**.
+Phase: **Test**. Frozen full candidate: `046c0b85a56b82966db7f398c63c8537fbb5bea5`.
+Tester qualification and bounded Visual Check are dispatched. Review round: **0/3**.
 
 Complete maintained page bindings/schedules and scoped mentions, publication
 consent/revocation, and Slack/Teams channel lifecycle before Test → Review.
@@ -11,13 +35,14 @@ revision, human-edit, source-privacy and waiting-reply boundaries intact.
 The user explicitly deferred live Slack/Teams workspace checks on 11 October;
 implement and verify local contracts without claiming external delivery proof.
 C4/D1 browser checks remain production follow-ups, not passes. Production
-deployment is user-owned. No C5 acceptance or main delivery yet.
+deployment is user-owned. No C5 acceptance, main merge/push or production deployment yet.
 
 Initial audit: structured Docs bypasses the old editor's maintenance controls;
 maintenance persistence and its client store still assume legacy flat content.
-Builder is completing format-2 integration before freezing the full candidate.
+At that initial audit, format-2 integration was still in progress; it is included
+in the frozen candidate described below.
 
-## Implementation checkpoint — 11 October
+## Earlier implementation checkpoint — superseded by full-candidate handoff
 
 - Structured editors now expose page updates and scoped publication on web/mobile.
 - New scoped publication path `/s/:token` has explicit selected leaves, snapshot/live
@@ -28,13 +53,14 @@ Builder is completing format-2 integration before freezing the full candidate.
 - Development evidence: workspace typecheck passed before the final media/proxy
   adjustments; shared build and 10 focused publication/maintenance-store unit tests
   passed after those adjustments. These are development checks, not full C5 acceptance.
-- Remaining: scoped `@orbyn` comment jobs/replies, database publication and structured
-  maintenance regressions, Slack/Teams lifecycle audit/local checks, bounded visuals,
-  frozen full-candidate Test → Review, accepted merge/push. Review remains **0/3**.
+- At this checkpoint, scoped `@orbyn` comment jobs/replies and full-candidate
+  qualification were still outstanding. The later full-candidate handoff below
+  supersedes this interim status.
 
-No C5 commit or merge yet. Preserve live Slack/Teams checks as user-deferred.
+No accepted main merge/push or deployment. Preserve live Slack/Teams checks as
+user-deferred.
 
-## Scoped comment implementation
+## Scoped comment implementation checkpoint
 
 `@orbyn` on the human comment endpoint now creates a one-shot page binding,
 using the anchored block (or existing identified page blocks, bounded at 100).
@@ -55,17 +81,19 @@ Development evidence (not frozen-candidate qualification):
   source-change-during-generation and exact saved-review reply cases. Mock local
   HTTP provider; no live vendor qualification claim.
 
-Next: publication DB/anonymous-boundary tests, structured maintenance regressions,
-comment endpoint/permissions coverage, Slack/Teams local lifecycle qualification,
-then freeze full C5 for Tester and Reviewer. Review counter remains **0/3**.
+These development suites fed into the full candidate described below; they do not
+replace frozen-source Tester qualification or Reviewer acceptance.
 
 ## Full candidate handoff
 
 The implementation scope above is now present. Checkout:
 `/Users/anhdang/.codex/worktrees/c3-agent-platform/Orbyn`, branch
-`codex/c5-pages-publication`, base `9c7c3fdb`. The candidate commit is supplied in
-the Tester message. No main merge/push or acceptance yet. Earlier “Next” lists
-are historical checkpoints; the current next owner is Tester after freeze.
+`codex/c5-pages-publication`, base `9c7c3fdb`. Frozen candidate:
+`046c0b85a56b82966db7f398c63c8537fbb5bea5`. Tester qualification and bounded Visual
+Check have been dispatched. Review remains **0/3**. There is no accepted main
+merge/push or production deployment. The visual report records unavailable
+browser-control tooling and no rendered pass; user direction to enable tooling or
+defer is pending. Live Slack/Teams workspace checks remain explicitly deferred.
 
 Additional development receipts (not formal acceptance):
 

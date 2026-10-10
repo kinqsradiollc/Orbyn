@@ -67,12 +67,19 @@ export const maintainedPageBindingDelete = z
     expected_revision: z.number().int().positive(),
   })
   .strict();
+/** Lifecycle control never recaptures a page snapshot. */
+export const maintainedPageBindingControl = z
+  .object({
+    expected_revision: z.number().int().positive(),
+    paused: z.boolean(),
+  })
+  .strict();
 export type MaintainedPageBindingInput = z.input<
   typeof maintainedPageBindingInput
 >;
-export type MaintainedPageBindingUpdate = z.input<
-  typeof maintainedPageBindingUpdate
->;
+export type MaintainedPageBindingUpdate =
+  | z.input<typeof maintainedPageBindingUpdate>
+  | z.input<typeof maintainedPageBindingControl>;
 
 /** Server-side job/approval receipt must match the saved binding revision. */
 export const maintainedPagePatchInput = z

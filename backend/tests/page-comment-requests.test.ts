@@ -25,6 +25,8 @@ const {
 } = await import("../src/modules/docs/maintenance-runs.js");
 const { pageCommentMessages } =
   await import("../src/modules/docs/maintenance-model.js");
+const { scanMaintainedPages } =
+  await import("../src/worker/maintained-page-scan.js");
 const people: string[] = [];
 before(() => migrate());
 after(async () => {
@@ -236,6 +238,83 @@ test("resolving a parent thread invalidates an attached request", async () => {
       maintainedPageContext(db, f.user, f.principal, binding.id),
     ),
     /thread was resolved/,
+  );
+  await scanMaintainedPages(new Date(Date.now() + 1000), { only: [f.user.id] });
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT schedule_exhausted FROM assistant_page_bindings WHERE id=$1",
+        [binding.id],
+      )
+    ).rows[0].schedule_exhausted,
+    true,
+  );
+});
+test("scanner retires withdrawn pre-queue comments and releases the full request quota", async () => {
+  const f = await fixture();
+  const make = () =>
+    transaction(async (db) => {
+      const principal = await assistantPrincipal(f.user, {
+        db,
+        lane: "background",
+      });
+      const c = await addComment(db, f.user, f.doc.id, {
+        body: "@orbyn summarize",
+        block_id: "selected",
+        mentions: [],
+      });
+      await createPageCommentRequest(db, f.user, c, principal);
+      return c;
+    });
+  const comments = [f.comment];
+  for (let i = 1; i < 100; i++) comments.push(await make());
+  await assert.rejects(make(), /100 page bindings/);
+  for (const c of comments.slice(0, 50))
+    await transaction((db) => resolveComment(db, f.user, f.doc.id, c.id, true));
+  // A captured revision cannot be reused after editing its initiating remark.
+  await pool.query(
+    "UPDATE doc_comments SET body='Withdrawn',revision=revision+1 WHERE id=ANY($1::uuid[])",
+    [comments.slice(50).map((c) => c.id)],
+  );
+  await pool.query("UPDATE agent_grants SET suspended_at=now() WHERE id=$1", [
+    f.principal.grant_id,
+  ]);
+  assert.equal(
+    await scanMaintainedPages(new Date(Date.now() + 1000), {
+      only: [f.user.id],
+    }),
+    0,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM assistant_page_bindings WHERE user_id=$1 AND NOT schedule_exhausted",
+        [f.user.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM doc_comments WHERE doc_id=$1 AND assistant_request_id IS NOT NULL",
+        [f.doc.id],
+      )
+    ).rows[0].n,
+    0,
+  );
+  await pool.query("UPDATE agent_grants SET suspended_at=NULL WHERE id=$1", [
+    f.principal.grant_id,
+  ]);
+  await make();
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT count(*)::int n FROM assistant_page_bindings WHERE user_id=$1 AND NOT schedule_exhausted",
+        [f.user.id],
+      )
+    ).rows[0].n,
+    1,
   );
 });
 test("deleting the originating comment removes its request and any committed reply", async () => {

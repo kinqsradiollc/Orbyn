@@ -409,9 +409,8 @@ Questions expire after 15 minutes. Approvals still open the full Orbyn review.
 A successful callback acknowledgement means received, not that work completed.
 Both services need the same signing secret; rotation refuses old queued replies.
 
-Teams, exact-head qualification and real authorized workspace/UI acceptance remain
-implementation gates; do not treat mock-provider qualification
-as a completed production installation. The notifier and API need the same app
+Real authorized workspace delivery remains unverified; local provider-contract
+checks do not establish a completed production installation. The notifier and API need the same app
 configuration and encryption key. The Compose backend environment already reads
 `.env`. Configure a test workspace and complete acceptance before enabling the
 Slack application's irreversible token-rotation setting in production.
@@ -454,9 +453,10 @@ credentials are configured. Uninstall events revoke the currently proved route;
 older events cannot revoke a later proof. Disconnect clears local authority
 without uninstalling the bot for other owners. Unknown sends are not replayed.
 
-This remains an unmerged implementation candidate until its qualification gates
-pass. Teams question replies, real tenant delivery and client visual/native
-acceptance remain open. Decisions currently open the owned Orbyn review.
+Teams question cards carry the exact waiting ID and accept replies only through
+the verified personal conversation under current consent and source authority.
+Approvals open the owned Orbyn review. Live tenant delivery is a deferred
+qualification check; see [C5 status](reviews/c5-progress.md) for current acceptance.
 
 ## Personal ChatGPT provider
 

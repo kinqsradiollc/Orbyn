@@ -76,6 +76,36 @@ const input = (version: number) => ({
 const path = (doc: string, binding?: string) =>
   `/docs/${doc}/maintenance${binding ? "/" + binding : ""}`;
 
+test("lifecycle pause retains the old snapshot after a human edit and resume requires rebind", async () => {
+  const doc = await page();
+  const created = await call("POST", path(doc.id), {
+    ...input(doc.version),
+    paused: false,
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  const binding = created.json();
+  await pool.query("UPDATE docs SET version=version+1 WHERE id=$1", [doc.id]);
+  const control = { expected_revision: binding.revision, paused: true };
+  assert.equal(
+    (await call("PUT", path(doc.id, binding.id), control, 1)).statusCode,
+    404,
+  );
+  const paused = await call("PUT", path(doc.id, binding.id), control);
+  assert.equal(paused.statusCode, 200, paused.body);
+  assert.equal(paused.json().paused, true);
+  assert.deepEqual(paused.json().snapshot, binding.snapshot);
+  assert.equal(
+    (await call("PUT", path(doc.id, binding.id), control)).statusCode,
+    409,
+  );
+  const resumed = await call("PUT", path(doc.id, binding.id), {
+    expected_revision: paused.json().revision,
+    paused: false,
+  });
+  assert.equal(resumed.statusCode, 409, resumed.body);
+  assert.match(resumed.body, /rebind/);
+});
+
 test("page budget settings validate, persist and update through the owner routes", async () => {
   const doc = await page();
   for (const budget of [999, 20001, 1000.5, "1000"])

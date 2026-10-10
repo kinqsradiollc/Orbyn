@@ -164,19 +164,12 @@ export class PageMaintenanceStore {
       else await this.api.createPageMaintenance(this.id, input);
     }, true);
   pause = (binding: MaintainedPageBinding) =>
-    this.save(
-      {
-        instruction: binding.instruction,
-        rrule: binding.rrule,
-        timezone: binding.timezone,
-        next_run_at: binding.next_run_at,
-        block_ids: binding.snapshot.blocks.map((block) => block.block_id),
-        expected_doc_version: binding.snapshot.doc_version,
+    this.run(async () => {
+      await this.api.updatePageMaintenance(this.id, binding.id, {
+        expected_revision: binding.revision,
         paused: !binding.paused,
-        token_budget: binding.token_budget,
-      },
-      binding,
-    );
+      });
+    }, true);
   remove = (binding: MaintainedPageBinding) =>
     this.run(async () => {
       await this.api.deletePageMaintenance(

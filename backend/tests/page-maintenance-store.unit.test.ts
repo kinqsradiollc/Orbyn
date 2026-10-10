@@ -155,14 +155,7 @@ test("pause preserves the reviewed page revision and decisions send the exact sa
     "doc",
     "binding",
     {
-      instruction: binding.instruction,
-      rrule: binding.rrule,
-      timezone: "UTC",
-      next_run_at: binding.next_run_at,
-      block_ids: ["summary"],
-      expected_doc_version: 5,
       paused: true,
-      token_budget: 5000,
       expected_revision: 3,
     },
   ]);

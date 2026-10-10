@@ -8,6 +8,27 @@ export type PageCommentSource = {
   source_comment_revision: number | null;
 };
 
+/** Withdrawn one-shot sources cannot recover at their captured revision. Keep the row for dedup. */
+export async function retireWithdrawnPageComments(
+  db: Db,
+  users: string[] | null = null,
+) {
+  await db.query(
+    `UPDATE assistant_page_bindings b SET schedule_exhausted=true,updated_at=now()
+    WHERE b.source_comment_id IS NOT NULL AND NOT b.schedule_exhausted
+      AND ($1::uuid[] IS NULL OR b.user_id=ANY($1::uuid[]))
+      AND NOT EXISTS(SELECT 1 FROM assistant_page_runs r WHERE r.binding_id=b.id
+        AND r.state IN ('queued','running','waiting'))
+      AND NOT EXISTS(SELECT 1 FROM doc_comments c WHERE c.id=b.source_comment_id
+        AND c.doc_id=b.doc_id AND c.user_id=b.user_id AND c.via_grant_id IS NULL
+        AND c.revision=b.source_comment_revision AND c.resolved_at IS NULL AND NOT c.detached
+        AND (c.parent_id IS NULL OR EXISTS(SELECT 1 FROM doc_comments parent
+          WHERE parent.id=c.parent_id AND parent.doc_id=c.doc_id
+            AND parent.resolved_at IS NULL AND NOT parent.detached)))`,
+    [users],
+  );
+}
+
 /** Only the initiating remark enters the model context, never sibling/private conversations. */
 export async function pageCommentRequestContext(
   db: Db,
