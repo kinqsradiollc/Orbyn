@@ -6,18 +6,20 @@ import ts from "typescript";
 import * as React from "react";
 import * as core from "@orbyn/core";
 
-function preview(windowHeight = 960) {
+function preview(windowHeight = 960, onAppLink?: (url: string) => void) {
   let at = 0,
     refAt = 0,
     memoAt = 0;
   const states: any[] = [],
     refs: any[] = [],
     memos: any[] = [];
+  const opened: { ref: core.ObjectRef; handler?: (url: string) => void }[] = [];
   const hooks = {
     ...React,
     useId: () => "diagram-test",
     useEffect: () => {},
     useCallback: (callback: unknown) => callback,
+    useContext: () => (onAppLink ? { onAppLink } : null),
     useRef: (initial: unknown) =>
       refs[refAt++] ?? (refs[refAt - 1] = { current: initial }),
     useState: (initial: unknown) => {
@@ -64,7 +66,14 @@ function preview(windowHeight = 960) {
     },
     "../motion": { Pressable: container },
     "../lib/download": { saveFile: () => Promise.resolve() },
-    "../screens/docs/links": { openObject: () => {} },
+    "../screens/docs/links": {
+      openObject: (
+        ref: core.ObjectRef,
+        _block?: string,
+        handler?: (url: string) => void,
+      ) => opened.push({ ref, handler }),
+    },
+    "../screens/docs/doc-navigation": { DocNavigationContext: {} },
   };
   const exports: Record<string, (props: unknown) => React.ReactElement> = {};
   runInNewContext(
@@ -103,6 +112,32 @@ function preview(windowHeight = 960) {
   }
   let tree: React.ReactElement;
   return {
+    opened,
+    pressOpenNode() {
+      let press: (() => void) | undefined;
+      function textOf(node: React.ReactNode): string {
+        if (typeof node === "string") return node;
+        if (!React.isValidElement(node)) return "";
+        return React.Children.toArray(
+          (node.props as { children?: React.ReactNode }).children,
+        )
+          .map(textOf)
+          .join("");
+      }
+      function visit(node: React.ReactNode) {
+        if (!React.isValidElement(node)) return;
+        const props = node.props as {
+          onPress?: () => void;
+          children?: React.ReactNode;
+        };
+        if (props.onPress && textOf(node).startsWith("Open "))
+          press = props.onPress;
+        React.Children.forEach(props.children, visit);
+      }
+      visit(tree);
+      assert.ok(press, "Expected a linked diagram node action");
+      press();
+    },
     actions() {
       const labels: string[] = [];
       function visit(node: React.ReactNode) {
@@ -124,6 +159,19 @@ function preview(windowHeight = 960) {
     },
   };
 }
+
+test("mobile diagram node links use the owning editor's guarded route", () => {
+  const guarded: string[] = [];
+  const handler = (url: string) => guarded.push(url);
+  const view = preview(960, handler);
+  const id = "11111111-1111-4111-8111-111111111111";
+  view.render(`flowchart LR\nA[Open page]\nclick A "orbyn://doc/${id}"`);
+  view.pressOpenNode();
+  assert.equal(view.opened.length, 1);
+  assert.equal(view.opened[0].handler, handler);
+  assert.equal(view.opened[0].ref.id, id);
+  assert.deepEqual(guarded, []);
+});
 
 test("native preview fences late results after a source change and bounds surface height", () => {
   const view = preview();

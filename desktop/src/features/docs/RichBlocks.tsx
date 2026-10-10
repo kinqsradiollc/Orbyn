@@ -1119,6 +1119,9 @@ async function loadMermaid(): Promise<Mermaid> {
  * that can't be drawn shows its source with a note.
  */
 export function Diagram({ text }: { text: string }) {
+  const navigation = useContext(DocNavigationContext);
+  const onAppLink = useRef(navigation?.onAppLink);
+  onAppLink.current = navigation?.onAppLink;
   const id = useId().replace(/[^\w-]/g, "");
   const box = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
@@ -1200,7 +1203,7 @@ export function Diagram({ text }: { text: string }) {
               el.style.cursor = "pointer";
               el.addEventListener("click", (e) => {
                 e.stopPropagation();
-                openObject(link, link.block);
+                openObject(link, link.block, onAppLink.current);
               });
             });
         }
@@ -1365,6 +1368,7 @@ export function EmbedBlock({
 }
 
 function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
+  const navigation = useContext(DocNavigationContext);
   const [section, setSection] = useState<Section | null | "gone">(null);
   const load = useCallback(
     () =>
@@ -1399,7 +1403,11 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
           type="button"
           className="text-button"
           onClick={() =>
-            openObject({ kind: "doc", id: section.doc_id }, section.block_id)
+            openObject(
+              { kind: "doc", id: section.doc_id },
+              section.block_id,
+              navigation?.onAppLink,
+            )
           }
         >
           <ExternalLink size={13} aria-hidden="true" /> Open
@@ -1414,11 +1422,17 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
           value={{
             docId: section.doc_id,
             onFragment: (fragment) =>
-              openObject({ kind: "doc", id: section.doc_id }, fragment),
-            onAppLink: (url) =>
-              window.dispatchEvent(
-                new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
+              openObject(
+                { kind: "doc", id: section.doc_id },
+                fragment,
+                navigation?.onAppLink,
               ),
+            onAppLink:
+              navigation?.onAppLink ??
+              ((url) =>
+                window.dispatchEvent(
+                  new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
+                )),
           }}
         >
           <FootnoteContext.Provider
@@ -1447,6 +1461,7 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
 
 /** The tasks a page links to, with their ticks and deadlines. */
 function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
+  const navigation = useContext(DocNavigationContext);
   const { pills, onToggle } = usePageActions();
   const refs = useMemo(() => {
     const seen = new Set<string>();
@@ -1487,7 +1502,9 @@ function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
                 <button
                   type="button"
                   className={"doc-embed-task" + (done ? " is-done" : "")}
-                  onClick={() => openObject(r)}
+                  onClick={() =>
+                    openObject(r, undefined, navigation?.onAppLink)
+                  }
                 >
                   {pill?.title ?? "…"}
                 </button>

@@ -96,3 +96,34 @@ the same guarded route. A caller-level pill regression, section-navigation
 checks, and the affected editor-store checks passed 12/12; workspace typecheck
 passed. The revised candidate awaits Tester's focused invalid-Source handoff
 retest and Reviewer closure within round 1/3. It is not yet accepted for main.
+
+## Tester retest — 428c7b4d
+
+Tester retested the exact correction `428c7b4d25c32b828a17a35f48fe918c99bda78c`.
+The focused store/navigation/object-pill checks passed 12/12 and workspace
+typecheck passed. On Expo web, an invalid Source buffer now stays on the target
+when its object link is tapped, with the local guard message and buffer intact.
+A valid dirty-title handoff still saves and opens the launcher. The prior mobile
+object-pill finding is closed for this candidate; Reviewer closure remains
+pending in round 1. Exact results and cleanup are in
+[`c4-d1-tester-r4-428c7b4d.md`](./c4-d1-tester-r4-428c7b4d.md). No merge, push,
+deployment, or overall checkpoint acceptance is claimed.
+
+## Reviewer decision on 428c7b4d — round 1/3
+
+The [source and evidence review](./c4-d1-review-r1-428c7b4d.md) closes the
+invalid-source, durable-receipt, and tested object-pill findings. The full
+C4/D1 checkpoint remains **changes required**: Mermaid and desktop rich-content
+links still bypass draft guards, the structured desktop editor lacks Source/
+Preview scroll synchronization, and the full D1 requirement-to-evidence ledger
+has not been completed. Builder owns the batched corrections, then Tester
+rechecks affected paths and Reviewer closes round 1/3. No main integration yet.
+
+## Builder correction in progress
+
+Mobile Mermaid links and web object pills, Mermaid nodes, embedded sections and
+linked-task embeds now use their containing editor's navigation guard. The web
+structured editor has paired Source/Preview scroll handlers using its current
+source-to-block map. These changes need bounded visual inspection and Tester
+interaction checks; no closure or main integration is claimed yet. The D1
+requirement-to-evidence ledger is still being assembled.

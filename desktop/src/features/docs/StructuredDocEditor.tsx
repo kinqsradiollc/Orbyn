@@ -78,6 +78,8 @@ export function StructuredDocEditor({
   const [commentTops, setCommentTops] = useState<Record<string, number>>({});
   const sourceRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLElement>(null);
+  const ignoredSourceScroll = useRef<number | null>(null);
+  const ignoredPreviewScroll = useRef<number | null>(null);
   const initialTargetDone = useRef<string | null>(null);
   const state = useSyncExternalStore(
     (listener) => store.subscribe(listener),
@@ -122,6 +124,13 @@ export function StructuredDocEditor({
       return null;
     }
   }, [document, source, state.source]);
+  const sourceBlocks = useMemo(
+    () =>
+      sourceMap?.ranges
+        .filter((range) => range.kind === "block")
+        .sort((a, b) => a.start - b.start) ?? [],
+    [sourceMap],
+  );
   const previewAtCaret = () => {
     const at = sourceRef.current?.selectionStart;
     if (at === undefined || !sourceMap) return;
@@ -147,6 +156,83 @@ export function StructuredDocEditor({
       ((range.startLine - 2) / Math.max(1, lines)) *
         sourceRef.current.scrollHeight,
     );
+  };
+  const syncPreviewFromSource = () => {
+    const sourcePane = sourceRef.current;
+    const previewPane = previewRef.current;
+    if (!sourcePane || !previewPane || !sourceMap) return;
+    if (
+      ignoredSourceScroll.current !== null &&
+      Math.abs(sourcePane.scrollTop - ignoredSourceScroll.current) < 2
+    ) {
+      ignoredSourceScroll.current = null;
+      return;
+    }
+    ignoredSourceScroll.current = null;
+    if (!sourceBlocks.length) return;
+    const sourceRange = Math.max(
+      1,
+      sourcePane.scrollHeight - sourcePane.clientHeight,
+    );
+    const offset =
+      (sourcePane.scrollTop / sourceRange) * sourceMap.source.length;
+    const range =
+      sourceBlocks.findLast((entry) => entry.start <= offset) ??
+      sourceBlocks[0];
+    const element = [
+      ...previewPane.querySelectorAll<HTMLElement>("[data-container-path]"),
+    ].find(
+      (candidate) => candidate.dataset.containerPath === range.path.join("/"),
+    );
+    if (!element) return;
+    const target = Math.max(
+      0,
+      Math.min(
+        previewPane.scrollHeight - previewPane.clientHeight,
+        previewPane.scrollTop +
+          element.getBoundingClientRect().top -
+          previewPane.getBoundingClientRect().top,
+      ),
+    );
+    ignoredPreviewScroll.current = target;
+    previewPane.scrollTop = target;
+  };
+  const syncSourceFromPreview = () => {
+    const sourcePane = sourceRef.current;
+    const previewPane = previewRef.current;
+    if (!sourcePane || !previewPane || !sourceMap) return;
+    if (
+      ignoredPreviewScroll.current !== null &&
+      Math.abs(previewPane.scrollTop - ignoredPreviewScroll.current) < 2
+    ) {
+      ignoredPreviewScroll.current = null;
+      return;
+    }
+    ignoredPreviewScroll.current = null;
+    const leaves = [
+      ...previewPane.querySelectorAll<HTMLElement>("[data-container-path]"),
+    ];
+    const top = previewPane.getBoundingClientRect().top + 8;
+    const visible =
+      [...leaves]
+        .reverse()
+        .find((element) => element.getBoundingClientRect().top <= top) ??
+      leaves[0];
+    if (!visible) return;
+    const range = sourceBlocks.find(
+      (entry) => entry.path.join("/") === visible.dataset.containerPath,
+    );
+    if (!range) return;
+    const target = Math.max(
+      0,
+      Math.min(
+        sourcePane.scrollHeight - sourcePane.clientHeight,
+        (range.start / Math.max(1, sourceMap.source.length)) *
+          (sourcePane.scrollHeight - sourcePane.clientHeight),
+      ),
+    );
+    ignoredSourceScroll.current = target;
+    sourcePane.scrollTop = target;
   };
   const leaves = useMemo(
     () =>
@@ -486,6 +572,10 @@ export function StructuredDocEditor({
               ref={previewRef}
               aria-label="Page preview"
               className="structured-doc-preview"
+              onScroll={(event) => {
+                if (event.currentTarget === event.target)
+                  syncSourceFromPreview();
+              }}
             >
               {document.format === 2 && (
                 <DocNavigationContext.Provider
@@ -593,6 +683,7 @@ export function StructuredDocEditor({
                   aria-label="Markdown source"
                   value={state.source ?? source}
                   onSelect={previewAtCaret}
+                  onScroll={syncPreviewFromSource}
                   onChange={(event) =>
                     store.changeSource(document, event.currentTarget.value)
                   }

@@ -26,10 +26,15 @@
 .structured-doc-columns > section {
   min-width: 0;
 }
+.structured-doc-preview {
+  height: min(65vh, 680px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
 .structured-doc-source textarea,
 .structured-doc-source pre {
   width: 100%;
-  min-height: 50vh;
+  height: min(65vh, 680px);
   overflow: auto;
   white-space: pre-wrap;
 }
@@ -105,6 +110,9 @@
   }
   .structured-doc-source textarea,
   .structured-doc-source pre {
-    min-height: 35vh;
+    height: 35vh;
+  }
+  .structured-doc-preview {
+    height: 35vh;
   }
 }

@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useEffect,
   useId,
   useMemo,
@@ -13,9 +14,11 @@ import { colors, fonts, radii, themed } from "../theme";
 import { Pressable } from "../motion";
 import { saveFile } from "../lib/download";
 import { openObject } from "../screens/docs/links";
+import { DocNavigationContext } from "../screens/docs/doc-navigation";
 
 /** Full local Mermaid preview; source stays available when parsing fails. */
 export function MermaidDiagram({ text }: { text: string }) {
+  const navigation = useContext(DocNavigationContext);
   const instance = useId();
   const { height: windowHeight } = useWindowDimensions();
   const canvasLimit = Math.min(
@@ -237,7 +240,9 @@ export function MermaidDiagram({ text }: { text: string }) {
           key={node.id}
           accessibilityRole="button"
           style={s.button}
-          onPress={() => openObject(node.link!)}
+          onPress={() =>
+            openObject(node.link!, undefined, navigation?.onAppLink)
+          }
         >
           <Text style={s.action}>Open {node.label}</Text>
         </Pressable>

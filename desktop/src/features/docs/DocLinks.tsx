@@ -42,6 +42,7 @@ import {
 import { Popover } from "../../components/Popover";
 import { client } from "../../lib/api";
 import { LinkCardPopover } from "./LinkCard";
+import { DocNavigationContext } from "./doc-navigation";
 import { CONCEPT_ICON } from "../../app/concept-icons";
 import { canOpenTabs, openInNewTab } from "../../app/tabs";
 
@@ -70,12 +71,18 @@ export function peekObject(ref: ObjectRef) {
 }
 
 /** Open a page (at a line), task, event or project over the app. */
-export function openObject(ref: ObjectRef, block?: string | null) {
+export function openObject(
+  ref: ObjectRef,
+  block?: string | null,
+  onAppLink?: (url: string) => void,
+) {
   if (ref.kind === "person" || ref.kind === "date") return;
   const kind = ref.kind === "event" ? "task" : ref.kind;
+  const url = `orbyn://${kind}/${ref.id}${block ? `#${block}` : ""}`;
+  if (onAppLink) return onAppLink(url);
   window.dispatchEvent(
     new CustomEvent(OPEN_LINK_EVENT, {
-      detail: `orbyn://${kind}/${ref.id}${block ? `#${block}` : ""}`,
+      detail: url,
     }),
   );
 }
@@ -209,6 +216,7 @@ export function LinkPillView({
   const ref = parseObjectHref(href);
   const { pills, onToggle, onRestore, onItemsChanged, report } =
     useContext(PillContext);
+  const navigation = useContext(DocNavigationContext);
   const [card, setCard] = useState<DOMRect | null>(null);
   const timer = useRef<number | null>(null);
   const inside = useRef(false);
@@ -258,7 +266,7 @@ export function LinkPillView({
   const target: ObjectRef = pill?.moved_to
     ? { kind: "doc", id: pill.moved_to }
     : ref;
-  const open = () => openObject(target, ref.block);
+  const open = () => openObject(target, ref.block, navigation?.onAppLink);
   // With tabs, ⌘-click (or a middle click) opens a page or project in a
   // new tab; tasks still open beside.
   const inTab =
@@ -367,7 +375,9 @@ export function LinkPillView({
             target={{ ...target, ...(ref.block ? { block: ref.block } : {}) }}
             anchor={card}
             onOpen={open}
-            onOpenDoc={(id) => openObject({ kind: "doc", id })}
+            onOpenDoc={(id) =>
+              openObject({ kind: "doc", id }, undefined, navigation?.onAppLink)
+            }
             onChanged={() => onItemsChanged?.()}
             onClose={() => setCard(null)}
             onHover={(on) => {
