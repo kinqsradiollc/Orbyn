@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import {
   aliasesInput,
   mergeDocContents,
+  extractDocContent,
   parseVersionedDocContent,
   docContainerBlocks,
   mapDocContainerBlocks,
@@ -188,29 +190,6 @@ async function carryLines(
     );
 }
 
-/** Save a page's lines as one change by `u` (history kept, version moved on). */
-async function writeLines(
-  db: Db,
-  u: UserRow,
-  docId: string,
-  blocks: DocBlock[],
-  always = false,
-) {
-  await snapshot(db, docId, u.id, always);
-  return (
-    await db.query<{ version: number }>(
-      `UPDATE docs SET content = $2::jsonb, version = version + 1,
-         updated_at = now() WHERE id = $1 RETURNING version`,
-      [
-        docId,
-        JSON.stringify(
-          blocks.length ? blocks : [{ type: "paragraph", text: "" }],
-        ),
-      ],
-    )
-  ).rows[0].version;
-}
-
 /**
  * "Move to new page" (ORG-05) in `db`'s transaction: the lines become a new
  * page beside this one, with their remarks, proposals and task lines, and a
@@ -231,43 +210,61 @@ export async function extractLines(
   const source = (
     await db.query<{
       content: DocBlock[] | null;
+      content_format: 1 | 2;
+      content_nodes: unknown;
       project_id: string | null;
       folder_id: string | null;
-    }>("SELECT content, project_id, folder_id FROM docs WHERE id = $1", [id])
+    }>(
+      "SELECT content, content_format, content_nodes, project_id, folder_id FROM docs WHERE id = $1",
+      [id],
+    )
   ).rows[0];
-  const content = source.content ?? [];
+  const document = parseVersionedDocContent(
+    source.content_format === 2
+      ? { format: 2, nodes: source.content_nodes }
+      : { format: 1, blocks: source.content ?? [] },
+  );
+  const content =
+    document.format === 2
+      ? docContainerBlocks(document.nodes)
+      : document.blocks;
   const wanted = new Set(body.block_ids);
   const moved = content.filter((b) => b.id && wanted.has(b.id));
-  if (!moved.length) fail(409, "Those lines aren't on the page any more.");
+  if (!moved.length || moved.length !== wanted.size)
+    fail(409, "Those lines aren't on the page any more.");
   // Named from its lines as the mover reads them (D3aF).
   const title =
     body.title?.trim() || titleFor(await readableLinks(db, u.id, moved));
   // The pictures and files go with their lines (read through this page).
   await allowPageFiles(db, u.id, moved);
-  const newId = (
-    await db.query<{ id: string }>(
-      `INSERT INTO docs (user_id, team_id, title, kind, content, project_id,
-           folder_id)
-         VALUES ($1, $2, $3, 'doc', $4::jsonb, $5, $6) RETURNING id`,
-      [
-        u.id,
-        current.team_id,
-        title,
-        JSON.stringify(moved),
-        source.project_id,
-        source.folder_id,
-      ],
-    )
-  ).rows[0].id;
-  // The link sits where the first moved line was.
-  const first = content.findIndex((b) => b.id && wanted.has(b.id));
+  const newId = randomUUID();
   const link: DocBlock = {
     type: "paragraph",
     id: newBlockId(),
     text: linkMarkdown({ kind: "doc", id: newId }, title),
   };
-  const rest = content.flatMap((b, i) =>
-    i === first ? [link] : b.id && wanted.has(b.id) ? [] : [b],
+  const split = extractDocContent(document, body.block_ids, link);
+  const rest =
+    split.source.format === 2
+      ? docContainerBlocks(split.source.nodes)
+      : split.source.blocks;
+  await db.query(
+    `INSERT INTO docs (id, user_id, team_id, title, kind, content, project_id,
+         folder_id, content_format, content_nodes)
+       VALUES ($1, $2, $3, $4, 'doc', $5::jsonb, $6, $7, $8, $9::jsonb)`,
+    [
+      newId,
+      u.id,
+      current.team_id,
+      title,
+      JSON.stringify(moved),
+      source.project_id,
+      source.folder_id,
+      split.extracted.format,
+      split.extracted.format === 2
+        ? JSON.stringify(split.extracted.nodes)
+        : null,
+    ],
   );
   await carryLines(
     db,
@@ -278,7 +275,8 @@ export async function extractLines(
     // Unless a line left behind still shows it.
     filesOf(moved).filter((f) => !filesOf(rest).includes(f)),
   );
-  await writeLines(db, u, id, rest, always);
+  if (always) await snapshot(db, id, u.id, true);
+  await saveVersionedDoc(db, u, id, current.version, split.source, [1, 2]);
   return {
     doc: await readableLinks(
       db,
