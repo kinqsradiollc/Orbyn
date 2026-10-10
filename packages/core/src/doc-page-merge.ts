@@ -1,3 +1,5 @@
+import { docFragmentIndex, docLinkDestination } from "./doc-navigation.js";
+import { rewriteDocBlockLinks } from "./doc-link-rewrite.js";
 import type { DocBlock } from "./docs.js";
 import {
   visitDocContainers,
@@ -22,12 +24,15 @@ export function mergeDocContents(
     document.format === 2
       ? document.nodes
       : document.blocks.map((block) => ({ kind: "block", block }));
+  const originalLeaves = docContainerBlocks(roots(source));
+  const originalAnchors = originalLeaves.map((block) => ({ ...block }));
   const destination = roots(target),
     incoming = roots(source).filter(
       (node) =>
         !(
           node.kind === "block" &&
           node.block.type === "paragraph" &&
+          !node.block.id &&
           !node.block.text.trim()
         ),
     );
@@ -61,6 +66,36 @@ export function mergeDocContents(
     renamed.set(original, id);
     if (node.kind === "block") node.block.id = id;
     else node.id = id;
+  });
+  const rewriteFragment = (href: string): string => {
+    const destination = docLinkDestination(href, null);
+    if (destination?.kind !== "fragment") return href;
+    const index = docFragmentIndex(originalAnchors, destination.fragment);
+    if (index === null) return href;
+    const block = originalLeaves[index];
+    // Heading slugs and exported h-N anchors change after concatenation. Give
+    // their actual source target an explicit identity before moving the link.
+    if (!block.id) block.id = fresh();
+    return `#${block.id}`;
+  };
+  // Resolve all targets before replacing blocks so newly assigned identities
+  // are retained even when a preceding link points to a later leaf.
+  const replacements = new Map<DocBlock, DocBlock>();
+  visitDocContainers(incoming, (node) => {
+    if (node.kind === "block")
+      replacements.set(
+        node.block,
+        rewriteDocBlockLinks(node.block, rewriteFragment),
+      );
+  });
+  visitDocContainers(incoming, (node) => {
+    if (node.kind === "block") {
+      const original = node.block;
+      node.block = {
+        ...replacements.get(original)!,
+        ...(original.id ? { id: original.id } : {}),
+      };
+    }
   });
   const leaves = docContainerBlocks(incoming);
   const heading: DocBlock | null =
