@@ -191,6 +191,29 @@ export function StructuredDocEditor({
       setKeptOffline(false);
     }
   }, [store, doc, onChanged, report]);
+  const openLinkedPage = React.useCallback(
+    async (url: string) => {
+      const before = store.state;
+      if (before.session && docEditorSessionDirty(before.session)) await save();
+      const current = store.state;
+      if (
+        current.busy ||
+        current.error ||
+        current.conflict ||
+        current.sourceInvalid ||
+        queueInFlight.current ||
+        (current.session &&
+          docEditorSessionDirty(current.session) &&
+          !offlineQueued.current)
+      ) {
+        setNavigationError("Save this draft before opening another page.");
+        return;
+      }
+      setNavigationError(null);
+      openAppUrl(url);
+    },
+    [save, store],
+  );
   useEffect(() => {
     if (!beforeLeave) return;
     const guard = async () => {
@@ -449,7 +472,7 @@ export function StructuredDocEditor({
                         link.block
                       )
                         goToFragment(link.block);
-                      else openAppUrl(url);
+                      else void openLinkedPage(url);
                     },
                     report,
                   }}

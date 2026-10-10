@@ -226,6 +226,26 @@ export function StructuredDocEditor({
     if (next && next.version !== before) onChanged(next);
     if (store.state.error) report(store.state.error);
   }, [store, onChanged, report]);
+  const openLinkedPage = useCallback(
+    async (url: string) => {
+      const before = store.state;
+      if (before.session && docEditorSessionDirty(before.session)) await save();
+      const current = store.state;
+      if (
+        current.busy ||
+        current.error ||
+        current.conflict ||
+        current.sourceInvalid ||
+        (current.session && docEditorSessionDirty(current.session))
+      ) {
+        setNavigationError("Save this draft before opening another page.");
+        return;
+      }
+      setNavigationError(null);
+      window.dispatchEvent(new CustomEvent(OPEN_LINK_EVENT, { detail: url }));
+    },
+    [save, store],
+  );
   const showHistory = async () => {
     setMenuOpen(false);
     setHistoryOpen(true);
@@ -480,10 +500,7 @@ export function StructuredDocEditor({
                         link.block
                       )
                         goToFragment(link.block);
-                      else
-                        window.dispatchEvent(
-                          new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
-                        );
+                      else void openLinkedPage(url);
                     },
                   }}
                 >

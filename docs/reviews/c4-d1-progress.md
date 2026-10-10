@@ -55,7 +55,10 @@ merge, push, or deployment is claimed.
 The web and mobile deep-link entry points now read format 2 Docs with the
 editor-capable API before opening a cross-page fragment. The structured editors
 show a concise in-page message for a missing target instead of sending that
-navigation result to the generic global error handler. Full workspace typecheck
-passed after these edits. The revised candidate still needs Tester's focused
-web and Expo web cross-page, initial-target, and missing-target retest, followed
-by Reviewer closure; it is not yet accepted for main.
+navigation result to the generic global error handler. Cross-page app links
+wait for a clean save receipt (or mobile's durable offline receipt), so a draft
+stays open if saving fails or newer typing arrives during the request. Full
+workspace typecheck passed after these edits. The revised candidate still needs
+Tester's focused web and Expo web cross-page, initial-target, missing-target
+and dirty-draft retest, followed by Reviewer closure; it is not yet accepted
+for main.
