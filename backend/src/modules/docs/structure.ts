@@ -252,6 +252,10 @@ export async function extractLines(
     split.source.format === 2
       ? docContainerBlocks(split.source.nodes)
       : split.source.blocks;
+  // Extraction validates complete ownership above. Authorize its destination
+  // insert explicitly, just as saveVersionedDoc authorizes the source update.
+  if (split.extracted.format === 2)
+    await db.query("SELECT set_config('orbyn.doc_content_writer','2',true)");
   await db.query(
     `INSERT INTO docs (id, user_id, team_id, title, kind, content, project_id,
          folder_id, content_format, content_nodes)
