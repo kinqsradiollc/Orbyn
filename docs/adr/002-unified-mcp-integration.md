@@ -1,6 +1,8 @@
 # ADR 002 — One MCP connection with optional previews
 
-Status: accepted direction; runtime candidate implemented, qualification pending.
+Status: local runtime checkpoint accepted in round 2/3 and pushed to main at
+`4f9e8e88` (accepted source `8f99272c`); production canonical-host qualification
+remains pending.
 Owner direction: 11 October 2026.
 
 ## Decision

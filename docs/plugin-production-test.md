@@ -1,9 +1,18 @@
 # Canonical MCP host acceptance
 
-After the unified candidate is reviewed, merged and deployed, reconnect a **new**
+Local checkpoint `4f9e8e88` is accepted and pushed to main; accepted source
+`8f99272c` passed 58/58 focused correction checks. After the owner deploys that
+checkpoint (or a descendant containing it), confirm the deployed commit and add a **new**
 host connection to `https://mcp.orbyn.dev/mcp`. Keep the existing Orbyn Plugin
 connection at `/plugin` during migration. Do not copy its tokens/receipt IDs or
 provider permission to the new connection.
+
+Keep `MCP_PUBLIC_URL=https://mcp.orbyn.dev/mcp`. Retain the legacy URL and
+`plugin` Compose profile during migration so existing grants remain usable.
+Canonical workspace inference additionally requires server
+`MCP_WORKSPACE_AI_ENABLED=true` and a separate owner-approved provider/model/
+allowance; the safe default is `false`. UI previews do not require paid inference.
+No client API key or separately configured public integration URL is needed.
 
 Verify the new connection's Today bootstrap and explicit Load action, authorized
 search/document previews, a revision-checked line edit/review and conflict draft,
@@ -18,16 +27,15 @@ acceptance; the legacy observations below do not qualify the new `/mcp` runtime.
 
 ---
 
-# C6 production-host test
+# Legacy `/plugin` compatibility test
 
 Codex Security is not needed to install or exercise the Orbyn plugin. The normal
 Orbyn plugin backend and its OAuth flow are separate from that scanner.
 
-## Prepare the deployment
+## Legacy deployment reference
 
-1. Finish the local Test → Review correction checkpoint and merge the accepted
-   code to main. This prepares a production-test checkpoint, not proof of live
-   host acceptance.
+1. Pull the accepted main checkpoint and deploy using the normal script. This
+   prepares a production-test checkpoint, not proof of live host acceptance.
 2. On the server's private `.env`, set:
 
    ```dotenv
@@ -48,7 +56,7 @@ Orbyn plugin backend and its OAuth flow are separate from that scanner.
    Admin → Agents for that workspace. Inference permission stays off until that
    account explicitly chooses a provider/model and allowance for the plugin grant.
 
-## Connect a real host
+## Existing legacy host connection
 
 The official [local plugin testing guide](https://developers.openai.com/plugins/build/plugins#create-and-test-a-plugin-locally-with-an-mcp-server)
 provides a custom-server authoring flow:
@@ -67,7 +75,7 @@ submission has its own [OpenAI review process](https://developers.openai.com/plu
 that process is not a Codex Security repository scan. No public submission is
 performed by this runbook.
 
-## Acceptance cases
+## Legacy acceptance cases
 
 | Case                     | Expected evidence                                                                                                 |
 | ------------------------ | ----------------------------------------------------------------------------------------------------------------- |

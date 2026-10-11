@@ -6,8 +6,14 @@
   retaining all required gates. Voice and computer use remain excluded.
 - Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`
 - Branch: `codex/c6-file-viewer`
-- Accepted runtime: `937cb16f`; accepted service/environment documentation through `b607e1dc`. Earlier candidates and receipts are retained below.
-- Phase: unified `/mcp` implementation under [ADR 002](../adr/002-unified-mcp-integration.md), then full qualification. The earlier local checkpoint closed Test → Review within **round 1/3** and was pushed to main; it does not qualify the newly requested migration.
+- Accepted unified runtime: `8f99272c`; main checkpoint with review/test records:
+  `4f9e8e88`. Correction batch 58/58, backend types passed, Reviewer U2-R1–U2-R4
+  closed in round 2/3. Earlier round-1 runtime `937cb16f` and documentation
+  `b607e1dc` remain historical evidence.
+- Phase: local unified `/mcp` code checkpoint accepted and pushed under
+  [ADR 002](../adr/002-unified-mcp-integration.md), awaiting owner deployment and
+  full canonical-host qualification. Review remains **round 2/3**. The earlier
+  round-1 `/plugin` evidence does not qualify the newly requested host path.
 - Owner supplied deployed commit `b3d02d19` and reports `/plugin` recovered on 11 October 2026. Independent browser discovery and real-host acceptance remain open; full C6 is not complete.
 
 ## Implementation to qualify
@@ -41,10 +47,21 @@ commands, candidate, exits, assertions, failures and unverified requirements in
 `docs/reviews/c6-tester-report.md`. Do not edit source. No new visual sweep or
 native build is requested; retain delegated synthetic evidence with its limits.
 
+## Current qualification records
+
+- [Correction Tester report](c6-unified-mcp-tester-r2-8f99272c-2026-10-11.md):
+  exact source and 58/58 affected checks; no rendered host evidence.
+- [Reviewer decision](c6-unified-mcp-review-r2.md): local main checkpoint approved;
+  full C6 host gates retained.
+- [Failed baseline](c6-unified-mcp-tester-r2-bc43d9d5-2026-10-11.md):
+  157 passed/3 failed; corrected attempts do not erase or add to these totals.
+
 ## Required external gates still open
 
-- Real HTTPS plugin host discovery/OAuth, account switching/reconnect/events,
-  composer selection and platform-supported file resource read/save.
+- Canonical `/mcp` HTTPS host discovery/OAuth, account switching/reconnect/events,
+  negotiated result/Docs previews and portable fallback, explicit Docs edits,
+  conflicts/proposals, composer selection and platform-supported host file
+  resource read/save. Preserve `/plugin` compatibility during migration.
 - Live managed/BYO provider behavior beyond the local mock upstream.
 - The owner canceled the current scan and prohibits further Codex Security scans
   unless explicitly requested. Saved findings are handled through

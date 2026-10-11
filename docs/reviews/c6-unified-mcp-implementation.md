@@ -2,7 +2,9 @@
 
 Builder: Orbyn Builder. Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
 Branch: `codex/c6-file-viewer`. Base: `e5bdc161`.
-New scope implements ADR 002. This is not merged/deployed or real-host accepted.
+New scope implements ADR 002. Accepted source `8f99272c` and qualification
+records are pushed to main at `4f9e8e88`. Owner deployment and real-host
+canonical acceptance remain pending.
 The existing accepted local C6 round 1/3 remains closed; the expanded scope needs
 Test → Reviewer round 2/3, without resetting that counter.
 
@@ -77,4 +79,8 @@ U2-R1 through U2-R4 together; this does not reset the review counter.
   fixture and block-bound preview metadata cases. These await Tester execution;
   they do not prove host rendering or browser layout.
 
-Candidate correction is unmerged until focused retest and same-round review.
+Correction accepted within round 2/3 after 58/58 affected checks on `8f99272c`.
+See [Tester report](c6-unified-mcp-tester-r2-8f99272c-2026-10-11.md) and
+[Reviewer decision](c6-unified-mcp-review-r2.md). The original failed baseline
+remains preserved. No host rendering, production deployment or full C6 closure
+is inferred from local checkpoint acceptance.
