@@ -145,6 +145,15 @@ test("Markdown app reads a host file and saves only after a user edit", async ()
   assert.equal(elements.get("save").disabled, true);
   source.value = "revised note";
   source.input();
+  const readCount = sent.filter((m) => m.method === "resources/read").length;
+  deliver("ui/notifications/tool-input", {
+    arguments: { file: { name: "notes.md", resourceUri: uri } },
+  });
+  assert.equal(source.value, "revised note");
+  assert.equal(
+    sent.filter((m) => m.method === "resources/read").length,
+    readCount,
+  );
   elements.get("save").onclick();
   const write = request("openai/resources/write");
   assert.deepEqual(JSON.parse(JSON.stringify(write.params)), {
@@ -181,6 +190,18 @@ test("Markdown app reads a host file and saves only after a user edit", async ()
   assert.match(elements.get("file-status").textContent, /changed elsewhere/);
   assert.equal(elements.get("save").disabled, true);
   assert.equal(source.value, "another edit");
+  deliver("ui/notifications/tool-input", {
+    arguments: {
+      file: { name: "other.md", resourceUri: "host-resource://other" },
+    },
+  });
+  assert.equal(source.value, "");
+  assert.equal(elements.get("save").hidden, true);
+  respond(request("resources/read").id, { contents: [] });
+  await flush();
+  assert.equal(source.value, "");
+  assert.equal(elements.get("mode").textContent, "Unavailable");
+  assert.equal(elements.get("reload").hidden, false);
 });
 
 test("plugin cards are opt-in and limited to the current allowed tools", () => {

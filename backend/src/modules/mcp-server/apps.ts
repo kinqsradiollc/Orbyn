@@ -184,8 +184,9 @@ function onToolInput(params){
   if(!file||typeof file.name!=="string"||typeof file.resourceUri!=="string"||file.name.includes("/")||file.name.includes("\\\\")||!/^.+\\.(md|markdown)$/i.test(file.name)||!file.resourceUri.trim()){
     note("This Markdown file is unavailable.");return;
   }
+  if(fileUri===file.resourceUri&&(dirty||saving))return;
   if(subscribedUri&&subscribedUri!==file.resourceUri)request("resources/unsubscribe",{uri:subscribedUri}).catch(()=>{});
-  subscribedUri=null;fileUri=file.resourceUri;title.textContent=file.name;dirty=false;discardPending=false;saving=false;loadFile();
+  subscribedUri=null;fileUri=file.resourceUri;source.value="";original="";title.textContent=file.name;dirty=false;discardPending=false;saving=false;loadFile();
 }
 async function loadFile(){
   if(!fileUri)return;const current=++generation;source.readOnly=true;canSave=false;etag=null;save.hidden=true;reload.hidden=true;reload.disabled=false;
@@ -199,7 +200,7 @@ async function loadFile(){
       const bytes=Uint8Array.from(atob(item.blob),c=>c.charCodeAt(0));
       value=new TextDecoder("utf-8",{fatal:true}).decode(bytes);
     }
-    if(value===null){mode.textContent="Unavailable";note("The host could not provide Markdown text.");return;}
+    if(value===null){reload.hidden=false;mode.textContent="Unavailable";note("The host could not provide Markdown text.");return;}
     const limited=value.length>500000;original=limited?value.slice(0,500000):value;
     source.value=original;dirty=false;
     const metadata=item&&item._meta&&item._meta["openai/resource"]||{};
