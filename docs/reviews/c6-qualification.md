@@ -75,3 +75,18 @@ Tester requalifies only affected upgrade, deploy-ordering, real SSE and OAuth
 paths plus configuration/types. Reviewer closes the original round after that
 report. Environment template parity is included; private env files remain local
 and uncommitted. Do not infer full C6 or production readiness from this subset.
+
+### Latest same-round correction freeze
+
+Candidate `937cb16f` fixes the fresh-database SSE cursor fixture and prevents
+legacy decryption from recreating a retired credential key. Builder affected
+checks: 6/6 and backend types pass. Tester is assigned a fresh marked database
+retest of live revocation, secret retirement, secrets-db and secret upgrade, plus
+backend types. Retain the earlier 37/38 result and failed fixture in the report;
+reuse unaffected OAuth/deploy/config evidence only with source equivalence.
+Reviewer closure remains round 1/3.
+
+The owner is considering real-host testing through the production plugin
+endpoint. Follow [production-host test](../plugin-production-test.md) after
+accepted code is merged and the owner deploys. No installed plugin, active public
+endpoint, production deployment or completed real-host acceptance is claimed.
