@@ -6,10 +6,15 @@ its acceptance contract in `devday-2026-implementation-review.md`.
 ## Current instruction
 
 C1, C2/M1, C3, C4/D1 and C5 have accepted deliveries under their recorded
-user-approved scopes. C6 is the current checkpoint: runtime `937cb16f` and docs/templates through `b607e1dc` are accepted for
-a local code/remediation checkpoint (round 1/3); the code checkpoint was pushed to main at `4ab7dbc9`.
-Full C6 real-host acceptance remains open. See [current state](adr-current-state.md)
-and [qualification handoff](c6-qualification.md) for live evidence ownership.
+user-approved scopes. C6 remains the current checkpoint. Its expanded unified
+`/mcp` source `8f99272c` passed focused Tester qualification (**58/58**, zero
+failures/skips, plus backend typecheck); Reviewer closed U2-R1–R4 in round
+**2/3**. The accepted source and reports were integrated on main at `4f9e8e88`.
+The earlier `937cb16f` remediation checkpoint was accepted in round 1/3 and its
+receipts remain historical/legacy `/plugin` scope. Full C6 canonical-host
+acceptance is open; owner deployment and post-deployment host cases remain.
+See [current state](adr-current-state.md), [qualification handoff](c6-qualification.md)
+and [C6 progress](c6-progress.md).
 
 The owner added [ADR 002](../adr/002-unified-mcp-integration.md): one canonical
 `/mcp` connection with optional previews, retaining internal inference isolation.

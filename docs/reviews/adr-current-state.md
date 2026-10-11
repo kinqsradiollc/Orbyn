@@ -27,7 +27,45 @@ Tester evidence is incremental and candidate-scoped: baseline `046c0b85` build, 
 
 Visual evidence confirmed Home-to-Docs structured navigation and initial reply-review visibility on `bbb7f28d`. Web-to-Expo and Expo-to-web replies updated the already-open thread without refresh/reopen and preserved the other client's draft. Expo selected sharing, snapshot/live modes, consent and revoke were verified on `82dee01b`; later changes did not modify publication. Replies used a local mock provider; screenshots are inline-only. Live Slack/Teams and native iOS/Android checks remain deferred and unverified.
 
-**C6 local code/remediation checkpoint is accepted in formal Review round 1/3.** Reviewer closed SR-R1 and SR-E1 on runtime candidate `937cb16f`, with docs/templates `b607e1dc`; accepted evidence was recorded in `4ab7dbc9`. The accepted focused Tester result is **6/6** plus backend typecheck on a fresh marked database: CRDT SSE revocation 2/2, retired-key behavior 1/1, secrets-db 2/2, and secret-upgrade 1/1. Retain the earlier `dc094b4b` **37 passed / 1 failed** report and its unseeded fresh-database SSE cursor failure; the corrected pass does not erase that history. The separate OAuth **33/33** and deploy-cutover **2/2** receipts remain source-equivalent evidence, not additions to 6/6. The saved **29** partial-scan finding IDs have bounded remediation recorded (including duplicates); no new Codex Security scan was run or is authorized. A fast-forward push to `main` is reported successful from `058a63e5` to `4ab7dbc969d2ab658f527139475d8a4e04247153`; local branch/ref is now `f9344a99` after a docs-only production-test handoff. Runtime/service/config diff from `937cb16f` to HEAD is reported empty. In this session, local refs and commit history were verified, but `git ls-remote` could not resolve GitHub, so the live remote ref was not independently rechecked. No production deployment occurred. The owner’s production deploy and real-host custom-MCP testing remain pending; no live endpoint/plugin acceptance is claimed. Keep full C6 external-host gates open, including live OAuth/account switch/reconnect, file resources/composer behavior, and managed/BYO provider behavior. The primary dirty checkout at `eb166aeb` is preserved and separate. See [qualification handoff](c6-qualification.md), [round-1 review findings](security-remediation-review-r1-2026-10-11.md), and the [Tester reports](security-remediation-tester-r1-2026-10-11.md).
+### Historical C6 remediation checkpoint — legacy `/plugin`
+
+Formal Review round 1/3 accepted the local remediation source `937cb16f` with docs/templates `b607e1dc`; evidence was recorded in `4ab7dbc9`. Tester recorded 6/6 plus backend typecheck on a marked disposable database. Keep the earlier `dc094b4b` 37 passed / 1 failed result and its unseeded fresh-database SSE cursor failure; the later correction does not erase it. Separate source-equivalent receipts are OAuth 33/33 and deploy-cutover 2/2. The saved 29 partial-scan finding IDs have bounded remediation recorded; no new Codex Security scan was run or authorized.
+
+Owner reported recovery of the legacy production `/plugin` route. The canonical private env already had the plugin profile and URL; supplied server evidence for `b3d02d19` showed no running plugin container and gateway Docker DNS host-not-found. The existing connection **Orbyn Plugin** returned structured `get_context` and `get_today` reads with `isError=false`; metadata reported kind `plugin`, access `write`, and no mutation occurred. Today showed 4 planned, 0 due, 0 late, and 3 Up next. The delegated Chrome UI check verified that explicit **Load today** removed its button and enabled **Open Today in Orbyn**, without loading/error state; that control was not activated and no item text was copied. These receipts qualify authenticated reads and that Today state transition only on legacy `/plugin`; they do not qualify the new `/mcp` route, discovery/OAuth issuer, account switching/reconnect, revocation, host resources, mentions, or managed/BYO inference. Historical browser discovery attempts returned `ERR_BLOCKED_BY_CLIENT` without an HTTP response. See [connector evidence](c6-production-tool-evidence-2026-10-11.md), [host UI report](c6-host-subagent-2026-10-11.md), and [legacy qualification handoff](c6-qualification.md).
+
+Clarification to the preceding evidence summary: the connector receipt alone
+does not cover UI interaction; the delegated host report separately verifies
+the legacy Today **Load today** state transition described below.
+
+**Current C6 scope update — 11 October:** owner-approved direction replaces
+the two-permanent-endpoint design with one canonical `/mcp` connection for tools,
+optional previews and Docs, recorded in [ADR 002](../adr/002-unified-mcp-integration.md).
+Docs proposals are reviewable proposals, not direct writes. The documentation and
+environment-comment checkpoint is pushed at `e5bdc161`; runtime migration remains
+pending, so C6 implementation continues under the new scope. Keep separate
+internal inference permission, model choice and allowance. Existing `/plugin`
+grants remain on that recipient until each user explicitly reconnects; no
+audience alias or silent grant conversion. Environment values were not changed
+because current runtime rejects equal recipients; transition comments were
+added to private/local/example env files, and Builder reports the 130-variable
+checker passes. Prior tests and production reads qualify the legacy path only.
+The delegated Chrome report verifies legacy Today UI bootstrap: explicit
+**Load today** click removed that button, enabled **Open Today in Orbyn**, and
+left no loading/error status; the open control was not activated and item text
+was not copied. This does not qualify the new `/mcp` path. Full C6 migration and
+real-host qualification remain current; U1 is prepared but not started.
+
+The connector read/status check described in the C6 paragraph above has completed;
+the remaining Chrome UI checks are separate.
+
+The phase has since advanced: expanded candidate `bc43d9d5` received interim
+round-2/3 changes-required findings U2-R1–R4 and Tester recorded 157/3 baseline
+results (preserved below). After correction at `9235d02e` and additional
+refresh/recovery assertions, the exact current test freeze is `8f99272c`;
+focused tests are executing and Tester owns the isolated DB. Reviewer remains
+in round 2/3, with acceptance pending. The earlier statement that no formal
+Tester/Reviewer work was active described only the previous legacy-host stage
+and is superseded for current C6 work.
 
 The user-requested product content cleanup across web/desktop and mobile
 passed Test → Review in round **1/3** and was pushed to
@@ -65,8 +103,8 @@ behavior is untested. See [C1 closeout](c1-closeout-2026-10-08.md),
 | ✓ C3           | Accepted round 1/3 and pushed to main `db0913e6`; separate agents, rules, handoffs and lane budgets qualified.                 |
 | ✓ C4/D1        | Docs ownership/editing and D1 rendering qualified at code/API level. User deferred browser UI/UX checks to production; no visual or client interaction pass is claimed. |
 | ✓ C5 (delivered) | Reviewer accepted `bbb7f28d0eb55b27ae1d8fea4b50c717b96b9dc5` in review round 1/3; product/report delivery fast-forward pushed at `392f2445`, with current main status follow-up `2f5b2b6a`. Tester receipts are candidate-scoped; Visual confirmed Home navigation/reply-card visibility, two-way open-thread replies with drafts preserved, and Expo sharing. Production deployment remains user-owned; live Slack/Teams and native checks are deferred/unverified. |
-| ⏳ C6           | Local code/remediation checkpoint accepted in Review round 1/3; SR-R1/SR-E1 closed. Accepted runtime `937cb16f`, docs/templates `b607e1dc`, evidence commit `4ab7dbc9`. Tester 6/6 plus backend types; retain `dc094b4b` 37/38 with its SSE fixture failure. OAuth 33/33 and deploy 2/2 are separate source-equivalent receipts, not additions. The 29 saved partial-scan IDs have bounded remediation recorded; no new scan. Fast-forward push to main is reported successful `058a63e5`→`4ab7dbc9`; current local ref `f9344a99` is docs-only. Runtime/service implementation is unchanged from `937cb16f`; subsequent `b607e1dc` changes are env templates and deployment/architecture docs. Current-session `ls-remote` was blocked by DNS. No production deployment; owner deploy and real-host custom-MCP testing remain pending. Full C6 host/provider/file/composer gates remain open. Primary dirty checkout `eb166aeb` is preserved separately. |
-| ✗ U1 / cleanup | Whole-app parity and final integration; preserve character work and remove only safe merged branches/worktrees.                |
+| ⏳ C6           | Round-2/3 local code checkpoint accepted; Reviewer closed U2-R1–R4 on exact source `8f99272c`. Tester correction batch: 58 passed/0 failed/0 skipped across six suites plus backend typecheck; baseline `bc43d9d5` 157/3/0 across 17 suites remains preserved, with its three fixture/assertion failures non-additive. Evidence/review reports and accepted runtime are integrated on main at `4f9e8e88`; local code eligibility is accepted, not full C6. Owner deployment required next. Canonical `/mcp` host discovery/consent, previews/Docs, files, mentions, switching/reconnect/revocation, and managed/BYO remain post-deploy gates. Historical `/plugin` tests/reads/Today UI do not qualify `/mcp`. No new scan. U1 remains unstarted until full C6. |
+| ⏳ U1 / cleanup | Evidence map prepared and Reviewer-approved, then integrated on main (`f999f94b`; follow-up `b3d02d19` clarifies representative checks). Preparation only, not U1 execution; it waits for full C6 real-host acceptance. Preserve character work and remove only safe merged branches/worktrees after the approved stage boundary. |
 
 The detailed records below are historical snapshots, superseded by this final
 C1 scope and acceptance. They do not impose removed acceptance gates.
@@ -395,7 +433,7 @@ A completed checkpoint does not complete its entire stage.
 | 3                      | C3 Background/Overnight          | ✓ Separate lanes/profiles, characters, activity, rules/ownership, budgets and reflection foundations.                                                                                                                                                                                                                                      | ✗ All write paths/races/revocation; independent idle/running/waiting/stopped recovery; collaboration/reflection results; budget accounting and cross-client/native acceptance.                                                    |
 | 4                      | C4/D1 Docs                       | ✓ Structured storage/API/editor foundations and selected Markdown/Mermaid/export/privacy checkpoints. Complete-tree/task/editor activation remains candidate.                                                                                                                                                                              | ✗ Normal editor ownership, remaining flat writers/task identity, collaboration, full CommonMark/GFM/code/math/Mermaid/media/link/anchor/footnote/import/export/privacy matrix and web/native checks.                              |
 | 5 — ACCEPTED/PUSHED   | C5 pages/publication/channels    | ✓ Candidate `bbb7f28d` accepted in round 1/3; R1/R2, C5-VIS-001 and C5-E1 closed. Product delivery at `392f2445`; current main status follow-up is `2f5b2b6a`. Linked reports preserve candidate-specific evidence.                                                                                                                                                 | Production deployment remains user-owned. Live Slack/Teams and native checks are explicitly deferred/unverified; C6 implementation is in progress.                                                                                           |
-| 6 — REVIEW R1/3 CHANGES REQUIRED | C6 separate plugin backend | ✓ Frozen remediation source `4da327dc` Tester evidence **218/218**, zero failures/skips across29 serial processes, plus workspace/backend build/type, Compose/deploy checks, shell syntax and YAML parsing. Review `security-remediation-review-r1-2026-10-11.md` found SR-R1 legacy-writer key cutover and SR-E1 focused OAuth/SSE evidence outstanding; Builder owns corrections and Reviewer remains read-only. Commit `78fee192` adds production/desktop/mobile env examples, environment docs, 130-variable template checker, and reconciled private env configs; that work does not close SR-R1/SR-E1. Builder has since modified key-rewrap/deployment/migration and focused security test files; these remain uncommitted, without a new source freeze or Tester receipt. All29 saved partial scan IDs are mapped to source patches; independent bounded static remediation review closed five corrections, not a clean scan. Prior receipts remain source-specific and non-additive. | ✗ Close SR-R1 with safe quiesced/staged key cutover and focused legacy-writer recovery evidence; close SR-E1 with real-route SSE revocation and deterministic OAuth interleavings. Freeze and test the correction source, then Reviewer recheck within round1/3. External HTTPS host/OAuth/account switch/reconnect, live file resource/composer behavior, managed/BYO providers and production rollout remain open. No Codex Security scan without explicit user request; canceled scan remains partial. No merge/push/deployment. |
+| Historical: 6 — REVIEW R1/3 CHANGES REQUIRED (superseded) | C6 separate plugin backend | ✓ At that historical decision point, Tester evidence on `4da327dc` was **218/218** with workspace/backend build/type, Compose/deploy checks, shell syntax and YAML parsing. Review `security-remediation-review-r1-2026-10-11.md` kept SR-R1 key cutover and SR-E1 OAuth/SSE evidence open. Later correction candidate `937cb16f` closed those items in round1/3 and was accepted/pushed. Subsequent expanded-scope candidate `bc43d9d5` is a new Test → Review round2/3 qualification and has not inherited the earlier acceptance. Prior scan findings remain bounded remediation evidence, not a clean security scan. | Historical round-one corrections were closed; current action is Tester qualification then Reviewer review of `bc43d9d5`. Real-host migration, merge/push/deployment for this expanded candidate remain open. No new Codex Security scan without explicit user request. |
 | Throughout; final gate | U1 whole-app UI                  | ✓ Settings modal, assistant/agent separation, selected Home/navigation/task controls. ✓ Current C1 provider controls/management and zero-usage states inspected on wide/narrow web and320/390 mobile browser, Light/Dark.                                                                                                                  | ✗ Every-page web/desktop/mobile matrix, positive/overflow/error/loading states, collapsed/nested panels, keyboard/large text and native acceptance. Browser checks do not prove installed-native parity.                          |
 | Last                   | Integration/cleanup              | ✓ Qualified scoped checkpoints pushed to main, latest product7260db93; unrelated local changes preserved.                                                                                                                                                                                                                                  | ✗ Qualify/promote remaining retained scope; reconcile branches/worktrees; remove only safe merged work after full acceptance.                                                                                                     |
 
@@ -582,13 +620,48 @@ evidence commit `4ab7dbc9`. OAuth33/33 and deploy-cutover2/2 are retained as
 separate, source-equivalent receipts, not added to 6/6. The 29 saved partial-scan
 IDs have bounded remediation recorded; no new Codex Security scan was run.
 Fast-forward push to main is reported successful from `058a63e5` to
-`4ab7dbc969d2ab658f527139475d8a4e04247153`; current local branch/ref is `f9344a99`
-after a documentation-only production-test handoff. Runtime/service implementation
-is unchanged from `937cb16f`; subsequent `b607e1dc` changes env templates and
-architecture/deployment/environment documentation. Local refs/history were verified here, but
-live `ls-remote` verification was blocked by GitHub DNS resolution. No production
-deployment occurred; owner deployment and real-host custom-MCP testing remain
-pending, so full C6 external acceptance remains open. The primary dirty checkout
+`4ab7dbc969d2ab658f527139475d8a4e04247153`; `f9344a99` was the local ref at the
+original production-test and U1 evidence-map handoff, not the current ref. Runtime/service
+implementation is unchanged from `937cb16f`; subsequent `b607e1dc` changes env
+templates and architecture/deployment/environment documentation. The U1 evidence
+map was approved on candidate `f999f94b` and integrated with its wording follow-up
+in `b3d02d19`; it is preparation only and U1 execution waits for full C6
+real-host acceptance. The production protected-resource metadata request to
+`https://mcp.orbyn.dev/.well-known/oauth-protected-resource/plugin` returned
+HTTP404/exit0 in a read-only curl. Treat that strictly as an observation: no
+cause is established and no product defect is inferred. Later owner handoff
+reports `/plugin` now working after an earlier deployed `b3d02d19` had no plugin
+container in Compose status and gateway Docker DNS host-not-found. The canonical
+private `.env.production` was inspected and already contained
+`COMPOSE_PROFILES=tunnel,mail,formula,plugin` and
+`PLUGIN_PUBLIC_URL=https://mcp.orbyn.dev/plugin`; do not attribute the earlier
+state to a missing local profile. Visual Check's requested internal-browser
+retry returned `ERR_BLOCKED_BY_CLIENT` again, with no HTTP response and no OAuth
+flow. The user authorized one Chrome navigation after raw diagnostics found no
+explicit saved Block/security denial. Chrome returned the same
+`ERR_BLOCKED_BY_CLIENT` with no HTTP response, so discovery remains unverified.
+Separately, the existing Chrome session loaded the Plugins directory and its
+Add menu. Selecting **Add custom MCP server** opened a dialog after a 1.2-second
+delay with Name, optional Description, Server URL, and a risk warning. The agent
+left the fields empty; the owner then completed the form and account approval
+under **Orbyn Plugin**. Direct connector calls `get_context({})` and
+`get_today({})` both returned `isError=false` with structured data. Connection
+metadata reports kind `plugin` and access `write`; the calls were reads only and
+no data was changed or saved. Today returned 4 planned, 0 due, 0 late, and 3 Up
+next entries. The connector report alone verifies authenticated reads. The later
+host UI report separately verifies that explicit **Load today** removes that
+button and enables **Open Today in Orbyn**, with no loading/failure state; the
+open action was not activated and entry text was not copied. Neither report
+qualifies account switching/reconnect, revocation, host Markdown resources,
+composer mentions, or managed/BYO inference.
+The calls do not identify the deployed server commit. See [production connector
+evidence](c6-production-tool-evidence-2026-10-11.md). Chrome UI checks continue;
+do not conflate their status with the discovery URL browser errors. The prior
+browser refusal and Builder 503 remain historical observations. No formal
+Tester/Reviewer work is active. Real-host custom-MCP testing and full C6 external
+acceptance remain open; C6 remains current and the approved U1 map is prepared
+but execution has not started. No new security scans.
+The primary dirty checkout
 at `eb166aeb` remains preserved separately. See the [original Tester
 report](security-remediation-tester-2026-10-11.md), [dc094 correction
 report](security-remediation-tester-r1-2026-10-11.md), [937 correction
@@ -603,3 +676,65 @@ Builder receipts on `55e94ca5` and `81e4c812` remain source-scoped and overlappi
 Do not carry them to `4da327dc` or add totals. Formal Reviewer acceptance, live
 host/provider behavior, production migration/reconnect, merge, push and deployment
 remain open.
+
+### C6 unified `/mcp` implementation handoff — 11 October 2026
+
+Expanded runtime candidate `bc43d9d5` on `codex/c6-file-viewer`, based on docs/design
+checkpoint `e5bdc161`, received interim Reviewer changes-required findings
+U2-R1–R4 in formal round **2/3**. The retained baseline Tester run on that source
+is **157 passed / 3 failed / 0 skipped** across 17 serial suites. Preserve the
+three failures: generated RESULT script syntax, a cursor fixture without future
+expiry, and an authored-palette assertion that scanned bundled Mermaid literals.
+Builder corrected these fixtures and source findings, then froze `9235d02e`;
+Reviewer requested additional refresh/recovery assertions for residual U2-R2.
+Exact final candidate `8f99272c` keeps runtime unchanged since `3a7b6069` and adds
+those assertions. Tester then passed the focused correction batch **58/58**,
+zero failures/skips across six suites, and backend typecheck exit 0. Those counts
+are separate, not added to the baseline. Reviewer approved `8f99272c` and closed
+U2-R1–R4 within round2/3. The approved code checkpoint and reports were pushed
+to main in `4f9e8e88`. Local code integration is complete; owner deployment and
+full canonical `/mcp` host acceptance remain open. The earlier accepted
+`937cb16f` checkpoint and production `/plugin` evidence do not qualify this
+migration. See the [round-2 findings](c6-unified-mcp-review-r2.md), [baseline
+Tester report](c6-unified-mcp-tester-r2-bc43d9d5-2026-10-11.md), and [correction
+Tester report](c6-unified-mcp-tester-r2-8f99272c-2026-10-11.md).
+Implementation details and qualification scope are in the [unified MCP
+handoff](c6-unified-mcp-implementation.md) and [ADR 002](../adr/002-unified-mcp-integration.md).
+
+The candidate consolidates tools and optional result/Docs previews on `/mcp`,
+adds bounded Markdown/Mermaid rendering and revision-aware document edit
+proposals, and adds recipient-bound workspace inference with separate explicit
+consent/model/allowance. Proposal authority is not direct-write authority.
+Legacy `/plugin` discovery, grants and refresh remain during explicit reconnect;
+opposite audiences are refused and no credentials/receipts transfer. The new
+server flag defaults false. Private environment values are reported preserved;
+transition guidance/comments and single-template coverage are in the docs.
+
+Correction batch `9235d02e` addresses the source findings U2-R1–R4: stable result/editor
+identity and explicit draft switching; immutable save retry tuples and conflict
+recovery; durable canonical import resources across replay; and visible
+whole-block preview bounds with continuation/source links. New executable
+card-state and import/resource fixtures are deterministic contract evidence,
+pending Tester execution; they do not qualify host rendering. Freeze `8f99272c`
+adds the extra refresh-lock and failed-refresh/recovery assertions requested by
+Reviewer for U2-R2; focused tests are currently executing on this exact freeze.
+
+Builder reports web/mobile typechecks, env/template/config checks, shell syntax
+and changed-file formatting as passed development checks. Tester recorded 58/58
+focused correction checks and backend typecheck on `8f99272c`; Reviewer approved
+the local checkpoint and closed U2-R1–R4 in round2/3. The accepted source and
+reports were pushed to main in `4f9e8e88`. New executable card-state fixtures
+are deterministic contract evidence only. The bounded actual-host preview/layout
+gate remains after owner deployment. No production deployment or real-host
+acceptance is recorded. Native builds,
+separate shared desktop UI checks and Kubernetes worker qualification are
+excluded or unavailable as recorded in the handoff.
+
+The delegated Today UI observation belongs to the prior `/plugin` route: the
+explicit **Load today** click removed the button and enabled **Open Today in
+Orbyn**, without loading/error status; the open action was not activated and no
+item text was copied. Existing direct connector read counts and earlier tests
+remain scoped to `/plugin`; do not carry them as `/mcp` passes. Discovery
+metadata/OAuth issuer, host files, composer mentions, account switching,
+revocation and live managed/BYO execution remain open. C6 remains current and
+U1 stays unstarted until full C6 acceptance. No security scan was run.

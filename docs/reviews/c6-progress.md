@@ -1,17 +1,23 @@
 # C6 progress — 11 October 2026
 
-**State:** C6's local checkpoint is accepted and pushed to main: runtime
-`937cb16f`, service/environment documentation through `b607e1dc`, evidence
-`4ab7dbc9`. Formal review closed within round 1/3. Earlier source candidates
-and their bounded receipts remain below as history.
+**Current state:** The expanded unified `/mcp` local code checkpoint is accepted
+in formal round **2/3**. Exact accepted source `8f99272c` passed the focused
+correction cohort **58/58**, zero failures/skips, plus backend typecheck. Tester
+baseline `bc43d9d5` remains **157 passed / 3 failed / 0 skipped**; preserve those
+failures as historical, non-additive evidence. Reviewer closed U2-R1–R4 within
+the same round. The accepted source and reports were integrated on main at
+`4f9e8e88`. Full C6 canonical-host acceptance remains open: owner deployment is
+next, followed by the post-deployment preview, Docs, file, mention, account,
+revocation and provider gates. The earlier round-1 checkpoint `937cb16f` remains
+accepted history for the legacy `/plugin` route only.
 
-The owner supplied server commit `b3d02d19`. Its gateway logs identified an
-unresolvable `plugin` upstream, and no running plugin container appeared in
-the supplied Compose output. The owner subsequently reports `/plugin` working.
-Visual Check's internal-browser retry still returned `ERR_BLOCKED_BY_CLIENT`;
-it did not observe an HTTP response or start host OAuth. Full C6 real-host
-acceptance remains open. See [qualification](c6-qualification.md) and
-[production evidence](c6-production-visual-2026-10-11.md).
+**Legacy `/plugin` production context (historical):** the owner supplied server
+commit `b3d02d19`; its gateway logs identified an unresolvable `plugin` upstream,
+and the supplied Compose output showed no running plugin container. The owner
+later reported `/plugin` working. Subsequent direct reads and Today load-state
+evidence apply only to that route. They do not qualify canonical `/mcp`. See
+[qualification](c6-qualification.md), [production connector evidence](c6-production-tool-evidence-2026-10-11.md),
+and [host evidence](c6-host-subagent-2026-10-11.md).
 
 ## Implemented in this worktree
 
