@@ -168,7 +168,7 @@ test("canonical job cursor binds audience, connection and authority independentl
       sourceRevision: "1",
     };
   const codec = pluginJobCursor(principal(), binding, key);
-  const cursor = codec.seal(12);
+  const cursor = codec.seal(12, Date.now() + 60000);
   assert.equal(codec.open(cursor), 12);
   assert.throws(() =>
     pluginJobCursor(

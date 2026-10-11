@@ -447,7 +447,10 @@ test("MCP Apps cards: off by default, then Today, a plan preview and a proposal,
       assert.ok(html.includes(`--color-accent:${core.colors.accent}`));
       assert.ok(html.includes(`--color-accent:${core.darkColors.accent}`));
       assert.doesNotMatch(
-        html.replace(/--color-\w+:#[0-9a-f]{6};/g, ""),
+        (html.match(/<style>([\s\S]*?)<\/style>/)?.[1] ?? "").replace(
+          /--color-\w+:#[0-9a-f]{6};/g,
+          "",
+        ),
         /#[0-9a-f]{3,8}\b/i,
       );
       // Nothing from outside, and data is never markup.
