@@ -1,5 +1,22 @@
 # C6 qualification handoff
 
+## Current closeout — 12 October 2026
+
+**C6 complete for the owner-approved bounded release scope; Reviewer approved
+within round 2/3.** This current decision supersedes evidence-pending statements
+in the historical sections below. See [final assessment](c6-acceptance-assessment-2026-10-12.md)
+and [live Tester supplement](c6-live-provider-tester-2026-10-12.md).
+
+Accepted implementation and focused regression evidence are retained. Canonical
+Codex MCP dispatched one live `matilda` request to completion; Tester independently
+read its terminal receipt. Builder observed exact replay identity and denial
+before separate Workspace AI permission. Account switching and revocation are
+owner-confirmed, not independently observed. Latest-main deployment is
+owner-reported; exact running image hashes and permission version/caps remain
+unavailable. Stopped host interactions and uploaded-file checks retain their
+unverified/deferred status; they are not passing checks. No further scans or
+visual checks are required for this closeout. U1 and the broader goal remain open.
+
 ## Candidate and phase
 
 - Scope: complete C6 plugin/backend/host extensions and security checkpoint,
