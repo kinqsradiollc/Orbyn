@@ -34,3 +34,18 @@ Source inspection found the intended private `plugin:8000` gateway target and
 Compose PORT=8000/service entrypoint. No speculative product fix was applied.
 Owner was asked for deployed commit, plugin/gateway container status and recent
 logs. No request was made to bypass the browser block after it was reported.
+
+## Retry after owner recovery update
+
+The owner reported `/plugin` recovery and supplied server evidence naming commit
+`b3d02d19`, a healthy gateway, no plugin service in the running Compose list,
+and Docker DNS failure resolving `plugin`. These are handoff claims, not
+independently verified in this browser check.
+
+Visual Check made the requested single retry of the exact discovery URL in the
+internal browser. The browser again returned `net::ERR_BLOCKED_BY_CLIENT` and
+left the tab at `about:blank`; no HTTP status, response body or screenshot was
+available. The retry therefore did not confirm the reported recovery. The
+`/plugin` resource, authorization-server metadata and ChatGPT authoring flow
+were not opened. No production connection, grant, consent, account or data was
+created or changed.
