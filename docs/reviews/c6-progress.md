@@ -16,7 +16,7 @@ record follow the frozen source commit.
   today** before the existing scoped `get_today` capability runs. Portable MCP
   cards continue to work when the host ignores the extension.
 - [Security boundaries](c6-security-boundary.md) records the connector, managed
-  provider, host UI and publication controls, plus the scan limitation.
+  provider, host UI and publication controls, plus the diff scan result.
 
 ## Builder evidence so far
 
@@ -51,9 +51,12 @@ record follow the frozen source commit.
 - Live host OAuth, account switch/reconnect, actual ChatGPT/Codex UI and public
   gateway behavior require a reachable HTTPS deployment and a connected test
   host. Local fixtures do not prove these.
-- Codex Security is available but not installed. GitHub code-scanning returned
-  `no analysis found` (HTTP 404) and a missing scope notice. No authorized scan
-  result or triage pass is claimed.
+- Codex Security diff scan `f3fa3b73-0b8f-453f-9416-4a435b708594` completed
+  for `058a63e5..88f46bb2` with **zero reportable findings** and **partial
+  coverage**. It reviewed the C6 gateway, private service rollout, connector
+  authority and Today UI data release. The scan does not establish whole-repo
+  security or deployed HTTPS host behavior. Its canonical report is in the
+  local Codex Security scan artifacts; see [security boundaries](c6-security-boundary.md).
 - Formal Tester → Reviewer qualification has not started. The bounded Visual
   Check is complete; screenshots were inline because the browser had no
   supported local export path.

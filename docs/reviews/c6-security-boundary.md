@@ -21,11 +21,17 @@ alerts for the same reachable dependency/path are grouped; fixes remain Builder
 changes that Tester checks and Reviewer assesses. No scan-generated patch merges
 without review.
 
-On 11 October 2026, the read-only GitHub code-scanning alerts endpoint returned
-HTTP 404, `no analysis found`, plus a missing `admin:repo_hook` scope notice.
-This is **not** a clean scan. Codex Security entitlement and an authorized scan
-artifact remain unverified. Do not expand token scopes or add a secret-bearing
-CI job until scan access and its supported workflow are established. Existing
+On 11 October 2026, Codex Security completed diff scan
+`f3fa3b73-0b8f-453f-9416-4a435b708594` over `058a63e5..88f46bb2`.
+It found **zero reportable issues** in the reviewed C6 gateway, rollout,
+connector-authority and Today UI changes. Coverage is **partial**: the public
+HTTPS host, production cutover and rollback, and whole repository were not
+scanned or exercised. The scan report and canonical manifest are in the local
+Codex Security artifact directory for revision `88f46bb2`.
+
+The separate read-only GitHub code-scanning endpoint returned HTTP 404,
+`no analysis found`, plus a missing `admin:repo_hook` scope notice. Do not
+expand token scopes or add a secret-bearing CI job for that endpoint. Existing
 dependency audit evidence is recorded in
 [security-scan-status-2026-10-02.md](security-scan-status-2026-10-02.md);
 it does not replace the code scan.
