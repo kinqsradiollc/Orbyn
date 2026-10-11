@@ -65,6 +65,110 @@ test("plugin Markdown file entrypoint uses host resources without returning file
   assert.equal(readPluginResource(resource.uri, ["get_today"], true), null);
 });
 
+test("Markdown app reads a host file and saves only after a user edit", async () => {
+  const [resource] = pluginResources([PLUGIN_MARKDOWN_FILE], true);
+  const html = readPluginResource(resource.uri, [PLUGIN_MARKDOWN_FILE], true)!
+    .contents[0].text;
+  const script = html.match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  assert.ok(script);
+  const elements = new Map<string, any>();
+  for (const id of [
+    "file-name",
+    "mode",
+    "file-status",
+    "source",
+    "save",
+    "reload",
+  ])
+    elements.set(id, {
+      textContent: "",
+      value: "",
+      hidden: false,
+      disabled: false,
+      readOnly: false,
+      addEventListener(name: string, listener: () => void) {
+        this[name] = listener;
+      },
+    });
+  const listeners = new Map<string, (event: any) => void>();
+  const sent: any[] = [];
+  const parent = { postMessage: (message: any) => sent.push(message) };
+  const window = {
+    parent,
+    addEventListener: (name: string, listener: (event: any) => void) =>
+      listeners.set(name, listener),
+  };
+  new Script(script).runInNewContext({
+    window,
+    document: {
+      getElementById: (id: string) => elements.get(id),
+      documentElement: { scrollHeight: 400, dataset: {} },
+    },
+    Uint8Array,
+    TextDecoder,
+  });
+  const deliver = (method: string, params: unknown) =>
+    listeners.get("message")!({
+      source: parent,
+      data: { jsonrpc: "2.0", method, params },
+    });
+  const respond = (id: number, result: unknown) =>
+    listeners.get("message")!({
+      source: parent,
+      data: { jsonrpc: "2.0", id, result },
+    });
+  const flush = () => new Promise<void>((resolve) => setImmediate(resolve));
+  const request = (method: string) => sent.findLast((m) => m.method === method);
+  const uri = "host-resource://opaque";
+  deliver("ui/notifications/tool-input", {
+    arguments: { file: { name: "notes.md", resourceUri: uri } },
+  });
+  const read = request("resources/read");
+  assert.equal(read.params.uri, uri);
+  assert.equal(
+    sent.some((m) => JSON.stringify(m).includes("private note")),
+    false,
+  );
+  respond(read.id, {
+    contents: [
+      {
+        uri,
+        text: "private note",
+        _meta: { "openai/resource": { writable: true, etag: "v1" } },
+      },
+    ],
+  });
+  await flush();
+  const source = elements.get("source");
+  assert.equal(source.value, "private note");
+  assert.equal(source.readOnly, false);
+  assert.equal(elements.get("save").disabled, true);
+  source.value = "revised note";
+  source.input();
+  elements.get("save").onclick();
+  const write = request("openai/resources/write");
+  assert.deepEqual(JSON.parse(JSON.stringify(write.params)), {
+    uri,
+    text: "revised note",
+    ifMatch: "v1",
+  });
+  respond(write.id, { outcome: "saved", etag: "v2" });
+  await flush();
+  assert.equal(elements.get("file-status").textContent, "Saved");
+  assert.equal(elements.get("save").disabled, true);
+  source.value = "another edit";
+  source.input();
+  elements.get("save").onclick();
+  respond(request("openai/resources/write").id, {
+    outcome: "conflict",
+    etag: "v3",
+  });
+  await flush();
+  assert.match(elements.get("file-status").textContent, /changed elsewhere/);
+  assert.equal(elements.get("save").disabled, true);
+  assert.equal(source.value, "another edit");
+});
+
 test("plugin cards are opt-in and limited to the current allowed tools", () => {
   assert.deepEqual(pluginResources(["get_today"], false), []);
   assert.deepEqual(pluginResources([], true), []);
