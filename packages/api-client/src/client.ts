@@ -2783,7 +2783,10 @@ export class OrbynClient {
     );
   }
   getDoc(id: string, options: Pick<RequestOptions, "fresh" | "signal"> = {}) {
-    return this.request<Doc>(`/docs/${id}`, options);
+    return this.request<Doc>(`/docs/${id}`, {
+      ...options,
+      headers: { "x-orbyn-doc-formats": "1,2" },
+    });
   }
   /** Read metadata and complete editor ownership from one fresh authorized revision. */
   async getDocForEditor(id: string, options: { signal?: AbortSignal } = {}) {

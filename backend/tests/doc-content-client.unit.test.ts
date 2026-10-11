@@ -11,6 +11,30 @@ import {
 const id = "00000000-0000-4000-8000-000000000001";
 const document = { format: 1 as const, blocks: [] };
 
+test("ordinary document links declare structured page support", async () => {
+  const nodes = parseDocContainers("> Words ^words", { anchors: true });
+  const client = new OrbynClient({
+    baseUrl: "https://fixture.invalid",
+    fetch: async (url, init) => {
+      assert.equal(new URL(String(url)).pathname, `/docs/${id}`);
+      assert.equal(
+        new Headers(init?.headers).get("x-orbyn-doc-formats"),
+        "1,2",
+      );
+      return Response.json({
+        id,
+        title: "Page",
+        version: 1,
+        content: docContainerBlocks(nodes),
+        document: { format: 2, nodes },
+      });
+    },
+  });
+  const page = await client.getDoc(id);
+  assert.equal(page.id, id);
+  assert.equal(page.document?.format, 2);
+});
+
 test("editor read gets metadata and complete ownership from one fresh request", async () => {
   const nodes = parseDocContainers("> - Words ^words\n^outer", {
     anchors: true,
