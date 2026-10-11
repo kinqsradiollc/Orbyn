@@ -5,8 +5,9 @@
 **Accepted candidate:** `bbb7f28d0eb55b27ae1d8fea4b50c717b96b9dc5` on `codex/c5-pages-publication`, based on main
 `9c7c3fdb`. Reviewer accepted C5 in round **1/3** under the agreed scope; R1, R2,
 C5-VIS-001 and C5-E1 are closed. C5 was fast-forward pushed to remote `main`:
-`9c7c3fdb..392f24450dbc361740376c3095602c246e5c4681` (`git push origin HEAD:main`, exit 0). Production has not
-been deployed.
+`9c7c3fdb..392f24450dbc361740376c3095602c246e5c4681` (`git push origin HEAD:main`, exit 0). The current
+main HEAD is `2f5b2b6a39605ac70e98feba5bbb5cd6d878b486`, the committed C5 delivery-status
+follow-up. Production has not been deployed.
 
 Tester evidence is incremental by candidate: baseline `046c0b85` build/workspace
 types/migrations and **471/471** focused plus **78/78** structured/docs tests;
@@ -38,8 +39,8 @@ waiting-reply boundaries were preserved.
 Live Slack/Teams workspace checks remain explicitly deferred and unverified; local
 channel tests do not establish external delivery. Native iOS/Android checks are also
 deferred. C4/D1 browser checks remain production follow-ups, outside C5 acceptance.
-Production deployment is user-owned. Main integration is complete by fast-forward push
-to `main` at `392f2445`.
+Production deployment is user-owned. Main integration is complete: product/report
+delivery at `392f2445`, with current main status at follow-up commit `2f5b2b6a`.
 
 Initial audit: structured Docs bypasses the old editor's maintenance controls;
 maintenance persistence and its client store still assume legacy flat content.
