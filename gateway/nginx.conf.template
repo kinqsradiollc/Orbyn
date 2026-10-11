@@ -754,6 +754,38 @@ ${UPSTREAM_MCP}
     location = /.well-known/oauth-protected-resource/mcp {
       proxy_pass http://mcp;
     }
+    # Separate plugin recipient and process. The variable target resolves only
+    # when enabled, so an ordinary gateway can start without the plugin profile.
+    location = /.well-known/oauth-protected-resource/plugin {
+      ${PLUGIN_GATE}
+      set $plugin_target plugin:8000;
+      proxy_next_upstream off;
+      proxy_pass http://$plugin_target;
+    }
+    location = /plugin {
+      ${PLUGIN_GATE}
+      client_max_body_size 64k;
+      limit_req zone=per_client burst=200 nodelay;
+      limit_req zone=mcp_token burst=60 nodelay;
+      limit_conn mcp_conn 8;
+      proxy_buffering off;
+      proxy_next_upstream off;
+      set $plugin_target plugin:8000;
+      proxy_pass http://$plugin_target;
+      error_page 429 = @mcp_limited;
+    }
+    location ^~ /plugin/ {
+      ${PLUGIN_GATE}
+      client_max_body_size 64k;
+      limit_req zone=per_client burst=200 nodelay;
+      limit_req zone=mcp_token burst=60 nodelay;
+      limit_conn mcp_conn 8;
+      proxy_buffering off;
+      proxy_next_upstream off;
+      set $plugin_target plugin:8000;
+      proxy_pass http://$plugin_target;
+      error_page 429 = @mcp_limited;
+    }
     # The OpenAI apps directory's domain check (its token is OPENAI_APPS_CHALLENGE).
     location = /.well-known/openai-apps-challenge {
       proxy_pass http://mcp;

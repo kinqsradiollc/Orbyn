@@ -880,24 +880,25 @@ and their own marked PostgreSQL test database. Each process owns its test render
 ## Optional separate plugin backend
 
 The `plugin` Compose profile runs `backend/dist/services/plugin.js` separately
-from the API, AI and MCP services. It is absent from the default deployment.
-Its optional local port binds only to loopback (`PLUGIN_PORT`, default8040).
+from the API, AI and MCP services. It has no host port. The gateway exposes only
+`/plugin`, `/plugin/*` and `/.well-known/oauth-protected-resource/plugin` on
+the MCP host; browser API paths and `/mcp` keep their own services.
 
-Set `PLUGIN_PUBLIC_URL` to the exact reviewed HTTPS recipient before enabling
-OAuth for this service. Blank configuration returns404 for plugin calls and
-publishes no discovery document. Route only `/plugin`, `/plugin/connection`,
-`/plugin/tools`, `/plugin/tools/call`, `/plugin/resources`, `/plugin/resources/read`
-and the configured recipient's derived
-`/.well-known/oauth-protected-resource…` path to this process through the
-reviewed reverse proxy. Do not route browser API paths or `/mcp` to it. The
-existing gateway does not automatically expose this profile.
+Set `PLUGIN_PUBLIC_URL=https://mcp.orbyn.dev/plugin` in `.env` before enabling
+the service. The URL must match the public gateway route. With this setting,
+`scripts/deploy.sh` builds and rolls the plugin after migrations, then updates
+the gateway. Without it, the deploy script stops the plugin and the gateway
+answers 404 for plugin routes. Run `./scripts/deploy.sh --check` first. If the
+plugin uses a different HTTPS host, route that host to gateway port 8082 before
+connecting a client.
 
-After migrations and all API replicas support recipient-separated grants:
-
-```sh
-docker compose --profile plugin up -d --build plugin
-```
-
-Validate public discovery, missing/incorrect credentials, consent recipient,
-revocation and actual host calls before treating the integration as delivered.
-This profile alone does not enable or qualify production plugin access.
+The plugin uses separate OAuth consent, connector grants and managed workspace
+AI permission. A ChatGPT plan token is not a plugin credential. Check public
+discovery, rejected credentials, recipient-specific consent, revocation, account
+switching and host calls before declaring a live host connection qualified.
+When UI cards are enabled in Admin → Agents, a separate `open_orbyn` tool
+advertises a ChatGPT sidebar entrypoint. Opening it returns no account data;
+the person clicks **Load today** to read their day. Hosts without this extension
+still receive the portable MCP cards. Availability depends on host and account.
+The entrypoint metadata follows the
+[OpenAI plugin extension reference](https://developers.openai.com/plugins/build/extensions).

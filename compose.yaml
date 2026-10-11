@@ -288,7 +288,7 @@ services:
 
   # Optional plugin integration: a separate authenticated process, never the
   # browser API or MCP recipient. Enable only after configuring its public
-  # recipient and a reviewed reverse proxy. Local publication stays loopback.
+  # recipient. Only the gateway publishes it; no direct host port is needed.
   plugin:
     <<: *backend
     profiles: [plugin]
@@ -297,7 +297,7 @@ services:
       PLUGIN_PUBLIC_URL: ${PLUGIN_PUBLIC_URL:-}
     command: ["node", "backend/dist/services/plugin.js"]
     healthcheck: *http-health
-    ports: ["127.0.0.1:${PLUGIN_PORT:-8040}:8000"]
+    expose: ["8000"]
     depends_on:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
@@ -454,6 +454,7 @@ services:
       WEB_SERVERS: ${GATEWAY_WEB_SERVERS:-desktop:8080}
       FILES_SERVERS: ${GATEWAY_FILES_SERVERS:-files:8000}
       MCP_SERVERS: ${GATEWAY_MCP_SERVERS:-mcp:8000}
+      PLUGIN_PUBLIC_URL: ${PLUGIN_PUBLIC_URL:-}
       # Kill switch L4: 1 answers every MCP request with 503 (needs the
       # gateway replaced; agents_enabled in Admin needs no restart).
       MCP_DISABLED: ${MCP_DISABLED:-}

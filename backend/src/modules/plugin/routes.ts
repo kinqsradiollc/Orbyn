@@ -7,6 +7,8 @@ import { settings } from "../../lib/settings.js";
 import { registry } from "../../capabilities/index.js";
 import { Limiter } from "../mcp-server/limits.js";
 import { CapabilityError, describe } from "../../capabilities/registry.js";
+import type { Principal } from "../../capabilities/policy.js";
+import type { LiveSettings } from "../../lib/settings.js";
 import { ActivityRecorder } from "../mcp-server/recorder.js";
 import { connectorResources } from "../oauth/resources.js";
 import { PluginAuthError, resolvePluginCaller } from "./auth.js";
@@ -17,9 +19,12 @@ import { servePluginProtocol } from "./protocol.js";
 import {
   pluginResourceInput,
   pluginResources,
+  pluginToolUiMeta,
+  PLUGIN_ENTRYPOINT,
+  pluginEntrypointResult,
+  pluginEntrypointTool,
   readPluginResource,
 } from "./ui-resources.js";
-import { toolUiMeta } from "../mcp-server/apps.js";
 import { pluginRead, pluginWrite } from "./execute.js";
 import { trackPluginImport, readPluginImportEvents } from "./import-jobs.js";
 import { pluginJobCursorKey } from "./job-cursor.js";
@@ -31,6 +36,57 @@ const jobQuery = z
   .object({ cursor: z.string().min(1).max(512).optional() })
   .strict();
 const jobParams = z.object({ id: z.uuid() }).strict();
+function pluginTools(principal: Principal, live: LiveSettings) {
+  const allowed = registry.for(principal);
+  const tools = allowed.map((cap) => {
+    const ui = live.agents.mcp_apps_enabled ? pluginToolUiMeta(cap.name) : null;
+    return { ...describe(cap), ...(ui ? { _meta: ui } : {}) };
+  });
+  if (
+    live.agents.mcp_apps_enabled &&
+    allowed.some((cap) => cap.name === "get_today")
+  )
+    tools.push(pluginEntrypointTool);
+  return tools;
+}
+async function openPluginEntrypoint(
+  principal: Principal,
+  live: LiveSettings,
+  args: Record<string, unknown>,
+  limiter: Limiter,
+) {
+  if (
+    !pluginTools(principal, live).some(
+      (tool) => tool.name === PLUGIN_ENTRYPOINT,
+    )
+  )
+    throw new PluginCallError(403, {
+      error: "FORBIDDEN",
+      message: "This entrypoint is unavailable to this connection.",
+    });
+  if (Object.keys(args).length)
+    throw new PluginCallError(400, {
+      error: "INVALID",
+      message: "This entrypoint takes no arguments.",
+    });
+  const slot = await limiter.take(
+    principal.grant_id!,
+    principal.user.id,
+    "call",
+    live.agents.agent_limits,
+  );
+  if (!slot.ok)
+    throw new PluginCallError(
+      429,
+      { error: "LIMITED", message: slot.reason },
+      slot.retryAfter,
+    );
+  try {
+    return pluginEntrypointResult(args);
+  } finally {
+    slot.release();
+  }
+}
 function jobRefusal(error: unknown, reply: FastifyReply) {
   if (error instanceof PluginCallError) {
     if (error.retryAfter) reply.header("Retry-After", String(error.retryAfter));
@@ -274,12 +330,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
         message: "This route takes no query parameters.",
       });
     const live = await settings();
-    return {
-      tools: registry.for(request.pluginCaller!.principal).map((cap) => {
-        const ui = live.agents.mcp_apps_enabled ? toolUiMeta(cap.name) : null;
-        return { ...describe(cap), ...(ui ? { _meta: ui } : {}) };
-      }),
-    };
+    return { tools: pluginTools(request.pluginCaller!.principal, live) };
   });
   app.post("/plugin/launch", { bodyLimit: 2048 }, async (request, reply) => {
     const input = pluginLaunchInput.safeParse(request.body);
@@ -412,10 +463,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
     handler: async (request, reply) => {
       const live = await settings();
       const principal = request.pluginCaller!.principal;
-      const tools = registry.for(principal).map((cap) => {
-        const ui = live.agents.mcp_apps_enabled ? toolUiMeta(cap.name) : null;
-        return { ...describe(cap), ...(ui ? { _meta: ui } : {}) };
-      });
+      const tools = pluginTools(principal, live);
       const headers = new Headers();
       for (const [name, value] of Object.entries(request.headers))
         if (
@@ -441,6 +489,8 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
           tools,
           uiEnabled: live.agents.mcp_apps_enabled,
           invoke: async (name, args) => {
+            if (name === PLUGIN_ENTRYPOINT)
+              return openPluginEntrypoint(principal, live, args, limiter);
             const result = await dispatchPluginTool(
               request,
               { name, arguments: args },
@@ -496,6 +546,13 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
           message: "Send a tool name and arguments object.",
         });
       try {
+        if (input.data.name === PLUGIN_ENTRYPOINT)
+          return await openPluginEntrypoint(
+            request.pluginCaller!.principal,
+            await settings(),
+            input.data.arguments,
+            limiter,
+          );
         return await dispatchPluginTool(
           request,
           input.data,

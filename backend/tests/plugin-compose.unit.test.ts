@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-test("plugin deployment is opt-in, separate and loopback-only", () => {
+test("plugin deployment is opt-in, separate and gateway-only", () => {
   const compose = readFileSync(
     new URL("../../compose.yaml", import.meta.url),
     "utf8",
@@ -13,7 +13,8 @@ test("plugin deployment is opt-in, separate and loopback-only", () => {
   assert.ok(block);
   assert.match(block, /profiles: \[plugin\]/);
   assert.match(block, /backend\/dist\/services\/plugin\.js/);
-  assert.match(block, /127\.0\.0\.1:\$\{PLUGIN_PORT:-8040\}:8000/);
+  assert.match(block, /expose: \["8000"\]/);
+  assert.doesNotMatch(block, /ports:/);
   assert.match(block, /PLUGIN_PUBLIC_URL: \$\{PLUGIN_PUBLIC_URL:-\}/);
   assert.match(
     block,
@@ -21,4 +22,12 @@ test("plugin deployment is opt-in, separate and loopback-only", () => {
   );
   assert.match(block, /pgbouncer: \{ condition: service_healthy \}/);
   assert.doesNotMatch(block, /network_mode: host|services\/(?:api|ai|mcp)\.js/);
+  assert.match(compose, /PLUGIN_PUBLIC_URL: \$\{PLUGIN_PUBLIC_URL:-\}/g);
+  const deploy = readFileSync(
+    new URL("../../scripts/deploy.sh", import.meta.url),
+    "utf8",
+  );
+  assert.match(deploy, /compose build plugin/);
+  assert.match(deploy, /rollout plugin 1/);
+  assert.match(deploy, /compose stop plugin/);
 });

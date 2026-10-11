@@ -30,6 +30,7 @@ function render(): string {
     UPSTREAM_FILES: "    server files:8000;",
     UPSTREAM_MCP: "    server mcp:8000;",
     MCP_GATE: "# MCP is on (MCP_DISABLED unset).",
+    PLUGIN_GATE: "# Plugin recipient enabled.",
     RESOLVER: "127.0.0.11",
     REAL_IP:
       "  set_real_ip_from 127.0.0.1;\n  set_real_ip_from 172.16.0.0/12;\n  real_ip_header X-Forwarded-For;\n  real_ip_recursive on;",
@@ -40,6 +41,30 @@ function render(): string {
     return vars[name];
   });
 }
+
+test("the plugin recipient has separate, bounded routes on the MCP host", () => {
+  const block = serverBlock(render(), "8082");
+  for (const path of [
+    "= /plugin",
+    "^~ /plugin/",
+    "= /.well-known/oauth-protected-resource/plugin",
+  ]) {
+    const start = block.indexOf(`location ${path} {`);
+    assert.ok(start >= 0, `${path} is routed`);
+    const route = block.slice(start, block.indexOf("}", start));
+    assert.match(route, /\$\{PLUGIN_GATE\}|Plugin recipient enabled/);
+    assert.match(route, /proxy_pass http:\/\/\$plugin_target;/);
+    assert.doesNotMatch(route, /proxy_pass http:\/\/mcp;/);
+  }
+  assert.match(
+    block,
+    /location = \/plugin \{[\s\S]*?client_max_body_size 64k;/,
+  );
+  assert.match(
+    block,
+    /location \^~ \/plugin\/ \{[\s\S]*?client_max_body_size 64k;/,
+  );
+});
 
 /** Body of the server block listening on `port` (balanced braces). */
 function serverBlock(conf: string, port: string): string {

@@ -90,12 +90,18 @@ const TODAY: Card = {
   name: "Today card",
   description: "The Today list as a card: planned, due and late.",
   tools: ["get_today"],
-  body: `<div class="card"><h1 id="title">Today</h1><p class="sub" id="sub"></p><div id="list"></div><div class="row"><button id="open">Open Today in Orbyn</button></div></div>`,
+  body: `<div class="card"><h1 id="title">Today</h1><p class="sub" id="sub"></p><div id="list"></div><div class="row"><button id="load">Load today</button><button id="open" disabled>Open Today in Orbyn</button></div></div>`,
   script: `
-let url=null;
-document.getElementById("open").onclick=()=>url&&openLink(url);
+let url=null;const open=document.getElementById("open");const load=document.getElementById("load");
+open.onclick=()=>url&&openLink(url);
+load.onclick=async()=>{load.disabled=true;
+  try{const result=await request("tools/call",{name:"get_today",arguments:{}});render(result||{});resize();}
+  catch{document.getElementById("sub").textContent="Today is unavailable. Try again.";load.disabled=false;}
+};
 function render(result){
-  const s=result.structuredContent||{};url=s.url||null;
+  const s=result.structuredContent||{};if(s.kind==="plugin_home")return;
+  if(result.isError){document.getElementById("sub").textContent="Today is unavailable. Try again.";load.disabled=false;return;}
+  url=s.url||null;open.disabled=!url;load.hidden=true;
   document.getElementById("sub").textContent=s.day?("Your day, "+s.day):"";
   const list=document.getElementById("list");list.replaceChildren();
   const section=(title,rows)=>{list.append(el("h2",null,title));const ul=el("ul");

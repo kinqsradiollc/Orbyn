@@ -4,7 +4,22 @@ import {
   pluginResources,
   readPluginResource,
   pluginResourceInput,
+  pluginToolUiMeta,
+  pluginEntrypointResult,
+  PLUGIN_ENTRYPOINT,
 } from "../src/modules/plugin/ui-resources.js";
+
+test("plugin sidebar opens without reading account data", () => {
+  assert.deepEqual(pluginToolUiMeta(PLUGIN_ENTRYPOINT)?.["openai/ui"], {
+    entrypoints: [{ type: "global" }],
+  });
+  assert.equal(pluginToolUiMeta("get_today")?.["openai/ui"], undefined);
+  assert.deepEqual(pluginEntrypointResult({}).structuredContent, {
+    kind: "plugin_home",
+  });
+  assert.equal(pluginToolUiMeta("unknown_tool"), null);
+  assert.equal(pluginToolUiMeta("plan_schedule")?.["openai/ui"], undefined);
+});
 
 test("plugin cards are opt-in and limited to the current allowed tools", () => {
   assert.deepEqual(pluginResources(["get_today"], false), []);
@@ -37,6 +52,8 @@ test("plugin resources declare isolated first-party HTML with no external domain
     resourceDomains: [],
   });
   assert.match(result.contents[0].text, /ui\/initialize/);
+  assert.match(result.contents[0].text, /Load today/);
+  assert.match(result.contents[0].text, /load\.onclick=async/);
   assert.doesNotMatch(
     result.contents[0].text,
     /<script[^>]+src=|<iframe|fetch\(|localStorage|sessionStorage|document\.cookie/,

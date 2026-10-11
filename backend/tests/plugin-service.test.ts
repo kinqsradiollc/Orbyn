@@ -596,6 +596,34 @@ test("plugin UI resources require current grants, UI opt-in and bounded identifi
         .json()
         .tools.some((tool: any) => tool._meta?.ui?.resourceUri === uri),
     );
+    const entrypoint = tools
+      .json()
+      .tools.find((tool: any) => tool.name === "open_orbyn");
+    assert.deepEqual(entrypoint?._meta?.["openai/ui"], {
+      entrypoints: [{ type: "global" }],
+    });
+    const opened = await app.inject({
+      method: "POST",
+      url: "/plugin/tools/call",
+      headers,
+      payload: { name: "open_orbyn", arguments: {} },
+    });
+    assert.equal(opened.statusCode, 200, opened.body);
+    assert.deepEqual(opened.json().structuredContent, {
+      kind: "plugin_home",
+    });
+    assert.equal(opened.body.includes(userId), false);
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/plugin/tools/call",
+          headers,
+          payload: { name: "open_orbyn", arguments: { user_id: userId } },
+        })
+      ).statusCode,
+      400,
+    );
     assert.equal(
       (
         await app.inject({

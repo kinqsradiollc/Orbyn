@@ -12,6 +12,7 @@
 #   MCP_DISABLED=1     answer 503 for every MCP request (a kill switch for
 #                      outside agents that needs a gateway restart; the
 #                      no-restart switch is agents_enabled in Admin)
+#   PLUGIN_PUBLIC_URL  enable the separately authenticated /plugin recipient
 #   RENDER_ONLY=1      write /tmp/nginx.conf and exit (used to validate)
 set -eu
 API_SERVERS="${API_SERVERS:-api:8000}"
@@ -22,6 +23,7 @@ WEB_SERVERS="${WEB_SERVERS:-desktop:8080}"
 FILES_SERVERS="${FILES_SERVERS:-files:8000}"
 MCP_SERVERS="${MCP_SERVERS:-mcp:8000}"
 MCP_DISABLED="${MCP_DISABLED:-}"
+PLUGIN_PUBLIC_URL="${PLUGIN_PUBLIC_URL:-}"
 RESOLVER="${RESOLVER:-127.0.0.11}"
 TRUSTED_PROXIES="${TRUSTED_PROXIES:-}"
 RATE_LIMIT_EXEMPT="${RATE_LIMIT_EXEMPT:-}"
@@ -61,11 +63,16 @@ if [ -n "$MCP_DISABLED" ] && [ "$MCP_DISABLED" != "0" ]; then
 else
   export MCP_GATE="# MCP is on (MCP_DISABLED unset)."
 fi
+if [ -n "$PLUGIN_PUBLIC_URL" ]; then
+  export PLUGIN_GATE="# Plugin recipient enabled."
+else
+  export PLUGIN_GATE="return 404 '{\"message\":\"The plugin recipient is disabled.\"}';"
+fi
 export RESOLVER REAL_IP="$(real_ip)" LIMIT_EXEMPT="$(exempt)"
 
 # tr drops Windows line endings a checkout may have added to the template.
 tr -d '\r' < /etc/orbyn-gateway/nginx.conf.template |
-  envsubst '${UPSTREAM_API} ${UPSTREAM_AI} ${UPSTREAM_REALTIME} ${UPSTREAM_STATUS} ${UPSTREAM_WEB} ${UPSTREAM_FILES} ${UPSTREAM_MCP} ${MCP_GATE} ${RESOLVER} ${REAL_IP} ${LIMIT_EXEMPT}' \
+  envsubst '${UPSTREAM_API} ${UPSTREAM_AI} ${UPSTREAM_REALTIME} ${UPSTREAM_STATUS} ${UPSTREAM_WEB} ${UPSTREAM_FILES} ${UPSTREAM_MCP} ${MCP_GATE} ${PLUGIN_GATE} ${RESOLVER} ${REAL_IP} ${LIMIT_EXEMPT}' \
   > /tmp/nginx.conf
 
 [ "${RENDER_ONLY:-}" = "1" ] && exit 0

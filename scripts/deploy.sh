@@ -68,6 +68,7 @@ mail_config=$(setting MAIL_CONFIG maddy.conf)
 mail_domain=$(setting MAIL_DOMAIN)
 app_url=$(setting APP_URL)
 mcp_url=$(setting MCP_PUBLIC_URL https://mcp.orbyn.dev/mcp)
+plugin_url=$(setting PLUGIN_PUBLIC_URL)
 oauth_issuer=$(setting OAUTH_ISSUER "$app_url")
 cors=$(setting CORS_ORIGINS)
 profiles=$(setting COMPOSE_PROFILES)
@@ -77,6 +78,8 @@ formula_on=0
 case ",$profiles," in *,formula,*) formula_on=1 ;; esac
 semantic_on=0
 case ",$profiles," in *,semantic,*) semantic_on=1 ;; esac
+plugin_on=0
+[ -n "$plugin_url" ] && plugin_on=1
 problems=0
 
 # The optional worker must not keep old queue/retry code across a schema upgrade.
@@ -114,6 +117,19 @@ preflight() {
   if [ "$(setting AI_RUNNER_IN_WORKER false)" = true ]; then
     echo "Remove AI_RUNNER_IN_WORKER=true: assistant-background and assistant-overnight now run separately from the notifier." >&2
     problems=1
+  fi
+  if [ "$plugin_on" = 1 ]; then
+    case "$plugin_url" in
+      https://*/plugin) ;;
+      http://127.0.0.1:*/plugin|http://localhost:*/plugin) ;;
+      *) echo "PLUGIN_PUBLIC_URL must be an HTTPS /plugin recipient (or local loopback for development)." >&2; problems=1 ;;
+    esac
+    if [ -n "$tunnel_token" ]; then
+      mcp_origin=$(printf '%s' "$mcp_url" | sed -E 's#^(https?://[^/]+).*#\1#')
+      if [ "$plugin_url" != "$mcp_origin/plugin" ]; then
+        warn "Route the PLUGIN_PUBLIC_URL host to gateway:8082 before connecting a host; the existing MCP tunnel only covers $mcp_origin."
+      fi
+    fi
   fi
   if grep -qE 'TODO|change-me' "$ENV_FILE"; then
     warn "$ENV_FILE still has TODO or change-me values."
@@ -188,6 +204,7 @@ if [ "$CHECK" = 1 ]; then
   esac
   echo "- pause existing measuring and notifier services before migrations (queued work is retained)"
   echo "- apply migrations, then roll out pdf, api, mcp, ai, assistant-background, assistant-overnight, realtime, status, notifier, files, converter and the web app"
+  [ "$plugin_on" = 1 ] && echo "- roll out the separate plugin recipient at $plugin_url" || echo "- leave the plugin recipient disabled"
   [ "$semantic_on" = 1 ] && echo "- start the updated measuring service (semantic profile enabled)" || echo "- leave the measuring service stopped (semantic profile off)"
   echo "- scanned pages and photos: read with the built-in Tesseract"
   [ "$formula_on" = 1 ] && echo "- start or replace the formula model (equations on scans)" || echo "- no formula model (the formula profile is off; scanned equations keep a placeholder)"
@@ -196,7 +213,7 @@ if [ "$CHECK" = 1 ]; then
   [ -n "$tunnel_token" ] && echo "- start or update the Cloudflare tunnel" || echo "- no tunnel (CLOUDFLARE_TUNNEL_TOKEN unset)"
   echo "- prune leftover images; check /version"
   echo
-  echo "APP_URL=${app_url:-unset}  CORS_ORIGINS=${cors:-unset}  MCP_PUBLIC_URL=$mcp_url"
+  echo "APP_URL=${app_url:-unset}  CORS_ORIGINS=${cors:-unset}  MCP_PUBLIC_URL=$mcp_url  PLUGIN_PUBLIC_URL=${plugin_url:-disabled}"
   compose --env-file "$ENV_FILE" config --quiet && echo "compose.yaml + $ENV_FILE: valid"
   [ "$problems" = 0 ] && echo "Preflight: OK" || { echo "Preflight: fix the problems above."; exit 1; }
   exit 0
@@ -217,6 +234,7 @@ export GIT_SHA BUILD_TIME GATEWAY_CONFIG_SHA
 
 log "Building images for $GIT_SHA"
 compose build
+if [ "$plugin_on" = 1 ]; then compose build plugin; fi
 
 # Only started if missing: recreating them would drop every connection the
 # running services hold. Apply database or pooler changes deliberately with
@@ -341,6 +359,11 @@ rollout pdf "$(setting PDF_REPLICAS 1)"
 rollout api "$(setting API_REPLICAS 2)"
 # Outside agents (MCP): stateless, so copies roll over like the API's.
 rollout mcp "$(setting MCP_REPLICAS 2)"
+if [ "$plugin_on" = 1 ]; then
+  rollout plugin 1
+else
+  compose stop plugin >/dev/null 2>&1 || true
+fi
 rollout ai "$(setting AI_REPLICAS 2)"
 rollout assistant-background "$(setting ASSISTANT_BACKGROUND_REPLICAS 1)"
 rollout assistant-overnight "$(setting ASSISTANT_OVERNIGHT_REPLICAS 1)"
