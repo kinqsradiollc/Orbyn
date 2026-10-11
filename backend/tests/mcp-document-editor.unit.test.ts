@@ -178,3 +178,50 @@ test("delayed save retains the displayed target and refresh cannot replace a swi
   f.run("discardDoc.onclick()");
   assert.equal(f.run("doc.id"), "doc:C");
 });
+
+test("refresh locks draft and mutation controls; failure restores editing without losing text", async () => {
+  const f = fixture();
+  f.render(result());
+  f.run('draft.value="Kept ^bline";draft.oninput();refreshDoc.onclick()');
+  assert.equal(f.nodes.get("document-source")!.readOnly, true);
+  assert.equal(f.nodes.get("document-line")!.disabled, true);
+  assert.equal(f.nodes.get("document-review")!.disabled, true);
+  f.run("review.onclick();saveDoc.onclick();discardDoc.onclick()");
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.calls[0].params.name, "fetch");
+  f.calls[0].reject(new Error("read unavailable"));
+  await settle();
+  assert.equal(f.nodes.get("document-source")!.value, "Kept ^bline");
+  assert.equal(f.nodes.get("document-source")!.readOnly, false);
+  assert.equal(f.nodes.get("document-line")!.disabled, false);
+  assert.equal(f.nodes.get("document-review")!.disabled, false);
+  f.run("review.onclick();saveDoc.onclick()");
+  assert.equal(f.calls.length, 2);
+  assert.equal(f.calls[1].params.name, "edit_doc");
+  f.calls[1].resolve({ structuredContent: { done: [] } });
+  await settle();
+});
+
+test("failed refresh retains an already rejected immutable snapshot until explicit recovery", async () => {
+  const f = fixture();
+  f.render(result());
+  f.run(
+    'draft.value="Kept ^bline";draft.oninput();review.onclick();saveDoc.onclick()',
+  );
+  f.calls[0].resolve({
+    isError: true,
+    _meta: { "orbyn/error": { code: "CONFLICT" } },
+  });
+  await settle();
+  const snapshot = f.run("operation");
+  f.run("refreshDoc.onclick()");
+  f.calls[1].resolve({ isError: true });
+  await settle();
+  assert.equal(f.run("operation"), snapshot);
+  assert.equal(f.nodes.get("document-source")!.value, "Kept ^bline");
+  assert.equal(f.nodes.get("document-source")!.readOnly, true);
+  assert.equal(f.nodes.get("document-review")!.disabled, true);
+  f.run("discardDoc.onclick()");
+  assert.equal(f.run("operation"), null);
+  assert.equal(f.nodes.get("document-source")!.readOnly, false);
+});
