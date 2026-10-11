@@ -11,8 +11,10 @@
   closed in round 2/3. Earlier round-1 runtime `937cb16f` and documentation
   `b607e1dc` remain historical evidence.
 - Phase: local unified `/mcp` code checkpoint accepted and pushed under
-  [ADR 002](../adr/002-unified-mcp-integration.md), awaiting owner deployment and
-  full canonical-host qualification. Review remains **round 2/3**. The earlier
+  [ADR 002](../adr/002-unified-mcp-integration.md). The owner reported deployment
+  on 12 October; its hash remains unverified. Canonical authenticated reads and
+  synthetic document save/replay/conflict checks now pass; full canonical-host
+  qualification remains open. Review remains **round 2/3**. The earlier
   round-1 `/plugin` evidence does not qualify the newly requested host path.
 - Owner supplied deployed commit `b3d02d19` and reports `/plugin` recovered on 11 October 2026. Independent browser discovery and real-host acceptance remain open; full C6 is not complete.
 
@@ -57,6 +59,14 @@ native build is requested; retain delegated synthetic evidence with its limits.
   157 passed/3 failed; corrected attempts do not erase or add to these totals.
 
 ## Required external gates still open
+
+Current post-deployment evidence is in
+[the 12 October connector report](c6-production-tool-evidence-2026-10-12.md).
+Canonical authentication recovered after owner sign-in. Synthetic create/fetch,
+versioned save, exact request replay and stale-write rejection were observed.
+Visual Check reports rendered Markdown, table and Mermaid; final host interaction
+and screenshot evidence remain with that session. These observations do not
+close the broader gates below.
 
 - Canonical `/mcp` HTTPS host discovery/OAuth, account switching/reconnect/events,
   negotiated result/Docs previews and portable fallback, explicit Docs edits,

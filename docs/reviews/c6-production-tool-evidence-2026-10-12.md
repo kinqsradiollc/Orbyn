@@ -23,10 +23,36 @@ The connection error itself does not reveal its configured URL. Visual Check
 was asked to inspect the canonical entry and reconnect/sign-in step, preserving
 Orbyn Plugin. The user must handle any required third-party account consent.
 
+## Successful retry after owner sign-in
+
+The owner completed sign-in. A subsequent canonical Orbyn `get_context({})`
+returned `isError=false` and connection kind `oauth`. The initial unauthorized
+result above is retained as history; canonical authenticated access now works.
+
+Builder created one explicitly labelled synthetic Personal fixture:
+`doc:07775a91-a645-433c-930a-c79f9a5c68c4`, titled
+`[QA] C6 canonical MCP preview — 2026-10-12`. Existing personal documents were
+not edited. The fixture includes Markdown emphasis, inline code, a table, a
+Mermaid source block, a link and one editable QA line.
+
+| Check | Observed result |
+| --- | --- |
+| Canonical create and fetch | Success, fixture version 1; complete anchored Markdown returned. |
+| Anchored save | Success, version 1 → 2; only the synthetic QA line changed. |
+| Exact request replay | Same client reference returned version 2; no duplicate change. |
+| Stale write with a new client reference | Rejected; text reports `VERSION_CONFLICT`, structured code is `INVALID_ARGUMENT`. |
+| Fetch after stale write | Version 2 and intended QA line retained; stale text absent. |
+
+The connected create/fetch responses expose no `_meta` fields. This observation
+does not establish whether the host strips metadata, previews are disabled, or
+the deployed runtime differs. Rendered card capability remains a separate check.
+Builder handed the fixture writer to Visual Check at version 2 for the actual
+host Review → Submit interaction. These API calls do not prove that UI flow.
+
 ## Remaining gates
 
-Canonical discovery/issuer, fresh authenticated `/mcp` connection, negotiated
+Canonical discovery/issuer, negotiated
 previews and portable fallback, synthetic Docs Markdown/Mermaid/edit/conflict/
 proposal interaction, supported host files/mentions, account/reconnect/revocation
 and live managed/BYO qualification remain open. No new visual, host or full-C6
-pass is claimed by these two connector calls. U1 remains unstarted.
+pass is claimed by the connector and fixture calls. U1 remains unstarted.
