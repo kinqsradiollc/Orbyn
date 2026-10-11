@@ -41,7 +41,7 @@ The shortest path from a fresh server to a working site, with the details in the
 
 1. Put the domain on Cloudflare DNS and create a tunnel (Zero Trust → Networks → Tunnels); give it
    a public hostname pointing at `http://gateway:8081`.
-2. On your machine, fill in `.env.production`: the tunnel token, `APP_URL` and `CORS_ORIGINS` as
+2. On your machine, create `.env.production` from `.env.production.example` (preserve an existing file and its encryption keys), then fill it in: the tunnel token, `APP_URL` and `CORS_ORIGINS` as
    `https://your-domain`, a generated `POSTGRES_PASSWORD` and `SECRETS_KEY`, and
    how mail goes out (your own mail server, or a provider). Never commit it; git ignores it.
 3. Still on your machine, check the file before it travels:
