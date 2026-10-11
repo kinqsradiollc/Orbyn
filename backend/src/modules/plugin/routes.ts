@@ -21,8 +21,12 @@ import {
   pluginResources,
   pluginToolUiMeta,
   PLUGIN_ENTRYPOINT,
+  PLUGIN_MARKDOWN_FILE,
   pluginEntrypointResult,
   pluginEntrypointTool,
+  pluginMarkdownFileInput,
+  pluginMarkdownFileResult,
+  pluginMarkdownFileTool,
   readPluginResource,
 } from "./ui-resources.js";
 import { pluginRead, pluginWrite } from "./execute.js";
@@ -47,27 +51,33 @@ function pluginTools(principal: Principal, live: LiveSettings) {
     allowed.some((cap) => cap.name === "get_today")
   )
     tools.push(pluginEntrypointTool);
+  if (live.agents.mcp_apps_enabled) tools.push(pluginMarkdownFileTool);
   return tools;
 }
-async function openPluginEntrypoint(
+async function openPluginSurface(
   principal: Principal,
   live: LiveSettings,
+  name: string,
   args: Record<string, unknown>,
   limiter: Limiter,
 ) {
-  if (
-    !pluginTools(principal, live).some(
-      (tool) => tool.name === PLUGIN_ENTRYPOINT,
-    )
-  )
+  if (!pluginTools(principal, live).some((tool) => tool.name === name))
     throw new PluginCallError(403, {
       error: "FORBIDDEN",
       message: "This entrypoint is unavailable to this connection.",
     });
-  if (Object.keys(args).length)
+  if (name === PLUGIN_ENTRYPOINT && Object.keys(args).length)
     throw new PluginCallError(400, {
       error: "INVALID",
       message: "This entrypoint takes no arguments.",
+    });
+  if (
+    name === PLUGIN_MARKDOWN_FILE &&
+    !pluginMarkdownFileInput.safeParse(args).success
+  )
+    throw new PluginCallError(400, {
+      error: "INVALID",
+      message: "Open a Markdown file supplied by the host.",
     });
   const slot = await limiter.take(
     principal.grant_id!,
@@ -82,7 +92,9 @@ async function openPluginEntrypoint(
       slot.retryAfter,
     );
   try {
-    return pluginEntrypointResult(args);
+    return name === PLUGIN_ENTRYPOINT
+      ? pluginEntrypointResult(args)
+      : pluginMarkdownFileResult();
   } finally {
     slot.release();
   }
@@ -489,8 +501,8 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
           tools,
           uiEnabled: live.agents.mcp_apps_enabled,
           invoke: async (name, args) => {
-            if (name === PLUGIN_ENTRYPOINT)
-              return openPluginEntrypoint(principal, live, args, limiter);
+            if (name === PLUGIN_ENTRYPOINT || name === PLUGIN_MARKDOWN_FILE)
+              return openPluginSurface(principal, live, name, args, limiter);
             const result = await dispatchPluginTool(
               request,
               { name, arguments: args },
@@ -546,10 +558,14 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
           message: "Send a tool name and arguments object.",
         });
       try {
-        if (input.data.name === PLUGIN_ENTRYPOINT)
-          return await openPluginEntrypoint(
+        if (
+          input.data.name === PLUGIN_ENTRYPOINT ||
+          input.data.name === PLUGIN_MARKDOWN_FILE
+        )
+          return await openPluginSurface(
             request.pluginCaller!.principal,
             await settings(),
+            input.data.name,
             input.data.arguments,
             limiter,
           );

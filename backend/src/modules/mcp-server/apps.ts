@@ -57,6 +57,9 @@ h2{font-size:13px;font-weight:600;color:var(--color-textSoft);margin:12px 0 4px}
 button{font:inherit;font-weight:500;padding:8px 14px;border-radius:8px;border:1px solid var(--color-border);background:var(--color-surface);color:var(--color-text);cursor:pointer}
 button.primary{background:var(--color-accent);border-color:var(--color-accent);color:var(--color-background)}
 button:disabled{opacity:.6;cursor:default}
+textarea{display:block;width:100%;min-height:55vh;max-height:75vh;resize:vertical;margin:12px 0;padding:14px;border:1px solid var(--color-border);border-radius:8px;background:var(--color-background);color:var(--color-text);font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;overflow:auto;overflow-wrap:anywhere}
+textarea:focus-visible,button:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+textarea[readonly]{border-color:var(--color-divider)}
 .note{font-size:13px;color:var(--color-textSoft);margin:8px 0 0}
 .empty{color:var(--color-muted)}
 `;
@@ -78,6 +81,8 @@ window.addEventListener("message",(e)=>{
   if(e.source!==window.parent)return;const m=e.data;if(!m||m.jsonrpc!=="2.0")return;
   if(m.id!==undefined&&pending.has(m.id)&&!m.method){const p=pending.get(m.id);pending.delete(m.id);m.error?p.rej(m.error):p.res(m.result);return;}
   if(m.method==="ui/notifications/tool-result"){render(m.params||{});resize();}
+  if(m.method==="ui/notifications/tool-input"&&typeof onToolInput==="function")onToolInput(m.params||{});
+  if(m.method==="notifications/resources/updated"&&typeof onResourceUpdated==="function")onResourceUpdated(m.params||{});
   if(m.method==="ui/notifications/host-context-changed"&&m.params&&m.params.theme)theme(m.params.theme);
 });
 request("ui/initialize",{protocolVersion:"2026-01-26",appInfo:{name:"orbyn",version:"1"},appCapabilities:{}})
@@ -162,7 +167,86 @@ function render(result){
 }`,
 };
 
-export const APP_CARDS: Card[] = [TODAY, PLAN, REVIEW];
+const MARKDOWN_FILE: Card = {
+  uri: "ui://orbyn/markdown-file.html",
+  name: "Markdown file",
+  description: "View or edit a Markdown file opened in the host.",
+  tools: ["open_markdown_file"],
+  body: `<main class="card"><div class="row"><h1 id="file-name">Markdown file</h1><span class="tag" id="mode">Opening</span></div><p class="sub" id="file-status">Waiting for the file.</p><textarea id="source" aria-label="Markdown source" spellcheck="false" readonly></textarea><div class="row"><button id="save" class="primary" hidden disabled>Save</button><button id="reload" hidden>Reload</button></div></main>`,
+  script: `
+let fileUri=null,etag=null,original="",generation=0,dirty=false,canSave=false,discardPending=false,subscribedUri=null;
+const source=document.getElementById("source"),save=document.getElementById("save"),reload=document.getElementById("reload");
+const status=document.getElementById("file-status"),mode=document.getElementById("mode"),title=document.getElementById("file-name");
+const note=(value)=>{status.textContent=value;resize();};
+function render(){/* The file is delivered as tool input, never tool output. */}
+function onToolInput(params){
+  const file=params&&params.arguments&&params.arguments.file;
+  if(!file||typeof file.name!=="string"||typeof file.resourceUri!=="string"||file.name.includes("/")||file.name.includes("\\\\")||!/^.+\\.(md|markdown)$/i.test(file.name)||!file.resourceUri.trim()){
+    note("This Markdown file is unavailable.");return;
+  }
+  if(subscribedUri&&subscribedUri!==file.resourceUri)request("resources/unsubscribe",{uri:subscribedUri}).catch(()=>{});
+  subscribedUri=null;fileUri=file.resourceUri;title.textContent=file.name;dirty=false;discardPending=false;loadFile();
+}
+async function loadFile(){
+  if(!fileUri)return;const current=++generation;source.readOnly=true;save.hidden=true;reload.hidden=true;
+  mode.textContent="Opening";note("Opening file…");
+  try{
+    const result=await request("resources/read",{uri:fileUri,_meta:{"openai/resource":{representation:"text"}}});
+    if(current!==generation)return;
+    const item=result&&result.contents&&result.contents[0];
+    let value=typeof item?.text==="string"?item.text:null;
+    if(value===null&&typeof item?.blob==="string"&&item.blob.length<=1400000){
+      const bytes=Uint8Array.from(atob(item.blob),c=>c.charCodeAt(0));
+      value=new TextDecoder("utf-8",{fatal:true}).decode(bytes);
+    }
+    if(value===null){mode.textContent="Unavailable";note("The host could not provide Markdown text.");return;}
+    const limited=value.length>500000;original=limited?value.slice(0,500000):value;
+    source.value=original;dirty=false;
+    const metadata=item&&item._meta&&item._meta["openai/resource"]||{};
+    etag=typeof metadata.etag==="string"&&metadata.etag?metadata.etag:null;
+    canSave=!limited&&metadata.writable===true&&!!etag;
+    source.readOnly=!canSave;save.hidden=!canSave;save.disabled=true;reload.hidden=false;
+    mode.textContent=canSave?"Editable":"Read only";
+    note(limited?"Showing the first 500,000 characters. Editing is disabled.":canSave?"Edit the Markdown source, then save.":"Markdown source");
+    if(subscribedUri!==fileUri){
+      const subscribed=fileUri;
+      request("resources/subscribe",{uri:subscribed}).then(()=>{
+        if(fileUri===subscribed)subscribedUri=subscribed;
+        else request("resources/unsubscribe",{uri:subscribed}).catch(()=>{});
+      }).catch(()=>{});
+    }
+  }catch{if(current!==generation)return;mode.textContent="Unavailable";note("Could not open this file. Try again.");reload.hidden=false;}
+}
+source.addEventListener("input",()=>{dirty=source.value!==original;save.disabled=!canSave||!dirty;discardPending=false;note(dirty?"Unsaved changes":"All changes saved");});
+save.onclick=async()=>{
+  if(!canSave||!dirty||!fileUri||!etag)return;
+  const current=++generation,submitted=source.value;save.disabled=true;note("Saving…");
+  try{
+    const result=await request("openai/resources/write",{uri:fileUri,text:submitted,ifMatch:etag});
+    if(current!==generation)return;
+    if(result&&result.outcome==="saved"&&typeof result.etag==="string"){
+      original=submitted;etag=result.etag;dirty=source.value!==original;note(dirty?"Unsaved changes":"Saved");return;
+    }
+    if(result&&result.outcome==="conflict"){canSave=false;mode.textContent="Conflict";note("This file changed elsewhere. Copy your edits before reloading.");return;}
+    if(result&&result.outcome==="too-large"){note("This file exceeds the host's save limit.");return;}
+    note("The host did not save this file.");
+  }catch{if(current===generation)note("Save failed. Your edits are still here.");}
+  finally{if(current===generation)save.disabled=!canSave||!dirty;}
+};
+reload.onclick=()=>{
+  if(dirty&&!discardPending){discardPending=true;note("Unsaved changes. Press Reload again to discard them.");return;}
+  dirty=false;discardPending=false;loadFile();
+};
+function onResourceUpdated(params){
+  if(!fileUri||params.uri!==fileUri)return;
+  if(dirty){note("This file changed elsewhere. Copy your edits before reloading.");return;}
+  loadFile();
+}
+window.addEventListener("pagehide",()=>{if(subscribedUri)request("resources/unsubscribe",{uri:subscribedUri}).catch(()=>{});});
+`,
+};
+
+export const APP_CARDS: Card[] = [TODAY, PLAN, REVIEW, MARKDOWN_FILE];
 
 /** The card a tool's answer can be shown in, if any. */
 export const cardFor = (tool: string) =>

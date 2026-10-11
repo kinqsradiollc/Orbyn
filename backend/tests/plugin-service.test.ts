@@ -613,6 +613,43 @@ test("plugin UI resources require current grants, UI opt-in and bounded identifi
       kind: "plugin_home",
     });
     assert.equal(opened.body.includes(userId), false);
+    const markdownTool = tools
+      .json()
+      .tools.find((tool: any) => tool.name === "open_markdown_file");
+    assert.deepEqual(markdownTool?._meta?.["openai/ui"], {
+      entrypoints: [{ type: "file", extensions: [".md", ".markdown"] }],
+    });
+    const fileUri = "host-resource://opaque-file";
+    const fileOpened = await app.inject({
+      method: "POST",
+      url: "/plugin/tools/call",
+      headers,
+      payload: {
+        name: "open_markdown_file",
+        arguments: { file: { name: "notes.md", resourceUri: fileUri } },
+      },
+    });
+    assert.equal(fileOpened.statusCode, 200, fileOpened.body);
+    assert.deepEqual(fileOpened.json().structuredContent, {
+      kind: "markdown_file",
+    });
+    assert.equal(fileOpened.body.includes(fileUri), false);
+    assert.equal(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/plugin/tools/call",
+          headers,
+          payload: {
+            name: "open_markdown_file",
+            arguments: {
+              file: { name: "../private.md", resourceUri: fileUri },
+            },
+          },
+        })
+      ).statusCode,
+      400,
+    );
     assert.equal(
       (
         await app.inject({

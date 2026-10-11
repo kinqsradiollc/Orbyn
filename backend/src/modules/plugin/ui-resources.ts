@@ -5,6 +5,7 @@ import { cardResources, readCard, toolUiMeta } from "../mcp-server/apps.js";
 
 /** A sidebar launch returns no account content; a separate user click reads Today. */
 export const PLUGIN_ENTRYPOINT = "open_orbyn";
+export const PLUGIN_MARKDOWN_FILE = "open_markdown_file";
 export const pluginEntrypointTool: ToolDescription & {
   _meta: Record<string, unknown>;
 } = {
@@ -42,11 +43,77 @@ export function pluginEntrypointResult(
   };
 }
 
+/** The host supplies only an opaque file handle; the backend never reads its path or contents. */
+export const pluginMarkdownFileInput = z
+  .object({
+    file: z
+      .object({
+        name: z
+          .string()
+          .min(1)
+          .max(256)
+          .regex(/^[^/\\\r\n]+\.(?:md|markdown)$/i),
+        resourceUri: z.string().trim().min(1).max(2048),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const pluginMarkdownFileTool: ToolDescription & {
+  _meta: Record<string, unknown>;
+} = {
+  name: PLUGIN_MARKDOWN_FILE,
+  title: "Markdown in Orbyn",
+  description: "Open a Markdown file from the host in Orbyn's source editor.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      file: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          resourceUri: { type: "string" },
+        },
+        required: ["name", "resourceUri"],
+        additionalProperties: false,
+      },
+    },
+    required: ["file"],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: "object",
+    properties: { kind: { const: "markdown_file" } },
+    required: ["kind"],
+  },
+  annotations: {
+    title: "Markdown in Orbyn",
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  },
+  _meta: {
+    ...toolUiMeta(PLUGIN_MARKDOWN_FILE),
+    ui: { resourceUri: "ui://orbyn/markdown-file.html", visibility: ["app"] },
+    "openai/ui": {
+      entrypoints: [{ type: "file", extensions: [".md", ".markdown"] }],
+    },
+  },
+};
+
+export function pluginMarkdownFileResult(): ToolResult {
+  return {
+    content: [{ type: "text", text: "Markdown file ready in the host." }],
+    structuredContent: { kind: "markdown_file" },
+  };
+}
+
 /** Portable cards remain available without host-specific entrypoints. */
 export function pluginToolUiMeta(tool: string): Record<string, unknown> | null {
-  return tool === PLUGIN_ENTRYPOINT
-    ? pluginEntrypointTool._meta
-    : toolUiMeta(tool);
+  if (tool === PLUGIN_ENTRYPOINT) return pluginEntrypointTool._meta;
+  if (tool === PLUGIN_MARKDOWN_FILE) return pluginMarkdownFileTool._meta;
+  return toolUiMeta(tool);
 }
 
 /** Host addresses are exact resource identifiers, never URLs fetched by the backend. */
