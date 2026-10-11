@@ -1,41 +1,42 @@
 # C5 delivery record
 
-## Review handoff — round 1/3
+## Final handoff — accepted, main delivery pending
 
-**Current: Builder corrections within round 1/3.** Reviewer requested C5-R1
-(pause after human edit) and C5-R2 (withdrawn pre-queue comment quota).
-Product source now has uncommitted corrections after `046c0b85`; do not describe
-the working tree as frozen. Lifecycle control retains snapshots, cancels active
-runs, and requires rebind to resume changed source. Scanner/creation cleanup retires
-irreversibly withdrawn comment sources while retaining dedup records and active
-runs. Initial correction checks passed 15/15; expanded run-state/parent-thread
-checks passed 24/24 and workspace types passed. Revised freeze and Tester retest are next.
-Visual Check was told to retain exact served-source provenance during these edits.
+**Accepted candidate:** `bbb7f28d0eb55b27ae1d8fea4b50c717b96b9dc5` on `codex/c5-pages-publication`, based on main
+`9c7c3fdb`. Reviewer accepted C5 in round **1/3** under the agreed scope and explicit
+live Slack/Teams and native deferrals. R1, R2, C5-VIS-001 and C5-E1 are closed.
 
-Frozen product source remains `046c0b85a56b82966db7f398c63c8537fbb5bea5`.
-Tester report: [c5-test-report.md](c5-test-report.md): build/types, existing/fresh
-migrations, **471/471** focused contracts and **78/78** structured/docs regressions
-passed. Reviewer now owns code and evidence assessment; full review counter **1/3**.
-Documentation updates in architecture/setup and tracking reports are uncommitted;
-product/test source is unchanged. New Visual Check session
-`01a12831-cdc4-7340-8af3-63f2ccf7aafc` is correcting preview provenance and completing
-the bounded UI batch. Current internal-browser navigation succeeded; the old saved
-Block note is historical, not a newly observed denial. No visual acceptance yet.
-Live Slack/Teams delivery remains user-deferred. No main merge/push yet.
+Tester evidence is incremental by candidate: baseline `046c0b85` build/workspace
+types/migrations and **471/471** focused plus **78/78** structured/docs tests;
+**88/88** on `dc75c780`; **9/9** on `7f7bc08f`; **11/11** plus api-client build on
+`d416d6bb`; mobile typecheck on `82dee01b`; **10/10** plus api-client build on
+`a713bfbd`; and desktop/mobile typechecks on `bbb7f28d`. No final full-backend suite
+rerun is claimed. See [Tester evidence](c5-test-report.md) for candidate-specific
+scope and receipts.
 
-Started 11 October 2026 from main `9c7c3fdb` on `codex/c5-pages-publication`.
-Phase: **Test**. Frozen full candidate: `046c0b85a56b82966db7f398c63c8537fbb5bea5`.
-Tester qualification and bounded Visual Check are dispatched. Review round: **0/3**.
+Final bounded Visual evidence confirms Home-to-Docs structured navigation and the
+initial reply-review list on `bbb7f28d`; web→Expo and Expo→web posting each updated the
+already-open thread without refresh/reopen while preserving the other client's unsent
+draft. Expo selected sharing, snapshot/live modes, consent and revoke were verified on
+`82dee01b`; later fixes affected navigation and reply-list visibility, not publication.
+The two reply proposals used a local mock provider. Screenshots were inspected inline
+and have no supported file export path. This qualifies the bounded assigned visual
+scope, not live provider execution, native behavior or a broad final-suite rerun.
 
-Complete maintained page bindings/schedules and scoped mentions, publication
-consent/revocation, and Slack/Teams channel lifecycle before Test → Review.
-Both shared web/desktop and mobile clients are in scope. Keep permission,
-revision, human-edit, source-privacy and waiting-reply boundaries intact.
+C5 is accepted but **not merged or pushed to main**; production deployment remains
+user-owned. Live Slack/Teams delivery and native iOS/Android checks remain deferred
+and unverified. C6 has not started. All prior candidate handoffs and receipts below
+are retained as history.
 
-The user explicitly deferred live Slack/Teams workspace checks on 11 October;
-implement and verify local contracts without claiming external delivery proof.
-C4/D1 browser checks remain production follow-ups, not passes. Production
-deployment is user-owned. No C5 acceptance, main merge/push or production deployment yet.
+Accepted C5 scope covers maintained page bindings/schedules and scoped mentions,
+publication consent/revocation, and Slack/Teams channel lifecycle across shared
+web/desktop and mobile clients. Permission, revision, human-edit, source-privacy and
+waiting-reply boundaries were preserved.
+
+Live Slack/Teams workspace checks remain explicitly deferred and unverified; local
+channel tests do not establish external delivery. C4/D1 browser checks remain
+production follow-ups and are not part of C5 acceptance. Production deployment is
+user-owned. Main integration/merge/push remains pending.
 
 Initial audit: structured Docs bypasses the old editor's maintenance controls;
 maintenance persistence and its client store still assume legacy flat content.
@@ -135,3 +136,24 @@ browser permission block without alternate-browser/port bypass.
 Known boundaries: legacy whole-page/folder publication remains visible and
 revocable, separate from new selected-block links. No live Slack/Teams claim;
 production deployment and the earlier C4 production UI follow-up remain user-owned.
+
+## Reply refresh correction — 7f7bc08f (round 1/3 continuation)
+
+C5-VIS-001 correction frozen at `7f7bc08fbed63552354ff4186b08acd48298b72d`.
+Shared authorized document-event refresh now updates comments independently of
+content version and local decisions invalidate open views. Refreshes coalesce,
+late loads are session/disposal fenced, and failed loads retain prior comments
+with Retry. Comment composers and resolved filters stay mounted. Open review
+cards refresh runs independently of the editor content.
+
+Builder checks: 9/9 focused refresh/store tests passed
+(`/tmp/orbyn-c5-refresh-unit-final.log`); final workspace typecheck passed
+(`/tmp/orbyn-c5-refresh-types-final.log`). Earlier typecheck encountered a stale
+shared declaration while source was still being edited; retained at
+`/tmp/orbyn-c5-refresh-types.log`. Final shared rebuild and typecheck exited 0.
+
+Tester received the frozen candidate for formal focused verification. Visual
+Check received the bounded two-client posting/draft-preservation recheck and
+originally missing Expo sharing coverage. Reviewer acceptance and main delivery
+remain pending. No backend source changed in this correction; live Slack/Teams
+remains user-deferred. C6 has not started.

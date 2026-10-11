@@ -1,6 +1,6 @@
 # ADR implementation tracker
 
-Updated 10 October 2026. Follow the full contract in
+Updated 11 October 2026. Follow the full contract in
 [the implementation review](devday-2026-implementation-review.md) and
 [the top-down execution order](adr-execution-order.md).
 Detailed qualification and historical failures remain in
@@ -16,12 +16,34 @@ sign-in is explicitly deferred. Production deployment remains user-owned.
 **C3** passed Test → Review in round **1/3** and was pushed to `main` at
 `db0913e6`. It delivers separate Background/Overnight agent profiles and
 activity, typed rules and authority rechecks, bounded handoffs, and cumulative
-lane budgets. See [C3 closeout](c3-closeout-2026-10-09.md). The user requested
-the broader goal be paused after C3.
+lane budgets. See [C3 closeout](c3-closeout-2026-10-09.md). The broader goal was
+paused after C3 and resumed into C5 on 11 October. C4/D1 is accepted for main under
+the user's 10 October scope decision; browser interaction and visual checks are
+deferred to production and remain unverified. See [C4/D1 delivery record](c4-d1-progress.md).
 
-**Next stage when resumed:** C5. C4/D1 is accepted for main under the user's
-10 October scope decision; browser interaction and visual checks are deferred
-to production and remain unverified. See [C4/D1 delivery record](c4-d1-progress.md).
+**Current delivery: C5 accepted in review round 1/3; main delivery pending.**
+Reviewer accepted candidate `bbb7f28d0eb55b27ae1d8fea4b50c717b96b9dc5` on `codex/c5-pages-publication`, based on main
+`9c7c3fdb`. R1, R2, C5-VIS-001 and C5-E1 are closed under the agreed scope.
+
+Tester evidence is incremental and candidate-scoped: the baseline `046c0b85` build,
+workspace types, migrations, **471/471** focused and **78/78** structured/docs tests;
+**88/88** on `dc75c780`; **9/9** on `7f7bc08f`; **11/11** and api-client build on
+`d416d6bb`; mobile typecheck on `82dee01b`; **10/10** and api-client build on
+`a713bfbd`; desktop and mobile typechecks on `bbb7f28d`. No final full-backend
+suite rerun is claimed.
+
+Visual evidence: Home-to-Docs structured navigation and initial reply-review list
+were confirmed on `bbb7f28d`. Web-to-Expo and Expo-to-web posting updated the already-open
+thread without refresh/reopen and preserved each unsent draft. Expo selected sharing,
+snapshot/live modes, consent and revoke were verified on `82dee01b` and remain
+unaffected by later navigation/reply-list changes. Evidence is bounded web/Expo with
+inline-only screenshots; mock replies do not qualify live provider execution.
+
+Live Slack/Teams delivery and native iOS/Android checks remain explicitly deferred
+and unverified. C5 is accepted, but has not been merged or pushed to main or deployed;
+C6 has not started. See the [C5 delivery record](c5-progress.md), [Tester report](c5-test-report.md),
+[review report](c5-review.md) and [Visual report](c5-visual-report.md). Production
+deployment remains user-owned.
 
 The user-requested product content cleanup across web/desktop and mobile
 passed Test → Review in round **1/3** and was pushed to
@@ -58,7 +80,7 @@ behavior is untested. See [C1 closeout](c1-closeout-2026-10-08.md),
 | ✓ C2/M1        | Accepted and pushed to main `c778c25f` under revised scope. Hosted web sign-in and phone-owned execution proof are follow-ups. |
 | ✓ C3           | Accepted round 1/3 and pushed to main `db0913e6`; separate agents, rules, handoffs and lane budgets qualified.                 |
 | ✓ C4/D1        | Docs ownership/editing and D1 rendering qualified at code/API level. User deferred browser UI/UX checks to production; no visual or client interaction pass is claimed. |
-| ✗ C5           | Bound pages, schedules, publication consent and channels.                                                                      |
+| ✓ C5 (accepted) | Reviewer accepted `bbb7f28d` in round 1/3. Tester receipts are candidate-scoped; final `bbb7f28d` client typechecks passed. Visual confirmed Home navigation/reply-card visibility, two-way open-thread replies with drafts preserved, and Expo sharing. Live Slack/Teams and native checks are deferred. Main merge/push/deployment pending. |
 | ✗ C6           | Separate plugin backend/UI integrations and security qualification.                                                            |
 | ✗ U1 / cleanup | Whole-app parity and final integration; preserve character work and remove only safe merged branches/worktrees.                |
 
@@ -384,11 +406,11 @@ A completed checkpoint does not complete its entire stage.
 
 | Order                  | Stage                            | Done                                                                                                                                                                                                                                                                                                                                       | Still required                                                                                                                                                                                                                    |
 | ---------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1 — ACTIVE             | C1 providers/models/embeddings   | ✓ Managed/personal isolation, selected routing, native Responses recovery, queued managed authority. ✓ Supported reasoning/cache controls, all managed response-format usage, embedding consent correction, responsive provider controls/menu/zero-usage review on main. ✓ Fenced indexing retries/status and measuring-worker deployment. | ✗ Complete connection/model inventory and multi-provider matrix; embedding consent/reindex/runtime/client matrix; permitted OpenAI cache economics and remaining live-provider qualification.                                     |
+| 1 — RETAINED GATES     | C1 providers/models/embeddings   | ✓ Managed/personal isolation, selected routing, native Responses recovery, queued managed authority. ✓ Supported reasoning/cache controls, all managed response-format usage, embedding consent correction, responsive provider controls/menu/zero-usage review on main. ✓ Fenced indexing retries/status and measuring-worker deployment. | ✗ Complete connection/model inventory and multi-provider matrix; embedding consent/reindex/runtime/client matrix; permitted OpenAI cache economics and remaining live-provider qualification.                                     |
 | 2                      | C2/M1 ChatGPT connections/models | ✓ Desktop protected credentials, executor/catalog/default and explicit fallback/provenance foundations; authenticated GET /models and PUT /models/default. Native OAuth/recovery follow-ups remain candidate.                                                                                                                              | ✗ Standalone web connection without desktop dependency; installed iOS/Android connection/storage/recovery; eligible inference, verified plan and truthful usage; account/catalog/default switching and revocation across clients. |
 | 3                      | C3 Background/Overnight          | ✓ Separate lanes/profiles, characters, activity, rules/ownership, budgets and reflection foundations.                                                                                                                                                                                                                                      | ✗ All write paths/races/revocation; independent idle/running/waiting/stopped recovery; collaboration/reflection results; budget accounting and cross-client/native acceptance.                                                    |
 | 4                      | C4/D1 Docs                       | ✓ Structured storage/API/editor foundations and selected Markdown/Mermaid/export/privacy checkpoints. Complete-tree/task/editor activation remains candidate.                                                                                                                                                                              | ✗ Normal editor ownership, remaining flat writers/task identity, collaboration, full CommonMark/GFM/code/math/Mermaid/media/link/anchor/footnote/import/export/privacy matrix and web/native checks.                              |
-| 5                      | C5 pages/publication/channels    | ✓ Block bindings/jobs, comments, publication boundaries and separate Slack/Teams installation/outbox/reply/lifecycle foundations.                                                                                                                                                                                                          | ✗ Human-edit conflicts/source revocation/public consent; authorized real channel delivery/exact-question replies; tenant/lifecycle/reconnect and both-client acceptance.                                                          |
+| 5 — ACCEPTED          | C5 pages/publication/channels    | ✓ Candidate `bbb7f28d` accepted in round 1/3; R1/R2, C5-VIS-001 and C5-E1 closed. Candidate-scoped Tester receipts and bounded web/Expo evidence are recorded in linked reports.                                                                                                                                                              | ✗ Main integration/merge/push remains pending. Live Slack/Teams and native checks remain user-deferred/unverified; production deployment remains user-owned.                                                                   |
 | 6                      | C6 separate plugin backend       | ✓ Separate service/principal/grants, managed inference broker/permissions, launch context/UI/import/reconnect foundations.                                                                                                                                                                                                                 | ✗ Real host OAuth/UI/account switching/reconnect; production configuration; managed/BYO execution; authorized security scan and triage.                                                                                           |
 | Throughout; final gate | U1 whole-app UI                  | ✓ Settings modal, assistant/agent separation, selected Home/navigation/task controls. ✓ Current C1 provider controls/management and zero-usage states inspected on wide/narrow web and320/390 mobile browser, Light/Dark.                                                                                                                  | ✗ Every-page web/desktop/mobile matrix, positive/overflow/error/loading states, collapsed/nested panels, keyboard/large text and native acceptance. Browser checks do not prove installed-native parity.                          |
 | Last                   | Integration/cleanup              | ✓ Qualified scoped checkpoints pushed to main, latest product7260db93; unrelated local changes preserved.                                                                                                                                                                                                                                  | ✗ Qualify/promote remaining retained scope; reconcile branches/worktrees; remove only safe merged work after full acceptance.                                                                                                     |
