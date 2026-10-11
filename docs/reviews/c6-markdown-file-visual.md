@@ -2,6 +2,7 @@
 
 **Candidate:** `codex/c6-file-viewer` at `83c49c18ec24c2ea9e3b371d5bf5acef2f3d4316`  
 **Resource:** `ui://orbyn/markdown-file.html` from `backend/src/modules/mcp-server/apps.ts`
+**Review mode:** Delegated visual check; bounded cases only.
 
 ## Verified
 
@@ -26,3 +27,5 @@ No overlap or clipping was observed. Measured document widths matched their view
 ## Checkout provenance
 
 The checkout matched the frozen candidate `83c49c18ec24c2ea9e3b371d5bf5acef2f3d4316` at the start. During cleanup, the shared checkout reported `HEAD 34e21418486ea836f3bb8cc65a283ce8c812dd2f` with modifications to `backend/src/modules/mcp-server/apps.ts` and `backend/tests/plugin-ui-resources.unit.test.ts`. At the final status check it had advanced to `a98e6f040e236adcb2773aa0d3e013b1c327d41a`, with those modifications no longer present. This visual check did not edit product or test source; its observations remain tied to the frozen candidate above.
+
+Builder reports that `a98e6f04` guards duplicate saves/reloads during pending writes and preserves edits made while saving; layout and CSS are unchanged. Screenshots were not rerun against that follow-up commit.
