@@ -174,5 +174,7 @@ test("delayed save retains the displayed target and refresh cannot replace a swi
   f.render(result("doc:C"));
   f.calls[1].resolve(result("doc:B", 2));
   await settle();
+  assert.equal(f.run("doc.id"), "doc:B");
+  f.run("discardDoc.onclick()");
   assert.equal(f.run("doc.id"), "doc:C");
 });
