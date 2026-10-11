@@ -90,6 +90,9 @@ before(async () => {
       id: response.json().user.id,
     });
   }
+  await pool.query("UPDATE users SET role='admin' WHERE email=$1", [
+    adminEmail,
+  ]);
   providerId = (
     await pool.query(
       "INSERT INTO ai_providers(kind,name,base_url) VALUES ('openai','Fixture',$1) RETURNING id",

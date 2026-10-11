@@ -76,9 +76,97 @@ spec:
           envFrom:
             - configMapRef:
                 name: orbyn-config
-            - secretRef:
-                name: orbyn-secrets
           env:
+            - name: DATABASE_LISTEN_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_LISTEN_URL
+                  optional: true
+            - name: MAIL_INBOUND_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: MAIL_INBOUND_SECRET
+                  optional: true
+            - name: GITHUB_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: GITHUB_TOKEN
+                  optional: true
+            - name: SLACK_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: SLACK_CLIENT_ID
+                  optional: true
+            - name: SLACK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: SLACK_CLIENT_SECRET
+                  optional: true
+            - name: SLACK_SIGNING_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: SLACK_SIGNING_SECRET
+                  optional: true
+            - name: TEAMS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: TEAMS_CLIENT_ID
+                  optional: true
+            - name: TEAMS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: TEAMS_CLIENT_SECRET
+                  optional: true
+            - name: TEAMS_BOT_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: TEAMS_BOT_CLIENT_SECRET
+                  optional: true
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_URL
+                  optional: false
+            - name: DATABASE_READ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_READ_URL
+                  optional: true
+            - name: SECRETS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: SECRETS_KEY
+                  optional: true
+            - name: DOC_PDF_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DOC_PDF_KEY
+                  optional: true
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: SMTP_PASSWORD
+                  optional: true
+            - name: FILES_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: FILES_SECRET
+                  optional: true
             # Keep the V8 heap below the memory limit so Node collects garbage
             # before the kernel OOM-kills it.
             - name: NODE_OPTIONS

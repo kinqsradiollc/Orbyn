@@ -74,6 +74,7 @@ async function visiblePublication(token: string, db: Queryable = pool) {
      JOIN users u ON u.id=p.publisher_id AND NOT u.disabled
      LEFT JOIN teams t ON t.id=d.team_id
      WHERE p.token=$1 AND (p.expires_at IS NULL OR p.expires_at>clock_timestamp())
+       AND d.kind NOT IN ('memory','agent')
        AND ${docVisibleTo("p.publisher_id")}
        AND d.team_id IS NOT DISTINCT FROM p.source_team_id
        AND coalesce(t.publishing_allowed,true)`,
@@ -130,6 +131,8 @@ export async function scopedPublicationRoutes(app: FastifyInstance) {
       input = pagePublicationInput.parse(r.body);
     return transaction(async (db) => {
       const doc = await requireDoc(db, id, user, "items:write");
+      if (doc.kind === "memory" || doc.kind === "agent")
+        fail(403, "Private notes cannot be published.");
       if (doc.version !== input.expected_doc_version)
         fail(409, "Page changed. Review the selected blocks again.");
       if (input.expires_at && new Date(input.expires_at) <= new Date())

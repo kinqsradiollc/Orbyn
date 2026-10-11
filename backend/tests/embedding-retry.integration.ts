@@ -73,6 +73,9 @@ before(async () => {
   assert.equal(account.statusCode, 201, account.body);
   userId = account.json().user.id;
   token = account.json().token;
+  await pool.query("UPDATE users SET role='admin' WHERE email=$1", [
+    adminEmail,
+  ]);
   providerId = (
     await pool.query(
       "INSERT INTO ai_providers(kind,name,base_url) VALUES('openai','Retry fixture',$1) RETURNING id",

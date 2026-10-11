@@ -6,6 +6,7 @@ import {
   AGENT_FILE_TYPES,
   sniffPageFile,
 } from "@orbyn/core";
+import { pageFileReadableBy } from "../../lib/page-file-access.js";
 import { pool } from "../../db/pool.js";
 import { contentDisposition } from "../../lib/disposition.js";
 import {
@@ -30,7 +31,7 @@ import { isService, readClaimToken } from "../imports/tokens.js";
  */
 
 type UploadClaim = { f: string; u: string; e: number; m: number; t: string };
-type ReadClaim = { f: string; e: number };
+type ReadClaim = { f: string; u: string; e: number };
 
 /** Remove kept files whose row has gone, or whose upload failed. */
 export async function sweepPageFiles(): Promise<number> {
@@ -207,19 +208,23 @@ export async function pageFileStoreRoutes(app: FastifyInstance) {
     "/files/r/:token",
     { config: { rateLimit: { max: 600, timeWindow: "1 minute" } } },
     async (r, reply) => {
-      const claim = readClaimToken<ReadClaim>(
-        "page-read",
-        (r.params as { token: string }).token,
-      );
-      if (!claim)
+      const token = (r.params as { token: string }).token;
+      const serviceClaim = isService(r.headers["x-orbyn-service"])
+        ? readClaimToken<ReadClaim>("page-service-read", token)
+        : null;
+      const claim =
+        serviceClaim ?? readClaimToken<ReadClaim>("page-read", token);
+      if (!claim || (!serviceClaim && !claim.u))
         return reply
           .code(403)
           .send({ message: "This link has expired. Open the page again." });
       const row = (
         await pool.query<{ name: string; mime: string; kind: string }>(
-          `SELECT name, mime, kind FROM page_files
-            WHERE id = $1 AND status = 'ready'`,
-          [claim.f],
+          `SELECT f.name, f.mime, f.kind FROM page_files f
+            WHERE f.id = $1 AND f.status = 'ready'
+              AND ($3 OR (EXISTS(SELECT 1 FROM users u WHERE u.id=$2 AND NOT u.disabled)
+                AND ${pageFileReadableBy("$2")}))`,
+          [claim.f, claim.u ?? null, !!serviceClaim],
         )
       ).rows[0];
       if (!row) return reply.code(404).send({ message: "File not found" });
@@ -239,7 +244,7 @@ export async function pageFileStoreRoutes(app: FastifyInstance) {
           "Content-Disposition",
           disposition(download ? "attachment" : "inline", row.name),
         )
-        .header("Cache-Control", "private, max-age=3000")
+        .header("Cache-Control", "private, no-store")
         .header("X-Content-Type-Options", "nosniff")
         .header("Content-Security-Policy", "default-src 'none'; sandbox")
         .send(body);

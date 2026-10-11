@@ -440,3 +440,169 @@ test("publication read byte reservations prevent large concurrent buffers and re
     ]);
   }
 });
+
+test("private file links reject disabled users and legacy identity-free claims", async () => {
+  const f = await fixture();
+  const { readLink } = await import("../src/modules/page-files/service.js");
+  const { claimToken } = await import("../src/modules/imports/tokens.js");
+  const owner = (
+    await pool.query("SELECT user_id FROM docs WHERE id=$1", [f.id])
+  ).rows[0].user_id;
+  const file = (
+    await pool.query("SELECT * FROM page_files WHERE id=$1", [f.file])
+  ).rows[0];
+  const link = readLink(file, owner);
+  assert.equal(
+    (await app.inject({ method: "GET", url: link.url_path })).statusCode,
+    200,
+  );
+  const old = claimToken("page-read", {
+    f: f.file,
+    e: Math.floor(Date.now() / 1000) + 60,
+  });
+  assert.equal(
+    (await app.inject({ method: "GET", url: `/files/r/${old}` })).statusCode,
+    403,
+  );
+  await pool.query("UPDATE users SET disabled=true WHERE id=$1", [owner]);
+  try {
+    assert.equal(
+      (await app.inject({ method: "GET", url: link.url_path })).statusCode,
+      404,
+    );
+  } finally {
+    await pool.query("UPDATE users SET disabled=false WHERE id=$1", [owner]);
+  }
+});
+
+test("folder publication excludes private Memory navigation, guessed child paths and media", async () => {
+  const folder = (
+    await call("POST", "/folders", { name: "Public folder" })
+  ).json();
+  const privateDoc = await fixture(undefined, { folder_id: folder.id });
+  await pool.query(
+    "UPDATE docs SET kind='memory',title='Secret memory title' WHERE id=$1",
+    [privateDoc.id],
+  );
+  const publicDoc = await fixture(undefined, { folder_id: folder.id });
+  const slug = `privacy-${randomUUID().slice(0, 8)}`;
+  assert.equal(
+    (await call("PUT", `/folders/${folder.id}/publish`, { slug })).statusCode,
+    200,
+  );
+  const listing = await call("GET", `/p/${slug}`, undefined, false);
+  assert.equal(listing.statusCode, 200);
+  assert.ok(!listing.body.includes("Secret memory title"));
+  assert.equal(
+    (await call("GET", `/p/${slug}/${privateDoc.id}`, undefined, false))
+      .statusCode,
+    404,
+  );
+  assert.equal(
+    (
+      await call(
+        "GET",
+        `/p/${slug}/media/${privateDoc.id}/${privateDoc.file}`,
+        undefined,
+        false,
+      )
+    ).statusCode,
+    404,
+  );
+  assert.equal(
+    (await call("GET", privateDoc.path, undefined, false)).statusCode,
+    404,
+  );
+  assert.equal(
+    (
+      await call("PUT", `/docs/${privateDoc.id}/publish`, {
+        slug: `private-${slug}`,
+      })
+    ).statusCode,
+    404,
+  );
+  assert.equal(
+    (await call("GET", `/p/${slug}/${publicDoc.id}`, undefined, false))
+      .statusCode,
+    200,
+  );
+});
+test("password gate and rejected password do not reveal the protected title", async () => {
+  const f = await fixture("private-secret");
+  const title = "Unreleased private title";
+  await pool.query("UPDATE docs SET title=$2 WHERE id=$1", [f.id, title]);
+  const locked = await call("GET", f.path, undefined, false);
+  assert.equal(locked.statusCode, 401);
+  assert.ok(!locked.body.includes(title));
+  const refused = await call(
+    "POST",
+    `${f.path}/unlock`,
+    { password: "wrong" },
+    false,
+  );
+  assert.ok(!refused.body.includes(title));
+});
+
+test("public linked labels and backlinks exclude password-protected pages", async () => {
+  const hidden = await fixture("private-secret"),
+    visible = await fixture();
+  const hiddenTitle = "Confidential linked title";
+  await pool.query("UPDATE docs SET title=$2 WHERE id=$1", [
+    hidden.id,
+    hiddenTitle,
+  ]);
+  for (const [from, to, label] of [
+    [visible.id, hidden.id, hiddenTitle],
+    [hidden.id, visible.id, "Public target"],
+  ]) {
+    const doc = (await call("GET", `/docs/${from}`)).json();
+    const changed = await call("PUT", `/docs/${from}`, {
+      version: doc.version,
+      content: [{ type: "paragraph", text: `[${label}](orbyn://doc/${to})` }],
+    });
+    assert.equal(changed.statusCode, 200, changed.body);
+  }
+  const rendered = await call("GET", visible.path, undefined, false);
+  assert.equal(rendered.statusCode, 200, rendered.body);
+  assert.ok(!rendered.body.includes(hiddenTitle));
+  assert.ok(!rendered.body.includes(hidden.slug));
+});
+test("private signed file link loses access when its reader leaves the team", async () => {
+  const team = (
+    await call("POST", "/teams", { name: "Revocation team" })
+  ).json();
+  const f = await fixture(undefined, { team_id: team.id });
+  const member = (
+    await call(
+      "POST",
+      "/auth/register",
+      {
+        email: `revoked-${randomUUID()}@example.com`,
+        password: "a-long-test-password",
+        name: "Reader",
+      },
+      false,
+    )
+  ).json();
+  await pool.query(
+    "INSERT INTO team_members(team_id,user_id,role) VALUES($1,$2,'viewer')",
+    [team.id, member.user.id],
+  );
+  const { readLink } = await import("../src/modules/page-files/service.js");
+  const file = (
+    await pool.query("SELECT * FROM page_files WHERE id=$1", [f.file])
+  ).rows[0];
+  const link = readLink(file, member.user.id);
+  assert.equal(
+    (await app.inject({ method: "GET", url: link.url_path })).statusCode,
+    200,
+  );
+  await pool.query("DELETE FROM team_members WHERE team_id=$1 AND user_id=$2", [
+    team.id,
+    member.user.id,
+  ]);
+  assert.equal(
+    (await app.inject({ method: "GET", url: link.url_path })).statusCode,
+    404,
+  );
+});

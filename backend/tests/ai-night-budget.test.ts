@@ -28,6 +28,9 @@ before(async () => {
     users.push(result.json().user.id);
     tokens.push(result.json().token);
   }
+  await pool.query("UPDATE users SET role='admin' WHERE email=$1", [
+    adminEmail,
+  ]);
   providerId = (
     await pool.query(
       "INSERT INTO ai_providers(kind,name,base_url) VALUES('openai','Budget fixture','https://example.invalid/v1') RETURNING id",

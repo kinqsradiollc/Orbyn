@@ -5,6 +5,8 @@ Skills are used by the BrainRouter agent to guide its behavior when working on t
 
 ## Enabled Skills
 
+- [`orbyn-security-remediation/SKILL.md`](orbyn-security-remediation/SKILL.md) — existing findings, boundary fixes and explicit scan permission.
+
 - [`orbyn-ui-design/SKILL.md`](orbyn-ui-design/SKILL.md) - Orbyn UI/UX rules,
   task flows, concise copy, responsive density, recovery and visual review
 

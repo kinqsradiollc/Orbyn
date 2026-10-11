@@ -276,7 +276,7 @@ export async function allowRequest(
   const trust = d.access === "suggest" ? "suggest" : d.trust;
   let added = false;
   let raised = false;
-  const grantId = await transaction(async (db) => {
+  const code = await transaction(async (db) => {
     const before = (
       await db.query<{ id: string; access: AgentAccess; toolsets: string[] }>(
         `SELECT id, access, toolsets FROM agent_grants
@@ -289,11 +289,15 @@ export async function allowRequest(
     let id: string;
     if (before) {
       id = before.id;
+      // A new consent changes connection authority. Old credentials and
+      // outstanding codes must not inherit the replacement choices.
+      await db.query("DELETE FROM agent_tokens WHERE grant_id=$1", [id]);
+      await db.query("DELETE FROM oauth_codes WHERE grant_id=$1", [id]);
       raised =
         AGENT_ACCESS_RANK[d.access] > AGENT_ACCESS_RANK[before.access] ||
         (d.bookings && !before.toolsets.includes("booking"));
       await db.query(
-        `UPDATE agent_grants SET client_name = $2, name = $2, access = $3, team_ids = $4,
+        `UPDATE agent_grants SET consent_version=consent_version+1, client_name = $2, name = $2, access = $3, team_ids = $4,
            personal = $5, toolsets = $6, flags = $7,
            -- Signing in again keeps the trust the person set, unless it
            -- only suggested before (or suggests now).
@@ -391,15 +395,14 @@ export async function allowRequest(
       "UPDATE oauth_clients SET last_used_at = now() WHERE id = $1",
       [req.client.id],
     );
-    return id;
-  });
-  const code = await issueCode(pool, {
-    grantId,
-    clientId: req.client.id,
-    redirectUri: req.redirectUri,
-    challenge: req.challenge,
-    resource: req.resource,
-    scope,
+    return issueCode(db, {
+      grantId: id,
+      clientId: req.client.id,
+      redirectUri: req.redirectUri,
+      challenge: req.challenge,
+      resource: req.resource,
+      scope,
+    });
   });
   return { redirect_to: backTo(req, { code }) };
 }

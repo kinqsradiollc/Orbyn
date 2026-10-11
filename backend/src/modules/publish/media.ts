@@ -1,6 +1,6 @@
 import { fail, type PageFile } from "@orbyn/core";
 import { env } from "../../config/env.js";
-import { claimToken } from "../imports/tokens.js";
+import { claimToken, serviceKey } from "../imports/tokens.js";
 import { pageFileLimits } from "../page-files/service.js";
 
 /** Public reads buffer a complete authorized file; bound memory independently of private uploads. */
@@ -28,11 +28,12 @@ export async function loadPublishedMedia(
       base.password
     )
       throw new Error("Invalid file service");
-    const token = claimToken("page-read", {
+    const token = claimToken("page-service-read", {
       f: file.id,
       e: Math.floor(Date.now() / 1000) + 30,
     });
     const response = await fetch(new URL(`/files/r/${token}`, base), {
+      headers: { "x-orbyn-service": serviceKey() },
       signal: active,
       redirect: "error",
     });

@@ -81,6 +81,8 @@ case ",$profiles," in *,semantic,*) semantic_on=1 ;; esac
 plugin_on=0
 [ -n "$plugin_url" ] && plugin_on=1
 problems=0
+secrets_key=$(setting SECRETS_KEY)
+[ -n "$secrets_key" ] || { echo "SECRETS_KEY is required for production credential encryption." >&2; exit 1; }
 
 # The optional worker must not keep old queue/retry code across a schema upgrade.
 # Allow 30 seconds for shutdown; any unfinished page stays queued in PostgreSQL.
@@ -245,7 +247,10 @@ compose up -d --wait --no-recreate postgres pgbouncer
 # A restorable copy of the database from just before this deploy's migrations.
 if [ "$BACKUP" = 1 ]; then
   log "Backing up the database"
+  # Permissions must be restrictive before opening dump/archive files.
+  umask 077
   mkdir -p backups
+  chmod 700 backups
   db=$(setting POSTGRES_DB orbyn)
   file="backups/$db-$(date -u +%Y%m%d-%H%M%S)-$GIT_SHA.dump"
   compose exec -T postgres pg_dump -U "$(setting POSTGRES_USER orbyn)" -Fc "$db" > "$file"

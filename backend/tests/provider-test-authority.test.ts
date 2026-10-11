@@ -84,6 +84,7 @@ async function create(kind: "openai" | "anthropic" | "opencode" = "openai") {
 before(async () => {
   await migrate();
   token = await register(email);
+  await pool.query("UPDATE users SET role='admin' WHERE email=$1", [email]);
   member = await register(`probe-member-${randomUUID()}@example.com`);
 });
 afterEach(() => {

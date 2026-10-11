@@ -1,3 +1,4 @@
+import { outbound } from "../../../lib/netguard.js";
 import {
   responsesControls,
   readResponsesUsage,
@@ -11,7 +12,7 @@ import type {
   AiRequestFormat,
 } from "@orbyn/core";
 import { aiModelControlError } from "@orbyn/core";
-import { assertProviderUrl, isPrivateUrl } from "./network.js";
+import { checkedProviderUrl, isPrivateUrl } from "./network.js";
 import {
   perplexityNativeBase,
   usesPerplexityResponses,
@@ -175,11 +176,30 @@ export async function send(
   signal: AbortSignal,
   secret = "",
 ) {
-  await assertProviderUrl(url);
+  const checked = await checkedProviderUrl(url);
   let response: Response;
   try {
+    const requestHeaders = new Headers(init.headers);
+    let requestBody: string | Uint8Array<ArrayBuffer> | undefined;
+    if (typeof init.body === "string") requestBody = init.body;
+    else if (init.body != null) {
+      // Request supplies the multipart boundary for recording uploads. Encode
+      // locally; the actual network request still uses the validated socket.
+      const encoded = new Request(url, {
+        method: init.method ?? "POST",
+        headers: requestHeaders,
+        body: init.body,
+      });
+      requestBody = new Uint8Array(await encoded.arrayBuffer());
+      encoded.headers.forEach((value, name) => requestHeaders.set(name, value));
+    }
     // Keep provider credentials and request text on the saved recipient.
-    response = await fetch(url, { ...init, redirect: "manual", signal });
+    response = await outbound.request(checked, {
+      method: init.method,
+      headers: Object.fromEntries(requestHeaders),
+      body: requestBody,
+      signal,
+    });
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "TimeoutError";
     throw new ProviderError(
@@ -198,7 +218,7 @@ export async function send(
   }
   if (!response.ok) {
     const detail = providerDetail(
-      await response.text().catch(() => ""),
+      await boundedProviderText(response, 64 * 1024),
       secret,
     );
     throw new ProviderError(
@@ -209,10 +229,42 @@ export async function send(
   return response;
 }
 
+/** Bound actual decoded bytes, including chunked replies without a size header. */
+export async function boundedProviderText(
+  response: Response,
+  limit: number,
+): Promise<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const next = await reader.read();
+      if (next.done) break;
+      bytes += next.value.byteLength;
+      if (bytes > limit) {
+        await reader.cancel().catch(() => {});
+        throw new ProviderError(
+          "response_too_large",
+          "The provider reply exceeded Orbyn's size limit.",
+        );
+      }
+      chunks.push(next.value);
+    }
+    return Buffer.concat(chunks).toString("utf8");
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 export async function json<T>(response: Response): Promise<T> {
   try {
-    return (await response.json()) as T;
+    return JSON.parse(
+      await boundedProviderText(response, 16 * 1024 * 1024),
+    ) as T;
   } catch (error) {
+    if (error instanceof ProviderError) throw error;
     const name = error instanceof Error ? error.name : "";
     if (name === "TimeoutError" || name === "AbortError")
       throw new ProviderError(

@@ -41,15 +41,15 @@ commands, candidate, exits, assertions, failures and unverified requirements in
 `docs/reviews/c6-tester-report.md`. Do not edit source. No new visual sweep or
 native build is requested; retain delegated synthetic evidence with its limits.
 
-## Required external/scan gates still open
+## Required external gates still open
 
 - Real HTTPS plugin host discovery/OAuth, account switching/reconnect/events,
   composer selection and platform-supported file resource read/save.
 - Live managed/BYO provider behavior beyond the local mock upstream.
-- Current-source security qualification: prior partial diff scan covers only
-  `058a63e5..88f46bb2`. Deep Scan rejoin failed with “Deep Scan cannot safely
-  start a read-only worker: the parent must provide a managed filesystem
-  permission profile.” No whole-repository completion is claimed.
+- The owner canceled the current scan and prohibits further Codex Security scans
+  unless explicitly requested. Saved findings are handled through
+  [remediation](security-remediation-2026-10-11.md), focused checks and code review;
+  a replacement scan is no longer a required automatic gate.
 - Reviewer acceptance (round1/3 after Tester), main integration/push; production
   deployment remains owner-controlled.
 

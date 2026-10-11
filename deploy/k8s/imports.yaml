@@ -89,9 +89,31 @@ spec:
           envFrom:
             - configMapRef:
                 name: orbyn-config
-            - secretRef:
-                name: orbyn-secrets
           env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_URL
+                  optional: false
+            - name: DATABASE_READ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_READ_URL
+                  optional: true
+            - name: FILES_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: FILES_SECRET
+                  optional: true
+            - name: FILES_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: FILES_MASTER_KEY
+                  optional: true
             - name: FILES_DIR
               value: /data/files
             - name: PAGE_FILES_DIR
@@ -194,9 +216,25 @@ spec:
           envFrom:
             - configMapRef:
                 name: orbyn-config
-            - secretRef:
-                name: orbyn-secrets
           env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_URL
+                  optional: false
+            - name: DATABASE_READ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_READ_URL
+                  optional: true
+            - name: FILES_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: FILES_SECRET
+                  optional: true
             - name: FILES_URL
               value: http://files.orbyn.svc.cluster.local:8000
             - name: NODE_OPTIONS

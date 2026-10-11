@@ -212,7 +212,7 @@ export async function pageFileRoutes(app: FastifyInstance) {
     );
     if (file.status !== "ready")
       fail(409, "This file is still uploading. Try again in a moment.");
-    return readLink(file);
+    return readLink(file, u.id);
   });
 
   /** The pictures and files on a page. */

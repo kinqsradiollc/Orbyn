@@ -42,7 +42,7 @@ The shortest path from a fresh server to a working site, with the details in the
 1. Put the domain on Cloudflare DNS and create a tunnel (Zero Trust → Networks → Tunnels); give it
    a public hostname pointing at `http://gateway:8081`.
 2. On your machine, fill in `.env.production`: the tunnel token, `APP_URL` and `CORS_ORIGINS` as
-   `https://your-domain`, a generated `POSTGRES_PASSWORD` and `SECRETS_KEY`, `ADMIN_EMAILS`, and
+   `https://your-domain`, a generated `POSTGRES_PASSWORD` and `SECRETS_KEY`, and
    how mail goes out (your own mail server, or a provider). Never commit it; git ignores it.
 3. Still on your machine, check the file before it travels:
    `ENV_FILE=.env.production ./scripts/deploy.sh --check`. Then clone the repository on the server
@@ -50,8 +50,11 @@ The shortest path from a fresh server to a working site, with the details in the
 4. Run `./scripts/deploy.sh`. It starts everything, including the tunnel and the mail server when
    `.env` asks for them, and prints the DKIM record the mail server wants published.
 5. Add the [DNS records](#dns-records): SPF and DMARC now, DKIM from step 4.
-6. Sign in with the `ADMIN_EMAILS` address, then in Admin → System send a test email and check the
-   received message's headers for `spf=pass` and `dkim=pass`.
+6. Register your own account and confirm its email. Public registration always creates a member;
+   `ADMIN_EMAILS` does not grant authority. From the trusted server terminal, promote the known
+   account with `docker compose run --rm api node backend/dist/grant-admin.js you@example.com`.
+   Sign in again, then in Admin → System send a test email and check `spf=pass` and `dkim=pass`.
+   If mail is not configured yet, the operator must establish account ownership before promotion.
 7. If SMTP settings were ever saved in Admin → System, clear them or set them to match `.env`:
    saved settings win over the environment.
 8. Anything secret that was ever pasted into a chat, ticket or terminal history (an app password,
@@ -807,10 +810,13 @@ documents still save, but two open tabs never hear each other.
 
 ## Secrets key
 
-`SECRETS_KEY` is optional. Without it, Orbyn generates a key on first use and keeps it in the
+`SECRETS_KEY` is required when saving credentials in production. Development may generate a key on first use and keep it in the
 database, so AI provider keys saved from the admin console work with no setup. In production, set
 `SECRETS_KEY` so the key lives outside the database: a leaked database dump then cannot reveal
-saved keys. Keys saved before you set it keep working. Back `SECRETS_KEY` up with the database;
+saved keys. The migration runner rewraps legacy database-encrypted credentials with the external key
+and retires the database key before services restart. Previously issued signed file/cursor links may
+need to be refreshed. Old backups containing the database key remain sensitive: restrict their
+access and rotate exposed credentials. Back `SECRETS_KEY` up separately from the database;
 without it, keys saved while it was set cannot be decrypted and admins must re-enter them.
 
 ## Search by meaning (off by default)

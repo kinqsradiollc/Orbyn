@@ -1,3 +1,5 @@
+import { mockProviderTransport } from "./provider-transport-fixture.js";
+mockProviderTransport();
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { step, type AgentMessage } from "../src/modules/ai/agent/protocol.js";

@@ -28,7 +28,10 @@ http {
   tcp_nodelay on;
   keepalive_timeout 65s;
   keepalive_requests 10000;
-  access_log /dev/stdout combined buffer=64k flush=5s;
+  # Log route-independent operational metadata only. Request paths, query
+  # strings and referers can carry reusable file/feed/authorization tokens.
+  log_format safe '$remote_addr [$time_local] "$request_method" $status $body_bytes_sent $request_time';
+  access_log /dev/stdout safe buffer=64k flush=5s;
 
   gzip on;
   gzip_comp_level 5;

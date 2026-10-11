@@ -47,10 +47,13 @@ const readJson = (content: string): unknown => {
 };
 
 /** The recording's bytes, from the file store, with a read link signed here. */
-async function recordingBytes(fileId: string): Promise<Uint8Array> {
+async function recordingBytes(
+  fileId: string,
+  userId: string,
+): Promise<Uint8Array> {
   if (!importsEnabled()) fail(503, "Recordings can't be read right now.");
   const expires = Math.floor(Date.now() / 1000) + 300;
-  const token = claimToken("page-read", { f: fileId, e: expires });
+  const token = claimToken("page-read", { f: fileId, u: userId, e: expires });
   let res: Response;
   try {
     res = await fetch(`${env.FILES_URL}/files/r/${token}?download=1`, {
@@ -103,7 +106,7 @@ export async function aiRecordingRoutes(app: FastifyInstance) {
             );
           const ai = await resolveAi();
           if (!ai) fail(503, "The transcription provider is unavailable.");
-          const audio = await recordingBytes(file.id);
+          const audio = await recordingBytes(file.id, u.id);
           const assertAudioSource = async () => {
             await ai.assertAuthority?.();
             const currentChoice = await readAiProviderChoice(pool, u.id);

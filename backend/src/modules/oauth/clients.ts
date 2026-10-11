@@ -201,9 +201,9 @@ export function hostAllowed(host: string, allowed: string[]): boolean {
 }
 
 /**
- * Every website an app could send a code to. A CIMD app is its id's host
- * (its document can only list addresses it serves). A self-registered (DCR)
- * app is every https host among its redirect addresses: any of them may
+ * Every website an app could send a code to: its metadata host and every
+ * HTTPS redirect host, for both CIMD and self-registered (DCR) clients. Any
+ * declared redirect may
  * receive a code, so every one must pass Admin → Agents. A DCR app with no
  * https address is known by its stored host ("this computer", "an app on
  * this device").
@@ -215,16 +215,15 @@ export function clientHosts(c: {
 }): string[] {
   const hosts = new Set<string>();
   if (c.host) hosts.add(c.host.toLowerCase());
-  if (c.kind === "dcr")
-    for (const uri of c.redirect_uris ?? []) {
-      try {
-        const u = new URL(uri);
-        if (u.protocol === "https:" && u.hostname)
-          hosts.add(u.hostname.toLowerCase());
-      } catch {
-        // Stored addresses were checked at registration; skip anything odd.
-      }
+  for (const uri of c.redirect_uris ?? []) {
+    try {
+      const u = new URL(uri);
+      if (u.protocol === "https:" && u.hostname)
+        hosts.add(u.hostname.toLowerCase());
+    } catch {
+      // Stored addresses were checked at registration; skip anything odd.
     }
+  }
   return [...hosts];
 }
 

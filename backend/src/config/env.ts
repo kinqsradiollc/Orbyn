@@ -39,7 +39,7 @@ const schema = z.object({
   SMTP_SECURE: z.enum(["true", "false"]).default("false"),
   SMTP_FROM: z.string().default("Orbyn <reminders@orbyn.local>"),
   EXPO_ACCESS_TOKEN: z.string().default(""),
-  /** Comma-separated emails that are always system admins. */
+  /** Legacy configuration; public sign-up/login never promote these emails. */
   ADMIN_EMAILS: z.string().default(""),
   /** 32 random bytes, base64. Encrypts credentials stored in the database. */
   SECRETS_KEY: z.string().default(""),

@@ -34,7 +34,7 @@ function privateIPv4(ip: string) {
 }
 
 /** An IPv6 address as eight 16-bit groups, or null when it isn't one. */
-function ipv6Groups(ip: string): number[] | null {
+export function ipv6Groups(ip: string): number[] | null {
   let v = ip.toLowerCase().replace(/%.*$/, "");
   // A dotted IPv4 tail ("::ffff:127.0.0.1") becomes two hex groups.
   const tail = v.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
@@ -187,7 +187,7 @@ const NO_BODY = new Set([101, 204, 205, 304]);
 export type PublicFetchInit = {
   method?: string;
   headers?: Record<string, string>;
-  body?: string;
+  body?: string | Uint8Array<ArrayBuffer>;
   signal?: AbortSignal;
 };
 

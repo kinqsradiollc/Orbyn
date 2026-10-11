@@ -142,6 +142,7 @@ before(async () => {
     "UPDATE ai_settings SET provider_id=NULL, model='' WHERE id",
   );
   admin = await register(adminEmail);
+  await pool.query("UPDATE users SET role='admin' WHERE id=$1", [admin.id]);
   member = await register(`ai-member-${randomUUID()}@example.com`);
 });
 

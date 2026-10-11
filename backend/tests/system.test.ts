@@ -47,6 +47,7 @@ before(async () => {
   await pool.query("DELETE FROM system_settings");
   invalidateSettings();
   admin = await register(adminEmail);
+  await pool.query("UPDATE users SET role='admin' WHERE id=$1", [admin.id]);
   member = await register(`system-member-${randomUUID()}@example.com`);
 });
 

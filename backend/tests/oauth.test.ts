@@ -708,30 +708,47 @@ test("refresh tokens rotate; reusing a spent one revokes the family and pauses t
   assert.equal((await h.legacy(back.access_token, "ping")).status, 200);
 });
 
-test("a refresh retried just after it rotated gets another pair instead of pausing the connection", async () => {
+test("a recently consumed refresh token cannot recover successor credentials", async () => {
   const who = await h.register("oauth-retry", "Rey");
   const first = await connect(who, { access: "read" });
   const a = await refresh(first.refresh_token);
   assert.equal(a.statusCode, 200, a.body);
-  // The answer was lost (or two tabs refreshed at once): the same token again.
   const b = await refresh(first.refresh_token);
-  assert.equal(b.statusCode, 200, b.body);
-  assert.notEqual(b.json().refresh_token, a.json().refresh_token);
-  const paused = async () =>
+  assert.equal(b.json().error, "invalid_grant");
+  assert.equal(b.json().access_token, undefined);
+  assert.equal((await h.legacy(a.json().access_token, "ping")).status, 401);
+  assert.ok(
     (
-      await pool.query("SELECT suspended_at FROM agent_grants WHERE id = $1", [
+      await pool.query("SELECT suspended_at FROM agent_grants WHERE id=$1", [
         first.grant,
       ])
-    ).rows[0].suspended_at;
-  assert.equal(await paused(), null, "a retry isn't theft");
-  // Both answers work.
-  assert.equal((await h.legacy(a.json().access_token, "ping")).status, 200);
-  assert.equal((await h.legacy(b.json().access_token, "ping")).status, 200);
-  // A couple of retries at most: after that it counts as copied.
-  assert.equal((await refresh(first.refresh_token)).statusCode, 200);
-  const again = await refresh(first.refresh_token);
-  assert.equal(again.json().error, "invalid_grant");
-  assert.ok(await paused(), "too many uses of one token pause it");
+    ).rows[0].suspended_at,
+  );
+});
+
+test("code exchange without offline consent never issues a refresh token", async () => {
+  const who = await h.register("oauth-online-only");
+  const c = await connect(who, { access: "read" }, { scope: "orbyn:read" });
+  assert.equal(c.refresh_token, undefined);
+  assert.equal(
+    (
+      await pool.query(
+        "SELECT 1 FROM agent_tokens WHERE grant_id=$1 AND kind='refresh'",
+        [c.grant],
+      )
+    ).rowCount,
+    0,
+  );
+  assert.equal((await h.legacy(c.access_token, "ping")).status, 200);
+});
+test("new consent invalidates old access and refresh credentials", async () => {
+  const who = await h.register("oauth-consent-generation");
+  const a = await connect(who, { access: "read" });
+  const b = await connect(who, { access: "read" });
+  assert.equal(a.grant, b.grant);
+  assert.equal((await h.legacy(a.access_token, "ping")).status, 401);
+  assert.equal((await refresh(a.refresh_token)).json().error, "invalid_grant");
+  assert.equal((await h.legacy(b.access_token, "ping")).status, 200);
 });
 
 test("RFC 7009 revocation: a refresh token takes its family; an app with nothing left is disconnected", async () => {
@@ -2179,17 +2196,17 @@ test("private_key_jwt with jwks in the document: the whole sign-in, and refresh,
   assert.equal(noId.statusCode, 200, noId.body);
 
   // Refreshing needs an assertion too.
-  const noProof = await refresh(tokens.refresh_token, KEYED);
+  const noProof = await refresh(noId.json().refresh_token, KEYED);
   assert.equal(noProof.statusCode, 401);
   assert.equal(noProof.json().error, "invalid_client");
   const wrongProof = await refresh(
-    tokens.refresh_token,
+    noId.json().refresh_token,
     KEYED,
     withAssertion(await signed(KEYED, { key: stranger.privateKey })),
   );
   assert.equal(wrongProof.json().error, "invalid_client");
   const refreshed = await refresh(
-    tokens.refresh_token,
+    noId.json().refresh_token,
     KEYED,
     withAssertion(await signed(KEYED)),
   );

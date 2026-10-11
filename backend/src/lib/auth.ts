@@ -195,6 +195,9 @@ const KEY_BLOCKED: { method?: string; route: RegExp }[] = [
   // page off the web, stay open.
   { method: "PUT", route: /^\/(?:docs|folders)\/:id\/publish$/ },
   { method: "PUT", route: /^\/docs\/:id\/web-description$/ },
+  { method: "PUT", route: /^\/docs\/:id\/publication$/ },
+  { method: "POST", route: /^\/booking-pages$/ },
+  { method: "PUT", route: /^\/booking-pages\/:id$/ },
   { method: "PUT", route: /^\/teams\/:id\/publishing$/ },
   // The guided first run, and skipping it: the person's own start.
   { method: "POST", route: /^\/me\/first-run(?:\/skip)?$/ },

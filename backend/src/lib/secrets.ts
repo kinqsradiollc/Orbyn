@@ -12,8 +12,9 @@ import { pool } from "../db/pool.js";
  * Encryption for credentials stored in the database (AI provider API keys),
  * using AES-256-GCM with a random 96-bit nonce per value.
  *
- * Nothing has to be configured: without SECRETS_KEY, Orbyn creates a random
- * key once and keeps it in the `app_secrets` table, shared by every instance.
+ * Production requires an external SECRETS_KEY. Development without it creates
+ * a random key in `app_secrets`, shared by local instances. The migration runner
+ * rewraps legacy database-key ciphertext before retiring that database key.
  * Setting SECRETS_KEY (32 random bytes, base64) keeps the key outside the
  * database, which protects saved credentials even if a database dump leaks.
  * Values record which key encrypted them, so both keep working:
@@ -51,6 +52,8 @@ function databaseKey(): Promise<Buffer> {
 }
 
 export async function encryptSecret(plain: string): Promise<string> {
+  if (process.env.NODE_ENV === "production" && !env.SECRETS_KEY)
+    fail(503, "Configure SECRETS_KEY before saving credentials in production.");
   const version = env.SECRETS_KEY ? WITH_SECRETS_KEY : WITH_DATABASE_KEY;
   const key = env.SECRETS_KEY ? secretsKey() : await databaseKey();
   const nonce = randomBytes(12);
@@ -104,6 +107,8 @@ export function maskSecret(plain: string): string {
  * setting of its own, and different purposes never share a key.
  */
 export async function derivedKey(purpose: string): Promise<Buffer> {
+  if (process.env.NODE_ENV === "production" && !env.SECRETS_KEY)
+    fail(503, "Configure SECRETS_KEY before signing production handles.");
   const base = env.SECRETS_KEY ? secretsKey() : await databaseKey();
   return Buffer.from(
     hkdfSync("sha256", base, Buffer.alloc(0), `orbyn:${purpose}`, 32),

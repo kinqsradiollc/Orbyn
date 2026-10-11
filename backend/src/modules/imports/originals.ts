@@ -88,7 +88,7 @@ export async function originalRoutes(app: FastifyInstance) {
       ),
       db.query<KeptOriginal & { title: string | null }>(
         `SELECT k.id, k.doc_id, k.file_name, k.file_type, k.bytes::int AS bytes,
-                k.created_at, d.title
+                k.created_at, CASE WHEN ${docVisibleTo("$1")} THEN d.title ELSE NULL END AS title
            FROM kept_files k LEFT JOIN docs d ON d.id = k.doc_id
           WHERE k.user_id = $1 AND k.doc_id IS NOT NULL
           ORDER BY k.created_at DESC LIMIT 500`,

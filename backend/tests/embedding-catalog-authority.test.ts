@@ -96,6 +96,7 @@ async function register(address: string) {
 before(async () => {
   await migrate();
   token = await register(email);
+  await pool.query("UPDATE users SET role='admin' WHERE email=$1", [email]);
   member = await register(`catalog-member-${randomUUID()}@example.com`);
 });
 after(async () => {

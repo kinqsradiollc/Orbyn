@@ -41,7 +41,7 @@ The root `.env` is read by Docker Compose and by the backend when it runs locall
 | `SMTP_FROM`                                                                                     | `Orbyn <reminders@orbyn.local>`               | worker         | Sender shown on reminder emails.                                                                                                                                                                                                                            |
 | `DOCKER_SMTP_HOST`                                                                              | `mailpit`                                     | compose        | SMTP host the containers use: `mailpit` (the test inbox), `mail` (your own mail server, see deployment), or a provider's host.                                                                                                                              |
 | `EXPO_ACCESS_TOKEN`                                                                             | empty                                         | worker         | Optional Expo access token for push delivery with enhanced security enabled.                                                                                                                                                                                |
-| `ADMIN_EMAILS`                                                                                  | empty                                         | backend        | Comma-separated emails that are always system admins. The first account to register is also an admin.                                                                                                                                                       |
+| `ADMIN_EMAILS`                                                                                  | empty                                         | backend        | Legacy value; does not grant admin authority. Use the server-side admin:grant command.                                                                                                                                                                      |
 | `CORS_ORIGINS`, `RATE_LIMIT_PER_MINUTE`, `NOTIFIER_CONCURRENCY`, `STATUS_INTERVAL_MS`, `SMTP_*` | see above                                     | backend        | Starting values: admins can change these live in Admin → System without a restart.                                                                                                                                                                          |
 | `SECRETS_KEY`                                                                                   | empty                                         | backend        | Optional. Encrypts AI provider keys saved from the admin console. Without it, Orbyn generates a key and keeps it in the database. Set 32 random bytes, base64 (`openssl rand -base64 32`), in production so a database dump alone cannot reveal saved keys. |
 | `DATABASE_READ_URL`                                                                             | empty                                         | backend        | Optional read replica for lag-tolerant reads (lists, admin console, status). Empty means everything uses the primary. See [scalability](scalability.md).                                                                                                    |
@@ -283,8 +283,8 @@ that holds real data. CI runs its own throwaway PostgreSQL and marks it the same
 
 ## 6. Admins
 
-The first account registered on a fresh database becomes a system admin. Any email in
-`ADMIN_EMAILS` is also made an admin when it registers or signs in. To promote an existing account
+Public registration creates members, including the first account and any `ADMIN_EMAILS` address.
+From a trusted server terminal, promote a known existing account
 on a database that already has users:
 
 ```bash
@@ -299,8 +299,7 @@ Admins can then promote others from the Admin console in the web or mobile app.
 
 Once a mail server is configured (Admin → System, or `SMTP_*`), new members must confirm their
 email before they can use the app: they get a confirmation link on sign-up, and until they follow
-it the app holds them at a "confirm your email" screen with a resend button. The first admin and
-any `ADMIN_EMAILS` address are created already confirmed, so setup is never blocked, and with no
+it the app holds them at a "confirm your email" screen with a resend button. All accounts follow ordinary verification; operator promotion uses the server terminal. With no
 mail server every account is usable immediately. An admin can confirm anyone by hand from the Admin
 console (the **Verify** button next to an unconfirmed address) if a link is lost. Confirmation and
 password-reset links point at `APP_URL`, so set it to the address people actually open.
@@ -318,8 +317,7 @@ SMOKE_ADMIN_EMAIL=admin@example.com SMOKE_ADMIN_PASSWORD='the admin password' \
 npm run smoke -w backend
 ```
 
-The admin email must already be an admin, or be listed in the server's `ADMIN_EMAILS` so the script
-can register it. The worker must be running for the reminder check. When the server has no AI
+The admin account must already exist and have been promoted through the operator command. The worker must be running for the reminder check. When the server has no AI
 model configured, the AI checks report that and pass; set `SMOKE_AI=skip` to skip them entirely.
 
 ## 8. Formatting

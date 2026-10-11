@@ -23,6 +23,10 @@ needed for your role and task; linked rules apply to that work.
   test services. Proceed within task scope without repeated permission requests.
   See [local authorization](docs/agents/coordination.md#local-development-and-qa-authorization).
 
+- **Never run Codex Security scans unless the user explicitly requests one.**
+  Existing findings may be investigated and fixed without starting, restarting or
+  rejoining a scan. See [remediation skill](skills/orbyn-security-remediation/SKILL.md).
+
 ## Task guides
 
 | Work                             | Read                                                                                                  |

@@ -43,6 +43,7 @@ before(async () => {
     if (!token) token = r.json().token;
     else member = r.json().token;
   }
+  await pool.query("UPDATE users SET role='admin' WHERE email=$1", [email]);
   const r = await call("POST", "/ai/providers", {
     kind: "openai",
     name: "Controls fixture",
@@ -317,7 +318,7 @@ test("generation controls retain the accepted embedding connection revision", as
   }
   let revision = before.embedding_revision;
   for (const change of [
-    { base_url: "https://embedding-fixture.example.invalid/v1" },
+    { base_url: "http://127.0.0.1:9/v1" },
     { api_key: "rotated-embedding-fixture-key" },
     { options: { apiVersion: "2026-10-01" } },
     { enabled: false },

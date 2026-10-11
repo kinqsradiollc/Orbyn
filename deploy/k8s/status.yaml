@@ -66,9 +66,13 @@ spec:
           envFrom:
             - configMapRef:
                 name: orbyn-config
-            - secretRef:
-                name: orbyn-secrets
           env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_URL
+                  optional: false
             - name: NODE_OPTIONS
               value: "--max-old-space-size=192"
           resources:

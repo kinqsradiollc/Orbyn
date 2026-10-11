@@ -22,7 +22,6 @@ import {
   type TwoFactorStatus,
   type Passkey,
 } from "@orbyn/core";
-import { adminEmails } from "../../config/env.js";
 import { pool, transaction } from "../../db/pool.js";
 import { audit } from "../../lib/audit.js";
 import {
@@ -64,17 +63,10 @@ export async function authRoutes(app: FastifyInstance) {
     const hash = await argon2.hash(d.password);
     const pending: (() => Promise<void>)[] = [];
     const u = await transaction(async (db) => {
-      // Bootstrap: the first account, or any email in ADMIN_EMAILS, is an admin.
-      await db.query("SELECT pg_advisory_xact_lock(786241)");
-      const noAdmins = !(
-        await db.query("SELECT 1 FROM users WHERE role='admin' LIMIT 1")
-      ).rowCount;
-      const isAdmin = noAdmins || adminEmails.has(d.email);
-      const role = isAdmin ? "admin" : "member";
-      // Admins are trusted so they can set the workspace up (including mail).
-      // Otherwise confirmation is required only when mail can actually be
-      // sent; without a mail server there is no way to confirm an address.
-      const verified = isAdmin || !(await emailEnabled());
+      // Public sign-up never grants administrative authority. Operators use
+      // the server-side grant-admin command for a known account.
+      const role = "member";
+      const verified = !(await emailEnabled());
       // Agreeing on the form counts only for the version in force now; an
       // older one is asked for again once signed in.
       const terms =
@@ -231,26 +223,6 @@ export async function authRoutes(app: FastifyInstance) {
     if (u.disabled) fail(403, DISABLED_MESSAGE);
     // And two-step, if this account has it on.
     await enforceTwoFactor(u.id, d.code);
-    if (adminEmails.has(u.email) && u.role !== "admin") {
-      u = (
-        await pool.query<UserRow>(
-          "UPDATE users SET role='admin' WHERE id=$1 RETURNING *",
-          [u.id],
-        )
-      ).rows[0];
-      await audit({
-        actorId: null,
-        action: "user.role_changed",
-        targetType: "user",
-        targetId: u.id,
-        details: {
-          email: u.email,
-          from: "member",
-          to: "admin",
-          via: "ADMIN_EMAILS",
-        },
-      });
-    }
     return issueSession(u, r.headers["user-agent"] ?? "", {
       reauthenticated: true,
     });

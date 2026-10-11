@@ -445,6 +445,7 @@ export async function docRoutes(app: FastifyInstance) {
                 fail(503, "Picture export is not configured.");
               return `/files/r/${claimToken("page-read", {
                 f: file,
+                u: u.id,
                 e: Math.floor(Date.now() / 1000) + 30,
               })}`;
             },
@@ -934,6 +935,7 @@ export async function docRoutes(app: FastifyInstance) {
       await lockEventNote(db, id, when);
       const again = await eventNote(db, u, id, event.team_id, when);
       if (again) return { doc: again, created: false };
+      if (event.team_id) await requireTeam(event.team_id, u, "items:write", db);
       const newId = (
         await db.query<{ id: string }>(
           `INSERT INTO docs (user_id, team_id, title, kind, content, item_id,

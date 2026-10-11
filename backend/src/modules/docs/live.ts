@@ -82,7 +82,8 @@ async function ensureListening(): Promise<void> {
         // Each reader has its own watermark, so each is served its own
         // missing stretch; one query per reader keeps the bookkeeping
         // honest (a page with a handful of readers is a handful of rows).
-        for (const deliver of waiting) void deliverUpdates(docId, deliver);
+        for (const deliver of waiting)
+          void deliverUpdates(docId, deliver).catch(() => {});
       }
     });
     next.on("error", () => {
@@ -164,8 +165,11 @@ type UpdateSink = (
 ) => void;
 
 const watermarks = new Map<UpdateSink, number>();
+const updateAccess = new Map<UpdateSink, () => Promise<boolean>>();
 
 async function deliverUpdates(docId: string, sink: UpdateSink): Promise<void> {
+  const allowed = updateAccess.get(sink);
+  if (allowed && !(await allowed())) return;
   const since = watermarks.get(sink) ?? 0;
   const rows = (
     await pool.query<{ seq: string; update: Buffer; editor_id: string }>(
@@ -174,7 +178,8 @@ async function deliverUpdates(docId: string, sink: UpdateSink): Promise<void> {
       [docId, since],
     )
   ).rows;
-  if (!rows.length) return;
+  if (!rows.length || !watermarks.has(sink) || (allowed && !(await allowed())))
+    return;
   watermarks.set(sink, Math.max(since, ...rows.map((row) => Number(row.seq))));
   sink(
     rows.map((row) => ({
@@ -195,6 +200,7 @@ export async function streamDocUpdates(
   reply: FastifyReply,
   docId: string,
   since: number,
+  allowed?: () => Promise<boolean>,
 ): Promise<() => void> {
   await ensureListening();
   const sink: UpdateSink = (updates) => {
@@ -206,6 +212,7 @@ export async function streamDocUpdates(
     }
   };
   watermarks.set(sink, since);
+  if (allowed) updateAccess.set(sink, allowed);
   const set = updateWatchers.get(docId) ?? new Set();
   set.add(sink);
   updateWatchers.set(docId, set);
@@ -223,6 +230,7 @@ export async function streamDocUpdates(
   return () => {
     clearInterval(beat);
     watermarks.delete(sink);
+    updateAccess.delete(sink);
     const current = updateWatchers.get(docId);
     current?.delete(sink);
     if (current && current.size === 0) updateWatchers.delete(docId);
@@ -238,6 +246,7 @@ export async function streamDocChanges(
   docId: string,
   /** The reader's own id: their own saves are not news to them. */
   selfId: string,
+  allowed?: () => Promise<boolean>,
 ): Promise<() => void> {
   await ensureListening();
 
@@ -262,14 +271,27 @@ export async function streamDocChanges(
 
   const listener: Listener = (payload) => {
     if (payload.by === selfId) return;
-    reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    void (async () => {
+      if (allowed && !(await allowed())) return;
+      if (!reply.raw.destroyed)
+        reply.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
+    })().catch(() => {
+      reply.raw.end();
+    });
   };
   const set = watchers.get(docId) ?? new Set<Listener>();
   set.add(listener);
   watchers.set(docId, set);
 
   // A comment every 25s keeps proxies from closing an idle stream.
-  const beat = setInterval(() => reply.raw.write(": beat\n\n"), 25_000);
+  const beat = setInterval(() => {
+    void (async () => {
+      if (allowed && !(await allowed())) return;
+      if (!reply.raw.destroyed) reply.raw.write(": beat\n\n");
+    })().catch(() => {
+      reply.raw.end();
+    });
+  }, 25_000);
 
   return () => {
     clearInterval(beat);

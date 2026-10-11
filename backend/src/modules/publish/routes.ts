@@ -97,7 +97,10 @@ async function ownerOf(
 ): Promise<Owner> {
   const table = kind === "doc" ? "docs" : "folders";
   const title = kind === "doc" ? "x.title" : "x.name";
-  const trash = kind === "doc" ? "AND x.deleted_at IS NULL" : "";
+  const trash =
+    kind === "doc"
+      ? "AND x.deleted_at IS NULL AND x.kind NOT IN ('memory','agent')"
+      : "";
   const row = (
     await db.query<Owner>(
       `SELECT x.user_id, x.team_id, ${title} AS title,
@@ -206,7 +209,7 @@ async function rowAt(slug: string, db: Queryable = pool) {
          LEFT JOIN folders f ON f.id = pp.folder_id
          LEFT JOIN teams t ON t.id = coalesce(d.team_id, f.team_id)
         WHERE pp.slug = $1
-          AND (pp.doc_id IS NULL OR d.deleted_at IS NULL)`,
+          AND (pp.doc_id IS NULL OR (d.deleted_at IS NULL AND d.kind NOT IN ('memory','agent')))`,
         [slug],
       )
     ).rows.find((r) => r.team_ok) ?? null
@@ -237,7 +240,7 @@ async function publicPaths(
   const rows = (
     await db.query<{ id: string; path: string }>(
       `SELECT d.id,
-              CASE WHEN pp.id IS NOT NULL THEN '/p/' || pp.slug
+              CASE WHEN pp.id IS NOT NULL AND pp.password_hash IS NULL THEN '/p/' || pp.slug
                    ELSE '/p/' || fp.slug || '/' || d.id END AS path
          FROM docs d
          LEFT JOIN teams t ON t.id = d.team_id
@@ -247,7 +250,9 @@ async function publicPaths(
          LEFT JOIN published_pages fp ON fp.folder_id = f.id
         WHERE d.id = ANY($1::uuid[]) AND d.deleted_at IS NULL
           AND coalesce(t.publishing_allowed, true)
-          AND (pp.id IS NOT NULL OR fp.id IS NOT NULL)`,
+          AND d.kind NOT IN ('memory','agent')
+          AND ((pp.id IS NOT NULL AND pp.password_hash IS NULL)
+            OR (fp.id IS NOT NULL AND fp.password_hash IS NULL))`,
       [ids],
     )
   ).rows;
@@ -495,7 +500,7 @@ async function folderPages(
     }>(
       `SELECT d.id, d.title, d.version, d.web_description, d.content FROM docs d
         WHERE d.folder_id = $1 AND d.deleted_at IS NULL
-          AND d.team_id IS NOT DISTINCT FROM $2 AND d.kind <> 'agenda'
+          AND d.team_id IS NOT DISTINCT FROM $2 AND d.kind NOT IN ('agenda','memory','agent')
         ORDER BY d.updated_at DESC LIMIT 500`,
       [folderId, teamId],
     )
@@ -726,7 +731,11 @@ export async function publishRoutes(app: FastifyInstance) {
     action: string,
   ) => {
     if (unlocked(r, row)) return false;
-    await send(reply, 401, publishedLockHtml({ title, action, wrong: false }));
+    await send(
+      reply,
+      401,
+      publishedLockHtml({ title: "Protected page", action, wrong: false }),
+    );
     return true;
   };
 
@@ -750,7 +759,7 @@ export async function publishRoutes(app: FastifyInstance) {
         const doc = (
           await pool.query<{ id: string }>(
             `SELECT d.id FROM docs d WHERE d.id = $1 AND d.deleted_at IS NULL
-          AND (d.id = $2 OR (d.folder_id = $3 AND d.kind <> 'agenda'
+          AND (d.id = $2 OR (d.folder_id = $3 AND d.kind NOT IN ('agenda','memory','agent')
              AND EXISTS(SELECT 1 FROM folders pf WHERE pf.id = $3
                         AND d.team_id IS NOT DISTINCT FROM pf.team_id)))`,
             [docId.data, row.doc_id, row.folder_id],
@@ -922,7 +931,7 @@ export async function publishRoutes(app: FastifyInstance) {
       await pool.query<PublicDoc>(
         `SELECT ${DOC_COLUMNS} FROM docs d
           WHERE d.id = $1 AND d.folder_id = $2 AND d.deleted_at IS NULL
-            AND d.kind <> 'agenda' AND d.team_id IS NOT DISTINCT FROM $3`,
+            AND d.kind NOT IN ('agenda','memory','agent') AND d.team_id IS NOT DISTINCT FROM $3`,
         [docId.data, row.folder_id, folder?.team_id ?? null],
       )
     ).rows[0];
@@ -968,24 +977,11 @@ export async function publishRoutes(app: FastifyInstance) {
         password.length <= 200 &&
         (await argon2.verify(row.password_hash, password).catch(() => false)));
     if (!ok) {
-      const title = row.doc_id
-        ? ((
-            await pool.query<{ title: string }>(
-              "SELECT title FROM docs WHERE id = $1",
-              [row.doc_id],
-            )
-          ).rows[0]?.title ?? "")
-        : ((
-            await pool.query<{ name: string }>(
-              "SELECT name FROM folders WHERE id = $1",
-              [row.folder_id],
-            )
-          ).rows[0]?.name ?? "");
       return send(
         reply,
         401,
         publishedLockHtml({
-          title: title || "Untitled",
+          title: "Protected page",
           action: `${path}/unlock`,
           wrong: true,
         }),

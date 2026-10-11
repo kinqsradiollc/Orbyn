@@ -36,9 +36,9 @@ export async function usedBytes(db: Queryable, userId: string) {
 }
 
 /** A link to read one stored file for the next hour. */
-export function readLink(file: PageFile): PageFileLink {
+export function readLink(file: PageFile, userId: string): PageFileLink {
   const expires = Math.floor(Date.now() / 1000) + FILE_LINK_MINUTES * 60;
-  const token = claimToken("page-read", { f: file.id, e: expires });
+  const token = claimToken("page-read", { f: file.id, u: userId, e: expires });
   return {
     file,
     url_path: `/files/r/${token}`,

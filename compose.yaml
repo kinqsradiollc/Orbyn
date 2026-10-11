@@ -463,7 +463,7 @@ services:
       GATEWAY_CONFIG_SHA: ${GATEWAY_CONFIG_SHA:-}
       RESOLVER: ${GATEWAY_RESOLVER:-127.0.0.11}
       TRUSTED_PROXIES: ${GATEWAY_TRUSTED_PROXIES:-}
-      RATE_LIMIT_EXEMPT: ${GATEWAY_RATE_LIMIT_EXEMPT:-127.0.0.1/32 192.168.65.0/24}
+      RATE_LIMIT_EXEMPT: ${GATEWAY_RATE_LIMIT_EXEMPT:-}
     volumes: ["./gateway:/etc/orbyn-gateway:ro"]
     # The gateway is the only service with host ports: the API, the web app
     # and the MCP host (the tunnel reaches mcp.orbyn.dev at gateway:8082).

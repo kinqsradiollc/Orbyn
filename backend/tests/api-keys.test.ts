@@ -92,6 +92,9 @@ test("a key is refused on every account route, with a reason", async () => {
     string,
     Record<string, unknown>?,
   ][] = [
+    ["PUT", `/docs/${any}/publication`, {}],
+    ["POST", "/booking-pages", {}],
+    ["PUT", `/booking-pages/${any}`, {}],
     ["POST", "/me/api-keys", { name: "Another" }],
     ["GET", "/me/webhooks"],
     [

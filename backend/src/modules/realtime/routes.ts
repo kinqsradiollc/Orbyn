@@ -82,8 +82,28 @@ async function docStream(
   // editors merge as they land. A reader that sent `since` wants the
   // update log too; older apps, which never do, are none the wiser.
   const since = Number(r.query && (r.query as { since?: string }).since) || 0;
-  const stops: (() => void)[] = [await streamDocChanges(reply, id, editor)];
-  if (since > 0) stops.push(await streamDocUpdates(reply, id, since));
+  // Authorization is live: membership, session and account revocation must
+  // stop an already-open stream before another parcel is released.
+  const allowed = async () => {
+    try {
+      const current = await authenticate(r);
+      const visible = (
+        await pool.query(
+          `SELECT 1 FROM docs d WHERE d.id=$2 AND ${VISIBLE_DOC}`,
+          [current.id, id],
+        )
+      ).rowCount;
+      if (visible) return true;
+    } catch {
+      /* Closed credentials are treated like lost visibility. */
+    }
+    reply.raw.end();
+    return false;
+  };
+  const stops: (() => void)[] = [
+    await streamDocChanges(reply, id, editor, allowed),
+  ];
+  if (since > 0) stops.push(await streamDocUpdates(reply, id, since, allowed));
   r.raw.on("close", () => stops.forEach((stop) => stop()));
   return reply;
 }

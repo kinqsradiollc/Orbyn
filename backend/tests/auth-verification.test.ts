@@ -76,12 +76,24 @@ after(async () => {
   await pool.end();
 });
 
-test("the bootstrap admin is verified even with mail on", async () => {
+test("public admin-address registration stays unverified member; operator promotion remains possible", async () => {
   await setMail(true);
   const r = await register(adminEmail);
   assert.equal(r.statusCode, 201, r.body);
-  assert.equal(r.json().user.email_verified, true);
-  assert.equal(r.json().user.role, "admin");
+  assert.equal(r.json().user.email_verified, false);
+  assert.equal(r.json().user.role, "member");
+  const login = await inject("POST", "/auth/login", {
+    payload: { email: adminEmail, password },
+  });
+  assert.equal(
+    login.json().user.role,
+    "member",
+    "ADMIN_EMAILS must not promote at login",
+  );
+  await pool.query(
+    "UPDATE users SET role='admin',email_verified=true WHERE id=$1",
+    [r.json().user.id],
+  );
 });
 
 test("a new member must confirm their email before using the app", async () => {

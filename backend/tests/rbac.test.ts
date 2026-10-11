@@ -68,8 +68,11 @@ let teamId = "";
 
 before(async () => {
   await migrate();
-  // The admin registers first so the "first account is admin" rule cannot promote the others.
+  // Public registration is always member; fixture operator grants admin explicitly.
   admin = await register("admin", adminEmail);
+  assert.equal(admin.role, "member");
+  await pool.query("UPDATE users SET role='admin' WHERE id=$1", [admin.id]);
+  admin.role = "admin";
   owner = await register("owner");
   member = await register("member");
   viewer = await register("viewer");
@@ -87,7 +90,7 @@ after(async () => {
   await pool.end();
 });
 
-test("ADMIN_EMAILS grants admin; everyone else is a member", async () => {
+test("only explicitly granted fixture admin has admin authority", async () => {
   assert.equal(admin.role, "admin");
   for (const a of [owner, member, viewer, outsider])
     assert.equal(a.role, "member");
@@ -337,6 +340,39 @@ test("team roles control membership and team items", async () => {
       .statusCode,
     404,
   );
+});
+
+test("team viewers can read an existing meeting note but cannot create it", async () => {
+  const newTeam = await call(owner, "POST", "/teams", {
+    name: "Note permissions",
+  });
+  const noteTeamId = newTeam.json().id;
+  assert.equal(
+    (
+      await call(owner, "POST", `/teams/${noteTeamId}/members`, {
+        email: viewer.email,
+        role: "viewer",
+      })
+    ).statusCode,
+    201,
+  );
+  const event = await call(owner, "POST", "/items", {
+    title: "Permission meeting",
+    kind: "event",
+    team_id: noteTeamId,
+    due_at: new Date(Date.now() + 60000).toISOString(),
+    end_at: new Date(Date.now() + 3600000).toISOString(),
+  });
+  assert.equal(event.statusCode, 201, event.body);
+  const id = event.json().id;
+  const refused = await call(viewer, "POST", `/items/${id}/note`, {});
+  assert.equal(refused.statusCode, 403, refused.body);
+  const created = await call(owner, "POST", `/items/${id}/note`, {});
+  assert.equal(created.statusCode, 201, created.body);
+  const readable = await call(viewer, "POST", `/items/${id}/note`, {});
+  assert.equal(readable.statusCode, 200, readable.body);
+  assert.equal(readable.json().id, created.json().id);
+  await call(owner, "DELETE", `/teams/${noteTeamId}`);
 });
 
 test("admins manage teams but cannot read team or personal items", async () => {

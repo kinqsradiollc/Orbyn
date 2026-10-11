@@ -76,9 +76,61 @@ spec:
           envFrom:
             - configMapRef:
                 name: orbyn-config
-            - secretRef:
-                name: orbyn-secrets
           env:
+            - name: SLACK_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: SLACK_CLIENT_ID
+                  optional: true
+            - name: SLACK_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: SLACK_CLIENT_SECRET
+                  optional: true
+            - name: TEAMS_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: TEAMS_CLIENT_ID
+                  optional: true
+            - name: TEAMS_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: TEAMS_CLIENT_SECRET
+                  optional: true
+            - name: TEAMS_BOT_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: TEAMS_BOT_CLIENT_SECRET
+                  optional: true
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_URL
+                  optional: false
+            - name: DATABASE_READ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_READ_URL
+                  optional: true
+            - name: SECRETS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: SECRETS_KEY
+                  optional: true
+            - name: FILES_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: FILES_SECRET
+                  optional: true
             # Keep the V8 heap below the memory limit so Node collects garbage
             # before the kernel OOM-kills it.
             - name: NODE_OPTIONS

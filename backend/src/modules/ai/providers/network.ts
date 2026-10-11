@@ -1,6 +1,10 @@
-import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { fail } from "@orbyn/core";
+import {
+  outbound,
+  ipv6Groups,
+  type CheckedUrl,
+} from "../../../lib/netguard.js";
 
 /** Hostnames of cloud metadata services, which hold the server's own credentials. */
 const BLOCKED_HOSTS = new Set([
@@ -16,7 +20,22 @@ function blockedAddress(address: string) {
     // Link-local (AWS, GCP, Azure metadata) and Alibaba's metadata address.
     return (a === 169 && b === 254) || plain === "100.100.100.200";
   }
-  return plain.startsWith("fe80:") || plain === "fd00:ec2::254";
+  const groups = ipv6Groups(address);
+  if (!groups) return true;
+  const zeros = (from: number, to: number) =>
+    groups.slice(from, to).every((x) => x === 0);
+  const embedded = (hi: number, lo: number) =>
+    `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+  if (
+    (zeros(0, 5) && groups[5] === 0xffff) ||
+    zeros(0, 6) ||
+    (zeros(0, 4) && groups[4] === 0xffff && groups[5] === 0) ||
+    (groups[0] === 0x64 && groups[1] === 0xff9b && zeros(2, 6))
+  )
+    return blockedAddress(embedded(groups[6], groups[7]));
+  if (groups[0] === 0x2002)
+    return blockedAddress(embedded(groups[1], groups[2]));
+  return (groups[0] & 0xffc0) === 0xfe80 || plain === "fd00:ec2::254";
 }
 
 /**
@@ -51,7 +70,7 @@ export function isPrivateUrl(raw: string): boolean {
  * networks, for LM Studio or Ollama), but never at cloud metadata endpoints.
  * Checked when a provider is saved and again before every outbound call.
  */
-export async function assertProviderUrl(raw: string) {
+export async function checkedProviderUrl(raw: string): Promise<CheckedUrl> {
   let url: URL;
   try {
     url = new URL(raw);
@@ -65,7 +84,17 @@ export async function assertProviderUrl(raw: string) {
   const host = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
   if (BLOCKED_HOSTS.has(host)) fail(422, "That address is not allowed.");
   const addresses = isIP(host)
-    ? [host]
-    : (await lookup(host, { all: true }).catch(() => [])).map((a) => a.address);
-  if (addresses.some(blockedAddress)) fail(422, "That address is not allowed.");
+    ? [{ address: host, family: isIP(host) }]
+    : await outbound.lookup(host).catch(() => []);
+  if (!addresses.length || addresses.some((a) => blockedAddress(a.address)))
+    fail(422, "That address is not allowed or could not be resolved.");
+  const first = addresses[0];
+  return {
+    url,
+    pinned: { address: first.address, family: first.family === 6 ? 6 : 4 },
+  };
+}
+
+export async function assertProviderUrl(raw: string) {
+  await checkedProviderUrl(raw);
 }

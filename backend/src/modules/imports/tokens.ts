@@ -80,7 +80,7 @@ function signFor(purpose: string, payload: string) {
 }
 
 export function claimToken<T extends { e: number }>(
-  purpose: "page-upload" | "page-read",
+  purpose: "page-upload" | "page-read" | "page-service-read",
   claim: T,
 ): string {
   const payload = Buffer.from(JSON.stringify(claim)).toString("base64url");
@@ -89,7 +89,7 @@ export function claimToken<T extends { e: number }>(
 
 /** The claim in a signed link for `purpose`, or null when forged or expired. */
 export function readClaimToken<T extends { e: number }>(
-  purpose: "page-upload" | "page-read",
+  purpose: "page-upload" | "page-read" | "page-service-read",
   token: string,
   now = Date.now(),
 ): T | null {

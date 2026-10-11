@@ -79,9 +79,25 @@ spec:
           envFrom:
             - configMapRef:
                 name: orbyn-config
-            - secretRef:
-                name: orbyn-secrets
           env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_URL
+                  optional: false
+            - name: DATABASE_READ_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_READ_URL
+                  optional: true
+            - name: DATABASE_LISTEN_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: DATABASE_LISTEN_URL
+                  optional: true
             # Keep the V8 heap below the memory limit so Node collects garbage
             # before the kernel OOM-kills it.
             - name: NODE_OPTIONS

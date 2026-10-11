@@ -58,9 +58,18 @@ spec:
           envFrom:
             - configMapRef:
                 name: orbyn-config
-            - secretRef:
-                name: orbyn-secrets
           env:
+            - name: SECRETS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: SECRETS_KEY
+            - name: MIGRATE_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: orbyn-secrets
+                  key: MIGRATE_DATABASE_URL
+                  optional: false
             # "env" overrides "envFrom". Migrations go straight to the primary,
             # not through a transaction pooler, as in compose.yaml.
             - name: DATABASE_URL

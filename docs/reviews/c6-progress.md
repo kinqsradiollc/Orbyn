@@ -58,7 +58,7 @@ No formal acceptance, main merge, push or production deployment is claimed.
   authority and Today UI data release. The scan does not establish whole-repo
   security or deployed HTTPS host behavior. Its canonical report is in the
   local Codex Security scan artifacts; see [security boundaries](c6-security-boundary.md).
-- Formal Tester → Reviewer qualification has not started. The bounded Visual
+- Tester ran source-scoped checks on `81e4c812`; saved-finding remediation now supersedes it. Reviewer formal acceptance is still pending. The bounded Visual
   Check is complete; screenshots were inline because the browser had no
   supported local export path.
 
@@ -122,3 +122,14 @@ locked connector-authority check. No browser session or ChatGPT plan token is
 accepted. Protocol **11/11**, service **16/16**, and backend typecheck passed.
 These follow-up results supersede the two affected suites in the older 123-test
 receipt; they are not a new full-suite total. No custom visible UI changed.
+
+## Saved-finding remediation — 11 October
+
+The owner canceled Codex Security and prohibited further scans unless explicitly
+requested. All 29 saved finding IDs (including duplicate causes) have source
+patches recorded in [the remediation ledger](security-remediation-2026-10-11.md).
+This revision changes OAuth consent/replay, signup admin authority, private file
+and stream revocation, publication privacy, provider transport and credential
+upgrade/deployment controls. No replacement scan or production deployment is
+claimed. Independent read-only patch closure is recorded in the ledger; new
+frozen-source Tester qualification follows. Earlier tests remain source-scoped.

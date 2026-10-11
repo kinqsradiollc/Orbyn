@@ -63,7 +63,9 @@ if [ -n "$MCP_DISABLED" ] && [ "$MCP_DISABLED" != "0" ]; then
 else
   export MCP_GATE="# MCP is on (MCP_DISABLED unset)."
 fi
-if [ -n "$PLUGIN_PUBLIC_URL" ]; then
+if [ -n "$MCP_DISABLED" ] && [ "$MCP_DISABLED" != "0" ]; then
+  export PLUGIN_GATE="$MCP_GATE"
+elif [ -n "$PLUGIN_PUBLIC_URL" ]; then
   export PLUGIN_GATE="# Plugin recipient enabled."
 else
   export PLUGIN_GATE="return 404 '{\"message\":\"The plugin recipient is disabled.\"}';"

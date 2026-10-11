@@ -37,10 +37,6 @@ import {
  *   OAUTH_REFRESH_TTL days (30) they lapse, and a family never outlives 90
  *   days or its connection. Using a spent one again means it was copied:
  *   the whole family is revoked, the connection paused, the person told.
- *   Except just after it was spent (REFRESH_GRACE_SECONDS, a couple of
- *   times at most): a client that lost the answer to a timeout, or two
- *   tabs refreshing at once, gets another pair in the same family instead
- *   of being treated as a thief.
  */
 
 export const ACCESS_PREFIX = "oat_";
@@ -48,11 +44,6 @@ export const REFRESH_PREFIX = "ort_";
 export const CODE_SECONDS = 60;
 /** The most a refresh-token family lasts, however often it rotates. */
 export const FAMILY_MAX_DAYS = 90;
-/** How long a just-spent refresh token may be presented again (a retry). */
-export const REFRESH_GRACE_SECONDS = 60;
-/** How many more pairs one spent refresh token may get within the grace. */
-export const REFRESH_GRACE_REUSES = 2;
-
 /** A token's secret part: 32 random bytes. */
 const secret = () => randomBytes(32).toString("base64url");
 
@@ -84,8 +75,9 @@ export async function issueCode(
   const code = `oac_${secret()}`;
   await db.query(
     `INSERT INTO oauth_codes (code_hash, grant_id, client_id, redirect_uri,
-       code_challenge, resource, scope, expires_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, now() + make_interval(secs => $8))`,
+       code_challenge, resource, scope, expires_at, consent_version)
+     SELECT $1, $2, $3, $4, $5, $6, $7, now() + make_interval(secs => $8), consent_version
+     FROM agent_grants WHERE id=$2`,
     [
       digest(code),
       c.grantId,
@@ -104,11 +96,12 @@ export type TokenResponse = {
   access_token: string;
   token_type: "Bearer";
   expires_in: number;
-  refresh_token: string;
+  refresh_token?: string;
   scope: string;
 };
 
 type GrantState = {
+  consent_version: string;
   resource_kind: "mcp" | "plugin";
   id: string;
   user_id: string;
@@ -127,7 +120,7 @@ type GrantState = {
   client_redirect_uris: string[] | null;
 };
 
-const GRANT_STATE = `SELECT g.id, g.resource_kind, g.user_id, g.authorized_at, g.client_id, g.client_name, g.access, g.toolsets,
+const GRANT_STATE = `SELECT g.consent_version, g.id, g.resource_kind, g.user_id, g.authorized_at, g.client_id, g.client_name, g.access, g.toolsets,
     g.expires_at, g.suspended_at, g.revoked_at, u.disabled, c.blocked AS client_blocked,
     c.kind AS client_kind, c.host AS client_host, c.redirect_uris AS client_redirect_uris
   FROM agent_grants g JOIN users u ON u.id = g.user_id
@@ -195,22 +188,31 @@ async function mint(
   );
   await db.query(
     `INSERT INTO agent_tokens (token_hash, grant_id, kind, prefix, family, resource,
-       expires_at, family_expires_at)
-     VALUES ($1, $3, 'access', $4, $5, $6, $7, $9),
-            ($2, $3, 'refresh', $8, $5, $6, $10, $9)`,
+       expires_at, family_expires_at) VALUES ($1,$2,'access',$3,$4,$5,$6,$7)`,
     [
       digest(access),
-      digest(refresh),
       g.id,
       access.slice(0, 8),
       family,
       target.resource,
       accessEnd,
-      refresh.slice(0, 8),
       familyExpires,
-      refreshEnd,
     ],
   );
+  if (offline)
+    await db.query(
+      `INSERT INTO agent_tokens (token_hash, grant_id, kind, prefix, family, resource,
+       expires_at, family_expires_at, offline_allowed) VALUES ($1,$2,'refresh',$3,$4,$5,$6,$7,true)`,
+      [
+        digest(refresh),
+        g.id,
+        refresh.slice(0, 8),
+        family,
+        target.resource,
+        refreshEnd,
+        familyExpires,
+      ],
+    );
   return {
     access_token: access,
     token_type: "Bearer",
@@ -218,7 +220,7 @@ async function mint(
       1,
       Math.round((accessEnd.getTime() - Date.now()) / 1000),
     ),
-    refresh_token: refresh,
+    ...(offline ? { refresh_token: refresh } : {}),
     scope: scopeOf(g, offline),
   };
 }
@@ -297,9 +299,10 @@ export async function exchangeCode(
       resource: string;
       scope: string;
       expires_at: Date;
+      consent_version: string;
     }>(
       `DELETE FROM oauth_codes WHERE code_hash = $1
-       RETURNING grant_id, client_id, redirect_uri, code_challenge, resource, scope, expires_at`,
+       RETURNING grant_id, client_id, redirect_uri, code_challenge, resource, scope, expires_at, consent_version`,
       [digest(code)],
     )
   ).rows[0];
@@ -328,6 +331,11 @@ export async function exchangeCode(
         [row.grant_id],
       )
     ).rows[0];
+    if (g && g.consent_version !== row.consent_version)
+      throw new OAuthError(
+        "invalid_grant",
+        "Consent changed. Start sign-in again.",
+      );
     const why = unusable(g, s);
     if (why) throw new OAuthError("invalid_grant", why);
     // A connection counts against the limit once its sign-in finishes, so
@@ -423,21 +431,27 @@ export async function refreshTokens(
   checkResource(resource);
   let reused = false;
   const tokens = await transaction(async (db) => {
+    await db.query(
+      `SELECT g.id FROM agent_grants g JOIN agent_tokens t ON t.grant_id=g.id
+       WHERE t.token_hash=$1 AND t.kind='refresh' FOR UPDATE OF g`,
+      [digest(refresh_token)],
+    );
     const t = (
       await db.query<{
         grant_id: string;
         family: string;
         expires_at: Date | null;
         family_expires_at: Date | null;
+        offline_allowed: boolean;
         used_at: Date | null;
         resource: string | null;
       }>(
-        `SELECT grant_id, family, expires_at, family_expires_at, used_at, resource
+        `SELECT grant_id, family, expires_at, family_expires_at, used_at, resource, offline_allowed
            FROM agent_tokens WHERE token_hash = $1 AND kind = 'refresh' FOR UPDATE`,
         [digest(refresh_token)],
       )
     ).rows[0];
-    if (!t)
+    if (!t || !t.offline_allowed)
       throw new OAuthError(
         "invalid_grant",
         "This refresh token isn't valid. Sign in again.",
@@ -446,24 +460,11 @@ export async function refreshTokens(
     // cannot be silently replaced by the default when resource is omitted.
     const target = checkResource(resource, t.resource ?? env.MCP_PUBLIC_URL);
     if (t.used_at) {
-      // A retry right after it rotated (a lost answer, two tabs at once)
-      // isn't theft: it gets another pair, a couple of times at most.
-      const recent =
-        Date.now() - t.used_at.getTime() < REFRESH_GRACE_SECONDS * 1000;
-      const since = recent
-        ? (
-            await db.query<{ n: number }>(
-              `SELECT count(*)::int AS n FROM agent_tokens
-                WHERE family = $1 AND kind = 'refresh' AND created_at >= $2`,
-              [t.family, t.used_at],
-            )
-          ).rows[0].n
-        : Infinity;
-      if (since >= 1 + REFRESH_GRACE_REUSES) {
-        await refreshReused(db, t.grant_id, t.family);
-        reused = true;
-        return null;
-      }
+      // A bearer replay cannot be distinguished from a lost-response retry.
+      // Never mint successors for an already consumed credential.
+      await refreshReused(db, t.grant_id, t.family);
+      reused = true;
+      return null;
     }
     if (t.expires_at && t.expires_at.getTime() <= Date.now())
       throw new OAuthError(
@@ -490,7 +491,7 @@ export async function refreshTokens(
         "invalid_scope",
         "A refresh can't widen what this connection may do. Sign in again to change it.",
       );
-    // The first use sets used_at; retries within the grace keep it.
+    // Mark consumed before issuing the successor, under the token row lock.
     await db.query(
       "UPDATE agent_tokens SET used_at = coalesce(used_at, now()) WHERE token_hash = $1",
       [digest(refresh_token)],
