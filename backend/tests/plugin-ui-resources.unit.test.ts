@@ -152,10 +152,24 @@ test("Markdown app reads a host file and saves only after a user edit", async ()
     text: "revised note",
     ifMatch: "v1",
   });
+  source.value = "newer unsaved edit";
+  source.input();
+  assert.equal(elements.get("save").disabled, true);
+  assert.equal(elements.get("reload").disabled, true);
+  elements.get("save").onclick();
+  elements.get("reload").onclick();
+  deliver("notifications/resources/updated", { uri });
+  assert.equal(
+    sent.filter((m) => m.method === "openai/resources/write").length,
+    1,
+  );
+  assert.equal(sent.filter((m) => m.method === "resources/read").length, 1);
   respond(write.id, { outcome: "saved", etag: "v2" });
   await flush();
-  assert.equal(elements.get("file-status").textContent, "Saved");
-  assert.equal(elements.get("save").disabled, true);
+  assert.equal(elements.get("file-status").textContent, "Unsaved changes");
+  assert.equal(source.value, "newer unsaved edit");
+  assert.equal(elements.get("save").disabled, false);
+  assert.equal(elements.get("reload").disabled, false);
   source.value = "another edit";
   source.input();
   elements.get("save").onclick();

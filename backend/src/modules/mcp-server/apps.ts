@@ -174,7 +174,7 @@ const MARKDOWN_FILE: Card = {
   tools: ["open_markdown_file"],
   body: `<main class="card"><div class="row"><h1 id="file-name">Markdown file</h1><span class="tag" id="mode">Opening</span></div><p class="sub" id="file-status">Waiting for the file.</p><textarea id="source" aria-label="Markdown source" spellcheck="false" readonly></textarea><div class="row"><button id="save" class="primary" hidden disabled>Save</button><button id="reload" hidden>Reload</button></div></main>`,
   script: `
-let fileUri=null,etag=null,original="",generation=0,dirty=false,canSave=false,discardPending=false,subscribedUri=null;
+let fileUri=null,etag=null,original="",generation=0,dirty=false,canSave=false,discardPending=false,subscribedUri=null,saving=false;
 const source=document.getElementById("source"),save=document.getElementById("save"),reload=document.getElementById("reload");
 const status=document.getElementById("file-status"),mode=document.getElementById("mode"),title=document.getElementById("file-name");
 const note=(value)=>{status.textContent=value;resize();};
@@ -185,10 +185,10 @@ function onToolInput(params){
     note("This Markdown file is unavailable.");return;
   }
   if(subscribedUri&&subscribedUri!==file.resourceUri)request("resources/unsubscribe",{uri:subscribedUri}).catch(()=>{});
-  subscribedUri=null;fileUri=file.resourceUri;title.textContent=file.name;dirty=false;discardPending=false;loadFile();
+  subscribedUri=null;fileUri=file.resourceUri;title.textContent=file.name;dirty=false;discardPending=false;saving=false;loadFile();
 }
 async function loadFile(){
-  if(!fileUri)return;const current=++generation;source.readOnly=true;save.hidden=true;reload.hidden=true;
+  if(!fileUri)return;const current=++generation;source.readOnly=true;canSave=false;etag=null;save.hidden=true;reload.hidden=true;reload.disabled=false;
   mode.textContent="Opening";note("Opening file…");
   try{
     const result=await request("resources/read",{uri:fileUri,_meta:{"openai/resource":{representation:"text"}}});
@@ -217,10 +217,10 @@ async function loadFile(){
     }
   }catch{if(current!==generation)return;mode.textContent="Unavailable";note("Could not open this file. Try again.");reload.hidden=false;}
 }
-source.addEventListener("input",()=>{dirty=source.value!==original;save.disabled=!canSave||!dirty;discardPending=false;note(dirty?"Unsaved changes":"All changes saved");});
+source.addEventListener("input",()=>{dirty=source.value!==original;save.disabled=saving||!canSave||!dirty;discardPending=false;if(saving)return;note(dirty?"Unsaved changes":"All changes saved");});
 save.onclick=async()=>{
-  if(!canSave||!dirty||!fileUri||!etag)return;
-  const current=++generation,submitted=source.value;save.disabled=true;note("Saving…");
+  if(saving||!canSave||!dirty||!fileUri||!etag)return;
+  const current=++generation,submitted=source.value;saving=true;save.disabled=true;reload.disabled=true;note("Saving…");
   try{
     const result=await request("openai/resources/write",{uri:fileUri,text:submitted,ifMatch:etag});
     if(current!==generation)return;
@@ -231,14 +231,16 @@ save.onclick=async()=>{
     if(result&&result.outcome==="too-large"){note("This file exceeds the host's save limit.");return;}
     note("The host did not save this file.");
   }catch{if(current===generation)note("Save failed. Your edits are still here.");}
-  finally{if(current===generation)save.disabled=!canSave||!dirty;}
+  finally{if(current===generation){saving=false;reload.disabled=false;save.disabled=!canSave||!dirty;}}
 };
 reload.onclick=()=>{
+  if(saving)return;
   if(dirty&&!discardPending){discardPending=true;note("Unsaved changes. Press Reload again to discard them.");return;}
   dirty=false;discardPending=false;loadFile();
 };
 function onResourceUpdated(params){
   if(!fileUri||params.uri!==fileUri)return;
+  if(saving)return;
   if(dirty){note("This file changed elsewhere. Copy your edits before reloading.");return;}
   loadFile();
 }
