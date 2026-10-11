@@ -113,22 +113,24 @@ Use the shared scale by role at normal text settings:
 
 ## Acceptance for a changed feature
 
-Inspect representative states, not just a clean empty page:
+Select representative states for the agreed risk, not every axis automatically.
+User exclusions and `AGENT.md` take precedence; this is a menu of checks, not a
+new requirement for native builds, enlarged text or repeated visual sweeps:
 
 | Axis | Required checks |
 | --- | --- |
 | Width/height | Web 320/390/768/1280; mobile browser 320/390; short window and landscape where relevant |
 | Containers | Expanded/collapsed main nav, secondary panel, nested picker/dialog, actual pane width |
 | Density/UX | Useful task space at 320×740; concise copy; clear first action; complete, cancel, recover and return without losing work |
-| Appearance | Light/Dark, normal and 200% web text/zoom; native enlarged text settings |
+| Appearance | Light/Dark at normal settings; enlarged text/zoom only when included in the agreed check |
 | Content | Empty/populated, long/localized labels, large catalogs, selected/manual values |
 | Network/state | Loading, offline/error, retry, success, disabled, stale/revoked where relevant |
 | Interaction | Pointer, Tab/Shift+Tab, Escape, focus return, scroll-to-last-item, keyboard visible |
-| Platforms | Browser checks plus affected installed desktop/iOS/Android flows; native gaps stay explicit |
+| Platforms | Shared web/desktop browser and Expo web; installed desktop/iOS/Android only when explicitly requested |
 
 At 320 CSS px, ordinary horizontal prose must not need horizontal scrolling;
-also check 1280 at 400% zoom for reflow and 200% enlargement for text resizing.
-If these settings produce different behavior, record and fix the failing state.
+if an accessibility resizing audit is requested, include its agreed zoom/text
+settings and record any distinct behavior. Do not silently restore excluded checks.
 Check increased text spacing and accessible names/roles as appropriate. Screenshots
 establish visible containment only; interaction and accessibility need their own
 checks. This matrix does not replace a full accessibility audit.
