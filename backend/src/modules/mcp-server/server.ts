@@ -1,7 +1,12 @@
 import { ZodError } from "zod";
 import { PluginCallError } from "../plugin/dispatch.js";
-import { pluginRead } from "../plugin/execute.js";
-import { readPluginImportEvents } from "../plugin/import-jobs.js";
+import { pluginRead, pluginWrite } from "../plugin/execute.js";
+import {
+  readPluginImportEvents,
+  trackPluginImport,
+  importIdFromResult,
+  withImportJob,
+} from "../plugin/import-jobs.js";
 import { parsePluginJobUri } from "../plugin/job-resource.js";
 import { pluginJobCursorKey } from "../plugin/job-cursor.js";
 import {
@@ -611,6 +616,19 @@ export function buildServer(call: CallContext): Server {
         ...exec.result._meta,
         "mcp/www_authenticate": [insufficientScope(scope)],
       };
+    if (name === "start_import" && p.via === "oauth") {
+      const importId = importIdFromResult(exec.result);
+      if (importId) {
+        const job = await pluginWrite(
+          p,
+          call.headers ?? {},
+          call.settings,
+          { mcp: env.MCP_PUBLIC_URL, plugin: env.PLUGIN_PUBLIC_URL },
+          (db) => trackPluginImport(db, p, importId),
+        );
+        exec.result = withImportJob(exec.result, job);
+      }
+    }
     if (apps) exec.result = withResultPreview(exec.result, p);
     call.onCall(cap, name, exec, Date.now() - started, digest);
     // It needs the person's yes, and the app can ask them in the chat.

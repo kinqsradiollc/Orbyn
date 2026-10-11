@@ -256,11 +256,16 @@ const RESULT: Card = {
   name: "Orbyn result",
   description: "Authorized results, document previews and change receipts.",
   tools: [],
-  body: `<main class="card"><h1 id="result-title">Orbyn</h1><p id="result-state" class="sub" role="status"></p><article id="result-body"></article><div id="result-links" class="row"></div><details id="document-edit" hidden><summary>Edit a line</summary><label>Line <select id="document-line" aria-label="Document line"></select></label><textarea id="document-source" aria-label="Line Markdown" spellcheck="false"></textarea><button id="document-review">Review change</button><pre id="document-diff" hidden></pre><button id="document-save" class="primary" hidden>Submit change</button></details><details id="result-details"><summary>Details</summary><pre id="result-source"></pre></details></main>`,
-  script: `
+  body: `<main class="card"><h1 id="result-title">Orbyn</h1><p id="result-state" class="sub" role="status"></p><article id="result-body"></article><div id="result-links" class="row"></div><details id="document-edit" hidden><summary>Edit a line</summary><label>Line <select id="document-line" aria-label="Document line"></select></label><textarea id="document-source" aria-label="Line Markdown" spellcheck="false"></textarea><p id="document-identity" class="note"></p><button id="document-refresh">Refresh revision</button><button id="document-discard">Discard draft</button><button id="document-review">Review change</button><pre id="document-diff" hidden></pre><button id="document-save" class="primary" hidden>Submit change</button></details><details id="result-details"><summary>Details</summary><pre id="result-source"></pre></details></main>`,
+  script: String.raw`
 const body=document.getElementById("result-body"),state=document.getElementById("result-state"),links=document.getElementById("result-links"),sourceDetails=document.getElementById("result-source");
 const editPanel=document.getElementById("document-edit"),line=document.getElementById("document-line"),draft=document.getElementById("document-source"),review=document.getElementById("document-review"),saveDoc=document.getElementById("document-save"),diff=document.getElementById("document-diff");
-let doc=null,lines=[],savingDoc=false,operation=null,diagramGeneration=0;
+let doc=null,lines=[],savingDoc=false,operation=null,diagramGeneration=0,activeResult=null,queuedResult=null,dirtyDoc=false,saveState="idle";
+const identity=document.getElementById("document-identity"),refreshDoc=document.getElementById("document-refresh"),discardDoc=document.getElementById("document-discard");
+function resetEditor(){doc=null;lines=[];operation=null;dirtyDoc=false;saveState="idle";saveDoc.textContent="Submit change";line.replaceChildren();draft.value="";draft.readOnly=false;review.disabled=false;line.disabled=false;saveDoc.hidden=true;diff.hidden=true;editPanel.hidden=true;}
+function editorIdentity(preview){return preview&&typeof preview.id==="string"&&Number.isInteger(preview.version)?preview.id+"@"+preview.version:null;}
+function keepResult(result){queuedResult=result;state.textContent="Draft kept for "+(doc?.title||doc?.id||"this document")+". Discard it to show the new result.";resize();}
+
 const safeUrl=(value)=>{try{const url=new URL(value);return url.protocol==="https:"&&!url.username&&!url.password?url.href:null;}catch{return null;}};
 function link(label,value){const url=safeUrl(value);if(!url)return;const button=el("button",null,label);button.onclick=()=>openLink(url);links.append(button);}
 function safeHtml(value){
@@ -290,6 +295,8 @@ function renderDiagrams(){
 }
 function render(result){
  const value=result.structuredContent||{};const preview=result._meta&&result._meta["orbyn/document-preview"];
+ if(doc&&(savingDoc||dirtyDoc||operation)){keepResult(result);return;}
+ resetEditor();activeResult=result;queuedResult=null;
  links.replaceChildren();body.replaceChildren();
  state.textContent=result.isError?"Could not complete this action.":value.pending?"Waiting for review":value.done?"Changes recorded":value.status||"";
  document.getElementById("result-title").textContent=typeof value.title==="string"?value.title:"Orbyn";
@@ -316,29 +323,63 @@ function render(result){
 
  link("Open in Orbyn",value.url);const pending=value.pending||{};link("Open review",pending.review_url||value.review_url);
  for(const item of (Array.isArray(value.done)?value.done:[]).slice(0,10))link(item.title||"Open item",item.url);
- // User drafts survive subsequent results and conflicts. No mutation happens on render.
- if(!doc&&preview&&preview.editable===true&&typeof preview.id==="string"&&Number.isInteger(preview.version)){
-  doc={id:preview.id,version:preview.version};lines=Array.isArray(preview.lines)?preview.lines:[];
+ // Every displayed result owns its editor identity and current eligibility.
+ if(preview?.truncated)body.append(el("p","note","Partial preview. Open in Orbyn or use Details for the returned source."));
+ if(preview?.editListLimited)body.append(el("p","note","Editing shows the first 100 lines. Open in Orbyn for more."));
+ if(preview?.nextBlock){const next=el("button",null,"Continue page");next.onclick=async()=>{next.disabled=true;try{render(await request("tools/call",{name:"fetch",arguments:{id:preview.id,next_block:preview.nextBlock}}));}catch{state.textContent="Could not load the next part.";}finally{next.disabled=false;}};links.append(next);}
+ if(preview&&preview.editable===true&&editorIdentity(preview)){
+  doc={id:preview.id,version:preview.version,title:value.title||preview.id};lines=Array.isArray(preview.lines)?preview.lines:[];
+  identity.textContent=doc.title+" · revision "+doc.version;
   for(const item of lines){const option=el("option",null,item.anchor);option.value=item.anchor;line.append(option);}
   editPanel.hidden=!lines.length;selectLine();
  }
  resize();
 }
-function selectLine(){if(savingDoc)return;const selected=lines.find(item=>item.anchor===line.value);draft.value=selected?.markdown||"";saveDoc.hidden=true;diff.hidden=true;operation=null;}
-line.onchange=()=>{if(draft.dataset.dirty==="true"){state.textContent="Keep your draft before choosing another line.";line.value=draft.dataset.anchor;return;}selectLine();};
-draft.oninput=()=>{draft.dataset.dirty="true";draft.dataset.anchor=line.value;saveDoc.hidden=true;diff.hidden=true;operation=null;};
-review.onclick=()=>{if(!doc||savingDoc)return;const old=lines.find(item=>item.anchor===line.value)?.markdown||"";diff.textContent="Before\n"+old+"\n\nAfter\n"+draft.value;diff.hidden=false;saveDoc.hidden=false;operation=crypto.randomUUID();resize();};
-saveDoc.onclick=async()=>{
- if(!doc||savingDoc||!operation||draft.value.length>60000)return;savingDoc=true;saveDoc.disabled=true;review.disabled=true;line.disabled=true;
- try{const result=await request("tools/call",{name:"edit_doc",arguments:{doc:doc.id,version:doc.version,edits:[{op:"replace",block:line.value,markdown:draft.value}],client_ref:operation}});
-  if(result.isError){draft.readOnly=true;state.textContent="Change not saved. Your draft is kept; reopen the page to check its revision.";return;}
-  const value=result.structuredContent||{};
-  if(!value.pending&&!Array.isArray(value.done)){draft.readOnly=true;state.textContent="Save outcome unavailable. Retry this change with its retained operation ID.";return;}
-  state.textContent=value.pending?"Sent for review. Your draft is kept.":"Change recorded. Reopen the page before editing again.";
-  saveDoc.hidden=true;review.disabled=true;operation=null;link("Open review",value.pending?.review_url||value.review_url);
- }catch{draft.readOnly=true;state.textContent="Save outcome unavailable. Your draft and operation ID are kept; retry this change.";}
- finally{savingDoc=false;saveDoc.disabled=false;if(operation)review.disabled=false;resize();}
+function selectLine(){if(savingDoc||operation)return;const selected=lines.find(item=>item.anchor===line.value);draft.value=selected?.markdown||"";draft.dataset.anchor=line.value;saveDoc.hidden=true;diff.hidden=true;}
+line.onchange=()=>{if(dirtyDoc||operation){state.textContent="Discard your draft before switching lines.";line.value=draft.dataset.anchor;return;}selectLine();};
+draft.oninput=()=>{dirtyDoc=true;saveDoc.hidden=true;diff.hidden=true;};
+review.onclick=()=>{
+ if(!doc||savingDoc||operation||saveState!=="idle")return;
+ const old=lines.find(item=>item.anchor===line.value)?.markdown||"";
+ operation=Object.freeze({doc:doc.id,version:doc.version,anchor:line.value,markdown:draft.value,client_ref:crypto.randomUUID()});
+ diff.textContent="Before\n"+old+"\n\nAfter\n"+operation.markdown;diff.hidden=false;saveDoc.hidden=false;draft.readOnly=true;line.disabled=true;review.disabled=true;resize();
 };
+discardDoc.onclick=()=>{
+ if(savingDoc||saveState==="unknown"){state.textContent="Retry the retained request before switching documents.";return;}
+ const result=queuedResult||activeResult;resetEditor();if(result)render(result);
+};
+refreshDoc.onclick=async()=>{
+ if(!doc||savingDoc||saveState==="unknown"){state.textContent="Retry the retained request before refreshing.";return;}
+ const current=doc,target=doc.id,anchor=line.value,kept=draft.value;refreshDoc.disabled=true;
+ try{
+  const result=await request("tools/call",{name:"fetch",arguments:{id:target}});
+  if(doc!==current)return;
+  const preview=result._meta?.["orbyn/document-preview"];
+  if(result.isError||preview?.id!==target||!preview.editable){state.textContent="Revision unavailable. Draft kept; open the document in Orbyn.";return;}
+  resetEditor();render(result);
+  const exists=lines.some(item=>item.anchor===anchor);
+  if(!exists){draft.value=kept;draft.readOnly=true;dirtyDoc=true;saveState="rejected";state.textContent="That line is unavailable. Copy your draft or discard it.";return;}
+  line.value=anchor;selectLine();draft.value=kept;dirtyDoc=true;state.textContent="Revision refreshed. Review your draft against the current line.";
+ }catch{state.textContent="Could not refresh. Draft kept.";}finally{refreshDoc.disabled=false;resize();}
+};
+saveDoc.onclick=async()=>{
+ if(!doc||savingDoc||!operation||operation.markdown.length>60000||saveState==="completed")return;
+ const submitted=operation,target=editorIdentity(doc);savingDoc=true;saveDoc.disabled=true;review.disabled=true;line.disabled=true;draft.readOnly=true;refreshDoc.disabled=true;discardDoc.disabled=true;
+ try{
+  const result=await request("tools/call",{name:"edit_doc",arguments:{doc:submitted.doc,version:submitted.version,edits:[{op:"replace",block:submitted.anchor,markdown:submitted.markdown}],client_ref:submitted.client_ref}});
+  if(operation!==submitted||editorIdentity(doc)!==target)return;
+  const value=result.structuredContent||{};
+  if(result.isError){
+   const code=result._meta?.["orbyn/error"]?.code;
+   if(["CONFLICT","INVALID","FORBIDDEN","NOT_FOUND","READ_ONLY","LIMITED","NEEDS_REVIEW"].includes(code)){saveState="rejected";saveDoc.hidden=true;state.textContent="Change not accepted. Refresh the revision or discard; draft kept.";return;}
+   saveState="unknown";saveDoc.textContent="Retry retained change";state.textContent="Outcome unavailable. Retry the same request; draft kept.";return;
+  }
+  if(!value.pending&&!Array.isArray(value.done)){saveState="unknown";saveDoc.textContent="Retry retained change";state.textContent="Outcome unavailable. Retry the same request; draft kept.";return;}
+  saveState="completed";saveDoc.hidden=true;dirtyDoc=false;state.textContent=value.pending?"Sent for review. Draft kept.":"Change recorded. Refresh before another edit.";link("Open review",value.pending?.review_url||value.review_url);
+ }catch{if(operation===submitted){saveState="unknown";saveDoc.textContent="Retry retained change";state.textContent="Outcome unavailable. Retry the same request; draft kept.";}}
+ finally{savingDoc=false;saveDoc.disabled=false;refreshDoc.disabled=false;discardDoc.disabled=false;resize();}
+};
+
 `,
 };
 

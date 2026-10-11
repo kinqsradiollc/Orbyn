@@ -156,8 +156,8 @@ test("generic resource is permission-filtered and its app script parses", () => 
   assert.ok(script);
   assert.doesNotThrow(() => new Script(script));
   assert.match(script, /setAttribute\("sandbox","allow-scripts"\)/);
-  assert.match(script, /version:doc.version/);
-  assert.match(script, /client_ref:operation/);
+  assert.match(script, /version:submitted.version/);
+  assert.match(script, /client_ref:submitted.client_ref/);
 });
 
 test("canonical job cursor binds audience, connection and authority independently of legacy", () => {
@@ -211,4 +211,38 @@ test("workspace inference tools exclude keys and require the explicit canonical 
   } finally {
     env.MCP_WORKSPACE_AI_ENABLED = previous;
   }
+});
+
+test("partial document metadata distinguishes page continuation, complete block bounds and edit list limits", () => {
+  const preview = (text: string, metadata: object = {}) =>
+    withResultPreview(
+      {
+        content: [],
+        structuredContent: {
+          id: "doc:00000000-0000-4000-8000-000000000000",
+          text,
+          metadata: { type: "doc", version: 3, ...metadata },
+        },
+      },
+      principal(),
+    )._meta?.["orbyn/document-preview"] as any;
+  const paged = preview("Complete line ^bline", {
+    truncated: true,
+    next_block: "bnext",
+  });
+  assert.equal(paged.paginated, true);
+  assert.equal(paged.locallyClipped, false);
+  assert.equal(paged.nextBlock, "bnext");
+  const oversized = preview("x".repeat(61000) + " ^bgiant");
+  assert.equal(oversized.truncated, true);
+  assert.equal(oversized.locallyClipped, true);
+  assert.equal(oversized.editable, false);
+  assert.deepEqual(oversized.lines, []);
+  const many = preview(
+    Array.from({ length: 101 }, (_, i) => "Line " + i + " ^bline" + i).join(
+      "\n\n",
+    ),
+  );
+  assert.equal(many.editListLimited, true);
+  assert.equal(many.lines.length, 100);
 });

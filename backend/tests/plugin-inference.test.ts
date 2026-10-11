@@ -651,3 +651,108 @@ test("canonical inference needs fresh consent, isolates recipients and survives 
     await pool.query("DELETE FROM agent_grants WHERE id=$1", [mcpGrant]);
   }
 });
+
+test("canonical protocol import returns durable recipient-bound job resources and replays the same import", async () => {
+  const previousSecret = env.FILES_SECRET;
+  env.FILES_SECRET = "canonical-import-fixture-only";
+  const accessToken = `oat_${randomUUID()}`;
+  const canonicalGrant = (
+    await pool.query(
+      "INSERT INTO agent_grants(user_id,kind,resource_kind,client_id,access,personal,toolsets,trust,authorized_at) VALUES($1,'oauth','mcp',$2,'write',true,ARRAY['files'],'full',now()) RETURNING id",
+      [owner.id, clientId],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO agent_tokens(grant_id,kind,prefix,token_hash,resource,expires_at) VALUES($1,'access','oat_fixture',$2,$3,now()+interval '1 hour')",
+    [canonicalGrant, digest(accessToken), env.MCP_PUBLIC_URL],
+  );
+  const protocol = async (
+    method: string,
+    params: object,
+    authorization = `Bearer ${accessToken}`,
+  ) => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        authorization,
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+      },
+      payload: { jsonrpc: "2.0", id: 1, method, params },
+    });
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json();
+  };
+  try {
+    const args = {
+      file_name: "Canonical fixture.pdf",
+      bytes: 100,
+      client_ref: `canonical-import-${randomUUID()}`,
+    };
+    const first = await protocol("tools/call", {
+      name: "start_import",
+      arguments: args,
+    });
+    assert.equal(first.result.isError, undefined, JSON.stringify(first));
+    const link = first.result.content.find(
+      (part: any) =>
+        part.type === "resource_link" &&
+        part.uri.startsWith("orbyn://plugin-job/"),
+    );
+    assert.ok(link);
+    const replay = await protocol("tools/call", {
+      name: "start_import",
+      arguments: args,
+    });
+    assert.equal(replay.result._meta["orbyn/importJob"].uri, link.uri);
+    assert.equal(
+      replay.result.structuredContent.done[0].id,
+      first.result.structuredContent.done[0].id,
+    );
+    const read = await protocol("resources/read", { uri: link.uri });
+    const page = JSON.parse(read.result.contents[0].text);
+    assert.equal(page.status, "waiting");
+    assert.ok(page.cursor);
+    const resumed = await protocol("resources/read", {
+      uri: link.uri + "?cursor=" + encodeURIComponent(page.cursor),
+    });
+    assert.equal(JSON.parse(resumed.result.contents[0].text).id, page.id);
+    const opposite = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        authorization: headers.authorization,
+        accept: "application/json, text/event-stream",
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "resources/read",
+        params: { uri: link.uri },
+      },
+    });
+    assert.equal(opposite.statusCode, 401);
+    await pool.query("UPDATE agent_grants SET revoked_at=now() WHERE id=$1", [
+      canonicalGrant,
+    ]);
+    const revoked = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+        accept: "application/json, text/event-stream",
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "resources/read",
+        params: { uri: link.uri },
+      },
+    });
+    assert.equal(revoked.statusCode, 401);
+  } finally {
+    env.FILES_SECRET = previousSecret;
+    await pool.query("DELETE FROM agent_grants WHERE id=$1", [canonicalGrant]);
+  }
+});

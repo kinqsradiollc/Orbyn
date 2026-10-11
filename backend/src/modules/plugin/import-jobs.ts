@@ -12,6 +12,8 @@ import {
   visibleProjects,
 } from "../../lib/visibility.js";
 import { pluginJobCursor } from "./job-cursor.js";
+import { pluginJobUri } from "./job-resource.js";
+import type { ToolResult } from "../../capabilities/execute.js";
 
 const id = z.uuid();
 const status = z.enum([
@@ -258,4 +260,35 @@ export async function readPluginImportEvents(
         }
       : {}),
   });
+}
+
+/** Track both first delivery and an idempotent domain replay after tracking failure. */
+export function importIdFromResult(result: ToolResult): string | undefined {
+  if (result.isError) return undefined;
+  const done = result.structuredContent?.done;
+  if (!Array.isArray(done)) return undefined;
+  const value = done[0]?.id;
+  return typeof value === "string"
+    ? value.match(/^import:([0-9a-f-]+)$/i)?.[1]
+    : undefined;
+}
+
+export function withImportJob(
+  result: ToolResult,
+  job: z.infer<typeof pluginImportJobSchema>,
+): ToolResult {
+  const uri = pluginJobUri(job.id);
+  return {
+    ...result,
+    content: [
+      ...result.content,
+      {
+        type: "resource_link",
+        uri,
+        name: "Import progress",
+        mimeType: "application/json",
+      },
+    ],
+    _meta: { ...result._meta, "orbyn/importJob": { id: job.id, uri } },
+  };
 }

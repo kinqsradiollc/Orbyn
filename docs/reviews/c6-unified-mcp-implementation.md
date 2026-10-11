@@ -52,3 +52,29 @@ were fixed before freeze. Tester must record exact candidate, commands and resul
 No Codex Security scan. No automatic vendor/live-host mutation. Production host
 acceptance follows approved main merge and owner deployment, then a new explicit
 `/mcp` connection. Existing `/plugin` Today evidence does not qualify this path.
+
+## Round 2 correction batch
+
+Reviewer source report: [round 2](c6-unified-mcp-review-r2.md). Builder addresses
+U2-R1 through U2-R4 together; this does not reset the review counter.
+
+- Every displayed result owns its editor identity. A dirty/in-flight/unresolved
+  draft keeps its original visible document; switching requires an explicit
+  discard, and an unknown request must be resolved first. Fresh eligibility is
+  checked when replacing results; stale revision-refresh responses are ignored.
+- Review freezes the exact document/version/anchor/content/client_ref. Input is
+  locked, unknown/internal outcomes retry that exact tuple, and known rejection
+  offers revision refresh with the draft preserved or explicit discard.
+- Canonical protocol imports decorate both first results and idempotent replays
+  with the same durable job/resource; legacy and canonical share decoration.
+  Tracking after a committed import can recover through the original replay.
+- Preview bounds use whole blocks, distinguish pagination/clipping/edit-list
+  bounds and expose continuation plus source links. Locally clipped previews
+  disable edits; portable authorized tool results remain intact.
+- New executable card-state fixtures cover replacement/read-only/error states,
+  delayed saves, immutable unknown retries, conflict/revision recovery and stale
+  refreshes. Added actual canonical protocol import/resource/replay/revocation
+  fixture and block-bound preview metadata cases. These await Tester execution;
+  they do not prove host rendering or browser layout.
+
+Candidate correction is unmerged until focused retest and same-round review.

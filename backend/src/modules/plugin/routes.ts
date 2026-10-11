@@ -37,9 +37,13 @@ import {
   searchPluginMentions,
 } from "./mentions.js";
 import { pluginRead, pluginWrite } from "./execute.js";
-import { trackPluginImport, readPluginImportEvents } from "./import-jobs.js";
+import {
+  trackPluginImport,
+  readPluginImportEvents,
+  importIdFromResult,
+  withImportJob,
+} from "./import-jobs.js";
 import { pluginJobCursorKey } from "./job-cursor.js";
-import { pluginJobUri } from "./job-resource.js";
 import type { ToolResult } from "../../capabilities/execute.js";
 import { pluginLaunch, pluginLaunchInput } from "./launch.js";
 
@@ -253,12 +257,10 @@ export const pluginRoutes: FastifyPluginAsync<IntegrationRouteOptions> = async (
     { bodyLimit: 65536 },
     async (request, reply) => {
       if (kind === "mcp" && env.MCP_WORKSPACE_AI_ENABLED !== "true")
-        return reply
-          .code(403)
-          .send({
-            error: "FORBIDDEN",
-            message: "Workspace AI is disabled for this connection.",
-          });
+        return reply.code(403).send({
+          error: "FORBIDDEN",
+          message: "Workspace AI is disabled for this connection.",
+        });
       const input = pluginInferenceInput.safeParse(request.body);
       if (!input.success || Object.keys(request.query as object).length)
         return reply.code(400).send({
@@ -346,10 +348,8 @@ export const pluginRoutes: FastifyPluginAsync<IntegrationRouteOptions> = async (
   });
 
   async function trackResult(request: FastifyRequest, result: ToolResult) {
-    const done = result.structuredContent?.done as
-      { id?: string }[] | undefined;
-    const importId = done?.[0]?.id?.match(/^import:([0-9a-f-]+)$/i)?.[1];
-    if (result.isError || !importId) return undefined;
+    const importId = importIdFromResult(result);
+    if (!importId) return undefined;
     const live = await settings();
     return pluginWrite(
       request.pluginCaller!.principal,
@@ -588,22 +588,7 @@ export const pluginRoutes: FastifyPluginAsync<IntegrationRouteOptions> = async (
               if (name !== "start_import") return result;
               const job = await trackResult(request, result);
               if (!job) return result;
-              return {
-                ...result,
-                content: [
-                  ...result.content,
-                  {
-                    type: "resource_link" as const,
-                    uri: pluginJobUri(job.id),
-                    name: "Import progress",
-                    mimeType: "application/json",
-                  },
-                ],
-                _meta: {
-                  ...result._meta,
-                  "orbyn/importJob": { id: job.id, uri: pluginJobUri(job.id) },
-                },
-              };
+              return withImportJob(result, job);
             },
             readJob: (id, cursor) => jobEvents(request, id, cursor),
           },
