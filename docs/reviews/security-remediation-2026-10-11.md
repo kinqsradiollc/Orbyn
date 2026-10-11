@@ -189,8 +189,8 @@ Tester qualification and same-round Reviewer closure remain pending (round 1/3).
 ### Round 1 closure
 
 Independent fresh Tester report `security-remediation-tester-r1-937cb16f-2026-10-11.md`
-confirms6/6 and backendtypes on937cb16f, with unchangedOAuth33/deploy2 receipts
+confirms 6/6 and backend types on `937cb16f`, with unchanged OAuth33/deploy2 receipts
 retained separately. Reviewer accepted runtime937cb16f plus docs/templates
-throughb607e1dc and closedSR-R1/SR-E1 withinround1/3. The29 saved findings are
+through `b607e1dc` and closed SR-R1/SR-E1 within round 1/3. The 29 saved findings are
 source-remediated under the bounded reviewed scope; no clean scan is claimed.
 Real-host and production transition acceptance remain unverified.

@@ -7,7 +7,7 @@ its acceptance contract in `devday-2026-implementation-review.md`.
 
 C1, C2/M1, C3, C4/D1 and C5 have accepted deliveries under their recorded
 user-approved scopes. C6 is the current checkpoint: runtime `937cb16f` and docs/templates through `b607e1dc` are accepted for
-a local code/remediation checkpoint (round 1/3); main integration is in progress.
+a local code/remediation checkpoint (round 1/3); the code checkpoint was pushed to main at `4ab7dbc9`.
 Full C6 real-host acceptance remains open. See [current state](adr-current-state.md)
 and [qualification handoff](c6-qualification.md) for live evidence ownership.
 

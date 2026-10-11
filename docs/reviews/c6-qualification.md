@@ -103,3 +103,13 @@ This qualifies the local code/remediation checkpoint for the owner’s productio
 plugin test. Full C6 real-host acceptance stays open; deployment, real HTTPS
 OAuth/account switching, host files/composer and live providers are not proven.
 No Codex Security scan or automatic public plugin publication is required.
+
+### Main delivery
+
+`git push origin HEAD:main` advanced remote main from `058a63e5` to
+`4ab7dbc969d2ab658f527139475d8a4e04247153`, exit 0; `git ls-remote`
+confirmed the same ref. Runtime/service/config source matches accepted
+`937cb16f` exactly. Primary checkout and unrelated changes were preserved.
+The owner must pull main, copy reviewed server env values into `.env`, run
+preflight/deploy, then follow the production-host test runbook. No deployment
+or full C6 real-host acceptance is claimed.
