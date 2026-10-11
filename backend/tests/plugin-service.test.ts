@@ -616,6 +616,10 @@ test("plugin UI resources require current grants, UI opt-in and bounded identifi
     const markdownTool = tools
       .json()
       .tools.find((tool: any) => tool.name === "open_markdown_file");
+    assert.deepEqual(markdownTool?._meta?.ui, {
+      resourceUri: "ui://orbyn/markdown-file.html",
+      visibility: ["model", "app"],
+    });
     assert.deepEqual(markdownTool?._meta?.["openai/ui"], {
       entrypoints: [{ type: "file", extensions: [".md", ".markdown"] }],
     });

@@ -65,7 +65,8 @@ export const pluginMarkdownFileTool: ToolDescription & {
 } = {
   name: PLUGIN_MARKDOWN_FILE,
   title: "Markdown in Orbyn",
-  description: "Open a Markdown file from the host in Orbyn's source editor.",
+  description:
+    "Open an existing host-provided Markdown file handle in Orbyn's source editor. Never invent a handle or infer filesystem access.",
   inputSchema: {
     type: "object",
     properties: {
@@ -96,7 +97,10 @@ export const pluginMarkdownFileTool: ToolDescription & {
   },
   _meta: {
     ...toolUiMeta(PLUGIN_MARKDOWN_FILE),
-    ui: { resourceUri: "ui://orbyn/markdown-file.html", visibility: ["app"] },
+    ui: {
+      resourceUri: "ui://orbyn/markdown-file.html",
+      visibility: ["model", "app"],
+    },
     "openai/ui": {
       entrypoints: [{ type: "file", extensions: [".md", ".markdown"] }],
     },

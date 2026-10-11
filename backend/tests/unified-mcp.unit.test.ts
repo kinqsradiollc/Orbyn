@@ -83,6 +83,23 @@ test("MCP lists sidebar/file/mentions and domain result previews with UI enabled
     tools.find((tool: any) => tool.name === "fetch")._meta.ui.resourceUri,
     "ui://orbyn/result.html",
   );
+  const file = tools.find((tool: any) => tool.name === "open_markdown_file");
+  assert.deepEqual(file._meta.ui, {
+    resourceUri: "ui://orbyn/markdown-file.html",
+    visibility: ["model", "app"],
+  });
+  assert.deepEqual(file._meta["openai/ui"], {
+    entrypoints: [{ type: "file", extensions: [".md", ".markdown"] }],
+  });
+  assert.match(file.description, /Never invent a handle/);
+  const resource = await rpc("resources/read", {
+    uri: file._meta.ui.resourceUri,
+  });
+  assert.equal(
+    resource.result.contents[0].mimeType,
+    "text/html;profile=mcp-app",
+  );
+  assert.match(resource.result.contents[0].text, /Markdown/);
   const opened = await rpc("tools/call", { name: "open_orbyn", arguments: {} });
   assert.deepEqual(opened.result.structuredContent, { kind: "plugin_home" });
 });
@@ -93,22 +110,41 @@ test("UI opt-out preserves ordinary tools and removes host surfaces", async () =
   assert.ok(
     !result.result.tools.some((tool: any) => tool.name === "open_orbyn"),
   );
+  assert.ok(
+    !result.result.tools.some(
+      (tool: any) => tool.name === "open_markdown_file",
+    ),
+  );
+  assert.equal(
+    readPluginResource(
+      "ui://orbyn/markdown-file.html",
+      ["open_markdown_file"],
+      false,
+    ),
+    null,
+  );
   assert.equal(
     result.result.tools.find((tool: any) => tool.name === "fetch")._meta.ui,
     undefined,
   );
 });
 
-test("host file handles are bounded; opening never reads the backend or writes", async () => {
+test("host file handles are bounded; opening never reads the backend or writes", async (t) => {
+  const network = t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("File launch must not dereference the supplied handle");
+  });
+  const handle = "https://handle.example.test/private.md";
   const accepted = await rpc("tools/call", {
     name: "open_markdown_file",
     arguments: {
-      file: { name: "notes.md", resourceUri: "host-resource://opaque" },
+      file: { name: "notes.md", resourceUri: handle },
     },
   });
   assert.deepEqual(accepted.result.structuredContent, {
     kind: "markdown_file",
   });
+  assert.equal(network.mock.callCount(), 0);
+  assert.equal(JSON.stringify(accepted).includes(handle), false);
   const refused = await rpc("tools/call", {
     name: "open_markdown_file",
     arguments: {
