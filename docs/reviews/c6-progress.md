@@ -133,3 +133,14 @@ and stream revocation, publication privacy, provider transport and credential
 upgrade/deployment controls. No replacement scan or production deployment is
 claimed. Independent read-only patch closure is recorded in the ledger; new
 frozen-source Tester qualification follows. Earlier tests remain source-scoped.
+
+## Formal review correction handoff
+
+Reviewer round 1/3 requested SR-R1 (legacy key conversion while old writers run)
+and SR-E1 (real SSE and OAuth race evidence). Builder froze `dc094b4b`: quiesced
+Compose cutover with fail-closed production rewrap/Kubernetes procedure, rollback
+fixtures, actual authenticated SSE revocation/control, SQL-barrier consent tests,
+and env template updates `78fee192`. Focused local passes and fixture failures
+are in the remediation ledger. Tester retest has been dispatched; same-round
+Reviewer closure follows. No main merge/push, deployment or external-host
+acceptance is claimed.

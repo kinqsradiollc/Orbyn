@@ -6,8 +6,8 @@
   retaining all required gates. Voice and computer use remain excluded.
 - Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`
 - Branch: `codex/c6-file-viewer`
-- Source candidate: `4da327dc` (saved-finding remediation), superseding `81e4c812`; base `058a63e5`.
-- Phase: Review. Next owner: Orbyn Reviewer. Review counter: **1/3**.
+- Source candidate: `dc094b4b` (round 1 corrections and env templates), superseding `4da327dc` and `81e4c812`; base `058a63e5`.
+- Phase: affected Tester retest, then same-round Reviewer closure. Review counter: **1/3**.
 - No main merge, push, deployment or full completion is claimed.
 
 ## Implementation to qualify
@@ -67,3 +67,11 @@ fixes and affected C6 authority contracts against this source, without code edit
 tests/builds or scans. This is the first formal round; prior bounded remediation
 patch closure is source investigation, not full C6 acceptance. External gates
 above remain explicit. Maximum three formal rounds; same-round closure allowed.
+
+## Current correction handoff
+
+Frozen `dc094b4b` addresses SR-R1/SR-E1, as recorded in the remediation ledger.
+Tester requalifies only affected upgrade, deploy-ordering, real SSE and OAuth
+paths plus configuration/types. Reviewer closes the original round after that
+report. Environment template parity is included; private env files remain local
+and uncommitted. Do not infer full C6 or production readiness from this subset.
