@@ -1,3 +1,28 @@
+# Active scope overrides — 11 October 2026
+
+The records below retain historical implementation evidence. Current delivery
+instructions are in [execution order](adr-execution-order.md) and
+[qualification handoff](c6-qualification.md); status is owned by Stage Tracker.
+
+- Voice, computer-use product features and speculative Decisions integration
+  remain excluded. Plugin integration uses its separate backend/connector
+  authority; it must not borrow first-party ChatGPT-plan credentials.
+- No Codex Security scan may run unless the user explicitly requests it.
+  Historical scan schedules/access requirements are superseded. Retain saved
+  findings, source corrections and focused Test → Review evidence.
+- Shared desktop UI is qualified through web; mobile UI through Expo web.
+  Separate desktop-app checks, iOS builds and Android-specific verification
+  require an explicit request. These checks are not automatic stage gates.
+- Keep user-approved external/live/visual deferrals visible as unverified;
+  do not reinstate waived gates from an older table. Full C6 host/provider
+  acceptance and final applicable UI/integration work remain required.
+- Complete the whole agreed checkpoint before Test → Review, with at most
+  three full review rounds. Reviewer guides Builder and does not code/test.
+  Visual checks go through Orbyn Visual Check for bounded UI risks or an explicit
+  request; unchanged backend/config patches do not trigger a visual sweep.
+
+---
+
 ## Qualified structural/native editor checkpoint — 6 October 2026
 
 Main is now869a8005, fast-forwarded and pushed with the exact fixed DB65 application

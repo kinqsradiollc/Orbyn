@@ -1,27 +1,37 @@
 # ADR execution order
 
-Updated 9 October 2026. This orders the complete retained ADR; it does not replace
+Updated 11 October 2026. This orders the complete retained ADR; it does not replace
 its acceptance contract in `devday-2026-implementation-review.md`.
 
 ## Current instruction
 
-C1 and C2/M1 are accepted under their final user-approved scopes. C2/M1 was
-merged and pushed to main at `c778c25f`. The user-requested content cleanup
-before C3 passed Test → Review in round 1/3 and was pushed to main at
-`70e7e687`. C3 then passed Test → Review in round 1/3 and was pushed to main
-at `db0913e6`. C4/D1 is next when the user resumes the paused goal. Hosted
-independent web sign-in is deferred; phone-owned inference has no independent
-proof. Production deployment is user-owned.
-The user explicitly stopped Visual Check for the content cleanup; source and
-targeted checks do not count as visual acceptance.
+C1, C2/M1, C3, C4/D1 and C5 have accepted deliveries under their recorded
+user-approved scopes. C6 is the current checkpoint: correction source
+`dc094b4b` is frozen for affected Tester retest and same-round Reviewer closure
+(round 1/3). It is not merged to main. See [current state](adr-current-state.md)
+and [qualification handoff](c6-qualification.md) for live evidence ownership.
+
+Independent hosted web ChatGPT sign-in, extra live cache/embedding measurements,
+C4/D1 browser/visual checks and live Slack/Teams checks retain their explicit
+deferral records. They are unverified, not passes, and do not silently become
+blocking again. C6 real-host/provider acceptance is still open, not deferred.
+Production deployment is user-owned.
+
+Security scans are prohibited unless the user explicitly requests a new scan.
+Handle saved findings through source fixes, focused tests and read-only review.
+Shared web/desktop UI uses web evidence; mobile UI uses Expo web. Separate
+desktop-app verification, iOS builds and Android-specific verification require
+an explicit request. Visual checks go through Orbyn Visual Check only for
+bounded material UI risk or a user request; do not repeat a whole-app sweep after
+each edit. Historical native/scan gates below do not override these instructions.
 
 ## Working rule
 
 Complete the full agreed scope before the formal Test → Review handoff. Builder implements, Tester qualifies
 the frozen candidate, and Reviewer reviews code/evidence and guides Builder on fixes without coding or running tests. Follow
 [the checkpoint workflow](checkpoint-workflow.md), including its recorded maximum
-of three review rounds and retesting after fixes. Record native/external gates;
-an incomplete gate keeps the checkpoint open. Only qualified scopes may integrate
+of three review rounds and retesting after fixes. Record applicable external gates and explicit user deferrals separately;
+an incomplete required gate keeps the checkpoint open. Only qualified scopes may integrate
 into main; candidate-only behavior is not shipped and pushed main is not deployment.
 
 On 8 October the user authorized Orbyn Visual Check to analyze the rendered UI
@@ -38,17 +48,17 @@ is `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd2
 The user explicitly requires the full ADR from top down (7 October 2026).
 This supersedes the earlier Docs-first queue. QA-006 remains a completed scoped
 checkpoint, not evidence that an entire ADR stage is complete. C1 and C2/M1 are complete under their final user-approved scopes;
-normal Docs activation stays queued under C4. Existing work is retained.
+C4/D1 has an accepted delivery with browser/visual verification deferred to production. Existing work is retained.
 
 | Order | Scope                                                | Current state                                                                      | Exit condition                                                                                                                                                                           |
 | ----- | ---------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 1     | C1: model/provider/connection contracts              | Complete; accepted round2/3, merged main6f56c548                                   | Managed/BYO/plan boundaries, supported models/request capabilities, explicit fallback, caching evaluation, multiple-provider and embedding configuration/migration requirements verified |
 | 2     | C2/M1: SIWC, account catalogs/defaults and execution | Accepted round1/3, pushed main `c778c25f` under revised scope; hosted web deferred | Correct platform connection, verified account/plan permissions, truthful usage, catalog/default persistence, protected tokens, lifecycle/revocation and actual inference acceptance      |
 | 3     | C3: rules, ownership, activity and budgets           | Accepted round 1/3; pushed main `db0913e6`                                         | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                    |
-| 4     | C4/D1: Docs parity and UI regressions                | Foundation candidate; normal editor activation unfinished                          | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
-| 5     | C5: bound pages, publication and channels            | Foundations/candidates implemented                                                 | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                   |
-| 6     | C6: separate plugin backend/UI and security          | Partial                                                                            | Independent connector authority, managed/BYO provider execution and launch contexts, real host OAuth/UI, authorized scan evidence and triage verified                                    |
-| 7     | U1: final whole-app acceptance                       | Required within each stage; sampled checks only so far                             | Every named surface and cross-client feature, themes, narrow/wide/collapsed panels, large text, errors/loading/keyboard/overlays and native parity verified                              |
+| 4     | C4/D1: Docs parity and UI regressions                | Accepted delivery under 10 October scope; browser/visual checks deferred                          | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
+| 5     | C5: bound pages, publication and channels            | Accepted round1/3; product pushed main `392f2445`                                                 | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                   |
+| 6     | C6: separate plugin backend/UI and security          | Frozen `dc094b4b`; affected Test → Review closure pending | Independent connector authority, managed/BYO provider execution and launch contexts, real host OAuth/UI, saved-finding remediation and reviewed evidence                                    |
+| 7     | U1: final whole-app acceptance                       | Required within each stage; sampled checks only so far                             | Every named surface and cross-client feature, themes, narrow/wide/collapsed panels, large text, errors/loading/keyboard/overlays and applicable Expo-web parity verified; separately requested native checks remain distinct                              |
 | 8     | Final integration and cleanup                        | Pending                                                                            | All retained ADR requirements reconciled and qualified on main; preserve user/character work; remove only safe merged branches/worktrees; user deploys manually                          |
 
 Within each stage, implement its full scope in a coherent order before formal
