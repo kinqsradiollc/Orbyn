@@ -38,6 +38,7 @@ export class PageMaintenanceStore {
   };
   private listeners = new Set<() => void>();
   private generation = 0;
+  private runsInvalidated = false;
   private binding: unknown;
   constructor(
     private api: Api,
@@ -60,6 +61,7 @@ export class PageMaintenanceStore {
   }
   dispose = () => {
     this.generation++;
+    this.runsInvalidated = false;
     this.state = { doc: null, bindings: [], runs: [], busy: false, error: "" };
     this.listeners.clear();
   };
@@ -119,17 +121,25 @@ export class PageMaintenanceStore {
             busy: false,
             error: "Reopen page updates after switching accounts.",
           });
-        else this.publish({ busy: false });
+        else {
+          this.publish({ busy: false });
+          if (this.runsInvalidated) {
+            this.runsInvalidated = false;
+            await this.run(async () => {});
+          }
+        }
       }
     }
   }
   receiveRunsError = () => {
-    if (this.session() === this.binding && !this.state.busy)
-      this.publish({ error: "Couldn’t refresh updates. Try Refresh." });
+    if (this.session() !== this.binding) return;
+    if (this.state.busy) this.runsInvalidated = true;
+    else this.publish({ error: "Couldn’t refresh updates. Try Refresh." });
   };
   receiveRuns = (runs: MaintainedPageRunSummary[]) => {
-    if (this.session() === this.binding && !this.state.busy)
-      this.publish({ runs, error: "" });
+    if (this.session() !== this.binding) return;
+    if (this.state.busy) this.runsInvalidated = true;
+    else this.publish({ runs, error: "" });
   };
   refresh = () => this.run(async () => {}, true);
   /** Called after the editor flush; assign missing stable IDs with normal versioned persistence. */

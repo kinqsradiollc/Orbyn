@@ -200,3 +200,66 @@ test("focused draft save guard accepts persisted content and refuses changed tex
     false,
   );
 });
+
+test("busy refresh retains remote run invalidation and retries a concurrent error", async () => {
+  for (const remoteError of [false, true]) {
+    let release!: (rows: MaintainedPageRunSummary[]) => void;
+    let reads = 0;
+    const waiting = { id: "run", state: "waiting" } as MaintainedPageRunSummary;
+    const done = { id: "run", state: "done" } as MaintainedPageRunSummary;
+    const store = new PageMaintenanceStore(
+      api({
+        listPageMaintenanceRuns: () =>
+          ++reads === 1
+            ? new Promise((resolve) => {
+                release = resolve;
+              })
+            : Promise.resolve([done]),
+      }),
+      "doc",
+      () => "owner",
+      () => {},
+    );
+    const refresh = store.refresh();
+    await Promise.resolve();
+    if (remoteError) store.receiveRunsError();
+    else store.receiveRuns([done]);
+    release([waiting]);
+    await refresh;
+    assert.equal(reads, 2);
+    assert.equal(store.getSnapshot().runs[0].state, "done");
+    assert.equal(store.getSnapshot().error, "");
+    assert.equal(store.getSnapshot().busy, false);
+    store.dispose();
+  }
+});
+
+test("queued run invalidation cannot reload after disposal or account change", async () => {
+  for (const boundary of ["dispose", "account"]) {
+    let owner = "first";
+    let release!: (rows: MaintainedPageRunSummary[]) => void;
+    let reads = 0;
+    const store = new PageMaintenanceStore(
+      api({
+        listPageMaintenanceRuns: () => {
+          reads++;
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        },
+      }),
+      "doc",
+      () => owner,
+      () => assert.fail("stale document"),
+    );
+    const refresh = store.refresh();
+    await Promise.resolve();
+    store.receiveRuns([]);
+    if (boundary === "dispose") store.dispose();
+    else owner = "second";
+    release([]);
+    await refresh;
+    assert.equal(reads, 1);
+    assert.equal(store.getSnapshot().doc, null);
+  }
+});
