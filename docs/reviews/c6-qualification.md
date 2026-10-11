@@ -90,3 +90,16 @@ The owner is considering real-host testing through the production plugin
 endpoint. Follow [production-host test](../plugin-production-test.md) after
 accepted code is merged and the owner deploys. No installed plugin, active public
 endpoint, production deployment or completed real-host acceptance is claimed.
+
+## Accepted local production-test checkpoint — 11 October 2026
+
+Reviewer accepted runtime `937cb16f` and documentation/templates through
+`b607e1dc` for main integration in round 1/3. SR-R1 and SR-E1 are closed.
+Fresh Tester checks: 6/6 and backend types; retained unchanged-source receipts:
+OAuth33/33 and deploy cutover2/2, not summed. Reports retain the prior fixture
+failure and recovery limits.
+
+This qualifies the local code/remediation checkpoint for the owner’s production
+plugin test. Full C6 real-host acceptance stays open; deployment, real HTTPS
+OAuth/account switching, host files/composer and live providers are not proven.
+No Codex Security scan or automatic public plugin publication is required.

@@ -6,9 +6,9 @@ its acceptance contract in `devday-2026-implementation-review.md`.
 ## Current instruction
 
 C1, C2/M1, C3, C4/D1 and C5 have accepted deliveries under their recorded
-user-approved scopes. C6 is the current checkpoint: correction source
-`937cb16f` is frozen for affected Tester retest and same-round Reviewer closure
-(round 1/3). It is not merged to main. See [current state](adr-current-state.md)
+user-approved scopes. C6 is the current checkpoint: runtime `937cb16f` and docs/templates through `b607e1dc` are accepted for
+a local code/remediation checkpoint (round 1/3); main integration is in progress.
+Full C6 real-host acceptance remains open. See [current state](adr-current-state.md)
 and [qualification handoff](c6-qualification.md) for live evidence ownership.
 
 Independent hosted web ChatGPT sign-in, extra live cache/embedding measurements,
@@ -57,7 +57,7 @@ C4/D1 has an accepted delivery with browser/visual verification deferred to prod
 | 3     | C3: rules, ownership, activity and budgets           | Accepted round 1/3; pushed main `db0913e6`                                         | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                    |
 | 4     | C4/D1: Docs parity and UI regressions                | Accepted delivery under 10 October scope; browser/visual checks deferred                          | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
 | 5     | C5: bound pages, publication and channels            | Accepted round1/3; product pushed main `392f2445`                                                 | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                   |
-| 6     | C6: separate plugin backend/UI and security          | Frozen `937cb16f`; affected Test → Review closure pending | Independent connector authority, managed/BYO provider execution and launch contexts, real host OAuth/UI, saved-finding remediation and reviewed evidence                                    |
+| 6     | C6: separate plugin backend/UI and security          | Local checkpoint accepted `937cb16f` / docs `b607e1dc`; real-host acceptance open | Independent connector authority, managed/BYO provider execution and launch contexts, real host OAuth/UI, saved-finding remediation and reviewed evidence                                    |
 | 7     | U1: final whole-app acceptance                       | Required within each stage; sampled checks only so far                             | Every named surface and cross-client feature, themes, narrow/wide/collapsed panels, large text, errors/loading/keyboard/overlays and applicable Expo-web parity verified; separately requested native checks remain distinct                              |
 | 8     | Final integration and cleanup                        | Pending                                                                            | All retained ADR requirements reconciled and qualified on main; preserve user/character work; remove only safe merged branches/worktrees; user deploys manually                          |
 
