@@ -60,7 +60,7 @@ const missing = () =>
   new CapabilityError("NOT_FOUND", "This plugin job is unavailable.");
 const permitted = (p: Principal) => {
   if (
-    p.via !== "plugin" ||
+    (p.via !== "plugin" && p.via !== "oauth") ||
     !p.grant_id ||
     !p.client.id ||
     !policy.allows(p, startImportCapability)

@@ -184,6 +184,8 @@ const schema = z.object({
    * 401 challenge. Set here, never derived from request headers.
    */
   MCP_PUBLIC_URL: z.string().default("https://mcp.orbyn.dev/mcp"),
+  /** Enable separately consented workspace AI for canonical OAuth MCP grants. Disable for rollback; receipts remain readable. */
+  MCP_WORKSPACE_AI_ENABLED: z.enum(["true", "false"]).default("false"),
   /** Plugin integration recipient; blank keeps plugin routes disabled. */
   PLUGIN_PUBLIC_URL: z.string().default(""),
   /** Who issues agent sign-ins (OAuth, phase A2); defaults to APP_URL. */

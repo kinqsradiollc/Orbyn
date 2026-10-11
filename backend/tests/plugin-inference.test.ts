@@ -503,3 +503,151 @@ test("managed plugin dispatch uses the actual bounded HTTP adapter and private r
   assert.equal(await processPluginAi(resources), false);
   assert.equal(wireCalls.length, before + 1);
 });
+
+test("canonical inference needs fresh consent, isolates recipients and survives a paused worker", async () => {
+  const previous = env.MCP_WORKSPACE_AI_ENABLED;
+  const mcpToken = `oat_${randomUUID()}`;
+  const mcpHeaders = { authorization: `Bearer ${mcpToken}` };
+  const mcpGrant = (
+    await pool.query(
+      "INSERT INTO agent_grants(user_id,kind,resource_kind,client_id,access,personal,toolsets,authorized_at) VALUES($1,'oauth','mcp',$2,'read',true,ARRAY['core'],now()) RETURNING id",
+      [owner.id, clientId],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO agent_tokens(grant_id,kind,prefix,token_hash,resource,expires_at) VALUES($1,'access','oat_fixture',$2,$3,now()+interval '1 hour')",
+    [mcpGrant, digest(mcpToken), env.MCP_PUBLIC_URL],
+  );
+  const input = {
+    operation_id: operationId(),
+    prompt: "Canonical fixture text",
+  };
+  try {
+    env.MCP_WORKSPACE_AI_ENABLED = "true";
+    const denied = await service.inject({
+      method: "POST",
+      url: "/mcp/inference",
+      headers: mcpHeaders,
+      payload: input,
+    });
+    assert.equal(denied.statusCode, 403, denied.body);
+    const view = (
+      await app.inject({
+        method: "GET",
+        url: `/me/agents/${mcpGrant}/ai-permission`,
+        headers: { authorization: `Bearer ${owner.token}` },
+      })
+    ).json();
+    await setPluginAiPermission(owner.id, mcpGrant, {
+      enabled: true,
+      expected_version: view.version,
+      provider: {
+        id: provider.id,
+        revision: provider.revision,
+        model: provider.model,
+      },
+      max_output_tokens: 512,
+      daily_call_limit: 1,
+    });
+    const accepted = await service.inject({
+      method: "POST",
+      url: "/mcp/inference",
+      headers: mcpHeaders,
+      payload: input,
+    });
+    assert.equal(accepted.statusCode, 202, accepted.body);
+    const receipt = accepted.json();
+    assert.equal(
+      (
+        await service.inject({
+          method: "POST",
+          url: "/mcp/inference",
+          headers,
+          payload: input,
+        })
+      ).statusCode,
+      401,
+    );
+    assert.equal(
+      (
+        await service.inject({
+          method: "GET",
+          url: `/plugin/inference/${receipt.id}/events`,
+          headers: mcpHeaders,
+        })
+      ).statusCode,
+      401,
+    );
+    const before = wireCalls.length;
+    env.MCP_WORKSPACE_AI_ENABLED = "false";
+    assert.equal(await processPluginAi(resources), false);
+    const paused = await service.inject({
+      method: "GET",
+      url: `/mcp/inference/${receipt.id}/events`,
+      headers: mcpHeaders,
+    });
+    assert.equal(paused.statusCode, 200, paused.body);
+    assert.equal(paused.json().state, "queued");
+    env.MCP_WORKSPACE_AI_ENABLED = "true";
+    assert.equal(await processPluginAi(resources), true);
+    assert.equal(wireCalls.length, before + 1);
+    const repeated = await service.inject({
+      method: "POST",
+      url: "/mcp/inference",
+      headers: mcpHeaders,
+      payload: input,
+    });
+    assert.equal(repeated.json().id, receipt.id);
+    assert.equal(await processPluginAi(resources), false);
+    assert.equal(wireCalls.length, before + 1);
+    const complete = await service.inject({
+      method: "GET",
+      url: `/mcp/inference/${receipt.id}/events`,
+      headers: mcpHeaders,
+    });
+    assert.equal(complete.statusCode, 200, complete.body);
+    assert.equal(complete.json().state, "done");
+    assert.equal(complete.json().text, "Managed wire answer");
+    const protocol = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        ...mcpHeaders,
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "get_workspace_ai_status",
+          arguments: { id: receipt.id },
+        },
+      },
+    });
+    assert.equal(protocol.statusCode, 200, protocol.body);
+    assert.equal(protocol.json().result.structuredContent.state, "done");
+    const protocolRetry = await app.inject({
+      method: "POST",
+      url: "/mcp",
+      headers: {
+        ...mcpHeaders,
+        accept: "application/json, text/event-stream",
+        "content-type": "application/json",
+      },
+      payload: {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "request_workspace_ai", arguments: input },
+      },
+    });
+    assert.equal(protocolRetry.statusCode, 200, protocolRetry.body);
+    assert.equal(protocolRetry.json().result.structuredContent.id, receipt.id);
+    assert.equal(wireCalls.length, before + 1);
+  } finally {
+    env.MCP_WORKSPACE_AI_ENABLED = previous;
+    await pool.query("DELETE FROM agent_grants WHERE id=$1", [mcpGrant]);
+  }
+});

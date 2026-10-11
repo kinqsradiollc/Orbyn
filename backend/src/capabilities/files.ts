@@ -194,7 +194,7 @@ export const startImportCapability = defineCapability({
         ? { project_id: project.id, project_team_id: project.team_id }
         : {}),
     });
-    if (ctx.principal.via === "plugin")
+    if (ctx.principal.via === "plugin" || ctx.principal.via === "oauth")
       await dbOf(ctx).query(
         `UPDATE imports SET plugin_owned=true, plugin_grant_id=$2,
           plugin_client_id=$3, plugin_resource=$4 WHERE id=$1`,
@@ -202,7 +202,9 @@ export const startImportCapability = defineCapability({
           started.import.id,
           ctx.principal.grant_id,
           ctx.principal.client.id,
-          env.PLUGIN_PUBLIC_URL,
+          ctx.principal.via === "plugin"
+            ? env.PLUGIN_PUBLIC_URL
+            : env.MCP_PUBLIC_URL,
         ],
       );
     const answer = await finishWrite(ctx, "Importing", {

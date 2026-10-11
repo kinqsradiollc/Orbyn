@@ -53,6 +53,8 @@ data:
 
   # The MCP address outside agents connect to (the orbyn-mcp ingress host).
   # Never derived from request headers. OAUTH_ISSUER defaults to APP_URL.
+  # Integration worker is not yet deployed by these manifests; inference stays off.
+  MCP_WORKSPACE_AI_ENABLED: "false"
   MCP_PUBLIC_URL: "https://mcp.orbyn.example/mcp"
 
   # AI providers are added by admins in the app and stored in the database.

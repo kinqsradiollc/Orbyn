@@ -73,7 +73,7 @@ export function startPluginAiWorker(
       timer.unref();
     }
   };
-  if (resources.plugin) {
+  if (resources.plugin || resources.mcp) {
     timer = setTimeout(pulse, 0);
     timer.unref();
   }

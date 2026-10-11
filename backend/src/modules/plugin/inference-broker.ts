@@ -1,3 +1,4 @@
+import { env } from "../../config/env.js";
 import { createHash, randomUUID } from "node:crypto";
 import { z, ZodError } from "zod";
 import type { Principal } from "../../capabilities/policy.js";
@@ -105,7 +106,8 @@ export function receipt(run: PluginAiRun) {
 
 /** Current consent and fixed managed configuration, under the caller's grant lock. */
 export async function pluginAiSnapshot(db: Queryable, p: Principal) {
-  if (p.via !== "plugin" || !p.grant_id || !p.client.id) throw unavailable();
+  if ((p.via !== "plugin" && p.via !== "oauth") || !p.grant_id || !p.client.id)
+    throw unavailable();
   const permission = (
     await db.query<any>(
       `SELECT a.*,g.user_id,g.client_id FROM plugin_ai_permissions a JOIN agent_grants g ON g.id=a.grant_id WHERE a.grant_id=$1 FOR SHARE OF a`,
@@ -150,6 +152,8 @@ export async function enqueuePluginAi(
   bearer: string,
   value: unknown,
 ) {
+  if (p.via === "oauth" && env.MCP_WORKSPACE_AI_ENABLED !== "true")
+    throw unavailable();
   const input = pluginInferenceInput.parse(value);
   const { permission } = await pluginAiSnapshot(db, p);
   // The surrounding transaction holds the grant exclusively; serialize all
@@ -243,7 +247,7 @@ export async function loadRunAuthority(
   resources: ConnectorResources,
   live: LiveSettings,
 ) {
-  if (!resources.plugin || live.maintenance.enabled) throw unavailable();
+  if (live.maintenance.enabled) throw unavailable();
   await db.query("SELECT id FROM agent_grants WHERE id=$1 FOR SHARE", [
     run.grant_id,
   ]);
@@ -257,7 +261,11 @@ export async function loadRunAuthority(
       [run.token_hash, run.grant_id],
     )
   ).rows[0];
-  if (!row) throw unavailable();
+  if (
+    !row ||
+    (row.resource_kind === "mcp" && env.MCP_WORKSPACE_AI_ENABLED !== "true")
+  )
+    throw unavailable();
   await db.query("SELECT id FROM users WHERE id=$1 FOR SHARE", [row.user_id]);
   await db.query("SELECT id FROM oauth_clients WHERE id=$1 FOR SHARE", [
     row.client_id,
@@ -273,7 +281,15 @@ export async function loadRunAuthority(
     )
   ).rows[0];
   const principal = (
-    await pluginPrincipalFromGrant(freshRow, live, resources.plugin, db)
+    await pluginPrincipalFromGrant(
+      freshRow,
+      live,
+      freshRow?.resource_kind === "mcp"
+        ? resources.mcp
+        : (resources.plugin ?? ""),
+      db,
+      freshRow?.resource_kind === "mcp" ? "mcp" : "plugin",
+    )
   ).principal;
   return { principal, ...(await assertRunSnapshot(db, principal, run)) };
 }
@@ -281,12 +297,7 @@ export async function loadRunAuthority(
 /** Serialized cross-process admission. A persisted running call is never reclaimed. */
 export async function claimPluginAi(resources: ConnectorResources) {
   const live = await settings();
-  if (
-    !resources.plugin ||
-    live.maintenance.enabled ||
-    !live.agents.agents_enabled
-  )
-    return null;
+  if (live.maintenance.enabled || !live.agents.agents_enabled) return null;
   // Recover expired receipts in a separate statement: never retain a job lock
   // while acquiring its grant, since owner revocation locks grant before jobs.
   await pool.query(
@@ -309,7 +320,11 @@ export async function claimPluginAi(resources: ConnectorResources) {
     if (n >= 2) return null;
     const candidate = (
       await db.query<PluginAiRun>(
-        "SELECT * FROM plugin_ai_runs WHERE state='queued' AND expires_at>clock_timestamp() ORDER BY created_at,id LIMIT 1",
+        `SELECT r.* FROM plugin_ai_runs r JOIN agent_grants g ON g.id=r.grant_id
+         WHERE r.state='queued' AND r.expires_at>clock_timestamp()
+           AND (g.resource_kind='plugin' OR ($1 AND g.resource_kind='mcp'))
+         ORDER BY r.created_at,r.id LIMIT 1`,
+        [env.MCP_WORKSPACE_AI_ENABLED === "true"],
       )
     ).rows[0];
     if (!candidate) return null;

@@ -1,3 +1,5 @@
+import { env } from "../../config/env.js";
+import { connectorResources } from "../oauth/resources.js";
 import type { Queryable } from "../../db/pool.js";
 import {
   GRANT_SELECT,
@@ -69,6 +71,17 @@ export async function pluginImportProducer(
   const row = (await db.query<GrantRow>(query, values)).rows[0];
   if (!row || row.client_id !== origin.plugin_client_id)
     throw new PluginImportAuthorityError();
+  if (
+    !connectorResources({
+      mcp: env.MCP_PUBLIC_URL,
+      plugin: env.PLUGIN_PUBLIC_URL,
+    }).some(
+      (target) =>
+        target.kind === row.resource_kind &&
+        target.resource === origin.plugin_resource,
+    )
+  )
+    throw new PluginImportAuthorityError();
   let authority;
   try {
     authority = await pluginPrincipalFromGrant(
@@ -76,6 +89,7 @@ export async function pluginImportProducer(
       live,
       origin.plugin_resource,
       db,
+      row.resource_kind,
     );
   } catch (error) {
     if (error instanceof PluginAuthError)

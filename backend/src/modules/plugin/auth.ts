@@ -11,6 +11,7 @@ import { disallowedHost } from "../oauth/clients.js";
 import {
   connectorResources,
   type ConnectorResources,
+  type ConnectorResourceKind,
 } from "../oauth/resources.js";
 
 /** Plugin refusals use their own boundary, without MCP challenges or session fallback. */
@@ -29,26 +30,27 @@ export async function resolvePluginCaller(
   settings: LiveSettings,
   resources: ConnectorResources,
   db: Queryable = pool,
+  kind: ConnectorResourceKind = "plugin",
 ): Promise<{ principal: Principal; expiresAt: Date }> {
   const recipient = connectorResources(resources).find(
-    (item) => item.kind === "plugin",
+    (item) => item.kind === kind,
   );
   if (!recipient || !settings.agents.agents_enabled)
-    throw new PluginAuthError(403, "Plugin connections are disabled.");
+    throw new PluginAuthError(403, "OAuth connections are disabled.");
   const header = headers.authorization;
   const token =
     typeof header === "string"
       ? header.match(/^Bearer (oat_\S+)$/)?.[1]
       : undefined;
   if (!token)
-    throw new PluginAuthError(401, "A plugin access token is required.");
+    throw new PluginAuthError(401, "An OAuth access token is required.");
   const row = (
     await db.query<GrantRow>(
       `${GRANT_SELECT} WHERE t.token_hash = $1 AND t.kind = 'access'`,
       [digest(token)],
     )
   ).rows[0];
-  return pluginPrincipalFromGrant(row, settings, resources.plugin!, db);
+  return pluginPrincipalFromGrant(row, settings, recipient.resource, db, kind);
 }
 
 /** Shared live grant/client checks for HTTP calls and server-owned import producers. */
@@ -57,13 +59,14 @@ export async function pluginPrincipalFromGrant(
   settings: LiveSettings,
   resource: string,
   db: Queryable = pool,
+  kind: ConnectorResourceKind = "plugin",
 ): Promise<{ principal: Principal; expiresAt: Date }> {
   if (!settings.agents.agents_enabled)
-    throw new PluginAuthError(403, "Plugin connections are disabled.");
+    throw new PluginAuthError(403, "OAuth connections are disabled.");
   if (
     !row ||
     row.kind !== "oauth" ||
-    row.resource_kind !== "plugin" ||
+    row.resource_kind !== kind ||
     !row.client_id ||
     row.resource !== resource ||
     !row.token_expires_at ||
@@ -71,7 +74,7 @@ export async function pluginPrincipalFromGrant(
     row.token_expires_at.getTime() <= Date.now() ||
     (row.expires_at && row.expires_at.getTime() <= Date.now())
   )
-    throw new PluginAuthError(401, "This plugin access token is not valid.");
+    throw new PluginAuthError(401, "This OAuth access token is not valid.");
   if (
     row.disabled ||
     row.suspended_at ||
@@ -87,9 +90,14 @@ export async function pluginPrincipalFromGrant(
       settings.agents.allowed_client_hosts,
     ) !== null
   )
-    throw new PluginAuthError(403, "This plugin connection is not permitted.");
+    throw new PluginAuthError(403, "This OAuth connection is not permitted.");
   // Host-supplied MCP headers cannot expand or select plugin permissions.
-  const principal = await principalFor(row, "plugin", {}, db);
+  const principal = await principalFor(
+    row,
+    kind === "plugin" ? "plugin" : "oauth",
+    {},
+    db,
+  );
   const expiresAt =
     row.expires_at && row.expires_at < row.token_expires_at
       ? row.expires_at

@@ -883,18 +883,34 @@ from the root's locked build dependencies. Export integration tests require a
 sandboxed Chromium executable (`PDF_TEST_CHROME` or the detected platform path)
 and their own marked PostgreSQL test database. Each process owns its test renderer.
 
-## Optional separate plugin backend
+## MCP consolidation candidate
+
+The canonical connection is `/mcp`; the `plugin` profile retains the isolated
+integration worker and existing `/plugin` audience during migration. `/mcp/*`
+auxiliaries route through the same gateway to that worker. Configure
+`MCP_WORKSPACE_AI_ENABLED` and per-connection owner permission separately.
+See [environment settings](environment.md#one-mcp-connection-legacy-plugin-compatibility).
+
+Rollback uses the qualified consolidation image with
+`MCP_WORKSPACE_AI_ENABLED=false`, then reruns deployment. Stop canonical AI
+admission/dispatch before rolling processes. Preserve `plugin_ai_runs`, events,
+permissions and reservations, plus all legacy routes/grants. Do not replay
+unknown provider outcomes, delete receipts or roll to a pre-consolidation image
+that cannot read MCP-bound jobs. No schema destructive migration is introduced.
+The candidate is not approved for production until Test → Review completes.
+
+## MCP integration worker and legacy plugin
 
 The `plugin` Compose profile runs `backend/dist/services/plugin.js` separately
 from the API, AI and MCP services. It has no host port. The gateway exposes only
-`/plugin`, `/plugin/*` and `/.well-known/oauth-protected-resource/plugin` on
-the MCP host; browser API paths and `/mcp` keep their own services.
+`/mcp/*`, `/plugin`, `/plugin/*` and legacy discovery on the MCP host;
+browser API paths and the `/mcp` protocol keep their own services.
 
-Set `PLUGIN_PUBLIC_URL=https://mcp.orbyn.dev/plugin` in `.env` before enabling
-the service. The URL must match the public gateway route. With this setting,
+Enable the `plugin` profile for canonical auxiliaries. Preserve
+`PLUGIN_PUBLIC_URL=https://mcp.orbyn.dev/plugin` in `.env` for legacy connections. The URL must match the public gateway route. With this setting,
 `scripts/deploy.sh` builds and rolls the plugin after migrations, then updates
-the gateway. Without it, the deploy script stops the plugin and the gateway
-answers 404 for plugin routes. Run `./scripts/deploy.sh --check` first. If the
+the gateway. Without the profile, legacy URL or canonical inference flag, deployment stops
+the worker. A blank legacy URL disables only `/plugin` authentication. Run `./scripts/deploy.sh --check` first. If the
 plugin uses a different HTTPS host, route that host to gateway port 8082 before
 connecting a client.
 

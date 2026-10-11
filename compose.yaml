@@ -286,15 +286,15 @@ services:
       migrate: { condition: service_completed_successfully }
       pgbouncer: { condition: service_healthy }
 
-  # Optional plugin integration: a separate authenticated process, never the
-  # browser API or MCP recipient. Enable only after configuring its public
-  # recipient. Only the gateway publishes it; no direct host port is needed.
+  # Integration worker: isolated workspace inference and /mcp auxiliary routes.
+  # The plugin profile also preserves the optional legacy /plugin recipient. Only the gateway publishes it; no direct host port is needed.
   plugin:
     <<: *backend
     profiles: [plugin]
     environment:
       <<: *backend-env
       PLUGIN_PUBLIC_URL: ${PLUGIN_PUBLIC_URL:-}
+      MCP_WORKSPACE_AI_ENABLED: ${MCP_WORKSPACE_AI_ENABLED:-false}
     command: ["node", "backend/dist/services/plugin.js"]
     healthcheck: *http-health
     expose: ["8000"]

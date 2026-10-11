@@ -751,6 +751,20 @@ ${UPSTREAM_MCP}
       proxy_pass http://mcp;
       error_page 429 = @mcp_limited;
     }
+    # Canonical integration auxiliaries stay in the isolated worker process.
+    # Exact OAuth audience checks happen there; never redirect bearer requests.
+    location ^~ /mcp/ {
+      ${MCP_GATE}
+      client_max_body_size 36m;
+      limit_req zone=per_client burst=200 nodelay;
+      limit_req zone=mcp_token burst=60 nodelay;
+      limit_conn mcp_conn 8;
+      proxy_buffering off;
+      proxy_next_upstream off;
+      set $integration_target plugin:8000;
+      proxy_pass http://$integration_target;
+      error_page 429 = @mcp_limited;
+    }
     location = /.well-known/oauth-protected-resource {
       proxy_pass http://mcp;
     }

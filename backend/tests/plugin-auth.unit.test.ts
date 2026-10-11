@@ -198,3 +198,46 @@ test("disabled person, suspended grant, deleted or blocked client and current ho
     );
   });
 });
+
+test("canonical auxiliaries require the exact MCP OAuth audience and retain legacy isolation", async () => {
+  const mcp = {
+    ...grant(),
+    resource_kind: "mcp" as const,
+    resource: resources.mcp,
+  };
+  await withRow(mcp, async () => {
+    const result = await resolvePluginCaller(
+      { authorization: `Bearer ${token}` },
+      settings,
+      resources,
+      undefined,
+      "mcp",
+    );
+    assert.equal(result.principal.via, "oauth");
+    await assert.rejects(call(), refused(401));
+  });
+  await withRow(grant(), async () => {
+    await assert.rejects(
+      resolvePluginCaller(
+        { authorization: `Bearer ${token}` },
+        settings,
+        resources,
+        undefined,
+        "mcp",
+      ),
+      refused(401),
+    );
+  });
+  await withRow({ ...mcp, resource: resources.plugin }, async () => {
+    await assert.rejects(
+      resolvePluginCaller(
+        { authorization: `Bearer ${token}` },
+        settings,
+        resources,
+        undefined,
+        "mcp",
+      ),
+      refused(401),
+    );
+  });
+});

@@ -30,7 +30,11 @@ export function pluginLaunch(
   tools: string[],
   uiEnabled: boolean,
 ) {
-  if (principal.via !== "plugin" || !principal.grant_id || !principal.client.id)
+  if (
+    (principal.via !== "plugin" && principal.via !== "oauth") ||
+    !principal.grant_id ||
+    !principal.client.id
+  )
     throw new CapabilityError("FORBIDDEN", "A plugin connection is required.");
   const resources = pluginResources(tools, uiEnabled);
   const resource = input.resource_uri
@@ -44,7 +48,7 @@ export function pluginLaunch(
   return {
     version: 1 as const,
     connection: {
-      kind: "plugin" as const,
+      kind: principal.via === "plugin" ? ("plugin" as const) : ("mcp" as const),
       user_id: principal.user.id,
       grant_id: principal.grant_id,
       client_id: principal.client.id,

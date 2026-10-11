@@ -482,9 +482,11 @@ export async function mcpServerRoutes(app: FastifyInstance) {
       const kind: LimitKind =
         cap?.mode && cap.mode !== "read"
           ? "write"
-          : cap?.limitGroup === "search" || method === "completion/complete"
+          : cap?.limitGroup === "search" ||
+              toolName === "search_orbyn_mentions" ||
+              method === "completion/complete"
             ? "search"
-            : cap?.limitGroup === "heavy"
+            : cap?.limitGroup === "heavy" || toolName === "request_workspace_ai"
               ? "heavy"
               : "call";
       const slot = await limiter.take(
@@ -493,7 +495,7 @@ export async function mcpServerRoutes(app: FastifyInstance) {
         kind,
         s.agents.agent_limits,
         Date.now(),
-        cap?.limitGroup === "heavy",
+        cap?.limitGroup === "heavy" || toolName === "request_workspace_ai",
       );
       if (!slot.ok) {
         recorder.count(grantId, "limited");
@@ -519,6 +521,7 @@ export async function mcpServerRoutes(app: FastifyInstance) {
       );
       const call: CallContext = {
         caller,
+        headers: r.headers,
         settings: s,
         primary: Date.now() - since < READ_OWN_WRITES_MS,
         write: (fn) =>
@@ -544,7 +547,7 @@ export async function mcpServerRoutes(app: FastifyInstance) {
             grantId,
             clientName: p.client.name,
             tool: name,
-            tier: c?.tier ?? "R",
+            tier: c?.tier ?? (name === "request_workspace_ai" ? "W2" : "R"),
             outcome: exec.outcome,
             targets: exec.targets,
             argsDigest: c && c.mode !== "read" ? digest : null,
@@ -552,7 +555,8 @@ export async function mcpServerRoutes(app: FastifyInstance) {
             summary: `${c?.title ?? name}${exec.targets.length ? ` · ${exec.targets.length} item${exec.targets.length === 1 ? "" : "s"}` : ""}`,
             requestId: String(r.id),
             latencyMs: ms,
-            write: !!c && c.mode !== "read",
+            write:
+              (!!c && c.mode !== "read") || name === "request_workspace_ai",
             recorded: !!exec.recorded,
           });
         },

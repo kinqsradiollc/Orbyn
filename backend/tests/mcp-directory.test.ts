@@ -417,7 +417,10 @@ test("MCP Apps cards: off by default, then Today, a plan preview and a proposal,
       byName("plan_schedule")._meta.ui.resourceUri,
       "ui://orbyn/plan.html",
     );
-    assert.equal(byName("search")._meta.ui, undefined);
+    assert.equal(
+      byName("search")._meta.ui.resourceUri,
+      "ui://orbyn/result.html",
+    );
     let listed: { uri: string }[] = [];
     let cursor: string | undefined;
     do {
@@ -448,8 +451,16 @@ test("MCP Apps cards: off by default, then Today, a plan preview and a proposal,
         /#[0-9a-f]{3,8}\b/i,
       );
       // Nothing from outside, and data is never markup.
-      assert.doesNotMatch(html, /<script[^>]+src=|<link |https?:\/\/(?!mcp)/);
-      assert.doesNotMatch(html, /innerHTML/);
+      assert.doesNotMatch(html, /<script[^>]+src=|<link /);
+      // The generic card embeds the local Mermaid runtime as escaped data,
+      // executed only in a sandboxed child frame. Other cards remain plain text.
+      if (!c.uri.endsWith("result.html")) {
+        assert.doesNotMatch(html, /https?:\/\/(?!mcp)/);
+        assert.doesNotMatch(html, /innerHTML/);
+      } else {
+        assert.match(c.script, /setAttribute\("sandbox","allow-scripts"\)/);
+        assert.doesNotMatch(c.script, /innerHTML/);
+      }
       assert.deepEqual(content._meta.ui.csp, {
         connectDomains: [],
         resourceDomains: [],

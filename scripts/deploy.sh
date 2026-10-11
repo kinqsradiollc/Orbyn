@@ -69,6 +69,7 @@ mail_domain=$(setting MAIL_DOMAIN)
 app_url=$(setting APP_URL)
 mcp_url=$(setting MCP_PUBLIC_URL https://mcp.orbyn.dev/mcp)
 plugin_url=$(setting PLUGIN_PUBLIC_URL)
+mcp_ai_enabled=$(setting MCP_WORKSPACE_AI_ENABLED false)
 oauth_issuer=$(setting OAUTH_ISSUER "$app_url")
 cors=$(setting CORS_ORIGINS)
 profiles=$(setting COMPOSE_PROFILES)
@@ -80,6 +81,8 @@ semantic_on=0
 case ",$profiles," in *,semantic,*) semantic_on=1 ;; esac
 plugin_on=0
 [ -n "$plugin_url" ] && plugin_on=1
+case ",$profiles," in *,plugin,*) plugin_on=1 ;; esac
+[ "$mcp_ai_enabled" = true ] && plugin_on=1
 problems=0
 secrets_key=$(setting SECRETS_KEY)
 [ -n "$secrets_key" ] || { echo "SECRETS_KEY is required for production credential encryption." >&2; exit 1; }
@@ -120,7 +123,7 @@ preflight() {
     echo "Remove AI_RUNNER_IN_WORKER=true: assistant-background and assistant-overnight now run separately from the notifier." >&2
     problems=1
   fi
-  if [ "$plugin_on" = 1 ]; then
+  if [ -n "$plugin_url" ]; then
     case "$plugin_url" in
       https://*/plugin) ;;
       http://127.0.0.1:*/plugin|http://localhost:*/plugin) ;;
@@ -133,6 +136,7 @@ preflight() {
       fi
     fi
   fi
+  case "$mcp_ai_enabled" in true|false) ;; *) echo "MCP_WORKSPACE_AI_ENABLED must be true or false." >&2; problems=1 ;; esac
   if grep -qE 'TODO|change-me' "$ENV_FILE"; then
     warn "$ENV_FILE still has TODO or change-me values."
   fi
@@ -206,7 +210,7 @@ if [ "$CHECK" = 1 ]; then
   esac
   echo "- pause measuring/notifier; if a legacy database encryption key exists, stop/remove all backend writers before conversion (brief downtime; failure leaves writers stopped)"
   echo "- apply migrations, then roll out pdf, api, mcp, ai, assistant-background, assistant-overnight, realtime, status, notifier, files, converter and the web app"
-  [ "$plugin_on" = 1 ] && echo "- roll out the separate plugin recipient at $plugin_url" || echo "- leave the plugin recipient disabled"
+  [ "$plugin_on" = 1 ] && echo "- roll out the isolated MCP integration worker (legacy recipient: ${plugin_url:-disabled})" || echo "- leave integration auxiliaries disabled (enable the plugin profile)"
   [ "$semantic_on" = 1 ] && echo "- start the updated measuring service (semantic profile enabled)" || echo "- leave the measuring service stopped (semantic profile off)"
   echo "- scanned pages and photos: read with the built-in Tesseract"
   [ "$formula_on" = 1 ] && echo "- start or replace the formula model (equations on scans)" || echo "- no formula model (the formula profile is off; scanned equations keep a placeholder)"

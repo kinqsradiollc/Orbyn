@@ -69,7 +69,7 @@ export function assertPluginManagedProvider(
   if (
     !parsed.success ||
     !permission.enabled ||
-    principal.via !== "plugin" ||
+    (principal.via !== "plugin" && principal.via !== "oauth") ||
     principal.user.id !== permission.user_id ||
     principal.grant_id !== permission.grant_id ||
     principal.client.id !== permission.client_id ||

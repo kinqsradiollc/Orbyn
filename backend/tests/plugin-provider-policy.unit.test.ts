@@ -107,7 +107,6 @@ test("only explicit permission matching the plugin owner, grant and client admit
     );
   for (const via of [
     "session",
-    "oauth",
     "assistant",
     "agent_key",
     "legacy_key",
@@ -328,5 +327,14 @@ test("retention cannot make an expired operation ID dispatchable again", () => {
       prompt: "text",
     }).success,
     false,
+  );
+});
+
+test("resolved canonical OAuth may use only the same separately captured provider permission", () => {
+  const f = fixture();
+  assertPluginManagedProvider(
+    { ...f.principal, via: "oauth" },
+    f.permission,
+    f.ai,
   );
 });

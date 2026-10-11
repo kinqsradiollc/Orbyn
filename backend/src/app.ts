@@ -1,5 +1,5 @@
 import { createTeamsActivityRoutes } from "./modules/agent-channels/teams-activity-routes.js";
-import { pluginRoutes } from "./modules/plugin/routes.js";
+import { pluginRoutes, mcpIntegrationRoutes } from "./modules/plugin/routes.js";
 import { createSlackReplyRoutes } from "./modules/agent-channels/reply-routes.js";
 import { teamsChannelRoutes } from "./modules/agent-channels/teams-routes.js";
 import { agentChannelRoutes } from "./modules/agent-channels/routes.js";
@@ -246,7 +246,7 @@ export const serviceModules: Record<
    * requests (MCP_REPLICAS). /api/mcp on the web app reaches it too.
    */
   mcp: [mcpServerRoutes],
-  plugin: [pluginDiscoveryRoutes, pluginRoutes],
+  plugin: [pluginDiscoveryRoutes, pluginRoutes, mcpIntegrationRoutes],
 };
 
 export const buildApiService = () => createService("api", serviceModules.api);

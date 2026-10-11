@@ -815,9 +815,7 @@ export function ConnectedAgentsCard({
                     }}
                   />
                 )}
-                {g.resource_kind === "plugin" && (
-                  <PluginAiPermission grantId={g.id} />
-                )}
+                {g.kind === "oauth" && <PluginAiPermission grantId={g.id} />}
                 {trusting?.id === g.id && (
                   <TrustPanel
                     grant={g}

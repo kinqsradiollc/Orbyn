@@ -146,7 +146,9 @@ test("plugin AI owner consent preserves HTTP shields, defaults off, CAS and prov
   await pool.query("UPDATE agent_grants SET resource_kind='mcp' WHERE id=$1", [
     grant,
   ]);
-  assert.equal((await call("GET", owner.token)).statusCode, 403);
+  const canonical = await call("GET", owner.token);
+  assert.equal(canonical.statusCode, 200, canonical.body);
+  assert.equal(canonical.json().active, false);
   await pool.query(
     "UPDATE agent_grants SET resource_kind='plugin' WHERE id=$1",
     [grant],

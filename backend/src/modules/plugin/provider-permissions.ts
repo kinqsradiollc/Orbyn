@@ -1,3 +1,4 @@
+import { env } from "../../config/env.js";
 import {
   AI_PROVIDERS,
   fail,
@@ -43,10 +44,10 @@ async function ownedGrant(
     )
   ).rows[0];
   if (!row || row.revoked_at) fail(404, "Connection not found");
-  if (row.kind !== "oauth" || row.resource_kind !== "plugin")
+  if (row.kind !== "oauth" || !["mcp", "plugin"].includes(row.resource_kind))
     fail(
       403,
-      "Workspace AI permission is only available to plugin connections.",
+      "Workspace AI permission is only available to OAuth connections.",
     );
   return row;
 }
@@ -64,6 +65,8 @@ async function allowedClient(db: Queryable, grant: Grant, live: LiveSettings) {
   ).rows[0];
   return !!(
     live.agents.agents_enabled &&
+    (grant.resource_kind !== "mcp" ||
+      env.MCP_WORKSPACE_AI_ENABLED === "true") &&
     grant.authorized_at &&
     !grant.suspended_at &&
     (!grant.expires_at || grant.expires_at.getTime() > Date.now()) &&

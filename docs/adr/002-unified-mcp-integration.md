@@ -1,6 +1,6 @@
 # ADR 002 — One MCP connection with optional previews
 
-Status: accepted direction; runtime migration pending.
+Status: accepted direction; runtime candidate implemented, qualification pending.
 Owner direction: 11 October 2026.
 
 ## Decision
@@ -23,15 +23,15 @@ Every tool result must have a concise, understandable result or error. Provide a
 matching UI resource for supported result families; do not require a popup for
 every call or manufacture a preview before execution has succeeded.
 
-| Result family | Presentation |
-| --- | --- |
-| Read/search | Compact list or detail with authorized source links |
-| Plan/proposal | Proposed changes and consequences; existing review authority applies |
-| Completed mutation | Change receipt and available Undo; no duplicate mutation on render |
-| Import/background job | Current progress, recoverable error and authorized reconnect state |
-| Markdown file | Host-supported resource editor, writable metadata, ETag/conflict protection |
-| Orbyn document | Authorized document preview, source links and permitted edit/review actions |
-| Error/empty/unsupported | Short truthful state and useful next action; structured/text fallback |
+| Result family           | Presentation                                                                |
+| ----------------------- | --------------------------------------------------------------------------- |
+| Read/search             | Compact list or detail with authorized source links                         |
+| Plan/proposal           | Proposed changes and consequences; existing review authority applies        |
+| Completed mutation      | Change receipt and available Undo; no duplicate mutation on render          |
+| Import/background job   | Current progress, recoverable error and authorized reconnect state          |
+| Markdown file           | Host-supported resource editor, writable metadata, ETag/conflict protection |
+| Orbyn document          | Authorized document preview, source links and permitted edit/review actions |
+| Error/empty/unsupported | Short truthful state and useful next action; structured/text fallback       |
 
 Today opens an empty bootstrap and reads only after the person's explicit action.
 Mentions expose authorized titles/links only. Preview rendering must not expand

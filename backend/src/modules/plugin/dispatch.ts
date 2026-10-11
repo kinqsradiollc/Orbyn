@@ -1,3 +1,4 @@
+import { withResultPreview } from "../mcp-server/result-preview.js";
 import type { FastifyRequest } from "fastify";
 import type { z } from "zod";
 import { settings } from "../../lib/settings.js";
@@ -90,7 +91,9 @@ export async function dispatchPluginTool(
       write: cap.mode !== "read",
       recorded: result.recorded,
     });
-    return result.result;
+    return live.agents.mcp_apps_enabled
+      ? withResultPreview(result.result, p)
+      : result.result;
   } finally {
     slot.release();
   }

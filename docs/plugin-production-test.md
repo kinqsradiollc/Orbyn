@@ -1,3 +1,23 @@
+# Canonical MCP host acceptance
+
+After the unified candidate is reviewed, merged and deployed, reconnect a **new**
+host connection to `https://mcp.orbyn.dev/mcp`. Keep the existing Orbyn Plugin
+connection at `/plugin` during migration. Do not copy its tokens/receipt IDs or
+provider permission to the new connection.
+
+Verify the new connection's Today bootstrap and explicit Load action, authorized
+search/document previews, a revision-checked line edit/review and conflict draft,
+mentions, host Markdown file writable metadata/ETag conflict, and grant revocation.
+A host without UI must still receive usable text/structured results. Workspace AI
+needs a separate approved provider/model/allowance; verify receipt retry, paused
+worker and unknown-outcome recovery without another provider dispatch.
+
+Use the [current implementation handoff](reviews/c6-unified-mcp-implementation.md)
+for exact candidate and remaining gates. Local qualification is not real-host
+acceptance; the legacy observations below do not qualify the new `/mcp` runtime.
+
+---
+
 # C6 production-host test
 
 Codex Security is not needed to install or exercise the Orbyn plugin. The normal
@@ -17,6 +37,7 @@ Orbyn plugin backend and its OAuth flow are separate from that scanner.
    Use this URL only if that hostname already routes to this server's gateway
    port 8082. Otherwise use a hostname you own and route it there first.
    Keep `MCP_PUBLIC_URL` unchanged; `/mcp` and `/plugin` are separate recipients.
+
 3. Run `./scripts/deploy.sh --check`, then the normal deployment script. A
    nonempty plugin URL makes the script build/start the separate plugin service
    and update the gateway. Legacy key conversion deliberately stops old writers.
@@ -48,15 +69,15 @@ performed by this runbook.
 
 ## Acceptance cases
 
-| Case | Expected evidence |
-| --- | --- |
-| Sign-in | Plugin-specific consent and grant; browser session or `/mcp` token cannot substitute |
-| Today | Open Orbyn, explicitly load Today, see only the approved account's data |
-| Account switch/reconnect | Old grant/account data disappears; fresh authority is required |
-| Mentions | Only authorized titles/links; no full item contents or private Memory |
-| Markdown resources | Read a supported host resource; save only writable resources with ETag; conflict retains draft |
-| Provider execution | Explicit managed/BYO consent, pinned model and allowance; no ChatGPT-plan token borrowing or silent paid fallback |
-| Revocation | Existing connection loses access; no new result or file parcel leaks afterward |
+| Case                     | Expected evidence                                                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| Sign-in                  | Plugin-specific consent and grant; browser session or `/mcp` token cannot substitute                              |
+| Today                    | Open Orbyn, explicitly load Today, see only the approved account's data                                           |
+| Account switch/reconnect | Old grant/account data disappears; fresh authority is required                                                    |
+| Mentions                 | Only authorized titles/links; no full item contents or private Memory                                             |
+| Markdown resources       | Read a supported host resource; save only writable resources with ETag; conflict retains draft                    |
+| Provider execution       | Explicit managed/BYO consent, pinned model and allowance; no ChatGPT-plan token borrowing or silent paid fallback |
+| Revocation               | Existing connection loses access; no new result or file parcel leaks afterward                                    |
 
 Record host/account capabilities, deployed commit, actual successful cases and
 unsupported cases in a Markdown report. A host that lacks file-resource extensions

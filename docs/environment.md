@@ -1,12 +1,12 @@
 # Environment files
 
-| File | Use |
-| --- | --- |
-| `.env.example` | Shared backend/Compose template for development, testing and production |
-| `.env.production` | Private production configuration; copy it to the testing server and adjust target-specific values manually |
-| `.env` | Active backend/Compose configuration on the target server |
-| `desktop/.env.example` | Public Vite settings template for all build environments |
-| `mobile/.env.example` | Public Expo settings template for all build environments |
+| File                   | Use                                                                                                        |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `.env.example`         | Shared backend/Compose template for development, testing and production                                    |
+| `.env.production`      | Private production configuration; copy it to the testing server and adjust target-specific values manually |
+| `.env`                 | Active backend/Compose configuration on the target server                                                  |
+| `desktop/.env.example` | Public Vite settings template for all build environments                                                   |
+| `mobile/.env.example`  | Public Expo settings template for all build environments                                                   |
 
 Existing env files are private and ignored by Git. Merge new settings into them;
 never replace existing secrets with template placeholders. Commented assignments
@@ -63,22 +63,43 @@ the explicit [quiesced cutover](../deploy/k8s/README.md#one-time-legacy-encrypti
 A failed cutover leaves old writers stopped; do not restore an old image over
 converted credentials.
 
-## Separate plugin service
+## One MCP connection; legacy plugin compatibility
 
-The target [unified connection](adr/002-unified-mcp-integration.md) is now part
-of C6. Its runtime migration is pending; the following settings describe the
-current deployed compatibility path. Do not give both recipients the same URL.
+`MCP_PUBLIC_URL` is the canonical connection for tools, document previews,
+mentions and supported host file entrypoints. Enable **Cards in agents** for UI;
+text/structured results remain available without it. Workspace inference has a
+separate owner permission and server switch:
 
-`PLUGIN_PUBLIC_URL` is a server-side setting; no new public client variable or
-provider credential belongs in desktop/mobile env files. Leave it blank to disable
-the plugin. Set it to an owned HTTPS `/plugin` recipient to enable the separate
-Compose service through `scripts/deploy.sh`. The gateway routes its public host
-to port 8082, then `/plugin` to `plugin:8000`; no plugin host port is published.
-Keep `MCP_PUBLIC_URL` unchanged. See [deployment](deployment.md#optional-separate-plugin-backend)
-and [production-host testing](plugin-production-test.md).
+```dotenv
+MCP_PUBLIC_URL=https://mcp.orbyn.dev/mcp
+COMPOSE_PROFILES=tunnel,mail,plugin
+MCP_WORKSPACE_AI_ENABLED=false
+# Preserve this while existing /plugin grants remain in use:
+PLUGIN_PUBLIC_URL=https://mcp.orbyn.dev/plugin
+```
 
-The existing private `.env.production` can supply the server configuration, but
-the deploy script reads server `.env`: copy the reviewed values there before
-deployment. `ENV_FILE=...` is supported only for `--check`. Kubernetes does not
-currently include a plugin Deployment/Service/Ingress; Compose routing is not
-proof of Kubernetes plugin support.
+The `plugin` Compose profile runs the isolated integration process: canonical
+`/mcp/*` auxiliaries and inference jobs go to `plugin:8000`; `/mcp` protocol/tools
+stay on the MCP process. Neither service exposes a direct host port. The gateway's
+port 8082 serves the MCP hostname. The two configured OAuth audiences remain
+**distinct**. Do not point `PLUGIN_PUBLIC_URL` at `/mcp` or redirect bearer requests.
+
+Set `MCP_WORKSPACE_AI_ENABLED=true` only when enabling canonical workspace AI.
+Every connection still needs separate owner consent, an exact workspace provider
+and model, and a daily allowance. Existing MCP grants acquire no provider permission.
+False prevents canonical enqueue/dispatch; retained receipts remain readable under
+live grant/provider checks. No personal ChatGPT plan is used by this broker.
+
+Reconnect existing host connections explicitly to `/mcp`. This creates a new grant;
+legacy jobs, receipts, cursors and inference permission are not transferred. Retain
+`PLUGIN_PUBLIC_URL` until legacy retirement is separately approved.
+
+Copy the reviewed private `.env.production` to the server's `.env` before running
+`scripts/deploy.sh`. Keep one `.env.example` per workspace. Client envs contain no
+connector URL/provider secret. `ENV_FILE=...` is supported only for `--check`.
+
+The runtime changes are an **unqualified local candidate**, not the deployed
+legacy host evidence. See [ADR 002](adr/002-unified-mcp-integration.md) and
+[implementation handoff](reviews/c6-unified-mcp-implementation.md). Kubernetes
+currently has no integration Deployment/Service/Ingress; Compose evidence does
+not qualify that deployment target.

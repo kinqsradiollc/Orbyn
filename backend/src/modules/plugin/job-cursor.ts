@@ -45,7 +45,7 @@ export function pluginJobCursor(
   now: () => number = Date.now,
 ) {
   if (
-    principal.via !== "plugin" ||
+    (principal.via !== "plugin" && principal.via !== "oauth") ||
     !principal.grant_id ||
     !principal.client.id ||
     key.length !== 32 ||

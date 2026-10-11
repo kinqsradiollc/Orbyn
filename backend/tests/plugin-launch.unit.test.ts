@@ -68,10 +68,9 @@ test("launch rejects host-provided authority, credentials, URLs and unsupported 
     assert.equal(pluginLaunchInput.safeParse(input).success, false);
 });
 
-test("launch never accepts a first-party or portable MCP principal", () => {
+test("launch never accepts sessions, assistant or portable keys", () => {
   for (const via of [
     "session",
-    "oauth",
     "assistant",
     "agent_key",
     "legacy_key",
@@ -144,4 +143,14 @@ test("launch identity changes with the authenticated account rather than host hi
     pluginLaunch(principal(), { version: 1 }, [], false).connection.user_id,
     "owner",
   );
+});
+
+test("canonical OAuth MCP launch retains its audience identity", () => {
+  const result = pluginLaunch(
+    { ...principal(), via: "oauth" },
+    { version: 1 },
+    ["get_today"],
+    true,
+  );
+  assert.equal(result.connection.kind, "mcp");
 });

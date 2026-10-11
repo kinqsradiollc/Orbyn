@@ -71,8 +71,15 @@ async function pluginTransaction<T>(
     );
     let fresh: Principal;
     try {
-      fresh = (await resolvePluginCaller(headers, settings, resources, db))
-        .principal;
+      fresh = (
+        await resolvePluginCaller(
+          headers,
+          settings,
+          resources,
+          db,
+          principal.via === "plugin" ? "plugin" : "mcp",
+        )
+      ).principal;
     } catch (error) {
       if (!(error instanceof PluginAuthError)) throw error;
       throw new CapabilityError(

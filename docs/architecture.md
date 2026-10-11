@@ -804,3 +804,14 @@ browser storage. They may manage verified published account metadata. Direct
 hosted plan execution remains a separate OpenAI eligibility/integration boundary.
 Identity, granted plan permission, local usage totals and account-wide allowance
 are distinct facts; unavailable plan-tier or quota values remain unknown.
+
+### Canonical MCP integration candidate
+
+ADR 002 consolidates the public connection at `/mcp`. Its protocol service uses
+shared host surfaces/mentions/result previews. The gateway sends `/mcp/*`
+auxiliaries to the isolated integration process, which owns durable workspace
+inference and connector jobs; the ordinary browser API does not execute these
+provider calls. Existing `/plugin` recipient, discovery, refresh and worker jobs
+coexist. Exact OAuth audiences are enforced on every boundary; owner provider
+permission remains separate from tool access/UI opt-in. This is local candidate
+implementation pending qualification and deployment, not current production proof.

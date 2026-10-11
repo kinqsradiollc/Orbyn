@@ -180,7 +180,7 @@ function jobRefusal(error: unknown, reply: FastifyReply) {
 }
 
 const connection = z.object({
-  kind: z.literal("plugin"),
+  kind: z.enum(["plugin", "mcp"]),
   user: z.object({ id: z.string(), name: z.string() }),
   grant_id: z.string(),
   client: z.object({ id: z.string(), name: z.string() }),
@@ -198,7 +198,13 @@ const connection = z.object({
 });
 
 /** Dedicated plugin HTTP boundary. No browser session or assistant routes are mounted here. */
-export const pluginRoutes: FastifyPluginAsync = async (app) => {
+type IntegrationRouteOptions = { recipient?: "mcp" | "plugin" };
+export const pluginRoutes: FastifyPluginAsync<IntegrationRouteOptions> = async (
+  app,
+  options,
+) => {
+  const kind = options.recipient ?? "plugin";
+  const route = (suffix = "") => `/${kind}${suffix}`;
   const limiter = new Limiter();
   const recorder = new ActivityRecorder();
   recorder.start();
@@ -210,16 +216,23 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
   // Configuration is server-owned, validated before serving any request.
   const resources = { mcp: env.MCP_PUBLIC_URL, plugin: env.PLUGIN_PUBLIC_URL };
   connectorResources(resources);
-  const metadataUrl = pluginMetadataUrl(resources);
+  const resource = kind === "plugin" ? resources.plugin : resources.mcp;
+  const metadataUrl =
+    kind === "plugin"
+      ? pluginMetadataUrl(resources)
+      : new URL("/.well-known/oauth-protected-resource/mcp", resources.mcp)
+          .href;
   app.addHook("preHandler", async (request, reply) => {
     reply.header("Cache-Control", "no-store");
-    if (!resources.plugin) return reply.code(404).send({ error: "NOT_FOUND" });
+    if (!resource) return reply.code(404).send({ error: "NOT_FOUND" });
     try {
       // Resolve for every call, without cookies, session fallback or host metadata.
       const caller = await resolvePluginCaller(
         request.headers,
         await settings(),
         resources,
+        undefined,
+        kind,
       );
       request.pluginCaller = caller;
     } catch (error) {
@@ -236,9 +249,16 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
     }
   });
   app.post(
-    "/plugin/inference",
+    route("/inference"),
     { bodyLimit: 65536 },
     async (request, reply) => {
+      if (kind === "mcp" && env.MCP_WORKSPACE_AI_ENABLED !== "true")
+        return reply
+          .code(403)
+          .send({
+            error: "FORBIDDEN",
+            message: "Workspace AI is disabled for this connection.",
+          });
       const input = pluginInferenceInput.safeParse(request.body);
       if (!input.success || Object.keys(request.query as object).length)
         return reply.code(400).send({
@@ -285,7 +305,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
       }
     },
   );
-  app.get("/plugin/inference/:id/events", async (request, reply) => {
+  app.get(route("/inference/:id/events"), async (request, reply) => {
     const params = jobParams.safeParse(request.params),
       query = jobQuery.safeParse(request.query);
     if (!params.success || !query.success)
@@ -313,7 +333,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
           db,
           p,
           params.data.id,
-          resources.plugin!,
+          resource!,
           key,
           query.data.cursor,
         ),
@@ -368,23 +388,16 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
         live,
         resources,
         (db) =>
-          readPluginImportEvents(
-            db,
-            principal,
-            id,
-            resources.plugin!,
-            key,
-            cursor,
-          ),
+          readPluginImportEvents(db, principal, id, resource!, key, cursor),
       );
     } finally {
       slot.release();
     }
   }
-  app.get("/plugin/connection", async (request) => {
+  app.get(route("/connection"), async (request) => {
     const { principal: p, expiresAt } = request.pluginCaller!;
     return connection.parse({
-      kind: "plugin",
+      kind,
       user: { id: p.user.id, name: p.user.name },
       grant_id: p.grant_id,
       client: p.client,
@@ -394,7 +407,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
       expires_at: expiresAt.toISOString(),
     });
   });
-  app.get("/plugin/tools", async (request, reply) => {
+  app.get(route("/tools"), async (request, reply) => {
     if (Object.keys(request.query as object).length)
       return reply.code(400).send({
         error: "INVALID",
@@ -403,7 +416,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
     const live = await settings();
     return { tools: pluginTools(request.pluginCaller!.principal, live) };
   });
-  app.post("/plugin/launch", { bodyLimit: 2048 }, async (request, reply) => {
+  app.post(route("/launch"), { bodyLimit: 2048 }, async (request, reply) => {
     const input = pluginLaunchInput.safeParse(request.body);
     if (!input.success || Object.keys(request.query as object).length)
       return reply.code(400).send({
@@ -450,7 +463,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
     }
   });
   app.post(
-    "/plugin/jobs/imports",
+    route("/jobs/imports"),
     { bodyLimit: 65_536 },
     async (request, reply) => {
       const input = pluginToolInput.safeParse(request.body);
@@ -475,7 +488,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
       }
     },
   );
-  app.get("/plugin/jobs/:id/events", async (request, reply) => {
+  app.get(route("/jobs/:id/events"), async (request, reply) => {
     const params = jobParams.safeParse(request.params);
     const query = jobQuery.safeParse(request.query);
     if (!params.success || !query.success)
@@ -489,7 +502,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
       return jobRefusal(error, reply);
     }
   });
-  app.get("/plugin/resources", async (request, reply) => {
+  app.get(route("/resources"), async (request, reply) => {
     if (Object.keys(request.query as object).length)
       return reply.code(400).send({
         error: "INVALID",
@@ -502,7 +515,7 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
     return { resources: pluginResources(tools, live.agents.mcp_apps_enabled) };
   });
   app.post(
-    "/plugin/resources/read",
+    route("/resources/read"),
     { bodyLimit: 1024 },
     async (request, reply) => {
       const input = pluginResourceInput.safeParse(request.body);
@@ -527,89 +540,90 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
       return resource;
     },
   );
-  app.route({
-    url: "/plugin",
-    method: ["GET", "POST", "DELETE"],
-    bodyLimit: 65_536,
-    handler: async (request, reply) => {
-      const live = await settings();
-      const principal = request.pluginCaller!.principal;
-      const tools = pluginTools(principal, live);
-      const headers = new Headers();
-      for (const [name, value] of Object.entries(request.headers))
-        if (
-          /^(content-type|mcp-protocol-version|mcp-method|mcp-name|mcp-param-.+)$/i.test(
-            name,
-          ) &&
-          typeof value === "string"
-        )
-          headers.set(name, value);
-      headers.set("content-type", "application/json");
-      headers.set("accept", "application/json, text/event-stream");
-      const webRequest = new Request("http://plugin.local/plugin", {
-        method: request.method,
-        headers,
-        ...(request.method === "POST"
-          ? { body: JSON.stringify(request.body) }
-          : {}),
-      });
-      const response = await servePluginProtocol(
-        {
-          grantId: principal.grant_id!,
-          clientId: principal.client.id!,
-          tools,
-          uiEnabled: live.agents.mcp_apps_enabled,
-          invoke: async (name, args) => {
-            if (name === PLUGIN_MENTIONS)
-              return mentionSearch(request, args, limiter, resources);
-            if (name === PLUGIN_ENTRYPOINT || name === PLUGIN_MARKDOWN_FILE)
-              return openPluginSurface(principal, live, name, args, limiter);
-            const result = await dispatchPluginTool(
-              request,
-              { name, arguments: args },
-              limiter,
-              recorder,
-              resources,
-            );
-            if (name !== "start_import") return result;
-            const job = await trackResult(request, result);
-            if (!job) return result;
-            return {
-              ...result,
-              content: [
-                ...result.content,
-                {
-                  type: "resource_link" as const,
-                  uri: pluginJobUri(job.id),
-                  name: "Import progress",
-                  mimeType: "application/json",
+  if (kind === "plugin")
+    app.route({
+      url: route(),
+      method: ["GET", "POST", "DELETE"],
+      bodyLimit: 65_536,
+      handler: async (request, reply) => {
+        const live = await settings();
+        const principal = request.pluginCaller!.principal;
+        const tools = pluginTools(principal, live);
+        const headers = new Headers();
+        for (const [name, value] of Object.entries(request.headers))
+          if (
+            /^(content-type|mcp-protocol-version|mcp-method|mcp-name|mcp-param-.+)$/i.test(
+              name,
+            ) &&
+            typeof value === "string"
+          )
+            headers.set(name, value);
+        headers.set("content-type", "application/json");
+        headers.set("accept", "application/json, text/event-stream");
+        const webRequest = new Request("http://plugin.local/plugin", {
+          method: request.method,
+          headers,
+          ...(request.method === "POST"
+            ? { body: JSON.stringify(request.body) }
+            : {}),
+        });
+        const response = await servePluginProtocol(
+          {
+            grantId: principal.grant_id!,
+            clientId: principal.client.id!,
+            tools,
+            uiEnabled: live.agents.mcp_apps_enabled,
+            invoke: async (name, args) => {
+              if (name === PLUGIN_MENTIONS)
+                return mentionSearch(request, args, limiter, resources);
+              if (name === PLUGIN_ENTRYPOINT || name === PLUGIN_MARKDOWN_FILE)
+                return openPluginSurface(principal, live, name, args, limiter);
+              const result = await dispatchPluginTool(
+                request,
+                { name, arguments: args },
+                limiter,
+                recorder,
+                resources,
+              );
+              if (name !== "start_import") return result;
+              const job = await trackResult(request, result);
+              if (!job) return result;
+              return {
+                ...result,
+                content: [
+                  ...result.content,
+                  {
+                    type: "resource_link" as const,
+                    uri: pluginJobUri(job.id),
+                    name: "Import progress",
+                    mimeType: "application/json",
+                  },
+                ],
+                _meta: {
+                  ...result._meta,
+                  "orbyn/importJob": { id: job.id, uri: pluginJobUri(job.id) },
                 },
-              ],
-              _meta: {
-                ...result._meta,
-                "orbyn/importJob": { id: job.id, uri: pluginJobUri(job.id) },
-              },
-            };
+              };
+            },
+            readJob: (id, cursor) => jobEvents(request, id, cursor),
           },
-          readJob: (id, cursor) => jobEvents(request, id, cursor),
-        },
-        webRequest,
-        request.body,
-      );
-      for (const name of [
-        "content-type",
-        "mcp-protocol-version",
-        "retry-after",
-        "allow",
-      ]) {
-        const value = response.headers.get(name);
-        if (value) reply.header(name, value);
-      }
-      return reply.code(response.status).send(await response.text());
-    },
-  });
+          webRequest,
+          request.body,
+        );
+        for (const name of [
+          "content-type",
+          "mcp-protocol-version",
+          "retry-after",
+          "allow",
+        ]) {
+          const value = response.headers.get(name);
+          if (value) reply.header(name, value);
+        }
+        return reply.code(response.status).send(await response.text());
+      },
+    });
   app.post(
-    "/plugin/tools/call",
+    route("/tools/call"),
     { bodyLimit: 65_536 },
     async (request, reply) => {
       const input = pluginToolInput.safeParse(request.body);
@@ -659,3 +673,8 @@ declare module "fastify" {
     pluginCaller?: Awaited<ReturnType<typeof resolvePluginCaller>> | null;
   }
 }
+
+/** Canonical auxiliary routes, separately encapsulated from legacy recipient authentication. */
+export const mcpIntegrationRoutes: FastifyPluginAsync = async (app) => {
+  await app.register(pluginRoutes, { recipient: "mcp" });
+};
