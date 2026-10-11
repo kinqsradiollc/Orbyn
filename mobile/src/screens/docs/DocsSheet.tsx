@@ -28,6 +28,7 @@ import {
   agendaTodayAt,
   agendaWeekOf,
   docPreview,
+  docContainerBlocks,
   isOfflineError,
   withPendingSave,
   localDateKey,
@@ -2389,7 +2390,11 @@ function OpenDoc({
 }) {
   // The lines as the editor has them, which runs ahead of the saved copy.
   const [blocks, setBlocks] = useState(doc.content);
-  const comments = useDocComments(doc.id, blocks, report);
+  const commentBlocks =
+    doc.document?.format === 2
+      ? docContainerBlocks(doc.document.nodes, { projected: true })
+      : blocks;
+  const comments = useDocComments(doc.id, commentBlocks, report);
   const [rewriting, setRewriting] = useState(false);
   const [rewritten, setRewritten] = useState("");
   const rewrite = () =>

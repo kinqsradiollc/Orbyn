@@ -1,4 +1,4 @@
-import { maintainedPageDraftSaved } from "@orbyn/core";
+import { docContainerBlocks, maintainedPageDraftSaved } from "@orbyn/core";
 import { PageMaintenanceSheet } from "./PageMaintenanceSheet";
 import { DocNavigationContext } from "./doc-navigation";
 import { DocSourcePreview } from "./DocSourcePreview";
@@ -3159,11 +3159,20 @@ export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
       active = false;
     };
   }, [props.doc.id, props.doc.document, props.report]);
+  useEffect(() => {
+    if (complete?.id !== props.doc.id || complete.document?.format !== 2)
+      return;
+    props.onBlocksChange?.(
+      docContainerBlocks(complete.document.nodes, { projected: true }),
+    );
+  }, [complete, props.doc.id, props.onBlocksChange]);
   if (!complete || complete.id !== props.doc.id)
     return <Text>Opening page…</Text>;
   return complete.document?.format === 2 ? (
     <StructuredDocEditor
       doc={complete}
+      comments={props.comments}
+      userId={props.userId}
       beforeLeave={props.beforeLeave}
       initialBlockId={props.initialBlockId}
       onTargetOffset={props.onTargetOffset}

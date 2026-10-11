@@ -24,6 +24,8 @@ import { DocContainerBody } from "./DocContainerBody";
 import { DocBody } from "./DocBody";
 import { PageMaintenanceSheet } from "./PageMaintenanceSheet";
 import { PagePublicationSheet } from "./PagePublicationSheet";
+import { DocThread } from "./DocThread";
+import type { DocCommentsState } from "./useDocComments";
 import { DocNavigationContext } from "./doc-navigation";
 import { openAppUrl } from "../../hooks/useAppLinks";
 
@@ -38,6 +40,8 @@ function sourceOf(document: VersionedDocContent): string | null {
 /** A compact native source/preview toggle sharing the full page revision. */
 export function StructuredDocEditor({
   doc,
+  comments,
+  userId,
   beforeLeave,
   initialBlockId,
   onTargetOffset,
@@ -49,6 +53,8 @@ export function StructuredDocEditor({
   report,
 }: {
   doc: Doc;
+  comments: DocCommentsState;
+  userId?: string;
   beforeLeave?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   initialBlockId?: string | null;
   onTargetOffset?: (y: number) => void;
@@ -66,6 +72,7 @@ export function StructuredDocEditor({
   );
   const [sourceVisible, setSourceVisible] = React.useState(false);
   const [editing, setEditing] = React.useState<string | null>(null);
+  const [openThread, setOpenThread] = React.useState<string | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [pageAction, setPageAction] = React.useState<
     "updates" | "publish" | null
@@ -569,6 +576,36 @@ export function StructuredDocEditor({
                           pageContent={leaves}
                           pageIndex={index}
                         />
+                        {!!block.id && (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Comments on block ${index + 1}`}
+                            onPress={() =>
+                              setOpenThread((current) =>
+                                current === block.id ? null : block.id!,
+                              )
+                            }
+                          >
+                            <Text style={styles.editAction}>
+                              {(comments.counts[block.id] ?? 0) > 0
+                                ? `${comments.counts[block.id]} ${comments.counts[block.id] === 1 ? "comment" : "comments"}`
+                                : "Comment"}
+                            </Text>
+                          </Pressable>
+                        )}
+                        {!!block.id && openThread === block.id && (
+                          <DocThread
+                            comments={comments.anchored.get(block.id) ?? []}
+                            state={comments}
+                            userId={userId}
+                            quote={comments.anchored.get(block.id)?.[0]?.quote}
+                            placeholder="Comment on this line…"
+                            anchor={{
+                              block_id: block.id,
+                              quote: String("text" in block ? block.text : ""),
+                            }}
+                          />
+                        )}
                         {canWrite && "text" in block && (
                           <Pressable
                             accessibilityRole="button"
