@@ -13,6 +13,7 @@ import {
   pluginResources,
   readPluginResource,
 } from "./ui-resources.js";
+import { PLUGIN_MENTIONS } from "./mentions.js";
 import { PluginCallError } from "./dispatch.js";
 import { pluginToolInput } from "./tool-input.js";
 import { parsePluginJobUri } from "./job-resource.js";
@@ -41,7 +42,14 @@ export function buildPluginProtocol(call: PluginProtocolCall) {
         tools: { listChanged: false },
         resources: {},
         ...(call.uiEnabled
-          ? { extensions: { [MCP_APPS_EXTENSION]: { mimeTypes: [APP_MIME] } } }
+          ? {
+              extensions: {
+                [MCP_APPS_EXTENSION]: { mimeTypes: [APP_MIME] },
+                ...(names.includes(PLUGIN_MENTIONS)
+                  ? { "openai/mentions": { searchTool: PLUGIN_MENTIONS } }
+                  : {}),
+              },
+            }
           : {}),
       },
       cacheHints: {

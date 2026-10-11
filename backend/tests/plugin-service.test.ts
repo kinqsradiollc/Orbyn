@@ -1160,3 +1160,141 @@ test("plugin job replay isolates grants/accounts, bounds pages and rejects expir
       await pool.query("DELETE FROM oauth_clients WHERE id=$1", [client]);
   }
 });
+
+test("composer mentions return scoped titles/links without document contents", async () => {
+  const other = (
+    await pool.query(
+      "INSERT INTO users(email,name,password_hash) VALUES ($1,'Other','unusable') RETURNING id",
+      [`${randomUUID()}@example.test`],
+    )
+  ).rows[0].id;
+  const needle = `Mention-${randomUUID()}`;
+  const project = (
+    await pool.query(
+      "INSERT INTO projects(user_id,name,assistant_off) VALUES ($1,$2,true) RETURNING id",
+      [userId, needle],
+    )
+  ).rows[0].id;
+  const visible = (
+    await pool.query(
+      "INSERT INTO docs(user_id,title) VALUES ($1,$2) RETURNING id",
+      [userId, needle],
+    )
+  ).rows[0].id;
+  await pool.query(
+    "INSERT INTO docs(user_id,title,project_id) VALUES ($1,$2,$3)",
+    [userId, needle, project],
+  );
+  await pool.query(
+    "INSERT INTO docs(user_id,title,deleted_at) VALUES ($1,$2,now())",
+    [userId, needle],
+  );
+  await pool.query("INSERT INTO docs(user_id,title) VALUES ($1,$2)", [
+    other,
+    needle,
+  ]);
+  await pool.query("UPDATE docs SET content=$2::jsonb WHERE id=$1", [
+    visible,
+    JSON.stringify([{ type: "paragraph", text: "SECRET-CONTENTS" }]),
+  ]);
+  await pool.query(
+    "INSERT INTO system_settings(key,value) VALUES ('mcp_apps_enabled','true'::jsonb) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+  );
+  invalidateSettings();
+  const call = (args: object) =>
+    app.inject({
+      method: "POST",
+      url: "/plugin/tools/call",
+      headers,
+      payload: { name: "search_orbyn_mentions", arguments: args },
+    });
+  try {
+    const tools = (await app.inject({ url: "/plugin/tools", headers })).json()
+      .tools;
+    const tool = tools.find((t: any) => t.name === "search_orbyn_mentions");
+    assert.equal(tool.annotations.readOnlyHint, true);
+    assert.deepEqual(tool._meta.ui.visibility, ["app"]);
+    const result = await call({ query: needle });
+    assert.equal(result.statusCode, 200);
+    assert.deepEqual(result.json().content, []);
+    assert.deepEqual(result.json().structuredContent.items, [
+      {
+        type: "resource_link",
+        name: needle,
+        uri: `${env.APP_URL.replace(/\/+$/, "")}/app/doc/${visible}`,
+      },
+    ]);
+    assert.doesNotMatch(result.body, /SECRET-CONTENTS|snippet|team_id/);
+    const rpc = await app.inject({
+      method: "POST",
+      url: "/plugin",
+      headers,
+      payload: {
+        jsonrpc: "2.0",
+        id: 101,
+        method: "tools/call",
+        params: { name: "search_orbyn_mentions", arguments: { query: needle } },
+      },
+    });
+    assert.equal(rpc.statusCode, 200);
+    const answer = String(rpc.headers["content-type"]).includes(
+      "text/event-stream",
+    )
+      ? JSON.parse(
+          rpc.body
+            .split("\n")
+            .find((line) => line.startsWith("data: "))!
+            .slice(6),
+        )
+      : rpc.json();
+    assert.deepEqual(
+      answer.result.structuredContent,
+      result.json().structuredContent,
+    );
+    const recent = await call({ query: "" });
+    assert.equal(recent.statusCode, 200);
+    assert.ok(recent.json().structuredContent.items.length <= 20);
+    await pool.query(
+      "UPDATE agent_grants SET personal=false WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+    assert.deepEqual(
+      (await call({ query: needle })).json().structuredContent.items,
+      [],
+    );
+    await pool.query(
+      "UPDATE agent_grants SET personal=true WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+
+    assert.equal(
+      (await call({ query: needle, user_id: other })).statusCode,
+      400,
+    );
+    assert.equal((await call({ query: "x".repeat(201) })).statusCode, 400);
+    assert.equal(
+      (await call({ query: "%" })).json().structuredContent.items.length,
+      0,
+    );
+    await pool.query(
+      "DELETE FROM system_settings WHERE key='mcp_apps_enabled'",
+    );
+    invalidateSettings();
+    assert.equal((await call({ query: needle })).statusCode, 403);
+  } finally {
+    await pool.query(
+      "UPDATE agent_grants SET personal=true WHERE user_id=$1 AND resource_kind='plugin'",
+      [userId],
+    );
+    await pool.query("DELETE FROM docs WHERE user_id=$1 AND title=$2", [
+      userId,
+      needle,
+    ]);
+    await pool.query("DELETE FROM projects WHERE id=$1", [project]);
+    await pool.query("DELETE FROM users WHERE id=$1", [other]);
+    await pool.query(
+      "DELETE FROM system_settings WHERE key='mcp_apps_enabled'",
+    );
+    invalidateSettings();
+  }
+});

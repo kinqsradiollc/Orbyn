@@ -307,3 +307,33 @@ test("plugin protocol rejects excessive argument structures before invocation", 
   assert.equal(calls, 0);
   assert.doesNotMatch(JSON.stringify(result.json), /private-fixture/);
 });
+
+test("mentions discovery advertises only a permitted host tool", async () => {
+  const mention = { ...tools[0], name: "search_orbyn_mentions" };
+  const enabled = await rpc("server/discover", undefined, {
+    modern: true,
+    ui: true,
+    tools: [mention],
+  });
+  assert.deepEqual(
+    enabled.json.result.capabilities.extensions["openai/mentions"],
+    { searchTool: mention.name },
+  );
+  const hidden = await rpc("server/discover", undefined, {
+    modern: true,
+    ui: true,
+  });
+  assert.equal(
+    hidden.json.result.capabilities.extensions["openai/mentions"],
+    undefined,
+  );
+  const disabled = await rpc("server/discover", undefined, {
+    modern: true,
+    ui: false,
+    tools: [mention],
+  });
+  assert.equal(
+    disabled.json.result.capabilities.extensions?.["openai/mentions"],
+    undefined,
+  );
+});

@@ -1,3 +1,4 @@
+import type { ConnectorResources } from "../oauth/resources.js";
 import { pluginInferenceInput } from "./provider-policy.js";
 import { enqueuePluginAi, readPluginAiEvents } from "./inference-broker.js";
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
@@ -29,6 +30,12 @@ import {
   pluginMarkdownFileTool,
   readPluginResource,
 } from "./ui-resources.js";
+import {
+  PLUGIN_MENTIONS,
+  pluginMentionInput,
+  pluginMentionTool,
+  searchPluginMentions,
+} from "./mentions.js";
 import { pluginRead, pluginWrite } from "./execute.js";
 import { trackPluginImport, readPluginImportEvents } from "./import-jobs.js";
 import { pluginJobCursorKey } from "./job-cursor.js";
@@ -51,7 +58,11 @@ function pluginTools(principal: Principal, live: LiveSettings) {
     allowed.some((cap) => cap.name === "get_today")
   )
     tools.push(pluginEntrypointTool);
-  if (live.agents.mcp_apps_enabled) tools.push(pluginMarkdownFileTool);
+  if (live.agents.mcp_apps_enabled) {
+    tools.push(pluginMarkdownFileTool);
+    if (allowed.some((cap) => cap.name === "search"))
+      tools.push(pluginMentionTool);
+  }
   return tools;
 }
 async function openPluginSurface(
@@ -95,6 +106,54 @@ async function openPluginSurface(
     return name === PLUGIN_ENTRYPOINT
       ? pluginEntrypointResult(args)
       : pluginMarkdownFileResult();
+  } finally {
+    slot.release();
+  }
+}
+async function mentionSearch(
+  request: FastifyRequest,
+  args: Record<string, unknown>,
+  limiter: Limiter,
+  resources: ConnectorResources,
+): Promise<ToolResult> {
+  const live = await settings();
+  const principal = request.pluginCaller!.principal;
+  if (
+    !pluginTools(principal, live).some((tool) => tool.name === PLUGIN_MENTIONS)
+  )
+    throw new PluginCallError(403, {
+      error: "FORBIDDEN",
+      message: "Mentions are unavailable to this connection.",
+    });
+  const input = pluginMentionInput.safeParse(args);
+  if (!input.success)
+    throw new PluginCallError(400, {
+      error: "INVALID",
+      message: "Send a search query of up to 200 characters.",
+    });
+  const slot = await limiter.take(
+    principal.grant_id!,
+    principal.user.id,
+    "search",
+    live.agents.agent_limits,
+  );
+  if (!slot.ok)
+    throw new PluginCallError(
+      429,
+      { error: "LIMITED", message: slot.reason },
+      slot.retryAfter,
+    );
+  try {
+    return await pluginRead(principal, request.headers, live, resources, (db) =>
+      searchPluginMentions(db, principal, input.data.query),
+    );
+  } catch (error) {
+    if (error instanceof CapabilityError)
+      throw new PluginCallError(403, {
+        error: "FORBIDDEN",
+        message: "This connection is no longer permitted.",
+      });
+    throw error;
   } finally {
     slot.release();
   }
@@ -501,6 +560,8 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
           tools,
           uiEnabled: live.agents.mcp_apps_enabled,
           invoke: async (name, args) => {
+            if (name === PLUGIN_MENTIONS)
+              return mentionSearch(request, args, limiter, resources);
             if (name === PLUGIN_ENTRYPOINT || name === PLUGIN_MARKDOWN_FILE)
               return openPluginSurface(principal, live, name, args, limiter);
             const result = await dispatchPluginTool(
@@ -558,6 +619,13 @@ export const pluginRoutes: FastifyPluginAsync = async (app) => {
           message: "Send a tool name and arguments object.",
         });
       try {
+        if (input.data.name === PLUGIN_MENTIONS)
+          return await mentionSearch(
+            request,
+            input.data.arguments,
+            limiter,
+            resources,
+          );
         if (
           input.data.name === PLUGIN_ENTRYPOINT ||
           input.data.name === PLUGIN_MARKDOWN_FILE
