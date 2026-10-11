@@ -7,7 +7,7 @@
 - Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`
 - Branch: `codex/c6-file-viewer`
 - Accepted runtime: `937cb16f`; accepted service/environment documentation through `b607e1dc`. Earlier candidates and receipts are retained below.
-- Phase: production real-host acceptance. Local Test → Review closed within **round 1/3** and the accepted checkpoint was pushed to main.
+- Phase: unified `/mcp` implementation under [ADR 002](../adr/002-unified-mcp-integration.md), then full qualification. The earlier local checkpoint closed Test → Review within **round 1/3** and was pushed to main; it does not qualify the newly requested migration.
 - Owner supplied deployed commit `b3d02d19` and reports `/plugin` recovered on 11 October 2026. Independent browser discovery and real-host acceptance remain open; full C6 is not complete.
 
 ## Implementation to qualify

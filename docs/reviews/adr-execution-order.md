@@ -11,6 +11,11 @@ a local code/remediation checkpoint (round 1/3); the code checkpoint was pushed 
 Full C6 real-host acceptance remains open. See [current state](adr-current-state.md)
 and [qualification handoff](c6-qualification.md) for live evidence ownership.
 
+The owner added [ADR 002](../adr/002-unified-mcp-integration.md): one canonical
+`/mcp` connection with optional previews, retaining internal inference isolation.
+C6 now includes the complete endpoint/grant migration and environment alignment
+before final acceptance. Current `/plugin` evidence remains legacy-path evidence.
+
 Independent hosted web ChatGPT sign-in, extra live cache/embedding measurements,
 C4/D1 browser/visual checks and live Slack/Teams checks retain their explicit
 deferral records. They are unverified, not passes, and do not silently become

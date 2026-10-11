@@ -65,6 +65,10 @@ converted credentials.
 
 ## Separate plugin service
 
+The target [unified connection](adr/002-unified-mcp-integration.md) is now part
+of C6. Its runtime migration is pending; the following settings describe the
+current deployed compatibility path. Do not give both recipients the same URL.
+
 `PLUGIN_PUBLIC_URL` is a server-side setting; no new public client variable or
 provider credential belongs in desktop/mobile env files. Leave it blank to disable
 the plugin. Set it to an owned HTTPS `/plugin` recipient to enable the separate

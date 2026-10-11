@@ -1,3 +1,11 @@
+## Current integration direction — 11 October 2026
+
+[ADR 002](002-unified-mcp-integration.md) adds a single canonical `/mcp`
+connection with optional previews to C6. It supersedes two permanent public
+endpoints; internal inference isolation and explicit permissions remain required.
+The runtime migration is pending. Keep the deployed legacy `/plugin` environment
+and grants intact until compatibility and reconnect are implemented.
+
 ## Canonical delivery order — user direction, 7 October 2026
 
 The full ADR must proceed top down: C1 provider/connection contracts, C2/M1
