@@ -29,20 +29,14 @@ export function DocComments({
       </View>
     );
 
-  if (state.failed)
-    return (
-      <View style={styles.section}>
-        <Text style={styles.empty}>Comments could not be loaded.</Text>
-        <Button
-          title="Retry comments"
-          secondary
-          onPress={() => void state.reload()}
-        />
-      </View>
-    );
-
   return (
     <View style={styles.section}>
+      {state.failed && (
+        <View>
+          <Text style={styles.empty}>Couldn’t refresh comments.</Text>
+          <Button title="Retry" secondary onPress={() => void state.reload()} />
+        </View>
+      )}
       <Text style={styles.title}>On the page</Text>
 
       {state.loose.length === 0 && (

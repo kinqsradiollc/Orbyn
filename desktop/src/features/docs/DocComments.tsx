@@ -1,3 +1,5 @@
+import { watchDocRefresh } from "@orbyn/api-client";
+import { session } from "../../lib/session";
 import { useConfirm } from "../../components/Confirm";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Check, MessageSquare, RotateCcw, Trash2 } from "lucide-react";
@@ -101,12 +103,33 @@ export function DocComments({
   const railRef = useRef<HTMLDivElement>(null);
   const anchoredRef = useRef<HTMLDivElement>(null);
 
-  const load = () =>
-    client.listDocComments(docId).then(setComments, () => setComments([]));
-
+  const [failed, setFailed] = useState(false);
+  const refreshRef = useRef<ReturnType<typeof watchDocRefresh> | null>(null);
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const load = () => refreshRef.current?.refresh() ?? Promise.resolve();
   useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setComments(null);
+    setFailed(false);
+    const watcher = watchDocRefresh({
+      api: client,
+      id: docId,
+      session: () => session.get(),
+      load: () => client.listDocComments(docId),
+      received: (rows) => {
+        setComments(rows);
+        setFailed(false);
+      },
+      failed: (error) => {
+        setFailed(true);
+        reportRef.current(error);
+      },
+    });
+    refreshRef.current = watcher;
+    return () => {
+      watcher.dispose();
+      refreshRef.current = null;
+    };
   }, [docId]);
 
   const all = comments ?? [];
@@ -208,7 +231,10 @@ export function DocComments({
     client
       .addDocComment(docId, text, anchor)
       .then((made) => {
-        setComments((list) => [...(list ?? []), made]);
+        setComments((list) => [
+          ...(list ?? []).filter((row) => row.id !== made.id),
+          made,
+        ]);
         if (made.parent_id) {
           setReply(null);
           namedReply.current.clear();
@@ -407,7 +433,7 @@ export function DocComments({
     </div>
   );
 
-  if (comments === null)
+  if (comments === null && !failed)
     return (
       <div className="doc-margin" aria-label="Comments">
         <p className="muted small">Loading…</p>
@@ -416,6 +442,14 @@ export function DocComments({
 
   return (
     <div className="doc-margin" ref={railRef} aria-label="Comments">
+      {failed && (
+        <p role="alert">
+          Couldn’t refresh comments.{" "}
+          <button type="button" onClick={() => void load()}>
+            Retry
+          </button>
+        </p>
+      )}
       {/* First in the rail, so a card can reach the line it is about. With
           the page-wide remarks above it the canvas began below them, and no
           card could ever sit higher than that — every one hung too low, and

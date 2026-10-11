@@ -6,7 +6,7 @@ import React, {
   useSyncExternalStore,
 } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
-import { PageMaintenanceStore } from "@orbyn/api-client";
+import { PageMaintenanceStore, watchDocRefresh } from "@orbyn/api-client";
 import {
   blockText,
   DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET,
@@ -61,6 +61,17 @@ export function PageMaintenanceSheet({
     void store.prepare();
     return store.dispose;
   }, [store]);
+  useEffect(() => {
+    const watcher = watchDocRefresh({
+      api: client,
+      id,
+      session: () => session.token,
+      load: () => client.listPageMaintenanceRuns(id),
+      received: store.receiveRuns,
+      failed: store.receiveRunsError,
+    });
+    return watcher.dispose;
+  }, [id, store]);
   const edit = (binding: MaintainedPageBinding) => {
     setShowForm(true);
     setEditing(binding);

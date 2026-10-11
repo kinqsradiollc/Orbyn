@@ -1,3 +1,5 @@
+import { watchDocRefresh } from "@orbyn/api-client";
+import { session } from "../../lib/session";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { anchorComments, type DocBlock, type DocComment } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -24,25 +26,34 @@ export function useDocComments(
   /** A tap can land twice before the button re-renders as disabled. */
   const sending = useRef(false);
 
+  const refreshRef = useRef<ReturnType<typeof watchDocRefresh> | null>(null);
   const load = useCallback(
-    () =>
-      client.listDocComments(docId).then(
-        (rows) => {
-          setComments(rows);
-          setFailed(false);
-        },
-        (error) => {
-          setComments([]);
-          setFailed(true);
-          reportRef.current(error);
-        },
-      ),
-    [docId],
+    () => refreshRef.current?.refresh() ?? Promise.resolve(),
+    [],
   );
-
   useEffect(() => {
-    void load();
-  }, [load]);
+    setComments(null);
+    setFailed(false);
+    const watcher = watchDocRefresh({
+      api: client,
+      id: docId,
+      session: () => session.token,
+      load: () => client.listDocComments(docId),
+      received: (rows) => {
+        setComments(rows);
+        setFailed(false);
+      },
+      failed: (error) => {
+        setFailed(true);
+        reportRef.current(error);
+      },
+    });
+    refreshRef.current = watcher;
+    return () => {
+      watcher.dispose();
+      refreshRef.current = null;
+    };
+  }, [docId]);
 
   const all = comments ?? [];
   const resolvedThreads = new Set(
@@ -65,7 +76,10 @@ export function useDocComments(
     return client
       .addDocComment(docId, text, anchor)
       .then((made) => {
-        setComments((list) => [...(list ?? []), made]);
+        setComments((list) => [
+          ...(list ?? []).filter((row) => row.id !== made.id),
+          made,
+        ]);
         return true;
       })
       .catch((e) => {
@@ -113,7 +127,7 @@ export function useDocComments(
   return {
     /** The page these belong to, so a composer can ask who may be named. */
     docId,
-    loading: comments === null,
+    loading: comments === null && !failed,
     failed,
     reload: load,
     anchored,

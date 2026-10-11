@@ -62,3 +62,4 @@ export * from "./chatgpt-executor-signer.js";
 export * from "./chatgpt-executor-lifecycle.js";
 export * from "./chatgpt-foreground-runtime.js";
 export * from "./page-publication-store.js";
+export * from "./doc-refresh.js";

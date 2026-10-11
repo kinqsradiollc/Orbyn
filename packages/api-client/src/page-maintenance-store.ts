@@ -1,3 +1,4 @@
+import { invalidateDocViews } from "./doc-refresh.js";
 import {
   newBlockId,
   visitDocContainers,
@@ -122,6 +123,14 @@ export class PageMaintenanceStore {
       }
     }
   }
+  receiveRunsError = () => {
+    if (this.session() === this.binding && !this.state.busy)
+      this.publish({ error: "Couldn’t refresh updates. Try Refresh." });
+  };
+  receiveRuns = (runs: MaintainedPageRunSummary[]) => {
+    if (this.session() === this.binding && !this.state.busy)
+      this.publish({ runs, error: "" });
+  };
   refresh = () => this.run(async () => {}, true);
   /** Called after the editor flush; assign missing stable IDs with normal versioned persistence. */
   prepare = () =>
@@ -188,5 +197,6 @@ export class PageMaintenanceStore {
         run.waiting_id,
         approved,
       );
+      invalidateDocViews(this.api, this.id);
     }, true);
 }
