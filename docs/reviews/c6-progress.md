@@ -1,10 +1,17 @@
 # C6 progress — 11 October 2026
 
-**State:** Builder is continuing C6 on `codex/c6-file-viewer` in the
-`c6-next/Orbyn` managed checkout. Latest source candidate is `4da327dc` (saved-finding remediation), following `81e4c812`,
-`83c49c18` (host Markdown entrypoint) and `34e21418` (runtime coverage). The
-private gateway/Today source `b416aa6a` is retained through parent `bb7a046f`.
-No formal acceptance, main merge, push or production deployment is claimed.
+**State:** C6's local checkpoint is accepted and pushed to main: runtime
+`937cb16f`, service/environment documentation through `b607e1dc`, evidence
+`4ab7dbc9`. Formal review closed within round 1/3. Earlier source candidates
+and their bounded receipts remain below as history.
+
+The owner supplied server commit `b3d02d19`. Its gateway logs identified an
+unresolvable `plugin` upstream, and no running plugin container appeared in
+the supplied Compose output. The owner subsequently reports `/plugin` working.
+Visual Check's internal-browser retry still returned `ERR_BLOCKED_BY_CLIENT`;
+it did not observe an HTTP response or start host OAuth. Full C6 real-host
+acceptance remains open. See [qualification](c6-qualification.md) and
+[production evidence](c6-production-visual-2026-10-11.md).
 
 ## Implemented in this worktree
 
@@ -58,7 +65,7 @@ No formal acceptance, main merge, push or production deployment is claimed.
   authority and Today UI data release. The scan does not establish whole-repo
   security or deployed HTTPS host behavior. Its canonical report is in the
   local Codex Security scan artifacts; see [security boundaries](c6-security-boundary.md).
-- Tester ran source-scoped checks on `81e4c812`; saved-finding remediation now supersedes it. Reviewer formal acceptance is still pending. The bounded Visual
+- Tester ran source-scoped checks on `81e4c812`; saved-finding remediation supersedes it and the corrected local checkpoint has Reviewer acceptance. The bounded Visual
   Check is complete; screenshots were inline because the browser had no
   supported local export path.
 

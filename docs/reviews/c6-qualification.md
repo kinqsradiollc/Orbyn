@@ -6,9 +6,9 @@
   retaining all required gates. Voice and computer use remain excluded.
 - Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`
 - Branch: `codex/c6-file-viewer`
-- Source candidate: `dc094b4b` (round 1 corrections and env templates), superseding `4da327dc` and `81e4c812`; base `058a63e5`.
-- Phase: affected Tester retest, then same-round Reviewer closure. Review counter: **1/3**.
-- No main merge, push, deployment or full completion is claimed.
+- Accepted runtime: `937cb16f`; accepted service/environment documentation through `b607e1dc`. Earlier candidates and receipts are retained below.
+- Phase: production real-host acceptance. Local Test → Review closed within **round 1/3** and the accepted checkpoint was pushed to main.
+- Owner supplied deployed commit `b3d02d19` and reports `/plugin` recovered on 11 October 2026. Independent browser discovery and real-host acceptance remain open; full C6 is not complete.
 
 ## Implementation to qualify
 
@@ -50,8 +50,8 @@ native build is requested; retain delegated synthetic evidence with its limits.
   unless explicitly requested. Saved findings are handled through
   [remediation](security-remediation-2026-10-11.md), focused checks and code review;
   a replacement scan is no longer a required automatic gate.
-- Reviewer acceptance (round1/3 after Tester), main integration/push; production
-  deployment remains owner-controlled.
+- Local Reviewer acceptance and main integration/push are complete. Production
+  deployment remains owner-controlled; host acceptance is still required.
 
 Missing external access stays unverified unless the owner explicitly defers it.
 Tester should not silently waive these requirements. Builder batches reported
@@ -68,7 +68,7 @@ tests/builds or scans. This is the first formal round; prior bounded remediation
 patch closure is source investigation, not full C6 acceptance. External gates
 above remain explicit. Maximum three formal rounds; same-round closure allowed.
 
-## Current correction handoff
+## Historical correction handoff — dc094b4b
 
 Frozen `dc094b4b` addresses SR-R1/SR-E1, as recorded in the remediation ledger.
 Tester requalifies only affected upgrade, deploy-ordering, real SSE and OAuth
@@ -76,7 +76,7 @@ paths plus configuration/types. Reviewer closes the original round after that
 report. Environment template parity is included; private env files remain local
 and uncommitted. Do not infer full C6 or production readiness from this subset.
 
-### Latest same-round correction freeze
+### Historical correction freeze — 937cb16f
 
 Candidate `937cb16f` fixes the fresh-database SSE cursor fixture and prevents
 legacy decryption from recreating a retired credential key. Builder affected
@@ -105,6 +105,9 @@ OAuth/account switching, host files/composer and live providers are not proven.
 No Codex Security scan or automatic public plugin publication is required.
 
 ### Main delivery
+
+The following records the status and owner instructions at the original main
+push, before the subsequent owner-reported deployment and recovery above.
 
 `git push origin HEAD:main` advanced remote main from `058a63e5` to
 `4ab7dbc969d2ab658f527139475d8a4e04247153`, exit 0; `git ls-remote`
