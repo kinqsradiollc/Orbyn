@@ -8,6 +8,14 @@ The owner did not supply the deployed hash; neither call below independently
 identifies the server image/commit. Keep reported deployment distinct from
 verified runtime provenance.
 
+Later on 12 October, the owner supplied server `git rev-parse --short HEAD`
+output `de83f54b`. Local ancestry confirms that commit contains accepted source
+`8f99272c`; this establishes owner-reported checkout provenance, not independent
+container-image or wire-response provenance. At the owner's request, Builder
+opened ChatGPT in this session's internal browser to perform reconnect directly.
+That browser is signed out, so host testing awaits its account sign-in; the
+existing authenticated MCP connector remains separate from this browser session.
+
 ## Read-only connector checks
 
 Builder invoked each already-connected app's `get_context({})` once. No grant,
