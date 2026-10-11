@@ -121,6 +121,9 @@ Those source contracts are not live-host acceptance evidence.
   synthetic-wrapper and connector receipts remain separate evidence and do not
   establish full production-host acceptance.
 
-To continue the host-file check, Chrome must first allow the ChatGPT extension
-access to file URLs. The CUA file chooser specifically named that permission as
-the prerequisite; it remains unchanged pending the user's action.
+## Owner disposition
+
+On 12 October, the owner explicitly said to skip the upload part. The synthetic
+Markdown upload and dependent real-host file-resource checks are deferred, not
+passed. No Chrome permission change or upload retry is required for this scope.
+This does not waive the separate Orbyn document editor or mention requirements.
