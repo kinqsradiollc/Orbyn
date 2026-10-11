@@ -85,12 +85,18 @@ test("authenticated CRDT SSE closes a revoked session and retains the authorized
     })
   ).json();
   assert.ok(page.id);
+  const baseline = (
+    await pool.query(
+      "INSERT INTO doc_updates(doc_id,editor_id,update) VALUES($1,'baseline',$2) RETURNING seq",
+      [page.id, Buffer.from("existing-baseline")],
+    )
+  ).rows[0].seq;
   const address = await app.listen({ port: 0, host: "127.0.0.1" });
   const open = (bearer: string) =>
     new Promise<{ text: string; ended: boolean; stop: () => void }>(
       (resolve, reject) => {
         const request = get(
-          `${address}/events/docs/${page.id}?since=1`,
+          `${address}/events/docs/${page.id}?since=${baseline}`,
           { headers: { authorization: `Bearer ${bearer}` } },
           (response) => {
             assert.equal(response.statusCode, 200);

@@ -34,15 +34,20 @@ function secretsKey(): Buffer {
 let databaseKeyPromise: Promise<Buffer> | null = null;
 
 /** The server-generated key, created on first use. Safe with many instances. */
-function databaseKey(): Promise<Buffer> {
+function databaseKey(create = true): Promise<Buffer> {
   databaseKeyPromise ??= (async () => {
-    await pool.query(
-      "INSERT INTO app_secrets(name, value) VALUES ('credentials_key', $1) ON CONFLICT (name) DO NOTHING",
-      [randomBytes(32).toString("base64")],
-    );
+    if (create)
+      await pool.query(
+        "INSERT INTO app_secrets(name, value) VALUES ('credentials_key', $1) ON CONFLICT (name) DO NOTHING",
+        [randomBytes(32).toString("base64")],
+      );
     const { rows } = await pool.query<{ value: string }>(
       "SELECT value FROM app_secrets WHERE name = 'credentials_key'",
     );
+    if (!rows[0])
+      throw new Error(
+        "Legacy credential key is missing; restore the matching backup before recovery.",
+      );
     return Buffer.from(rows[0].value, "base64");
   })().catch((error) => {
     databaseKeyPromise = null;
@@ -72,7 +77,7 @@ export async function decryptSecret(stored: string): Promise<string> {
   if (!nonce || !tag || data === undefined)
     throw new Error("Unrecognised secret format");
   let key: Buffer;
-  if (version === WITH_DATABASE_KEY) key = await databaseKey();
+  if (version === WITH_DATABASE_KEY) key = await databaseKey(false);
   else if (version === WITH_SECRETS_KEY) {
     if (!env.SECRETS_KEY)
       fail(

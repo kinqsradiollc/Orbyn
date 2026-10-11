@@ -168,3 +168,20 @@ Builder checks on this batch:
 
 Tester retest and same-round Reviewer closure are pending. No new security scan,
 main merge, production migration or full C6 external-host acceptance is claimed.
+
+### Same-round fresh-fixture and retired-key correction
+
+Tester’s `dc094b4b` retest retained 37 passes and one fresh-database SSE
+fixture failure: `since=1` excluded the first update when its sequence was 1.
+The corrected fixture seeds a baseline and uses its returned sequence. The
+failure and invalid retry remain in the Tester report; they are not erased.
+
+Legacy decryption now reads an existing wrapping key without creating one.
+Missing retired keys fail with recovery guidance; legitimate local encryption
+can still create its initial key. This prevents orphan legacy ciphertext from
+recreating a retired database key after cutover.
+
+Builder ran secret retirement, secrets-db, secret upgrade and live revocation
+serially on the marked disposable test database: **6 passed, 0 failed/skipped**,
+exit 0. Log: `/tmp/orbyn-c6-final-builder-check.log`. Independent fresh-database
+Tester qualification and same-round Reviewer closure remain pending (round 1/3).
