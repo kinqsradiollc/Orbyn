@@ -1,32 +1,34 @@
 # C5 delivery record
 
-## Final handoff — accepted, main delivery pending
+## Final handoff — accepted and pushed; production pending
 
 **Accepted candidate:** `bbb7f28d0eb55b27ae1d8fea4b50c717b96b9dc5` on `codex/c5-pages-publication`, based on main
-`9c7c3fdb`. Reviewer accepted C5 in round **1/3** under the agreed scope and explicit
-live Slack/Teams and native deferrals. R1, R2, C5-VIS-001 and C5-E1 are closed.
+`9c7c3fdb`. Reviewer accepted C5 in round **1/3** under the agreed scope; R1, R2,
+C5-VIS-001 and C5-E1 are closed. C5 was fast-forward pushed to remote `main`:
+`9c7c3fdb..392f24450dbc361740376c3095602c246e5c4681` (`git push origin HEAD:main`, exit 0). Production has not
+been deployed.
 
 Tester evidence is incremental by candidate: baseline `046c0b85` build/workspace
 types/migrations and **471/471** focused plus **78/78** structured/docs tests;
 **88/88** on `dc75c780`; **9/9** on `7f7bc08f`; **11/11** plus api-client build on
 `d416d6bb`; mobile typecheck on `82dee01b`; **10/10** plus api-client build on
-`a713bfbd`; and desktop/mobile typechecks on `bbb7f28d`. No final full-backend suite
-rerun is claimed. See [Tester evidence](c5-test-report.md) for candidate-specific
+`a713bfbd`; and desktop/mobile typechecks on `bbb7f28d`. No final full-backend
+suite rerun is claimed. See [Tester evidence](c5-test-report.md) for candidate-specific
 scope and receipts.
 
 Final bounded Visual evidence confirms Home-to-Docs structured navigation and the
-initial reply-review list on `bbb7f28d`; web→Expo and Expo→web posting each updated the
-already-open thread without refresh/reopen while preserving the other client's unsent
-draft. Expo selected sharing, snapshot/live modes, consent and revoke were verified on
-`82dee01b`; later fixes affected navigation and reply-list visibility, not publication.
-The two reply proposals used a local mock provider. Screenshots were inspected inline
-and have no supported file export path. This qualifies the bounded assigned visual
-scope, not live provider execution, native behavior or a broad final-suite rerun.
+initial reply-review list on `bbb7f28d`; web→Expo and Expo→web posting each updated
+the already-open thread without refresh/reopen while preserving the other client's
+unsent draft. Expo selected sharing, snapshot/live modes, consent and revoke were
+verified on `82dee01b`; later fixes affected navigation and reply-list visibility,
+not publication. Replies used a local mock provider. Screenshots were inspected
+inline and have no supported file export path. Live Slack/Teams delivery and native
+iOS/Android behavior remain explicitly deferred and unverified.
 
-C5 is accepted but **not merged or pushed to main**; production deployment remains
-user-owned. Live Slack/Teams delivery and native iOS/Android checks remain deferred
-and unverified. C6 has not started. All prior candidate handoffs and receipts below
-are retained as history.
+C5 is accepted and pushed to main. Production deployment remains user-owned. C6 is
+next in the roadmap and has not started. All candidate-specific receipts below are
+historical checkpoints retained for traceability; earlier pending decisions are
+superseded by the final acceptance and delivery above.
 
 Accepted C5 scope covers maintained page bindings/schedules and scoped mentions,
 publication consent/revocation, and Slack/Teams channel lifecycle across shared
@@ -34,9 +36,10 @@ web/desktop and mobile clients. Permission, revision, human-edit, source-privacy
 waiting-reply boundaries were preserved.
 
 Live Slack/Teams workspace checks remain explicitly deferred and unverified; local
-channel tests do not establish external delivery. C4/D1 browser checks remain
-production follow-ups and are not part of C5 acceptance. Production deployment is
-user-owned. Main integration/merge/push remains pending.
+channel tests do not establish external delivery. Native iOS/Android checks are also
+deferred. C4/D1 browser checks remain production follow-ups, outside C5 acceptance.
+Production deployment is user-owned. Main integration is complete by fast-forward push
+to `main` at `392f2445`.
 
 Initial audit: structured Docs bypasses the old editor's maintenance controls;
 maintenance persistence and its client store still assume legacy flat content.
@@ -61,7 +64,7 @@ in the frozen candidate described below.
 No accepted main merge/push or deployment. Preserve live Slack/Teams checks as
 user-deferred.
 
-## Scoped comment implementation checkpoint
+## Historical checkpoint — scoped comment implementation
 
 `@orbyn` on the human comment endpoint now creates a one-shot page binding,
 using the anchored block (or existing identified page blocks, bounded at 100).
@@ -85,7 +88,7 @@ Development evidence (not frozen-candidate qualification):
 These development suites fed into the full candidate described below; they do not
 replace frozen-source Tester qualification or Reviewer acceptance.
 
-## Full candidate handoff
+## Historical handoff — initial candidate 046c0b85
 
 The implementation scope above is now present. Checkout:
 `/Users/anhdang/.codex/worktrees/c3-agent-platform/Orbyn`, branch
@@ -116,7 +119,7 @@ Additional development receipts (not formal acceptance):
 - Mobile selection is bounded to a scrollable checklist. Rendering is not yet
   visually qualified.
 
-### Verification plan
+### Historical verification plan — superseded by final acceptance
 
 Tester: qualify the frozen full candidate with shared build, types, focused
 maintained-page/comment/publication/store/media/log/inventory suites and existing
@@ -137,7 +140,7 @@ Known boundaries: legacy whole-page/folder publication remains visible and
 revocable, separate from new selected-block links. No live Slack/Teams claim;
 production deployment and the earlier C4 production UI follow-up remain user-owned.
 
-## Reply refresh correction — 7f7bc08f (round 1/3 continuation)
+## Historical correction checkpoint — reply refresh on 7f7bc08f (round 1/3)
 
 C5-VIS-001 correction frozen at `7f7bc08fbed63552354ff4186b08acd48298b72d`.
 Shared authorized document-event refresh now updates comments independently of
