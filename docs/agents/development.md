@@ -31,8 +31,9 @@ belongs in api-client. Backend enforces authority; UI permission checks are hint
   Existing TypeScript uses double quotes. Older single-quote guidance is stale.
 - Use kebab-case modules, PascalCase React components/types and camelCase functions.
   Keep responsibilities clear, types precise and helpers justified.
-- New configuration must update the applicable `.env.example` and
-  `.env.production.example`, service bindings and deployment instructions.
+- New configuration must update the applicable `.env.example`,
+  service bindings and deployment instructions. Keep private `.env.production`
+  synchronized locally without committing its values.
   Run `node scripts/check-env-examples.mjs` to check template coverage.
   Client `VITE_*` and `EXPO_PUBLIC_*` values are public; never put secrets there.
 - Document public contracts and non-obvious business rules. Use structured logging

@@ -1,13 +1,12 @@
 # Environment files
 
-| File                                          | Use                                                      |
-| --------------------------------------------- | -------------------------------------------------------- |
-| `.env.example` → `.env`                       | Local backend and Docker Compose                         |
-| `.env.production.example` → `.env.production` | Private server configuration prepared locally            |
-| `desktop/.env.example`                        | Vite development and shared web/desktop builds           |
-| `desktop/.env.production.example`             | Public production build settings                         |
-| `mobile/.env.example`                         | Expo development; use a reachable LAN address on a phone |
-| `mobile/.env.production.example`              | Public Expo production build settings                    |
+| File | Use |
+| --- | --- |
+| `.env.example` | Shared backend/Compose template for development, testing and production |
+| `.env.production` | Private production configuration; copy it to the testing server and adjust target-specific values manually |
+| `.env` | Active backend/Compose configuration on the target server |
+| `desktop/.env.example` | Public Vite settings template for all build environments |
+| `mobile/.env.example` | Public Expo settings template for all build environments |
 
 Existing env files are private and ignored by Git. Merge new settings into them;
 never replace existing secrets with template placeholders. Commented assignments
@@ -15,7 +14,11 @@ are optional overrides, not enabled settings.
 
 ## Server deployment
 
-1. Set `POSTGRES_PASSWORD`, `APP_URL` and `CORS_ORIGINS` for the target server.
+1. Use the existing private `.env.production` as the configuration source for
+   production and the testing server. Copy it, then manually adjust the target's
+   domains, database credentials, tunnel and integrations. Keep the same variable
+   inventory and feature configuration unless that target intentionally differs.
+   A new installation uses `.env.example`; no separate production example exists.
 2. Supply independent `SECRETS_KEY` and `FILES_MASTER_KEY` values, each 32 random
    bytes encoded as base64. Keep existing keys unchanged on upgrades.
 3. Set independent `FILES_SECRET` and `DOC_PDF_KEY` secrets; the PDF key must be

@@ -13,7 +13,7 @@ const compose = [
   ...read("compose.yaml").matchAll(/\$\{([A-Z][A-Z0-9_]*)/g),
 ].map((m) => m[1]);
 let failed = false;
-for (const path of [".env.example", ".env.production.example"]) {
+for (const path of [".env.example"]) {
   const keys = documented(read(path));
   const missing = [...new Set([...schema, ...compose])].filter(
     (key) => !keys.has(key),
@@ -35,7 +35,7 @@ for (const [folder, prefix, expected] of [
     ["API_URL", "WEB_URL", "DEBUG_ERRORS", "DOC_CRDT", "APP_VERSION"],
   ],
 ]) {
-  for (const suffix of [".env.example", ".env.production.example"]) {
+  for (const suffix of [".env.example"]) {
     const path = `${folder}/${suffix}`;
     const missing = expected.filter(
       (key) => !documented(read(path)).has(prefix + key),
