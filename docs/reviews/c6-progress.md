@@ -1,7 +1,7 @@
 # C6 progress — 11 October 2026
 
 **State:** Builder is continuing C6 on `codex/c6-file-viewer` in the
-`c6-next/Orbyn` managed checkout. Latest source candidate is `55e94ca5`, following
+`c6-next/Orbyn` managed checkout. Latest source candidate is `81e4c812`, following
 `83c49c18` (host Markdown entrypoint) and `34e21418` (runtime coverage). The
 private gateway/Today source `b416aa6a` is retained through parent `bb7a046f`.
 No formal acceptance, main merge, push or production deployment is claimed.
@@ -44,9 +44,9 @@ No formal acceptance, main merge, push or production deployment is claimed.
 
 ## Open gates
 
-- Composer mentions are not wired. Automatic approval review rejected sending
-  Orbyn item titles and links to the external plugin host without specific
-  authorization. Builder has asked the owner about that exact scoped flow.
+- Composer mentions are implemented following the owner’s explicit authorization
+  on 11 October to share scoped titles and links. Real host selection remains
+  unverified; full item contents are excluded.
 - File entrypoint source is implemented; actual production-host validation remains
   unverified. The source editor is not a rendered Markdown/Mermaid preview.
 - Live host OAuth, account switch/reconnect, actual ChatGPT/Codex UI and public
@@ -106,3 +106,19 @@ skips, all 16 suite processes exit 0 on source `55e94ca5`. This covers the compl
 plugin suite plus OAuth regressions, run serially with the guarded test database.
 Live provider, external host and formal acceptance gates remain open. The earlier
 conversational total of 133 is corrected by the per-suite receipt.
+
+## Composer mentions
+
+`81e4c812` adds `search_orbyn_mentions`, an app-visible read-only host tool,
+conditionally advertised through `openai/mentions` only when UI opt-in and the
+connection’s search capability are available. It accepts a bounded query (empty
+means recent items), escapes wildcard characters, and returns up to 20 resource
+links containing only the title and first-party app URL. Queries read no page
+content, notes or project summary. Shared visibility excludes other owners,
+ungranted teams, Trash, agent/memory pages and projects kept out of AI.
+
+Both HTTP and MCP adapters use the search limiter and `pluginRead` for a fresh
+locked connector-authority check. No browser session or ChatGPT plan token is
+accepted. Protocol **11/11**, service **16/16**, and backend typecheck passed.
+These follow-up results supersede the two affected suites in the older 123-test
+receipt; they are not a new full-suite total. No custom visible UI changed.
