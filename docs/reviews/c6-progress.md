@@ -90,10 +90,19 @@ reconnect code precedes this worktree; see the governing ADR and source tests.
   and [MCP extensions specification](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md).
   Host file-resource support is platform-specific; browser/native acceptance is
   unverified and must not be inferred from the synthetic wrapper.
-- Full repository Deep Scan is pending on the unchanged original checkout at
-  `bb7a046f`. It does not include these later file-entrypoint commits.
+- Full repository Deep Scan could not rejoin after caller detachment: the tool
+  requires a managed filesystem permission profile. No completed result is
+  claimed; its original target `bb7a046f` excludes these file-entrypoint commits.
 
 - `55e94ca5` clears the previous source on a new file open, retains dirty drafts
   when the host repeats the same file input, and keeps Reload available after an
   unreadable resource. The UI/runtime suite passed **7/7**, exit 0, on this ref.
   Layout/CSS is unchanged; no additional visual sweep was requested.
+
+## Serial local contract checks
+
+[Builder receipt](c6-builder-checks-2026-10-11.md): **123/123**, zero failures or
+skips, all 16 suite processes exit 0 on source `55e94ca5`. This covers the complete
+plugin suite plus OAuth regressions, run serially with the guarded test database.
+Live provider, external host and formal acceptance gates remain open. The earlier
+conversational total of 133 is corrected by the per-suite receipt.
