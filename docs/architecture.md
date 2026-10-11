@@ -22,13 +22,14 @@ live on different machines; see [scalability.md](scalability.md).
 | `ai`        | `services/ai.ts`        | Assistant chat, proposals, AI provider settings (`/ai/*`)                                                                                             |
 | `realtime`  | `services/realtime.ts`  | Long-lived streams: live news (`/events`) and live documents                                                                                          |
 | `mcp`       | `services/mcp.ts`       | Outside AI agents over MCP (`/mcp`, stateless, per-connection limits); see [mcp.md](mcp.md)                                                           |
+| `plugin`    | `services/plugin.ts`   | Separate plugin protocol/UI, scoped OAuth grants and consented managed/BYO inference worker; private Compose service exposed through gateway port 8082 |
 | `status`    | `services/status.ts`    | Probes every service every 30 s and serves the public `GET /status` report                                                                            |
 | `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page; checks the server clock against outside time every 10 min (`lib/clock.ts`)           |
 | `files`     | `services/files.ts`     | File store: imports (signed one-time uploads, encrypted, deleted within 24 h) and pictures and files in pages (encrypted, kept with the page)         |
 | `converter` | `services/converter.ts` | Turns imported PDFs, Word files and photos into pages; heartbeat for status                                                                           |
 | `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                                                                        |
 | `migrate`   | `migrate.ts`            | Applies `migrations/*.sql` in order under an advisory lock, then exits                                                                                |
-| gateway     | `gateway/` (nginx)      | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, `/files/{u,p,r}/*` to files, `/mcp` to mcp, rest to api; port 8082 is the MCP host |
+| gateway     | `gateway/` (nginx)      | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, `/files/{u,p,r}/*` to files, `/mcp` to mcp, rest to api; port 8082 routes separate MCP and plugin recipients |
 
 `server.ts` runs every module in one process for local development and tests.
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
@@ -45,6 +46,7 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 | `modules/ai/`              | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
 | `capabilities/`            | What outside agents can do: the registry, `policy.ts` (Principal), refs, format |
 | `modules/mcp-server/`      | The MCP protocol (official SDK v2), agent sign-in, limits, activity log         |
+| `modules/plugin/`        | Plugin-specific authority, host UI/resources, provider permission and inference jobs |
 | `modules/agents/`          | Agent keys, Connected agents, activity, admin switches, team agent policy       |
 | `modules/developers/`      | The public MCP developer page data and `/.well-known/security.txt`              |
 | `lib/visibility.ts`        | The one rule for what a person (or a narrowed connection) can see               |

@@ -908,3 +908,9 @@ the person clicks **Load today** to read their day. Hosts without this extension
 still receive the portable MCP cards. Availability depends on host and account.
 The entrypoint metadata follows the
 [OpenAI plugin extension reference](https://developers.openai.com/plugins/build/extensions).
+
+For private production-host installation and acceptance, follow
+[the plugin test runbook](plugin-production-test.md). Codex Security is not an
+installation dependency. Use a dedicated test account and record the deployed
+commit. Current Kubernetes manifests do not deploy the separate plugin service;
+the automatic plugin rollout described above applies to Compose.

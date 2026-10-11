@@ -59,3 +59,19 @@ writers before passing the attestation to the migration process. Kubernetes need
 the explicit [quiesced cutover](../deploy/k8s/README.md#one-time-legacy-encryption-key-cutover).
 A failed cutover leaves old writers stopped; do not restore an old image over
 converted credentials.
+
+## Separate plugin service
+
+`PLUGIN_PUBLIC_URL` is a server-side setting; no new public client variable or
+provider credential belongs in desktop/mobile env files. Leave it blank to disable
+the plugin. Set it to an owned HTTPS `/plugin` recipient to enable the separate
+Compose service through `scripts/deploy.sh`. The gateway routes its public host
+to port 8082, then `/plugin` to `plugin:8000`; no plugin host port is published.
+Keep `MCP_PUBLIC_URL` unchanged. See [deployment](deployment.md#optional-separate-plugin-backend)
+and [production-host testing](plugin-production-test.md).
+
+The existing private `.env.production` can supply the server configuration, but
+the deploy script reads server `.env`: copy the reviewed values there before
+deployment. `ENV_FILE=...` is supported only for `--check`. Kubernetes does not
+currently include a plugin Deployment/Service/Ingress; Compose routing is not
+proof of Kubernetes plugin support.
