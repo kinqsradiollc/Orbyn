@@ -1,7 +1,7 @@
 # C6 progress — 11 October 2026
 
 **State:** Builder is continuing C6 on `codex/c6-file-viewer` in the
-`c6-next/Orbyn` managed checkout. Latest source candidate is `a98e6f04`, following
+`c6-next/Orbyn` managed checkout. Latest source candidate is `55e94ca5`, following
 `83c49c18` (host Markdown entrypoint) and `34e21418` (runtime coverage). The
 private gateway/Today source `b416aa6a` is retained through parent `bb7a046f`.
 No formal acceptance, main merge, push or production deployment is claimed.
@@ -77,7 +77,8 @@ reconnect code precedes this worktree; see the governing ADR and source tests.
 - `a98e6f04` prevents duplicate saves/reloads while a write is pending. Typing
   during that write preserves newer edits and cannot falsely mark them saved.
 - Builder checks: UI resource/runtime tests **7/7**, terminal exit 0, including
-  concurrent typing/save/reload and resource-update assertions; backend typecheck
+  concurrent typing/save/reload, duplicate host input, failed file switches and
+  resource-update assertions; backend typecheck
   and diff check passed. Earlier service tests **15/15** and protocol/UI **16/16**
   cover the preceding source; they are not formal acceptance of the latest ref.
 - [Visual Check](c6-markdown-file-visual.md) reports no overlap/clipping at
@@ -91,3 +92,8 @@ reconnect code precedes this worktree; see the governing ADR and source tests.
   unverified and must not be inferred from the synthetic wrapper.
 - Full repository Deep Scan is pending on the unchanged original checkout at
   `bb7a046f`. It does not include these later file-entrypoint commits.
+
+- `55e94ca5` clears the previous source on a new file open, retains dirty drafts
+  when the host repeats the same file input, and keeps Reload available after an
+  unreadable resource. The UI/runtime suite passed **7/7**, exit 0, on this ref.
+  Layout/CSS is unchanged; no additional visual sweep was requested.
