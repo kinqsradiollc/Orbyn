@@ -46,7 +46,7 @@ export function PageMaintenanceSheet({
     [id],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  const [showForm, setShowForm] = useState(true);
+  const [showForm, setShowForm] = useState(false);
   useEffect(() => {
     if (state.bindings.length) setShowForm(false);
   }, [state.bindings.length]);
