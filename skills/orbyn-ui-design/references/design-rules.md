@@ -117,7 +117,7 @@ Select representative states for the agreed risk, not every axis automatically.
 User exclusions and `AGENT.md` take precedence; this is a menu of checks, not a
 new requirement for native builds, enlarged text or repeated visual sweeps:
 
-| Axis | Required checks |
+| Axis | Representative checks |
 | --- | --- |
 | Width/height | Web 320/390/768/1280; mobile browser 320/390; short window and landscape where relevant |
 | Containers | Expanded/collapsed main nav, secondary panel, nested picker/dialog, actual pane width |
