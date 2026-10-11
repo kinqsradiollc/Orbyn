@@ -1,9 +1,10 @@
 # C6 progress — 11 October 2026
 
-**State:** Builder source candidate `b416aa6a` is frozen on
-`codex/c6-plugin-backend` from `058a63e5`. This is not a reviewed checkpoint,
-main merge or production deployment. The current-state ledger and this progress
-record follow the frozen source commit.
+**State:** Builder is continuing C6 on `codex/c6-file-viewer` in the
+`c6-next/Orbyn` managed checkout. Latest source candidate is `a98e6f04`, following
+`83c49c18` (host Markdown entrypoint) and `34e21418` (runtime coverage). The
+private gateway/Today source `b416aa6a` is retained through parent `bb7a046f`.
+No formal acceptance, main merge, push or production deployment is claimed.
 
 ## Implemented in this worktree
 
@@ -46,8 +47,8 @@ record follow the frozen source commit.
 - Composer mentions are not wired. Automatic approval review rejected sending
   Orbyn item titles and links to the external plugin host without specific
   authorization. Builder has asked the owner about that exact scoped flow.
-- File-viewer integration needs a supported product file contract and host
-  validation; no generic host-file read is implemented.
+- File entrypoint source is implemented; actual production-host validation remains
+  unverified. The source editor is not a rendered Markdown/Mermaid preview.
 - Live host OAuth, account switch/reconnect, actual ChatGPT/Codex UI and public
   gateway behavior require a reachable HTTPS deployment and a connected test
   host. Local fixtures do not prove these.
@@ -63,3 +64,30 @@ record follow the frozen source commit.
 
 The existing independent grant, inference broker, launch context, import and
 reconnect code precedes this worktree; see the governing ADR and source tests.
+
+## Host Markdown file integration
+
+- `open_markdown_file` declares `.md` and `.markdown` file entrypoints and accepts
+  the host's opaque resource handle. The backend returns static UI metadata,
+  never file contents, paths or a reflected handle.
+- The iframe reads through the host resource bridge. Editable resources require
+  writable metadata and an ETag; Save uses `openai/resources/write` with `ifMatch`.
+  Read-only/oversized resources cannot be saved. Conflict and failed-save states
+  preserve the draft; Reload requires an explicit discard step when dirty.
+- `a98e6f04` prevents duplicate saves/reloads while a write is pending. Typing
+  during that write preserves newer edits and cannot falsely mark them saved.
+- Builder checks: UI resource/runtime tests **7/7**, terminal exit 0, including
+  concurrent typing/save/reload and resource-update assertions; backend typecheck
+  and diff check passed. Earlier service tests **15/15** and protocol/UI **16/16**
+  cover the preceding source; they are not formal acceptance of the latest ref.
+- [Visual Check](c6-markdown-file-visual.md) reports no overlap/clipping at
+  320×740 light and 1280×900 dark for loaded, unsaved and conflict states. This is
+  delegated inspection of source `83c49c18` in a synthetic host. Subsequent source
+  changes affect pending-save behavior, not layout/CSS. Screenshots remain inline;
+  no supported export path was available. Builder has not personally inspected pixels.
+- Official contract references: [extension guide](https://developers.openai.com/plugins/build/extensions)
+  and [MCP extensions specification](https://github.com/openai/mcp-extensions/blob/main/docs/spec.md).
+  Host file-resource support is platform-specific; browser/native acceptance is
+  unverified and must not be inferred from the synthetic wrapper.
+- Full repository Deep Scan is pending on the unchanged original checkout at
+  `bb7a046f`. It does not include these later file-entrypoint commits.
