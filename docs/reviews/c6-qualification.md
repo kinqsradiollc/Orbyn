@@ -7,7 +7,7 @@
 - Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`
 - Branch: `codex/c6-file-viewer`
 - Source candidate: `4da327dc` (saved-finding remediation), superseding `81e4c812`; base `058a63e5`.
-- Phase: Test. Next owner: Orbyn Tester. Review counter: **0/3**.
+- Phase: Review. Next owner: Orbyn Reviewer. Review counter: **1/3**.
 - No main merge, push, deployment or full completion is claimed.
 
 ## Implementation to qualify
@@ -57,3 +57,13 @@ Missing external access stays unverified unless the owner explicitly defers it.
 Tester should not silently waive these requirements. Builder batches reported
 fixes; Reviewer inspects code and test evidence and gives correction guidance,
 without coding or running tests.
+
+## Formal review round 1 — remediation candidate
+
+Source `4da327dc`; docs freeze `462ac8db`. Tester’s
+[focused report](security-remediation-tester-2026-10-11.md) records 218/218,
+backend types/builds and configuration checks. Reviewer assesses the saved-finding
+fixes and affected C6 authority contracts against this source, without code edits,
+tests/builds or scans. This is the first formal round; prior bounded remediation
+patch closure is source investigation, not full C6 acceptance. External gates
+above remain explicit. Maximum three formal rounds; same-round closure allowed.

@@ -124,3 +124,12 @@ edit source, run tests/builds or scan. Broader C6 formal acceptance remains sepa
   security qualification is claimed. No replacement scan is authorized.
 - Source candidate freeze and formal Tester/Reviewer outcome will be recorded in
   the C6 delivery record. This ledger does not silently waive its external-host gates.
+
+## Frozen candidate and formal qualification
+
+Source changes committed as `4da327dc05f93dc8aa4d8aa35225767e175bcf73`;
+docs freeze `462ac8db`. Independent
+[Tester report](security-remediation-tester-2026-10-11.md) confirms 218/218 across
+29 serial processes, workspace package/backend builds, backend typecheck,
+Compose/deploy preflight, shell syntax and YAML checks. Formal Reviewer round 1/3
+is underway. Main merge, push and production deployment are not claimed.
