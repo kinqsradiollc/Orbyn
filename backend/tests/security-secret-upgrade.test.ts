@@ -55,7 +55,54 @@ test("upgrade rewraps legacy provider/SMTP secrets and retires the dump key", as
       maintenance_output_encrypted: seal("inert-maintenance-fixture"),
     }),
   ]);
-  assert.ok((await rewrapLegacySecrets()) >= 3);
+  const previousMode = process.env.NODE_ENV;
+  const previousCutover = process.env.LEGACY_SECRET_CUTOVER;
+  try {
+    process.env.NODE_ENV = "production";
+    delete process.env.LEGACY_SECRET_CUTOVER;
+    await assert.rejects(rewrapLegacySecrets(), /stopped legacy writers/);
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT 1 FROM app_secrets WHERE name='credentials_key'",
+        )
+      ).rowCount,
+      1,
+    );
+    process.env.LEGACY_SECRET_CUTOVER = "quiesced";
+    // SMTP is visited after the credential columns. A malformed later value
+    // must roll back earlier conversion and retain the key for a safe retry.
+    await pool.query("UPDATE system_settings SET value=$1 WHERE key='smtp'", [
+      JSON.stringify({ password_encrypted: "d1:malformed" }),
+    ]);
+    await assert.rejects(rewrapLegacySecrets());
+    assert.match(
+      (
+        await pool.query(
+          "SELECT api_key_encrypted FROM ai_providers WHERE id=$1",
+          [id],
+        )
+      ).rows[0].api_key_encrypted,
+      /^d1:/,
+    );
+    assert.equal(
+      (
+        await pool.query(
+          "SELECT 1 FROM app_secrets WHERE name='credentials_key'",
+        )
+      ).rowCount,
+      1,
+    );
+    await pool.query("UPDATE system_settings SET value=$1 WHERE key='smtp'", [
+      JSON.stringify({ password_encrypted: seal("inert-mail-fixture") }),
+    ]);
+    assert.ok((await rewrapLegacySecrets()) >= 3);
+  } finally {
+    if (previousMode === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = previousMode;
+    if (previousCutover === undefined) delete process.env.LEGACY_SECRET_CUTOVER;
+    else process.env.LEGACY_SECRET_CUTOVER = previousCutover;
+  }
   const maintenance = (
     await pool.query("SELECT result FROM ai_jobs WHERE id=$1", [jobId])
   ).rows[0].result.maintenance_output_encrypted;

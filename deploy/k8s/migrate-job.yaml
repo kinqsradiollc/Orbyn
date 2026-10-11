@@ -3,6 +3,9 @@
 #   - CI step:  delete the old Job, apply this one with the new image tag,
 #               `kubectl wait --for=condition=complete`, then `kubectl apply -k`
 #               (see README).
+# Legacy database-key conversion needs the quiesced cutover in README first.
+# PreSync alone cannot stop old writers; the job fails closed until an operator
+# sets LEGACY_SECRET_CUTOVER=quiesced after removing all legacy writer pods.
 #   - Argo CD:  uncomment the PreSync hook annotations below and add this file
 #               to kustomization.yaml.
 #   - Helm:     if you ever wrap these manifests in a chart, use the
@@ -59,6 +62,8 @@ spec:
             - configMapRef:
                 name: orbyn-config
           env:
+            - name: LEGACY_SECRET_CUTOVER
+              value: "" # Set to quiesced only after the README cutover procedure.
             - name: SECRETS_KEY
               valueFrom:
                 secretKeyRef:

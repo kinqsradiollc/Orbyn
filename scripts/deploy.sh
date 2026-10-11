@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Deploy or update Orbyn on one Docker host, without downtime.
+# Deploy or update Orbyn on one Docker host. Legacy secret upgrades require a quiet cutover.
 #
 #   ./scripts/deploy.sh              pull the latest code, back up, build, migrate, roll out
 #   ./scripts/deploy.sh --no-pull    deploy what is checked out (and .env changes)
@@ -204,7 +204,7 @@ if [ "$CHECK" = 1 ]; then
     mailpit) echo "- start the development mail catcher (mailpit)" ;;
     *) echo "- mail goes to $smtp_host (nothing to start)" ;;
   esac
-  echo "- pause existing measuring and notifier services before migrations (queued work is retained)"
+  echo "- pause measuring/notifier; if a legacy database encryption key exists, stop/remove all backend writers before conversion (brief downtime; failure leaves writers stopped)"
   echo "- apply migrations, then roll out pdf, api, mcp, ai, assistant-background, assistant-overnight, realtime, status, notifier, files, converter and the web app"
   [ "$plugin_on" = 1 ] && echo "- roll out the separate plugin recipient at $plugin_url" || echo "- leave the plugin recipient disabled"
   [ "$semantic_on" = 1 ] && echo "- start the updated measuring service (semantic profile enabled)" || echo "- leave the measuring service stopped (semantic profile off)"
@@ -298,8 +298,27 @@ esac
 
 pause_measurer
 pause_notifier
-log "Applying database migrations"
-compose run --rm migrate
+# A legacy process can retain the database wrapping key in memory. Stop and
+# remove every backend replica before conversion so restart policies and rolling
+# replacement cannot revive an old writer after the key is retired. On failure,
+# these processes remain removed; rerun with the new image/key, never an old image.
+legacy_key=$(compose exec -T postgres psql -U "$(setting POSTGRES_USER orbyn)" -d "$(setting POSTGRES_DB orbyn)" -Atc "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='app_secrets')")
+cutover=0
+if [ "$legacy_key" = t ]; then
+  legacy_key=$(compose exec -T postgres psql -U "$(setting POSTGRES_USER orbyn)" -d "$(setting POSTGRES_DB orbyn)" -Atc "SELECT EXISTS (SELECT 1 FROM app_secrets WHERE name='credentials_key')")
+  [ "$legacy_key" != t ] || cutover=1
+fi
+if [ "$cutover" = 1 ]; then
+  log "Stopping and removing legacy backend writers for encryption-key cutover"
+  writers=(api ai assistant-background assistant-overnight notifier realtime mcp plugin status files converter measure)
+  compose stop -t 30 "${writers[@]}"
+  compose rm -f "${writers[@]}"
+  log "Applying migrations with all legacy writers removed"
+  compose run --rm -e LEGACY_SECRET_CUTOVER=quiesced migrate
+else
+  log "Applying database migrations"
+  compose run --rm migrate
+fi
 
 # Ready = healthy, or running for 5 s when the service has no health check.
 wait_ready() {

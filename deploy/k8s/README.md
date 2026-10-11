@@ -210,3 +210,31 @@ with the cluster's log agent.
   `networkpolicy.yaml`, the database CIDR, and SMTP settings.
 - `STATUS_*_URL` and the web nginx config use `*.orbyn.svc.cluster.local`
   names. Update them if you deploy to another namespace.
+
+## One-time legacy encryption-key cutover
+
+A migration that retires `app_secrets.credentials_key` cannot run as an ordinary
+PreSync job alongside old pods. It fails closed when the legacy key exists unless
+`LEGACY_SECRET_CUTOVER=quiesced` is set on the migration Job only.
+
+1. Take a restricted database backup; it still contains the legacy key. Preserve
+   the new external `SECRETS_KEY` independently, and use that same key in every
+   backend workload. Stop GitOps reconciliation/rollout automation for this cutover.
+2. Scale **every backend writer** to zero, including API, AI, notifier, realtime,
+   MCP/plugin, files/converter, assistant consumers and any custom measuring or
+   maintenance workload. Suspend CronJobs and stop running Jobs that can write
+   credentials or cached outputs. Stop backend writers outside this cluster too.
+3. Wait until all their pods/processes have terminated, not merely until desired
+   replica counts are zero. Ensure no controller will restart old images.
+4. Set `LEGACY_SECRET_CUTOVER=quiesced` on the migration Job, run the new image,
+   and wait for completion. Do not put this variable in the shared ConfigMap.
+5. Deploy only the new backend images with the same external key, then restore
+   replica counts and automation. Remove the migration-only attestation afterward.
+
+If migration fails, keep writers stopped and retry the new migration after fixing
+its reported cause. Conversion is transactional. Never restart old keyless pods
+against converted data. A rollback requires restoring the pre-cutover database
+backup **and** matching old images/configuration while writers remain stopped.
+This is a deliberate brief outage; ordinary migrations without a legacy key retain
+normal rollout behavior. The Job cannot independently prove that external writers
+have stopped: the attestation is an operator responsibility.

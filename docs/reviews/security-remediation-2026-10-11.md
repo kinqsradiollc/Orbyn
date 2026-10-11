@@ -12,37 +12,37 @@ Scan launches are prohibited unless explicitly requested by the user. The runnin
 
 ## Finding ledger
 
-| ID                             | Severity | Finding                                                                            | Disposition          |
-| ------------------------------ | -------- | ---------------------------------------------------------------------------------- | -------------------- |
-| `csf_dfe2ad58545c5635d284fa59` | medium   | OAuth clients receive refresh tokens without offline_access consent                | Patched — evidence A |
-| `csf_c6a85f0085a6d707974b12d6` | medium   | Emergency gateway switch leaves plugin agent calls enabled                         | Patched — evidence B |
-| `csf_70c141c047ebb69631bcc3e1` | medium   | Personal API keys can publish private document blocks                              | Patched — evidence C |
-| `csf_f4593471f78545cef6528bf8` | low      | Oversized provider replies can exhaust an AI worker                                | Patched — evidence D |
-| `csf_ef474eb2460d123df9c93669` | medium   | CIMD OAuth client allowlist omits redirect recipient hosts                         | Patched — evidence A |
-| `csf_66e70d1a3be4d3bea980fe05` | medium   | Publishing a folder exposes private Memory pages inside it                         | Patched — evidence E |
-| `csf_855f85888987d9eaf7995613` | medium   | A database dump can decrypt saved provider credentials when `SECRETS_KEY` is unset | Patched — evidence F |
-| `csf_d7472891cdde03e7ce070392` | medium   | Gateway logs expose reusable private-file read links                               | Patched — evidence G |
-| `csf_b99c8c70006412851cd97b43` | low      | Compose deployment can create world-readable database backups                      | Patched — evidence G |
-| `csf_d2c8b160976027d320ddc96e` | low      | Kubernetes backend pods receive unrelated service secrets                          | Patched — evidence H |
-| `csf_0212abc5427a842fe09a1ebf` | medium   | Revoked document reader keeps receiving live edits                                 | Patched — evidence I |
-| `csf_5c8da338d16dbbc97cbc0ffd` | high     | Public registration grants admin before email ownership is verified                | Patched — evidence J |
-| `csf_fc9fe31eeead1c1791737ed4` | low      | Revoked reader can reuse private file URL for one hour                             | Patched — evidence I |
-| `csf_974cc5f3be2fa60fa5c1fd07` | low      | Team viewer can create a shared meeting note                                       | Patched — evidence K |
-| `csf_5100a5087641072314cf7a41` | low      | Full calendar feed tokens reach gateway access logs                                | Patched — evidence G |
-| `csf_7c2503272855fbf74e50c5b7` | low      | Existing OAuth tokens inherit permissions added by later consent                   | Patched — evidence A |
-| `csf_1df6706603fc69e1f04784f4` | low      | Personal API keys can create public booking pages                                  | Patched — evidence C |
-| `csf_692cbc357365829cc6ea5947` | low      | A copied spent refresh token can regain account access during the retry window     | Patched — evidence A |
-| `csf_19327ee4f66e9d9b6a70116f` | low      | Opening a password-protected publication reveals its title                         | Patched — evidence E |
-| `csf_d3cf20a1fbc6ec294835a764` | low      | Publishing a page exposes labels of linked password-protected pages                | Patched — evidence E |
-| `csf_0cdc79b487a7528da743c19e` | medium   | Provider DNS check is not bound to outbound connection                             | Patched — evidence D |
-| `csf_00014496639da3f24fb52f45` | medium   | Gateway logs expose reusable private-file read links                               | Patched — evidence G |
-| `csf_a4288595ea4fdd593f96c3e4` | low      | Private page file bearer URLs reach gateway access logs                            | Patched — evidence G |
-| `csf_5d7ed8904970a05ab6af0c77` | low      | Bearer URLs for private calendar feeds and page files reach gateway access logs    | Patched — evidence G |
-| `csf_f7d77394402a3216480b5277` | low      | Public requests from the default Docker Desktop subnet bypass gateway abuse limits | Patched — evidence B |
-| `csf_bd354110ac729c0af63a9dc5` | low      | Removed team members can see current page titles in kept originals                 | Patched — evidence L |
-| `csf_f72d6ec0f2fddd2ab09b5a01` | low      | Former team members can download page files through unexpired links                | Patched — evidence I |
-| `csf_2d7c100558d5353a26a576cb` | medium   | Allowed CIMD host can send OAuth codes to a disallowed redirect host               | Patched — evidence A |
-| `csf_4c0791785f8592845c3209cc` | low      | Public page reveals the title of a password-protected linking page                 | Patched — evidence E |
+| ID                             | Severity | Finding                                                                            | Disposition                                              |
+| ------------------------------ | -------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------- |
+| `csf_dfe2ad58545c5635d284fa59` | medium   | OAuth clients receive refresh tokens without offline_access consent                | Source patched; concurrency closure pending — evidence A |
+| `csf_c6a85f0085a6d707974b12d6` | medium   | Emergency gateway switch leaves plugin agent calls enabled                         | Patched — evidence B                                     |
+| `csf_70c141c047ebb69631bcc3e1` | medium   | Personal API keys can publish private document blocks                              | Patched — evidence C                                     |
+| `csf_f4593471f78545cef6528bf8` | low      | Oversized provider replies can exhaust an AI worker                                | Patched — evidence D                                     |
+| `csf_ef474eb2460d123df9c93669` | medium   | CIMD OAuth client allowlist omits redirect recipient hosts                         | Source patched; concurrency closure pending — evidence A |
+| `csf_66e70d1a3be4d3bea980fe05` | medium   | Publishing a folder exposes private Memory pages inside it                         | Patched — evidence E                                     |
+| `csf_855f85888987d9eaf7995613` | medium   | A database dump can decrypt saved provider credentials when `SECRETS_KEY` is unset | Source correction; round 1 closure pending — evidence F  |
+| `csf_d7472891cdde03e7ce070392` | medium   | Gateway logs expose reusable private-file read links                               | Patched — evidence G                                     |
+| `csf_b99c8c70006412851cd97b43` | low      | Compose deployment can create world-readable database backups                      | Patched — evidence G                                     |
+| `csf_d2c8b160976027d320ddc96e` | low      | Kubernetes backend pods receive unrelated service secrets                          | Patched — evidence H                                     |
+| `csf_0212abc5427a842fe09a1ebf` | medium   | Revoked document reader keeps receiving live edits                                 | Source patched; real-route closure pending — evidence I  |
+| `csf_5c8da338d16dbbc97cbc0ffd` | high     | Public registration grants admin before email ownership is verified                | Patched — evidence J                                     |
+| `csf_fc9fe31eeead1c1791737ed4` | low      | Revoked reader can reuse private file URL for one hour                             | Source patched; real-route closure pending — evidence I  |
+| `csf_974cc5f3be2fa60fa5c1fd07` | low      | Team viewer can create a shared meeting note                                       | Patched — evidence K                                     |
+| `csf_5100a5087641072314cf7a41` | low      | Full calendar feed tokens reach gateway access logs                                | Patched — evidence G                                     |
+| `csf_7c2503272855fbf74e50c5b7` | low      | Existing OAuth tokens inherit permissions added by later consent                   | Source patched; concurrency closure pending — evidence A |
+| `csf_1df6706603fc69e1f04784f4` | low      | Personal API keys can create public booking pages                                  | Patched — evidence C                                     |
+| `csf_692cbc357365829cc6ea5947` | low      | A copied spent refresh token can regain account access during the retry window     | Source patched; concurrency closure pending — evidence A |
+| `csf_19327ee4f66e9d9b6a70116f` | low      | Opening a password-protected publication reveals its title                         | Patched — evidence E                                     |
+| `csf_d3cf20a1fbc6ec294835a764` | low      | Publishing a page exposes labels of linked password-protected pages                | Patched — evidence E                                     |
+| `csf_0cdc79b487a7528da743c19e` | medium   | Provider DNS check is not bound to outbound connection                             | Patched — evidence D                                     |
+| `csf_00014496639da3f24fb52f45` | medium   | Gateway logs expose reusable private-file read links                               | Patched — evidence G                                     |
+| `csf_a4288595ea4fdd593f96c3e4` | low      | Private page file bearer URLs reach gateway access logs                            | Patched — evidence G                                     |
+| `csf_5d7ed8904970a05ab6af0c77` | low      | Bearer URLs for private calendar feeds and page files reach gateway access logs    | Patched — evidence G                                     |
+| `csf_f7d77394402a3216480b5277` | low      | Public requests from the default Docker Desktop subnet bypass gateway abuse limits | Patched — evidence B                                     |
+| `csf_bd354110ac729c0af63a9dc5` | low      | Removed team members can see current page titles in kept originals                 | Patched — evidence L                                     |
+| `csf_f72d6ec0f2fddd2ab09b5a01` | low      | Former team members can download page files through unexpired links                | Source patched; real-route closure pending — evidence I  |
+| `csf_2d7c100558d5353a26a576cb` | medium   | Allowed CIMD host can send OAuth codes to a disallowed redirect host               | Source patched; concurrency closure pending — evidence A |
+| `csf_4c0791785f8592845c3209cc` | low      | Public page reveals the title of a password-protected linking page                 | Patched — evidence E                                     |
 
 ## Prevention
 
@@ -133,3 +133,38 @@ docs freeze `462ac8db`. Independent
 29 serial processes, workspace package/backend builds, backend typecheck,
 Compose/deploy preflight, shell syntax and YAML checks. Formal Reviewer round 1/3
 is underway. Main merge, push and production deployment are not claimed.
+
+## Round 1 correction batch — 11 October 2026
+
+Formal Reviewer identified SR-R1 (unsafe rolling legacy-key conversion) and
+SR-E1 (real revocation/concurrent consent evidence). Corrections now enforce
+Compose stop/remove of every backend writer before legacy conversion, a
+production migration attestation for quiesced cutover, valid external key length,
+and explicit Kubernetes shutdown/failure/retry instructions. Ordinary deployments
+without a legacy key retain rolling replacement. Operator attestation cannot
+independently prove an external Kubernetes writer is stopped.
+
+Builder checks on this batch:
+
+- `security-secret-upgrade.test.ts`: 1 pass, covering three-store conversion,
+  missing cutover attestation, malformed SMTP rollback, retained legacy key,
+  corrected retry, decryption and idempotency.
+- `security-live-revocation.test.ts`: 2 passes; the new real HTTP/SSE route
+  verifies initial CRDT delivery, committed session removal, later parcel
+  rejection/connection closure and an authorized reader control.
+- Two focused OAuth interleaving tests: 2 passes; actual PostgreSQL lock blocks
+  replacement consent during issuance, and consumed obsolete code fails after
+  replacement consent while the new code succeeds. An initial 1/2 run exposed
+  a test barrier mistake (pool callback bypassed the client promise wrapper);
+  corrected with a pool-level barrier, not a product behavior change.
+- `security-deploy-cutover.test.ts`: 2 passes; executes the real deploy script
+  with a fake Docker CLI, models cached writer late-write attempts, checks all
+  backend writers stop/remove before attested migration, and verifies migration
+  failure cannot restart replicas. Initial 0/2 fixture run omitted the gateway
+  fingerprint inputs; corrected fixture then passed. This is not a real Docker
+  production deployment.
+- Backend types and Bash syntax pass. Unaffected Tester 218-pass evidence
+  remains source-scoped to `4da327dc`; counts are not combined.
+
+Tester retest and same-round Reviewer closure are pending. No new security scan,
+main merge, production migration or full C6 external-host acceptance is claimed.

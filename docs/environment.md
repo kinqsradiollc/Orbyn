@@ -50,3 +50,12 @@ feature settings there. Never copy server secrets to a client env file.
 
 Check template coverage with `node scripts/check-env-examples.mjs`. The backend
 schema and Compose remain the authority for defaults and required service wiring.
+
+### Legacy key migration
+
+`LEGACY_SECRET_CUTOVER` is migration-only. Do not enable it in the server env.
+Compose deployment detects the legacy database key and stops/removes all backend
+writers before passing the attestation to the migration process. Kubernetes needs
+the explicit [quiesced cutover](../deploy/k8s/README.md#one-time-legacy-encryption-key-cutover).
+A failed cutover leaves old writers stopped; do not restore an old image over
+converted credentials.

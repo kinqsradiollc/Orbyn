@@ -14,8 +14,22 @@ export async function rewrapLegacySecrets(): Promise<number> {
       throw new Error("SECRETS_KEY is required before production migrations.");
     return 0;
   }
+  if (Buffer.from(env.SECRETS_KEY, "base64").length !== 32)
+    throw new Error("SECRETS_KEY must decode to 32 bytes before migration.");
   return transaction(async (db: Db) => {
     await db.query("SELECT pg_advisory_xact_lock(786252)");
+    const legacyKey = await db.query(
+      "SELECT 1 FROM app_secrets WHERE name='credentials_key'",
+    );
+    if (
+      legacyKey.rowCount &&
+      process.env.NODE_ENV === "production" &&
+      process.env.LEGACY_SECRET_CUTOVER !== "quiesced"
+    ) {
+      throw new Error(
+        "Legacy secret cutover requires stopped legacy writers. Use the deployment cutover procedure; do not enable rolling conversion.",
+      );
+    }
     let changed = 0;
     const columns = (
       await db.query<{ table_name: string; column_name: string }>(

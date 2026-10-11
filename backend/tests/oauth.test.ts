@@ -2460,3 +2460,144 @@ test("CIMD auth methods: client_secret_* are served as public apps with PKCE; ot
     /HS256, which Orbyn doesn't support yet/,
   );
 });
+
+/** Pause one actual PostgreSQL query after it completes, without replacing SQL.
+ * Used only in these serial tests to control the authority interleaving.
+ */
+function queryBarrier(matches: (sql: string) => boolean, pooled = false) {
+  const target = (pooled ? pool : pg.Client.prototype) as unknown as {
+    query: (...args: unknown[]) => unknown;
+  };
+  const original = target.query;
+  let unblock!: () => void;
+  let signal!: () => void;
+  let used = false;
+  const released = new Promise<void>((resolve) => {
+    unblock = resolve;
+  });
+  const entered = new Promise<void>((resolve) => {
+    signal = resolve;
+  });
+  target.query = function (this: unknown, ...args: unknown[]) {
+    const result = Reflect.apply(original, this, args);
+    if (!used && typeof args[0] === "string" && matches(args[0])) {
+      used = true;
+      return Promise.resolve(result).then(async (value) => {
+        signal();
+        await released;
+        return value;
+      });
+    }
+    return result;
+  } as typeof original;
+  return {
+    entered: () =>
+      Promise.race([
+        entered,
+        new Promise<never>((_, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error("SQL barrier was not reached")),
+            3000,
+          );
+          timer.unref();
+        }),
+      ]),
+    release: unblock,
+    restore() {
+      unblock();
+      target.query = original;
+    },
+  };
+}
+
+test("consent issuance holds authority lock until its code is committed", async () => {
+  const who = await h.register("oauth-atomic-issuance");
+  await connect(who);
+  const session = await login(who);
+  const first = request();
+  const replacement = request({
+    scope: "orbyn:read orbyn:write offline_access",
+  });
+  const barrier = queryBarrier((sql) =>
+    sql.includes("INSERT INTO oauth_codes"),
+  );
+  let issued: ReturnType<typeof consent> | undefined;
+  let renewed: ReturnType<typeof consent> | undefined;
+  try {
+    issued = consent(session, first.req);
+    await barrier.entered();
+    renewed = consent(session, replacement.req, { access: "write" });
+    const deadline = Date.now() + 3000;
+    let blocked = false;
+    while (!blocked && Date.now() < deadline) {
+      blocked = Boolean(
+        (
+          await pool.query(`SELECT 1 FROM pg_stat_activity
+        WHERE datname=current_database() AND query LIKE '%FROM agent_grants%'
+        AND cardinality(pg_blocking_pids(pid))>0`)
+        ).rowCount,
+      );
+      if (!blocked) await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.ok(
+      blocked,
+      "replacement consent actually waits on the issuance transaction lock",
+    );
+    barrier.release();
+    const a = await issued;
+    const b = await renewed;
+    assert.equal(a.statusCode, 200, a.body);
+    assert.equal(b.statusCode, 200, b.body);
+    const obsolete = await exchange(
+      codeOf(a.json().redirect_to),
+      first.verifier,
+    );
+    assert.equal(obsolete.json().error, "invalid_grant");
+    const fresh = await exchange(
+      codeOf(b.json().redirect_to),
+      replacement.verifier,
+    );
+    assert.equal(fresh.statusCode, 200, fresh.body);
+    assert.match(fresh.json().scope, /orbyn:write/);
+  } finally {
+    barrier.restore();
+    await Promise.allSettled([issued, renewed].filter(Boolean));
+  }
+});
+
+test("code consumed before the grant lock cannot inherit replacement consent", async () => {
+  const who = await h.register("oauth-consumed-generation");
+  const session = await login(who);
+  const first = request();
+  const allowed = await consent(session, first.req);
+  assert.equal(allowed.statusCode, 200, allowed.body);
+  const barrier = queryBarrier(
+    (sql) => sql.includes("DELETE FROM oauth_codes WHERE code_hash"),
+    true,
+  );
+  let oldExchange: ReturnType<typeof exchange> | undefined;
+  try {
+    oldExchange = exchange(codeOf(allowed.json().redirect_to), first.verifier);
+    await barrier.entered();
+    const replacement = request({
+      scope: "orbyn:read orbyn:write offline_access",
+    });
+    const renewed = await consent(session, replacement.req, {
+      access: "write",
+    });
+    assert.equal(renewed.statusCode, 200, renewed.body);
+    barrier.release();
+    const stale = await oldExchange;
+    assert.equal(stale.json().error, "invalid_grant");
+    assert.match(stale.json().error_description, /Consent changed/);
+    const fresh = await exchange(
+      codeOf(renewed.json().redirect_to),
+      replacement.verifier,
+    );
+    assert.equal(fresh.statusCode, 200, fresh.body);
+    assert.match(fresh.json().scope, /orbyn:write/);
+  } finally {
+    barrier.restore();
+    if (oldExchange) await oldExchange;
+  }
+});
