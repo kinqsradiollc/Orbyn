@@ -14,6 +14,38 @@ Canonical workspace inference additionally requires server
 allowance; the safe default is `false`. UI previews do not require paid inference.
 No client API key or separately configured public integration URL is needed.
 
+## Bounded live workspace-provider check
+
+1. Confirm the deployed commit contains the accepted runtime. The latest
+   launcher correction is on main `6654191c` (source `29f94942`). Keep the
+   canonical MCP connection and legacy recipient distinct.
+2. Confirm `MCP_WORKSPACE_AI_ENABLED=true` on the test server and that its
+   separate `plugin` integration worker is running. This flag advertises
+   `request_workspace_ai`; `get_workspace_ai_status` remains available for old
+   receipts even when new dispatch is disabled. Cached host tool discovery is
+   not evidence of the currently deployed flag.
+3. In Settings → Connected agents, open the intended connection's **Workspace
+   AI** permission. Verify the test provider and model, choose **Output tokens
+   per call** and **Calls per day (UTC)**, and explicitly allow that connection.
+   A normal connector grant does not enable provider execution.
+4. Send one synthetic prompt through `request_workspace_ai`, such as
+   `Reply with C6 live provider verified.`, with a fresh UUIDv7 `operation_id`.
+   Record the returned receipt ID. Read progress using
+   `get_workspace_ai_status({id})`; use its returned cursor for continuation.
+5. If delivery is uncertain, retrieve that receipt or resend the **same**
+   operation ID and exact original prompt. Never create another operation ID
+   to retry an unknown result. Record provider/model, configured cap and receipt
+   state/events without credential values or real personal text. Status reads
+   do not expose usage totals; do not infer them from a completed receipt.
+
+This single request establishes only bounded live execution. Existing local
+tests separately cover paused workers, revocation and uncertain outcomes; do
+not induce paid failure cases or claim those local fixtures were live tests.
+
+For the current C6 task, the owner has stopped further browser/visual checks.
+The broader checklist below remains a requirement reference, not authorization
+to restart those checks; retain unperformed cases in the qualification record.
+
 Verify the new connection's Today bootstrap and explicit Load action, authorized
 search/document previews, a revision-checked line edit/review and conflict draft,
 mentions, host Markdown file writable metadata/ETag conflict, and grant revocation.

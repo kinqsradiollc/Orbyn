@@ -73,3 +73,22 @@ whose setup applies migrations. After that run, `orbyn_test` remained marked
 `orbyn.environment=test` and reported 188 public base tables. The update is
 schema initialization only; the live-provider prerequisites above remain
 unverified. No live inference was dispatched.
+
+## Builder prerequisite probe and owner deployment handoff
+
+After accepted main checkpoint `6654191c`, Builder checked the local marked
+`orbyn_test` database: marker `test`, no configured `ai_providers` rows.
+An in-process `buildApiService()` probe returned **200** with nonempty bodies
+for `/legal`, `/legal/terms` and `/legal/privacy`, terminal exit 0. Workspace
+inference was disabled for this probe. It did not create an account, grant or
+provider, start a persistent server, or send inference. This establishes that
+the API routes respond against the initialized local schema; it does not
+reproduce or qualify the earlier browser/proxy failure.
+
+The owner selected an existing test provider, then directed use of the live MCP
+connection after pulling the latest main onto test production. Deployment is
+pending owner confirmation; previously reported deployed checkout remains
+`de83f54b`. Do not infer completion from the requested five-minute preparation
+window. Before a live request, identify the configured provider/model and its
+separate consent/allowance receipt. No credential should be copied into reports.
+Further visual/browser checks remain stopped by owner direction.
