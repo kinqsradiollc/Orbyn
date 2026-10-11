@@ -1,7 +1,7 @@
 # C6 progress — 11 October 2026
 
 **State:** Builder is continuing C6 on `codex/c6-file-viewer` in the
-`c6-next/Orbyn` managed checkout. Latest source candidate is `81e4c812`, following
+`c6-next/Orbyn` managed checkout. Latest source candidate is `4da327dc` (saved-finding remediation), following `81e4c812`,
 `83c49c18` (host Markdown entrypoint) and `34e21418` (runtime coverage). The
 private gateway/Today source `b416aa6a` is retained through parent `bb7a046f`.
 No formal acceptance, main merge, push or production deployment is claimed.

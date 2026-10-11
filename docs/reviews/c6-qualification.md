@@ -6,7 +6,7 @@
   retaining all required gates. Voice and computer use remain excluded.
 - Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`
 - Branch: `codex/c6-file-viewer`
-- Source candidate: `81e4c812`; base `058a63e5`.
+- Source candidate: `4da327dc` (saved-finding remediation), superseding `81e4c812`; base `058a63e5`.
 - Phase: Test. Next owner: Orbyn Tester. Review counter: **0/3**.
 - No main merge, push, deployment or full completion is claimed.
 
@@ -27,7 +27,7 @@ is bounded. This file source editor is not D1’s rendered Mermaid preview.
 
 ## Evidence and proportionate checks
 
-Read [progress](c6-progress.md), [serial Builder checks](c6-builder-checks-2026-10-11.md),
+Read [saved-finding remediation](security-remediation-2026-10-11.md), [progress](c6-progress.md), [serial Builder checks](c6-builder-checks-2026-10-11.md),
 [security boundaries](c6-security-boundary.md), [Today visuals](c6-visual-report.md)
 and [file visuals](c6-markdown-file-visual.md). Verify source/dependency equivalence
 before retaining results. The serial 123-test run applies to `55e94ca5`;
