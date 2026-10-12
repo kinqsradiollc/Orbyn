@@ -495,6 +495,72 @@ test("task drawer leaves Escape and Tab to a higher command dialog", () => {
     assert.equal(tab.defaultPrevented, false);
     assert.equal(dom.window.document.activeElement, input);
     layer.remove();
+    const drawer = dom.window.document.querySelector("aside")!;
+    drawer.style.position = "fixed";
+    drawer.style.zIndex = "4";
+    const peek = dom.window.document.createElement("aside");
+    peek.setAttribute("aria-modal", "true");
+    peek.style.position = "fixed";
+    peek.style.zIndex = "4";
+    peek.innerHTML = "<button>Close peek</button><button>Open full</button>";
+    dom.window.document.body.append(peek);
+    const peekSource = ts.createSourceFile(
+      "SidePeek.tsx",
+      readFileSync(
+        new URL(
+          "../../desktop/src/features/peek/SidePeek.tsx",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    let peekEffect: ts.Expression | undefined;
+    const findPeek = (node: ts.Node) => {
+      if (
+        ts.isCallExpression(node) &&
+        node.expression.getText(peekSource) === "useEffect" &&
+        node.arguments[0]
+          ?.getText(peekSource)
+          .includes('document.addEventListener("keydown", onKey)')
+      )
+        peekEffect = node.arguments[0];
+      ts.forEachChild(node, findPeek);
+    };
+    findPeek(peekSource);
+    assert.ok(peekEffect);
+    let peekClosed = 0;
+    const installPeek = runInNewContext(
+      ts.transpileModule(`(${peekEffect.getText(peekSource)})`, {
+        compilerOptions: { target: ts.ScriptTarget.ES2022 },
+      }).outputText,
+      {
+        document: dom.window.document,
+        overlay: true,
+        root: { current: peek },
+        hasHigherDialog: exports.hasHigherDialog,
+        onClose: () => peekClosed++,
+      },
+    );
+    const cleanupPeek = installPeek();
+    assert.equal(exports.hasHigherDialog(drawer), true);
+    assert.equal(exports.hasHigherDialog(peek), false);
+    peek.lastElementChild!.focus();
+    const peekTab = new dom.window.KeyboardEvent("keydown", {
+      key: "Tab",
+      cancelable: true,
+    });
+    dom.window.document.dispatchEvent(peekTab);
+    assert.equal(peekTab.defaultPrevented, true);
+    assert.equal(dom.window.document.activeElement, peek.firstElementChild);
+    escape();
+    assert.equal(peekClosed, 1);
+    assert.equal(closed, 0, "Exactly one retained panel handles Escape");
+    cleanupPeek();
+    peek.remove();
+    assert.equal(exports.hasHigherDialog(drawer), false);
     assert.equal(escape().defaultPrevented, true);
     assert.equal(closed, 1);
     const handled = new dom.window.KeyboardEvent("keydown", {
