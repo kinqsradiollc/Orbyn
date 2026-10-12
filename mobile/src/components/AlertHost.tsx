@@ -28,7 +28,14 @@ export function AlertHost() {
   if (Platform.OS !== "web" || !request) return null;
   const dismiss = () => settleAlert(request.id);
   return (
-    <Modal transparent visible animationType="fade" onRequestClose={dismiss}>
+    <Modal
+      key={request.id}
+      accessibilityLabel={request.title}
+      transparent
+      visible
+      animationType="fade"
+      onRequestClose={dismiss}
+    >
       <View style={s.backdrop}>
         <View
           style={s.dialog}
