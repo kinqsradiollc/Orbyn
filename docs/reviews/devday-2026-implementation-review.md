@@ -14,8 +14,10 @@ instructions are in [execution order](adr-execution-order.md) and
   Separate desktop-app checks, iOS builds and Android-specific verification
   require an explicit request. These checks are not automatic stage gates.
 - Keep user-approved external/live/visual deferrals visible as unverified;
-  do not reinstate waived gates from an older table. Full C6 host/provider
-  acceptance and final applicable UI/integration work remain required.
+  do not reinstate waived gates from an older table. C1–C6 and U1 have accepted
+  deliveries under their recorded scopes. Current requirement-by-requirement
+  evidence is in [final integration](final-integration-2026-10-12.md); historical
+  pending statements below do not override those later decisions.
 - Complete the whole agreed checkpoint before Test → Review, with at most
   three full review rounds. Reviewer guides Builder and does not code/test.
   Visual checks go through Orbyn Visual Check for bounded UI risks or an explicit
