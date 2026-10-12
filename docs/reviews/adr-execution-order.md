@@ -39,8 +39,19 @@ the final 900px TaskDetail/Search and SidePeek focus-return rechecks passed.
 Nested credential prompts, forced-retry visual, native, external, hosted SIWC and
 other owner-deferred cases remain unverified or excluded. Candidate
 `e0997ae434cb8cee9bb783ce524a8519aede34a7` is pushed to main; deployment remains
-owner-managed and unverified. Whole-ADR completion is not claimed. C6's
-owner-approved bounded closeout remains separate from full ADR completion.
+owner-managed and unverified. Final integration/cleanup batch `c1aedfb9` from
+main baseline `ac1ef395` was approved by Reviewer in final round **1/3** and is
+verified on remote main. Tester passed changed-document
+links/whitespace, environment-template coverage, accepted-ref ancestry, cleanup
+absence and retained preview checks. Six obsolete clean C6 worktrees were removed
+after the recorded inventory and ancestry check; active previews and user work
+were preserved. This completes the agreed delivery under the owner-revised
+scope; no required implementation stage remains. A docs-only receipt commit for
+the three tracker files is included in the final closeout records. Production deployment is user-managed and
+unverified; disclosed follow-ups remain deferred or unverified. C6's
+owner-approved bounded closeout remains separate from universal production
+qualification. See [final integration](final-integration-2026-10-12.md) and
+[final review](final-integration-review.md).
 
 Security scans are prohibited unless the user explicitly requests a new scan.
 Handle saved findings through source fixes, focused tests and read-only review.
@@ -75,16 +86,16 @@ This supersedes the earlier Docs-first queue. QA-006 remains a completed scoped
 checkpoint, not evidence that an entire ADR stage is complete. C1 and C2/M1 are complete under their final user-approved scopes;
 C4/D1 has an accepted delivery with browser/visual verification deferred to production. Existing work is retained.
 
-| Order | Scope                                                | Current state                                                                      | Exit condition                                                                                                                                                                           |
-| ----- | ---------------------------------------------------- | ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | C1: model/provider/connection contracts              | Complete; accepted round2/3, merged main6f56c548                                   | Managed/BYO/plan boundaries, supported models/request capabilities, explicit fallback, caching evaluation, multiple-provider and embedding configuration/migration requirements verified |
-| 2     | C2/M1: SIWC, account catalogs/defaults and execution | Accepted round1/3, pushed main `c778c25f` under revised scope; hosted web deferred | Correct platform connection, verified account/plan permissions, truthful usage, catalog/default persistence, protected tokens, lifecycle/revocation and actual inference acceptance      |
-| 3     | C3: rules, ownership, activity and budgets           | Accepted round 1/3; pushed main `db0913e6`                                         | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                    |
-| 4     | C4/D1: Docs parity and UI regressions                | Accepted delivery under 10 October scope; browser/visual checks deferred                          | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
-| 5     | C5: bound pages, publication and channels            | Accepted round1/3; product pushed main `392f2445`                                                 | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                   |
+| Order | Scope                                                | Current state                                                                                                      | Exit condition                                                                                                                                                                                  |
+| ----- | ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1     | C1: model/provider/connection contracts              | Complete; accepted round2/3, merged main6f56c548                                                                   | Managed/BYO/plan boundaries, supported models/request capabilities, explicit fallback, caching evaluation, multiple-provider and embedding configuration/migration requirements verified        |
+| 2     | C2/M1: SIWC, account catalogs/defaults and execution | Accepted round1/3, pushed main `c778c25f` under revised scope; hosted web deferred                                 | Correct platform connection, verified account/plan permissions, truthful usage, catalog/default persistence, protected tokens, lifecycle/revocation and actual inference acceptance             |
+| 3     | C3: rules, ownership, activity and budgets           | Accepted round 1/3; pushed main `db0913e6`                                                                         | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                           |
+| 4     | C4/D1: Docs parity and UI regressions                | Accepted delivery under 10 October scope; browser/visual checks deferred                                           | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass           |
+| 5     | C5: bound pages, publication and channels            | Accepted round1/3; product pushed main `392f2445`                                                                  | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                          |
 | 6     | C6: separate plugin backend/UI and security          | Complete for owner-approved bounded release scope; Reviewer approved round 2/3; latest closeout `a779176c` on main | Accepted implementation/focused checks and bounded live provider path recorded; owner-confirmed lifecycle and stopped/deferred host cases retain their explicit evidence limits; see assessment |
-| 7     | U1: final whole-app acceptance                       | Accepted by Reviewer in round 1/3 and pushed to main at `e0997ae4`; deployment unverified | Retained evidence and explicit unverified/excluded cases are recorded in U1 reports; do not infer deployment or broader ADR completion |
-| 8     | Final integration and cleanup                        | Next; pending                                                       | Reconcile all retained ADR requirements and accepted-scope limits on main; preserve user/character work; remove only safe merged branches/worktrees; user deploys manually                |
+| 7     | U1: final whole-app acceptance                       | Accepted by Reviewer in round 1/3 and pushed to main at `e0997ae4`; deployment unverified                          | Retained evidence and explicit unverified/excluded cases are recorded in U1 reports; do not infer deployment or broader ADR completion                                                          |
+| 8     | Final integration and cleanup                        | Accepted in final round 1/3 and pushed to main at `c1aedfb9`; Tester checks passed; final tracker receipt included | Agreed delivery complete under owner-revised scope; no required implementation stage remains. Preserve the documented follow-ups. Production deployment remains user-managed and unverified     |
 
 Within each stage, implement its full scope in a coherent order before formal
 qualification and review. UI/backend/shared/mobile work belongs to that stage,

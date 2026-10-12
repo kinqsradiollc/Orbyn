@@ -61,7 +61,17 @@ worktrees are retained rather than assumed disposable.
 
 ## Acceptance and delivery
 
-Final document/configuration checks and read-only Reviewer assessment are pending.
-This final batch changes records, not product behavior. Its review counter starts
-at 0/3, separate from the completed stage counters. Production deployment is
-owner-managed. Deferred follow-ups remain visible after release closeout.
+[Tester verification](final-integration-tester.md) passed changed local links,
+environment-template coverage (131 backend/Compose variables and both clients),
+all accepted-ref ancestry checks, cleanup absence and retained preview listeners.
+[Reviewer](final-integration-review.md) approved candidate `c1aedfb9` in final
+round **1/3**, finding no remaining required product correction or qualification
+batch under the owner-revised scope.
+
+This final batch changes records, not product behavior. Approved candidate
+`c1aedfb901016da54f71bd8b9b6b5b589c2c7aee` was fast-forwarded and pushed to
+main, confirmed with `git ls-remote`. Closing Tester/Reviewer/tracker records
+follow as a documentation-only receipt commit. The agreed implementation,
+integration and safe cleanup delivery is complete under the owner's recorded
+revised scope. Production deployment is owner-managed. Deferred follow-ups remain
+visible after release closeout; full native/external matrices are not claimed.

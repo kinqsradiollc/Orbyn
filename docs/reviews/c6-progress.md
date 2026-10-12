@@ -36,8 +36,19 @@ TaskDetail/Search and SidePeek focus-return rechecks passed. Nested credential
 prompts, forced-retry visual, native, external, hosted SIWC and other
 owner-deferred cases remain unverified or excluded. The accepted source is pushed
 to main; deployment remains owner-managed and unverified, and whole-ADR completion
-is not claimed. Final integration/cleanup follows. See [Tester report](u1-tester-r1.md),
-[Reviewer report](u1-review-r1.md), and [Visual report](u1-visual-r1.md).
+is not claimed. Final integration/cleanup candidate `c1aedfb9` from main baseline
+`ac1ef395` is approved by Reviewer in new round **1/3** and verified on remote
+main. Tester passed changed document/link, environment-template, accepted-ref
+ancestry, cleanup absence and retained-preview checks. Six obsolete clean C6 test
+worktrees were removed; active U1 previews, user character work, and the
+Visual-owned C6 report were preserved. This completes the agreed delivery under
+the owner-revised scope; no required implementation stage remains. A docs-only
+receipt for these tracker updates is included with the final closeout records. Production deployment
+remains user-owned and unverified; disclosed follow-ups remain deferred or
+unverified. See [final integration](final-integration-2026-10-12.md),
+[final Tester report](final-integration-tester.md), [final Reviewer report](final-integration-review.md),
+[Tester report](u1-tester-r1.md), [Reviewer report](u1-review-r1.md), and
+[Visual report](u1-visual-r1.md).
 
 The 11 October and earlier status below is historical and superseded where it
 conflicts with this closeout; failure records and scope-specific evidence remain.
