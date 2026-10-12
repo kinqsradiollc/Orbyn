@@ -31,6 +31,23 @@ type Loaded =
   | { kind: "task"; item: Item }
   | { kind: "project"; project: Project };
 
+/** A higher dialog owns focus and keys until it closes. */
+function peekHasOverlay(root: HTMLElement | null) {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>('[aria-modal="true"]'),
+  ).some((node) => {
+    if (
+      node === root ||
+      node.contains(root) ||
+      root?.contains(node) ||
+      node.closest("[inert], [hidden]")
+    )
+      return false;
+    const style = window.getComputedStyle(node);
+    return style.display !== "none" && style.visibility !== "hidden";
+  });
+}
+
 /** A page as it reads, with its links live, but nothing to edit. */
 function PagePeek({ doc, report }: { doc: Doc; report: (e: unknown) => void }) {
   const { pills } = useLinkPills(doc.content, report);
@@ -131,20 +148,28 @@ export function SidePeek({
     });
     const overflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    const onFocus = (event: FocusEvent) => {
+    const containFocus = () => {
       if (
-        !document.querySelector('.modal-backdrop [aria-modal="true"]') &&
-        !root.current?.contains(event.target as Node)
+        root.current?.isConnected &&
+        !root.current.closest("[inert]") &&
+        !peekHasOverlay(root.current) &&
+        !root.current.contains(document.activeElement)
       )
         close.current?.focus();
     };
+    const onFocus = () => containFocus();
+    // A higher dialog may disappear while focus falls onto the document body.
+    const observer = new MutationObserver(containFocus);
+    observer.observe(document.body, { childList: true, subtree: true });
     document.addEventListener("focusin", onFocus);
+    containFocus();
     return () => {
       previous.forEach(({ node, inert }) => {
         node.inert = inert;
       });
       document.body.style.overflow = overflow;
       document.removeEventListener("focusin", onFocus);
+      observer.disconnect();
     };
   }, [overlay]);
   useEffect(() => {
@@ -156,10 +181,8 @@ export function SidePeek({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Escape closes the peek unless a dialog above it is open.
-      const anotherModal = Array.from(
-        document.querySelectorAll('[aria-modal="true"]'),
-      ).some((node) => node !== root.current);
-      if (anotherModal) return;
+      if (peekHasOverlay(root.current) || root.current?.closest("[inert]"))
+        return;
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();

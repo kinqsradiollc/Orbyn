@@ -262,6 +262,7 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
     exports,
     window: dom.window,
     document: dom.window.document,
+    MutationObserver: dom.window.MutationObserver,
     require: (name: string) => {
       if (name.startsWith("react")) return require(name);
       if (name === "lucide-react")
@@ -322,6 +323,30 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
     );
     dom.window.document.querySelector(".peek-backdrop").click();
     assert.equal(closed, 1);
+    const command = () => {
+      const layer = dom.window.document.createElement("div");
+      layer.className = "command-backdrop";
+      layer.setAttribute("aria-modal", "true");
+      const input = dom.window.document.createElement("input");
+      layer.append(input);
+      dom.window.document.body.append(layer);
+      input.focus();
+      return { layer, input };
+    };
+    const narrowCommand = command();
+    assert.equal(dom.window.document.activeElement, narrowCommand.input);
+    const tab = new dom.window.KeyboardEvent("keydown", {
+      key: "Tab",
+      cancelable: true,
+    });
+    dom.window.document.dispatchEvent(tab);
+    assert.equal(
+      tab.defaultPrevented,
+      false,
+      "The higher dialog owns keyboard navigation",
+    );
+    await React.act(async () => narrowCommand.layer.remove());
+    assert.equal(dom.window.document.activeElement, close);
     await React.act(async () => {
       query.matches = true;
       onResize();
@@ -332,6 +357,19 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
     );
     assert.equal(dom.window.document.querySelector(".peek-backdrop"), null);
     assert.notEqual(dom.window.document.querySelector(".shell").inert, true);
+    const wideCommand = command();
+    await React.act(async () => {
+      query.matches = false;
+      onResize();
+    });
+    assert.equal(
+      dom.window.document.activeElement,
+      wideCommand.input,
+      "Resizing must preserve the higher dialog’s input",
+    );
+    assert.equal(dom.window.document.querySelector(".shell").inert, true);
+    await React.act(async () => wideCommand.layer.remove());
+    assert.equal(dom.window.document.activeElement, close);
     await React.act(async () => root.unmount());
     assert.equal(dom.window.document.activeElement, opener);
   } finally {
@@ -341,5 +379,70 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else delete (globalThis as any)[name];
     }
+  }
+});
+
+test("passkey naming cancellation does not register or announce a saved credential", async () => {
+  const source = ts.createSourceFile(
+    "PasskeysSettings.tsx",
+    readFileSync(
+      new URL(
+        "../../desktop/src/features/settings/PasskeysSettings.tsx",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  let initializer: ts.Expression | undefined;
+  const visit = (node: ts.Node) => {
+    if (ts.isVariableDeclaration(node) && node.name.getText(source) === "add")
+      initializer = node.initializer;
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  assert.ok(initializer);
+  const code = ts.transpileModule(`(${initializer.getText(source)})`, {
+    compilerOptions: { target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  for (const name of [null, "", "Laptop"]) {
+    const registrations: unknown[][] = [];
+    const outcomes: unknown[] = [];
+    let operation: Promise<void> | undefined;
+    let loads = 0,
+      ceremonies = 0;
+    const response = { id: "synthetic-credential" };
+    const add = runInNewContext(code, {
+      action: {
+        run: (fn: () => Promise<unknown>) => {
+          operation = fn().then((value) => {
+            outcomes.push(value);
+          });
+        },
+      },
+      client: {
+        passkeyRegisterOptions: async () => ({}),
+        registerPasskey: async (...args: unknown[]) => {
+          registrations.push(args);
+        },
+      },
+      startRegistration: async () => {
+        ceremonies++;
+        return response;
+      },
+      prompt: async () => name,
+      load: async () => {
+        loads++;
+      },
+    });
+    add();
+    await operation;
+    assert.equal(ceremonies, 1);
+    assert.equal(registrations.length, name === null ? 0 : 1);
+    assert.equal(loads, name === null ? 0 : 1);
+    assert.deepEqual(outcomes, [name === null ? undefined : "Passkey added."]);
+    if (name !== null) assert.deepEqual(registrations, [[response, name]]);
   }
 });

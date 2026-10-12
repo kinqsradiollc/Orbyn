@@ -30,12 +30,12 @@ export function PasskeysSettings({ report }: { report: (e: unknown) => void }) {
           typeof startRegistration
         >[0]["optionsJSON"],
       });
-      const name =
-        (await prompt({
-          title: "Name your passkey",
-          label: "Device name",
-          confirmLabel: "Save passkey",
-        })) || "";
+      const name = await prompt({
+        title: "Name your passkey",
+        label: "Device name",
+        confirmLabel: "Save passkey",
+      });
+      if (name === null) return;
       await client.registerPasskey(response, name);
       await load();
       return "Passkey added.";
