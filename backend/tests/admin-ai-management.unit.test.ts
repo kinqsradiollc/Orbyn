@@ -112,8 +112,7 @@ for (const operation of ["delete", "turn-off"] as const) {
 for (const platform of ["web", "ios"] as const) {
   test(`${platform} confirmation helper waits for approval and supports cancellation`, async () => {
     const exports: any = {};
-    let accept = false,
-      mutations = 0;
+    let mutations = 0;
     let nativeButtons: any[] = [];
     const compiled = ts.transpileModule(
       await readFile(
@@ -124,7 +123,7 @@ for (const platform of ["web", "ios"] as const) {
     ).outputText;
     runInNewContext(compiled, {
       exports,
-      globalThis: { confirm: () => accept },
+
       require: () => ({
         Platform: { OS: platform },
         Alert: {
@@ -138,15 +137,10 @@ for (const platform of ["web", "ios"] as const) {
       mutations++;
     });
     assert.equal(mutations, 0);
-    if (platform === "ios") {
-      assert.equal(nativeButtons[0].style, "cancel");
-      nativeButtons[1].onPress();
-    } else {
-      accept = true;
-      exports.confirmAction("Delete?", "Fixture", "Delete", () => {
-        mutations++;
-      });
-    }
+    assert.equal(nativeButtons[0].style, "cancel");
+    nativeButtons[0].onPress?.();
+    assert.equal(mutations, 0);
+    nativeButtons[1].onPress();
     assert.equal(mutations, 1);
   });
 }

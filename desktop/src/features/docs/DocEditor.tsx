@@ -361,7 +361,7 @@ function LegacyDocEditor({
   report: (e: unknown) => void;
 }) {
   const toast = useToast();
-  const { ask } = useConfirm();
+  const { ask, prompt } = useConfirm();
   /** Recordings on the page offer a summary (CAP-10). */
   const recordingActions = useMemo(
     () => ({
@@ -1275,9 +1275,12 @@ function LegacyDocEditor({
     setAskMenu(false);
     let instruction = "";
     if (action === "custom") {
-      const asked = window.prompt(
-        "What should the assistant do with these words?",
-      );
+      const asked = await prompt({
+        title: "Ask about selected text",
+        label: "Instruction",
+        confirmLabel: "Ask assistant",
+        required: true,
+      });
       if (!asked?.trim()) return;
       instruction = asked.trim();
     }

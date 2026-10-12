@@ -70,7 +70,7 @@ export function Sheet({
       useNativeDriver: false,
     }).start();
   }, [collapsed, shown]);
-  const [headerHeight, setHeaderHeight] = useState(72);
+  const [headerHeight, setHeaderHeight] = useState(60);
   return (
     <Modal
       visible={visible}
@@ -104,7 +104,7 @@ export function Sheet({
                   : undefined,
                 overflow: collapsed ? "hidden" : "visible",
                 borderBottomWidth: collapsed ? 0 : StyleSheet.hairlineWidth,
-                paddingVertical: collapsed ? 0 : 14,
+                paddingVertical: collapsed ? 0 : 8,
               },
               Platform.OS !== "ios" && {
                 transform: [{ translateY: swipe.offset }],
@@ -128,21 +128,13 @@ export function Sheet({
               </Pressable>
             )}
             {centerTitle ? (
-              <>
-                <View
-                  style={[StyleSheet.absoluteFill, s.centered]}
-                  pointerEvents="none"
-                >
-                  <Text
-                    style={s.centeredTitle}
-                    numberOfLines={1}
-                    accessibilityRole="header"
-                  >
-                    {title}
-                  </Text>
-                </View>
-                <View style={s.spacer} />
-              </>
+              <Text
+                style={[s.title, s.centeredTitle]}
+                numberOfLines={1}
+                accessibilityRole="header"
+              >
+                {title}
+              </Text>
             ) : (
               <Text style={s.title} numberOfLines={1}>
                 {title}
@@ -234,11 +226,10 @@ const s = themed(() =>
       alignItems: "center",
       gap: 12,
       paddingHorizontal: spacing.page,
-      paddingVertical: 14,
+      paddingVertical: 8,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: colors.border,
     },
-    spacer: { flex: 1 },
     grabRow: {
       position: "absolute",
       top: 5,
@@ -262,12 +253,6 @@ const s = themed(() =>
       height: 4,
       borderRadius: radii.pill,
       backgroundColor: colors.border,
-    },
-    centered: {
-      alignItems: "center",
-      justifyContent: "center",
-      // Clear of Back on one side and two buttons on the other.
-      paddingHorizontal: 124,
     },
     centeredTitle: {
       maxWidth: "100%",

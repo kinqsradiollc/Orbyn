@@ -83,7 +83,20 @@ export function SidePeek({
 }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const [overlay, setOverlay] = useState(
+    () => !window.matchMedia("(min-width: 1100px)").matches,
+  );
+  const root = useRef<HTMLElement>(null);
+  const opener = useRef(document.activeElement as HTMLElement | null);
   const close = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1100px)");
+    const update = () => setOverlay(!query.matches);
+    query.addEventListener("change", update);
+    update();
+    return () => query.removeEventListener("change", update);
+  }, []);
   useEffect(() => {
     let live = true;
     setLoaded(null);
@@ -103,19 +116,73 @@ export function SidePeek({
     return () => {
       live = false;
     };
-  }, [target.kind, target.id]);
+  }, [target.kind, target.id, retry]);
   useEffect(() => {
     close.current?.focus();
   }, [target.id]);
   useEffect(() => {
+    if (!overlay) return;
+    const backgrounds = Array.from(
+      document.querySelectorAll<HTMLElement>(".shell, .sidebar"),
+    ).filter((node) => !node.contains(root.current));
+    const previous = backgrounds.map((node) => ({ node, inert: node.inert }));
+    previous.forEach(({ node }) => {
+      node.inert = true;
+    });
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onFocus = (event: FocusEvent) => {
+      if (
+        !document.querySelector('.modal-backdrop [aria-modal="true"]') &&
+        !root.current?.contains(event.target as Node)
+      )
+        close.current?.focus();
+    };
+    document.addEventListener("focusin", onFocus);
+    return () => {
+      previous.forEach(({ node, inert }) => {
+        node.inert = inert;
+      });
+      document.body.style.overflow = overflow;
+      document.removeEventListener("focusin", onFocus);
+    };
+  }, [overlay]);
+  useEffect(() => {
+    return () => {
+      const node = opener.current;
+      if (node?.isConnected && !node.closest("[inert]")) node.focus();
+    };
+  }, []);
+  useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Escape closes the peek unless a dialog above it is open.
-      if (e.key === "Escape" && !document.querySelector('[aria-modal="true"]'))
+      const anotherModal = Array.from(
+        document.querySelectorAll('[aria-modal="true"]'),
+      ).some((node) => node !== root.current);
+      if (anotherModal) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
         onClose();
+      } else if (overlay && e.key === "Tab") {
+        const items = Array.from(
+          root.current?.querySelectorAll<HTMLElement>(
+            'button:not(:disabled), a[href], input:not(:disabled), [tabindex="0"]',
+          ) ?? [],
+        );
+        const first = items[0],
+          last = items.at(-1);
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last?.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first?.focus();
+        }
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose, overlay]);
 
   const title =
     loaded?.kind === "doc"
@@ -143,103 +210,124 @@ export function SidePeek({
           : "Task";
 
   return (
-    <aside
-      className="side-peek fade-in"
-      aria-label={`${noun} beside: ${title}`}
-    >
-      <header className="peek-head">
-        <span className="peek-kind">
-          <Icon size={14} aria-hidden="true" /> {noun}
-        </span>
-        <span className="peek-actions">
-          <button
-            className="icon-button"
-            aria-pressed={pinned}
-            title={
-              pinned
-                ? "Unpin: close it when you move on"
-                : "Pin: keep it open as you move around"
-            }
-            aria-label={pinned ? "Unpin the peek" : "Pin the peek"}
-            onClick={() => onPin(!pinned)}
-          >
-            {pinned ? <PinOff size={16} /> : <Pin size={16} />}
-          </button>
-          <button
-            className="icon-button"
-            title="Open full"
-            aria-label="Open full"
-            onClick={() => {
-              openObject(target);
-              if (!pinned) onClose();
-            }}
-          >
-            <Maximize2 size={16} />
-          </button>
-          <button
-            ref={close}
-            className="icon-button"
-            aria-label="Close the peek"
-            onClick={onClose}
-          >
-            <X size={18} />
-          </button>
-        </span>
-      </header>
-      <div className="peek-body">
-        {error ? (
-          <p role="alert" className="peek-meta">
-            {error}
-          </p>
-        ) : !loaded ? (
-          <p className="peek-meta" aria-live="polite">
-            Opening…
-          </p>
-        ) : (
-          <>
-            <h2 className="peek-title">{title}</h2>
-            {loaded.kind === "doc" && (
-              <PagePeek doc={loaded.doc} report={report} />
-            )}
-            {loaded.kind === "task" && (
-              <div className="peek-task">
-                <p className="peek-status">
-                  {loaded.item.status === "done" ? (
-                    <CheckCircle2 size={14} aria-hidden="true" />
+    <>
+      {overlay && (
+        <button
+          className="peek-backdrop"
+          tabIndex={-1}
+          aria-label="Close the peek"
+          onClick={onClose}
+        />
+      )}
+      <aside
+        ref={root}
+        role={overlay ? "dialog" : "complementary"}
+        aria-modal={overlay || undefined}
+        className="side-peek fade-in"
+        aria-label={`${noun} beside: ${title}`}
+      >
+        <header className="peek-head">
+          <span className="peek-kind">
+            <Icon size={14} aria-hidden="true" /> {noun}
+          </span>
+          <span className="peek-actions">
+            <button
+              className="icon-button"
+              aria-pressed={pinned}
+              title={
+                pinned
+                  ? "Unpin: close it when you move on"
+                  : "Pin: keep it open as you move around"
+              }
+              aria-label={pinned ? "Unpin the peek" : "Pin the peek"}
+              onClick={() => onPin(!pinned)}
+            >
+              {pinned ? <PinOff size={16} /> : <Pin size={16} />}
+            </button>
+            <button
+              className="icon-button"
+              title="Open full"
+              aria-label="Open full"
+              onClick={() => {
+                openObject(target);
+                if (!pinned) onClose();
+              }}
+            >
+              <Maximize2 size={16} />
+            </button>
+            <button
+              ref={close}
+              className="icon-button"
+              aria-label="Close the peek"
+              onClick={onClose}
+            >
+              <X size={18} />
+            </button>
+          </span>
+        </header>
+        <div className="peek-body">
+          {error ? (
+            <>
+              <p role="alert" className="peek-meta">
+                {error}
+              </p>
+              <button
+                className="secondary"
+                onClick={() => setRetry((value) => value + 1)}
+              >
+                Try again
+              </button>
+            </>
+          ) : !loaded ? (
+            <p className="peek-meta" aria-live="polite">
+              Opening…
+            </p>
+          ) : (
+            <>
+              <h2 className="peek-title">{title}</h2>
+              {loaded.kind === "doc" && (
+                <PagePeek doc={loaded.doc} report={report} />
+              )}
+              {loaded.kind === "task" && (
+                <div className="peek-task">
+                  <p className="peek-status">
+                    {loaded.item.status === "done" ? (
+                      <CheckCircle2 size={14} aria-hidden="true" />
+                    ) : (
+                      <Circle size={14} aria-hidden="true" />
+                    )}
+                    {loaded.item.status === "done" ? "Done" : "Not done"}
+                    {loaded.item.due_at &&
+                      ` · ${loaded.item.kind === "event" ? "Starts" : "Due"} ${formatDateTime(loaded.item.due_at)}`}
+                  </p>
+                  <ItemFacts item={loaded.item} />
+                  {loaded.item.notes ? (
+                    <p className="peek-notes">{loaded.item.notes}</p>
                   ) : (
-                    <Circle size={14} aria-hidden="true" />
+                    <p className="peek-meta">No notes.</p>
                   )}
-                  {loaded.item.status === "done" ? "Done" : "Not done"}
-                  {loaded.item.due_at &&
-                    ` · ${loaded.item.kind === "event" ? "Starts" : "Due"} ${formatDateTime(loaded.item.due_at)}`}
-                </p>
-                <ItemFacts item={loaded.item} />
-                {loaded.item.notes ? (
-                  <p className="peek-notes">{loaded.item.notes}</p>
-                ) : (
-                  <p className="peek-meta">No notes.</p>
-                )}
-              </div>
-            )}
-            {loaded.kind === "project" && (
-              <div className="peek-project">
-                {loaded.project.summary && <p>{loaded.project.summary}</p>}
-                <p className="peek-meta">
-                  {loaded.project.done_count} of {loaded.project.task_count}{" "}
-                  tasks done
-                  {loaded.project.deadline &&
-                    ` · Latest date ${formatDateTime(loaded.project.deadline)}`}
-                </p>
-                <ul className="peek-stages">
-                  {loaded.project.stages.map((s) => (
-                    <li key={s.id}>{s.name}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </aside>
+                </div>
+              )}
+              {loaded.kind === "project" && (
+                <div className="peek-project">
+                  {loaded.project.summary && <p>{loaded.project.summary}</p>}
+                  <p className="peek-meta">
+                    {loaded.project.done_count} of {loaded.project.task_count}{" "}
+                    tasks done
+                    {loaded.project.deadline &&
+                      ` · Latest date ${formatDateTime(loaded.project.deadline)}`}
+                  </p>
+                  <ul className="peek-stages">
+                    {loaded.project.stages.map((s) => (
+                      <li key={s.id}>{s.name}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </aside>
+    </>
   );
 }

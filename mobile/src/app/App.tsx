@@ -16,6 +16,7 @@ import {
 } from "@expo-google-fonts/dm-sans";
 import { RootScreen } from "./RootScreen";
 import { ToastHost } from "../components/Toast";
+import { AlertHost } from "../components/AlertHost";
 import { colors, ThemeContext, useThemeController } from "../theme";
 
 Notifications.setNotificationHandler({
@@ -50,6 +51,7 @@ export default function App() {
         <View style={{ flex: 1, backgroundColor: colors.background }}>
           {(fontsLoaded || fontError) && <RootScreen />}
           <ToastHost />
+          <AlertHost />
         </View>
       </SafeAreaProvider>
     </ThemeContext.Provider>

@@ -2,8 +2,9 @@
 
 Prepared 11 October 2026 against main runtime `937cb16f`, delivered in
 `4ab7dbc9`. This is the remaining-evidence inventory, not a visual pass or
-permission to skip full C6 real-host acceptance. Finish C6 before starting the
-next implementation checkpoint.
+permission to skip acceptance. C6 subsequently closed under the owner-approved
+bounded scope recorded in `c6-acceptance-assessment-2026-10-12.md`; U1 is active
+from main `9d786412`.
 
 ## Scope and evidence rules
 
@@ -23,19 +24,19 @@ Source discovery: `desktop/src/app/App.tsx`, `desktop/src/app/views.ts`,
 `mobile/src/app/{App,RootScreen}.tsx`, `mobile/src/app/tabs.ts`, and the owning
 feature/screen modules. Route presence proves implementation location only.
 
-| Surface family | Main task / risk to qualify | Existing evidence to inspect before requesting anything |
-| --- | --- | --- |
-| Navigation, Home, Workspace | Find a destination; expanded/collapsed navigation and secondary panes must leave useful task space | C5 visual report; earlier Home/navigation reports |
-| Tasks, Lists, Views, task detail | Add/edit/complete a task; retain drafts, list/board state and reachable actions in narrow panels | Earlier task checkpoints; C5 structured task evidence |
-| Calendar, Agenda, planning, Focus, progress | Change a plan or schedule; avoid overlay/toolbar collisions and stale time state | Planning/focus stage reports; identify missing states explicitly |
-| Assistant, inbox, review | Chat and review an exact proposal; history/upcoming panels must not squeeze or overlap composer | Assistant layout fixes and content-density reports |
-| Background, Overnight, agent identity/activity | Distinct agent/run states; setup belongs to agent work, not chat onboarding | C3 closeout and focused authority/activity results |
-| Settings and connections | Modal/category navigation, short copy, provider/model/device identity, truthful usage and separate MCP grants | C1/C2 visual reports and content-density closure |
-| Docs, Projects, Memory, agent notes, Study | Normal editing/recovery, Markdown/Mermaid and supported render/export families; preserve permission-filtered links | C4/D1 delivery and user-deferred browser checks; C5 Docs evidence |
-| Teams, replies, publication | Select exact blocks, approve/revoke sharing, synchronize replies without losing another client's draft | C5 visual report and final reply synchronization evidence |
-| Booking and public pages | Public read-only flow, permission-safe titles/media, usable form/recovery | Publication/privacy tests; existing booking/public UI evidence |
-| Admin, providers, legal/status/auth | Compact controls, meaningful error/loading/disabled states; no secret/fixture prose or native alert regressions | Provider/admin visual reports, content-density checkpoint, auth tests |
-| Plugin host UI and files | Real-host discovery, scoped consent, Today, mentions, resource read/save and account switch/revocation | C6 synthetic reports only; production-host cases still required |
+| Surface family                                 | Main task / risk to qualify                                                                                             | Existing evidence to inspect before requesting anything                                                                      |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Navigation, Home, Workspace                    | Find a destination; expanded/collapsed navigation and secondary panes must leave useful task space                      | C5 visual report; earlier Home/navigation reports                                                                            |
+| Tasks, Lists, Views, task detail               | Add/edit/complete a task; retain drafts, list/board state and reachable actions in narrow panels                        | Earlier task checkpoints; C5 structured task evidence                                                                        |
+| Calendar, Agenda, planning, Focus, progress    | Change a plan or schedule; avoid overlay/toolbar collisions and stale time state                                        | Planning/focus stage reports; identify missing states explicitly                                                             |
+| Assistant, inbox, review                       | Chat and review an exact proposal; history/upcoming panels must not squeeze or overlap composer                         | Assistant layout fixes and content-density reports                                                                           |
+| Background, Overnight, agent identity/activity | Distinct agent/run states; setup belongs to agent work, not chat onboarding                                             | C3 closeout and focused authority/activity results                                                                           |
+| Settings and connections                       | Modal/category navigation, short copy, provider/model/device identity, truthful usage and separate MCP grants           | C1/C2 visual reports and content-density closure                                                                             |
+| Docs, Projects, Memory, agent notes, Study     | Normal editing/recovery, Markdown/Mermaid and supported render/export families; preserve permission-filtered links      | C4/D1 delivery and user-deferred browser checks; C5 Docs evidence                                                            |
+| Teams, replies, publication                    | Select exact blocks, approve/revoke sharing, synchronize replies without losing another client's draft                  | C5 visual report and final reply synchronization evidence                                                                    |
+| Booking and public pages                       | Public read-only flow, permission-safe titles/media, usable form/recovery                                               | Publication/privacy tests; existing booking/public UI evidence                                                               |
+| Admin, providers, legal/status/auth            | Compact controls, meaningful error/loading/disabled states; no secret/fixture prose or native alert regressions         | Provider/admin visual reports, content-density checkpoint, auth tests                                                        |
+| Plugin host UI and files                       | Retain accepted discovery, scoped consent, Today, mentions, resource read/save and account switch/revocation boundaries | C6 production tool evidence and acceptance assessment dated 12 October; uploads deferred, account/revocation owner-confirmed |
 
 ## Bounded execution after C6
 
@@ -54,8 +55,10 @@ feature/screen modules. Route presence proves implementation location only.
 
 ## Current external observation
 
-On 11 October, a read-only request to
+Historical observation: on 11 October, a read-only request to
 `https://mcp.orbyn.dev/.well-known/oauth-protected-resource/plugin` returned
 HTTP **404** (curl exit 0). This proves the requested metadata was unavailable
 at observation time, not whether code or env had reached that server. Owner
-deployment is pending; no alternative host/resource or browser bypass was used.
+deployment was pending at that observation. Later C6 production evidence
+supersedes this availability status; no alternative host/resource or browser
+bypass was used.

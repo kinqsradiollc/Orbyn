@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Alert, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Alert } from "../../lib/alert";
 import type { BookingDetail, BusyInterval } from "@orbyn/core";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";

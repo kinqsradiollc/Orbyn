@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Animated,
   Modal,
   Platform,
@@ -10,6 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Alert } from "../lib/alert";
 import { Switch } from "./Switch";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { DateTimeControl } from "./DateTimeControl";

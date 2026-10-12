@@ -1,12 +1,6 @@
 import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert } from "../lib/alert";
 import type { Habit, HabitInput, HabitPlan, Priority } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, Platform, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
+import { Alert } from "../../lib/alert";
 import { Pressable } from "../../motion";
 import {
   changeAuthors,
@@ -127,11 +128,6 @@ export function DocHistory({
         .finally(() => setBusy(false));
     };
     const question = `Put the page back as it was at ${when(chosen.created_at)}? What is there now is kept in history.`;
-    // Alert.alert does nothing in the web build, so the browser asks instead.
-    if (Platform.OS === "web") {
-      if (globalThis.confirm?.(question)) go();
-      return;
-    }
     Alert.alert("Put this version back?", question, [
       { text: "Cancel", style: "cancel" },
       { text: "Restore", onPress: go },

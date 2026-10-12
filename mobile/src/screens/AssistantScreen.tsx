@@ -3,13 +3,13 @@ import { ReminderNudge } from "../components/ReminderNudge";
 import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   StyleSheet,
   Text,
   TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
+import { Alert } from "../lib/alert";
 import {
   assistantSuggestions,
   type AssistantSource,

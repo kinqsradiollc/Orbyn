@@ -1,5 +1,6 @@
 import React, { useContext } from "react";
-import { Alert, Linking, StyleSheet, Text } from "react-native";
+import { Linking, StyleSheet, Text } from "react-native";
+import { Alert } from "../../lib/alert";
 import {
   layoutMath,
   docLinkDestination,

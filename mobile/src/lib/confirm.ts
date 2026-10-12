@@ -1,11 +1,9 @@
-import { Alert, Platform } from "react-native";
+import { Alert } from "./alert";
 
 /**
  * Ask before something that cannot be undone.
  *
- * `Alert.alert` does nothing at all in the web build, so a question asked
- * that way there is never asked and never answered — the action simply does
- * not happen. On the web the browser asks instead.
+ * Expo web uses the app-owned modal; native retains its platform dialog.
  */
 export function confirmAction(
   title: string,
@@ -14,10 +12,6 @@ export function confirmAction(
   onConfirm: () => void,
   destructive = true,
 ): void {
-  if (Platform.OS === "web") {
-    if (globalThis.confirm?.(`${title}\n\n${message}`)) onConfirm();
-    return;
-  }
   Alert.alert(title, message, [
     { text: "Cancel", style: "cancel" },
     {

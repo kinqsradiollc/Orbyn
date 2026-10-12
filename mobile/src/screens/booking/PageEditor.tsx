@@ -1,12 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert } from "../../lib/alert";
 import { Switch } from "../../components/Switch";
 import {
   DEFAULT_BOOKER_REMINDERS,

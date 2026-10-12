@@ -4,6 +4,7 @@ import { startRegistration } from "@simplewebauthn/browser";
 import type { Passkey } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
+import { useConfirm } from "../../components/Confirm";
 
 const ago = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString() : "never used";
@@ -12,6 +13,7 @@ const ago = (iso: string | null) =>
 export function PasskeysSettings({ report }: { report: (e: unknown) => void }) {
   const [keys, setKeys] = useState<Passkey[] | null>(null);
   const action = useAction(report);
+  const { prompt } = useConfirm();
 
   const load = () => client.listPasskeys().then(setKeys, () => setKeys([]));
   useEffect(() => {
@@ -29,8 +31,11 @@ export function PasskeysSettings({ report }: { report: (e: unknown) => void }) {
         >[0]["optionsJSON"],
       });
       const name =
-        window.prompt("Name this passkey (e.g. “MacBook”, “iPhone”):", "") ||
-        "";
+        (await prompt({
+          title: "Name your passkey",
+          label: "Device name",
+          confirmLabel: "Save passkey",
+        })) || "";
       await client.registerPasskey(response, name);
       await load();
       return "Passkey added.";

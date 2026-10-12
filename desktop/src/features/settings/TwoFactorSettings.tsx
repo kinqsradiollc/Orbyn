@@ -3,6 +3,7 @@ import { KeyRound, ShieldCheck } from "lucide-react";
 import type { TwoFactorSetup } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
+import { useConfirm } from "../../components/Confirm";
 
 type Stage =
   | { step: "idle" }
@@ -16,15 +17,23 @@ export function TwoFactorSettings({
   report: (e: unknown) => void;
 }) {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [stage, setStage] = useState<Stage>({ step: "idle" });
   const action = useAction(report);
+  const { prompt } = useConfirm();
 
   useEffect(() => {
+    let live = true;
+    setLoadError(false);
     client.getTwoFactor().then(
-      (s) => setEnabled(s.enabled),
-      () => setEnabled(false),
+      (s) => live && setEnabled(s.enabled),
+      () => live && setLoadError(true),
     );
-  }, []);
+    return () => {
+      live = false;
+    };
+  }, [retry]);
 
   const begin = () =>
     void action.run(async () => {
@@ -37,10 +46,16 @@ export function TwoFactorSettings({
       setStage({ step: "codes", codes: recovery_codes });
       return "Two-step verification is on.";
     });
-  const disable = () => {
-    const password = window.prompt(
-      "Enter your password to turn off two-step verification:",
-    );
+  const disable = async () => {
+    const password = await prompt({
+      title: "Turn off two-step verification?",
+      body: "Your account will use password sign-in without an authenticator code.",
+      label: "Password",
+      type: "password",
+      required: true,
+      confirmLabel: "Turn off",
+      destructive: true,
+    });
     if (!password) return;
     void action.run(async () => {
       await client.disableTwoFactor(password);
@@ -58,7 +73,17 @@ export function TwoFactorSettings({
         Add a code from an authenticator app to password sign-in.
       </p>
 
-      {enabled === null ? (
+      {loadError ? (
+        <div>
+          <p role="alert">Couldn’t load verification settings.</p>
+          <button
+            className="secondary"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            Try again
+          </button>
+        </div>
+      ) : enabled === null ? (
         <p className="muted">Loading…</p>
       ) : enabled && stage.step !== "codes" ? (
         <div className="two-factor-on">

@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  Alert,
   Linking,
   StyleSheet,
   Text,
   View,
   useWindowDimensions,
 } from "react-native";
+import { Alert } from "../lib/alert";
 import {
   addMonths,
   byDueDate,

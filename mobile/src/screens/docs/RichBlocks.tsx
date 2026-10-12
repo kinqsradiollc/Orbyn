@@ -10,7 +10,6 @@ import React, {
 } from "react";
 import {
   Image,
-  Alert,
   Modal,
   PanResponder,
   ScrollView,
@@ -20,6 +19,7 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
+import { Alert } from "../../lib/alert";
 import { Pressable } from "../../motion";
 import { MermaidDiagram } from "../../components/MermaidDiagram";
 import { useSafeAreaInsets } from "react-native-safe-area-context";

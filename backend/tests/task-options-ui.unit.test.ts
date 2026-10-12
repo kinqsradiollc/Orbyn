@@ -303,7 +303,7 @@ test("confirmation helper refuses browser dismissal and keeps native affirmative
       runInNewContext(code, {
         exports: exported,
         require: (name: string) => {
-          assert.equal(name, "react-native");
+          assert.equal(name, "./alert");
           return {
             Platform: { OS: platform },
             Alert: {
@@ -327,8 +327,7 @@ test("confirmation helper refuses browser dismissal and keeps native affirmative
           mutations++;
         },
       );
-      if (platform === "web") assert.equal(mutations, approved ? 1 : 0);
-      else {
+      {
         assert.equal(mutations, 0);
         assert.equal(buttons[0].style, "cancel");
         assert.equal(buttons[1].style, "destructive");

@@ -1,12 +1,6 @@
 import React, { useCallback, useEffect, useState } from "react";
-import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert } from "../lib/alert";
 import {
   TEAM_ROLES,
   TEAM_ROLE_LABELS,

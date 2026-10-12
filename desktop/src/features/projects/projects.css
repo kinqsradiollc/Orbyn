@@ -15,6 +15,10 @@
   align-items: start;
   gap: 14px;
 }
+.projects-view {
+  container-type: inline-size;
+  container-name: projects;
+}
 .project-home-section {
   display: grid;
   gap: 10px;
@@ -211,6 +215,12 @@
   background: transparent;
 }
 @media (max-width: 640px) {
+  .project-card {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+}
+@container projects (max-width: 600px) {
   .project-card {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;

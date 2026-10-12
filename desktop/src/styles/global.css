@@ -2840,6 +2840,18 @@ footer svg {
   justify-content: flex-end;
   gap: 8px;
   padding: 16px 22px 20px;
+  flex-wrap: wrap;
+}
+.modal .confirm-form {
+  padding: 0;
+}
+.modal .confirm-form > label {
+  margin: 12px 22px 0;
+  font-size: var(--fs-body, 15px);
+}
+.confirm-actions button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 .confirm-actions .ghost {
   border: 1px solid var(--color-border);

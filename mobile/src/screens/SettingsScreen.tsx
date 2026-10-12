@@ -9,7 +9,8 @@ import {
 import { PrivacySection } from "./settings/PrivacySection";
 import { ArrangeList, StartChoice } from "./settings/LayoutSection";
 import React, { useEffect, useMemo, useState } from "react";
-import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert } from "../lib/alert";
 import { Pressable } from "../motion";
 import { Switch } from "../components/Switch";
 import {

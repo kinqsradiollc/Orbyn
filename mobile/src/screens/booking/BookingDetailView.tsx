@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
   Linking,
   ScrollView,
   StyleSheet,
@@ -8,6 +7,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Alert } from "../../lib/alert";
 import { dateLabel, type BookingDetail, type BookingPage } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";

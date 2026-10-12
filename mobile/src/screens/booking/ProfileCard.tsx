@@ -1,12 +1,6 @@
 import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  Linking,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Linking, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert } from "../../lib/alert";
 import { RESERVED_HANDLES, type Profile } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { ErrorBanner } from "../../components/ErrorBanner";

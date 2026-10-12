@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as Notifications from "expo-notifications";
 import { answerReview, registerReviewActions, reviewAction } from "../lib/push";
+import { clearAlerts } from "../lib/alert";
 import {
   createLabel,
   freshItem,
@@ -212,6 +213,9 @@ export function RootScreen() {
     refreshUser,
     twoFactorRequired,
   } = planner;
+  useEffect(() => {
+    clearAlerts();
+  }, [user?.id]);
   const assistant = useAssistant({ token, act, refresh, items });
   /** The assistant's side menu of chats and shortcuts. */
   const [assistantMenu, setAssistantMenu] = useState(false);

@@ -1,4 +1,4 @@
-import { Alert } from "react-native";
+import { Alert } from "./alert";
 import type { EditScope, Item, Kind } from "@orbyn/core";
 
 /** One occurrence of a repeating item: its original start, and its times now. */

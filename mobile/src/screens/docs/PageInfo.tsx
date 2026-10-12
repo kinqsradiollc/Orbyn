@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { OriginalSection } from "./OriginalFile";
-import { Alert, Linking, StyleSheet, Text, View } from "react-native";
+import { Linking, StyleSheet, Text, View } from "react-native";
+import { Alert } from "../../lib/alert";
 import { Pressable } from "../../motion";
 import {
   fileSize,

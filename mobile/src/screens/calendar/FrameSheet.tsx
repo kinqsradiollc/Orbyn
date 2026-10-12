@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
+import { Alert } from "../../lib/alert";
 import type { Frame, Team } from "@orbyn/core";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Sheet, sheetStyles } from "../../components/Sheet";

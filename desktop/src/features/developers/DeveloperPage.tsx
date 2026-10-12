@@ -105,7 +105,8 @@ export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
           Orbyn is a hosted planner. Agents such as Claude, ChatGPT, Claude
           Code, Codex and Cursor connect to it over the Model Context Protocol
           (MCP) and see only what their person can open, in the spaces the
-          person chose. Each agent uses its own model: Orbyn runs no AI for it.
+          person chose. Agents use their own models. Optional Workspace AI calls
+          use Orbyn’s configured provider with separate permission.
         </p>
 
         <section className="card developers-card" aria-labelledby="dev-address">

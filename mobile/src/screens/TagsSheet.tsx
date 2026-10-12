@@ -1,12 +1,6 @@
 import React, { useState } from "react";
-import {
-  Alert,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert } from "../lib/alert";
 import { hasTeamPermission, type Tag, type Team } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";

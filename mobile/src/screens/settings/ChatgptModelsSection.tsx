@@ -5,7 +5,6 @@ import { ManagedAiUsage } from "./ManagedAiUsage";
 import { CHATGPT_USAGE_URL, chatgptExecutorDeviceLabel } from "@orbyn/core";
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   Platform,
   Linking,
   ScrollView,
@@ -13,6 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { Alert } from "../../lib/alert";
 import { Pressable } from "../../motion";
 import { useChatgptRemote } from "../../hooks/useChatgptRemote";
 import { MoreMenu } from "../../components/MoreMenu";

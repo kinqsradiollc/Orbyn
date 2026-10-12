@@ -1,12 +1,6 @@
 import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  Linking,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Linking, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert } from "../lib/alert";
 import { Switch } from "../components/Switch";
 import type {
   Maintenance,
