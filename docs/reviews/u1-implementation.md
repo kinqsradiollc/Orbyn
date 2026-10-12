@@ -46,7 +46,63 @@ regressions cover the named shared primitives and affected call sites.
 
 ## Qualification
 
-Candidate not frozen. Test/Review not started. Visual Check will receive one
-stable-candidate batch covering concrete layout/dialog/content risks, web and
-Expo web, narrow 320×740 and wide counterparts, both themes where relevant.
-No rendered pass is inferred from source or previous checkpoint test counts.
+Source candidate frozen at `3b488b51` (parent `4050e321`) (baseline `9d786412`). Builder development
+checks: 38/38 focused dialog/provider/task/assistant/settings/view checks and
+web/mobile typechecks passed, terminal exit 0. These are diagnostics, not formal
+acceptance. Tester owns formal execution and the disposable preview fixture;
+Visual Check has one finite changed-risk assignment at 320×740, wide/intermediate
+web and representative themes. Reports: `u1-tester-r1.md` and `u1-visual-r1.md`.
+Review round 1/3 is assigned for the full source batch and formal Tester evidence;
+Visual Check’s final report is pending and must be assessed before approval. No rendered pass is inferred from source or
+previous checkpoint test counts. Production deployment remains owner-managed.
+
+Before the rendered pass, `3b488b51` names the Expo dialog on its modal element
+and keys it by request identity, preventing focus reuse between queued dialogs.
+Formal Tester receipt: 45/45 focused checks, workspace typechecks/package builds
+and desktop web production build passed on `3b488b51`. The port-8081 historical
+signup failure is outside the current candidate-backed preview pair; it remains
+an unverified observation. Reviewer owns `u1-review-r1.md`; no approval yet.
+
+## Round 1 correction batch
+
+`ad1a5dde` supersedes `3b488b51`. U1-R1 now keeps passkey naming Cancel (`null`)
+distinct from an accepted empty name; no registration or success message follows
+cancellation. U1-R2 shares higher-overlay ownership between peek focus and keys;
+closing a higher dialog restores focus to the surviving peek, including after
+wide-to-narrow resize. Mounted tests cover both scenarios; Builder 6/6 passes.
+Tester retest on `ad1a5dde6987db74c2cbf994d8d9d5fd39dae8cd` passed 6/6
+dialog regressions, desktop typecheck and production web build (terminal exit 0).
+The unchanged mobile and other focused checks retain their original receipts.
+Corrected-candidate authenticated visual evidence and final review acceptance
+remain pending. Same round 1/3; source is not merged or pushed to main.
+
+## Bounded visual correction batch
+
+Visual inspected web at 320×740, 900×740 and 1280×900 CSS pixels and Expo web
+at 320×740, including long titles and AlertHost deletion cancellation. It found
+two further focus/keyboard defects: TaskDetail dismissed underneath Search, and
+SidePeek's removed palette opener could leave focus on the body.
+
+`c2cefbe77ab525cfa30db29853ce289a3622a10e` fixes both with shared modal ownership
+and a stable Search focus fallback. Actual TaskDetail keyboard-effect coverage
+and mounted removed-opener coverage were added. Tester retest, only two affected
+visual rechecks and Reviewer closure are requested within round 1/3. Retained
+visual limits are listed in `u1-visual-r1.md`; no native or vendor checks were added.
+
+## Acceptance
+
+Final source `e0997ae434cb8cee9bb783ce524a8519aede34a7` also resolves U1-R3:
+retained panels choose one keyboard owner by positioned layer z-index and DOM
+paint order. The regression executes both actual keyboard effects together and
+verifies ownership returns after the top panel closes.
+
+Reviewer approved U1 and main integration in round **1/3**; all three findings
+are closed. Tester passed 7/7 dialog regressions, desktop typecheck and web build
+on this exact source, retaining applicable original functional/type receipts.
+Visual confirmed TaskDetail/Search dismissal order and SidePeek return to Search
+at 900×740. The preceding bounded web/Expo checks remain applicable to unchanged
+layout and mobile source. Reports retain unverified cases and earlier exclusions;
+none are represented as passes. Source was fast-forwarded and pushed to main at
+`e0997ae434cb8cee9bb783ce524a8519aede34a7`, confirmed by the remote main ref.
+The evidence/tracker documentation commit follows without runtime changes.
+Deployment remains user-owned and broader goal completion is separate.

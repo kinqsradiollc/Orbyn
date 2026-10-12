@@ -30,9 +30,17 @@ before final acceptance. Current `/plugin` evidence remains legacy-path evidence
 Independent hosted web ChatGPT sign-in, extra live cache/embedding measurements,
 C4/D1 browser/visual checks and live Slack/Teams checks retain their explicit
 deferral records. They are unverified, not passes, and do not silently become
-blocking again. U1 is now next and remains unstarted; C6's owner-approved bounded
-closeout does not complete the whole ADR. Production deployment remains
-user-owned.
+blocking again. Reviewer approved U1 candidate `e0997ae4` for acceptance and
+main integration in round **1/3**; U1-R1/R2/R3 are closed. Tester exact-candidate
+checks **7/7**, desktop typecheck and web build passed; retain the original
+candidate's **45/45**, workspace types/package builds and desktop web build at
+`3b488b51`. Visual's bounded 320/900/1280 web and 320 Expo checks are retained;
+the final 900px TaskDetail/Search and SidePeek focus-return rechecks passed.
+Nested credential prompts, forced-retry visual, native, external, hosted SIWC and
+other owner-deferred cases remain unverified or excluded. Candidate
+`e0997ae434cb8cee9bb783ce524a8519aede34a7` is pushed to main; deployment remains
+owner-managed and unverified. Whole-ADR completion is not claimed. C6's
+owner-approved bounded closeout remains separate from full ADR completion.
 
 Security scans are prohibited unless the user explicitly requests a new scan.
 Handle saved findings through source fixes, focused tests and read-only review.
@@ -75,8 +83,8 @@ C4/D1 has an accepted delivery with browser/visual verification deferred to prod
 | 4     | C4/D1: Docs parity and UI regressions                | Accepted delivery under 10 October scope; browser/visual checks deferred                          | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
 | 5     | C5: bound pages, publication and channels            | Accepted round1/3; product pushed main `392f2445`                                                 | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                   |
 | 6     | C6: separate plugin backend/UI and security          | Complete for owner-approved bounded release scope; Reviewer approved round 2/3; latest closeout `a779176c` on main | Accepted implementation/focused checks and bounded live provider path recorded; owner-confirmed lifecycle and stopped/deferred host cases retain their explicit evidence limits; see assessment |
-| 7     | U1: final whole-app acceptance                       | Next; unstarted                                                        | Every named surface and cross-client feature, themes, narrow/wide/collapsed panels, large text, errors/loading/keyboard/overlays and applicable Expo-web parity verified; separately requested native checks remain distinct                              |
-| 8     | Final integration and cleanup                        | Pending                                                                            | All retained ADR requirements reconciled and qualified on main; preserve user/character work; remove only safe merged branches/worktrees; user deploys manually                          |
+| 7     | U1: final whole-app acceptance                       | Accepted by Reviewer in round 1/3 and pushed to main at `e0997ae4`; deployment unverified | Retained evidence and explicit unverified/excluded cases are recorded in U1 reports; do not infer deployment or broader ADR completion |
+| 8     | Final integration and cleanup                        | Next; pending                                                       | Reconcile all retained ADR requirements and accepted-scope limits on main; preserve user/character work; remove only safe merged branches/worktrees; user deploys manually                |
 
 Within each stage, implement its full scope in a coherent order before formal
 qualification and review. UI/backend/shared/mobile work belongs to that stage,

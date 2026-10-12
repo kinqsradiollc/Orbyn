@@ -21,8 +21,23 @@ denial. Account switching and revocation are **owner-confirmed**, not independen
 observed. The owner reports deployment, but exact running image/hash and active
 permission version/output/daily caps remain unavailable. Stopped host cases are
 unverified and uploads/file interactions are deferred; these are accepted
-limitations for this bounded closeout, not passes. No additional visual or test
-sweep is required. **U1 is next and remains unstarted.**
+limitations for this bounded closeout, not passes. No additional C6 visual or
+test sweep is required. **U1 is accepted and pushed to main** at `e0997ae4`;
+deployment remains unverified and owner-managed.
+
+Reviewer approved U1 candidate `e0997ae434cb8cee9bb783ce524a8519aede34a7` for
+acceptance and main integration in round **1/3**; U1-R1/R2/R3 are closed. The
+push fast-forwarded main from `9d786412`, and the remote ref is verified at this
+candidate. Tester passed **7/7** exact-candidate dialog regressions plus desktop
+typecheck and production web build. Retain original `3b488b51` evidence:
+**45/45** focused checks, workspace types/package builds and desktop web build.
+Visual's bounded 320/900/1280 web and 320 Expo checks are retained; final 900px
+TaskDetail/Search and SidePeek focus-return rechecks passed. Nested credential
+prompts, forced-retry visual, native, external, hosted SIWC and other
+owner-deferred cases remain unverified or excluded. The accepted source is pushed
+to main; deployment remains owner-managed and unverified, and whole-ADR completion
+is not claimed. Final integration/cleanup follows. See [Tester report](u1-tester-r1.md),
+[Reviewer report](u1-review-r1.md), and [Visual report](u1-visual-r1.md).
 
 The 11 October and earlier status below is historical and superseded where it
 conflicts with this closeout; failure records and scope-specific evidence remain.

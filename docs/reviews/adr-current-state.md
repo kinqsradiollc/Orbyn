@@ -104,7 +104,7 @@ behavior is untested. See [C1 closeout](c1-closeout-2026-10-08.md),
 | ✓ C4/D1        | Docs ownership/editing and D1 rendering qualified at code/API level. User deferred browser UI/UX checks to production; no visual or client interaction pass is claimed. |
 | ✓ C5 (delivered) | Reviewer accepted `bbb7f28d0eb55b27ae1d8fea4b50c717b96b9dc5` in review round 1/3; product/report delivery fast-forward pushed at `392f2445`, with current main status follow-up `2f5b2b6a`. Tester receipts are candidate-scoped; Visual confirmed Home navigation/reply-card visibility, two-way open-thread replies with drafts preserved, and Expo sharing. Production deployment remains user-owned; live Slack/Teams and native checks are deferred/unverified. |
 | ✓ C6 (bounded release scope) | Reviewer approved closeout in existing round 2/3. Accepted runtime plus launcher correction `29f94942` and environment correction `b636deb9`; focused launcher checks canonical 8/8, legacy 16/16 and backend types passed. One live `matilda` operation completed; Tester independently read the terminal receipt, and Builder verified exact replay and pre-permission denial. Account switching/revocation are owner-confirmed, not independently observed. Owner reports deployment; exact running image/hash and permission version/caps remain unavailable. Stopped host interactions remain unverified and uploads/file interactions deferred; these are accepted scope limits, not passes. Latest closeout delivery `a779176c` is verified on remote main. See [C6 assessment](c6-acceptance-assessment-2026-10-12.md) and [qualification](c6-qualification.md). |
-| ⏳ U1 / cleanup | Evidence map prepared and Reviewer-approved, then integrated on main (`f999f94b`; follow-up `b3d02d19` clarifies representative checks). U1 is next and remains unstarted. Whole-app acceptance and final integration/cleanup are still pending. Preserve character work and remove only safe merged branches/worktrees after the approved stage boundary. |
+| ✓ U1 (accepted; pushed to main) | Reviewer approved candidate `e0997ae434cb8cee9bb783ce524a8519aede34a7` for U1 acceptance and main integration in round 1/3; U1-R1/R2/R3 closed. Tester: exact candidate 7/7 plus desktop typecheck/build; retain original 45/45, workspace types/package builds and desktop web build at `3b488b51`. Visual: bounded 320/900/1280 web and 320 Expo checks retained; final 900px TaskDetail/Search and SidePeek focus-return rechecks passed. Nested credential prompts, forced-retry visual, native, external, hosted SIWC and other owner-deferred cases remain unverified/excluded. Main push is verified; deployment remains owner-managed and unverified. Whole ADR is incomplete; final integration/cleanup is next. Preserve the separate Visual-owned C6 report. |
 
 The detailed records below are historical snapshots, superseded by this final
 C1 scope and acceptance. They do not impose removed acceptance gates.
@@ -744,14 +744,18 @@ but exact running image/revision and configured permission version/caps were not
 provided. Further host visuals were stopped and uploads/file interactions were
 deferred; remaining composer, Today, Docs conflict/draft, denied/proposal, and
 enforced-CSP/Mermaid cases remain unverified, not passes. These are accepted
-limitations of this bounded closeout. U1 is next and remains unstarted; broader
-ADR delivery is incomplete. No new security scan was run.
+limitations of this bounded closeout. U1 is accepted and pushed to main at
+`e0997ae4` in round 1/3; deployment remains unverified and owner-managed. See
+[C6 progress](c6-progress.md) and [U1 implementation](u1-implementation.md).
+Broader ADR delivery remains incomplete. No new security scan was run.
 
-The delegated Today UI observation belongs to the prior `/plugin` route: the
+The following Today UI and gate notes are historical snapshots preceding C6
+closeout. The delegated Today UI observation belongs to the prior `/plugin` route: the
 explicit **Load today** click removed the button and enabled **Open Today in
 Orbyn**, without loading/error status; the open action was not activated and no
 item text was copied. Existing direct connector read counts and earlier tests
-remain scoped to `/plugin`; do not carry them as `/mcp` passes. Discovery
-metadata/OAuth issuer, host files, composer mentions, account switching,
-revocation and live managed/BYO execution remain open. C6 remains current and
-U1 stays unstarted until full C6 acceptance. No security scan was run.
+remain scoped to `/plugin`; do not carry them as `/mcp` passes. At that snapshot,
+discovery metadata/OAuth issuer, host files, composer mentions, account
+switching, revocation and live managed/BYO execution remained open. The final
+bounded disposition and current U1 phase are recorded above. No security scan
+was run.
