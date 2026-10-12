@@ -1,20 +1,26 @@
 # ADR execution order
 
-Updated 11 October 2026. This orders the complete retained ADR; it does not replace
+Updated 12 October 2026. This orders the complete retained ADR; it does not replace
 its acceptance contract in `devday-2026-implementation-review.md`.
 
 ## Current instruction
 
-C1, C2/M1, C3, C4/D1 and C5 have accepted deliveries under their recorded
-user-approved scopes. C6 remains the current checkpoint. Its expanded unified
-`/mcp` source `8f99272c` passed focused Tester qualification (**58/58**, zero
-failures/skips, plus backend typecheck); Reviewer closed U2-R1–R4 in round
-**2/3**. The accepted source and reports were integrated on main at `4f9e8e88`.
-The earlier `937cb16f` remediation checkpoint was accepted in round 1/3 and its
-receipts remain historical/legacy `/plugin` scope. Full C6 canonical-host
-acceptance is open; owner deployment and post-deployment host cases remain.
-See [current state](adr-current-state.md), [qualification handoff](c6-qualification.md)
-and [C6 progress](c6-progress.md).
+C1, C2/M1, C3, C4/D1, C5, and now C6 have accepted deliveries within their
+recorded scopes. Reviewer approved C6 closeout for the owner-approved bounded
+release scope in existing round **2/3**. The retained evidence includes the
+unified `/mcp` source correction cohort (**58/58**, zero failures/skips, plus
+backend typecheck), launcher checks (canonical **8/8**, legacy **16/16**, plus
+backend types), accepted environment configuration checks, and one completed live
+`matilda` provider request independently status-read by Tester. Builder observed
+exact receipt replay and pre-permission denial. Owner confirmed account
+switching/revocation but those lifecycle transitions were not independently
+observed. Owner reports deployment; exact running image/hash and permission
+version/caps remain unavailable. Host interactions stopped by the owner remain
+unverified and uploaded-file checks are deferred, not passes. The owner-approved
+bounded disposition accepts these limits for C6 closeout. Latest closeout commit
+`a779176c` is verified on remote main. See [C6 assessment](c6-acceptance-assessment-2026-10-12.md)
+and [qualification handoff](c6-qualification.md).
+See [current state](adr-current-state.md) and [C6 progress](c6-progress.md).
 
 The owner added [ADR 002](../adr/002-unified-mcp-integration.md): one canonical
 `/mcp` connection with optional previews, retaining internal inference isolation.
@@ -24,8 +30,9 @@ before final acceptance. Current `/plugin` evidence remains legacy-path evidence
 Independent hosted web ChatGPT sign-in, extra live cache/embedding measurements,
 C4/D1 browser/visual checks and live Slack/Teams checks retain their explicit
 deferral records. They are unverified, not passes, and do not silently become
-blocking again. C6 real-host/provider acceptance is still open, not deferred.
-Production deployment is user-owned.
+blocking again. U1 is now next and remains unstarted; C6's owner-approved bounded
+closeout does not complete the whole ADR. Production deployment remains
+user-owned.
 
 Security scans are prohibited unless the user explicitly requests a new scan.
 Handle saved findings through source fixes, focused tests and read-only review.
@@ -67,8 +74,8 @@ C4/D1 has an accepted delivery with browser/visual verification deferred to prod
 | 3     | C3: rules, ownership, activity and budgets           | Accepted round 1/3; pushed main `db0913e6`                                         | Typed rules on every write path, authority/recovery, budget accounting and independent Background/Overnight profiles, triggers, collaboration and reflection verified                    |
 | 4     | C4/D1: Docs parity and UI regressions                | Accepted delivery under 10 October scope; browser/visual checks deferred                          | Complete ownership through normal editing/saving/recovery/history/tasks/collaboration; all required Markdown/Mermaid families, import/export/privacy and browser/native matrices pass    |
 | 5     | C5: bound pages, publication and channels            | Accepted round1/3; product pushed main `392f2445`                                                 | Exact block ownership and schedules, human conflicts/mentions, public consent/revocation, real authorized Slack/Teams installation/delivery/replies/lifecycle verified                   |
-| 6     | C6: separate plugin backend/UI and security          | Local checkpoint accepted `937cb16f` / docs `b607e1dc`; real-host acceptance open | Independent connector authority, managed/BYO provider execution and launch contexts, real host OAuth/UI, saved-finding remediation and reviewed evidence                                    |
-| 7     | U1: final whole-app acceptance                       | Required within each stage; sampled checks only so far                             | Every named surface and cross-client feature, themes, narrow/wide/collapsed panels, large text, errors/loading/keyboard/overlays and applicable Expo-web parity verified; separately requested native checks remain distinct                              |
+| 6     | C6: separate plugin backend/UI and security          | Complete for owner-approved bounded release scope; Reviewer approved round 2/3; latest closeout `a779176c` on main | Accepted implementation/focused checks and bounded live provider path recorded; owner-confirmed lifecycle and stopped/deferred host cases retain their explicit evidence limits; see assessment |
+| 7     | U1: final whole-app acceptance                       | Next; unstarted                                                        | Every named surface and cross-client feature, themes, narrow/wide/collapsed panels, large text, errors/loading/keyboard/overlays and applicable Expo-web parity verified; separately requested native checks remain distinct                              |
 | 8     | Final integration and cleanup                        | Pending                                                                            | All retained ADR requirements reconciled and qualified on main; preserve user/character work; remove only safe merged branches/worktrees; user deploys manually                          |
 
 Within each stage, implement its full scope in a coherent order before formal

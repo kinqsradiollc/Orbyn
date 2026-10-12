@@ -1,15 +1,49 @@
-# C6 progress — 11 October 2026
+# C6 progress — 12 October 2026
 
-**Current state:** The expanded unified `/mcp` local code checkpoint is accepted
+**Current state: C6 complete for the owner-approved bounded release scope.**
+Reviewer approved closeout in existing formal round **2/3**; this does not
+complete the broader ADR or start U1. Latest closeout report commit
+`a779176c60f5d16217687b29a0eb07a6d1feda92` was independently verified on
+remote `main`. See the [final assessment](c6-acceptance-assessment-2026-10-12.md)
+and [qualification handoff](c6-qualification.md).
+
+Accepted implementation evidence includes unified correction checks **58/58**
+plus backend typecheck, launcher candidate `29f94942` checks canonical **8/8**,
+legacy **16/16** plus backend typecheck, and the separately accepted environment
+candidate `b636deb9`. Do not add overlapping test receipts together. The earlier
+baseline `bc43d9d5` remains **157 passed / 3 failed / 0 skipped**, preserved as
+historical evidence.
+
+One live Workspace AI request on the selected canonical Codex MCP connection
+completed with the expected synthetic response. Tester independently read the
+terminal receipt; Builder verified same-receipt replay and pre-permission
+denial. Account switching and revocation are **owner-confirmed**, not independently
+observed. The owner reports deployment, but exact running image/hash and active
+permission version/output/daily caps remain unavailable. Stopped host cases are
+unverified and uploads/file interactions are deferred; these are accepted
+limitations for this bounded closeout, not passes. No additional visual or test
+sweep is required. **U1 is next and remains unstarted.**
+
+The 11 October and earlier status below is historical and superseded where it
+conflicts with this closeout; failure records and scope-specific evidence remain.
+
+---
+
+## Historical status snapshot — 11 October 2026
+
+At that time, the expanded unified `/mcp` local code checkpoint was accepted
 in formal round **2/3**. Exact accepted source `8f99272c` passed the focused
 correction cohort **58/58**, zero failures/skips, plus backend typecheck. Tester
 baseline `bc43d9d5` remains **157 passed / 3 failed / 0 skipped**; preserve those
 failures as historical, non-additive evidence. Reviewer closed U2-R1–R4 within
 the same round. The accepted source and reports were integrated on main at
-`4f9e8e88`. Full C6 canonical-host acceptance remains open: owner deployment is
-next, followed by the post-deployment preview, Docs, file, mention, account,
-revocation and provider gates. The earlier round-1 checkpoint `937cb16f` remains
-accepted history for the legacy `/plugin` route only.
+`4f9e8e88`. On 12 October the owner reported deployment and invited testing;
+the deployed server hash is unknown and not independently verified. Builder is
+resuming bounded canonical-host qualification through Visual Check, expecting
+main `f81463e2` / runtime `8f99272c`. Full C6 canonical-host acceptance remains
+open through the preview, Docs, file, mention, account, revocation and provider
+gates. The earlier round-1 checkpoint `937cb16f` remains accepted history for
+the legacy `/plugin` route only.
 
 **Legacy `/plugin` production context (historical):** the owner supplied server
 commit `b3d02d19`; its gateway logs identified an unresolvable `plugin` upstream,

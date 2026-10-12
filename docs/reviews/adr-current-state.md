@@ -103,8 +103,8 @@ behavior is untested. See [C1 closeout](c1-closeout-2026-10-08.md),
 | ✓ C3           | Accepted round 1/3 and pushed to main `db0913e6`; separate agents, rules, handoffs and lane budgets qualified.                 |
 | ✓ C4/D1        | Docs ownership/editing and D1 rendering qualified at code/API level. User deferred browser UI/UX checks to production; no visual or client interaction pass is claimed. |
 | ✓ C5 (delivered) | Reviewer accepted `bbb7f28d0eb55b27ae1d8fea4b50c717b96b9dc5` in review round 1/3; product/report delivery fast-forward pushed at `392f2445`, with current main status follow-up `2f5b2b6a`. Tester receipts are candidate-scoped; Visual confirmed Home navigation/reply-card visibility, two-way open-thread replies with drafts preserved, and Expo sharing. Production deployment remains user-owned; live Slack/Teams and native checks are deferred/unverified. |
-| ⏳ C6           | Round-2/3 local code checkpoint accepted; Reviewer closed U2-R1–R4 on exact source `8f99272c`. Tester correction batch: 58 passed/0 failed/0 skipped across six suites plus backend typecheck; baseline `bc43d9d5` 157/3/0 across 17 suites remains preserved, with its three fixture/assertion failures non-additive. Evidence/review reports and accepted runtime are integrated on main at `4f9e8e88`; local code eligibility is accepted, not full C6. Owner deployment required next. Canonical `/mcp` host discovery/consent, previews/Docs, files, mentions, switching/reconnect/revocation, and managed/BYO remain post-deploy gates. Historical `/plugin` tests/reads/Today UI do not qualify `/mcp`. No new scan. U1 remains unstarted until full C6. |
-| ⏳ U1 / cleanup | Evidence map prepared and Reviewer-approved, then integrated on main (`f999f94b`; follow-up `b3d02d19` clarifies representative checks). Preparation only, not U1 execution; it waits for full C6 real-host acceptance. Preserve character work and remove only safe merged branches/worktrees after the approved stage boundary. |
+| ✓ C6 (bounded release scope) | Reviewer approved closeout in existing round 2/3. Accepted runtime plus launcher correction `29f94942` and environment correction `b636deb9`; focused launcher checks canonical 8/8, legacy 16/16 and backend types passed. One live `matilda` operation completed; Tester independently read the terminal receipt, and Builder verified exact replay and pre-permission denial. Account switching/revocation are owner-confirmed, not independently observed. Owner reports deployment; exact running image/hash and permission version/caps remain unavailable. Stopped host interactions remain unverified and uploads/file interactions deferred; these are accepted scope limits, not passes. Latest closeout delivery `a779176c` is verified on remote main. See [C6 assessment](c6-acceptance-assessment-2026-10-12.md) and [qualification](c6-qualification.md). |
+| ⏳ U1 / cleanup | Evidence map prepared and Reviewer-approved, then integrated on main (`f999f94b`; follow-up `b3d02d19` clarifies representative checks). U1 is next and remains unstarted. Whole-app acceptance and final integration/cleanup are still pending. Preserve character work and remove only safe merged branches/worktrees after the approved stage boundary. |
 
 The detailed records below are historical snapshots, superseded by this final
 C1 scope and acceptance. They do not impose removed acceptance gates.
@@ -729,6 +729,23 @@ gate remains after owner deployment. No production deployment or real-host
 acceptance is recorded. Native builds,
 separate shared desktop UI checks and Kubernetes worker qualification are
 excluded or unavailable as recorded in the handoff.
+
+## C6 closeout — 12 October 2026
+
+Reviewer approved C6 complete for the owner-approved bounded release scope in
+round 2/3. The latest closeout evidence/report commit `a779176c` is present on
+remote main. Accepted local runtime and focused launcher/environment corrections
+are recorded in the [final assessment](c6-acceptance-assessment-2026-10-12.md)
+and [qualification handoff](c6-qualification.md). One live Workspace AI request
+completed; Tester independently read the receipt. Builder verified exact replay
+and permission denial before owner enablement. Account switching/revocation are
+owner-confirmed rather than independently observed. The owner reports deployment,
+but exact running image/revision and configured permission version/caps were not
+provided. Further host visuals were stopped and uploads/file interactions were
+deferred; remaining composer, Today, Docs conflict/draft, denied/proposal, and
+enforced-CSP/Mermaid cases remain unverified, not passes. These are accepted
+limitations of this bounded closeout. U1 is next and remains unstarted; broader
+ADR delivery is incomplete. No new security scan was run.
 
 The delegated Today UI observation belongs to the prior `/plugin` route: the
 explicit **Load today** click removed the button and enabled **Open Today in
