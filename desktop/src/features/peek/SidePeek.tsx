@@ -20,6 +20,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
+import { hasHigherDialog } from "../../lib/dialogLayers";
 import { formatDateTime } from "../../lib/format";
 import { ItemFacts } from "../../components/ItemFacts";
 import { BlockView } from "../docs/DocBlocks";
@@ -30,23 +31,6 @@ type Loaded =
   | { kind: "doc"; doc: Doc }
   | { kind: "task"; item: Item }
   | { kind: "project"; project: Project };
-
-/** A higher dialog owns focus and keys until it closes. */
-function peekHasOverlay(root: HTMLElement | null) {
-  return Array.from(
-    document.querySelectorAll<HTMLElement>('[aria-modal="true"]'),
-  ).some((node) => {
-    if (
-      node === root ||
-      node.contains(root) ||
-      root?.contains(node) ||
-      node.closest("[inert], [hidden]")
-    )
-      return false;
-    const style = window.getComputedStyle(node);
-    return style.display !== "none" && style.visibility !== "hidden";
-  });
-}
 
 /** A page as it reads, with its links live, but nothing to edit. */
 function PagePeek({ doc, report }: { doc: Doc; report: (e: unknown) => void }) {
@@ -152,7 +136,7 @@ export function SidePeek({
       if (
         root.current?.isConnected &&
         !root.current.closest("[inert]") &&
-        !peekHasOverlay(root.current) &&
+        !hasHigherDialog(root.current) &&
         !root.current.contains(document.activeElement)
       )
         close.current?.focus();
@@ -176,12 +160,20 @@ export function SidePeek({
     return () => {
       const node = opener.current;
       if (node?.isConnected && !node.closest("[inert]")) node.focus();
+      else
+        document
+          .querySelector<HTMLElement>(".command-trigger:not([disabled])")
+          ?.focus();
     };
   }, []);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       // Escape closes the peek unless a dialog above it is open.
-      if (peekHasOverlay(root.current) || root.current?.closest("[inert]"))
+      if (
+        e.defaultPrevented ||
+        hasHigherDialog(root.current) ||
+        root.current?.closest("[inert]")
+      )
         return;
       if (e.key === "Escape") {
         e.preventDefault();

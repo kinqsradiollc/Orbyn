@@ -227,7 +227,7 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
   )("jsdom");
   const React = require("react");
   const dom = new JSDOM(
-    '<body><div class="shell"><button id="opener">Open</button></div><nav class="sidebar"></nav><div id="root"></div></body>',
+    '<body><div class="shell"><button id="opener">Open</button><button class="command-trigger">Search</button></div><nav class="sidebar"></nav><div id="root"></div></body>',
   );
   const names = [
     "window",
@@ -265,6 +265,15 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
     MutationObserver: dom.window.MutationObserver,
     require: (name: string) => {
       if (name.startsWith("react")) return require(name);
+      if (name === "../../lib/dialogLayers") {
+        const layerExports = {};
+        runInNewContext(compile("../../desktop/src/lib/dialogLayers.ts"), {
+          exports: layerExports,
+          document: dom.window.document,
+          window: dom.window,
+        });
+        return layerExports;
+      }
       if (name === "lucide-react")
         return new Proxy({}, { get: () => () => null });
       if (name === "../../lib/api")
@@ -372,6 +381,28 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
     assert.equal(dom.window.document.activeElement, close);
     await React.act(async () => root.unmount());
     assert.equal(dom.window.document.activeElement, opener);
+    const secondRoot = createRoot(dom.window.document.getElementById("root"));
+    const ephemeral = dom.window.document.createElement("input");
+    dom.window.document.body.append(ephemeral);
+    ephemeral.focus();
+    await React.act(async () =>
+      secondRoot.render(
+        React.createElement(exports.SidePeek, {
+          target: { kind: "task", id: "qa" },
+          pinned: false,
+          onPin: () => {},
+          onClose: () => closed++,
+          report: () => {},
+        }),
+      ),
+    );
+    ephemeral.remove();
+    await React.act(async () => secondRoot.unmount());
+    assert.equal(
+      dom.window.document.activeElement,
+      dom.window.document.querySelector(".command-trigger"),
+      "A removed palette opener returns focus to the stable search trigger",
+    );
   } finally {
     await React.act(async () => root.unmount());
     dom.window.close();
@@ -379,6 +410,107 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else delete (globalThis as any)[name];
     }
+  }
+});
+
+test("task drawer leaves Escape and Tab to a higher command dialog", () => {
+  const { JSDOM } = createRequire(
+    new URL("../../mobile/package.json", import.meta.url),
+  )("jsdom");
+  const dom = new JSDOM(
+    '<body><aside aria-modal="true"><button>Close task</button><button>Last</button></aside></body>',
+  );
+  const source = ts.createSourceFile(
+    "TaskDetail.tsx",
+    readFileSync(
+      new URL(
+        "../../desktop/src/features/task/TaskDetail.tsx",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  let effect: ts.Expression | undefined;
+  const visit = (node: ts.Node) => {
+    if (
+      ts.isCallExpression(node) &&
+      node.expression.getText(source) === "useEffect" &&
+      node.arguments[0]
+        ?.getText(source)
+        .includes("if (suspended || scheduling) return")
+    )
+      effect = node.arguments[0];
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  assert.ok(effect);
+  const exports: any = {};
+  runInNewContext(compile("../../desktop/src/lib/dialogLayers.ts"), {
+    exports,
+    document: dom.window.document,
+    window: dom.window,
+  });
+  let closed = 0;
+  const install = runInNewContext(
+    ts.transpileModule(`(${effect.getText(source)})`, {
+      compilerOptions: { target: ts.ScriptTarget.ES2022 },
+    }).outputText,
+    {
+      document: dom.window.document,
+      suspended: false,
+      scheduling: false,
+      renaming: false,
+      panel: { current: dom.window.document.querySelector("aside") },
+      hasHigherDialog: exports.hasHigherDialog,
+      onClose: () => closed++,
+    },
+  );
+  const cleanup = install();
+  try {
+    const layer = dom.window.document.createElement("div");
+    layer.className = "command-backdrop";
+    layer.setAttribute("aria-modal", "true");
+    const input = dom.window.document.createElement("input");
+    layer.append(input);
+    dom.window.document.body.append(layer);
+    input.focus();
+    const escape = () => {
+      const event = new dom.window.KeyboardEvent("keydown", {
+        key: "Escape",
+        cancelable: true,
+      });
+      dom.window.document.dispatchEvent(event);
+      return event;
+    };
+    assert.equal(escape().defaultPrevented, false);
+    assert.equal(closed, 0, "Escape must not close the task behind Search");
+    const tab = new dom.window.KeyboardEvent("keydown", {
+      key: "Tab",
+      cancelable: true,
+    });
+    dom.window.document.dispatchEvent(tab);
+    assert.equal(tab.defaultPrevented, false);
+    assert.equal(dom.window.document.activeElement, input);
+    layer.remove();
+    assert.equal(escape().defaultPrevented, true);
+    assert.equal(closed, 1);
+    const handled = new dom.window.KeyboardEvent("keydown", {
+      key: "Escape",
+      cancelable: true,
+    });
+    handled.preventDefault();
+    dom.window.document.dispatchEvent(handled);
+    assert.equal(
+      closed,
+      1,
+      "Previously handled keys must not close another layer",
+    );
+  } finally {
+    cleanup();
+    dom.window.close();
   }
 });
 

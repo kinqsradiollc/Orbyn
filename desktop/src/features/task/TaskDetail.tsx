@@ -1,6 +1,7 @@
 import { Select } from "../../components/Select";
 import { Popover } from "../../components/Popover";
 import { useConfirm } from "../../components/Confirm";
+import { hasHigherDialog } from "../../lib/dialogLayers";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Ban,
@@ -292,6 +293,12 @@ export function TaskDetail({
     // The schedule dialog handles its own keys while it's open.
     if (suspended || scheduling) return;
     const onKey = (e: KeyboardEvent) => {
+      if (
+        e.defaultPrevented ||
+        hasHigherDialog(panel.current) ||
+        panel.current?.closest("[inert]")
+      )
+        return;
       if (e.key === "Escape") {
         if (renaming) return;
         e.preventDefault();
