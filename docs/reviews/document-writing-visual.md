@@ -178,3 +178,96 @@ Final proof:
 All temporary device metrics/viewports reset, tabs online and preserved. Fixture
 ownership returned to parent. This closes the assigned bounded visual acceptance
 batch for `d44c4cdf`; delivery/merge/deployment and native coverage are separate.
+
+
+## Paired-editor targeted batch — `09d17c2c` (interrupted for correction)
+
+Resumed after parent reports66/66, types and desktop build, with host writes
+finished. Wide web LaTeX now places sourceLEFT (x540,width408) and NoteRIGHT
+(x964,width408). Actual visible PDF contains the synthetic short article text;
+it is not blank/loading/error. The short text on an almost-empty page explains
+the apparently blank appearance, without resolving editing usability by itself.
+Proof: `/private/tmp/orbyn-adr004-paired-latex-light-wide.jpg`.
+
+Direct Block3→Edit text now displays code and the same PDF side by side rather
+than hiding it. However, **DW-V5**: using PDF Next page/Zoom while editing blurs
+the source field and immediately closes the editor/pair. AX Edit block3
+vanishes; only rendered PDF remains. Reopened the editor with page2/zoom already
+selected to capture `/private/tmp/orbyn-adr004-inline-pair-light-wide.jpg`.
+No source/content mutation was made during this batch. Builder confirmed source
+onBlur calls Done for iframe focus, and requested immediate handoff for a
+correction retaining code edits until explicit Done/Escape (normal prose blur
+unchanged). Per that hold, no superseded state/save test or Expo batch ran.
+These are still unperformed on the paired-editor candidate, not promoted from
+previous layout evidence. Fixture handed back before product edits.
+
+
+### DW-V5 corrected / DW-V6 transition finding — `6673f912`
+
+After formal handback and host-write completion, actual PDF Previous→Next→Zoom
+while direct code editing left Edit block3 visible. Appended one harmless source
+comment; autosave reached Saved and recompiled. Page2 retained with exact same
+paired-layout canvas468×661.8828125px before/after. DW-V5 is closed for this actual
+web path. Proof `/private/tmp/orbyn-adr004-fixed-inline-pair-light-wide.jpg`.
+
+Parent additionally requested the direct active-inline→LaTeX transition. **DW-V6
+reproduced:** switching format leaves both visible source editors. DOM shows
+LaTeX sourceLEFT408px and Edit block3 inside NoteRIGHT156px, creating a nested
+source/PDF split within the Note half. Screenshot:
+`/private/tmp/orbyn-adr004-duplicate-source-transition.jpg`. This materially
+crowds the preview and creates duplicate edit surfaces. Per the parent instruction,
+held further actions and handed fixture back for correction; remaining Expo,
+phone stack/source-hide and prose checks have not run on this superseded pair
+candidate. The harmless comment is saved, no content discarded.
+
+
+### Single-source correction / remaining Expo flow — `8cde9352`
+
+Formal handback `41fb7890` reports57/57 and both client types; no host writes.
+**DW-V6 closed web:** switching the still-active inline code editor to LaTeX
+removed Edit block3, leaving only the format LaTeX source. SourceLEFT408px,
+NoteRIGHT408px; Hide source restored ordinary Note. Clean final format proof:
+`/private/tmp/orbyn-adr004-final-paired-latex-light-wide.jpg`.
+
+Wide Expo at1440 displays direct sourceLEFT and same PDFRIGHT within the760px
+Note column. Actual PDF Next/Zoom leaves source visible. Appended harmless
+`% expo paired state retained`; Saved/recompiled retained page2 and exact
+405×572.78125px same-pair canvas before/after. At320 pair stacks source abovePDF,
+source/iframe bothx16,width240, page scrollWidth320 equals viewport320; no
+horizontal loss. Block3 sheet→Done works. LaTeX source mode uses its existing
+single-pane phone treatment; Hide source returns Note with page2 retained.
+Ordinary prose click replaces its rendered line with one Edit block1 field,
+without a duplicate copy; Done returns it normally. No prose mutation made.
+
+**DW-V7 presentation finding:** Expo paired source field is only52px high,
+scrollHeight234 (wide348px source) and shows about2lines beside a tall PDF. At320
+it remains52px high,width240. This unnecessarily limits source context while a
+large paired area is available. Proof:
+`/private/tmp/orbyn-adr004-final-inline-pair-dark-expo-wide.jpg`.
+Builder accepted correction to size only paired code source240px while ordinary
+prose remains natural. Per hold, functional flows above are complete and retained;
+only targeted paired source height/internal-scroll visual remains. Fixture handed
+back, no further product/UI changes by this worker.
+
+
+### Final DW-V7 closure — `94a56717`
+
+Resumed only the targeted Expo source-height check after parent handback:
+Tester7/7 and mobile types passed, desktop unchanged, host writes complete.
+At1440dark actual paired source measures348×240px, clientHeight240,
+scrollHeight260 and overflow auto. A native pointer scroll moved internal
+scrollTop from0 to20 and exposed the final existing comment without increasing
+editor height. No extra source text or test draft was needed. At320 actual input
+is240×240px, scrollHeight286; document scrollWidth320 equals viewport320. Source
+stacks above the same visible PDF without horizontal loss. Returned via Done.
+
+DW-V7 is closed. Final actual paired proof:
+`/private/tmp/orbyn-adr004-final-paired-source-height-dark-wide.jpg` and
+`/private/tmp/orbyn-adr004-final-paired-source-height-dark-320.jpg`.
+
+All retained functional results (PDF navigation/save/zoom, source ownership,
+format Hide source, normal prose replacement) remain valid and were not rerun as
+a new sweep. Historical DW-V5/DW-V6/DW-V7 failures remain above. The assigned
+paired-editor batch is complete with no remaining blocking finding in scope.
+Temporary viewport/device metrics reset; online tabs preserved; fixture returned
+to parent. No new content edits, external calls, security scan or native result.
