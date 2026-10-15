@@ -31,6 +31,9 @@
   --control-fs: 15px;
   --control-fs-sm: 13px;
   --control-pad-x: 12px;
+  --button-h: 32px;
+  --button-fs: 13px;
+  --button-line-h: 20px;
 }
 @media (max-width: 640px), (pointer: coarse) {
   :root {
@@ -38,6 +41,8 @@
     --control-h-sm: 36px;
     --control-fs: 16px;
     --control-fs-sm: 16px;
+    --button-h: 44px;
+    --button-fs: 15px;
   }
 }
 * {
@@ -62,6 +67,8 @@ select {
   font-size: var(--control-fs);
 }
 button {
+  font-size: var(--button-fs);
+  line-height: var(--button-line-h);
   cursor: pointer;
   transition:
     background-color var(--motion-fast) var(--ease-out),
@@ -74,8 +81,7 @@ button {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
-  padding: 8px 12px;
-  line-height: 1.4;
+  padding: 5px 10px;
 }
 :where(button:not(:disabled):hover) {
   background: var(--color-surfaceMuted);
@@ -431,6 +437,8 @@ nav button i,
   font-size: 11px;
 }
 .icon-button {
+  min-height: var(--button-h);
+  min-width: var(--button-h);
   border: 0;
   background: transparent;
   padding: 6px;
@@ -475,13 +483,14 @@ nav button i,
 }
 .primary,
 .secondary {
+  min-height: var(--button-h);
   border-radius: var(--radius-sm);
-  padding: 11px 17px;
+  padding: 5px 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--button-fs);
   font-weight: 500;
 }
 .primary {
@@ -497,15 +506,17 @@ nav button i,
   border: 1px solid var(--color-border);
 }
 .text-button {
+  min-height: var(--button-h);
+  border-radius: var(--radius-sm);
   border: 0;
   background: none;
-  font-size: 13px;
+  font-size: var(--button-fs);
   font-weight: 500;
   color: var(--color-textMuted);
   display: inline-flex;
   gap: 7px;
   align-items: center;
-  padding: 7px 0;
+  padding: 6px 8px;
 }
 /* Links used as controls share the same appearance as button controls. */
 a:is(.primary, .secondary, .text-button) {
@@ -1129,6 +1140,8 @@ footer svg {
   margin-top: 18px;
 }
 .danger {
+  min-height: var(--button-h);
+  line-height: var(--button-line-h);
   margin-right: auto;
   border: 0;
   background: none;
@@ -1136,7 +1149,7 @@ footer svg {
   display: flex;
   gap: 7px;
   align-items: center;
-  font-size: 11px;
+  font-size: var(--button-fs);
 }
 .auth-page {
   display: flex;
@@ -1849,10 +1862,12 @@ footer svg {
 }
 .danger-text,
 .link-button {
+  min-height: var(--button-h);
+  line-height: var(--button-line-h);
   border: 0;
   background: none;
   padding: 4px 0;
-  font-size: 11px;
+  font-size: var(--button-fs);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2220,22 +2235,23 @@ footer svg {
 }
 .segmented {
   display: inline-flex;
-  padding: 3px;
+  padding: 1px;
   gap: 2px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--color-surfaceMuted);
 }
 .segmented button {
+  min-height: calc(var(--button-h) - 4px);
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
+  padding: 4px 10px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-textSoft);
-  font-size: 13px;
+  font-size: var(--button-fs);
   font-weight: 500;
 }
 .segmented button.active {
@@ -3629,7 +3645,6 @@ input[type="number"]::-webkit-outer-spin-button {
     height: 32px;
   }
   .pboard-toggle button,
-  .segmented button,
   .stage-name {
     min-height: 36px;
   }
@@ -3758,12 +3773,12 @@ input[type="number"]::-webkit-outer-spin-button {
   color: var(--color-warn);
 }
 .app-banner .secondary {
-  min-height: 44px;
+  min-height: var(--button-h);
   font-size: 13px;
 }
 .app-banner .icon-button {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }
 .toast {
   animation: none;
@@ -3849,7 +3864,7 @@ dialog.confirm-backdrop::backdrop {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 44px;
+  min-height: var(--button-h);
   padding: 8px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -3942,7 +3957,6 @@ footer {
   .tag-chip.toggle,
   .up-next-title,
   .pboard-toggle button,
-  .segmented button,
   .stage-name,
   .tabs button,
   .filter-chips button,
@@ -4039,7 +4053,7 @@ footer {
   gap: 8px;
 }
 .team-detail .team-settings > button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 
 .team-member-search {

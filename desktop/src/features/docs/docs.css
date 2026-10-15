@@ -853,7 +853,7 @@ h6.doc-heading {
   color: var(--color-text);
   font: inherit;
   font-size: 13px;
-  min-height: 44px;
+  min-height: var(--button-h);
   overflow-wrap: anywhere;
   text-align: left;
   cursor: pointer;
@@ -1525,7 +1525,7 @@ h6.doc-heading {
   box-shadow: 0 6px 18px var(--color-backdrop);
 }
 .doc-download-menu button {
-  min-height: 44px;
+  min-height: var(--button-h);
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1803,7 +1803,7 @@ h6.doc-heading {
   display: flex;
   align-items: center;
   gap: 8px;
-  min-height: 40px;
+  min-height: var(--button-h);
   width: 100%;
   padding: 8px;
   border: 0;
@@ -1975,7 +1975,7 @@ h6.doc-heading {
 }
 .docs-workspace .doc-star {
   min-width: 40px;
-  min-height: 44px;
+  min-height: var(--button-h);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2003,7 +2003,7 @@ h6.doc-heading {
   overflow-wrap: anywhere;
 }
 .docs-move-menu .doc-menu-item {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .docs-move-menu .doc-menu-item span {
   flex: 1;
@@ -2395,7 +2395,7 @@ h6.doc-heading {
   align-items: center;
   justify-content: center;
   min-width: 40px;
-  min-height: 44px;
+  min-height: var(--button-h);
   padding: 8px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -2998,7 +2998,7 @@ h6.doc-heading {
   display: block;
   width: 100%;
   padding: 8px;
-  min-height: 44px;
+  min-height: var(--button-h);
   border: 0;
   border-left: 2px solid transparent;
   border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
@@ -3856,7 +3856,7 @@ input.doc-image-caption:focus {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  min-height: 44px;
+  min-height: var(--button-h);
   padding: 6px 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
@@ -4262,7 +4262,7 @@ input.doc-image-caption:focus {
 .docs-workspace.is-compact > .docs-nav-toggle {
   display: inline-flex;
   justify-self: start;
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .docs-workspace.is-compact > .docs-navigation {
   display: none;
@@ -4273,7 +4273,7 @@ input.doc-image-caption:focus {
   display: block;
 }
 .docs-workspace.is-compact .docs-navigation :is(button, summary) {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .docs-workspace.is-compact .docs-library-show,
 .docs-workspace.is-compact .docs-library-hide {
@@ -4308,7 +4308,7 @@ input.doc-image-caption:focus {
   white-space: pre-wrap;
 }
 .doc-chat-source {
-  min-height: 44px;
+  min-height: var(--button-h);
   overflow-wrap: anywhere;
 }
 .doc-history-item,
@@ -4337,7 +4337,7 @@ input.doc-image-caption:focus {
   border-radius: var(--radius-sm);
 }
 .doc-comment-actions button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .doc-comment-actions .is-danger {
   color: var(--color-danger);
@@ -4348,14 +4348,14 @@ input.doc-image-caption:focus {
   overflow-wrap: anywhere;
 }
 .original-actions > summary {
-  min-height: 44px;
+  min-height: var(--button-h);
   align-content: center;
   cursor: pointer;
   color: var(--color-textSoft);
   font-size: 13px;
 }
 .original-actions button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 
 /* Proposal contents stay intact while their metadata reflows. */
@@ -4376,7 +4376,7 @@ input.doc-image-caption:focus {
 
 /* Link context is useful content, including in a narrow margin. */
 .linked-here-row {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .linked-here-head {
   flex-wrap: wrap;
@@ -4400,7 +4400,7 @@ input.doc-image-caption:focus {
 .doc-outline li button.doc-outline-move {
   flex: none;
   width: 44px;
-  min-height: 44px;
+  min-height: var(--button-h);
   padding: 8px;
 }
 .page-info,
@@ -4419,7 +4419,7 @@ input.doc-image-caption:focus {
   overflow-wrap: anywhere;
 }
 .page-info-space summary {
-  min-height: 44px;
+  min-height: var(--button-h);
   display: list-item;
   padding-block: 10px;
   cursor: pointer;
@@ -4452,7 +4452,7 @@ input.doc-image-caption:focus {
 }
 .link-card-head .link-pill-tick {
   min-width: 44px;
-  min-height: 44px;
+  min-height: var(--button-h);
   justify-content: center;
   flex: none;
 }
@@ -4500,12 +4500,12 @@ input.doc-image-caption:focus {
 }
 .doc-table-bar .icon-button {
   width: 44px;
-  height: 44px;
+  height: var(--button-h);
   flex: none;
 }
 .doc-callout-fold {
   min-width: 44px;
-  min-height: 44px;
+  min-height: var(--button-h);
   align-items: center;
   justify-content: center;
 }
@@ -4537,7 +4537,7 @@ input.doc-image-caption:focus {
 .doc-embed-head .text-button,
 .doc-diagram-toolbar button,
 .doc-code-toolbar button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 dialog.image-viewer {
   width: 100vw;

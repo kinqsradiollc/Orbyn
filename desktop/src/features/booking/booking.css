@@ -1244,8 +1244,8 @@
 }
 .booking-page-editor .question-tools .icon-button,
 .booking-page-editor .hours-range .icon-button {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }
 .booking-page-editor .routing-rule > .select {
   flex: 1 1 160px;
@@ -1352,8 +1352,8 @@
   overflow-y: auto;
 }
 .booking-page-editor .routing-rule > .icon-button {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }
 .booking-page-editor .cohost-list label {
   overflow-wrap: anywhere;

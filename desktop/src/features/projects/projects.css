@@ -1649,7 +1649,7 @@
 .milestone-name,
 .milestone-more button,
 .milestone-tasks .check-line {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .milestone-native-dialog {
   padding: 0;
@@ -1764,7 +1764,7 @@
 }
 .project-record-source,
 .project-record-actions button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .project-record-dialog .project-record-form-bottom {
   display: flex;
@@ -1827,7 +1827,7 @@ dialog.templates-dialog::backdrop {
   overflow-wrap: anywhere;
 }
 .promise-tracker-actions button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 
 /* Project navigation follows the actual content pane, including side previews. */
@@ -1887,7 +1887,7 @@ dialog.templates-dialog::backdrop {
 .project-home-actions > button,
 .project-home-section .text-button,
 .project-history-entry > .text-button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .pboard-card:not([draggable="true"]) {
   cursor: pointer;
@@ -1973,8 +1973,8 @@ dialog.templates-dialog::backdrop {
   overflow-wrap: anywhere;
 }
 .new-project-stages li .icon-button {
-  min-height: 44px;
-  min-width: 44px;
+  min-height: var(--button-h);
+  min-width: var(--button-h);
 }
 .new-project-body .segmented {
   flex-wrap: wrap;

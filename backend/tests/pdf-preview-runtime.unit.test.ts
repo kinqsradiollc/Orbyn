@@ -77,11 +77,16 @@ test("isolated PDF renderer gates messages, preserves page and zoom, and exposes
     clearTimeout,
     atob,
   });
-  const send = (id: number, data = "JVBERi1zeW50aGV0aWM=") =>
+  const send = (
+    id: number,
+    data = "JVBERi1zeW50aGV0aWM=",
+    controls = "touch",
+  ) =>
     handlers.message({
       source: win.parent,
       data: JSON.stringify({
         type: "orbyn-pdf",
+        controls,
         id,
         data,
         palette: { text: "test-color" },
@@ -109,6 +114,26 @@ test("isolated PDF renderer gates messages, preserves page and zoom, and exposes
     doc.querySelector<HTMLButtonElement>('[data-action="in"]')!.click();
     await settle();
     const zoomWidth = widths.at(-1)!;
+    const previousRequests = requests.length;
+    await send(1, "JVBERi1zeW50aGV0aWM=", "compact");
+    assert.equal(
+      doc.documentElement.style.getPropertyValue("--control-h"),
+      "32px",
+    );
+    assert.equal(
+      requests.length,
+      previousRequests,
+      "control sizing must not reload the PDF",
+    );
+    assert.equal(pages.at(-1), 2);
+    assert.equal(widths.at(-1), zoomWidth);
+    await send(1);
+    assert.equal(
+      doc.documentElement.style.getPropertyValue("--control-h"),
+      "44px",
+    );
+    assert.equal(requests.length, previousRequests);
+
     await send(2, "JVBERi1uZXc=");
     await settle();
     assert.equal(pages.at(-1), 2);

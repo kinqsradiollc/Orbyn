@@ -111,8 +111,8 @@
   overflow-wrap: anywhere;
 }
 .peek-actions .icon-button {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }
 @media (max-width: 420px) {
   .peek-body {

@@ -1023,7 +1023,7 @@
   font-size: 13px;
 }
 .view-cell-recovery .link-button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 
 fieldset.view-menu {

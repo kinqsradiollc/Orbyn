@@ -49,7 +49,7 @@
   margin: 0;
 }
 .structured-doc-source-head button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 @container (max-width:760px) {
   .structured-doc-split-button {
@@ -185,7 +185,7 @@
   }
   .structured-doc-pane-switch button {
     min-width: 88px;
-    min-height: 40px;
+    min-height: var(--button-h);
     padding: 6px 12px;
     border: 0;
     border-radius: var(--radius-sm);
@@ -225,7 +225,7 @@
   }
   .structured-doc-toolbar > button,
   .structured-doc-menu > button {
-    min-height: 40px;
+    min-height: var(--button-h);
     padding-inline: 10px;
   }
 }
@@ -234,12 +234,12 @@
   font-size: 24px;
   overflow-wrap: anywhere;
 }
-.structured-doc-toolbar button,
+.structured-doc-toolbar > button,
 .structured-doc-menu-items button,
 .structured-doc-history-head button,
 .structured-doc-history ol button,
 .structured-doc-edit {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .structured-doc-history-head {
   flex-wrap: wrap;
@@ -266,7 +266,7 @@
     line-height: 24px;
   }
   .structured-doc-pane-switch button {
-    min-height: 44px;
+    min-height: var(--button-h);
   }
 }
 

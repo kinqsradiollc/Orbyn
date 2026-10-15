@@ -392,7 +392,7 @@
   color: var(--muted);
 }
 .status-more .text-button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .status-dot {
   flex: none;
@@ -568,8 +568,8 @@
   flex: 1 1 200px;
 }
 .status-banner .icon-button {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }
 .status-main > .eyebrow {
   text-transform: none;
@@ -613,6 +613,6 @@
 }
 .status-nav .primary,
 .status-nav .text-button {
-  min-height: 44px;
+  min-height: var(--button-h);
   font-size: 13px;
 }

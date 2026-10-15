@@ -530,7 +530,7 @@
 .home-row,
 .home-hub-pick button,
 .home-companions-actions button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .home-hub-dialog {
   width: min(560px, calc(100vw - 24px));
@@ -556,8 +556,8 @@
   flex: 1 1 160px;
 }
 .home-hub-edit-list .icon-button {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }
 .home-hub-add > * {
   flex: 1 1 160px;

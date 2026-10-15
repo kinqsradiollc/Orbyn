@@ -22,7 +22,7 @@
   color: var(--color-muted);
   font-size: 11px;
   padding: 8px;
-  min-height: 44px;
+  min-height: var(--button-h);
   border-radius: var(--radius-pill);
   cursor: pointer;
 }

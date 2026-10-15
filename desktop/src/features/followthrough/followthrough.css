@@ -340,7 +340,7 @@
 .ask-actions button,
 .proof-actions button,
 .progress-controls button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .welcome-back,
 .asks-panel {

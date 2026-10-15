@@ -145,7 +145,7 @@ dialog.scope-dialog {
   overflow-wrap: anywhere;
 }
 .scope-options .secondary {
-  min-height: 44px;
+  min-height: var(--button-h);
   white-space: normal;
 }
 .scope-options small {

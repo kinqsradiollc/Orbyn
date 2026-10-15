@@ -10,7 +10,8 @@ export function DocumentPdfPreview({
 }) {
   const frame = useRef<HTMLIFrameElement>(null),
     latest = useRef<string | null>(null),
-    sequence = useRef(0);
+    sequence = useRef(0),
+    controlMode = useRef("");
   const [html, setHtml] = useState("");
   const [loadError, setLoadError] = useState("");
   const [readError, setReadError] = useState("");
@@ -61,6 +62,11 @@ export function DocumentPdfPreview({
     if (!latest.current) return;
     const request = JSON.parse(latest.current),
       style = getComputedStyle(document.documentElement);
+    request.controls =
+      style.getPropertyValue("--button-h").trim() === "32px"
+        ? "compact"
+        : "touch";
+    controlMode.current = request.controls;
     request.palette = Object.fromEntries(
       ["surface", "text", "muted", "border"].map((key) => [
         key,
@@ -75,7 +81,23 @@ export function DocumentPdfPreview({
       attributes: true,
       attributeFilter: ["class", "data-theme", "style"],
     });
-    return () => observer.disconnect();
+    const pointer = window.matchMedia("(pointer: coarse)");
+    const resize = () => {
+      const mode =
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--button-h")
+          .trim() === "32px"
+          ? "compact"
+          : "touch";
+      if (mode !== controlMode.current) send();
+    };
+    window.addEventListener("resize", resize);
+    pointer.addEventListener("change", resize);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", resize);
+      pointer.removeEventListener("change", resize);
+    };
   }, []);
   return (
     <div className="document-pdf-preview">

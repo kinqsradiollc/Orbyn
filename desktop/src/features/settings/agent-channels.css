@@ -82,7 +82,7 @@
   container-name: agent-channel;
 }
 .agent-channel-actions :is(button, a) {
-  min-height: 44px;
+  min-height: var(--button-h);
   overflow-wrap: anywhere;
 }
 @container agent-channel (max-width: 440px) {

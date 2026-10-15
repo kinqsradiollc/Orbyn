@@ -223,3 +223,14 @@ primary, secondary, text and icon styles remain the intended component choices.
 Feature styles retain their overrides. Structured document toolbar, block,
 history and source actions explicitly use shared classes. Audit nested actions
 as well as page headers; unclassified actions must not fall back to browser chrome.
+
+### Compact action sizing — owner correction
+
+Routine desktop actions share a 32px minimum height, 13px label and 20px line box.
+Primary, secondary, text and icon controls use that same sizing contract. A
+segmented group's outer height matches adjacent buttons; its internal choices
+account for the group's border/padding. Phone/coarse-pointer controls retain 44px
+targets with 15px labels. Long labels may wrap and grow; do not clip them to force
+an exact height. Public hero/consent, Focus and presentation controls keep their
+purposeful larger layouts. Replace unconditional per-feature 44px action overrides
+with the shared token so mouse layouts are compact and touch targets remain usable.

@@ -208,7 +208,7 @@
   min-height: 44px;
 }
 .review-actions button {
-  min-height: 44px;
+  min-height: var(--button-h);
   white-space: normal;
 }
 .review-change-head input {

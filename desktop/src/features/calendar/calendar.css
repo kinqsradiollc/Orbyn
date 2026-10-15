@@ -1642,8 +1642,8 @@
 }
 .schedule-item > .icon-button {
   flex-shrink: 0;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }
 
 /* Planner prioritizes its preview action and discloses tuning options. */
@@ -1719,7 +1719,7 @@
   flex: 1 1 160px;
 }
 .review-group .link-button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .plan-task-check strong,
 .plan-task-check small {
@@ -1731,8 +1731,8 @@
 }
 .plan-keepfree li > button {
   flex-shrink: 0;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }
 @container planner-pane (max-width: 340px) {
   .planner-fields,

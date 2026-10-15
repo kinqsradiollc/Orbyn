@@ -124,6 +124,6 @@
   overflow-wrap: anywhere;
 }
 .mates-legend .text-button {
-  min-height: 44px;
+  min-height: var(--button-h);
   padding: 0 8px;
 }

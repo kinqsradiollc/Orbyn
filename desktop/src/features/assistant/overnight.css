@@ -35,7 +35,7 @@
   gap: 8px;
 }
 .overnight-actions button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .overnight-sources {
   display: grid;
@@ -44,7 +44,7 @@
 }
 .overnight-sources button {
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--button-h);
   max-width: 100%;
   justify-content: flex-start;
   text-align: left;

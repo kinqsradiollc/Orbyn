@@ -195,6 +195,6 @@
 }
 .wp-list .icon-button {
   flex-shrink: 0;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }

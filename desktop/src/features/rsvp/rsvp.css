@@ -53,7 +53,7 @@
   flex-wrap: wrap;
 }
 .rsvp-answers button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .rsvp-facts svg {
   color: var(--color-muted);

@@ -239,5 +239,5 @@
 }
 .storage-actions button,
 .storage-delete {
-  min-height: 44px;
+  min-height: var(--button-h);
 }

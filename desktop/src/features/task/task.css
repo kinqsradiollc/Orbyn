@@ -634,7 +634,7 @@ button.step-title {
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 92px), 1fr));
 }
 .status-picker button {
-  min-height: 44px;
+  min-height: var(--button-h);
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -675,7 +675,7 @@ button.step-title {
   content: "−";
 }
 .step-actions.icon-button {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
   flex: none;
 }

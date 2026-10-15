@@ -121,7 +121,7 @@ dialog.recorder {
 .recorder-actions button,
 .recorder .icon-button,
 .recorder-actions-list button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .recorder-actions-list li {
   flex-wrap: wrap;

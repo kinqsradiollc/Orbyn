@@ -190,3 +190,28 @@ for a retained valid draft, with concise transport-error copy.23/23 focused
 development tests passed, including failure→retry without a new edit, invalid
 source refusal and conflicting-draft preservation. Formal qualification and an
 actual V15 recovery recheck remain required.
+
+## V16 — owner correction: oversized, inconsistent actions
+
+The owner rejected the earlier button fix's density. It removed browser styling
+but retained inconsistent per-feature sizes. Routine actions now share32px desktop
+and44px phone/coarse-pointer minimums,13px/15px labels and a20px line box. Segmented
+controls include their border/padding in the outer size. The source audit replaced
+56 unconditional routine action rules in28 stylesheets, plus named document
+menu/source actions. Public hero/consent, Focus and presentation controls retain
+their deliberate larger layouts. Long values can wrap and grow.
+
+The owned PDF renderer receives a bounded compact/touch control mode from its
+parent. Theme/size updates happen before its unchanged-document return and do
+not reload the PDF or reset page/zoom. Desktop resends on an actual size-mode
+change, rather than every resize event. Expo/native default to touch sizing.
+Both generated assets are updated. Mobile PDF download text uses the13px scale.
+No environment variable or migration changes.
+
+The first expanded development batch passed54/58: one new size-token allowlist
+needed updating, an earlier mobile PDF download used14px off the shared scale,
+and two source assertions depended on old whitespace/exact rail callback text.
+Those failures remain in the private TAP. The corrected batch passed65/65 across
+button fallback/sizing, editor modes, redesign controls, workspace layout,
+typography, settings grid, PDF runtime and canonical viewer tests. Actual density,
+size comparison, touch recheck and formal qualification remain required.

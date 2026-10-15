@@ -1123,7 +1123,7 @@
 }
 .arrange-row .icon-button {
   width: 44px;
-  min-height: 44px;
+  min-height: var(--button-h);
   flex: none;
 }
 .shortcut-row {
@@ -1140,7 +1140,7 @@
   flex-wrap: wrap;
 }
 .shortcut-actions button {
-  min-height: 44px;
+  min-height: var(--button-h);
   white-space: normal;
 }
 
@@ -1166,8 +1166,8 @@ dialog.settings-editor::backdrop {
 }
 .settings-editor .section-heading .icon-button {
   flex: none;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: var(--button-h);
+  min-height: var(--button-h);
 }
 .settings-editor-body {
   padding: 0 16px 16px;

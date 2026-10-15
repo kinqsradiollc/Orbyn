@@ -1767,7 +1767,7 @@ kbd {
   flex-shrink: 0;
 }
 .popover-actions button {
-  min-height: 44px;
+  min-height: var(--button-h);
   overflow-wrap: anywhere;
 }
 .popover-help .popover-note {
@@ -1799,7 +1799,7 @@ kbd {
   max-width: 100%;
   white-space: normal;
   overflow-wrap: anywhere;
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 
 /* Board content remains legible inside a narrowed workspace pane. */

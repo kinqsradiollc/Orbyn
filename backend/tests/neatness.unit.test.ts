@@ -55,6 +55,7 @@ const ON_SCALE = new Set(TYPE_SCALE.map((n) => `${n}px`));
 const FIELD_SIZES = new Set([
   "var(--control-fs)",
   "var(--control-fs-sm)",
+  "var(--button-fs)",
   "max(15px, var(--control-fs))",
   "inherit",
   "0",
@@ -75,7 +76,9 @@ test("every font size in the web's styles is on the scale", () => {
     ))
       if (!ON_SCALE.has(m[1]))
         off.push(`${file}:${lineOf(css, m.index!)} font ${m[1]}`);
-    for (const m of css.matchAll(/--control-fs(?:-sm)?:\s*([^;]+);/g))
+    for (const m of css.matchAll(
+      /--(?:control-fs(?:-sm)?|button-fs):\s*([^;]+);/g,
+    ))
       if (!ON_SCALE.has(m[1].trim()) && m[1].trim() !== "16px")
         off.push(`${file}:${lineOf(css, m.index!)} ${m[0]}`);
   }
@@ -270,7 +273,7 @@ test("the page editor keeps handles out of sight and lines readable", () => {
   const wide = editor.match(/const WIDE_BLOCKS = [^;]*;/)?.[0] ?? "";
   for (const type of ["table", "code", "math", "image"])
     assert.match(wide, new RegExp(`"${type}"`), type);
-  assert.match(editor, /WIDE_BLOCKS\.has\(block\.type\) \? " is-wide"/);
+  assert.match(editor, /WIDE_BLOCKS\.has\(block\.type\)\s*\? " is-wide"/);
 });
 
 // -------------------------------------------------------------- toast ---

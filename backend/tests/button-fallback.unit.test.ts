@@ -1,6 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { createRequire } from "node:module";
 import ts from "typescript";
 const require = createRequire(
@@ -22,7 +24,7 @@ test("unclassified buttons get themed defaults while feature classes keep contro
   try {
     const buttons = dom.window.document.querySelectorAll("button");
     assert.equal(dom.window.getComputedStyle(buttons[0]).appearance, "none");
-    assert.equal(dom.window.getComputedStyle(buttons[0]).padding, "8px 12px");
+    assert.equal(dom.window.getComputedStyle(buttons[0]).padding, "5px 10px");
     assert.equal(dom.window.getComputedStyle(buttons[1]).padding, "2px");
     assert.equal(dom.window.getComputedStyle(buttons[1]).borderRadius, "20px");
   } finally {
@@ -59,4 +61,82 @@ test("every structured editor button explicitly uses an app action class", () =>
   }
   walk(source);
   assert.ok(count > 15);
+});
+
+test("desktop actions share compact sizing and touch controls keep their target", () => {
+  const css = readFileSync(
+    new URL("../../desktop/src/styles/global.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(css, /--button-h: 32px/);
+  assert.match(css, /--button-h: 44px/);
+  for (const selector of [
+    ".primary,\n.secondary",
+    ".text-button",
+    ".icon-button",
+  ])
+    assert.ok(css.includes(selector + " {\n  min-height: var(--button-h)"));
+  assert.match(
+    css,
+    /\.segmented button \{\n  min-height: calc\(var\(--button-h\) - 4px\)/,
+  );
+  const doc = readFileSync(
+    new URL(
+      "../../desktop/src/features/docs/structured-doc-editor.css",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.doesNotMatch(doc, /min-height: (?:40|44)px/);
+  assert.ok(
+    !doc.includes(".structured-doc-toolbar button,"),
+    "mode members must not get a second surrounding height",
+  );
+});
+
+test("routine action overrides use the shared size rather than desktop touch minimums", () => {
+  const postcss = require("postcss");
+  const root = fileURLToPath(new URL("../../desktop/src", import.meta.url));
+  const violations: string[] = [];
+  function visit(dir: string) {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        visit(path);
+        continue;
+      }
+      if (
+        !path.endsWith(".css") ||
+        /features\/(home|legal|focus|present)\//.test(path)
+      )
+        continue;
+      postcss.parse(readFileSync(path, "utf8")).walkRules((rule: any) => {
+        if (
+          !/(button|\.primary|\.secondary|\.text-button|\.icon-button)/.test(
+            rule.selector,
+          )
+        )
+          return;
+        for (let owner = rule.parent; owner; owner = owner.parent)
+          if (
+            owner.type === "atrule" &&
+            owner.name === "media" &&
+            /(pointer|width)/.test(owner.params)
+          )
+            return;
+        rule.walkDecls((decl: any) => {
+          if (
+            (["min-height", "height"].includes(decl.prop) &&
+              /^(40|44)px$/.test(decl.value)) ||
+            (decl.prop === "min-width" && decl.value === "44px")
+          )
+            violations.push(
+              `${path}:${decl.source.start.line} ${rule.selector}`,
+            );
+        });
+      });
+    }
+  }
+  visit(root);
+  assert.deepEqual(violations, []);
 });

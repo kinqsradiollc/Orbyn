@@ -242,7 +242,7 @@
   gap: 14px;
   text-align: left;
   min-width: 0;
-  min-height: 44px;
+  min-height: var(--button-h);
   padding: 8px 12px;
   line-height: 1.4;
   border: 0;
@@ -1209,7 +1209,7 @@
 }
 .ai-changes-links .link-button {
   font-size: 13px;
-  min-height: 44px;
+  min-height: var(--button-h);
   padding: 4px 0;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -1217,7 +1217,7 @@
 }
 .ai-changes > .link-button {
   justify-self: start;
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 
 /* Conversation surfaces retain the shared message styling. */

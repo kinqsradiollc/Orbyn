@@ -16,7 +16,9 @@ test("desktop rail and mobile drawer controls reference the same accessible navi
     source("components/Topbar.tsx"),
     source("components/Sidebar.tsx"),
   ]);
-  assert.ok(app.includes("onToggleRail={toggleRail}"));
+  assert.ok(
+    app.includes("onToggleRail={sharedChromeHost ? undefined : toggleRail}"),
+  );
   assert.ok(app.includes("navigationOpen={mobileNav}"));
   assert.ok(top.includes('aria-controls="workspace-navigation"'));
   assert.ok(top.includes("aria-expanded={navigationOpen}"));

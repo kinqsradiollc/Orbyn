@@ -559,7 +559,7 @@
 .db-mode button,
 .db-table-list button,
 .db-check {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .db-editor label {
   overflow-wrap: anywhere;

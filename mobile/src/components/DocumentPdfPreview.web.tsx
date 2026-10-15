@@ -66,6 +66,7 @@ export function DocumentPdfPreview({
   const send = () => {
     if (!latest.current) return;
     const request = JSON.parse(latest.current);
+    request.controls = "touch";
     request.palette = {
       surface: colors.surface,
       text: colors.text,
@@ -111,7 +112,7 @@ export function DocumentPdfPreview({
           minHeight: 44,
           padding: 8,
           color: colors.accent,
-          fontSize: 14,
+          fontSize: 13,
           fontFamily: fonts.regular,
           textDecoration: "none",
         }}

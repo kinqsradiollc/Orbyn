@@ -133,7 +133,7 @@
   cursor: pointer;
 }
 .page-maintenance details button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .page-maintenance-run strong,
 .page-maintenance-run small,

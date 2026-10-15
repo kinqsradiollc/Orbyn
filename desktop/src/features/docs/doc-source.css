@@ -54,7 +54,7 @@
 }
 
 .doc-source-jump {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 @media (max-width: 700px) {
   .doc-source-dialog {
@@ -112,8 +112,8 @@
   overflow-wrap: anywhere;
 }
 .doc-source-ask summary {
-  min-height: 44px;
-  padding: 12px 0;
+  min-height: var(--button-h);
+  padding: 6px 0;
   cursor: pointer;
 }
 
@@ -253,7 +253,7 @@
   height: clamp(360px, calc(100dvh - 280px), 800px);
 }
 .doc-source-view > .secondary {
-  min-height: 36px;
+  min-height: var(--button-h);
 }
 @media (pointer: coarse) {
   .doc-source-view > .secondary {

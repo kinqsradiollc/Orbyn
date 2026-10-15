@@ -273,7 +273,7 @@ dialog.whats-new {
 .whats-new .icon-button,
 .whats-new-foot button,
 .changelog-filter button {
-  min-height: 44px;
+  min-height: var(--button-h);
 }
 .changelog-jump {
   flex-wrap: wrap;

@@ -215,3 +215,11 @@ feature selectors may override it. Audit nested block actions, menu items,
 recovery buttons and source toolbars as well as the main page toolbar. A class
 name or source inventory is not rendered acceptance: inspect the affected actions
 in both themes and at the narrow task width in the agreed visual batch.
+
+Routine web actions use `--button-h`, `--button-fs` and `--button-line-h`:
+32px/13px/20px for desktop,44px/15px/20px for phone/coarse-pointer controls.
+Keep primary, secondary, text and icon actions aligned; segmented groups include
+border/padding in their outer height. Use the token for per-feature minimums,
+not unconditional44px overrides. Long labels can wrap; hero/presentation controls
+may be deliberately larger. Verify density as well as color before calling an
+action group consistent.

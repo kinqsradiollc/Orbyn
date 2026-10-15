@@ -108,6 +108,14 @@ async function receive(event) {
         `--${key}`,
         request.palette[key],
       );
+  document.documentElement.style.setProperty(
+    "--control-h",
+    request.controls === "compact" ? "32px" : "44px",
+  );
+  document.documentElement.style.setProperty(
+    "--control-fs",
+    request.controls === "compact" ? "13px" : "15px",
+  );
   if (unchanged) return;
   latest = request;
   await load();
