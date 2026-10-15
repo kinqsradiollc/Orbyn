@@ -3362,6 +3362,7 @@ function LegacyDocEditor({
                   ? (block) => {
                       if (block.id && "text" in block) {
                         setSourcePreview(null);
+                        setSourcePreview(null);
                         setSourceAsk({
                           blockId: block.id,
                           start: 0,

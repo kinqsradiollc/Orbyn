@@ -195,9 +195,10 @@
   gap: 12px;
   min-width: 0;
 }
-.doc-editor:has(> .doc-source-workspace) > :not(.doc-source-workspace),
+.doc-editor:has(> .doc-source-workspace)
+  > :not(.doc-source-workspace):not(dialog):not([role="dialog"]),
 .structured-doc-editor:has(> .doc-source-workspace)
-  > :not(.doc-source-workspace) {
+  > :not(.doc-source-workspace):not(dialog):not([role="dialog"]) {
   display: none;
 }
 .doc-source-workspace .doc-source-tools {
