@@ -3,7 +3,7 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: qualification of the visual correction batch. Review counter: 1/3.
+Phase: targeted visual closure of the qualified correction batch. Review counter: 1/3.
 Current product freeze: `d44c4cdf`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
@@ -101,3 +101,13 @@ regression (Popover is stubbed, not menu interaction proof). The title and Info
 checks assert parent wiring; actual rendered closure remains Visual Check's job.
 Tester qualification, targeted visual closure and final Reviewer acceptance are
 pending. No other product source/fixture writes will occur during that recheck.
+
+### Correction qualification and source review
+
+Tester `94188184` passed69/69 affected tests, desktop/mobile types and desktop
+production build on product freeze `d44c4cdf`. The same-round read-only Reviewer
+accepted this correction source with no additional actionable findings: the
+mobile title mirror excludes duplicate accessibility content, Finish targets a
+stable block, Info retains its reading permissions, and header rules adapt to
+container width. No tests/builds/browser actions or writes were performed by
+Reviewer. Final acceptance still awaits the actual targeted Visual closures.
