@@ -47,6 +47,12 @@ control cases all passed. Qualification remains partial: the final shared-web
 and Expo-web visual batch is still pending, and the mounted document controls
 did not exercise each full editor parent or API persistence.
 
+Latest status after the additional owner correction: the affected document
+source/store/mode/assistant/API suites pass 49/49 at source `f19566e9`; the full
+workspace typecheck passes at that source and the production build passes at
+the docs-only successor `e7f2439`. The final shared-web and Expo-web visual
+batch is still pending.
+
 ## Verification
 
 Workspace typecheck and build passed at `6b40a6eaf78da5d00b36f186005c629de273f082`,
@@ -239,12 +245,13 @@ appearance as unverified; the final visual pass should check this explicitly.
 - This Tester pass did not verify native iOS, Android, or desktop-app behavior;
   those builds remain excluded by the candidate scope.
 - Runtime checks above do not cover every redesign requirement. In particular,
-  multi-pane draft/scroll independence, full-editor proposal persistence,
-  Chat/Work browser rendering, broad route/deep-link draft retention, team
-  ownership/permission transitions, and the full Settings/Admin/public surface
-  matrix remain open for the appropriate automated or visual evidence. The
-  scoped API/unit tests for Chat/Work modes and import response-loss recovery
-  passed in the correction batch below; that does not establish full UI behavior.
+  rendered/browser acceptance for all editor modes and PDF appearance,
+  multi-pane draft/scroll independence, Chat/Work browser rendering, broad
+  route/deep-link draft retention, team ownership/permission transitions, and
+  the full Settings/Admin/public surface matrix remain open for the appropriate
+  visual or runtime evidence. The scoped API/unit tests for Chat/Work modes,
+  import response-loss recovery, document modes and assistant acceptance pass
+  at their recorded refs below; those checks do not establish rendered behavior.
 
 ## Final correction batch at 90305ece
 
@@ -312,6 +319,69 @@ were from this assigned worktree; the API command used the protected QA env
 file, whose `DATABASE_URL` and `TEST_DATABASE_URL` both resolved to
 `orbyn_test` and the test marker. The app opened the new workspace. The account
 identifier and password are omitted.
+
+## Owner-correction qualification at f19566e9
+
+The new frozen product source is `f19566e9f85fb70be43fb4d95e4beed06022b27a`,
+parent `3704ec708231f1910c0b3d2749ae8599f2ef47a6`. It changes only
+`desktop/src/features/docs/DocEditor.tsx` and
+`desktop/src/features/docs/doc-source.css` relative to `3704ec70`. Verification
+ran at the documentation-only successor `e7f243972a3dca5e88b91a1e2fa9c042f7ab25b0`;
+the only additional paths are `docs/reviews/ui-ux-redesign.md` and
+`docs/setup.md`. Product and test source are identical to `f19566e9`.
+
+An initial typecheck started at `3704ec70` and exited 0 while `f19566e9` landed;
+that moving-tree result is retained but not credited. The final `npm run
+typecheck` passed at `f19566e9`, including package builds and backend, desktop
+and mobile types. `npm run build` passed at `e7f2439`; Vite emitted the existing
+chunk-size warning for bundles over 500 kB and completed. Private mode-0600 logs:
+[`final typecheck`](</private/tmp/orbyn-adr003-f19566e9-typecheck.log>),
+[`initial superseded typecheck`](</private/tmp/orbyn-adr003-3704-typecheck.log>),
+and [`production build`](</private/tmp/orbyn-adr003-f19566e9-build.log>).
+
+The seven affected suites ran serially with the protected QA environment and
+`backend/tests/setup.ts` against the marked `_test` database:
+`doc-source-view.unit.test.ts`, `latex-preview-store.unit.test.ts`,
+`doc-latex-note.unit.test.ts`, `document-editor-modes.unit.test.ts`,
+`doc-assist-formats.test.ts`, `latex-preview.test.ts`, and
+`latex-renderer.unit.test.ts`. Result at `e7f2439` (product/test source exactly
+`f19566e9`): exit 0, 49/49 passed, 0 failed, 0 skipped (7.21 seconds). This
+covers the four editor parents' mode entry points, Note's shared PDF owner,
+source state/recovery, and guarded assistant accept/reject behavior for Note,
+Markdown and TeX formats. Full mode-0600 TAP output:
+[`affected suites`](</private/tmp/orbyn-adr003-f19566e9-affected-tests.tap>).
+
+The 63/63 regression result at `90305ece` and actual compiler-container
+isolation batch remain evidence for their unchanged scope only; neither is
+re-labeled as a test at `f19566e9`. The compiler image and sandbox runtime did
+not change. The new `latex-preview.test.ts` and `latex-renderer.unit.test.ts`
+passed at the updated document/API source. No source or test files were edited
+by Tester.
+
+The current Reviewer report at `986af96c` still has R4–R6 open and its decision
+is changes required: common Note-renderer continuity, structured-editor
+mode/departure behavior, and ownership for multiple standalone TeX previews.
+The visual plan keeps dispatch pending until those source findings settle, so
+Visual Check has not been messaged or given the fixture in this batch. Once
+Builder resolves those findings and Reviewer updates the disposition, the ready
+web/Expo fixture can be handed off under the user's existing Visual Check
+authorization.
+
+Fixture readiness at handoff review: API `127.0.0.1:8008`, shared web
+`127.0.0.1:5174`, and Expo web `127.0.0.1:8083` each returned HTTP 200. Their
+listener working directories are the assigned checkout's `backend`, `desktop`,
+and `mobile` folders. The protected visual handoff file exists with mode 0600
+at `/private/tmp/orbyn-u1-final-visual-handoff.txt`; its contents and credential
+values are omitted. These checks establish a ready fixture only, not visual
+acceptance.
+
+After the scoped checks, the worktree advanced to docs-only Reviewer commit
+`986af96c`; the current uncommitted tree also contains new Builder-owned changes
+to `backend/tests/doc-latex-note.unit.test.ts`, the desktop document editor,
+source preview, structured editor and CSS, and the mobile document editor,
+source preview and structured editor. These paths are outside the `f19566e9`
+freeze, were not staged or edited by Tester, and are not covered by the results
+above. They remain untouched for the next freeze and qualification cycle.
 
 No merge, push, deployment, or acceptance is recorded. The review counter
 remains `1/3`.
