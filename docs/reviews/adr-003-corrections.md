@@ -148,3 +148,17 @@ checks); mobile types passed. Final Expo checks include the library open around
 a 1000px window, then hiding it and resizing to verify single/split behavior and
 retained Note state. Logs: `/private/tmp/orbyn-adr003-pane-width-dev.tap` and
 `/private/tmp/orbyn-adr003-pane-width-types.log`.
+
+## Visual blocker V1 — Note block menu
+
+The actual browser reproduced an undefined component crash in SlashMenu. Core
+supports headings 4–6, while the web menu icon map stopped at heading 3. Both the
+slash and block-conversion menus rendered undefined icons. Added the three actual
+Lucide icons and a safe Text icon fallback for future block kinds.
+
+A renderer regression with real Lucide components failed 0/2 on the prior source
+with the same React error, then passed 2/2 after correction; desktop types passed.
+The test stubs Popover placement, so visible keyboard/menu recovery remains in the
+existing browser recheck. Logs `/private/tmp/orbyn-adr003-slash-regression-before.tap`,
+`/private/tmp/orbyn-adr003-slash-regression-after.tap`,
+`/private/tmp/orbyn-adr003-slash-types.log`. Preserve the failed receipt.

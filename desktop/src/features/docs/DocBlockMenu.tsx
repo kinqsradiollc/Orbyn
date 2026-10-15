@@ -10,6 +10,9 @@ import {
   Heading1,
   Heading2,
   Heading3,
+  Heading4,
+  Heading5,
+  Heading6,
   List,
   ListOrdered,
   ListTodo,
@@ -46,6 +49,9 @@ const ICONS: Record<string, LucideIcon> = {
   "heading-1": Heading1,
   "heading-2": Heading2,
   "heading-3": Heading3,
+  "heading-4": Heading4,
+  "heading-5": Heading5,
+  "heading-6": Heading6,
   bullet: List,
   numbered: ListOrdered,
   todo: ListTodo,
@@ -124,7 +130,7 @@ export function DocBlockMenu({
         <div className="doc-menu-kinds" role="group" aria-label="Turn into">
           {BLOCK_KINDS.map((kind) => {
             const key = kindKey(kind);
-            const Icon = ICONS[key];
+            const Icon = ICONS[key] ?? Type;
             const active = key === current;
             return (
               <button
@@ -310,7 +316,7 @@ const slashEntries = (): SlashEntry[] => {
     label: block.label,
     hint: block.hint,
     shorthand: block.shorthand.trim() || undefined,
-    icon: ICONS[kindKey(block)],
+    icon: ICONS[kindKey(block)] ?? Type,
     words: block.type,
   }));
   const task: SlashEntry = {
