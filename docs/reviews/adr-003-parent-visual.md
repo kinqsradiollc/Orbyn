@@ -92,3 +92,17 @@ Screenshots: `/private/tmp/orbyn-adr003-paired-mobile-width.png` and
 V10/init scoped source review accepted a7facf6a in round1/3, with no actionable
 findings. It explicitly retained the limits of structural busy-wiring assertions
 and the brittle hook fixture; actual new-image process qualification is pending.
+
+### Actual legacy failed-save departure and recovery
+
+In U1's second-pane legacy Markdown editor, root used the supported tab CDP
+network controls to set only that QA tab offline. Entered a synthetic Markdown
+draft and attempted Calendar navigation. The page stayed in the editor, retained
+the draft and displayed “Couldn’t save. Changes remain in this document” and
+“Not saved”; no native alert appeared. Restored normal networking, restored the
+synthetic mixed-content note (prose, equation and canonical two-page TeX block),
+and chose Note. The editor reported Saved. A subsequent Calendar navigation
+succeeded in Second while First Home remained. Network emulation was reset and
+Network disabled afterward. Recovery screenshot:
+`/private/tmp/orbyn-adr003-failed-save-recovered.png`. This proves the actual legacy
+parent's failed-save guard; structured/native equivalents are not inferred.
