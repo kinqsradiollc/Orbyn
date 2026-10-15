@@ -278,14 +278,18 @@ for (const native of [false, true])
           React.createElement(
             "div",
             {
-              style: { ...style, pointerEvents },
+              style: {
+                ...Object.assign({}, ...[style].flat(Infinity).filter(Boolean)),
+                pointerEvents,
+              },
               "aria-hidden": accessibilityElementsHidden,
             },
             children,
           ),
-        TextInput: ({ value, onChangeText, accessibilityLabel }: any) =>
+        TextInput: ({ value, onChangeText, accessibilityLabel, style }: any) =>
           React.createElement("textarea", {
             value,
+            style: Object.assign({}, ...[style].flat(Infinity).filter(Boolean)),
             onChange: (event: any) => onChangeText(event.currentTarget.value),
             "aria-label": accessibilityLabel,
           }),
@@ -384,6 +388,12 @@ for (const native of [false, true])
         assert.equal(hidden.hasAttribute("inert"), false);
       }
       const field = document.querySelector("textarea")!;
+      if (native)
+        assert.equal(
+          field.style.height,
+          "240px",
+          "paired source must expose useful editing context",
+        );
       await React.act(() => {
         Object.getOwnPropertyDescriptor(
           dom.window.HTMLTextAreaElement.prototype,

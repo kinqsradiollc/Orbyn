@@ -28,7 +28,11 @@ export function DocWritingBody({
         <TextInput
           autoFocus
           accessibilityLabel={`Edit block ${index + 1}`}
-          style={[styles.input, paired && splitEditing && styles.pane]}
+          style={[
+            styles.input,
+            paired && styles.pairedInput,
+            paired && splitEditing && styles.pane,
+          ]}
           multiline
           value={text}
           onChangeText={onChange}
@@ -49,6 +53,7 @@ export function DocWritingBody({
 }
 const styles = themed(() =>
   StyleSheet.create({
+    pairedInput: { height: 240 },
     pair: { flexDirection: "row", alignItems: "flex-start", gap: 16 },
     pane: { flex: 1, minWidth: 0 },
     input: {
