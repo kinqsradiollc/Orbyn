@@ -3,7 +3,7 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: targeted visual closure of the qualified correction batch. Review counter: 1/3.
+Phase: final acceptance review. Review counter: 1/3.
 Current product freeze: `d44c4cdf`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
@@ -111,3 +111,21 @@ mobile title mirror excludes duplicate accessibility content, Finish targets a
 stable block, Info retains its reading permissions, and header rules adapt to
 container width. No tests/builds/browser actions or writes were performed by
 Reviewer. Final acceptance still awaits the actual targeted Visual closures.
+
+### Actual visual closure
+
+Visual report `05590f58` closes DW-V1–V4 on the exact `d44c4cdf` product source:
+Expo320 long-title edit saved; Finish focused Block1; Info appeared immediately
+while Viewing stayed selected; grouped narrow headers recovered meaningful
+writing space. Expo Note measured760px at wide size while optional sources
+retained their wider split workspace. Light web and dark Expo represent the
+focused correction; prior actual PDF/source/save passes were retained, not
+relabelled as new checks. Fixture drafts were cleared and viewports reset.
+
+Builder personally inspected the final wide light Note and corrected320 web
+captures returned by Visual. The toolbar is cohesive, the title/prose wrap, and
+the optional PDF remains in the same canvas. Final proof paths and remaining
+nonblocking comment-panel observation are in the Visual report. That observation
+concerns reopening a closed unsent comment after Keep editing; the draft guard
+retained its state and the owned synthetic draft was explicitly discarded.
+Final read-only acceptance is pending; no production or native result is claimed.
