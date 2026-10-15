@@ -875,3 +875,59 @@ Security scan was run. This report qualifies the named source checks and desktop
 build only; the remaining bounded visual evidence and Reviewer closure are
 separate gates. Tester made no product or test-source edits and changed only
 this report.
+
+## V15 retained-draft retry qualification at product freeze 2bc81bd1
+
+The final V15 product/test freeze is
+`2bc81bd10156f7643cf59f2a942183ee8d8a0a1f`, parent
+`0b2152384bfc19964b1432027b51bdc14591f46a`, on
+`codex/c6-file-viewer` in `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
+It adds explicit retry for a retained valid structured-document draft after a
+save failure, preserves invalid-source and conflict guards, and clears the
+recovered navigation warning. The review counter remains `1/3`.
+
+The assigned four-suite batch passed:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-editor-store.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/doc-assist-target.unit.test.ts \
+  backend/tests/button-fallback.unit.test.ts
+```
+
+Result: exit 0, **23/23 passed**, 0 failed, 0 cancelled and 0 skipped (2.77 s).
+The store cases confirm explicit retry saves a retained failed draft without a
+new edit, never sends invalid source, and preserves a conflicting draft for
+review. The mode-0600 TAP log is
+[`V15 focused tests`](/private/tmp/orbyn-v15-unit-2bc81bd1.tap).
+
+All requested typechecks passed at the exact freeze:
+
+```sh
+npm run typecheck -w @orbyn/api-client
+npm run typecheck -w desktop
+npm run typecheck -w mobile
+```
+
+The mode-0600 logs are
+[`API-client types`](/private/tmp/orbyn-v15-api-client-types-2bc81bd1.log),
+[`desktop types`](/private/tmp/orbyn-v15-desktop-types-2bc81bd1.log), and
+[`mobile types`](/private/tmp/orbyn-v15-mobile-types-2bc81bd1.log).
+
+`npm run build` passed at `2bc81bd1`, building core and API client, backend,
+and desktop, and generating the PDF preview runtime and homepage. Vite emitted
+the existing warning for chunks over 500 kB; the build completed. Its
+mode-0600 log is
+[`V15 root build`](/private/tmp/orbyn-v15-root-build-2bc81bd1.log).
+
+No new Docker build was run. The
+[`509462e6 desktop image`](/private/tmp/orbyn-v12-v14-desktop-docker-509462e6.log)
+remains packaging evidence for the Docker target at that earlier product
+source; it does not contain V15. The API anchor route is unchanged, so the
+guarded saved-selection regression recorded for `509462e6` remains the relevant
+API evidence; no database or API suite was rerun for V15.
+
+No browser interaction, native build or Security scan was run. The bounded
+visual recovery recheck and Reviewer closure remain separate gates. Tester made
+no product or test-source edits and changed only this report.
