@@ -22,7 +22,11 @@ API. Kubernetes must install this policy as `orbyn/latex-seccomp.json` and enfor
 the included private-service network policy.
 
 Provisioned packages support standalone pdfLaTeX documents with standard LaTeX,
-AMS math and recommended packages/fonts. Uploaded TeX projects, bibliography
+AMS math and recommended packages/fonts. CM-Super's minimal Type 1 package
+provisions the default T1/EC fonts before runtime, so compilation does not need
+to generate bitmap fonts in a read-only installation. The empty starter emits a
+blank page; removing all page-producing content from custom source can produce
+no PDF and is reported as a compilation failure. Uploaded TeX projects, bibliography
 assets, custom fonts, external images and package downloads are not inputs to
 this endpoint. Invalid source leaves the editor draft and previous PDF intact.
 Two bounded compilation passes update ordinary cross-references. External

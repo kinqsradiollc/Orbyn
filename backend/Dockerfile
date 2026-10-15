@@ -80,7 +80,7 @@ CMD ["node", "backend/dist/services/pdf.js"]
 FROM runtime AS latex
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bubblewrap texlive-latex-base texlive-latex-recommended texlive-fonts-recommended \
+    bubblewrap texlive-latex-base texlive-latex-recommended texlive-fonts-recommended cm-super-minimal \
   && rm -rf /var/lib/apt/lists/*
 USER node
 CMD ["node", "backend/dist/services/latex.js"]
