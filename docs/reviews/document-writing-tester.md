@@ -312,3 +312,55 @@ is still required. All host build writes are complete and the paused Visual
 batch can resume with its owner. Tester changed no product or test source and
 changed only this report; the unrelated C6 and Visual-owned uncommitted edits
 were preserved. Round 2/3 remains open.
+
+## Round 2 format ownership qualification — 8cde9352
+
+The product correction freeze is
+`8cde9352de8fa03c6625c26d4fd16e8993be79d1`, parent
+`6673f9129699081b42fdc9b47badf65afd3c93c7`, on
+`codex/docs-writing-redesign`. The later `cd11f5a0` descendant changes only
+`docs/reviews/document-writing-redesign.md`; product and test sources remain
+equivalent to the freeze. This continues the same review round 2/3.
+
+The correction clears inline editor ownership on desktop and mobile only after
+`chooseFormat` passes its existing save, account, error and dirty-draft guards.
+It preserves an active source draft when saving fails. The new parent-wiring
+regression verifies both structured editor bindings; the seven-test development
+run passed 7/7 in
+[`format-owner development tests`](/private/tmp/orbyn-doc-format-owner-dev.tap).
+
+The focused writing, format, source, store, input-ownership and PDF suites
+passed on `8cde9352`:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-writing-experience.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/doc-source-view.unit.test.ts \
+  backend/tests/doc-editor-store.unit.test.ts \
+  backend/tests/editor-input-ownership.unit.test.ts \
+  backend/tests/doc-latex-note.unit.test.ts
+```
+
+Result: exit 0, **57/57 passed**, 0 failed, 0 cancelled and 0 skipped
+(4.36 seconds). The mode-0600 log is
+[`8cde9352 focused suites`](/private/tmp/orbyn-doc-format-owner-8cde9352.tap).
+
+Both workspace typechecks passed on the exact freeze:
+`npm run typecheck -w desktop` and `npm run typecheck -w mobile`. Their
+mode-0600 logs are
+[`desktop types`](/private/tmp/orbyn-doc-format-owner-desktop-types-8cde9352.log)
+and
+[`mobile types`](/private/tmp/orbyn-doc-format-owner-mobile-types-8cde9352.log).
+
+No desktop production build was rerun. This correction changes two parent
+callbacks and a regression only; it adds no asset, import or CSS change. The
+desktop build at `6673f912` remains historical and is not claimed for
+`8cde9352`.
+
+No browser interaction, API/database suite, native build, provider test or
+Security scan was run. The test establishes guarded format-transition wiring,
+not the actual visual single-editor transition. That confirmation remains with
+the Visual owner. Tester made no product or test-source edits and changed only
+this report; the unrelated C6 and Visual-owned work remains untouched. Round
+2/3 stays open.
