@@ -364,3 +364,46 @@ not the actual visual single-editor transition. That confirmation remains with
 the Visual owner. Tester made no product or test-source edits and changed only
 this report; the unrelated C6 and Visual-owned work remains untouched. Round
 2/3 stays open.
+
+## Round 2 paired mobile source height qualification — 94a56717
+
+The product freeze is
+`94a567178475fc7ec4a37bdf20fb8bc68c7d9562`, parent
+`493312693443cdb16272d00f37e89367a930dbff`, on
+`codex/docs-writing-redesign`. The later `3aadd5d3` descendant changes only
+`docs/reviews/document-writing-redesign.md`; product and test sources remain
+equivalent to the freeze. This continues review round 2/3.
+
+For a paired mobile code editor, `DocWritingBody` now gives the multiline field
+a 240px height with internal scrolling, beside its visible live result. This is
+limited to code-paired editing; ordinary prose sizing remains unchanged. The
+mounted React Native test mock now flattens style arrays and checks the actual
+field height. Builder's seven-test development run passed 7/7; its mode-0600
+log is [`paired height development tests`](/private/tmp/orbyn-doc-paired-height-dev.tap).
+
+The `doc-writing-experience` suite passed on the exact freeze:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-writing-experience.unit.test.ts
+```
+
+Result: exit 0, **7/7 passed**, 0 failed, 0 cancelled and 0 skipped
+(0.90 seconds). The paired mobile mock asserted `height: 240px`. The mode-0600
+log is
+[`94a56717 writing tests`](/private/tmp/orbyn-doc-paired-height-94a56717.tap).
+`npm run typecheck -w mobile` passed on the same source; its mode-0600 log is
+[`mobile types`](/private/tmp/orbyn-doc-paired-height-mobile-types-94a56717.log).
+
+Desktop source is unchanged from `41fb7890`; the earlier desktop typecheck
+remains applicable by source equivalence. No desktop build was rerun: this
+correction changes only the mobile wrapper and its test, with no asset, import,
+CSS or configuration changes. The `6673f912` desktop build remains historical,
+not a build claim for this freeze.
+
+No browser interaction, API/database suite, native build, provider test or
+Security scan was run. Actual paired-input height and internal-scroll behavior
+remain for the targeted Visual check. All host writes for this qualification
+are complete, so that final check can resume with its owner. Tester changed no
+product or test source and changed only this report; Visual and C6 uncommitted
+work remains untouched. Round 2/3 remains open.
