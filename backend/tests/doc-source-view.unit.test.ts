@@ -348,10 +348,7 @@ test("native preview scrolling preserves the corresponding source block on toggl
     "second",
     "scroll picks the second block",
   );
-  find(
-    render(blocks),
-    (props) => props.title === "Show Markdown source",
-  )!.onPress();
+  find(render(blocks), (props) => props.title === "Show source")!.onPress();
   const source = find(
     render(blocks),
     (props) => props.accessibilityLabel === "Markdown source",
@@ -457,7 +454,14 @@ for (const native of [false, true]) {
     else input.onChange({ currentTarget: { value: typed } });
     assert.equal(render.edits.length, 0);
     const after = render(blocks);
-    assert.match(renderToStaticMarkup(after), /This edit has not been saved/);
+    assert.ok(
+      find(
+        after,
+        (props) =>
+          props.role === "alert" || props.accessibilityRole === "alert",
+      ),
+      "invalid source must expose an actionable validation error",
+    );
     if (native)
       find(after, (props) => props.title === "Source and preview")!.onClose();
     else
@@ -748,6 +752,24 @@ for (const native of [false, true]) {
       0,
       "the retained input belongs to the older revision",
     );
-    assert.match(renderToStaticMarkup(render(external)), /has not been saved/);
+    const rejected = render(external);
+    assert.ok(
+      find(
+        rejected,
+        (props) =>
+          props.role === "alert" || props.accessibilityRole === "alert",
+      ),
+      "stale source must expose a recoverable error",
+    );
+    assert.equal(
+      find(
+        rejected,
+        (props) =>
+          props["aria-label"] === "Markdown source" ||
+          props.accessibilityLabel === "Markdown source",
+      )!.value,
+      text,
+      "the rejected typing remains available for recovery",
+    );
   });
 }

@@ -35,6 +35,7 @@ type PromptOptions = Omit<AskOptions, "tellOnly"> & {
 type Pending = AskOptions & {
   id?: number;
   input?: PromptOptions;
+  returnFocus?: HTMLElement | null;
   settle: (ok: boolean, value?: string) => void;
 };
 
@@ -56,9 +57,18 @@ const Ctx = createContext<{
 export function ConfirmProvider({ children }: { children: ReactNode }) {
   const [queue, setQueue] = useState<Pending[]>([]);
   const serial = useRef(0);
+  const queueOpener = useRef<HTMLElement | null>(null);
   const pending = queue[0];
   const enqueue = useCallback((request: Pending) => {
-    const queued = { ...request, id: ++serial.current };
+    const focused = document.activeElement as HTMLElement | null;
+    // Queued dialogs may render while the previous input is still mounted.
+    // Keep the original external opener instead of that soon-detached input.
+    if (!focused?.closest(".confirm-backdrop")) queueOpener.current = focused;
+    const queued = {
+      ...request,
+      id: ++serial.current,
+      returnFocus: queueOpener.current,
+    };
     setQueue((items) => [...items, queued]);
   }, []);
 
@@ -127,16 +137,22 @@ function ConfirmDialog({
   destructive,
   tellOnly,
   input,
+  returnFocus,
   onDone,
 }: AskOptions & {
   input?: PromptOptions;
+  returnFocus?: HTMLElement | null;
   onDone: (ok: boolean, value?: string) => void;
 }) {
   const id = useId();
   const [value, setValue] = useState(input?.value ?? "");
   const root = useRef<HTMLDivElement>(null);
   const dialog = useRef<HTMLDialogElement>(null);
-  const opener = useRef(document.activeElement as HTMLElement | null);
+  const opener = useRef(
+    returnFocus === undefined
+      ? (document.activeElement as HTMLElement | null)
+      : returnFocus,
+  );
   useEffect(() => {
     const node = dialog.current;
     node?.showModal();
