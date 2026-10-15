@@ -47,11 +47,13 @@ control cases all passed. Qualification remains partial: the final shared-web
 and Expo-web visual batch is still pending, and the mounted document controls
 did not exercise each full editor parent or API persistence.
 
-Latest status after the additional owner correction: the affected document
-source/store/mode/assistant/API suites pass 49/49 at source `f19566e9`; the full
-workspace typecheck passes at that source and the production build passes at
-the docs-only successor `e7f2439`. The final shared-web and Expo-web visual
-batch is still pending.
+Latest round-one retest: R4–R6 passed 38/38 affected source/provider/mode/store
+checks, full workspace typecheck and production build at `9b1fb984`. The later
+R7 freeze `3f7cd319` passed 29/29 affected mode/redesign-control checks and
+mobile typecheck. The root build is reused from `9b1fb984` because `3f7cd319`
+changes no package, backend or desktop build inputs. Reviewer commit `06cc6825`
+closed R4–R6 at source level; R7 review and final shared-web/Expo-web visual
+evidence remain pending. Review counter remains `1/3`.
 
 ## Verification
 
@@ -358,14 +360,12 @@ not change. The new `latex-preview.test.ts` and `latex-renderer.unit.test.ts`
 passed at the updated document/API source. No source or test files were edited
 by Tester.
 
-The current Reviewer report at `986af96c` still has R4–R6 open and its decision
-is changes required: common Note-renderer continuity, structured-editor
-mode/departure behavior, and ownership for multiple standalone TeX previews.
-The visual plan keeps dispatch pending until those source findings settle, so
-Visual Check has not been messaged or given the fixture in this batch. Once
-Builder resolves those findings and Reviewer updates the disposition, the ready
-web/Expo fixture can be handed off under the user's existing Visual Check
-authorization.
+At the `f19566e9` report cutoff, Reviewer report `986af96c` still had R4–R6
+open: common Note-renderer continuity, structured-editor mode/departure behavior,
+and ownership for multiple standalone TeX previews. Visual dispatch was held
+pending those source findings. Builder later froze the R4–R6 corrections at
+`9b1fb984`, and Reviewer commit `06cc6825` closed those findings at source level;
+the subsequent R7 retest and visual handoff status are recorded below.
 
 Fixture readiness at handoff review: API `127.0.0.1:8008`, shared web
 `127.0.0.1:5174`, and Expo web `127.0.0.1:8083` each returned HTTP 200. Their
@@ -375,13 +375,82 @@ at `/private/tmp/orbyn-u1-final-visual-handoff.txt`; its contents and credential
 values are omitted. These checks establish a ready fixture only, not visual
 acceptance.
 
-After the scoped checks, the worktree advanced to docs-only Reviewer commit
-`986af96c`; the current uncommitted tree also contains new Builder-owned changes
-to `backend/tests/doc-latex-note.unit.test.ts`, the desktop document editor,
-source preview, structured editor and CSS, and the mobile document editor,
-source preview and structured editor. These paths are outside the `f19566e9`
-freeze, were not staged or edited by Tester, and are not covered by the results
-above. They remain untouched for the next freeze and qualification cycle.
+At the `f19566e9` retest cutoff, the worktree had advanced to docs-only Reviewer
+commit `986af96c`; the then-current working tree also held new Builder-owned
+changes to `backend/tests/doc-latex-note.unit.test.ts`, the desktop document
+editor, source preview, structured editor and CSS, and the mobile document
+editor, source preview and structured editor. These paths were outside the
+`f19566e9` freeze, were not staged or edited by Tester, and are not covered by
+the results above. Their later frozen correction batches are recorded below.
 
 No merge, push, deployment, or acceptance is recorded. The review counter
 remains `1/3`.
+
+## Round-one R4–R7 correction retest at 9b1fb984 and 3f7cd319
+
+The R4–R6 source freeze was
+`9b1fb9844aa09c486bfe93a90609990257889e8b`, parent
+`01fee5650aca23879aa41380e3b9910608b930af`, on
+`/Users/anhdang/.codex/worktrees/c6-next/Orbyn`, branch `codex/c6-file-viewer`.
+The exact scoped command was:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-latex-note.unit.test.ts \
+  backend/tests/doc-source-view.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/latex-preview-store.unit.test.ts
+```
+
+Result: exit 0, **38/38 passed**, 0 failed, 0 cancelled and 0 skipped (2.88 s).
+The full mode-0600 TAP log is
+[`R4–R6 affected suites`](/private/tmp/orbyn-adr003-r4-r6-tester-9b1fb984.tap).
+`npm run typecheck` passed at this exact freeze, including package builds and
+backend, desktop and mobile TypeScript checks; its mode-0600 log is
+[`workspace typecheck`](/private/tmp/orbyn-adr003-r4-r6-typecheck-9b1fb984.log).
+`npm run build` also passed at this freeze; Vite emitted its existing warning
+for chunks over 500 kB and completed. The root production build covers packages,
+backend and desktop. Its mode-0600 log is
+[`production build`](/private/tmp/orbyn-adr003-r4-r6-build-9b1fb984.log).
+These results qualify the R4–R6 scope at `9b1fb984`; they are not relabeled as
+R7 evidence.
+
+R7 was frozen at
+`3f7cd319d7a23842d5c78f14159daf17fdaf5667`, parent
+`06cc68257ffe2686eb8df07a79cefff97c08fb82`. The intervening reviewer commit
+`06cc6825` closed R4–R6 at source level. Relative to `9b1fb984`, the product
+and test changes are confined to
+`mobile/src/screens/docs/DocEditor.tsx` and
+`backend/tests/document-editor-modes.unit.test.ts`; review-document updates do
+not affect build inputs. The focused command was:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/redesign-controls.unit.test.ts
+```
+
+Result: exit 0, **29/29 passed**, 0 failed, 0 cancelled and 0 skipped (1.20 s).
+The full mode-0600 TAP log is
+[`R7 affected suites`](/private/tmp/orbyn-adr003-r7-tester-3f7cd319.tap).
+`npm run typecheck -w mobile` passed at `3f7cd319`; its mode-0600 log is
+[`mobile typecheck`](/private/tmp/orbyn-adr003-r7-mobile-typecheck-3f7cd319.log).
+The successful root build at `9b1fb984` remains applicable to `3f7cd319` because
+the newer candidate changes no package, backend or desktop build inputs; the
+mobile source change is covered by the exact-candidate mobile typecheck. No
+second root build or full workspace typecheck was run at `3f7cd319`.
+
+The 38- and 29-test batches are finite component/source/store/mode checks. They
+do not verify all four actual editor-parent transitions, PDF page/zoom
+preservation, measured Expo pane behavior in the running UI, or whole-candidate
+rendered acceptance. The final visual plan at
+[`adr-003-final-visual-plan.md`](adr-003-final-visual-plan.md) remains the next
+gate; R7 still awaits Reviewer assessment, and review remains round `1/3`.
+
+Before visual handoff, the API health endpoint returned HTTP 200, the shared web
+preview `/app` returned HTTP 200, and Expo web `/` returned HTTP 200. Listener
+working directories were respectively the assigned worktree's `backend`,
+`desktop` and `mobile` folders. The protected credential handoff file exists
+with mode 0600 at `/private/tmp/orbyn-u1-final-visual-handoff.txt`; no
+credentials are included in this report. These observations establish fixture
+readiness only, not visual acceptance.
