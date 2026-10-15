@@ -53,7 +53,8 @@ R7 freeze `3f7cd319` passed 29/29 affected mode/redesign-control checks and
 mobile typecheck. The root build is reused from `9b1fb984` because `3f7cd319`
 changes no package, backend or desktop build inputs. Reviewer commit `06cc6825`
 closed R4–R6 at source level; R7 review and final shared-web/Expo-web visual
-evidence remain pending. Review counter remains `1/3`.
+findings remain pending. The final visual batch has been handed to Visual Check.
+Review counter remains `1/3`.
 
 ## Verification
 
@@ -443,9 +444,10 @@ second root build or full workspace typecheck was run at `3f7cd319`.
 The 38- and 29-test batches are finite component/source/store/mode checks. They
 do not verify all four actual editor-parent transitions, PDF page/zoom
 preservation, measured Expo pane behavior in the running UI, or whole-candidate
-rendered acceptance. The final visual plan at
-[`adr-003-final-visual-plan.md`](adr-003-final-visual-plan.md) remains the next
-gate; R7 still awaits Reviewer assessment, and review remains round `1/3`.
+rendered acceptance. R7 still awaits Reviewer assessment. Visual Check now owns
+the final batch defined in
+[`adr-003-final-visual-plan.md`](adr-003-final-visual-plan.md); its findings are
+pending, and review remains round `1/3`.
 
 Before visual handoff, the API health endpoint returned HTTP 200, the shared web
 preview `/app` returned HTTP 200, and Expo web `/` returned HTTP 200. Listener
@@ -454,3 +456,9 @@ working directories were respectively the assigned worktree's `backend`,
 with mode 0600 at `/private/tmp/orbyn-u1-final-visual-handoff.txt`; no
 credentials are included in this report. These observations establish fixture
 readiness only, not visual acceptance.
+
+After Tester report commit `011e2b5d`, Tester sent Orbyn Visual Check the
+protected credential-file path and verified endpoints under the user's existing
+authorization. Visual Check owns the fixture for the final `3f7cd319` batch and
+will record outcomes in `docs/reviews/adr-003-final-visual.md`. No visual
+findings or visual acceptance are claimed here.
