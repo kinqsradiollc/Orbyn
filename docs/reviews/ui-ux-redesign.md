@@ -2,9 +2,9 @@
 
 Current decision: [ADR 003](../adr/003-product-ui-ux-redesign.md).
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Baseline: `c7b3bdb7`. Current product/test candidate: `7dfd1b9f`.
-Phase: Tester qualification; see [qualification handoff](adr-003-candidate.md).
-Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review rounds: 0/3.
+Baseline: `c7b3bdb7`. Current product/test candidate: `15fc3a5a`.
+Phase: formal Review round 1, evidence pending; see [qualification handoff](adr-003-candidate.md).
+Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review rounds: 1/3.
 
 | Area | Current state | Evidence / next gate |
 | --- | --- | --- |
@@ -17,7 +17,7 @@ Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review ro
 | Settings, Admin and Connections | Implemented candidate | Import/runtime and interaction qualification in progress |
 | Auth and public content | Implemented candidate | Final representative rendering pending |
 | Mobile parity | Implemented candidate | Expo final behavior/render qualification pending |
-| Frozen candidate / Tester / Reviewer | Testing | `7dfd1b9f`; Reviewer 0/3 |
+| Frozen candidate / Tester / Reviewer | Testing | `15fc3a5a`; Reviewer 1/3 |
 | Final web and Expo Visual Check | Pending | After test/code findings settle |
 | Accepted merge and push | Pending | No acceptance or merge claim |
 
@@ -5093,3 +5093,21 @@ the id fixed it and a1a2d3 passed. Later document compile ca9005 passed. Final
 combined types for archive/delete changes passed (8a9037 desktop, 8e98fe mobile).
 The final small queue/permission cleanup is included in the frozen candidate's
 formal checks. No formal review round has started; 0/3 remains.
+
+
+### Tester report and Review round 1 — 15 October
+
+Tester completed adr-003-tester.md on product/test source15fc3a5a. Workspace
+checks and production build passed; corrected dialog/source interaction suites
+passed29/29; unchanged admin/provider results remain scoped to their earlier
+batch. The marked database batch passed142/142. Corrected starter and accented
+prose/math sources returned PDFs through the authenticated route. Original
+harness failures and the missing-font failure remain recorded.
+
+Qualification is partial. Final visual interaction and PDF appearance are not
+proven. Review round1/3 starts on the full source and this report; Reviewer must
+guide required corrections/remaining evidence without treating the partial
+pass as whole-ADR acceptance. In particular, assistant-activity suites concern
+agent history and cannot alone establish Personal Activity planner counting.
+Unchanged suite evidence missing from the original truncated log also needs
+explicit qualification, with finite retesting rather than speculative expansion.

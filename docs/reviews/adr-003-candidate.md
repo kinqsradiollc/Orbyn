@@ -3,8 +3,9 @@
 Scope: [ADR 003](../adr/003-product-ui-ux-redesign.md), including all owner refinements.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
 Branch: `codex/c6-file-viewer`. Baseline: `c7b3bdb7`.
-Candidate: `7dfd1b9f` (initial full implementation `f7899149`; test correction `7039a77b`).
-Phase: Tester qualification and correction retests. Review counter: 0/3.
+Candidate product/test source: `15fc3a5a` (initial full implementation `f7899149`; retained corrections in ancestry).
+Phase: formal Review round 1, with evidence still pending. Review counter: 1/3.
+Tester report: [qualification and retained boundaries](adr-003-tester.md).
 
 This candidate submits the full redesign for qualification. It is not accepted,
 merged, deployed or proof that every requested interaction works. Earlier source
