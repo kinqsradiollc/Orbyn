@@ -3,7 +3,7 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: round2 refinement accepted; integration pending. Review counter: 2/3.
+Phase: round2 refinement accepted and delivered to main. Review counter: 2/3.
 Current product freeze: `94a56717`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
@@ -239,3 +239,12 @@ No new material finding remains; historical failures and the earlier nonblocking
 comment-panel follow-up remain recorded. Round2/3 is complete. No additional
 build or broad sweep was required. Main integration is the next delivery action;
 production/native/provider execution remain outside this receipt.
+
+### Round2 main delivery
+
+Fast-forward `git push origin HEAD:main` completed exit0, advancing
+`1b19373b`→`6a46624e`. Remote verification returned
+`6a46624ebe71a22d8e6863ae4ed01fcb05833cb3` for refs/heads/main.
+Subsequent reconciliation changes documentation only. Existing5174/8083 previews
+remain on this worktree for owner inspection. No production deploy or native
+verification is claimed, and the unrelated C6 Visual edit remains uncommitted.
