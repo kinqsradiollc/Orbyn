@@ -503,3 +503,102 @@ Reviewer report `adr-003-reviewer.md` accepts the `239ce769` source correction
 and keeps the browser recovery case plus final web/Expo batch pending. Its
 current decision remains evidence pending within round `1/3`; these formal
 checks close only the requested test/type/build portion.
+
+## V2–V7 Tester qualification at e942a1a0
+
+The V2 viewer-lifetime correction froze product and test source at
+`e942a1a08b4ec70da324124ec0659c96dd6b7368`, parent
+`2033001cbe38623d8d8637a7a3b70dfc6b6b01be`, on the same checkout and branch
+recorded above. The checks below ran at `a78d5b6b31ba8c18b6d73ef0bf134645792e0ac0`;
+the only intervening change from `e942a1a0` is the review document
+`docs/reviews/adr-003-v2-v7-review.md`. A scoped diff check confirmed backend,
+test, desktop, packages and mobile source are identical to the freeze.
+
+At the freeze, desktop now renders the PDF viewer from the owned `preview.pdf`
+while its replacement download URL is pending. This retains the mounted iframe
+on a same-block recompile; canonical owner, account and document changes still
+reset it. The expanded provider regression changes the saved source, recompiles,
+and checks the same iframe node in web and mobile providers.
+
+The affected provider suite passed at the current source:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-latex-note.unit.test.ts
+```
+
+Result: exit 0, **2/2 passed**, 0 failed, 0 cancelled and 0 skipped (1.05 s).
+The tests cover both providers, same-block viewer identity after successful
+recompilation, canonical-owner replacement and cleanup. The mode-0600 TAP log
+is [`viewer lifetime tests`](/private/tmp/orbyn-adr003-doc-latex-note-e942a1a0.tap).
+This is mounted provider evidence; page 2/zoom preservation in a running browser
+remains part of the final Visual Check.
+
+`npm run typecheck -w @orbyn/desktop` passed at this source; its mode-0600 log
+is [`desktop typecheck`](/private/tmp/orbyn-adr003-desktop-typecheck-e942a1a0.log).
+The root `npm run build` passed at the same source, building packages, backend
+and desktop and generating the bundled PDF preview runtime. Vite emitted the
+existing warning for chunks larger than 500 kB; the build completed. Its
+mode-0600 log is [`root build`](/private/tmp/orbyn-adr003-root-build-e942a1a0.log).
+The 6044 full-workspace typecheck still supplies the mobile source check because
+e942 changes desktop source and a backend test only; no mobile source changed.
+
+The corrected booking-default assertion was also rerun with the guarded test
+container. The wrapper resolved the connection from `orbyn-postgres-test-1`,
+verified database `orbyn_test` and marker `orbyn.environment=test`, then ran the
+suite with `TEST_DATABASE_URL` and `DATABASE_URL` pointed at that URL and SMTP
+disabled. Result: exit 0, **6/6 passed**, 0 failed, 0 cancelled and 0 skipped
+(2.91 s). The mode-0600 TAP log is
+[`booking correction retest`](/private/tmp/orbyn-adr003-booking-retest-a78d5b6b.tap).
+This closes the earlier stale test expectation at `6044fddf` (5/6, expected the
+old green default instead of V6's shared accent); that failed receipt remains
+preserved at
+[`initial booking run`](/private/tmp/orbyn-adr003-v2-v7-booking-api-6044fddf.tap).
+The test-only correction at `2033001c` had already passed 6/6 and is retained at
+[`booking correction at 2033001c`](/private/tmp/orbyn-adr003-v2-v7-booking-api-retest-2033001c.tap).
+
+The earlier 6044 qualification receipts remain scoped to their recorded source:
+package build, 70/70 focused unit checks, the 132-variable environment example
+check, full workspace typecheck, root build, and desktop Docker build all
+passed. The Docker image was built from `6044fddf`; it is pipeline evidence for
+the existing bundle-generation path, **not** an image containing the e942 TSX
+fix. Command:
+
+```sh
+docker build -f desktop/Dockerfile --tag orbyn-web:adr003-6044fddf-tester \
+  --build-arg GIT_SHA=6044fddf .
+```
+
+No Docker build was repeated at e942. Its log remains
+[`6044 desktop Docker build`](/private/tmp/orbyn-adr003-v2-v7-desktop-docker-build-6044fddf.log).
+No broad integration batch, native build or Security scan was run for this
+correction.
+
+The review counter remains `1/3`. Scoped Reviewer closed the V2 source finding
+at `e942a1a0` and found no additional V3–V7 source defect. This report verifies
+the affected provider test, desktop typecheck/root build and booking correction;
+it does not establish whole-ADR acceptance. Final shared-web and Expo-web
+rendered behavior remains with Visual Check, especially PDF page/zoom retention,
+compact layouts and the previously assigned V2–V7 cases.
+
+### QA fixture handoff boundary
+
+Parent reports that a separate registered synthetic fixture was created after
+the guarded DB check and that visible Expo-web sign-in succeeded. The protected
+file path is `/private/tmp/orbyn-ui-final-login.json`; the parent reports mode
+0600 and no personal account changes. Tester did not independently verify that
+account or use its credentials in this turn.
+
+Tester also prepared `/private/tmp/orbyn-adr003-login-e942a1a0.json` with mode
+0600 while preparing a clean signup tab, but stopped before submitting that
+signup. It contains synthetic credentials only and **does not correspond to a
+registered account**; do not use it for sign-in. No token was stored. A separate
+Chrome tab was signed out of the pre-existing synthetic `Orbyn QA Tester`
+session to reach the signup form; no account data was changed, and the other
+in-app browser session was left signed in. The requested tab 7 was not present
+in the Tester browser inventory; parent later took over visible Expo sign-in.
+The local preview endpoints returned HTTP 200 at handback: shared web
+`http://127.0.0.1:5174/`, Expo web
+`http://127.0.0.1:8083/`, and API health `http://127.0.0.1:8008/health`.
+These are reachability observations only; Tester performed no visual acceptance
+check.
