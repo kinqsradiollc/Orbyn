@@ -1,5 +1,6 @@
 import { DocLatexPreviewProvider } from "./DocLatexPreview";
 import { DocEditorModes } from "./DocEditorModes";
+import { DocWritingBody } from "./DocWritingBody";
 import React, {
   useEffect,
   useMemo,
@@ -1220,27 +1221,24 @@ function StructuredDocEditorBody({
                                 }}
                               >
                                 <View style={styles.leafBody}>
-                                  {canWrite &&
-                                  editing === path.join("/") &&
-                                  "text" in block ? (
-                                    <TextInput
-                                      autoFocus
-                                      accessibilityLabel={`Edit block ${index + 1}`}
-                                      style={styles.leafInput}
-                                      multiline
-                                      value={block.text}
-                                      onChangeText={(text) => {
-                                        editGeneration.current++;
-                                        offlineQueued.current = false;
-                                        setKeptOffline(false);
-                                        store.changeOperation(document, {
-                                          kind: "replace-leaf",
-                                          path,
-                                          block: { ...block, text } as DocBlock,
-                                        });
-                                      }}
-                                    />
-                                  ) : (
+                                  <DocWritingBody
+                                    index={index}
+                                    text={"text" in block ? block.text : null}
+                                    editing={
+                                      canWrite && editing === path.join("/")
+                                    }
+                                    keepRendered={block.type === "code"}
+                                    onChange={(text) => {
+                                      editGeneration.current++;
+                                      offlineQueued.current = false;
+                                      setKeptOffline(false);
+                                      store.changeOperation(document, {
+                                        kind: "replace-leaf",
+                                        path,
+                                        block: { ...block, text } as DocBlock,
+                                      });
+                                    }}
+                                  >
                                     <DocBody
                                       content={[block]}
                                       pageContent={leaves}
@@ -1251,7 +1249,7 @@ function StructuredDocEditorBody({
                                           : undefined
                                       }
                                     />
-                                  )}
+                                  </DocWritingBody>
                                   {!!block.id && openThread === block.id && (
                                     <DocThread
                                       comments={
@@ -1441,14 +1439,6 @@ const styles = themed(() =>
       minHeight: 44,
       alignSelf: "flex-start",
       paddingHorizontal: 8,
-    },
-    leafInput: {
-      minHeight: 44,
-      maxHeight: 240,
-      color: colors.text,
-      padding: 0,
-      fontSize: inputFontSize,
-      lineHeight: 26,
     },
   }),
 );

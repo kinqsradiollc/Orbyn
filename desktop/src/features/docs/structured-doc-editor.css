@@ -171,6 +171,9 @@
 .structured-doc-leaf textarea:focus {
   outline: none;
 }
+.doc-writing-rendered[hidden] {
+  display: none;
+}
 .structured-doc-leaf:has(textarea:focus-visible) {
   outline: 1px solid var(--color-borderStrong);
   outline-offset: 6px;

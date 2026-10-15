@@ -18,6 +18,7 @@ export function DocWritingBlock({
   onComment,
   onAssist,
   assistDisabled,
+  keepRendered = false,
 }: {
   children: ReactNode;
   index: number;
@@ -34,6 +35,8 @@ export function DocWritingBlock({
   onComment: () => void;
   onAssist: () => void;
   assistDisabled: boolean;
+  /** Stateful code previews stay alive while their source is edited. */
+  keepRendered?: boolean;
 }) {
   const writable = canWrite && text !== null;
   return (
@@ -69,7 +72,7 @@ export function DocWritingBlock({
         else if (writable) onEdit();
       }}
     >
-      {writable && editing ? (
+      {writable && editing && (
         <textarea
           autoFocus
           rows={1}
@@ -93,8 +96,15 @@ export function DocWritingBlock({
               onDone();
           }}
         />
-      ) : (
-        children
+      )}
+      {(!writable || !editing || keepRendered) && (
+        <div
+          className="doc-writing-rendered"
+          hidden={writable && editing}
+          inert={writable && editing}
+        >
+          {children}
+        </div>
       )}
       {writable && (
         <DocBlockActions

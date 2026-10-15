@@ -1279,6 +1279,7 @@ function StructuredDocEditorBody({
                           blockId={block.id}
                           text={"text" in block ? block.text : null}
                           canWrite={canWrite}
+                          keepRendered={block.type === "code"}
                           editing={editing === path.join("/")}
                           sourceOpen={activePane !== "preview"}
                           onSourceFocus={() => sourceAtBlock(path)}

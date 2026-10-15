@@ -3,7 +3,7 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: implementation. Review counter: 0/3.
+Phase: round-1 correction qualification. Review counter: 1/3.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
 button-size results remain historical evidence; they do not qualify this redesign.
@@ -46,3 +46,27 @@ Private logs: `/private/tmp/orbyn-doc-writing-dev.tap`,
 `/private/tmp/orbyn-doc-writing-final-dev.tap`, and the
 `orbyn-doc-writing-*-types-final.log` files. No backend, environment or service
 configuration changed. Local previews still use the existing disposable QA API.
+
+## Round 1 — retained code viewers
+
+Tester `33fd1626` qualified the complete batch at `a0ac3ba0`:66/66 focused
+checks at its source-equivalent parent,4/4 CSS-sensitive checks on the successor,
+desktop/mobile types and desktop production build. Counts overlap.
+
+Read-only Reviewer found one P2, also identified in Builder's source audit:
+replacing every rendered text block with its field would unmount canonical
+LaTeX PDF/code renderers during inline editing. The initial browser observations
+passed ordinary writing, keyboard activation, Add text and source toggles, but
+did not exercise that canonical inline edit; no browser reproduction of the
+reset is claimed. Visual Check paused and returned the fixture before correction.
+
+Both writing wrappers now keep code renderers mounted, hidden and noninteractive
+while the inline field is visible. Ordinary prose still has a single visible
+representation. Mounted web and mobile-wrapper regressions exercise editing,
+actual input, Done and identical iframe identity/mount count; hidden web content
+is inert and hidden mobile content excludes pointer/accessibility interaction.
+The parent bindings explicitly opt code blocks into retention. Development4/4
+and desktop/mobile types pass. This wrapper fixture is not the PDF engine or
+actual mobile parent; the affected real viewer page/zoom check remains required.
+Formal correction qualification, complete bounded visual review and Reviewer
+closure remain open in this same1/3 round.

@@ -201,5 +201,161 @@ test("both structured parents offer direct Note insertion without flattening con
     assert.match(source, /kind: "insert",\s*owner: \[\],\s*index/);
     assert.match(source, /type: "paragraph",\s*text: "",\s*id: newBlockId\(\)/);
     assert.match(source, /Add text/);
+    assert.match(source, /keepRendered=\{block\.type === "code"\}/);
   }
 });
+
+for (const native of [false, true])
+  test(`${native ? "mobile" : "web"} writing wrapper retains a code viewer through edit, source change and Done`, async () => {
+    const { JSDOM } = mobileRequire("jsdom");
+    const dom = new JSDOM('<div id="root"></div>');
+    const names = [
+      "window",
+      "document",
+      "HTMLElement",
+      "IS_REACT_ACT_ENVIRONMENT",
+    ];
+    const saved = names.map(
+      (name) =>
+        [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const,
+    );
+    for (const name of names)
+      Object.defineProperty(globalThis, name, {
+        configurable: true,
+        writable: true,
+        value: name === "IS_REACT_ACT_ENVIRONMENT" ? true : dom.window[name],
+      });
+    dom.window.HTMLElement.prototype.attachEvent = () => {};
+    dom.window.HTMLElement.prototype.detachEvent = () => {};
+    const React = require("react");
+    const root = require("react-dom/client").createRoot(
+      dom.window.document.querySelector("#root"),
+    );
+    const module = { exports: {} as any };
+    const path = native
+      ? "../../mobile/src/screens/docs/DocWritingBody.tsx"
+      : "../../desktop/src/features/docs/DocWritingBlock.tsx";
+    const mocks: Record<string, unknown> = {
+      "./DocBlockActions": { DocBlockActions: () => null },
+      "react-native": {
+        View: ({
+          children,
+          style,
+          pointerEvents,
+          accessibilityElementsHidden,
+        }: any) =>
+          React.createElement(
+            "div",
+            {
+              style: { ...style, pointerEvents },
+              "aria-hidden": accessibilityElementsHidden,
+            },
+            children,
+          ),
+        TextInput: ({ value, onChangeText, accessibilityLabel }: any) =>
+          React.createElement("textarea", {
+            value,
+            onChange: (event: any) => onChangeText(event.currentTarget.value),
+            "aria-label": accessibilityLabel,
+          }),
+        StyleSheet: { create: (styles: unknown) => styles },
+      },
+      "../../theme": {
+        colors: { text: "currentColor" },
+        inputFontSize: 16,
+        themed: (make: () => unknown) => make(),
+      },
+    };
+    runInNewContext(
+      transformSync(readFileSync(new URL(path, import.meta.url), "utf8"), {
+        loader: "tsx",
+        format: "cjs",
+        jsx: "automatic",
+      }).code,
+      {
+        module,
+        exports: module.exports,
+        window: dom.window,
+        require: (name: string) =>
+          name in mocks ? mocks[name] : require(name),
+      },
+    );
+    let editing = false,
+      text = "Original TeX",
+      mounts = 0;
+    const Viewer = () => {
+      React.useEffect(() => {
+        mounts++;
+      }, []);
+      return React.createElement("iframe", { title: "Canonical code viewer" });
+    };
+    const render = () =>
+      root.render(
+        React.createElement(
+          native
+            ? module.exports.DocWritingBody
+            : module.exports.DocWritingBlock,
+          {
+            index: 0,
+            path: [0],
+            text,
+            canWrite: true,
+            editing,
+            keepRendered: true,
+            sourceOpen: false,
+            onChange: (next: string) => {
+              text = next;
+              render();
+            },
+            onEdit: () => {},
+            onDone: () => {},
+            onComment: () => {},
+            onAssist: () => {},
+            onSourceFocus: () => {},
+            assistDisabled: true,
+          },
+          React.createElement(Viewer),
+        ),
+      );
+    try {
+      await React.act(render);
+      const document = dom.window.document;
+      const viewer = document.querySelector("iframe");
+      assert.ok(viewer);
+      editing = true;
+      await React.act(render);
+      assert.equal(document.querySelector("iframe"), viewer);
+      const hidden = viewer.parentElement!;
+      if (native) {
+        assert.equal(hidden.style.display, "none");
+        assert.equal(hidden.style.pointerEvents, "none");
+        assert.equal(hidden.getAttribute("aria-hidden"), "true");
+      } else {
+        assert.ok(hidden.hidden);
+        assert.ok(hidden.hasAttribute("inert"));
+      }
+      const field = document.querySelector("textarea")!;
+      await React.act(() => {
+        Object.getOwnPropertyDescriptor(
+          dom.window.HTMLTextAreaElement.prototype,
+          "value",
+        )!.set!.call(field, "Changed TeX");
+        field.dispatchEvent(new dom.window.Event("input", { bubbles: true }));
+      });
+      assert.equal(text, "Changed TeX");
+      editing = false;
+      await React.act(render);
+      assert.equal(document.querySelector("iframe"), viewer);
+      assert.equal(document.querySelector("textarea"), null);
+      assert.equal(mounts, 1, "editing must never remount the code viewer");
+      if (native) assert.equal(viewer.parentElement!.style.display, "");
+      else assert.equal(viewer.parentElement!.hidden, false);
+    } finally {
+      await React.act(() => root.unmount());
+      for (const [name, descriptor] of saved) {
+        if (descriptor) Object.defineProperty(globalThis, name, descriptor);
+        else delete (globalThis as any)[name];
+      }
+      dom.window.close();
+    }
+  });
