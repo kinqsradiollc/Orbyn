@@ -48,8 +48,12 @@ for (const native of [false, true])
         "react-native": {
           View: ({ children }: any) =>
             React.createElement("div", null, children),
-          Text: ({ children }: any) =>
-            React.createElement("span", null, children),
+          Text: ({ children, style, accessibilityLabel }: any) =>
+            React.createElement(
+              "span",
+              { style, "aria-label": accessibilityLabel },
+              children,
+            ),
         },
         "../../components/DocumentPdfPreview": {
           DocumentPdfPreview: ({ url }: any) =>
@@ -63,6 +67,10 @@ for (const native of [false, true])
             React.createElement("button", { onClick: onPress }, title),
         },
         "../../styles": { shared: { small: {} } },
+        "../../theme": {
+          colors: { text: "rgb(240, 240, 240)" },
+          fonts: { mono: "monospace" },
+        },
       };
       const module = { exports: {} as any };
       runInNewContext(
@@ -153,6 +161,20 @@ for (const native of [false, true])
         );
         const frame = dom.window.document.querySelector("iframe");
         assert.equal(dom.window.document.querySelectorAll("iframe").length, 1);
+        if (native) {
+          const fallback = dom.window.document.querySelector(
+            'span[aria-label="LaTeX source"]',
+          );
+          assert.ok(fallback);
+          assert.equal(
+            dom.window.getComputedStyle(fallback).color,
+            "rgb(240, 240, 240)",
+          );
+          assert.equal(
+            dom.window.getComputedStyle(fallback).fontFamily,
+            "monospace",
+          );
+        }
         assert.match(
           dom.window.document.body.textContent,
           /SECOND DISTINCT TEX SOURCE/,

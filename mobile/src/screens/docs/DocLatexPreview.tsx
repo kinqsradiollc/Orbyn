@@ -14,6 +14,7 @@ import { session } from "../../lib/session";
 import { DocumentPdfPreview } from "../../components/DocumentPdfPreview";
 import { Button } from "../../components/Button";
 import { shared } from "../../styles";
+import { colors, fonts } from "../../theme";
 type Preview = LatexPreviewState & {
   block: DocBlock | null;
   canCompile: boolean;
@@ -76,7 +77,20 @@ export function DocLatexNote({
       ? block.id === preview.block.id
       : block === preview.block);
   if (!preview || !ownsBlock)
-    return <Text accessibilityLabel="LaTeX source">{source}</Text>;
+    return (
+      <Text
+        selectable
+        accessibilityLabel="LaTeX source"
+        style={{
+          color: colors.text,
+          fontFamily: fonts.mono,
+          fontSize: 13,
+          lineHeight: 20,
+        }}
+      >
+        {source}
+      </Text>
+    );
   return (
     <View
       accessibilityLabel="Rendered LaTeX note"

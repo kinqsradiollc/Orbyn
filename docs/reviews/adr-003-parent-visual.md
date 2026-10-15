@@ -146,7 +146,17 @@ No environment variable or migration is added.
 The first actual request after3a97163c exposed an implementation error in the
 version check: the new request version name was shadowed by the transaction's
 existing returned-version variable, causing a temporal-dead-zone500 before the
-assistant dialog. The request at21:14:40 local QA was preserved in the API log.
+assistant dialog. The request at11:14:40 UTC in local QA was preserved in the API log.
 Renamed the captured request field to expectedVersion; the new real API test
 and typecheck remain required before acceptance. The failed live attempt is not
 a passing assistant check.
+
+### V14 mobile secondary TeX contrast
+
+The final mobile proposal acceptance succeeded and rendered its changed canonical
+PDF, but the distinct secondary TeX source used a plain React Native Text without
+a theme foreground. It appeared black on a dark surface. That fallback now uses
+the shared foreground and monospace font, remains selectable, and keeps its own
+source rather than duplicating the canonical PDF. The existing four mounted
+provider tests now assert its actual rendered color/font in the mobile fixture;
+4/4 development checks passed. One targeted dark recheck remains required.
