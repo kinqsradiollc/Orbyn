@@ -1,8 +1,20 @@
 # ADR 003 technical review — round 1/3
 
-Current decision: **evidence pending**. R1–R7 source findings are closed; whole-ADR acceptance awaits final qualification and rendered evidence.
+Current decision: **approved for agreed ADR 003 scope, round 1/3**. Delegated
+Reviewer accepted product `e2813634`, reconciled at documentation `22cb6162`,
+after read-only source and receipt assessment. R1–R7 and V1–V17 are closed.
 
-**Current disposition:** R1–R3 and the backend-contract evidence gaps were closed on `90305ece`, R4–R6 source findings on `9b1fb984`, and R7 source on `3f7cd319`. Their formal affected retests are now recorded. Visual blocker V1 has an accepted source correction at `239ce769`; its formal retest/browser recovery and the remaining final web/Expo batch are pending. Earlier changes-required assessments below are retained as history, not current open findings.
+**Current disposition:** formal affected checks, actual web/Expo document and
+assistant interactions, V16 density/PDF retention, V17 retained-selection pane
+ownership and the parent's finite recovery list have the required evidence in
+[Tester](adr-003-tester.md), [Visual Check](adr-003-final-visual.md) and
+[parent interactions](adr-003-parent-visual.md). No further test or visual sweep
+is required for this scope. Earlier pending statements and failures below remain
+historical, with their original source limits. Acceptance does not imply every
+inventory file received a separate browser exercise. Native apps, installed
+desktop behavior, external providers/hosts and production retain their recorded
+exclusions. Integration/push is a subsequent delivery action in the
+[ledger](ui-ux-redesign.md). Reviewer ran no tests/builds/browser actions.
 
 Reviewed on 15 October 2026 in `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`, branch `codex/c6-file-viewer`. Assigned range: `c7b3bdb7..b0baced59c393d22c4e0124a3cfdc83329d96a2f`, including implementation `15fc3a5a` and fixture correction `b0baced5`. The checkout advanced during inspection to `626c58eed917d0e6bd5221b9b5dc5cb3a7566666`; its bounded typography/fixture diff was inspected as a supplemental correction, not substituted silently for the assigned candidate. Before report completion, docs-only `5b10872e` recorded its focused retest. The three source findings below remain applicable there.
 

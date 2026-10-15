@@ -2,7 +2,7 @@
 
 | Decision                                                      | State                    | Purpose                         |
 | ------------------------------------------------------------- | ------------------------ | ------------------------------- |
-| [003 — Product UI/UX redesign](003-product-ui-ux-redesign.md) | In progress              | Current web and mobile redesign |
+| [003 — Product UI/UX redesign](003-product-ui-ux-redesign.md) | Completed, accepted scope | Current web and mobile design |
 | [001 — Agent platform](archive/001-devday-agent-platform.md)  | Archived, accepted scope | Previous platform delivery      |
 | [002 — Unified MCP](archive/002-unified-mcp-integration.md)   | Archived, accepted scope | Canonical MCP and previews      |
 

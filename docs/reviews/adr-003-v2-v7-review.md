@@ -1,5 +1,10 @@
 # ADR 003 V2–V7 scoped source review
 
+Current disposition: all scoped findings through V17 closed; agreed ADR 003
+technically accepted at product `e2813634`, evidence `22cb6162`, round1/3.
+See [final review](adr-003-reviewer.md) and [delivery](ui-ux-redesign.md).
+Intermediate pending statements below retain their historical scopes.
+
 Review counter: 1/3. Delegated Reviewer inspected the full frozen product
 `6044fddfa71b92315743f4202d6bee3cbf4a5804`, owning runtime/store code,
 regression assertions and build wiring. This record summarizes its returned

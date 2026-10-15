@@ -1,6 +1,13 @@
 # ADR 003 — Product UI/UX redesign
 
-Status: accepted direction; implementation in progress. Owner direction: 12 October 2026.
+Status: completed and technically accepted, review round 1/3, 15 October 2026.
+Owner direction: 12 October 2026. Accepted product: `e2813634`; final evidence
+reconciliation: `22cb6162`. Delivery state is recorded in the
+[delivery ledger](../reviews/ui-ux-redesign.md). Production deployment is user-owned.
+
+The requirements and intermediate pending statements below preserve the decision
+and its evolution. Current acceptance supersedes those historical checkpoints;
+it does not convert native or production exclusions into verified results.
 
 ## Decision
 

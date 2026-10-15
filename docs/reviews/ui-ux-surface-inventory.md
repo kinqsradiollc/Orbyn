@@ -3,6 +3,14 @@
 Every family needs layout, styling, positions, copy and interaction assessment.
 Source inventory is not acceptance evidence.
 
+Current disposition: agreed ADR 003 accepted at product `e2813634`, evidence
+`22cb6162`, review round1/3. The [delivery ledger](ui-ux-redesign.md) and
+[final review](adr-003-reviewer.md) reconcile the full family map with formal
+checks and representative web/Expo interactions. Per-file pending labels below
+are historical source-assessment limits, not current open family gates or a claim
+that every file received a separate browser exercise. Native, production and
+external-provider/host exclusions remain explicit in those reports.
+
 | Source                                                                                                                       | Assessment                                                                                                                                                                                                |
 | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [desktop/src/features/admin/AdminAgents.tsx](../../desktop/src/features/admin/AdminAgents.tsx)                               | Source/access/configuration and selective draft adoption assessed; interaction/render pending                                                                                                             |

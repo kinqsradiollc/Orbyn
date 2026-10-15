@@ -2,24 +2,35 @@
 
 Current decision: [ADR 003](../adr/003-product-ui-ux-redesign.md).
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Baseline: `c7b3bdb7`. Current product/test candidate: `509462e6`.
-Phase: source corrections closed through V14; final affected qualification and the bounded visual interaction handback remain pending. See [actual visual evidence](adr-003-final-visual.md), [parent checks](adr-003-parent-visual.md) and [Tester receipts](adr-003-tester.md).
+Baseline: `c7b3bdb7`. Accepted product/test candidate: `e2813634`.
+Phase: technically accepted; integration/push pending. Final evidence: `22cb6162`.
+See [final review](adr-003-reviewer.md), [actual visual evidence](adr-003-final-visual.md),
+[parent checks](adr-003-parent-visual.md) and [Tester receipts](adr-003-tester.md).
 Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review rounds: 1/3.
 
-| Area | Current state | Evidence / next gate |
+| Area | Current state | Evidence / boundary |
 | --- | --- | --- |
-| Decision archive, skills and documentation | Implemented; current ledger reconciled | Final changed-document check pending |
-| Shared design foundation | Button correction implemented | V12 wide-light/narrow-dark actual pass; latest formal qualification pending |
-| Shell and overlays | Paired navigation/scroll and modal ownership pass | Retained-selection formatting/link shortcut and search ownership residue pending |
-| Home and Assistant | Focus, lanes, Activity and project history pass | Active/long response and mobile composer limit pending |
-| Tasks, Calendar and Focus | Task detail/completion and Focus pass | Calendar block edit/cancel residue pending |
-| Projects, Docs and Browse | PDF/source identity, saved/error recovery and proposal decisions partly verified | Final Markdown decisions, structured departure/authority/comment and project recovery pending |
-| Settings, Admin and Connections | Folded mobile Connections, draft retention and long picker pass | One owned Admin form and connection retry pending |
-| Auth and public content | Narrow auth and booking form observed | Synthetic booking validation/confirmation pending |
-| Mobile parity | Representative Expo screens and LaTeX proposal decisions pass | V14 secondary-source dark recheck and residual interactions pending; native excluded |
-| Frozen candidate / Tester / Reviewer | `509462e6`; same round1/3 | Source accepted, latest formal qualification pending |
-| Final web and Expo Visual Check | Bounded continuation | Reuse valid passes; no full repeated sweep |
-| Accepted merge and push | Pending | No acceptance, merge, push or deployment claim |
+| Decision archive, skills and documentation | Implemented; accepted | Archived earlier decisions, current ADR and skill rules; final changed-link check |
+| Shared design foundation | Accepted | V16: 65/65, types/build/image; actual desktop 32px and touch 44px density |
+| Shell and overlays | Accepted | Independent panes, shared chrome, sidebar resize/reset/cancel; V17 retained-selection shortcuts and narrow search/draft/scroll |
+| Home and Assistant | Accepted | Chat/Work/lane/history, Activity, bounded mobile composer and long local-provider response |
+| Tasks, Calendar and Focus | Accepted | Detail/completion, Focus and calendar block cancellation; recorded runtime contracts |
+| Projects, Docs and Browse | Accepted | Four editor parents, live Note PDF/state, Markdown/LaTeX decisions, save retry, comments, Viewing/Suggesting and project recovery |
+| Settings, Admin and Connections | Accepted | Folded collections, long picker, draft retention, owned Admin form and connection retry |
+| Auth and public content | Accepted | Narrow auth; synthetic booking validation/confirmation with SMTP disabled |
+| Mobile parity | Accepted for Expo web | Representative app flows, 320px layouts and document controls; native excluded |
+| Frozen candidate / Tester / Reviewer | Accepted `e2813634`, round 1/3 | V16/V17 affected receipts and retained earlier family/runtime evidence; counts overlap |
+| Final web and Expo Visual Check | Complete | Bounded passes and affected rechecks; individual inventory files were not each browser-tested |
+| Accepted merge and push | Pending integration | Accepted lineage; production deployment remains user-owned |
+
+The latest runtime change is V17, formally qualified in `c8aaef2a` (9/9 plus
+Desktop types/build). V16's 65/65/types/root build and desktop image are recorded
+in `b349e34c`; the image does not contain the later Topbar marker correction.
+V17's desktop build qualifies that final input change. Visual `3a51aa41` and
+parent `22cb6162` close the finite interaction list. Reviewer approved the agreed
+scope with no further test or visual sweep required. Earlier failed attempts,
+source-specific receipts, native/installed desktop, production and external
+provider/host exclusions remain explicit. Historical entries below are preserved.
 
 Initial full workspace typecheck and production build passed on `f7899149`.
 The first focused batch failed; those failures remain in Tester's evidence.
