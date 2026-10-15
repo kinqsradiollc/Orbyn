@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Image,
   ScrollView,
@@ -6,6 +6,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { Pressable } from "../../motion";
 import {
@@ -34,18 +35,22 @@ import {
   REPEATING_DATE_NOTE,
 } from "@orbyn/core";
 import { BottomSheet } from "../../components/BottomSheet";
+import { ActionSheet, MoreMenu } from "../../components/MoreMenu";
 import { Chip, ChipRow } from "../../components/Chip";
 import { DateField } from "../../components/Field";
 import { Icon } from "../../components/Icon";
 import { SmallAction } from "../../components/SmallAction";
 import { shared } from "../../styles";
+import { usePaneWidth } from "../../hooks/usePaneWidth";
 import { colors, fonts, radii, themed } from "../../theme";
 import { webOrigin } from "../../lib/api";
-import { tap } from "../../lib/haptics";
+import { session } from "../../lib/session";
 import { FieldValueInput } from "./FieldsSection";
-import type { CellEdit } from "./edits";
+import type { CellEdit, EditResult } from "./edits";
 
 type Props = {
+  blockedRows: Set<string>;
+  onEditorOpenChange?: (open: boolean) => void;
   def: ViewDefinition;
   result: ViewResult;
   groups: ViewGroup[];
@@ -53,7 +58,7 @@ type Props = {
   folded: Set<string>;
   onToggleFold: (key: string) => void;
   onOpen: (row: ViewRow) => void;
-  onEdit: (row: ViewRow, edit: CellEdit) => void;
+  onEdit: (row: ViewRow, edit: CellEdit) => Promise<EditResult | false>;
 };
 
 /** The short facts under a row's name: when it's due, where it sits. */
@@ -90,13 +95,19 @@ function Tick({ row, onPress }: { row: ViewRow; onPress: () => void }) {
       accessibilityLabel={`${done ? "Reopen" : "Finish"} ${row.title}`}
       accessibilityState={{ checked: done, disabled: !row.can_write }}
       disabled={!row.can_write}
-      hitSlop={11}
       onPress={onPress}
-      style={[s.tick, done && s.tickDone, !row.can_write && s.dim]}
+      style={[s.tickTarget, !row.can_write && s.dim]}
     >
-      {done && (
-        <Icon name="check" size={13} color={colors.white} strokeWidth={3} />
-      )}
+      <View style={[s.tick, done && s.tickDone]}>
+        {done && (
+          <Icon
+            name="check"
+            size={13}
+            color={colors.onAccent}
+            strokeWidth={3}
+          />
+        )}
+      </View>
     </Pressable>
   );
 }
@@ -115,7 +126,6 @@ function GroupHead({
       accessibilityRole="button"
       accessibilityState={{ expanded: !folded }}
       onPress={onToggle}
-      hitSlop={6}
       style={s.groupHead}
     >
       <Icon
@@ -140,18 +150,21 @@ function GroupHead({
  * or cards for pages. Totals sit under it: "14 tasks · 11 h estimated · 3
  * overdue".
  */
-export function ViewBody(props: Props) {
+export function ViewBody(input: Props) {
+  const lock = (row: ViewRow) =>
+    input.blockedRows.has(row.id) ? { ...row, can_write: false } : row;
+  const props = {
+    ...input,
+    result: { ...input.result, rows: input.result.rows.map(lock) },
+    groups: input.groups.map((group) => ({
+      ...group,
+      rows: group.rows.map(lock),
+    })),
+  };
   const { def, result, timeZone } = props;
   const ctx = { now: new Date(), timeZone };
   if (!result.rows.length)
-    return (
-      <View style={[shared.card, shared.empty]}>
-        <Text style={shared.sectionTitle}>Nothing matches</Text>
-        <Text style={[shared.subtitle, s.center]}>
-          Loosen a filter, or add something that fits.
-        </Text>
-      </View>
-    );
+    return <Text style={shared.small}>No matching rows.</Text>;
   return (
     <View style={s.body}>
       {def.layout === "table" ? (
@@ -257,16 +270,27 @@ function TableLayout({
   onToggleFold,
   onOpen,
   onEdit,
+  onEditorOpenChange,
 }: Props) {
-  const [cell, setCell] = useState<{ row: ViewRow; column: string } | null>(
+  const [cell, updateCell] = useState<{ row: ViewRow; column: string } | null>(
     null,
   );
+  const editorReporter = useRef(onEditorOpenChange);
+  editorReporter.current = onEditorOpenChange;
+  const setCell = (next: { row: ViewRow; column: string } | null) => {
+    editorReporter.current?.(next !== null);
+    updateCell(next);
+  };
+  useEffect(() => () => editorReporter.current?.(false), []);
+  const { fontScale } = useWindowDimensions();
   const columns = viewColumns(def);
   const ctx = { now: new Date(), timeZone };
   const names = { fields: result.fields, people: result.people };
   const grouped = !(groups.length === 1 && groups[0].key === "all");
   const width = (c: string) =>
-    c === "done" ? TICK_WIDTH : c === "title" ? TITLE_WIDTH : COLUMN_WIDTH;
+    c === "done"
+      ? TICK_WIDTH
+      : (c === "title" ? TITLE_WIDTH : COLUMN_WIDTH) * Math.max(1, fontScale);
   const totals = (rows: ViewRow[]) => (
     <View style={[s.tr, s.totalsRow]}>
       {columns.map((c) => (
@@ -282,7 +306,12 @@ function TableLayout({
   );
   return (
     <>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator
+        tabIndex={0}
+        accessibilityLabel="View table, scrolls sideways"
+      >
         <View style={s.table}>
           <View style={[s.tr, s.thead]}>
             {columns.map((c) => (
@@ -308,7 +337,10 @@ function TableLayout({
                     {columns.map((c) => {
                       if (c === "done")
                         return (
-                          <View key={c} style={[s.td, { width: TICK_WIDTH }]}>
+                          <View
+                            key={c}
+                            style={[s.td, s.tickCell, { width: TICK_WIDTH }]}
+                          >
                             {row.kind === "task" && (
                               <Tick
                                 row={row}
@@ -323,10 +355,46 @@ function TableLayout({
                         isEditableColumn(def.source, c, row) &&
                         (!fieldId ||
                           result.fields.some((f) => f.id === fieldId));
+                      if (c === "title" && editable)
+                        return (
+                          <View
+                            key={c}
+                            style={[s.td, s.titleCell, { width: width(c) }]}
+                          >
+                            <Pressable
+                              accessibilityRole="button"
+                              onPress={() => onOpen(row)}
+                              style={s.listText}
+                            >
+                              <Text
+                                style={[s.cellText, s.cellTitle]}
+                                numberOfLines={2}
+                              >
+                                {row.title || "Untitled"}
+                              </Text>
+                            </Pressable>
+                            <MoreMenu
+                              label={`Options for ${row.title || "Untitled"}`}
+                              actions={[
+                                {
+                                  label: "Rename",
+                                  onPress: () => setCell({ row, column: c }),
+                                },
+                              ]}
+                            />
+                          </View>
+                        );
                       return (
                         <Pressable
                           key={c}
-                          accessibilityRole="button"
+                          accessibilityRole={
+                            c === "title" || editable || repeating(row, c)
+                              ? "button"
+                              : undefined
+                          }
+                          disabled={
+                            c !== "title" && !editable && !repeating(row, c)
+                          }
                           accessibilityHint={
                             c === "title"
                               ? "Opens it"
@@ -343,11 +411,6 @@ function TableLayout({
                                 ? setCell({ row, column: c })
                                 : undefined
                           }
-                          onLongPress={() => {
-                            if (c !== "title" || !editable) return;
-                            tap();
-                            setCell({ row, column: c });
-                          }}
                           style={[s.td, { width: width(c) }]}
                         >
                           <Text
@@ -376,19 +439,13 @@ function TableLayout({
           {totals(result.rows)}
         </View>
       </ScrollView>
-      <Text style={shared.small}>
-        Tap a cell to change it; hold a name to rename it.
-      </Text>
       <CellEditor
         cell={cell}
         fields={result.fields}
         people={result.people}
         timeZone={timeZone}
         onClose={() => setCell(null)}
-        onSave={(edit) => {
-          if (cell) onEdit(cell.row, edit);
-          setCell(null);
-        }}
+        onSave={async (edit) => (cell ? onEdit(cell.row, edit) : false)}
       />
     </>
   );
@@ -408,9 +465,72 @@ function CellEditor({
   people: { id: string; name: string }[];
   timeZone: string;
   onClose: () => void;
-  onSave: (edit: CellEdit) => void;
+  onSave: (edit: CellEdit) => Promise<EditResult | false>;
 }) {
+  const account = session.token;
+  const latestCell = useRef(cell);
+  latestCell.current = cell;
+  const [attempt, setAttempt] = useState<CellEdit | null>(null);
   const [text, setText] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
+  const [discarding, setDiscarding] = useState(false);
+  const [fieldDirty, setFieldDirty] = useState(false);
+  const initialText = useRef("");
+  const writing = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    setError("");
+    setAttempt(null);
+    setDiscarding(false);
+    setFieldDirty(false);
+    initialText.current =
+      cell?.column === "estimate"
+        ? String(cell.row.estimate_minutes ?? "")
+        : (cell?.row.title ?? "");
+    setText(
+      cell?.column === "estimate"
+        ? String(cell.row.estimate_minutes ?? "")
+        : (cell?.row.title ?? ""),
+    );
+  }, [cell?.row.id, cell?.column]);
+  const save = async (edit: CellEdit): Promise<boolean> => {
+    if (writing.current || !cell || !alive.current || session.token !== account)
+      return false;
+    const target = cell;
+    writing.current = true;
+    setPending(true);
+    setAttempt(edit);
+    setError("");
+    try {
+      const result = await onSave(edit);
+      if (
+        !alive.current ||
+        session.token !== account ||
+        latestCell.current !== target
+      )
+        return false;
+      if (result) {
+        onClose();
+        return true;
+      }
+      setError("Couldn't save. Try again.");
+      return false;
+    } catch {
+      if (alive.current && session.token === account)
+        setError("Couldn't save. Try again.");
+      return false;
+    } finally {
+      writing.current = false;
+      if (alive.current && session.token === account) setPending(false);
+    }
+  };
   const row = cell?.row;
   const column = cell?.column ?? "";
   const fieldId = fieldKeyId(column);
@@ -421,131 +541,218 @@ function CellEditor({
       : localDateKey(new Date(row.due_at), timeZone)
     : null;
   return (
-    <BottomSheet
-      visible={!!cell}
-      title={row ? `${columnLabel(column, fields)} · ${row.title}` : ""}
-      onClose={onClose}
-    >
-      {row && (
-        <View
-          style={s.editor}
-          // A fresh editor for each cell.
-          key={`${row.id}:${column}`}
-        >
-          {field ? (
-            <FieldValueInput
-              field={field}
-              value={row.fields[field.id]}
-              people={people}
-              editable
-              onCommit={(value) => onSave({ column, field: field.id, value })}
-            />
-          ) : column === "status" ? (
-            <ChipRow label="Status">
-              {statusChoices(row.kind).map((st) => (
-                <Chip
-                  key={st}
-                  label={statusText(st)}
-                  selected={row.status === st}
-                  onPress={() => onSave({ column, value: st })}
-                />
-              ))}
-            </ChipRow>
-          ) : column === "priority" ? (
-            <ChipRow label="Priority">
-              {[...PRIORITIES].reverse().map((p) => (
-                <Chip
-                  key={p}
-                  label={p[0].toUpperCase() + p.slice(1)}
-                  selected={row.priority === p}
-                  onPress={() => onSave({ column, value: p })}
-                />
-              ))}
-            </ChipRow>
-          ) : column === "due" ? (
-            <DateField
-              label="Due"
-              value={dueDay}
-              placeholder="No deadline"
-              clearable
-              onChange={(day) => onSave({ column, value: day })}
-            />
-          ) : (
-            <>
-              <TextInput
-                style={shared.input}
-                autoFocus
-                accessibilityLabel={columnLabel(column, fields)}
-                defaultValue={
-                  column === "estimate"
-                    ? row.estimate_minutes
-                      ? String(row.estimate_minutes)
-                      : ""
-                    : row.title
+    <>
+      <BottomSheet
+        visible={!!cell}
+        title={row ? columnLabel(column, fields) : "Edit cell"}
+        closeDisabled={pending}
+        onClose={() => {
+          if (writing.current) return;
+          if (text !== initialText.current || fieldDirty || attempt)
+            setDiscarding(true);
+          else onClose();
+        }}
+      >
+        {row && (
+          <Text style={[shared.body, s.editorSubject]}>
+            {row.title || "Untitled"}
+          </Text>
+        )}
+        {!!error && (
+          <Text accessibilityRole="alert" style={shared.small}>
+            {error}
+          </Text>
+        )}
+        {row && (
+          <View
+            style={s.editor}
+            // A fresh editor for each cell.
+            key={`${row.id}:${column}`}
+          >
+            {field ? (
+              <FieldValueInput
+                field={field}
+                value={
+                  attempt && "field" in attempt
+                    ? attempt.value
+                    : row.fields[field.id]
                 }
-                placeholder={column === "estimate" ? "Minutes, or 1h 30" : ""}
-                placeholderTextColor={colors.faint}
-                onChangeText={setText}
-                returnKeyType="done"
-                onSubmitEditing={() =>
-                  text.trim() && onSave({ column, value: text.trim() })
-                }
+                people={people}
+                editable={!pending && !discarding}
+                manualSave
+                onDraftChange={setFieldDirty}
+                onCommit={(value) => save({ column, field: field.id, value })}
               />
-              <View style={s.editorActions}>
-                <SmallAction
-                  label="Save"
-                  disabled={!text.trim()}
-                  onPress={() => onSave({ column, value: text.trim() })}
+            ) : column === "status" ? (
+              <ChipRow label="Status">
+                {statusChoices(row.kind).map((st) => (
+                  <Chip
+                    key={st}
+                    label={statusText(st)}
+                    selected={
+                      (attempt && "value" in attempt && !("field" in attempt)
+                        ? attempt.value
+                        : row.status) === st
+                    }
+                    disabled={pending}
+                    onPress={() => void save({ column, value: st })}
+                  />
+                ))}
+              </ChipRow>
+            ) : column === "priority" ? (
+              <ChipRow label="Priority">
+                {[...PRIORITIES].reverse().map((p) => (
+                  <Chip
+                    key={p}
+                    label={p[0].toUpperCase() + p.slice(1)}
+                    selected={
+                      (attempt && "value" in attempt && !("field" in attempt)
+                        ? attempt.value
+                        : row.priority) === p
+                    }
+                    disabled={pending}
+                    onPress={() => void save({ column, value: p })}
+                  />
+                ))}
+              </ChipRow>
+            ) : column === "due" ? (
+              <DateField
+                label="Due"
+                value={
+                  attempt && "value" in attempt && !("field" in attempt)
+                    ? attempt.value
+                    : dueDay
+                }
+                placeholder="No deadline"
+                clearable
+                disabled={pending}
+                onChange={(day) => void save({ column, value: day })}
+              />
+            ) : (
+              <>
+                <TextInput
+                  style={shared.input}
+                  autoFocus
+                  accessibilityLabel={columnLabel(column, fields)}
+                  value={text}
+                  maxLength={500}
+                  editable={!pending}
+                  placeholder={column === "estimate" ? "Minutes, or 1h 30" : ""}
+                  placeholderTextColor={colors.faint}
+                  onChangeText={setText}
+                  returnKeyType="done"
+                  onSubmitEditing={() =>
+                    (text.trim() || column === "estimate") &&
+                    void save({ column, value: text.trim() })
+                  }
                 />
-              </View>
-            </>
-          )}
-        </View>
-      )}
-    </BottomSheet>
+                <View style={s.editorActions}>
+                  <SmallAction
+                    label={pending ? "Saving…" : error ? "Retry save" : "Save"}
+                    disabled={
+                      pending || (!text.trim() && column !== "estimate")
+                    }
+                    onPress={() => void save({ column, value: text.trim() })}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+        )}
+      </BottomSheet>
+      <ActionSheet
+        visible={discarding}
+        label="Discard cell changes"
+        title="Discard changes?"
+        message="Your unsaved cell changes will be lost."
+        cancelLabel="Keep editing"
+        onClose={() => setDiscarding(false)}
+        actions={[
+          {
+            label: "Discard changes",
+            destructive: true,
+            onPress: () => {
+              if (
+                alive.current &&
+                session.token === account &&
+                latestCell.current === cell &&
+                !writing.current
+              )
+                onClose();
+            },
+          },
+        ]}
+      />
+    </>
   );
 }
 
-function BoardLayout({ groups, result, timeZone, onOpen, onEdit }: Props) {
+function BoardLayout({
+  groups,
+  result,
+  timeZone,
+  folded,
+  onToggleFold,
+  onOpen,
+  onEdit,
+}: Props) {
+  const { width, onLayout } = usePaneWidth();
+  const { fontScale } = useWindowDimensions();
+  const columnWidth = Math.max(
+    180,
+    Math.min(width - 12, 300 * Math.max(1, fontScale)),
+  );
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <View style={s.board}>
-        {groups.map((g) => (
-          <View key={g.key} style={s.column}>
-            <Text style={s.groupTitle}>
-              {groupHeader({
-                title: g.title || "Everything",
-                items: g.rows as never[],
-                minutes: g.minutes,
-              })}
-            </Text>
-            {g.rows.map((row) => (
-              <Pressable
-                key={row.id}
-                accessibilityRole="button"
-                onPress={() => onOpen(row)}
-                style={({ pressed }) => [s.boardCard, pressed && s.pressed]}
-              >
-                <View style={s.boardTitleRow}>
-                  {row.kind === "task" && (
-                    <Tick
-                      row={row}
-                      onPress={() => onEdit(row, { column: "done" })}
-                    />
-                  )}
-                  <Text style={[s.rowTitle, s.flex]} numberOfLines={3}>
-                    {row.title || "Untitled"}
-                  </Text>
-                </View>
-                <Text style={shared.small} numberOfLines={2}>
-                  {facts(row, timeZone, result.fields)}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        ))}
-      </View>
-    </ScrollView>
+    <View onLayout={onLayout} style={{ minWidth: 0 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator
+        tabIndex={0}
+        accessibilityLabel="View board, scrolls sideways"
+      >
+        <View style={s.board}>
+          {groups.map((group) => (
+            <View key={group.key} style={[s.column, { width: columnWidth }]}>
+              <GroupHead
+                group={group}
+                folded={folded.has(group.key)}
+                onToggle={() => onToggleFold(group.key)}
+              />
+              {!folded.has(group.key) &&
+                group.rows.map((row) => (
+                  <View key={row.id} style={s.boardCard}>
+                    <View style={s.boardTitleRow}>
+                      {row.kind === "task" && (
+                        <Tick
+                          row={row}
+                          onPress={() => {
+                            void onEdit(row, { column: "done" });
+                          }}
+                        />
+                      )}
+                      <Pressable
+                        accessibilityRole="button"
+                        onPress={() => onOpen(row)}
+                        style={s.listText}
+                      >
+                        <Text
+                          style={[s.rowTitle, row.status === "done" && s.done]}
+                          numberOfLines={3}
+                        >
+                          {row.title || "Untitled"}
+                        </Text>
+                        <Text style={shared.small} numberOfLines={2}>
+                          {facts(row, timeZone, result.fields)}
+                        </Text>
+                      </Pressable>
+                    </View>
+                  </View>
+                ))}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
@@ -557,11 +764,12 @@ function CalendarLayout({ def, result, timeZone, onOpen, onEdit }: Props) {
   const today = localDateKey(new Date(), timeZone);
   const [month, setMonth] = useState(today.slice(0, 7));
   const byDay = new Map<string, ViewRow[]>();
-  let undated = 0;
+  const undated: ViewRow[] = [];
+  const [undatedOpen, setUndatedOpen] = useState(false);
   for (const row of result.rows) {
     const day = calendarDay(row, def, timeZone);
     if (!day) {
-      undated += 1;
+      undated.push(row);
       continue;
     }
     if (day.slice(0, 7) !== month) continue;
@@ -583,7 +791,7 @@ function CalendarLayout({ def, result, timeZone, onOpen, onEdit }: Props) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Previous month"
-          hitSlop={10}
+          style={s.iconTarget}
           onPress={() => shift(-1)}
         >
           <Icon name="chevronLeft" size={18} color={colors.textSoft} />
@@ -592,7 +800,7 @@ function CalendarLayout({ def, result, timeZone, onOpen, onEdit }: Props) {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Next month"
-          hitSlop={10}
+          style={s.iconTarget}
           onPress={() => shift(1)}
         >
           <Icon name="chevronRight" size={18} color={colors.textSoft} />
@@ -635,10 +843,42 @@ function CalendarLayout({ def, result, timeZone, onOpen, onEdit }: Props) {
           </View>
         </View>
       ))}
-      {undated > 0 && (
-        <Text style={shared.small}>
-          {undated === 1 ? "1 has no date" : `${undated} have no date`}
-        </Text>
+      {undated.length > 0 && (
+        <View style={s.group}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: undatedOpen }}
+            onPress={() => setUndatedOpen((open) => !open)}
+            style={s.groupHead}
+          >
+            <Icon
+              name={undatedOpen ? "chevronDown" : "chevronRight"}
+              size={14}
+              color={colors.muted}
+            />
+            <Text style={s.groupTitle}>No date · {undated.length}</Text>
+          </Pressable>
+          {undatedOpen &&
+            undated.map((row) => (
+              <View key={row.id} style={[s.listRow, s.divider]}>
+                {row.kind === "task" && (
+                  <Tick
+                    row={row}
+                    onPress={() => {
+                      void onEdit(row, { column: "done" });
+                    }}
+                  />
+                )}
+                <Pressable
+                  accessibilityRole="button"
+                  style={s.listText}
+                  onPress={() => onOpen(row)}
+                >
+                  <Text style={s.rowTitle}>{row.title || "Untitled"}</Text>
+                </Pressable>
+              </View>
+            ))}
+        </View>
       )}
     </>
   );
@@ -649,14 +889,19 @@ function CalendarLayout({ def, result, timeZone, onOpen, onEdit }: Props) {
  * first image as a cover when it has one. Otherwise plain surface.
  */
 function GalleryLayout({ result, timeZone, onOpen }: Props) {
+  const pane = usePaneWidth();
   return (
-    <View style={s.gallery}>
+    <View style={s.gallery} onLayout={pane.onLayout}>
       {result.rows.map((row) => (
         <Pressable
           key={row.id}
           accessibilityRole="button"
           onPress={() => onOpen(row)}
-          style={({ pressed }) => [s.galleryCard, pressed && s.pressed]}
+          style={({ pressed }) => [
+            s.galleryCard,
+            pane.width < 480 && s.gallerySingle,
+            pressed && s.pressed,
+          ]}
         >
           {row.cover && (
             <Image
@@ -684,28 +929,28 @@ function GalleryLayout({ result, timeZone, onOpen }: Props) {
 
 const s = themed(() =>
   StyleSheet.create({
+    editorSubject: { marginBottom: 12, flexShrink: 1 },
     body: { gap: 12 },
     center: { textAlign: "center" },
-    flex: { flex: 1 },
+    flex: { flex: 1, minWidth: 0 },
     group: { gap: 8 },
     groupHead: {
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      paddingVertical: 4,
+      minHeight: 44,
+      paddingVertical: 8,
     },
     groupTitle: {
       fontFamily: fonts.semibold,
       fontSize: 13,
       color: colors.text,
+      flexShrink: 1,
     },
     today: { color: colors.accent },
     card: {
       backgroundColor: colors.surface,
-      borderRadius: radii.card,
-      borderWidth: 1,
-      borderColor: colors.border,
-      paddingHorizontal: 14,
+      paddingHorizontal: 0,
     },
     listRow: {
       flexDirection: "row",
@@ -718,11 +963,34 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
-    listText: { flex: 1, gap: 2 },
+    listText: {
+      flex: 1,
+      minWidth: 0,
+      gap: 2,
+      minHeight: 44,
+      justifyContent: "center",
+    },
     rowTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     done: { color: colors.muted, textDecorationLine: "line-through" },
     left: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     late: { color: colors.warning, fontFamily: fonts.semibold },
+    tickTarget: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    tickCell: {
+      paddingHorizontal: 0,
+      paddingVertical: 0,
+      alignItems: "center",
+    },
+    iconTarget: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     tick: {
       width: 22,
       height: 22,
@@ -756,9 +1024,7 @@ const s = themed(() =>
       paddingHorizontal: 10,
       paddingVertical: 8,
       fontFamily: fonts.semibold,
-      fontSize: 11,
-      letterSpacing: 0.5,
-      textTransform: "uppercase",
+      fontSize: 13,
       color: colors.muted,
     },
     td: {
@@ -769,12 +1035,18 @@ const s = themed(() =>
     },
     cellText: { fontFamily: fonts.regular, fontSize: 13, color: colors.text },
     cellTitle: { fontFamily: fonts.medium },
+    titleCell: {
+      flexDirection: "row",
+      alignItems: "center",
+      paddingVertical: 0,
+      paddingRight: 0,
+    },
     totalsRow: { backgroundColor: colors.surfaceMuted },
     totalCell: {
       minHeight: 32,
       paddingVertical: 8,
       fontFamily: fonts.regular,
-      fontSize: 11,
+      fontSize: 13,
       color: colors.muted,
     },
     groupRow: {
@@ -783,24 +1055,20 @@ const s = themed(() =>
       backgroundColor: colors.surfaceMuted,
     },
     editor: { gap: 12, paddingBottom: 12 },
-    editorActions: { flexDirection: "row", gap: 8 },
+    editorActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     board: { flexDirection: "row", gap: 12, paddingBottom: 4 },
     column: {
-      width: 250,
-      gap: 8,
-      padding: 10,
-      borderRadius: radii.card,
-      borderWidth: 1,
-      borderColor: colors.border,
+      gap: 4,
+      minWidth: 0,
+      padding: 8,
+      borderRadius: radii.input,
       backgroundColor: colors.surfaceMuted,
     },
     boardCard: {
       gap: 6,
-      padding: 12,
-      borderRadius: radii.input,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
+      paddingVertical: 8,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
     },
     boardTitleRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
     pressed: { opacity: 0.7 },
@@ -810,11 +1078,20 @@ const s = themed(() =>
       justifyContent: "space-between",
       paddingVertical: 4,
     },
-    monthTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
+    monthTitle: {
+      flex: 1,
+      minWidth: 0,
+      flexShrink: 1,
+      textAlign: "center",
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
     gallery: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     galleryCard: {
       flexBasis: "47%",
       flexGrow: 1,
+      minWidth: 0,
       gap: 6,
       padding: 12,
       borderRadius: radii.card,
@@ -822,6 +1099,7 @@ const s = themed(() =>
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
+    gallerySingle: { flexBasis: "100%" },
     cover: { width: "100%", height: 96, borderRadius: radii.input },
     galleryTitle: { fontFamily: fonts.bold, fontSize: 15, color: colors.text },
     preview: {

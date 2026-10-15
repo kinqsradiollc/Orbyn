@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Pressable } from "../../motion";
 import {
@@ -16,7 +16,14 @@ import { Icon } from "../../components/Icon";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import { deviceTimeZone } from "../../lib/planning";
-import { colors, controls, fonts, radii, themed } from "../../theme";
+import {
+  inputFontSize,
+  colors,
+  controls,
+  fonts,
+  radii,
+  themed,
+} from "../../theme";
 import { LinkPickerPanel } from "./links";
 
 /**
@@ -45,33 +52,63 @@ export function MergeSheet({
   const [picked, setPicked] = useState<LinkOption | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const pending = useRef(false);
+  const active = useRef(false);
+  const generation = useRef(0);
+  useEffect(() => {
+    generation.current += 1;
+    active.current = visible;
+    setPicked(null);
+    return () => {
+      active.current = false;
+      generation.current += 1;
+    };
+  }, [visible, doc.id]);
   useEffect(() => {
     if (!visible) return;
     let live = true;
+    setLoading(true);
+    setSearchError("");
+    setFound([]);
     const t = setTimeout(() => {
-      client.pickLinks(q, 20).then(
-        (hits) =>
-          live &&
-          setFound(hits.filter((h) => h.kind === "doc" && h.id !== doc.id)),
-        () => live && setFound([]),
-      );
+      void client
+        .pickLinks(q, 20)
+        .then(
+          (hits) =>
+            live &&
+            setFound(hits.filter((h) => h.kind === "doc" && h.id !== doc.id)),
+          (failure) => live && setSearchError(errorText(failure)),
+        )
+        .finally(() => {
+          if (live) setLoading(false);
+        });
     }, 150);
     return () => {
       live = false;
       clearTimeout(t);
     };
-  }, [q, doc.id, visible]);
+  }, [q, doc.id, visible, retry]);
   const merge = async () => {
-    if (!picked) return;
+    if (!picked || pending.current) return;
+    const ownGeneration = generation.current;
+    const current = () =>
+      active.current && generation.current === ownGeneration;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
-      const done = await client.mergeDoc(doc.id, picked.id, await version());
-      onMerged(done.doc, done.relinked);
+      const currentVersion = await version();
+      if (!current()) return;
+      const done = await client.mergeDoc(doc.id, picked.id, currentVersion);
+      if (current()) onMerged(done.doc, done.relinked);
     } catch (e) {
-      setError(errorText(e));
+      if (current()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (active.current) setBusy(false);
     }
   };
   return (
@@ -79,6 +116,7 @@ export function MergeSheet({
       visible={visible}
       title="Merge into…"
       onClose={onClose}
+      closeDisabled={busy}
       footer={
         <Pressable
           accessibilityRole="button"
@@ -90,9 +128,7 @@ export function MergeSheet({
             (!picked || busy) && { opacity: 0.45 },
           ]}
         >
-          <Text style={s.primaryText} numberOfLines={1}>
-            {picked ? `Merge into “${picked.title}”` : "Merge"}
-          </Text>
+          <Text style={s.primaryText}>{busy ? "Merging…" : "Merge"}</Text>
         </Pressable>
       }
     >
@@ -100,9 +136,15 @@ export function MergeSheet({
         “{doc.title || "Untitled"}” joins the target with comments and tasks.
         Links redirect; this page moves to Trash and can be restored.
       </Text>
-      {!!error && <Text style={s.error}>{error}</Text>}
+      {picked && <Text style={s.muted}>Into: {picked.title}</Text>}
+      {!!error && (
+        <Text accessibilityRole="alert" style={s.error}>
+          {error}
+        </Text>
+      )}
       <TextInput
         value={q}
+        editable={!busy}
         onChangeText={(v) => {
           setQ(v);
           setPicked(null);
@@ -121,6 +163,7 @@ export function MergeSheet({
               key={f.id}
               accessibilityRole="radio"
               accessibilityState={{ checked: on }}
+              disabled={busy}
               onPress={() => setPicked(f)}
               style={({ pressed }) => [
                 s.row,
@@ -130,16 +173,30 @@ export function MergeSheet({
             >
               <Icon name="fileText" size={16} color={colors.muted} />
               <View style={s.rowText}>
-                <Text style={s.rowTitle} numberOfLines={1}>
-                  {f.title}
-                </Text>
+                <Text style={s.rowTitle}>{f.title}</Text>
                 {f.hint ? <Text style={s.rowHint}>{f.hint}</Text> : null}
               </View>
               {on && <Icon name="check" size={16} color={colors.accent} />}
             </Pressable>
           );
         })}
-        {!found.length && (
+        {loading && <Text style={s.muted}>Finding pages…</Text>}
+        {!!searchError && (
+          <View>
+            <Text accessibilityRole="alert" style={s.error}>
+              {searchError}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              disabled={busy}
+              onPress={() => setRetry((value) => value + 1)}
+              style={s.row}
+            >
+              <Text style={s.rowTitle}>Retry</Text>
+            </Pressable>
+          </View>
+        )}
+        {!loading && !searchError && !found.length && (
           <Text style={s.muted}>
             {q ? "No page is called that." : "Type to find a page."}
           </Text>
@@ -164,14 +221,28 @@ export function TemplateSheet({
   report: (e: unknown) => void;
 }) {
   const [templates, setTemplates] = useState<PageTemplate[] | null>(null);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!visible) return;
-    client.listPageTemplates().then(setTemplates, (e) => {
-      setTemplates([]);
-      report(e);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+    let active = true;
+    setTemplates(null);
+    setError("");
+    void client.listPageTemplates().then(
+      (items) => {
+        if (active) setTemplates(items);
+      },
+      (failure) => {
+        if (active) {
+          setError(errorText(failure));
+          setTemplates(null);
+        }
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [visible, retry]);
   const values = useMemo(
     () => ({
       date: blankDate(new Date(), deviceTimeZone()),
@@ -182,7 +253,21 @@ export function TemplateSheet({
   );
   return (
     <BottomSheet visible={visible} title="Insert a template" onClose={onClose}>
-      {templates === null && <Text style={s.muted}>Loading…</Text>}
+      {templates === null && !error && <Text style={s.muted}>Loading…</Text>}
+      {!!error && (
+        <View>
+          <Text accessibilityRole="alert" style={s.error}>
+            {error}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setRetry((value) => value + 1)}
+            style={s.row}
+          >
+            <Text style={s.rowTitle}>Retry</Text>
+          </Pressable>
+        </View>
+      )}
       {templates?.length === 0 && (
         <Text style={s.muted}>
           No templates yet. Save a page as one from its ⋯.
@@ -204,9 +289,7 @@ export function TemplateSheet({
           >
             <Icon name="layoutTemplate" size={16} color={colors.muted} />
             <View style={s.rowText}>
-              <Text style={s.rowTitle} numberOfLines={1}>
-                {t.name}
-              </Text>
+              <Text style={s.rowTitle}>{t.name}</Text>
               {t.description ? (
                 <Text style={s.rowHint} numberOfLines={2}>
                   {t.description}
@@ -268,7 +351,7 @@ const s = themed(() =>
       borderColor: colors.border,
       color: colors.text,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: inputFontSize,
     },
     list: { gap: 2, marginTop: 6 },
     row: {
@@ -294,7 +377,7 @@ const s = themed(() =>
     },
     primaryPressed: { backgroundColor: colors.accentPressed },
     primaryText: {
-      color: colors.white,
+      color: colors.onAccent,
       fontFamily: fonts.semibold,
       fontSize: 15,
     },

@@ -21,11 +21,13 @@ export function TurnChanges({
   undo: (job: string) => Promise<number>;
 }) {
   const [changes, setChanges] = useState<AgentActivity[] | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const [undone, setUndone] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     let live = true;
+    setExpanded(false);
     load(job).then(
       (list) => live && setChanges(list),
       () => live && setChanges([]),
@@ -67,7 +69,7 @@ export function TurnChanges({
         )}
       </div>
       <ul>
-        {shown.slice(0, SHOWN).map((change) => (
+        {(expanded ? shown : shown.slice(0, SHOWN)).map((change) => (
           <li key={change.id}>
             <span>{changeLine(change)}</span>
             {!!change.links?.length && (
@@ -77,7 +79,7 @@ export function TurnChanges({
                     key={`${l.kind}:${l.id}`}
                     type="button"
                     className="link-button"
-                    title={`Open this ${l.kind === "doc" ? "page" : l.kind}`}
+                    aria-label={`Open ${l.title || "Untitled"} (${l.kind === "doc" ? "page" : l.kind})`}
                     onClick={() => openObject({ kind: l.kind, id: l.id })}
                   >
                     {l.title || "Untitled"}
@@ -87,8 +89,17 @@ export function TurnChanges({
             )}
           </li>
         ))}
-        {shown.length > SHOWN && <li>And {shown.length - SHOWN} more</li>}
       </ul>
+      {shown.length > SHOWN && (
+        <button
+          type="button"
+          className="link-button"
+          aria-expanded={expanded}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Show fewer changes" : `Show all ${shown.length} changes`}
+        </button>
+      )}
       {error && (
         <p className="error" role="alert">
           {error}

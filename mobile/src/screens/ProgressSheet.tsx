@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Linking,
   ScrollView,
@@ -10,6 +10,8 @@ import {
 import { dateLabel, type ProgressReport, type Team } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";
+import { SmallAction } from "../components/SmallAction";
+import { InlineDetails } from "../components/InlineDetails";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
@@ -45,7 +47,7 @@ export function ProgressSheet({
   return (
     <Sheet
       visible={visible}
-      title="Done this week"
+      title="Progress"
       onClose={onClose}
       onDismiss={onDismiss}
     >
@@ -55,19 +57,31 @@ export function ProgressSheet({
 }
 
 function Body({ teams }: { teams: Team[] }) {
+  const [retry, setRetry] = useState(0);
+  const [sharing, setSharing] = useState(false);
+  const mutation = useRef(false);
   const [week, setWeek] = useState<(typeof WEEKS)[number]>("this");
   const [teamId, setTeamId] = useState<string | null>(null);
   const [report, setReport] = useState<ProgressReport | null>(null);
   const [error, setError] = useState("");
   useEffect(() => {
+    let live = true;
     setReport(null);
     setError("");
     const from = mondayOf(week === "this" ? 0 : 1);
     const to = new Date(from.getTime() + 7 * 86_400_000);
-    client
-      .progress(from, to, teamId ?? undefined)
-      .then(setReport, (e: Error) => setError(errorText(e)));
-  }, [week, teamId]);
+    client.progress(from, to, teamId ?? undefined).then(
+      (value) => {
+        if (live) setReport(value);
+      },
+      (error) => {
+        if (live) setError(errorText(error));
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [week, teamId, retry]);
   const count = report?.people.reduce((n, p) => n + p.done.length, 0) ?? 0;
   return (
     <ScrollView contentContainerStyle={sheetStyles.body}>
@@ -80,27 +94,46 @@ function Body({ teams }: { teams: Team[] }) {
           onChange={setWeek}
         />
         {teams.length > 0 && (
-          <ChipRow label="Whose">
-            <Chip
-              label="Just mine"
-              selected={!teamId}
-              onPress={() => setTeamId(null)}
-            />
-            {teams.map((t) => (
+          <InlineDetails
+            title={
+              teamId
+                ? `Scope: ${teams.find((team) => team.id === teamId)?.name ?? "Team"}`
+                : "Scope: just mine"
+            }
+          >
+            <ChipRow label="Progress scope">
               <Chip
-                key={t.id}
-                label={t.name}
-                selected={teamId === t.id}
-                onPress={() => setTeamId(t.id)}
+                label="Just mine"
+                selected={!teamId}
+                onPress={() => setTeamId(null)}
               />
-            ))}
-          </ChipRow>
+              {teams.map((t) => (
+                <Chip
+                  key={t.id}
+                  label={t.name}
+                  selected={teamId === t.id}
+                  onPress={() => setTeamId(t.id)}
+                />
+              ))}
+            </ChipRow>
+          </InlineDetails>
         )}
-        {!!error && <Text style={[shared.small, s.bad]}>{error}</Text>}
+        {!!error && (
+          <View>
+            <Text style={[shared.small, s.bad]} accessibilityRole="alert">
+              {error}
+            </Text>
+            <SmallAction
+              label="Retry"
+              disabled={false}
+              onPress={() => setRetry((value) => value + 1)}
+            />
+          </View>
+        )}
         {!report ? (
           !error && <Text style={shared.small}>Loading…</Text>
         ) : count === 0 ? (
-          <Text style={shared.small}>Nothing finished in these days yet.</Text>
+          <Text style={shared.small}>No completed tasks for this period.</Text>
         ) : (
           report.people.map((p) => (
             <View key={p.user_id} style={shared.card}>
@@ -108,7 +141,7 @@ function Body({ teams }: { teams: Team[] }) {
               {p.done.map((t, n) => (
                 <View key={t.item_id} style={[s.row, n > 0 && s.divider]}>
                   <Icon name="check" size={15} color={colors.accent} />
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text style={s.title}>{t.title}</Text>
                     <Text style={shared.small}>
                       {dateLabel(t.done_at)}
@@ -120,7 +153,12 @@ function Body({ teams }: { teams: Team[] }) {
                         style={[shared.small, !!f.url && s.link]}
                         accessibilityRole={f.url ? "link" : undefined}
                         onPress={
-                          f.url ? () => void Linking.openURL(f.url!) : undefined
+                          f.url
+                            ? () =>
+                                void Linking.openURL(f.url!).catch((error) =>
+                                  setError(errorText(error)),
+                                )
+                            : undefined
                         }
                       >
                         {f.note || "Proof"}
@@ -137,9 +175,18 @@ function Body({ teams }: { teams: Team[] }) {
             secondary
             title="Share as text"
             icon="share"
-            onPress={() =>
-              void Share.share({ message: report.markdown }).catch(() => {})
-            }
+            disabled={sharing}
+            onPress={() => {
+              if (mutation.current) return;
+              mutation.current = true;
+              setSharing(true);
+              void Share.share({ message: report.markdown })
+                .catch((error) => setError(errorText(error)))
+                .finally(() => {
+                  mutation.current = false;
+                  setSharing(false);
+                });
+            }}
           />
         )}
       </View>
@@ -155,8 +202,8 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
-    title: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
-    link: { color: colors.accent },
+    title: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
+    link: { color: colors.accent, minHeight: 44, paddingVertical: 10 },
     bad: { color: colors.danger },
   }),
 );

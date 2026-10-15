@@ -66,6 +66,7 @@
 }
 .storage-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
 }
@@ -122,9 +123,7 @@
 }
 .storage-main strong {
   font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .storage-main small {
   font-size: 13px;
@@ -161,14 +160,15 @@
 }
 .storage-table th {
   font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-muted);
 }
 .storage-table td:first-child {
+  min-width: 180px;
   max-width: 260px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 @media (max-width: 640px) {
   .storage-files li {
@@ -178,4 +178,66 @@
     grid-column: 1 / -1;
     justify-self: end;
   }
+}
+
+/* Remaining pane width controls these layouts without containing fixed dialogs. */
+
+.admin-content.is-small .storage-files li {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.admin-content.is-small .storage-delete {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+
+.storage-head > div {
+  min-width: 0;
+}
+.storage-main small {
+  overflow-wrap: anywhere;
+}
+.storage-reasons li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.storage-history > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-accentText);
+}
+.storage-history:not([open]) > :not(summary) {
+  display: none;
+}
+
+.storage-error-detail {
+  min-width: 140px;
+  white-space: normal;
+}
+.storage-error-detail > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.storage-error-detail p {
+  margin: 4px 0;
+  max-width: 36ch;
+  overflow-wrap: anywhere;
+}
+
+.storage-stat > strong {
+  overflow-wrap: anywhere;
+}
+.storage-section h3 {
+  flex-wrap: wrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.storage-actions button,
+.storage-delete {
+  min-height: 44px;
 }

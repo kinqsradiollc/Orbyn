@@ -111,3 +111,33 @@
   color: var(--muted);
   overflow-wrap: anywhere;
 }
+
+/* Full titles and compact task metadata remain readable at pane widths. */
+.item-row .item-main strong,
+.item-row .item-main .item-meta {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+}
+.item-row .item-main {
+  min-height: 44px;
+}
+.row-fold,
+.row-move .icon-button {
+  min-width: 32px;
+  min-height: 32px;
+}
+.row-fold {
+  margin-right: 0;
+}
+@media (pointer: coarse) {
+  .row-fold,
+  .row-move .icon-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

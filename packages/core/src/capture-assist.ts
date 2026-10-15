@@ -1,3 +1,4 @@
+import type { VersionedDocContent } from "./doc-content-format.js";
 import type { AiFeatureProvider } from "./ai-feature.js";
 import { z } from "zod";
 import type { DocBlock } from "./docs.js";
@@ -56,8 +57,7 @@ export function withSummary(blocks: DocBlock[], summary: string): DocBlock[] {
   const points = summary
     .split("\n")
     .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
-    .filter(Boolean)
-    .slice(0, 12);
+    .filter(Boolean);
   if (!points.length) return blocks;
   return [
     { type: "callout", kind: "summary", text: "Summary from the assistant" },
@@ -65,4 +65,23 @@ export function withSummary(blocks: DocBlock[], summary: string): DocBlock[] {
     { type: "divider" } as DocBlock,
     ...blocks,
   ];
+}
+
+/** Add reviewed summary leaves without flattening nested document ownership. */
+export function withDocumentSummary(
+  document: VersionedDocContent,
+  summary: string,
+): VersionedDocContent {
+  if (document.format === 1)
+    return { format: 1, blocks: withSummary(document.blocks, summary) };
+  return {
+    format: 2,
+    nodes: [
+      ...withSummary([], summary).map((block) => ({
+        kind: "block" as const,
+        block,
+      })),
+      ...document.nodes,
+    ],
+  };
 }

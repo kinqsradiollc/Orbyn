@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Laptop, Monitor, Smartphone } from "lucide-react";
 import {
   syncLabel,
@@ -38,27 +38,68 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
   const [devices, setDevices] = useState<DevicePresence[] | null>(null);
   const [settings, setSettings] = useState<PresenceSettings | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [devicesFailed, setDevicesFailed] = useState(false);
+  const [settingsFailed, setSettingsFailed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const mounted = useRef(false);
+  const deviceRequest = useRef(0);
+  const settingsRequest = useRef(0);
+  const reportRef = useRef(report);
+  reportRef.current = report;
   const action = useAction(report);
 
-  const load = useCallback(() => {
-    client.listDevices().then(setDevices, () => setDevices([]));
+  const load = useCallback(async () => {
+    const epoch = ++deviceRequest.current;
+    setLoading(true);
+    try {
+      const value = await client.listDevices();
+      if (mounted.current && epoch === deviceRequest.current) {
+        setDevices(value);
+        setDevicesFailed(false);
+      }
+    } catch {
+      if (mounted.current && epoch === deviceRequest.current)
+        setDevicesFailed(true);
+    } finally {
+      if (mounted.current && epoch === deviceRequest.current) setLoading(false);
+    }
+  }, []);
+  const loadSettings = useCallback(async () => {
+    const epoch = ++settingsRequest.current;
+    setSettingsFailed(false);
+    try {
+      const value = await client.presenceSettings();
+      if (mounted.current && epoch === settingsRequest.current)
+        setSettings(value);
+    } catch (error) {
+      if (mounted.current && epoch === settingsRequest.current) {
+        setSettingsFailed(true);
+        reportRef.current(error);
+      }
+    }
   }, []);
   useEffect(() => {
-    load();
-    client.presenceSettings().then(setSettings, report);
+    mounted.current = true;
+    void load();
+    void loadSettings();
     const stop = onLive((news) => news.kind === "presence" && load());
     // "Online" fades with time as well as with news.
     const id = setInterval(load, 60_000);
     return () => {
+      mounted.current = false;
+      deviceRequest.current++;
+      settingsRequest.current++;
       stop();
       clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [load]);
+  }, [load, loadSettings]);
 
   const share = (on: boolean) =>
     void action.run(async () => {
-      setSettings(await client.updatePresenceSettings({ share_presence: on }));
+      settingsRequest.current++;
+      const value = await client.updatePresenceSettings({ share_presence: on });
+      if (mounted.current) setSettings(value);
       return on
         ? "Your teams can see when you're active."
         : "Your teams no longer see when you're active.";
@@ -67,7 +108,7 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
   const forget = (d: DevicePresence) =>
     void action.run(async () => {
       await client.forgetDevice(d.device_id);
-      load();
+      if (mounted.current) await load();
       return "Forgotten. It shows again if it's used.";
     });
 
@@ -83,12 +124,26 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
     <>
       <hr />
       <h2>Your devices</h2>
-      <p className="muted">
-        Where Orbyn is open, and whether each device is in sync.
-      </p>
-      {devices === null ? (
-        <p className="muted">Loading…</p>
-      ) : devices.length === 0 ? (
+      {devicesFailed && (
+        <div>
+          <p className="error" role="alert">
+            Couldn't refresh devices.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            disabled={loading || action.pending}
+            onClick={() => void load()}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {devices === null && !devicesFailed ? (
+        <p className="muted" role="status">
+          Loading…
+        </p>
+      ) : devices?.length === 0 ? (
         <p className="muted">No devices yet.</p>
       ) : (
         <ul className="settings-list devices-list">
@@ -127,7 +182,8 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
                 {d.device_id !== self && !d.online && (
                   <button
                     className="link-button"
-                    disabled={action.pending}
+                    disabled={action.pending || loading || devicesFailed}
+                    aria-label={`Forget ${d.label ?? d.platform}`}
                     onClick={() => forget(d)}
                   >
                     Forget
@@ -156,17 +212,32 @@ export function DevicesSettings({ report }: { report: (e: unknown) => void }) {
             role="switch"
             className="ai-switch"
             checked={settings.share_presence}
-            disabled={action.pending}
+            disabled={action.pending || settingsFailed}
             onChange={(e) => share(e.target.checked)}
           />
           <span>
-            Let my teams see when I&apos;m active
+            Share activity with teams
             <small>
               Teams see active or away, never your work or last visit. People on
               an open shared page still see you there.
             </small>
           </span>
         </label>
+      )}
+      {settingsFailed && (
+        <div>
+          <p className="error" role="alert">
+            Couldn't load activity sharing.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            disabled={action.pending}
+            onClick={() => void loadSettings()}
+          >
+            Retry sharing settings
+          </button>
+        </div>
       )}
       <OutcomeNote outcome={action.outcome} />
     </>

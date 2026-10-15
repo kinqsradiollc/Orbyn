@@ -1,5 +1,12 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { Pressable } from "../motion";
 import {
   commandsOn,
@@ -28,9 +35,11 @@ import {
   type Team,
 } from "@orbyn/core";
 import { Chip } from "../components/Chip";
+import { InlineDetails } from "../components/InlineDetails";
 import { CONCEPT_ICON, Icon, type IconName } from "../components/Icon";
 import { ActionSheet, type MoreAction } from "../components/MoreMenu";
 import { Sheet, sheetStyles } from "../components/Sheet";
+import { session } from "../lib/session";
 import { client } from "../lib/api";
 import { readLocal, saveLocal } from "../lib/localPrefs";
 import { errorText } from "../lib/errors";
@@ -110,6 +119,19 @@ const STARTERS = [
   "app.whats-new",
 ];
 
+const duplicateName = (
+  list: readonly { name: string }[],
+  name: string | null,
+) =>
+  !!name &&
+  list.filter(
+    (row) => row.name.trim().toLowerCase() === name.trim().toLowerCase(),
+  ).length > 1;
+const uniqueNamed = <T extends { id: string; name: string }>(
+  list: readonly T[],
+  name: string | null,
+) => (duplicateName(list, name) ? null : findNamed(list, name));
+
 const plain = (snippet: string | null | undefined) =>
   snippetRuns(snippet ?? "")
     .map((r) => r.text)
@@ -141,16 +163,20 @@ export function SearchSheet({
   onClose: () => void;
   onDismiss?: () => void;
   /** Open what was chosen: a page (at a line), a task or event, a project. */
-  onOpen: (type: string, id: string, blockId: string | null) => void;
+  onOpen: (
+    type: string,
+    id: string,
+    blockId: string | null,
+  ) => void | Promise<void>;
   /** Whether the phone can run a command from the list (MOB-10). */
   canRun?: (command: CommandDef) => boolean;
   /** Run a command: what it opens comes over the search. */
-  onCommand?: (command: CommandDef) => void;
+  onCommand?: (command: CommandDef) => void | Promise<void>;
 }) {
   return (
     <Sheet
       visible={visible}
-      title="Search & do"
+      title="Search"
       onClose={onClose}
       onDismiss={onDismiss}
     >
@@ -176,38 +202,115 @@ function Body({
 }: {
   initialQuery: string;
   teams: Team[];
-  onOpen: (type: string, id: string, blockId: string | null) => void;
+  onOpen: (
+    type: string,
+    id: string,
+    blockId: string | null,
+  ) => void | Promise<void>;
   canRun?: (command: CommandDef) => boolean;
-  onCommand?: (command: CommandDef) => void;
+  onCommand?: (command: CommandDef) => void | Promise<void>;
 }) {
   const { tags } = usePlanning();
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const owns = () => mounted.current && session.token === owner;
+  const operation = useRef(false);
+  const [opening, setOpening] = useState(false);
+  const [openError, setOpenError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [projectStatus, setProjectStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [choices, setChoices] = useState<
+    Partial<Record<"project" | "tag" | "team", { id: string; name: string }>>
+  >({});
+  const seed = useRef(initialQuery);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (seed.current === initialQuery || opening) return;
+    seed.current = initialQuery;
+    setQuery(initialQuery);
+    setChoices({});
+    setOpenError("");
+  }, [initialQuery, opening]);
   const [query, setQuery] = useState(initialQuery);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [rows, setRows] = useState<Row[] | null>(null);
-  const [error, setError] = useState("");
+  const [receipt, setReceipt] = useState<{
+    key: string;
+    rows: Row[];
+    error: string;
+  } | null>(null);
   const [picking, setPicking] = useState<
     "project" | "tag" | "team" | "date" | null
   >(null);
 
   useEffect(() => {
-    void client.listProjects().then(setProjects, () => setProjects([]));
-  }, []);
+    let alive = true;
+    setProjectStatus("loading");
+    void client.listProjects().then(
+      (rows) => {
+        if (alive && owns()) {
+          setProjects(rows);
+          setProjectStatus("ready");
+        }
+      },
+      () => {
+        if (alive && owns()) {
+          setProjects([]);
+          setProjectStatus("error");
+        }
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [attempt]);
 
   const filters = useMemo(() => parseSearch(query), [query]);
   const filtering = hasSearchFilters(filters);
   const named = {
-    project: findNamed(projects, filters.project),
-    tag: findNamed(tags, filters.tag),
-    team: findSearchTeam(teams, filters.team),
+    project:
+      choices.project?.name === filters.project
+        ? (projects.find((p) => p.id === choices.project?.id) ?? null)
+        : uniqueNamed(projects, filters.project),
+    tag:
+      choices.tag?.name === filters.tag
+        ? (tags.find((t) => t.id === choices.tag?.id) ?? null)
+        : uniqueNamed(tags, filters.tag),
+    team:
+      choices.team?.name === filters.team
+        ? choices.team.id === PERSONAL_SPACE.id
+          ? PERSONAL_SPACE
+          : (teams.find((t) => t.id === choices.team?.id) ?? null)
+        : duplicateName(teams, filters.team)
+          ? null
+          : findSearchTeam(teams, filters.team),
   };
   const unknown =
-    filters.project && !named.project
-      ? `No project called “${filters.project}”.`
-      : filters.tag && !named.tag
-        ? `No tag called “${filters.tag}”.`
-        : filters.team && !named.team
-          ? `No team called “${filters.team}”.`
-          : "";
+    filters.words.length > 200
+      ? "Use up to 200 characters for search."
+      : filters.project && !named.project
+        ? projectStatus === "loading"
+          ? "Loading projects…"
+          : projectStatus === "error"
+            ? "Project filters unavailable."
+            : duplicateName(projects, filters.project)
+              ? "Choose a project from the filter."
+              : `No project called “${filters.project}”.`
+        : filters.tag && !named.tag
+          ? duplicateName(tags, filters.tag)
+            ? "Choose a tag from the filter."
+            : `No tag called “${filters.tag}”.`
+          : filters.team && !named.team
+            ? duplicateName(teams, filters.team)
+              ? "Choose a team from the filter."
+              : `No team called “${filters.team}”.`
+            : "";
   const words = filters.words;
 
   // What to look for, as one key, so a search runs once per change.
@@ -220,20 +323,20 @@ function Body({
     filters.date,
     unknown,
   ]);
+  const rows = receipt?.key === key ? receipt.rows : null;
+  const error = receipt?.key === key ? receipt.error : "";
   useEffect(() => {
-    setError("");
-    if (unknown) {
-      setRows([]);
-      return;
-    }
+    setReceipt(null);
+    if (unknown) return;
     let alive = true;
     const timer = setTimeout(
       () => {
-        const done = (found: Row[]) => alive && setRows(found);
+        const done = (found: Row[]) => {
+          if (alive && owns()) setReceipt({ key, rows: found, error: "" });
+        };
         const failed = (e: unknown) => {
-          if (!alive) return;
-          setRows([]);
-          setError(errorText(e));
+          if (!alive || !owns()) return;
+          setReceipt({ key, rows: [], error: errorText(e) });
         };
         // Nothing to go on: what was opened last.
         if (!filtering && !words) {
@@ -255,7 +358,7 @@ function Body({
           return;
         }
         void client
-          .search(words.slice(0, 200), {
+          .search(words, {
             type: filters.type ?? undefined,
             project: named.project?.id,
             tag: named.tag?.id,
@@ -293,28 +396,51 @@ function Body({
       alive = false;
       clearTimeout(timer);
     };
-  }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [key, attempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /** Change one filter, keeping the rest and the words. */
-  const setFilter = (change: Partial<SearchFilters>) =>
+  const setFilter = (
+    change: Partial<SearchFilters>,
+    choice?: { kind: "project" | "tag" | "team"; id: string; name: string },
+  ) => {
+    if (!owns() || operation.current) return;
+    setChoices((previous) => {
+      const next = { ...previous };
+      for (const kind of ["project", "tag", "team"] as const) {
+        if (Object.prototype.hasOwnProperty.call(change, kind)) {
+          if (choice?.kind === kind && change[kind] !== null)
+            next[kind] = choice;
+          else delete next[kind];
+        }
+      }
+      return next;
+    });
     setQuery(formatSearch({ ...filters, ...change }));
+    setOpenError("");
+  };
 
   const pickActions: MoreAction[] =
     picking === "project"
       ? projects
           .filter((p) => p.status !== "archived")
           .map((p) => ({
-            label: named.project?.id === p.id ? `✓ ${p.name}` : p.name,
+            id: p.id,
+            label: `${named.project?.id === p.id ? "✓ " : ""}${p.name} · ${p.team_id ? p.team_name || teams.find((t) => t.id === p.team_id)?.name || "Team" : "Personal"}`,
             onPress: () =>
-              setFilter({
-                project: named.project?.id === p.id ? null : p.name,
-              }),
+              setFilter(
+                { project: named.project?.id === p.id ? null : p.name },
+                { kind: "project", id: p.id, name: p.name },
+              ),
           }))
       : picking === "tag"
         ? tags.map((t) => ({
-            label: named.tag?.id === t.id ? `✓ ${t.name}` : t.name,
+            id: t.id,
+            label: `${named.tag?.id === t.id ? "✓ " : ""}${t.name} · ${t.team_id ? teams.find((team) => team.id === t.team_id)?.name || "Team" : "Personal"}`,
             onPress: () =>
-              setFilter({ tag: named.tag?.id === t.id ? null : t.name }),
+              setFilter(
+                { tag: named.tag?.id === t.id ? null : t.name },
+                { kind: "tag", id: t.id, name: t.name },
+              ),
           }))
         : picking === "team"
           ? [
@@ -324,17 +450,28 @@ function Body({
                     ? "✓ Personal (no team)"
                     : "Personal (no team)",
                 onPress: () =>
-                  setFilter({
-                    team:
-                      named.team?.id === PERSONAL_SPACE.id
-                        ? null
-                        : PERSONAL_SPACE.id,
-                  }),
+                  setFilter(
+                    {
+                      team:
+                        named.team?.id === PERSONAL_SPACE.id
+                          ? null
+                          : PERSONAL_SPACE.id,
+                    },
+                    {
+                      kind: "team",
+                      id: PERSONAL_SPACE.id,
+                      name: PERSONAL_SPACE.id,
+                    },
+                  ),
               },
               ...teams.map((t) => ({
+                id: t.id,
                 label: named.team?.id === t.id ? `✓ ${t.name}` : t.name,
                 onPress: () =>
-                  setFilter({ team: named.team?.id === t.id ? null : t.name }),
+                  setFilter(
+                    { team: named.team?.id === t.id ? null : t.name },
+                    { kind: "team", id: t.id, name: t.name },
+                  ),
               })),
             ]
           : picking === "date"
@@ -365,19 +502,71 @@ function Body({
               STARTERS.includes(c.id) ||
               memory.recent.includes(c.id) ||
               memory.pinned.includes(c.id)),
-        ).slice(0, words.trim() ? 8 : 6);
-  const runCommand = (c: CommandDef) => {
-    const next = recordCommand(memory, c.id);
-    setMemory(next);
-    saveLocal(MEMORY_KEY, JSON.stringify(next));
-    onCommand?.(c);
+        );
+  const runCommand = async (c: CommandDef) => {
+    if (!owns() || operation.current || !(canRun?.(c) ?? true)) return;
+    operation.current = true;
+    setOpening(true);
+    setOpenError("");
+    try {
+      const next = recordCommand(memory, c.id);
+      setMemory(next);
+      saveLocal(MEMORY_KEY, JSON.stringify(next));
+      await onCommand?.(c);
+    } catch (error) {
+      if (owns()) setOpenError(errorText(error));
+    } finally {
+      operation.current = false;
+      if (owns()) setOpening(false);
+    }
   };
 
-  const summary = filtering
-    ? unknown || searchSummary(filters)
-    : words
-      ? searchSummary(filters)
-      : "Opened lately. Try tag:, project: or is:task to narrow it.";
+  const openRow = async (row: Row) => {
+    if (!owns() || operation.current) return;
+    operation.current = true;
+    setOpening(true);
+    setOpenError("");
+    try {
+      await onOpen(row.type, row.id, row.blockId);
+    } catch (error) {
+      if (owns()) setOpenError(errorText(error));
+    } finally {
+      operation.current = false;
+      if (owns()) setOpening(false);
+    }
+  };
+  const filterButton = (
+    kind: "project" | "tag" | "team" | "date",
+    label: string,
+    selected: boolean,
+  ) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Choose ${kind}: ${label}`}
+      accessibilityState={{ selected, disabled: opening }}
+      disabled={opening}
+      onPress={() => {
+        if (owns() && !operation.current) setPicking(kind);
+      }}
+      style={[s.filterButton, selected && s.filterSelected]}
+    >
+      <Text style={[s.filterLabel, selected && s.filterSelectedText]}>
+        {label}
+      </Text>
+      <Icon
+        name="chevronDown"
+        size={13}
+        color={selected ? colors.accent : colors.textSoft}
+      />
+    </Pressable>
+  );
+  const summary =
+    unknown ||
+    (filtering
+      ? unknown || searchSummary(filters)
+      : words
+        ? searchSummary(filters)
+        : "Recently opened");
 
   return (
     <ScrollView
@@ -390,22 +579,33 @@ function Body({
           <TextInput
             style={s.input}
             value={query}
-            onChangeText={setQuery}
-            placeholder="Search, or type what to do"
+            editable={!opening}
+            onChangeText={(nextQuery) => {
+              const parsed = parseSearch(nextQuery);
+              setChoices((previous) => {
+                const next = { ...previous };
+                for (const kind of ["project", "tag", "team"] as const)
+                  if (next[kind]?.name !== parsed[kind]) delete next[kind];
+                return next;
+              });
+              setQuery(nextQuery);
+              setOpenError("");
+            }}
+            placeholder="Search or find an action…"
             placeholderTextColor={colors.faint}
             autoFocus
             autoCapitalize="none"
             autoCorrect={false}
             returnKeyType="search"
             clearButtonMode="while-editing"
-            maxLength={300}
+            maxLength={4000}
             accessibilityLabel="Search"
-            accessibilityHint="Words to find. tag:, project:, team:, is: and edited: narrow the search."
+            accessibilityHint="Use the filters or Search tips to narrow results."
           />
         </View>
         <ScrollView
           horizontal
-          showsHorizontalScrollIndicator={false}
+          showsHorizontalScrollIndicator
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={s.chips}
           accessibilityLabel="Narrow the search"
@@ -414,6 +614,7 @@ function Body({
             <Chip
               key={chip.kind}
               compact
+              disabled={opening}
               label={chip.label}
               selected={filters.type === chip.kind}
               onPress={() =>
@@ -423,90 +624,97 @@ function Body({
               }
             />
           ))}
-          <Chip
-            compact
-            multi
-            label={named.project?.name ?? "Project"}
-            selected={!!named.project}
-            onPress={() => setPicking("project")}
-          />
-          <Chip
-            compact
-            multi
-            label={named.tag?.name ?? "Tag"}
-            selected={!!named.tag}
-            onPress={() => setPicking("tag")}
-          />
-          {(teams.length > 0 || !!filters.team) && (
-            <Chip
-              compact
-              multi
-              label={named.team?.name ?? "Team"}
-              selected={!!named.team}
-              onPress={() => setPicking("team")}
-            />
+          {filterButton(
+            "project",
+            named.project?.name ?? "Project",
+            !!named.project,
           )}
-          <Chip
-            compact
-            multi
-            label={
-              SEARCH_DATE_CHIPS.find((d) => d.date === filters.date)?.label ??
-              "Date"
-            }
-            selected={!!filters.date}
-            onPress={() => setPicking("date")}
-          />
+          {filterButton("tag", named.tag?.name ?? "Tag", !!named.tag)}
+          {(teams.length > 0 || !!filters.team) &&
+            filterButton("team", named.team?.name ?? "Team", !!named.team)}
+          {filterButton(
+            "date",
+            SEARCH_DATE_CHIPS.find((d) => d.date === filters.date)?.label ??
+              "Date",
+            !!filters.date,
+          )}
         </ScrollView>
         <Text style={s.summary} accessibilityLiveRegion="polite">
           {summary}
         </Text>
-        {!!error && <Text style={s.error}>{error}</Text>}
-        <View style={[shared.card, s.results]}>
-          {rows === null ? (
-            <Text style={s.empty}>Looking…</Text>
-          ) : rows.length === 0 ? (
-            <Text style={s.empty}>
-              {filtering || words
-                ? "Nothing matches."
-                : "What you open shows here."}
-            </Text>
-          ) : (
-            rows.map((row, n) => (
-              <Pressable
-                key={row.key}
-                accessibilityRole="button"
-                accessibilityLabel={row.title}
-                accessibilityHint={row.hint || undefined}
-                onPress={() => onOpen(row.type, row.id, row.blockId)}
-                style={({ pressed }) => [
-                  s.row,
-                  n > 0 && s.divider,
-                  pressed && { opacity: 0.6 },
-                ]}
-              >
-                <Icon
-                  name={ICONS[row.icon] ?? "search"}
-                  size={16}
-                  color={colors.accent}
-                />
-                <View style={s.rowText}>
-                  <Text style={s.title} numberOfLines={1}>
-                    {row.title}
-                  </Text>
-                  {!!row.hint && (
-                    <Text style={s.hint} numberOfLines={1}>
-                      {row.hint}
-                    </Text>
-                  )}
-                </View>
-              </Pressable>
-            ))
-          )}
-        </View>
+        <InlineDetails title="Search tips">
+          <Text style={s.summary}>
+            Use tag:, project: or is:task to narrow results.
+          </Text>
+        </InlineDetails>
+        {!!(error || openError) && (
+          <Text style={s.error} accessibilityRole="alert">
+            {openError || error}
+          </Text>
+        )}
+        {opening && (
+          <Text style={s.summary} accessibilityLiveRegion="polite">
+            Opening…
+          </Text>
+        )}
+        {projectStatus === "error" && !filters.project && (
+          <Text style={s.error} accessibilityRole="alert">
+            Project filters unavailable.
+          </Text>
+        )}
+        {(!!error || projectStatus === "error") && (
+          <Pressable
+            accessibilityRole="button"
+            disabled={opening}
+            onPress={() => setAttempt((a) => a + 1)}
+            style={s.retry}
+          >
+            <Text style={[s.summary, { color: colors.accent }]}>Retry</Text>
+          </Pressable>
+        )}
+        {!unknown && !error && (
+          <View style={[shared.card, s.results]}>
+            {rows === null ? (
+              <Text style={s.empty}>Looking…</Text>
+            ) : rows.length === 0 ? (
+              <Text style={s.empty}>
+                {filtering || words
+                  ? "Nothing matches."
+                  : "What you open shows here."}
+              </Text>
+            ) : (
+              rows.map((row, n) => (
+                <Pressable
+                  key={row.key}
+                  accessibilityRole="button"
+                  accessibilityLabel={row.title}
+                  accessibilityHint={row.hint || undefined}
+                  disabled={opening}
+                  onPress={() => void openRow(row)}
+                  style={({ pressed }) => [
+                    s.row,
+                    n > 0 && s.divider,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <Icon
+                    name={ICONS[row.icon] ?? "search"}
+                    size={16}
+                    color={colors.accent}
+                  />
+                  <View style={s.rowText}>
+                    <Text style={s.title}>{row.title}</Text>
+                    {!!row.hint && <Text style={s.hint}>{row.hint}</Text>}
+                  </View>
+                </Pressable>
+              ))
+            )}
+          </View>
+        )}
         {commands.length > 0 && (
           <>
             <Text style={s.heading} accessibilityRole="header">
-              Do
+              Actions
             </Text>
             <View style={[shared.card, s.results]}>
               {commands.map((c, n) => (
@@ -514,7 +722,8 @@ function Body({
                   key={c.id}
                   accessibilityRole="button"
                   accessibilityLabel={c.label}
-                  onPress={() => runCommand(c)}
+                  disabled={opening}
+                  onPress={() => void runCommand(c)}
                   style={({ pressed }) => [
                     s.row,
                     n > 0 && s.divider,
@@ -527,9 +736,7 @@ function Body({
                     color={colors.textSoft}
                   />
                   <View style={s.rowText}>
-                    <Text style={s.title} numberOfLines={1}>
-                      {c.label}
-                    </Text>
+                    <Text style={s.title}>{c.label}</Text>
                   </View>
                 </Pressable>
               ))}
@@ -540,7 +747,15 @@ function Body({
       <ActionSheet
         visible={!!picking}
         label={`Choose a ${picking ?? "filter"}`}
-        title={pickActions.length ? undefined : "Nothing to choose from yet."}
+        title={
+          pickActions.length
+            ? undefined
+            : picking === "project" && projectStatus === "loading"
+              ? "Loading projects…"
+              : picking === "project" && projectStatus === "error"
+                ? "Projects unavailable. Close and retry."
+                : "Nothing to choose from yet."
+        }
         actions={pickActions}
         onClose={() => setPicking(null)}
       />
@@ -564,12 +779,44 @@ const s = themed(() =>
     },
     input: {
       flex: 1,
+      minWidth: 0,
       paddingVertical: 11,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: Platform.OS === "web" ? 16 : 15,
       color: colors.text,
     },
     chips: { flexDirection: "row", gap: 8, paddingVertical: 2 },
+    filterButton: {
+      minHeight: 44,
+      maxWidth: 260,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.pill,
+      backgroundColor: colors.surface,
+    },
+    filterSelected: {
+      backgroundColor: colors.accentSoft,
+      borderColor: colors.accent,
+    },
+    filterLabel: {
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.textSoft,
+      flexShrink: 1,
+    },
+    filterSelectedText: { color: colors.accent },
+    retry: {
+      minHeight: 44,
+      minWidth: 44,
+      justifyContent: "center",
+      paddingHorizontal: 8,
+      alignSelf: "flex-start",
+    },
     summary: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     heading: {
       marginTop: 4,
@@ -596,7 +843,7 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
-    rowText: { flex: 1, gap: 2 },
+    rowText: { flex: 1, minWidth: 0, gap: 2 },
     title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     hint: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
   }),

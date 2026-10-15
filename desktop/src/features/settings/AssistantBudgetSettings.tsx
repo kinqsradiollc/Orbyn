@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AssistantBudgetView } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { SettingsSection } from "./SettingsSection";
@@ -34,16 +34,31 @@ const draftOf = (budget: AssistantBudgetView): Draft => ({
 });
 
 export function AssistantBudgetSettings({ userId }: { userId: string }) {
+  return <AssistantBudgetBody key={userId} userId={userId} />;
+}
+
+function AssistantBudgetBody({ userId }: { userId: string }) {
   const [budgets, setBudgets] = useState<Budgets | null>(null);
   const [lane, setLane] = useState<Lane>("background");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [retry, setRetry] = useState(0);
+  const mutation = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     let live = true;
     setBudgets(null);
     setDraft(null);
+    setError("");
+    setNotice("");
     if (!userId) return;
     void client.assistantBudgets().then(
       (value) => live && setBudgets(value),
@@ -52,10 +67,10 @@ export function AssistantBudgetSettings({ userId }: { userId: string }) {
     return () => {
       live = false;
     };
-  }, [userId]);
+  }, [userId, retry]);
   const current = budgets?.[lane];
   const save = async () => {
-    if (!current || !draft || busy) return;
+    if (!current || !draft || mutation.current) return;
     const values = Object.fromEntries(
       fields.map(({ key }) => [key, Number(draft[key])]),
     ) as Record<keyof Draft, number>;
@@ -70,6 +85,7 @@ export function AssistantBudgetSettings({ userId }: { userId: string }) {
       setError("Check the limit values.");
       return;
     }
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -77,13 +93,16 @@ export function AssistantBudgetSettings({ userId }: { userId: string }) {
         revision: current.revision,
         ...values,
       });
+      if (!mounted.current) return;
       setBudgets((before) => before && { ...before, [lane]: updated });
       setDraft(null);
       setNotice("Limits saved");
     } catch {
-      setError("Couldn't save limits. Reload if they changed elsewhere.");
+      if (mounted.current)
+        setError("Couldn't save limits. Retry or reload the latest limits.");
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
   return (
@@ -96,6 +115,7 @@ export function AssistantBudgetSettings({ userId }: { userId: string }) {
             type="button"
             className={option === lane ? "primary" : "secondary"}
             aria-pressed={option === lane}
+            disabled={busy || !!draft}
             onClick={() => {
               setLane(option);
               setDraft(null);
@@ -165,7 +185,12 @@ export function AssistantBudgetSettings({ userId }: { userId: string }) {
           )}
         </>
       ) : (
-        <p className="muted">{error || "Loading limits…"}</p>
+        <p
+          className={error ? "error" : "muted"}
+          role={error ? "alert" : "status"}
+        >
+          {error || "Loading limits…"}
+        </p>
       )}
       {error && current && (
         <p role="alert" className="error">
@@ -176,6 +201,16 @@ export function AssistantBudgetSettings({ userId }: { userId: string }) {
         <p role="status" className="muted">
           {notice}
         </p>
+      )}
+      {error && (
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          {draft ? "Discard draft and reload limits" : "Retry loading limits"}
+        </button>
       )}
       <details>
         <summary>About these numbers</summary>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, Tag as TagIcon, X } from "lucide-react";
 import type { DocTag, Tag } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -11,7 +11,16 @@ import { TagPicker } from "../../components/TagPicker";
  * space's — your tags on your pages, the team's on a team's — and a new tag
  * made here is made there. Typing "#tag" in a line adds to the same row.
  */
-export function PageTags({
+export function PageTags(props: Parameters<typeof PageTagsBody>[0]) {
+  return (
+    <PageTagsBody
+      key={`${props.docId}:${props.teamId ?? "personal"}`}
+      {...props}
+    />
+  );
+}
+
+function PageTagsBody({
   docId,
   teamId,
   tags,
@@ -26,6 +35,15 @@ export function PageTags({
   onChange: (tags: DocTag[]) => void;
   report: (e: unknown) => void;
 }) {
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(
+    () => () => {
+      request.current++;
+    },
+    [],
+  );
   const [picking, setPicking] = useState<DOMRect | null>(null);
   const [offered, setOffered] = useState<Tag[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -34,19 +52,41 @@ export function PageTags({
     teamId ? t.team_id === teamId : t.team_id === null;
 
   const open = (anchor: DOMRect) => {
+    if (!canWrite || mutation.current) return;
     setPicking(anchor);
-    client.listTags().then((all) => setOffered(all.filter(inSpace)), report);
+    const epoch = ++request.current;
+    setFailed(false);
+    setOffered(null);
+    void client.listTags().then(
+      (all) => {
+        if (epoch === request.current) setOffered(all.filter(inSpace));
+      },
+      (reason) => {
+        if (epoch === request.current) {
+          setFailed(true);
+          report(reason);
+        }
+      },
+    );
   };
 
   const set = (ids: string[]) => {
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     client
       .setDocTags(docId, ids)
       .then(({ tags: next }) => onChange(next), report)
-      .finally(() => setBusy(false));
+      .finally(() => {
+        mutation.current = false;
+        setBusy(false);
+      });
   };
 
   const create = async (name: string) => {
+    if (!canWrite || mutation.current || !name.trim()) return null;
+    mutation.current = true;
+    setBusy(true);
     try {
       const made = await client.createTag({ name, team_id: teamId });
       setOffered((all) => [...(all ?? []), made]);
@@ -54,6 +94,9 @@ export function PageTags({
     } catch (e) {
       report(e);
       return null;
+    } finally {
+      mutation.current = false;
+      setBusy(false);
     }
   };
 
@@ -88,6 +131,7 @@ export function PageTags({
         <button
           type="button"
           className="page-tags-add"
+          disabled={busy}
           aria-haspopup="dialog"
           aria-expanded={!!picking}
           aria-label={tags.length ? "Add a tag" : undefined}
@@ -107,14 +151,27 @@ export function PageTags({
         <Popover
           label="Tags"
           anchor={picking}
-          onClose={() => setPicking(null)}
+          onClose={() => {
+            if (!mutation.current) {
+              request.current++;
+              setPicking(null);
+            }
+          }}
           width={320}
         >
           <div className="page-tags-picker">
-            {offered === null ? (
+            {failed ? (
+              <div role="alert">
+                <p>Couldn't load tags.</p>
+                <button className="secondary" onClick={() => open(picking)}>
+                  Retry
+                </button>
+              </div>
+            ) : offered === null ? (
               <p className="muted">Loading…</p>
             ) : (
               <TagPicker
+                disabled={busy}
                 tags={offered}
                 selected={tags.map((t) => t.id)}
                 onChange={set}

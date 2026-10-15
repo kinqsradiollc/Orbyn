@@ -209,7 +209,7 @@ if [ "$CHECK" = 1 ]; then
     *) echo "- mail goes to $smtp_host (nothing to start)" ;;
   esac
   echo "- pause measuring/notifier; if a legacy database encryption key exists, stop/remove all backend writers before conversion (brief downtime; failure leaves writers stopped)"
-  echo "- apply migrations, then roll out pdf, api, mcp, ai, assistant-background, assistant-overnight, realtime, status, notifier, files, converter and the web app"
+  echo "- apply migrations, then roll out pdf, latex, api, mcp, ai, assistant-background, assistant-overnight, realtime, status, notifier, files, converter and the web app"
   [ "$plugin_on" = 1 ] && echo "- roll out the isolated MCP integration worker (legacy recipient: ${plugin_url:-disabled})" || echo "- leave integration auxiliaries disabled (enable the plugin profile)"
   [ "$semantic_on" = 1 ] && echo "- start the updated measuring service (semantic profile enabled)" || echo "- leave the measuring service stopped (semantic profile off)"
   echo "- scanned pages and photos: read with the built-in Tesseract"
@@ -384,6 +384,7 @@ rollout() {
 
 # The authorized export API needs a healthy private renderer before it rolls.
 rollout pdf "$(setting PDF_REPLICAS 1)"
+rollout latex 1
 rollout api "$(setting API_REPLICAS 2)"
 # Outside agents (MCP): stateless, so copies roll over like the API's.
 rollout mcp "$(setting MCP_REPLICAS 2)"

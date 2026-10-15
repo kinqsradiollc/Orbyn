@@ -40,11 +40,11 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 16px 20px 32px;
+  padding: 16px 20px 24px;
 }
 .peek-title {
   margin: 0 0 10px;
-  font-size: 24px;
+  font-size: 18px;
   line-height: 1.25;
   overflow-wrap: anywhere;
 }
@@ -95,8 +95,30 @@
   background: color-mix(in srgb, var(--color-text) 25%, transparent);
 }
 /* Wide windows: the app makes room, so the peek sits beside the page. */
-@media (min-width: 1100px) {
+@media (min-width: 1360px) {
   .app.has-peek .shell {
     margin-right: 440px;
+  }
+}
+
+.peek-head {
+  flex-wrap: wrap;
+}
+.peek-body,
+.peek-project p,
+.peek-notes,
+.peek-stages li {
+  overflow-wrap: anywhere;
+}
+.peek-actions .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+@media (max-width: 420px) {
+  .peek-body {
+    padding: 14px 16px 20px;
+  }
+  .peek-head {
+    padding: 8px 12px;
   }
 }

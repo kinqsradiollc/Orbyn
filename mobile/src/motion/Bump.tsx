@@ -1,15 +1,8 @@
-import React, { useEffect, useRef } from "react";
-import { Animated, type StyleProp, type ViewStyle } from "react-native";
-import { motion } from "@orbyn/core";
-import { easeOut } from "./easing";
-import { useReducedMotion } from "./useReducedMotion";
+import React from "react";
+import { View, type StyleProp, type ViewStyle } from "react-native";
 
-/**
- * Plays a quick fade/scale over `motion.base` whenever `value` changes (not on
- * mount), so a changed stat number catches the eye. Still under reduced motion.
- */
+/** Compatibility wrapper: changed values stay readable without ornamental motion. */
 export function Bump({
-  value,
   style,
   children,
 }: {
@@ -17,38 +10,5 @@ export function Bump({
   style?: StyleProp<ViewStyle>;
   children: React.ReactNode;
 }) {
-  const reduced = useReducedMotion();
-  const progress = useRef(new Animated.Value(1)).current;
-  const previous = useRef(value);
-  useEffect(() => {
-    if (Object.is(previous.current, value)) return;
-    previous.current = value;
-    if (reduced) return;
-    progress.setValue(0);
-    Animated.timing(progress, {
-      toValue: 1,
-      duration: motion.base,
-      easing: easeOut,
-      useNativeDriver: true,
-    }).start();
-  }, [value, reduced, progress]);
-  const opacity = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.4, 1],
-  });
-  const scale = progress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.9, 1],
-  });
-  return (
-    <Animated.View
-      style={[
-        { alignSelf: "flex-start" },
-        style,
-        { opacity, transform: [{ scale }] },
-      ]}
-    >
-      {children}
-    </Animated.View>
-  );
+  return <View style={[{ alignSelf: "flex-start" }, style]}>{children}</View>;
 }

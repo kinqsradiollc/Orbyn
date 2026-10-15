@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../../motion";
 import type { DocSummary } from "@orbyn/core";
@@ -17,7 +17,11 @@ const when = (iso: string) =>
  * editor as everywhere else — with its comments, its history and everyone
  * else's proposals already on it.
  */
-export function ProjectNotes({
+export function ProjectNotes(props: Parameters<typeof ProjectNotesBody>[0]) {
+  return <ProjectNotesBody key={props.projectId} {...props} />;
+}
+
+function ProjectNotesBody({
   projectId,
   teamId,
   busy,
@@ -35,14 +39,35 @@ export function ProjectNotes({
   const [notes, setNotes] = useState<DocSummary[] | null>(null);
   const [working, setWorking] = useState(false);
 
-  const load = useCallback(() => {
-    client.listDocs({ project: projectId }).then(setNotes, () => setNotes([]));
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [failed, setFailed] = useState(false);
+  const load = useCallback(async () => {
+    const epoch = ++request.current;
+    setFailed(false);
+    try {
+      const next = await client.listDocs({ project: projectId });
+      if (epoch === request.current) setNotes(next);
+    } catch (e) {
+      if (epoch === request.current) {
+        setFailed(true);
+        reportRef.current(e);
+      }
+    }
   }, [projectId]);
 
-  useEffect(() => load(), [load]);
+  useEffect(() => {
+    void load();
+    return () => {
+      request.current++;
+    };
+  }, [load]);
 
   const create = () => {
-    if (!canWrite || working) return;
+    if (!canWrite || busy || mutation.current) return;
+    mutation.current = true;
     setWorking(true);
     client
       .createDoc({
@@ -57,19 +82,25 @@ export function ProjectNotes({
         onOpen(doc.id);
       })
       .catch(report)
-      .finally(() => setWorking(false));
+      .finally(() => {
+        mutation.current = false;
+        setWorking(false);
+      });
   };
 
   return (
     <View style={s.wrap}>
-      <Text style={s.eyebrow}>NOTES</Text>
+      <Text style={s.eyebrow}>Notes</Text>
+      {failed && (
+        <>
+          <Text style={s.empty}>Notes unavailable.</Text>
+          <Button title="Retry" secondary onPress={() => void load()} />
+        </>
+      )}
       {notes === null ? (
-        <Text style={s.empty}>Loading…</Text>
+        <Text style={s.empty}>{failed ? "" : "Loading notes…"}</Text>
       ) : notes.length === 0 ? (
-        <Text style={s.empty}>
-          Nothing written down yet. A note here keeps the thinking beside the
-          work.
-        </Text>
+        <Text style={s.empty}>No notes yet.</Text>
       ) : (
         notes.map((note) => (
           <Pressable
@@ -80,12 +111,8 @@ export function ProjectNotes({
           >
             <Icon name="fileText" size={15} color={colors.muted} />
             <View style={s.rowMain}>
-              <Text style={s.rowTitle} numberOfLines={1}>
-                {note.title || "Untitled"}
-              </Text>
-              <Text style={s.rowPreview} numberOfLines={1}>
-                {note.preview || "Empty note"}
-              </Text>
+              <Text style={s.rowTitle}>{note.title || "Untitled"}</Text>
+              <Text style={s.rowPreview}>{note.preview || "Empty note"}</Text>
             </View>
             <Text style={s.rowWhen}>{when(note.updated_at)}</Text>
           </Pressable>
@@ -93,7 +120,7 @@ export function ProjectNotes({
       )}
       {canWrite && (
         <Button
-          title="New note here"
+          title="New note"
           secondary
           disabled={busy || working}
           onPress={create}
@@ -116,8 +143,7 @@ const s = themed(() =>
     },
     eyebrow: {
       color: colors.muted,
-      fontSize: 11,
-      letterSpacing: 0.8,
+      fontSize: 13,
       fontFamily: fonts.semibold,
     },
     empty: { color: colors.muted, fontSize: 13, lineHeight: 19 },
@@ -125,6 +151,8 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
+      minHeight: 44,
+      flexWrap: "wrap",
       paddingVertical: 8,
       paddingHorizontal: 10,
       borderRadius: radii.input,

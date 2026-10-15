@@ -55,8 +55,7 @@ export function ContentsList({
   starred?: Set<string>;
   onStar?: (entry: OutlineEntry) => void;
 }) {
-  if (!outline.length)
-    return <Text style={s.empty}>This page has no headings yet.</Text>;
+  if (!outline.length) return <Text style={s.empty}>No headings yet.</Text>;
   return (
     <View style={s.list} accessibilityRole="list">
       {outline.map((entry, n) => {
@@ -78,7 +77,6 @@ export function ContentsList({
             >
               <Text
                 style={[s.text, entry.level > 1 && s.sub, here && s.hereText]}
-                numberOfLines={1}
               >
                 {entry.text}
               </Text>
@@ -123,6 +121,7 @@ const s = themed(() =>
       minHeight: 44,
       justifyContent: "center",
       paddingRight: 12,
+      paddingVertical: 8,
       borderRadius: radii.input,
     },
     here: {

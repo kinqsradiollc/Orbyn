@@ -12,7 +12,7 @@
   justify-content: space-between;
   flex-wrap: wrap;
   gap: 16px;
-  padding: 22px 24px;
+  padding: 16px;
 }
 .admin-requests-head h2 {
   margin: 7px 0 5px;
@@ -37,7 +37,7 @@
 }
 .admin-empty {
   margin: 0;
-  padding: 22px 24px;
+  padding: 16px;
 }
 
 /* One card per service. */
@@ -318,7 +318,7 @@
 /* Analytics tiles. */
 .admin-tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr));
   gap: 12px;
 }
 .admin-tile {
@@ -399,7 +399,7 @@
 }
 .admin-user-facts {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(190px, 100%), 1fr));
   gap: 12px 20px;
   margin: 0;
   padding-top: 16px;
@@ -524,4 +524,116 @@
 .admin-log,
 .admin-user-head {
   overflow: visible;
+}
+
+.admin-request-filters > summary {
+  min-height: 44px;
+  margin: 0 16px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-accentText);
+}
+.admin-requests-controls {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.admin-log-detail dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.admin-route-grid code {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.admin-analytics-details > summary {
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--color-accentText);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+}
+.admin-user-title {
+  flex-wrap: wrap;
+}
+.admin-user-title > div {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.admin-user-title h2 {
+  flex-wrap: wrap;
+}
+.admin-user-reset-result:empty {
+  display: none;
+}
+.admin-user-options > button {
+  white-space: normal;
+}
+
+.bars-data {
+  margin-top: 10px;
+  font-size: 13px;
+}
+.bars-data summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--color-accentText);
+}
+.bars-data > div {
+  max-height: 240px;
+  overflow: auto;
+}
+.bars-data table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.bars-data th,
+.bars-data td {
+  padding: 6px 8px;
+  text-align: left;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.admin-log-feedback {
+  padding: 12px 16px;
+}
+.admin-log-feedback p {
+  margin: 0 0 4px;
+}
+
+.admin-service-top,
+.admin-chart-head,
+.admin-user-edit-actions {
+  flex-wrap: wrap;
+}
+.admin-service-top > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.admin-service dd,
+.admin-tile strong {
+  overflow-wrap: anywhere;
+}
+.admin-routes code {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.admin-check {
+  white-space: normal;
+  min-height: 44px;
+}
+.admin-sessions li {
+  flex-wrap: wrap;
+}
+.admin-user-edit label {
+  min-width: 0;
 }

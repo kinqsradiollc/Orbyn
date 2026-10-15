@@ -205,8 +205,37 @@ export function Select({
         ?.scrollIntoView({ block: "nearest" });
   }, [open, active]);
 
+  // Floating choices must obey a disabled surrounding form as well as their prop.
+  useEffect(() => {
+    if (!open || !wrap.current) return;
+    const check = () => {
+      if (button.current?.matches(":disabled")) setOpen(false);
+    };
+    const observer = new MutationObserver(check);
+    for (
+      let node: HTMLElement | null = wrap.current;
+      node;
+      node = node.parentElement
+    ) {
+      if (node instanceof HTMLFieldSetElement)
+        observer.observe(node, {
+          attributes: true,
+          attributeFilter: ["disabled"],
+        });
+    }
+    check();
+    return () => observer.disconnect();
+  }, [open]);
+
   const choose = (option: Option) => {
-    if (disabled || option.disabled) return;
+    if (disabled || button.current?.matches(":disabled") || option.disabled)
+      return;
+    if (
+      !options.some(
+        (current) => current.value === option.value && !current.disabled,
+      )
+    )
+      return;
     if (value === undefined) setOwn(option.value);
     onChange?.({ target: { value: option.value } });
     setOpen(false);
@@ -240,7 +269,7 @@ export function Select({
   };
 
   const onKey = (e: React.KeyboardEvent, editing = false) => {
-    if (disabled) return;
+    if (disabled || button.current?.matches(":disabled")) return;
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault();
       if (!open) setOpen(true);
@@ -280,7 +309,7 @@ export function Select({
         ref={button}
         type="button"
         id={id}
-        title={title}
+        title={title ?? chosen?.label}
         disabled={disabled}
         className="select-control"
         role="combobox"
@@ -293,7 +322,9 @@ export function Select({
         aria-required={required}
         aria-label={ariaLabel}
         aria-describedby={ariaDescribedBy}
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (!button.current?.matches(":disabled")) setOpen((v) => !v);
+        }}
         onKeyDown={onKey}
       >
         <span className="select-value">{chosen?.label ?? ""}</span>
@@ -307,6 +338,11 @@ export function Select({
         createPortal(
           <div
             ref={list}
+            data-modal-owner={
+              wrap.current
+                ?.closest("[data-modal-focus]")
+                ?.getAttribute("data-modal-focus") ?? undefined
+            }
             className={"select-list is-floating" + (above ? " is-above" : "")}
             tabIndex={-1}
             style={
@@ -380,7 +416,7 @@ export function Select({
               </div>
             )}
           </div>,
-          document.body,
+          wrap.current?.closest("dialog[open]") ?? document.body,
         )}
     </div>
   );

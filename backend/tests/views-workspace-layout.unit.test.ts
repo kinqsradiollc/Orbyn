@@ -59,4 +59,19 @@ test("view layouts bound title widths and retain horizontal table containment", 
   );
   assert.match(css, /\.view-table-wrap\s*\{[^}]*overflow-x: auto;/);
   assert.match(css, /\.views-rail-item\s*\{[^}]*max-width: 100%;/);
+  assert.match(
+    css,
+    /\.views-actions\s*\{[^}]*flex-wrap: wrap;[^}]*max-width: 100%;/,
+  );
+});
+
+test("mobile page gallery adapts to its pane and field labels can wrap", () => {
+  const body = read("mobile/src/screens/views/ViewBody.tsx");
+  const fields = read("mobile/src/screens/views/FieldsSection.tsx");
+  assert.match(body, /const pane = usePaneWidth\(\);/);
+  assert.match(body, /style=\{s.gallery\} onLayout=\{pane.onLayout\}/);
+  assert.match(body, /pane.width < 480 && s.gallerySingle/);
+  assert.match(body, /gallerySingle: \{ flexBasis: "100%" \}/);
+  assert.match(fields, /<Text style=\{s.name\}>/);
+  assert.match(fields, /switchLabel: \{ flex: 1, minWidth: 0 \}/);
 });

@@ -27,6 +27,7 @@ export function useAgendaPrivateSettings(userId: string) {
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const lifetime = useRef<AbortController | null>(null);
+  const writeLock = useRef(false);
   const data =
     owned?.userId === userId && owned.token === token ? owned.data : null;
   useEffect(() => {
@@ -82,12 +83,14 @@ export function useAgendaPrivateSettings(userId: string) {
     if (
       !data ||
       busy ||
+      writeLock.current ||
       !abort ||
       abort.signal.aborted ||
       token !== session.token ||
       (enabled && !canEnable)
     )
       return;
+    writeLock.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -108,6 +111,7 @@ export function useAgendaPrivateSettings(userId: string) {
       if (!abort.signal.aborted && token === session.token)
         setError(errorText(e));
     } finally {
+      writeLock.current = false;
       if (!abort.signal.aborted && token === session.token) setBusy(false);
     }
   };

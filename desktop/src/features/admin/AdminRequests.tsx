@@ -1,7 +1,8 @@
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
-import { Activity, RefreshCw, Search } from "lucide-react";
+import { RefreshCw, Search } from "lucide-react";
 import type { RequestLogRow, RequestSummary } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { Select } from "../../components/Select";
 import { Bars } from "./Bars";
 import "./database.css";
@@ -58,20 +59,51 @@ export function AdminRequests({ report }: { report: (e: unknown) => void }) {
   const [open, setOpen] = useState<number | null>(null);
   const [live, setLive] = useState(false);
   const seq = useRef(0);
+  const summarySeq = useRef(0);
+  const alive = useRef(true);
+  const [summaryFailed, setSummaryFailed] = useState(false);
+  const [rowsFailed, setRowsFailed] = useState(false);
+  const [rowsBusy, setRowsBusy] = useState(false);
+  const rowsBusyRef = useRef(false);
+  const retryBefore = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      seq.current++;
+      summarySeq.current++;
+    };
+  }, []);
   const reportRef = useRef(report);
   reportRef.current = report;
 
-  const loadSummary = useCallback(
-    () =>
-      client
-        .adminRequestSummary(hours)
-        .then(setSummary)
-        .catch((e) => reportRef.current(e)),
-    [hours],
-  );
+  const loadSummary = useCallback(async () => {
+    const mine = ++summarySeq.current;
+    const account = session.get();
+    const current = () =>
+      alive.current && mine === summarySeq.current && account === session.get();
+    setSummaryFailed(false);
+    try {
+      const next = await client.adminRequestSummary(hours);
+      if (current()) setSummary(next);
+    } catch (error) {
+      if (current()) {
+        setSummaryFailed(true);
+        reportRef.current(error);
+      }
+    }
+  }, [hours]);
   const loadRows = useCallback(
     async (before?: number) => {
+      if (before !== undefined && rowsBusyRef.current) return;
+      retryBefore.current = before;
       const mine = ++seq.current;
+      const account = session.get();
+      const current = () =>
+        alive.current && mine === seq.current && account === session.get();
+      rowsBusyRef.current = true;
+      setRowsBusy(true);
+      setRowsFailed(false);
       try {
         const page = await client.adminRequests({
           service: filters.service || undefined,
@@ -82,20 +114,43 @@ export function AdminRequests({ report }: { report: (e: unknown) => void }) {
           slow: filters.slow || undefined,
           before,
         });
-        if (mine !== seq.current) return;
+        if (!current()) return;
+        setRowsFailed(false);
         setRows((was) => (before && was ? [...was, ...page.rows] : page.rows));
         setMore(page.more);
       } catch (e) {
-        reportRef.current(e);
+        if (current()) {
+          setRowsFailed(true);
+          reportRef.current(e);
+        }
+      } finally {
+        if (current()) {
+          rowsBusyRef.current = false;
+          setRowsBusy(false);
+        }
       }
     },
     [filters],
   );
 
-  useEffect(() => void loadSummary(), [loadSummary]);
   useEffect(() => {
+    setSummary(null);
+    void loadSummary();
+    return () => {
+      summarySeq.current++;
+    };
+  }, [loadSummary]);
+  useEffect(() => {
+    seq.current++;
+    setRows(null);
+    setOpen(null);
+    setMore(false);
+    setRowsFailed(false);
     const t = setTimeout(() => void loadRows(), 250);
-    return () => clearTimeout(t);
+    return () => {
+      clearTimeout(t);
+      seq.current++;
+    };
   }, [loadRows]);
   // Live: the newest requests every ten seconds while the tab is open.
   useEffect(() => {
@@ -116,16 +171,12 @@ export function AdminRequests({ report }: { report: (e: unknown) => void }) {
     <section className="admin-requests">
       <div className="card admin-requests-head">
         <div>
-          <span className="db-eyebrow">
-            <Activity size={14} /> REQUEST TRACING
-          </span>
-          <h2>How the services are answering</h2>
+          <h2>Requests</h2>
           <p className="muted">
-            Every request each service handled, by the route it matched.
+            Logs kept for seven days.
             {summary && summary.sample < 1
               ? ` ${Math.round(summary.sample * 100)}% of ordinary requests are kept; errors and slow ones always are.`
-              : ""}{" "}
-            Kept for seven days.
+              : ""}
           </p>
         </div>
         <div className="admin-requests-controls">
@@ -150,12 +201,17 @@ export function AdminRequests({ report }: { report: (e: unknown) => void }) {
       </div>
 
       <div className="admin-service-grid">
-        {summary === null ? (
+        {summaryFailed ? (
+          <div role="alert">
+            <p>Couldn't load request totals.</p>
+            <button className="text-button" onClick={() => void loadSummary()}>
+              Retry
+            </button>
+          </div>
+        ) : summary === null ? (
           <p className="muted">Loading…</p>
         ) : services.length === 0 ? (
-          <p className="muted card admin-empty">
-            No requests recorded in this period yet.
-          </p>
+          <p className="muted card admin-empty">No requests in this period.</p>
         ) : (
           services.map((s) => {
             const errorRate = s.requests ? s.server_errors / s.requests : 0;
@@ -174,10 +230,10 @@ export function AdminRequests({ report }: { report: (e: unknown) => void }) {
                     }
                   >
                     {errorRate > 0.05
-                      ? "Failing"
+                      ? "High error rate"
                       : errorRate > 0
                         ? "Some errors"
-                        : "Healthy"}
+                        : "No errors"}
                   </span>
                 </div>
                 <dl>
@@ -261,67 +317,94 @@ export function AdminRequests({ report }: { report: (e: unknown) => void }) {
             </button>
           )}
         </div>
-        <div className="admin-log-filters">
-          <Select
-            aria-label="Service"
-            value={filters.service}
-            onChange={(e) => set("service", e.target.value)}
-          >
-            <option value="">All services</option>
-            {services.map((s) => (
-              <option key={s.service} value={s.service}>
-                {name(s.service)}
-              </option>
-            ))}
-          </Select>
-          <Select
-            aria-label="Status"
-            value={filters.status}
-            onChange={(e) => set("status", e.target.value as Filters["status"])}
-          >
-            <option value="">Any status</option>
-            <option value="2xx">2xx · worked</option>
-            <option value="3xx">3xx · not modified</option>
-            <option value="4xx">4xx · refused</option>
-            <option value="5xx">5xx · failed</option>
-          </Select>
-          <div className="db-search">
-            <Search size={14} />
-            <input
-              aria-label="Route"
-              placeholder="Route, e.g. /items"
-              value={filters.route}
-              onChange={(e) => set("route", e.target.value)}
-            />
+        <details className="admin-request-filters">
+          <summary>
+            Filters
+            {JSON.stringify(filters) !== JSON.stringify(NO_FILTERS)
+              ? " · active"
+              : ""}
+          </summary>
+          <div className="admin-log-filters">
+            <Select
+              aria-label="Service"
+              value={filters.service}
+              onChange={(e) => set("service", e.target.value)}
+            >
+              <option value="">All services</option>
+              {services.map((s) => (
+                <option key={s.service} value={s.service}>
+                  {name(s.service)}
+                </option>
+              ))}
+            </Select>
+            <Select
+              aria-label="Status"
+              value={filters.status}
+              onChange={(e) =>
+                set("status", e.target.value as Filters["status"])
+              }
+            >
+              <option value="">Any status</option>
+              <option value="2xx">2xx · worked</option>
+              <option value="3xx">3xx</option>
+              <option value="4xx">4xx · refused</option>
+              <option value="5xx">5xx · failed</option>
+            </Select>
+            <div className="db-search">
+              <Search size={14} />
+              <input
+                aria-label="Route"
+                placeholder="Route, e.g. /items"
+                value={filters.route}
+                onChange={(e) => set("route", e.target.value)}
+              />
+            </div>
+            <div className="db-search">
+              <Search size={14} />
+              <input
+                aria-label="Person"
+                placeholder="Email or name"
+                value={filters.user}
+                onChange={(e) => set("user", e.target.value)}
+              />
+            </div>
+            <div className="db-search">
+              <Search size={14} />
+              <input
+                aria-label="Request id"
+                placeholder="Request id"
+                value={filters.request_id}
+                onChange={(e) => set("request_id", e.target.value)}
+              />
+            </div>
+            <label className="admin-check">
+              <input
+                type="checkbox"
+                checked={filters.slow}
+                onChange={(e) => set("slow", e.target.checked)}
+              />
+              Slow only (1 s+)
+            </label>
           </div>
-          <div className="db-search">
-            <Search size={14} />
-            <input
-              aria-label="Person"
-              placeholder="Email or name"
-              value={filters.user}
-              onChange={(e) => set("user", e.target.value)}
-            />
+        </details>
+        {rowsFailed && (
+          <div role="alert" className="admin-log-feedback">
+            <p>Couldn't load requests.</p>
+            <button
+              className="text-button"
+              disabled={rowsBusy}
+              onClick={() => void loadRows(retryBefore.current)}
+            >
+              Retry
+            </button>
           </div>
-          <div className="db-search">
-            <Search size={14} />
-            <input
-              aria-label="Request id"
-              placeholder="Request id"
-              value={filters.request_id}
-              onChange={(e) => set("request_id", e.target.value)}
-            />
-          </div>
-          <label className="admin-check">
-            <input
-              type="checkbox"
-              checked={filters.slow}
-              onChange={(e) => set("slow", e.target.checked)}
-            />
-            Slow only (1 s+)
-          </label>
-        </div>
-        <div className="db-grid-scroll">
+        )}
+        {rows === null && !rowsFailed && (
+          <p role="status" className="db-empty">
+            Loading requests…
+          </p>
+        )}
+        <div className="db-grid-scroll" aria-busy={rowsBusy}>
           <table className="data-table db-grid admin-log-table">
             <thead>
               <tr>
@@ -402,7 +485,7 @@ export function AdminRequests({ report }: { report: (e: unknown) => void }) {
                               })
                             }
                           >
-                            Show everything with this request id
+                            Filter by this request ID
                           </button>
                         )}
                       </td>
@@ -416,11 +499,12 @@ export function AdminRequests({ report }: { report: (e: unknown) => void }) {
             <p className="db-empty">No requests match these filters.</p>
           )}
         </div>
-        {more && rows && (
+        {more && rows && rows.length > 0 && (
           <div className="db-pager">
             <span>{rows.length} shown</span>
             <button
               className="secondary"
+              disabled={rowsBusy}
               onClick={() => void loadRows(rows[rows.length - 1].id)}
             >
               Show older

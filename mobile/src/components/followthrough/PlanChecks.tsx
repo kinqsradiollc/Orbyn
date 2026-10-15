@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
-  addDays,
-  localDateKey,
   realityCheck,
   type Item,
   type Plan,
@@ -12,9 +10,11 @@ import {
 import { Button } from "../Button";
 import { Chip, ChipRow } from "../Chip";
 import { Icon } from "../Icon";
+import { DateField } from "../Field";
+import { Sheet, sheetStyles } from "../Sheet";
+import { SmallAction } from "../SmallAction";
 import { Segmented } from "../Segmented";
 import { client } from "../../lib/api";
-import { deviceTimeZone } from "../../lib/planning";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import { errorText } from "../../lib/errors";
@@ -28,10 +28,40 @@ export function RealityLine({
   timeZone: string;
 }) {
   const [reality, setReality] = useState<PlanReality | null>(null);
+  const [error, setError] = useState(false);
+  const [version, setVersion] = useState(0);
   useEffect(() => {
-    client.planReality().then(setReality, () => setReality(null));
-  }, []);
+    let alive = true;
+    setError(false);
+    client.planReality().then(
+      (next) => {
+        if (alive) setReality(next);
+      },
+      () => {
+        if (alive) {
+          setReality(null);
+          setError(true);
+        }
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [version]);
   const { message, days, note } = realityCheck(plan, reality, timeZone);
+  if (error)
+    return (
+      <View style={s.line}>
+        <Text style={s.lineText} accessibilityRole="alert">
+          Couldn't load planning history.
+        </Text>
+        <SmallAction
+          label="Retry"
+          disabled={false}
+          onPress={() => setVersion((n) => n + 1)}
+        />
+      </View>
+    );
   if (!message && !note) return null;
   const stretch = days.some((d) => d.stretch) || !!note?.includes("only");
   return (
@@ -57,32 +87,27 @@ const HOURS = [1, 2, 4, 8, 16];
  * a deadline moved — and get the answer in one sentence. Nothing is saved.
  */
 export function WhatIfBox({ items }: { items: Item[] }) {
-  const zone = deviceTimeZone();
-  const today = localDateKey(new Date(), zone);
-  const days = Array.from({ length: 10 }, (_, n) => addDays(today, n));
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState<Mode>("add");
   const [title, setTitle] = useState("");
   const [hours, setHours] = useState(2);
   const [day, setDay] = useState<string | null>(null);
+  const [taskSearch, setTaskSearch] = useState("");
   const [itemId, setItemId] = useState<string | null>(null);
   const [result, setResult] = useState<WhatIfResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const tasks = items
-    .filter(
-      (i) =>
-        i.kind === "task" && i.status !== "done" && i.status !== "cancelled",
-    )
-    .slice(0, 30);
+  const tasks = items.filter(
+    (i) => i.kind === "task" && i.status !== "done" && i.status !== "cancelled",
+  );
+  const shownTasks = tasks.filter(
+    (task) =>
+      task.id === itemId ||
+      task.title
+        .toLocaleLowerCase()
+        .includes(taskSearch.trim().toLocaleLowerCase()),
+  );
   const endOf = (d: string) => new Date(`${d}T17:00:00`).toISOString();
-  const label = (d: string) =>
-    d === today
-      ? "Today"
-      : new Date(`${d}T12:00:00`).toLocaleDateString([], {
-          weekday: "short",
-          day: "numeric",
-        });
   const ready =
     mode === "add"
       ? !!title.trim()
@@ -101,6 +126,7 @@ export function WhatIfBox({ items }: { items: Item[] }) {
       />
     );
   const run = async () => {
+    if (!ready || busy) return;
     setBusy(true);
     setError("");
     setResult(null);
@@ -129,108 +155,159 @@ export function WhatIfBox({ items }: { items: Item[] }) {
       setBusy(false);
     }
   };
-  const dayChips = (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      <ChipRow label="Day">
-        {days.map((d) => (
-          <Chip
-            key={d}
-            compact
-            label={label(d)}
-            selected={day === d}
-            onPress={() => setDay(day === d ? null : d)}
-          />
-        ))}
-      </ChipRow>
-    </ScrollView>
-  );
   return (
-    <View style={[shared.card, s.box]}>
-      <Text style={shared.sectionTitle}>What if…</Text>
-      <Segmented
-        options={MODES}
-        value={mode}
-        labels={{ add: "New task", off: "Day off", move: "Deadline" }}
-        accessibilityLabel="What would change"
-        onChange={(m) => {
-          setMode(m);
-          setResult(null);
-        }}
-      />
-      {mode === "add" && (
-        <>
-          <TextInput
-            style={shared.input}
-            value={title}
-            onChangeText={setTitle}
-            maxLength={200}
-            placeholder="Quarterly report"
-            placeholderTextColor={colors.faint}
-            accessibilityLabel="Task"
+    <Sheet
+      visible
+      title="What if…"
+      hideClose={busy}
+      onClose={() => {
+        if (!busy) setOpen(false);
+      }}
+    >
+      <ScrollView contentContainerStyle={sheetStyles.body}>
+        <View style={[sheetStyles.column, s.box]}>
+          <Text style={shared.small}>Preview only. No changes are saved.</Text>
+          <Segmented
+            disabled={busy}
+            options={MODES}
+            value={mode}
+            labels={{ add: "New task", off: "Day off", move: "Deadline" }}
+            accessibilityLabel="What would change"
+            onChange={(m) => {
+              setMode(m);
+              setResult(null);
+            }}
           />
-          <ChipRow label="Takes">
-            {HOURS.map((h) => (
-              <Chip
-                key={h}
-                compact
-                label={`${h} h`}
-                selected={hours === h}
-                onPress={() => setHours(h)}
+          {mode === "add" && (
+            <>
+              <TextInput
+                style={shared.input}
+                value={title}
+                editable={!busy}
+                onChangeText={(value) => {
+                  setTitle(value);
+                  setResult(null);
+                }}
+                maxLength={200}
+                placeholder="Quarterly report"
+                placeholderTextColor={colors.faint}
+                accessibilityLabel="Task"
               />
-            ))}
-          </ChipRow>
-          <Text style={shared.small}>Due (optional)</Text>
-          {dayChips}
-        </>
-      )}
-      {mode === "off" && dayChips}
-      {mode === "move" && (
-        <>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <ChipRow label="Task">
-              {tasks.map((t) => (
-                <Chip
-                  key={t.id}
-                  compact
-                  label={t.title}
-                  selected={itemId === t.id}
-                  onPress={() => setItemId(t.id)}
-                />
-              ))}
-            </ChipRow>
-          </ScrollView>
-          <Text style={shared.small}>New due date</Text>
-          {dayChips}
-        </>
-      )}
-      <View style={s.actions}>
-        <Button
-          title={busy ? "Working it out…" : "Check"}
-          disabled={!ready || busy}
-          onPress={() => void run()}
-          style={s.check}
-        />
-        <Button
-          secondary
-          title="Close"
-          onPress={() => setOpen(false)}
-          style={s.check}
-        />
-      </View>
-      {!!error && <Text style={[shared.small, s.bad]}>{error}</Text>}
-      {result && (
-        <View
-          style={[s.line, result.newly_late.length > 0 && s.lineBad]}
-          accessibilityRole="alert"
-        >
-          <Text
-            style={[s.lineText, result.newly_late.length > 0 && s.lineTextBad]}
-          >
-            {result.verdict} Nothing was changed.
-          </Text>
+              <ChipRow label="Takes">
+                {HOURS.map((h) => (
+                  <Chip
+                    key={h}
+                    compact
+                    disabled={busy}
+                    label={`${h} h`}
+                    selected={hours === h}
+                    onPress={() => {
+                      setHours(h);
+                      setResult(null);
+                    }}
+                  />
+                ))}
+              </ChipRow>
+              <DateField
+                label="Due (optional)"
+                value={day}
+                disabled={busy}
+                clearable
+                onChange={(next) => {
+                  setDay(next);
+                  setResult(null);
+                }}
+              />
+            </>
+          )}
+          {mode === "off" && (
+            <DateField
+              label="Day off"
+              value={day}
+              disabled={busy}
+              onChange={(next) => {
+                setDay(next);
+                setResult(null);
+              }}
+            />
+          )}
+          {mode === "move" && (
+            <>
+              <Text style={shared.label}>Task</Text>
+              <TextInput
+                style={shared.input}
+                value={taskSearch}
+                editable={!busy}
+                accessibilityLabel="Search tasks"
+                placeholder="Search tasks"
+                placeholderTextColor={colors.faint}
+                onChangeText={setTaskSearch}
+              />
+              <ChipRow label="Task">
+                {shownTasks.map((t) => (
+                  <Chip
+                    key={t.id}
+                    compact
+                    disabled={busy}
+                    label={t.title}
+                    selected={itemId === t.id}
+                    onPress={() => {
+                      setItemId(t.id);
+                      setResult(null);
+                    }}
+                  />
+                ))}
+              </ChipRow>
+              {!shownTasks.length && (
+                <Text style={shared.small}>
+                  {tasks.length ? "No matching tasks" : "No open tasks"}
+                </Text>
+              )}
+              <DateField
+                label="New due date"
+                value={day}
+                disabled={busy}
+                onChange={(next) => {
+                  setDay(next);
+                  setResult(null);
+                }}
+              />
+            </>
+          )}
+          <View style={s.actions}>
+            <Button
+              title={busy ? "Checking…" : "Check"}
+              disabled={!ready || busy}
+              onPress={() => void run()}
+              style={s.check}
+            />
+            <Button
+              secondary
+              title="Close"
+              disabled={busy}
+              onPress={() => setOpen(false)}
+              style={s.check}
+            />
+          </View>
+          {!!error && <Text style={[shared.small, s.bad]}>{error}</Text>}
+          {result && (
+            <View
+              style={[s.line, result.newly_late.length > 0 && s.lineBad]}
+              accessibilityRole="alert"
+            >
+              <Text
+                style={[
+                  s.lineText,
+                  result.newly_late.length > 0 && s.lineTextBad,
+                ]}
+              >
+                {result.verdict}
+              </Text>
+            </View>
+          )}
         </View>
-      )}
-    </View>
+      </ScrollView>
+    </Sheet>
   );
 }
 
@@ -254,9 +331,9 @@ const s = themed(() =>
     },
     lineTextBad: { color: colors.danger },
     openButton: { marginTop: 12, marginBottom: 0 },
-    box: { gap: 10, marginTop: 12 },
-    actions: { flexDirection: "row", gap: 10 },
-    check: { flex: 1, marginBottom: 0 },
+    box: { gap: 10 },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    check: { flex: 1, minWidth: 100, marginBottom: 0 },
     bad: { color: colors.danger },
   }),
 );

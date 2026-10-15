@@ -1,13 +1,6 @@
 import { DocNavigationContext } from "./doc-navigation";
 import { openAppUrl } from "../../hooks/useAppLinks";
-import React, {
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useContext, useEffect, useMemo, useRef, useState } from "react";
 import {
   Image,
   Modal,
@@ -19,7 +12,6 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { Alert } from "../../lib/alert";
 import { Pressable } from "../../motion";
 import { MermaidDiagram } from "../../components/MermaidDiagram";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -47,12 +39,20 @@ import {
 } from "@orbyn/core";
 import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { copyText } from "../../lib/share";
 import { saveFile } from "../../lib/download";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Icon, type IconName } from "../../components/Icon";
-import { showToast } from "../../components/Toast";
-import { colors, controls, fonts, radii, themed, tint } from "../../theme";
+import {
+  inputFontSize,
+  colors,
+  controls,
+  fonts,
+  radii,
+  themed,
+  tint,
+} from "../../theme";
 import { Inline } from "./Inline";
 import { openObject, pillKey, shortDue, usePagePills } from "./links";
 
@@ -135,7 +135,7 @@ export function CalloutView({
           accessibilityRole="button"
           accessibilityLabel={open ? "Fold" : "Unfold"}
           accessibilityState={{ expanded: open }}
-          hitSlop={10}
+          style={s.foldButton}
           onPress={() => setOpen((v) => !v)}
         >
           <Icon
@@ -216,11 +216,15 @@ export function TableEditor({
   onSave: (text: string) => void;
   onClose: () => void;
 }) {
+  const [saveError, setSaveError] = useState("");
   const [table, setTable] = useState<TableCells>(() => parseTable(text));
   const [at, setAt] = useState<{ r: number; c: number }>({ r: 0, c: 0 });
   const inputs = useRef(new Map<string, TextInput | null>());
   useEffect(() => {
-    if (visible) setTable(parseTable(text));
+    if (visible) {
+      setTable(parseTable(text));
+      setSaveError("");
+    }
   }, [visible, text]);
   const width = table.rows[0]?.length ?? 1;
   const set = (rows: string[][], align = table.align) =>
@@ -266,8 +270,17 @@ export function TableEditor({
         <Pressable
           accessibilityRole="button"
           onPress={() => {
-            onSave(tableMarkdown(table));
-            onClose();
+            try {
+              setSaveError("");
+              onSave(tableMarkdown(table));
+              onClose();
+            } catch (e) {
+              setSaveError(
+                e instanceof Error
+                  ? e.message
+                  : "Couldn't save the table. Try again.",
+              );
+            }
           }}
           style={({ pressed }) => [s.save, pressed && s.savePressed]}
         >
@@ -275,6 +288,11 @@ export function TableEditor({
         </Pressable>
       }
     >
+      {saveError && (
+        <Text style={s.error} accessibilityLiveRegion="polite">
+          {saveError}
+        </Text>
+      )}
       <View style={s.tableTools}>
         <ToolChip label="+ Row" onPress={addRow} />
         <ToolChip label="+ Column" onPress={addColumn} />
@@ -350,7 +368,6 @@ function ToolChip({
       accessibilityRole="button"
       disabled={disabled}
       onPress={onPress}
-      hitSlop={{ top: 7, bottom: 7 }}
       style={({ pressed }) => [
         s.chip,
         pressed && { backgroundColor: colors.surfaceMuted },
@@ -367,9 +384,16 @@ function ToolChip({
 type Link = { url: string; file: PageFile; until: number };
 const links = new Map<string, Link>();
 const waiting = new Map<string, Promise<Link>>();
+let linkOwner = "";
 
-/** A short-lived link to show or download a file, fetched once and kept. */
+/** Short-lived file URLs belong to the session that resolved them. */
 export function fileLink(id: string): Promise<Link> {
+  const owner = session.token;
+  if (linkOwner !== owner) {
+    links.clear();
+    waiting.clear();
+    linkOwner = owner;
+  }
   const kept = links.get(id);
   if (kept && kept.until > Date.now()) return Promise.resolve(kept);
   const running = waiting.get(id);
@@ -377,42 +401,109 @@ export function fileLink(id: string): Promise<Link> {
   const made = client
     .pageFile(id)
     .then((l) => {
+      if (session.token !== owner || linkOwner !== owner)
+        throw new Error("The signed-in account changed.");
       const link = {
         url: client.urlFor(l.url_path),
         file: l.file,
         until: Date.parse(l.expires_at) - 5 * 60_000,
       };
+      for (const [key, cached] of links)
+        if (cached.until <= Date.now()) links.delete(key);
       links.set(id, link);
       return link;
     })
-    .finally(() => waiting.delete(id));
+    .finally(() => {
+      if (waiting.get(id) === made) waiting.delete(id);
+    });
   waiting.set(id, made);
   return made;
 }
 
-function useFileLink(id: string): Link | null | "gone" {
-  const [link, setLink] = useState<Link | null | "gone">(
-    () => links.get(id) ?? null,
-  );
+function useFileLink(id: string) {
+  const owner = session.token;
+  const [result, setResult] = useState<{
+    owner: string;
+    id: string;
+    link: Link | null;
+    failed: boolean;
+  } | null>(null);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     let live = true;
+    const current = () => live && session.token === owner;
+    setResult(null);
     fileLink(id).then(
-      (l) => live && setLink(l),
-      () => live && setLink("gone"),
+      (link) => {
+        if (current()) setResult({ owner, id, link, failed: false });
+      },
+      () => {
+        if (current()) setResult({ owner, id, link: null, failed: true });
+      },
     );
     return () => {
       live = false;
     };
-  }, [id]);
-  return link;
+  }, [id, owner, retry]);
+  const current = result?.owner === owner && result.id === id ? result : null;
+  return {
+    link: current?.link ?? null,
+    failed: current?.failed ?? false,
+    reload: () => setRetry((n) => n + 1),
+  };
 }
 
-/** Save a kept file on the phone: the share sheet offers Files and apps. */
+/** Save only while the account that requested the file remains signed in. */
 export async function downloadFile(id: string) {
+  const owner = session.token;
+  const current = () => {
+    if (session.token !== owner)
+      throw new Error("The signed-in account changed.");
+  };
   const link = await fileLink(id);
+  current();
   const res = await fetch(`${link.url}?download=1`);
-  if (!res.ok) throw new Error("That file couldn't be downloaded.");
-  await saveFile(link.file.name, await res.blob(), link.file.mime);
+  if (!res.ok) throw new Error("Couldn't download this file.");
+  const data = await res.blob();
+  current();
+  await saveFile(link.file.name, data, link.file.mime);
+}
+
+function useFileDownload(id: string) {
+  const owner = session.token;
+  const key = `${owner}:${id}`;
+  const scope = useRef(key);
+  scope.current = key;
+  const alive = useRef(true);
+  const pending = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    setError("");
+  }, [key]);
+  const download = () => {
+    if (pending.current) return;
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    const current = () =>
+      alive.current && scope.current === key && session.token === owner;
+    void downloadFile(id)
+      .catch(() => {
+        if (current()) setError("Couldn't download this file. Try again.");
+      })
+      .finally(() => {
+        pending.current = false;
+        if (alive.current) setBusy(false);
+      });
+  };
+  return { busy, error, download };
 }
 
 /** The picture sizes a phone offers, as shares of the page. */
@@ -434,25 +525,38 @@ export function ImageBlock({
   block: Extract<DocBlock, { type: "image" }>;
   onChange?: (block: DocBlock) => void;
 }) {
-  const link = useFileLink(block.file);
+  const { link, failed, reload } = useFileLink(block.file);
   const [viewing, setViewing] = useState(false);
   const [ratio, setRatio] = useState<number | null>(null);
   useEffect(() => {
-    if (!link || link === "gone") return;
+    setViewing(false);
+  }, [block.file, session.token]);
+  useEffect(() => {
+    let live = true;
+    setRatio(null);
+    if (!link) return;
     if (link.file.width && link.file.height) {
       setRatio(link.file.width / link.file.height);
       return;
     }
     Image.getSize(
       link.url,
-      (w, h) => setRatio(w / h),
-      () => setRatio(4 / 3),
+      (w, h) => {
+        if (live) setRatio(w / h);
+      },
+      () => {
+        if (live) setRatio(4 / 3);
+      },
     );
+    return () => {
+      live = false;
+    };
   }, [link]);
-  if (link === "gone")
+  if (failed)
     return (
       <View style={s.imageMissing}>
-        <Text style={s.muted}>This picture isn't there any more.</Text>
+        <Text style={s.muted}>Couldn’t load this picture.</Text>
+        <ToolChip label="Retry" onPress={reload} />
       </View>
     );
   return (
@@ -475,6 +579,7 @@ export function ImageBlock({
       {!!block.text && <Text style={s.caption}>{block.text}</Text>}
       {link && (
         <ImageViewer
+          key={`${session.token}:${block.file}`}
           visible={viewing}
           url={link.url}
           name={block.text || link.file.name}
@@ -502,6 +607,7 @@ function ImageViewer({
   onChange?: (block: DocBlock) => void;
   onClose: () => void;
 }) {
+  const download = useFileDownload(block.file);
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const [scale, setScale] = useState(1);
@@ -593,24 +699,22 @@ function ImageViewer({
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType="none"
       onRequestClose={onClose}
       statusBarTranslucent
     >
       <View style={s.viewer}>
-        <View style={[s.viewerBar, { paddingTop: insets.top + 8 }]}>
-          <Text style={s.viewerName} numberOfLines={1}>
-            {name}
-          </Text>
+        <ScrollView
+          style={{ maxHeight: height * 0.25, flexGrow: 0 }}
+          contentContainerStyle={[s.viewerBar, { paddingTop: insets.top + 8 }]}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Text style={s.viewerName}>{name}</Text>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Download"
-            hitSlop={10}
-            onPress={() =>
-              void downloadFile(block.file).catch(() =>
-                showToast({ text: "That picture couldn't be downloaded." }),
-              )
-            }
+            disabled={download.busy}
+            onPress={download.download}
             style={s.viewerButton}
           >
             <Icon name="download" size={20} color={colors.white} />
@@ -618,13 +722,15 @@ function ImageViewer({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Close"
-            hitSlop={10}
             onPress={onClose}
             style={s.viewerButton}
           >
             <Icon name="x" size={20} color={colors.white} />
           </Pressable>
-        </View>
+        </ScrollView>
+        {download.error ? (
+          <Text style={s.viewerError}>{download.error}</Text>
+        ) : null}
         <View style={s.viewerStage} {...responder.panHandlers}>
           <Image
             source={{ uri: url }}
@@ -642,7 +748,14 @@ function ImageViewer({
           />
         </View>
         {onChange && (
-          <View style={[s.viewerTools, { paddingBottom: insets.bottom + 12 }]}>
+          <ScrollView
+            style={{ maxHeight: height * 0.35, flexGrow: 0 }}
+            contentContainerStyle={[
+              s.viewerTools,
+              { paddingBottom: insets.bottom + 12 },
+            ]}
+            keyboardShouldPersistTaps="handled"
+          >
             <View style={s.sizes}>
               {SIZES.map((size) => {
                 const on = (block.width ?? 100) === size.width;
@@ -674,7 +787,7 @@ function ImageViewer({
                   onChange({ ...block, text: caption });
               }}
             />
-          </View>
+          </ScrollView>
         )}
       </View>
     </Modal>
@@ -709,7 +822,6 @@ function AudioCard({
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={status.playing ? `Pause ${name}` : `Play ${name}`}
-        hitSlop={8}
         onPress={() => (status.playing ? player.pause() : player.play())}
         style={({ pressed }) => [s.fileButton, pressed && s.pressed]}
       >
@@ -720,9 +832,7 @@ function AudioCard({
         />
       </Pressable>
       <View style={s.fileText}>
-        <Text style={s.fileName} numberOfLines={1}>
-          {name}
-        </Text>
+        <Text style={s.fileName}>{name}</Text>
         <Text style={s.fileMeta}>
           {[
             "Recording",
@@ -741,7 +851,6 @@ function AudioCard({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Summarise ${name}`}
-          hitSlop={8}
           onPress={() => recording.summarise?.(block.file, name)}
           style={({ pressed }) => [s.fileButton, pressed && s.pressed]}
         >
@@ -757,21 +866,19 @@ export function FileCard({
 }: {
   block: Extract<DocBlock, { type: "file" }>;
 }) {
-  const link = useFileLink(block.file);
-  const file = link && link !== "gone" ? link.file : null;
-  const [busy, setBusy] = useState(false);
-  if (link && link !== "gone" && file && isAudio(file.mime))
+  const { link, failed, reload } = useFileLink(block.file);
+  const file = link?.file ?? null;
+  const download = useFileDownload(block.file);
+  if (link && file && isAudio(file.mime))
     return <AudioCard block={block} url={link.url} file={file} />;
   return (
     <View style={s.file}>
       <Icon name="paperclip" size={18} color={colors.muted} />
       <View style={s.fileText}>
-        <Text style={s.fileName} numberOfLines={1}>
-          {block.text || file?.name || "File"}
-        </Text>
+        <Text style={s.fileName}>{block.text || file?.name || "File"}</Text>
         <Text style={s.fileMeta}>
-          {link === "gone"
-            ? "This file isn't there any more"
+          {failed
+            ? "Couldn’t load this file"
             : file
               ? [
                   PAGE_FILE_TYPES[file.mime] ?? "File",
@@ -780,28 +887,23 @@ export function FileCard({
                 ]
                   .filter(Boolean)
                   .join(" · ")
-              : "…"}
+              : "Loading file…"}
         </Text>
       </View>
-      {link !== "gone" && (
+      {failed ? (
+        <ToolChip label="Retry" onPress={reload} />
+      ) : (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Download ${block.text}`}
-          disabled={busy}
-          hitSlop={8}
-          onPress={() => {
-            setBusy(true);
-            void downloadFile(block.file)
-              .catch(() =>
-                showToast({ text: "That file couldn't be downloaded." }),
-              )
-              .finally(() => setBusy(false));
-          }}
+          disabled={download.busy || !link}
+          onPress={download.download}
           style={({ pressed }) => [s.fileButton, pressed && s.pressed]}
         >
           <Icon name="download" size={16} color={colors.accent} />
         </Pressable>
       )}
+      {download.error ? <Text style={s.error}>{download.error}</Text> : null}
     </View>
   );
 }
@@ -821,13 +923,10 @@ export function CodeView({ text, lang }: { text: string; lang: string }) {
   return (
     <View style={s.codeBlock}>
       <View style={s.codeToolbar}>
-        <Text style={s.codeLabel} numberOfLines={2}>
-          {docCodeLabel(lang)}
-        </Text>
+        <Text style={s.codeLabel}>{docCodeLabel(lang)}</Text>
         {metadata ? (
           <Pressable
             accessibilityRole="button"
-            hitSlop={8}
             accessibilityState={{ expanded: open }}
             onPress={() => setOpen(!open)}
             style={s.codeButton}
@@ -839,7 +938,6 @@ export function CodeView({ text, lang }: { text: string; lang: string }) {
         ) : highlighted ? (
           <Pressable
             accessibilityRole="button"
-            hitSlop={8}
             accessibilityState={{ selected: source }}
             onPress={() => setSource(!source)}
             style={s.codeButton}
@@ -849,7 +947,6 @@ export function CodeView({ text, lang }: { text: string; lang: string }) {
         ) : null}
         <Pressable
           accessibilityRole="button"
-          hitSlop={8}
           onPress={() =>
             void copyText(text, metadata ? "Metadata copied" : "Code copied")
           }
@@ -928,32 +1025,72 @@ export function EmbedBlock({
   return <SectionEmbed doc={spec.doc} block={spec.block} />;
 }
 
-function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
-  const navigation = useContext(DocNavigationContext);
-  const [section, setSection] = useState<Section | null | "gone">(null);
-  const load = useCallback(
-    () =>
-      client.docSection(doc, block).then(setSection, () => setSection("gone")),
-    [doc, block],
+function SectionEmbed(props: { doc: string; block: string | null }) {
+  return (
+    <SectionEmbedBody
+      key={`${session.token}:${props.doc}:${props.block ?? ""}`}
+      {...props}
+    />
   );
+}
+
+function SectionEmbedBody({
+  doc,
+  block,
+}: {
+  doc: string;
+  block: string | null;
+}) {
+  const navigation = useContext(DocNavigationContext);
+  const owner = session.token;
+  const [section, setSection] = useState<Section | null>(null);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
+    let live = true;
+    let request = 0;
+    const load = async () => {
+      const ticket = ++request;
+      const current = () =>
+        live && request === ticket && session.token === owner;
+      setError("");
+      try {
+        const result = await client.docSection(doc, block);
+        if (current()) setSection(result);
+      } catch {
+        if (current()) {
+          setSection(null);
+          setError("Couldn't load this section.");
+        }
+      }
+    };
     void load();
-    return client.watchDoc(doc, () => void load());
-  }, [load, doc]);
-  if (section === "gone")
+    const unwatch = client.watchDoc(doc, () => {
+      if (live) void load();
+    });
+    return () => {
+      live = false;
+      unwatch();
+    };
+  }, [doc, block, owner, retry]);
+  const failure = error ? (
+    <View style={s.embedHead}>
+      <Text style={s.error}>{error}</Text>
+      <ToolChip label="Retry" onPress={() => setRetry((n) => n + 1)} />
+    </View>
+  ) : null;
+  if (!section)
     return (
-      <View style={s.embed}>
-        <Text style={s.muted}>
-          The page this showed isn't there, or isn't yours to open.
-        </Text>
+      <View style={[s.embed, { minHeight: 60 }]}>
+        {failure ?? <Text style={s.muted}>Loading section…</Text>}
       </View>
     );
-  if (!section) return <View style={[s.embed, { minHeight: 60 }]} />;
   return (
     <View style={s.embed}>
+      {failure}
       <View style={s.embedHead}>
         <Icon name="fileText" size={14} color={colors.muted} />
-        <Text style={s.embedTitle} numberOfLines={1}>
+        <Text style={s.embedTitle}>
           {section.title}
           {section.block_id && section.blocks[0]?.type === "heading"
             ? ` › ${section.blocks[0].text}`
@@ -961,7 +1098,7 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
         </Text>
         <Pressable
           accessibilityRole="button"
-          hitSlop={10}
+          style={s.foldButton}
           onPress={() =>
             openObject(
               { kind: "doc", id: section.doc_id },
@@ -974,7 +1111,7 @@ function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
         </Pressable>
       </View>
       {section.missing ? (
-        <Text style={s.muted}>The part of the page this showed has gone.</Text>
+        <Text style={s.muted}>This section was removed.</Text>
       ) : (
         <SectionBody
           docId={section.doc_id}
@@ -1004,6 +1141,7 @@ function SectionBody({
   references?: [string, string, string?][];
 }) {
   const parentNavigation = useContext(DocNavigationContext);
+  const [linkError, setLinkError] = useState("");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { DocBody } = require("./DocBody") as typeof import("./DocBody");
   const context = useMemo(
@@ -1032,14 +1170,11 @@ function SectionBody({
         onAppLink: parentNavigation?.onAppLink ?? openAppUrl,
         report:
           parentNavigation?.report ??
-          ((error) =>
-            Alert.alert(
-              "Could not open link",
-              error instanceof Error ? error.message : "Please try again.",
-            )),
+          (() => setLinkError("Couldn't open this link. Try again.")),
       }}
     >
       <FootnoteContext.Provider value={context}>
+        {linkError ? <Text style={s.error}>{linkError}</Text> : null}
         <DocBody content={blocks} />
       </FootnoteContext.Provider>
     </DocNavigationContext.Provider>
@@ -1063,12 +1198,10 @@ function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
     <View style={s.embed}>
       <View style={s.embedHead}>
         <Icon name="clipboardList" size={14} color={colors.muted} />
-        <Text style={s.embedTitle}>Tasks linked from this page</Text>
+        <Text style={s.embedTitle}>Linked tasks</Text>
       </View>
       {!refs.length ? (
-        <Text style={s.muted}>
-          Link tasks in this page with [[ and they're listed here.
-        </Text>
+        <Text style={s.muted}>No linked tasks</Text>
       ) : (
         refs.map((r) => {
           const pill = pills.get(pillKey(r));
@@ -1081,14 +1214,19 @@ function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
                 accessibilityState={{ checked: done, disabled: !onToggle }}
                 accessibilityLabel={pill?.title ?? "Task"}
                 disabled={!onToggle || !pill}
-                hitSlop={12}
                 onPress={() => onToggle?.(r.id, !done)}
-                style={[s.check, done && s.checkDone]}
+                style={s.checkTarget}
               >
-                {done && <Icon name="check" size={13} color={colors.white} />}
+                <View style={[s.check, done && s.checkDone]}>
+                  {done && (
+                    <Icon name="check" size={13} color={colors.onAccent} />
+                  )}
+                </View>
               </Pressable>
               <Pressable
-                style={{ flex: 1 }}
+                accessibilityRole="button"
+                accessibilityLabel={`Open ${pill?.title ?? "task"}`}
+                style={s.embedTaskMain}
                 onPress={() => openObject(r, undefined, navigation?.onAppLink)}
               >
                 <Text style={[s.embedTaskText, done && s.embedTaskDone]}>
@@ -1108,6 +1246,14 @@ function LinkedTasks({ blocks }: { blocks: DocBlock[] }) {
 
 const s = themed(() =>
   StyleSheet.create({
+    error: { color: colors.danger, fontSize: 13, width: "100%" },
+    viewerError: { color: colors.white, fontSize: 13, paddingHorizontal: 16 },
+    foldButton: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     muted: { color: colors.muted, fontSize: 13, lineHeight: 19 },
     pressed: { backgroundColor: colors.surfaceMuted },
     block: {
@@ -1164,9 +1310,9 @@ const s = themed(() =>
     tableText: { color: colors.text, fontSize: 13, lineHeight: 20 },
     tableHeadText: { fontFamily: fonts.semibold },
     tableInput: {
-      minHeight: controls.compact,
+      minHeight: controls.tap,
       color: colors.text,
-      fontSize: 13,
+      fontSize: inputFontSize,
       padding: 0,
     },
     tableTools: {
@@ -1176,7 +1322,7 @@ const s = themed(() =>
       marginBottom: 12,
     },
     chip: {
-      minHeight: controls.compact,
+      minHeight: controls.tap,
       paddingHorizontal: 12,
       justifyContent: "center",
       borderRadius: radii.pill,
@@ -1197,7 +1343,11 @@ const s = themed(() =>
       backgroundColor: colors.accent,
     },
     savePressed: { backgroundColor: colors.accentPressed },
-    saveText: { color: colors.white, fontFamily: fonts.semibold, fontSize: 15 },
+    saveText: {
+      color: colors.onAccent,
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+    },
     image: {
       width: "100%",
       borderRadius: radii.input,
@@ -1222,6 +1372,7 @@ const s = themed(() =>
     viewer: { flex: 1, backgroundColor: tint(colors.shadow, 0.94) },
     viewerBar: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 8,
       paddingHorizontal: 16,
@@ -1241,9 +1392,14 @@ const s = themed(() =>
     },
     viewerStage: { flex: 1, alignItems: "center", justifyContent: "center" },
     viewerTools: { gap: 10, paddingHorizontal: 16 },
-    sizes: { flexDirection: "row", gap: 8, justifyContent: "center" },
+    sizes: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      justifyContent: "center",
+    },
     size: {
-      minHeight: controls.compact,
+      minHeight: controls.tap,
       paddingHorizontal: 12,
       justifyContent: "center",
       borderRadius: radii.pill,
@@ -1259,10 +1415,11 @@ const s = themed(() =>
       borderRadius: radii.input,
       backgroundColor: tint(colors.white, 0.12),
       color: colors.white,
-      fontSize: 15,
+      fontSize: inputFontSize,
     },
     file: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 10,
       padding: 12,
@@ -1271,12 +1428,18 @@ const s = themed(() =>
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
-    fileText: { flex: 1, minWidth: 0, gap: 2 },
+    fileText: {
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 120,
+      minWidth: 0,
+      gap: 2,
+    },
     fileName: { color: colors.text, fontFamily: fonts.medium, fontSize: 15 },
     fileMeta: { color: colors.muted, fontSize: 11 },
     fileButton: {
-      width: controls.compact + 4,
-      height: controls.compact + 4,
+      width: controls.tap,
+      height: controls.tap,
       borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
@@ -1299,7 +1462,7 @@ const s = themed(() =>
     codeButton: {
       paddingHorizontal: 10,
       paddingVertical: 8,
-      minHeight: controls.compact,
+      minHeight: controls.tap,
     },
     codeAction: {
       color: colors.accent,
@@ -1337,14 +1500,45 @@ const s = themed(() =>
       borderLeftColor: colors.softBorder,
       backgroundColor: colors.surface,
     },
-    embedHead: { flexDirection: "row", alignItems: "center", gap: 6 },
-    embedTitle: { flex: 1, color: colors.muted, fontSize: 11 },
+    embedHead: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 6,
+    },
+    embedTitle: {
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 120,
+      minWidth: 0,
+      color: colors.muted,
+      fontSize: 13,
+    },
     embedOpen: {
       color: colors.accent,
       fontFamily: fonts.semibold,
       fontSize: 13,
     },
-    embedTask: { flexDirection: "row", alignItems: "center", gap: 10 },
+    embedTask: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
+    embedTaskMain: {
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 120,
+      minWidth: 0,
+      minHeight: 44,
+      justifyContent: "center",
+    },
+    checkTarget: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     embedTaskText: { color: colors.text, fontSize: 15, lineHeight: 22 },
     embedTaskDone: { color: colors.muted, textDecorationLine: "line-through" },
     check: {

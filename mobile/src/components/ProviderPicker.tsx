@@ -45,7 +45,7 @@ export function ProviderPicker({
     <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Provider"
+        accessibilityLabel={`Provider: ${AI_PROVIDERS[value].label}`}
         accessibilityState={{ disabled, expanded: open }}
         disabled={disabled}
         onPress={() => {
@@ -56,9 +56,7 @@ export function ProviderPicker({
         }}
         style={[shared.input, s.trigger, disabled && s.disabled]}
       >
-        <Text style={[shared.body, s.label]} numberOfLines={1}>
-          {AI_PROVIDERS[value].label}
-        </Text>
+        <Text style={[shared.body, s.label]}>{AI_PROVIDERS[value].label}</Text>
         <Icon name="chevronDown" size={16} color={colors.textSoft} />
       </Pressable>
       <Sheet visible={open} title="Choose provider" onClose={close}>
@@ -100,7 +98,10 @@ export function ProviderPicker({
                   onChange(item.value);
                   close();
                 }}
-                style={s.option}
+                style={[
+                  s.option,
+                  selected && { backgroundColor: colors.accentSoft },
+                ]}
               >
                 <View style={s.label}>
                   <Text style={s.optionLabel}>{item.label}</Text>

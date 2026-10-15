@@ -24,7 +24,8 @@ import {
 } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, PressableScale } from "../motion";
+import { Pressable } from "../motion";
+import { session } from "../lib/session";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { takeLinkPrefill, type LinkPrefill } from "../lib/link-prefill";
@@ -108,8 +109,17 @@ export function QuickAdd({
   const { lists, tags } = usePlanning();
   const { busy, error, setError, run } = useRun();
   const [text, setText] = useState("");
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const field = useRef<TextInput>(null);
   useEffect(() => {
+    if (busy || pending.current) return;
     // Once per link, even if Today is left and opened again before the
     // caller has let the words go.
     const words = takeLinkPrefill(prefill);
@@ -117,7 +127,7 @@ export function QuickAdd({
     setText(words);
     field.current?.focus();
     onPrefillUsed?.();
-  }, [prefill?.key]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [prefill?.key, busy]); // eslint-disable-line react-hooks/exhaustive-deps
   const zone = deviceTimeZone();
   const parsed = useMemo(() => {
     if (!text.trim()) return null;
@@ -140,16 +150,22 @@ export function QuickAdd({
   const canAdd = !!title && !busy;
 
   const submit = () => {
-    if (!canAdd) return;
+    if (!canAdd || pending.current) return;
+    pending.current = true;
+    const draft = text;
+    const owner = session.token;
     void run(async () => {
-      const created = await client.quickAdd(text.trim(), zone);
-      setText("");
+      const created = await client.quickAdd(draft.trim(), zone);
+      if (!mounted.current || session.token !== owner) return;
+      setText((current) => (current === draft ? "" : current));
       AccessibilityInfo.announceForAccessibility(
         created.item
           ? `Added ${created.item.title}`
           : `Added the habit ${created.habit.name}. Planning finds time for it.`,
       );
       onCreated(created.item);
+    }).finally(() => {
+      pending.current = false;
     });
   };
 
@@ -160,8 +176,9 @@ export function QuickAdd({
           ref={field}
           style={[shared.input, s.input]}
           value={text}
+          editable={!busy}
           onChangeText={setText}
-          placeholder="Add anything: lunch with Anna tomorrow 1pm"
+          placeholder="Add a task or event"
           placeholderTextColor={colors.faint}
           returnKeyType="done"
           submitBehavior="blurAndSubmit"
@@ -170,7 +187,7 @@ export function QuickAdd({
           accessibilityLabel="Quick add"
           accessibilityHint="Type a task or event in your own words. Dates, times and places are picked up as you type."
         />
-        <PressableScale
+        <Pressable
           accessibilityRole="button"
           accessibilityLabel="Add"
           accessibilityState={{ disabled: !canAdd }}
@@ -182,12 +199,17 @@ export function QuickAdd({
             !canAdd && { opacity: 0.4 },
           ]}
         >
-          <Icon name="plus" size={18} color={colors.white} strokeWidth={2.2} />
-        </PressableScale>
+          <Icon
+            name="plus"
+            size={18}
+            color={colors.onAccent}
+            strokeWidth={2.2}
+          />
+        </Pressable>
       </View>
       {parsed && (
-        <FadeIn style={s.preview}>
-          <Text style={shared.small} numberOfLines={2}>
+        <View style={s.preview}>
+          <Text style={shared.small}>
             {title
               ? `Adds ${parsed.habit ? "a habit" : parsed.input.kind === "event" ? "an event" : "a task"}: “${title}”`
               : "Add a few words for the title."}
@@ -201,9 +223,7 @@ export function QuickAdd({
                     size={11}
                     color={colors.accent}
                   />
-                  <Text style={s.chipText} numberOfLines={1}>
-                    {chipText(chip)}
-                  </Text>
+                  <Text style={s.chipText}>{chipText(chip)}</Text>
                 </View>
               ))}
             </View>
@@ -213,12 +233,13 @@ export function QuickAdd({
               label="Ask the assistant instead"
               disabled={busy}
               onPress={() => {
+                if (pending.current || busy) return;
                 onAsk(text.trim());
                 setText("");
               }}
             />
           </View>
-        </FadeIn>
+        </View>
       )}
       <ErrorBanner error={error} onDismiss={() => setError("")} />
     </View>

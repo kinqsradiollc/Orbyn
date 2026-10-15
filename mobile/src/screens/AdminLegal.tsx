@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   LEGAL_TITLES,
   type LegalAdminView,
@@ -7,10 +7,12 @@ import {
   type LegalSettingsUpdate,
 } from "@orbyn/core";
 import { LegalSheet } from "../components/LegalSheet";
+import { InlineDetails } from "../components/InlineDetails";
+import { Sheet } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
-import { colors, fonts, themed } from "../theme";
+import { inputFontSize, colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 type Act = (fn: () => Promise<void>) => Promise<void>;
@@ -38,8 +40,9 @@ export function LegalCard({ act, busy }: { act: Act; busy: boolean }) {
   const [reading, setReading] = useState<LegalDoc | null>(null);
   const [note, setNote] = useState("");
 
-  const adopt = (v: LegalAdminView) => {
+  const adopt = (v: LegalAdminView, keepDetails = false) => {
     setView(v);
+    if (keepDetails) return;
     setCompany(v.settings.company);
     setContact(v.settings.contact_email);
     setJurisdiction(v.settings.jurisdiction);
@@ -53,7 +56,10 @@ export function LegalCard({ act, busy }: { act: Act; busy: boolean }) {
   const save = (input: LegalSettingsUpdate, done: string) =>
     void act(async () => {
       setNote("");
-      adopt(await client.updateLegal(input));
+      adopt(
+        await client.updateLegal(input),
+        "terms_body" in input || "privacy_body" in input || "publish" in input,
+      );
       setNote(done);
     });
 
@@ -75,6 +81,7 @@ export function LegalCard({ act, busy }: { act: Act; busy: boolean }) {
       <Text style={[shared.label, s.label]}>{label}</Text>
       <TextInput
         style={shared.input}
+        editable={!busy}
         value={value}
         onChangeText={onChange}
         placeholderTextColor={colors.faint}
@@ -97,43 +104,45 @@ export function LegalCard({ act, busy }: { act: Act; busy: boolean }) {
           Have both texts reviewed by a lawyer before launch.
         </Text>
       )}
-      {field("Who runs the service", company, setCompany, {
-        placeholder: "Example Ltd",
-        maxLength: 160,
-      })}
-      {field("Privacy contact", contact, setContact, {
-        placeholder: "privacy@example.com",
-        keyboardType: "email-address",
-        autoCapitalize: "none",
-        maxLength: 254,
-      })}
-      {field("Governing law", jurisdiction, setJurisdiction, {
-        placeholder: "England and Wales",
-        maxLength: 160,
-      })}
-      {field(
-        "Services that process data (one per line)",
-        processors,
-        setProcessors,
-        {
-          placeholder: "Hosting — Example Cloud",
-          multiline: true,
-          style: [shared.input, s.multiline],
-          maxLength: 4000,
-        },
-      )}
-      <View style={s.actions}>
-        <SmallAction
-          label="Save details"
-          disabled={busy}
-          onPress={() =>
-            save(
-              { company, contact_email: contact, jurisdiction, processors },
-              "Saved.",
-            )
-          }
-        />
-      </View>
+      <InlineDetails title="Service details" reveal={view.missing.length > 0}>
+        {field("Who runs the service", company, setCompany, {
+          placeholder: "Example Ltd",
+          maxLength: 160,
+        })}
+        {field("Privacy contact", contact, setContact, {
+          placeholder: "privacy@example.com",
+          keyboardType: "email-address",
+          autoCapitalize: "none",
+          maxLength: 254,
+        })}
+        {field("Governing law", jurisdiction, setJurisdiction, {
+          placeholder: "England and Wales",
+          maxLength: 160,
+        })}
+        {field(
+          "Services that process data (one per line)",
+          processors,
+          setProcessors,
+          {
+            placeholder: "Hosting — Example Cloud",
+            multiline: true,
+            style: [shared.input, s.multiline],
+            maxLength: 4000,
+          },
+        )}
+        <View style={s.actions}>
+          <SmallAction
+            label="Save details"
+            disabled={busy}
+            onPress={() =>
+              save(
+                { company, contact_email: contact, jurisdiction, processors },
+                "Saved.",
+              )
+            }
+          />
+        </View>
+      </InlineDetails>
 
       {(["terms", "privacy"] as const).map((doc) => {
         const d = view.settings[doc];
@@ -152,7 +161,7 @@ export function LegalCard({ act, busy }: { act: Act; busy: boolean }) {
               />
               <SmallAction
                 label={editing === doc ? "Close" : "Edit text"}
-                disabled={false}
+                disabled={busy}
                 onPress={() => {
                   if (editing === doc) return setEditing(null);
                   setEditing(doc);
@@ -177,50 +186,77 @@ export function LegalCard({ act, busy }: { act: Act; busy: boolean }) {
               />
             </View>
             {editing === doc && (
-              <>
-                <TextInput
-                  style={[shared.input, s.editor]}
-                  value={text}
-                  onChangeText={setText}
-                  multiline
-                  maxLength={60000}
-                  accessibilityLabel={`${LEGAL_TITLES[doc]} text`}
-                />
-                <View style={s.actions}>
-                  <SmallAction
-                    label="Save text"
-                    disabled={busy || !text.trim()}
-                    onPress={() =>
-                      save(
-                        doc === "terms"
-                          ? { terms_body: text }
-                          : { privacy_body: text },
-                        "Text saved. Publish a new version to ask everyone.",
-                      )
-                    }
+              <Sheet
+                visible
+                title={LEGAL_TITLES[doc]}
+                onClose={() => {
+                  if (!busy) setEditing(null);
+                }}
+              >
+                <ScrollView
+                  contentContainerStyle={{ padding: 16, gap: 12 }}
+                  keyboardShouldPersistTaps="handled"
+                >
+                  <TextInput
+                    style={[shared.input, s.editor]}
+                    editable={!busy}
+                    value={text}
+                    onChangeText={setText}
+                    multiline
+                    maxLength={60000}
+                    accessibilityLabel={`${LEGAL_TITLES[doc]} text`}
                   />
-                  {!!d.body && (
+                  <Text style={shared.small}>
+                    Saving changes the live text. Publish a new version to
+                    request agreement again.
+                  </Text>
+                  <View style={s.actions}>
                     <SmallAction
-                      label="Use the starting text"
-                      disabled={busy}
-                      onPress={() => {
+                      label="Save text"
+                      disabled={busy || !text.trim()}
+                      onPress={() =>
                         save(
                           doc === "terms"
-                            ? { terms_body: null }
-                            : { privacy_body: null },
-                          "Back to Orbyn's starting text.",
-                        );
-                        setEditing(null);
-                      }}
+                            ? { terms_body: text }
+                            : { privacy_body: text },
+                          "Text saved. Publish a new version to ask everyone.",
+                        )
+                      }
                     />
-                  )}
-                </View>
-              </>
+                    {!!d.body && (
+                      <SmallAction
+                        label="Use the starting text"
+                        disabled={busy}
+                        onPress={() =>
+                          confirmAction(
+                            "Restore the starting text?",
+                            "Replaces your live custom text. This does not request renewed agreement.",
+                            "Restore text",
+                            () => {
+                              save(
+                                doc === "terms"
+                                  ? { terms_body: null }
+                                  : { privacy_body: null },
+                                "Back to Orbyn's starting text.",
+                              );
+                              setEditing(null);
+                            },
+                          )
+                        }
+                      />
+                    )}
+                  </View>
+                </ScrollView>
+              </Sheet>
             )}
           </View>
         );
       })}
-      {!!note && <Text style={[shared.small, s.note]}>{note}</Text>}
+      {!!note && (
+        <Text accessibilityLiveRegion="polite" style={[shared.small, s.note]}>
+          {note}
+        </Text>
+      )}
       <LegalSheet doc={reading} onClose={() => setReading(null)} />
     </View>
   );
@@ -237,7 +273,7 @@ const s = themed(() =>
       lineHeight: 19,
       color: colors.warningStrong,
       backgroundColor: colors.warningSoft,
-      borderRadius: 10,
+      borderRadius: radii.input,
       padding: 10,
       marginTop: 10,
     },
@@ -246,7 +282,7 @@ const s = themed(() =>
       minHeight: 220,
       textAlignVertical: "top",
       marginTop: 10,
-      fontSize: 13,
+      fontSize: inputFontSize,
     },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 10 },
     doc: {

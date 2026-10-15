@@ -1,12 +1,11 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { motion } from "@orbyn/core";
 import { Brand } from "../components/Brand";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { client } from "../lib/api";
-import { FadeIn } from "../motion";
+import { session } from "../lib/session";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -32,18 +31,40 @@ export function VerifyGateScreen({
   const insets = useSafeAreaInsets();
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  const [sending, setSending] = useState(false);
+  const lock = useRef(false);
+  const mounted = useRef(false);
+  const owner = useRef(session.token);
+  const current = () => mounted.current && owner.current === session.token;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
-  const resend = () =>
-    act(async () => {
-      setNote("");
-      setError("");
-      try {
-        await client.resendVerification();
-        setNote("Sent. Check your inbox for the new link.");
-      } catch (e) {
-        setError(errorText(e));
-      }
-    });
+  const resend = async () => {
+    if (busy || lock.current || !current()) return;
+    lock.current = true;
+    setSending(true);
+    setNote("");
+    setError("");
+    try {
+      await act(async () => {
+        try {
+          await client.resendVerification();
+          if (current()) setNote("Email sent. Check your inbox.");
+        } catch (e) {
+          if (current()) setError(errorText(e));
+        }
+      });
+    } catch (e) {
+      if (current()) setError(errorText(e));
+    } finally {
+      lock.current = false;
+      if (current()) setSending(false);
+    }
+  };
 
   return (
     <ScrollView
@@ -60,41 +81,39 @@ export function VerifyGateScreen({
       style={s.screen}
     >
       <View style={s.column}>
-        <FadeIn index={0} duration={motion.slow}>
+        <View>
           <Brand size={30} />
-        </FadeIn>
-        <FadeIn index={2} duration={motion.slow}>
-          <Text style={[shared.eyebrow, s.eyebrow]}>ONE LAST STEP</Text>
-          <Text style={s.hero}>Confirm{"\n"}your email.</Text>
+        </View>
+        <View>
+          <Text style={s.hero}>Confirm your email</Text>
           <Text style={[shared.subtitle, s.intro]}>
-            We sent a confirmation link to {email}. Open it on this device to
-            start using Orbyn, then come back and continue.
+            Open the link sent to {email}, then return here to continue.
           </Text>
-        </FadeIn>
-        <FadeIn index={4} duration={motion.slow}>
+        </View>
+        <View>
           {!!note && <Text style={s.note}>{note}</Text>}
           <ErrorBanner error={error} />
           <Button
-            title="I've confirmed — continue"
+            title="Continue"
             icon="arrowRight"
-            disabled={busy}
+            disabled={busy || sending}
             onPress={onContinue}
           />
           <Button
-            title={busy ? "Sending…" : "Resend the email"}
+            title={sending ? "Sending…" : "Resend email"}
             secondary
-            disabled={busy}
+            disabled={busy || sending}
             onPress={() => void resend()}
             style={s.gap}
           />
           <Button
             title="Sign out"
-            destructive
-            disabled={busy}
+            secondary
+            disabled={busy || sending}
             onPress={onSignOut}
             style={s.gap}
           />
-        </FadeIn>
+        </View>
       </View>
     </ScrollView>
   );
@@ -105,15 +124,15 @@ const s = themed(() =>
     screen: { flex: 1, backgroundColor: colors.background },
     scroll: { flexGrow: 1, justifyContent: "center" },
     column: { width: "100%", maxWidth: 440, alignSelf: "center" },
-    eyebrow: { marginTop: 36 },
     hero: {
       fontFamily: fonts.display,
-      fontSize: 36,
-      lineHeight: 44,
-      letterSpacing: -1.4,
+      fontSize: 24,
+      marginTop: 24,
+      lineHeight: 32,
+      letterSpacing: -0.4,
       color: colors.text,
     },
-    intro: { marginBottom: 28 },
+    intro: { marginBottom: 20 },
     note: {
       fontFamily: fonts.regular,
       fontSize: 15,

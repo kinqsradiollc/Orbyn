@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, TextInput, View } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import {
@@ -7,13 +7,18 @@ import {
   LOOK_ICON_LABELS,
   isEmoji,
   pageFileType,
+  pageFileInput,
   type CoverPicture,
   type Look,
 } from "@orbyn/core";
 import { Pressable } from "../motion";
+import { session } from "../lib/session";
 import { client } from "../lib/api";
 import { errorText } from "../lib/errors";
 import { colors, fonts, radii, themed } from "../theme";
+import { Segmented } from "./Segmented";
+import { InlineDetails } from "./InlineDetails";
+import { MoreMenu } from "./MoreMenu";
 import { BottomSheet } from "./BottomSheet";
 import { Button } from "./Button";
 import { ErrorBanner } from "./ErrorBanner";
@@ -33,6 +38,23 @@ export function LookEditor({
   onSave: (look: Look) => Promise<void>;
   onClose: () => void;
 }) {
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  const owns = () => mounted.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [category, setCategory] = useState<"emoji" | "icons" | "custom">(
+    look.icon?.startsWith("icon:") ? "icons" : "emoji",
+  );
+  const [phase, setPhase] = useState<"upload" | "save" | null>(null);
+  const [pictureError, setPictureError] = useState("");
+  const [readAttempt, setReadAttempt] = useState(0);
+  const pictureRead = useRef(0);
   const [icon, setIcon] = useState(look.icon);
   const [cover, setCover] = useState(look.cover_file_id);
   const [typed, setTyped] = useState("");
@@ -41,20 +63,26 @@ export function LookEditor({
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     let alive = true;
+    const request = ++pictureRead.current;
+    setPictureError("");
     client.myPictures().then(
       (all) => {
-        if (alive) setPictures(all);
+        if (alive && owns() && request === pictureRead.current)
+          setPictures(all);
       },
       (e) => {
-        if (alive) setError(errorText(e));
+        if (alive && owns() && request === pictureRead.current)
+          setPictureError(errorText(e));
       },
     );
     return () => {
       alive = false;
     };
-  }, []);
+  }, [readAttempt]);
   const upload = async () => {
-    if (!uploadTo || busy) return;
+    if (!uploadTo || !owns() || pending.current) return;
+    pending.current = true;
+    setPhase("upload");
     setBusy(true);
     setError("");
     try {
@@ -62,21 +90,33 @@ export function LookEditor({
         type: ["image/png", "image/jpeg", "image/gif", "image/webp"],
         copyToCacheDirectory: true,
       });
-      if (picked.canceled) return;
+      if (picked.canceled || !owns()) return;
       const asset = picked.assets[0];
+      if (!asset) throw new Error("Choose a picture first.");
       const mime = pageFileType(asset.name, asset.mimeType ?? undefined);
       if (!mime || !mime.startsWith("image/"))
         throw new Error("Choose a PNG, JPEG, GIF or WebP picture.");
+      if (
+        asset.size !== undefined &&
+        (asset.size < 1 || asset.size > 200 * 1024 * 1024)
+      )
+        throw new Error("Choose a picture up to 200 MB.");
       const body =
         Platform.OS === "web" && asset.file
           ? asset.file
           : await (await fetch(asset.uri)).blob();
-      const made = await client.createPageFile(uploadTo, {
-        name: asset.name.slice(0, 300) || "Cover",
+      if (!owns()) return;
+      const metadata = pageFileInput.safeParse({
+        name: asset.name.trim().slice(0, 300) || "Cover",
         bytes: body.size,
         mime,
       });
+      if (!metadata.success) throw new Error("Choose a picture up to 200 MB.");
+      const made = await client.createPageFile(uploadTo, metadata.data);
+      if (!owns()) return;
       await client.uploadPageFile(made.upload_path, body, mime);
+      if (!owns()) return;
+      pictureRead.current += 1;
       setCover(made.file.id);
       setPictures((all) => [
         {
@@ -88,37 +128,60 @@ export function LookEditor({
           height: made.file.height,
           created_at: made.file.created_at,
         },
-        ...(all ?? []),
+        ...(all ?? []).filter((picture) => picture.id !== made.file.id),
       ]);
+      setReadAttempt((attempt) => attempt + 1);
     } catch (e) {
-      setError(errorText(e));
+      if (owns()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (owns()) {
+        setBusy(false);
+        setPhase(null);
+      }
     }
   };
   const save = async () => {
-    if (busy) return;
+    if (!owns() || pending.current) return;
+    pending.current = true;
+    setPhase("save");
     setBusy(true);
     setError("");
     try {
-      await onSave({ icon, cover_file_id: cover });
-      onClose();
+      const nextIcon =
+        category === "custom" && typed.trim() ? typed.trim() : icon;
+      if (category === "custom" && typed.trim() && !isEmoji(typed.trim()))
+        throw new Error("Type or paste one emoji.");
+      await onSave({ icon: nextIcon, cover_file_id: cover });
+      if (owns()) onClose();
     } catch (e) {
-      setError(errorText(e));
+      if (owns()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (owns()) {
+        setBusy(false);
+        setPhase(null);
+      }
     }
   };
+  const previewIcon =
+    category === "custom" && isEmoji(typed.trim()) ? typed.trim() : icon;
   return (
     <BottomSheet
       visible
-      title={`Cover and icon · ${title}`}
+      title="Appearance"
       onClose={() => {
-        if (!busy) onClose();
+        if (!pending.current && owns()) onClose();
       }}
       footer={
         <Button
-          title={busy ? "Saving…" : "Save appearance"}
+          title={
+            phase === "upload"
+              ? "Uploading…"
+              : phase === "save"
+                ? "Saving…"
+                : "Save"
+          }
           disabled={busy}
           onPress={() => void save()}
         />
@@ -126,65 +189,63 @@ export function LookEditor({
     >
       {!!error && <ErrorBanner error={error} />}
       <View style={s.preview}>
-        <LookIconView icon={icon} size={24} />
+        <LookIconView icon={previewIcon} size={24} />
         <Text style={s.title}>{title}</Text>
       </View>
       <CoverImage fileId={cover} height={120} style={s.cover} />
       <Text style={s.heading}>Icon</Text>
+      <Segmented
+        options={["emoji", "icons", "custom"] as const}
+        value={category}
+        labels={{ emoji: "Emoji", icons: "Icons", custom: "Custom" }}
+        onChange={setCategory}
+        disabled={busy}
+        accessibilityLabel="Icon choices"
+      />
       <View style={s.grid}>
-        {LOOK_EMOJI.map((value) => (
-          <Pressable
-            key={value}
-            accessibilityRole="button"
-            accessibilityLabel={`Choose ${value}`}
-            accessibilityState={{ selected: icon === value }}
-            disabled={busy}
-            style={[s.choice, icon === value && s.selected]}
-            onPress={() => setIcon(value)}
-          >
-            <LookIconView icon={value} size={24} />
-          </Pressable>
-        ))}
-        {LOOK_ICON_NAMES.map((name) => (
-          <Pressable
-            key={name}
-            accessibilityRole="button"
-            accessibilityLabel={`Choose ${LOOK_ICON_LABELS[name]} icon`}
-            accessibilityState={{ selected: icon === `icon:${name}` }}
-            disabled={busy}
-            style={[s.choice, icon === `icon:${name}` && s.selected]}
-            onPress={() => setIcon(`icon:${name}`)}
-          >
-            <LookIconView icon={`icon:${name}`} size={24} />
-          </Pressable>
-        ))}
+        {category === "emoji" &&
+          LOOK_EMOJI.map((value) => (
+            <Pressable
+              key={value}
+              accessibilityRole="button"
+              accessibilityLabel={`Choose ${value}`}
+              accessibilityState={{ selected: icon === value }}
+              disabled={busy}
+              style={[s.choice, icon === value && s.selected]}
+              onPress={() => setIcon(value)}
+            >
+              <LookIconView icon={value} size={24} />
+            </Pressable>
+          ))}
+        {category === "icons" &&
+          LOOK_ICON_NAMES.map((name) => (
+            <Pressable
+              key={name}
+              accessibilityRole="button"
+              accessibilityLabel={`Choose ${LOOK_ICON_LABELS[name]} icon`}
+              accessibilityState={{ selected: icon === `icon:${name}` }}
+              disabled={busy}
+              style={[s.choice, icon === `icon:${name}` && s.selected]}
+              onPress={() => setIcon(`icon:${name}`)}
+            >
+              <LookIconView icon={`icon:${name}`} size={24} />
+            </Pressable>
+          ))}
       </View>
-      <TextInput
-        accessibilityLabel="Custom emoji"
-        placeholder="Type or paste an emoji"
-        placeholderTextColor={colors.faint}
-        value={typed}
-        onChangeText={setTyped}
-        editable={!busy}
-        maxLength={16}
-        style={s.input}
-      />
-      <Button
-        title="Use emoji"
-        disabled={busy || !typed.trim()}
-        onPress={() => {
-          if (isEmoji(typed.trim())) {
-            setIcon(typed.trim());
-            setTyped("");
-            setError("");
-          } else setError("Type or paste an emoji.");
-        }}
-      />
-      <Button
-        title="Remove icon"
-        disabled={busy || !icon}
-        onPress={() => setIcon(null)}
-      />
+      {category === "custom" && (
+        <>
+          <TextInput
+            accessibilityLabel="Custom emoji"
+            placeholder="Type or paste an emoji"
+            placeholderTextColor={colors.faint}
+            value={typed}
+            onChangeText={setTyped}
+            editable={!busy}
+            maxLength={16}
+            style={s.input}
+          />
+        </>
+      )}
       <Text style={s.heading}>Cover</Text>
       {uploadTo && (
         <Button
@@ -193,48 +254,61 @@ export function LookEditor({
           onPress={() => void upload()}
         />
       )}
-      {pictures === null ? (
-        <View>
+      <InlineDetails title="Choose an existing picture" reveal={!!pictureError}>
+        {!!pictureError && <ErrorBanner error={pictureError} />}
+        {pictures === null ? (
           <Text style={s.note}>
-            {error ? "Pictures could not be loaded." : "Loading your pictures…"}
+            {pictureError ? "Pictures unavailable." : "Loading pictures…"}
           </Text>
-          {!!error && (
-            <Button
-              title="Retry pictures"
+        ) : !pictures.length ? (
+          <Text style={s.note}>No pictures yet.</Text>
+        ) : (
+          pictures.map((picture) => (
+            <Pressable
+              key={picture.id}
+              accessibilityRole="button"
+              accessibilityLabel={`Use ${picture.name} as cover`}
+              accessibilityState={{ selected: cover === picture.id }}
               disabled={busy}
-              onPress={() => {
-                setError("");
-                void client
-                  .myPictures()
-                  .then(setPictures, (e) => setError(errorText(e)));
-              }}
-            />
-          )}
-        </View>
-      ) : !pictures.length ? (
-        <Text style={s.note}>
-          No pictures yet. Add a picture to a page to use it here.
-        </Text>
-      ) : (
-        pictures.map((picture) => (
-          <Pressable
-            key={picture.id}
-            accessibilityRole="button"
-            accessibilityLabel={`Use ${picture.name} as cover`}
-            accessibilityState={{ selected: cover === picture.id }}
+              style={[s.picture, cover === picture.id && s.selected]}
+              onPress={() => setCover(picture.id)}
+            >
+              <CoverImage fileId={picture.id} height={80} style={s.cover} />
+              <Text style={s.note}>{picture.name}</Text>
+            </Pressable>
+          ))
+        )}
+        {!!pictureError && (
+          <Button
+            title="Retry pictures"
+            secondary
             disabled={busy}
-            style={[s.picture, cover === picture.id && s.selected]}
-            onPress={() => setCover(picture.id)}
-          >
-            <CoverImage fileId={picture.id} height={80} style={s.cover} />
-            <Text style={s.note}>{picture.name}</Text>
-          </Pressable>
-        ))
-      )}
-      <Button
-        title="Remove cover"
-        disabled={busy || !cover}
-        onPress={() => setCover(null)}
+            onPress={() => setReadAttempt((attempt) => attempt + 1)}
+          />
+        )}
+      </InlineDetails>
+      <MoreMenu
+        label="Appearance options"
+        disabled={busy}
+        actions={[
+          {
+            label: "Remove icon",
+            disabled: !icon && !typed.trim(),
+            onPress: () => {
+              if (owns() && !pending.current) {
+                setIcon(null);
+                setTyped("");
+              }
+            },
+          },
+          {
+            label: "Remove cover",
+            disabled: !cover,
+            onPress: () => {
+              if (owns() && !pending.current) setCover(null);
+            },
+          },
+        ]}
       />
     </BottomSheet>
   );
@@ -273,9 +347,10 @@ const s = themed(() =>
     },
     selected: {
       borderColor: colors.accent,
-      backgroundColor: colors.surfaceMuted,
+      backgroundColor: colors.accentSoft,
     },
     input: {
+      fontSize: Platform.OS === "web" ? 16 : 15,
       color: colors.text,
       fontFamily: fonts.regular,
       padding: 12,

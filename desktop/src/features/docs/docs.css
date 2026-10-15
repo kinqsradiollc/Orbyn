@@ -1,9 +1,9 @@
 /* Documents: a quiet reading surface that becomes an input where you click.
-   Every colour comes from the existing theme tokens — no new palette. */
+   Colors come from shared semantic theme tokens. */
 
 .docs-view {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 
 .docs-head {
@@ -19,6 +19,8 @@
 }
 .docs-head-actions {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   gap: 8px;
 }
@@ -35,7 +37,7 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 8px;
+  gap: 0;
 }
 
 .doc-row {
@@ -46,9 +48,10 @@
   align-items: center;
   text-align: left;
   padding: 12px 14px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
+  border: 0;
+  border-bottom: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: transparent;
   color: var(--color-text);
   cursor: pointer;
 }
@@ -89,6 +92,7 @@
   grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   min-width: 0;
+  container: document-pane / inline-size;
 }
 
 .doc-bar {
@@ -134,7 +138,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   background: var(--color-surface);
-  padding: 28px clamp(18px, 4vw, 40px) 32px;
+  padding: 20px clamp(16px, 3vw, 32px) 24px;
   max-width: 820px;
   display: grid;
   gap: 8px;
@@ -143,7 +147,7 @@
 
 .doc-title {
   font-family: "Manrope", sans-serif;
-  font-size: 36px;
+  font-size: 24px;
   font-weight: 800;
   letter-spacing: -0.02em;
   color: var(--color-text);
@@ -228,8 +232,13 @@
 }
 /* A nested list line is typed where it reads, stepped in by its depth. */
 .doc-input[data-depth] {
-  margin-left: calc(var(--depth) * 24px - 8px);
-  width: calc(100% + 16px - var(--depth) * 24px);
+  --doc-indent: clamp(
+    0px,
+    calc(var(--depth, 0) * 24px),
+    max(0px, calc(100% - 180px))
+  );
+  margin-left: calc(var(--doc-indent) - 8px);
+  width: calc(100% + 16px - var(--doc-indent));
 }
 
 /* One quiet line at the end of a page: words, reading time, when saved. */
@@ -422,7 +431,11 @@ h6.doc-heading {
   align-items: baseline;
   line-height: 1.7;
   /* A nested item steps in by its depth (see BlockView). */
-  margin-left: calc(var(--depth, 0) * 24px);
+  margin-left: clamp(
+    0px,
+    calc(var(--depth, 0) * 24px),
+    max(0px, calc(100% - 180px))
+  );
 }
 .doc-marker {
   color: var(--color-muted);
@@ -648,16 +661,14 @@ h6.doc-heading {
 }
 .doc-comment-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
 .doc-comment-head strong {
   font-size: 15px;
-  font-family: "Manrope", sans-serif;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   min-width: 0;
 }
 .doc-comment-head small {
@@ -687,7 +698,7 @@ h6.doc-heading {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 8px 10px;
-  resize: vertical;
+  resize: none;
 }
 .doc-comment-new textarea:focus {
   outline: none;
@@ -808,10 +819,8 @@ h6.doc-heading {
   line-height: 1.45;
 }
 .doc-menu-label {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--color-muted);
   padding: 2px 6px 0;
 }
@@ -843,7 +852,9 @@ h6.doc-heading {
   background: none;
   color: var(--color-text);
   font: inherit;
-  font-size: 15px;
+  font-size: 13px;
+  min-height: 44px;
+  overflow-wrap: anywhere;
   text-align: left;
   cursor: pointer;
 }
@@ -1092,7 +1103,7 @@ h6.doc-heading {
   width: 100%;
   font: inherit;
   font-size: var(--control-fs);
-  resize: vertical;
+  resize: none;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-sunken);
@@ -1115,6 +1126,8 @@ h6.doc-heading {
 }
 .doc-remark header {
   display: flex;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
   align-items: center;
   gap: 7px;
 }
@@ -1134,7 +1147,7 @@ h6.doc-heading {
   overflow-wrap: anywhere;
 }
 .doc-remark.is-resolved {
-  opacity: 0.6;
+  color: var(--color-textSoft);
 }
 
 /* A commented line is tinted the way a highlighter would mark it, and the
@@ -1259,7 +1272,7 @@ h6.doc-heading {
   width: 100%;
   font: inherit;
   font-size: var(--control-fs);
-  resize: vertical;
+  resize: none;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-sunken);
@@ -1363,7 +1376,7 @@ h6.doc-heading {
 /* A page being read has a title, not a field to type one in. */
 .doc-title.is-reading {
   margin: 0;
-  font-size: 36px;
+  font-size: 24px;
   font-weight: 700;
   line-height: 1.2;
 }
@@ -1494,6 +1507,10 @@ h6.doc-heading {
   display: inline-flex;
 }
 .doc-download-menu {
+  max-width: min(320px, calc(100vw - 32px));
+  max-height: min(480px, calc(100dvh - 120px));
+  overflow-y: auto;
+  overflow-wrap: anywhere;
   position: absolute;
   top: 100%;
   right: 0;
@@ -1508,6 +1525,7 @@ h6.doc-heading {
   box-shadow: 0 6px 18px var(--color-backdrop);
 }
 .doc-download-menu button {
+  min-height: 44px;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -1586,7 +1604,7 @@ h6.doc-heading {
   grid-template-rows: auto auto minmax(0, 1fr) auto auto;
   gap: 10px;
   width: min(380px, calc(100vw - 40px));
-  max-height: min(560px, calc(100vh - 40px));
+  max-height: min(560px, calc(100dvh - 40px));
   padding: 12px 14px 14px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -1695,10 +1713,10 @@ h6.doc-heading {
 .doc-chat-send {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: 0;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--color-accent);
   color: var(--color-onAccent);
   cursor: pointer;
@@ -2101,8 +2119,17 @@ h6.doc-heading {
   align-items: center;
   gap: 8px;
 }
+.page-freshness-form {
+  width: 100%;
+}
 .page-freshness-form input {
-  min-width: 200px;
+  flex: 1 1 180px;
+  min-width: 0;
+  max-width: 100%;
+}
+.page-freshness-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .docs-nav-count {
   margin-left: auto;
@@ -2398,6 +2425,8 @@ h6.doc-heading {
 /* ‹ Today › and a way back to today. */
 .agenda-nav {
   display: inline-flex;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   gap: 4px;
 }
@@ -2921,7 +2950,7 @@ h6.doc-heading {
   position: sticky;
   /* Clear of the app's top bar. */
   top: 64px;
-  max-height: calc(100vh - 80px);
+  max-height: calc(100dvh - 80px);
   overflow-y: auto;
   padding-top: 28px;
 }
@@ -2968,7 +2997,8 @@ h6.doc-heading {
 .page-info-outline li button {
   display: block;
   width: 100%;
-  padding: 4px 8px;
+  padding: 8px;
+  min-height: 44px;
   border: 0;
   border-left: 2px solid transparent;
   border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
@@ -2977,9 +3007,8 @@ h6.doc-heading {
   font-size: 13px;
   line-height: 1.35;
   text-align: left;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .doc-outline li.is-level-2 button,
 .page-info-outline li.is-level-2 button {
@@ -3783,6 +3812,7 @@ input.doc-image-caption:focus {
 }
 .link-card-head strong {
   min-width: 0;
+  overflow-wrap: anywhere;
   font-size: 15px;
   font-weight: 500;
 }
@@ -3791,6 +3821,7 @@ input.doc-image-caption:focus {
   text-decoration: line-through;
 }
 .link-card-rows {
+  overflow-wrap: anywhere;
   display: grid;
   gap: 2px;
   margin: 0;
@@ -3800,10 +3831,7 @@ input.doc-image-caption:focus {
   font-size: 13px;
 }
 .link-card-preview {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
   color: var(--color-muted);
 }
 .link-card-bar {
@@ -3828,8 +3856,8 @@ input.doc-image-caption:focus {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  height: 28px;
-  padding: 0 10px;
+  min-height: 44px;
+  padding: 6px 10px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
@@ -4075,7 +4103,7 @@ input.doc-image-caption:focus {
 /* Links written in a page (a brief's items, pasted links) read as the app's
    links (the text-button colour) rather than the browser's default blue. */
 .doc-body a[href] {
-  color: var(--color-accent, #56704e);
+  color: var(--color-accent);
   text-decoration: underline;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
@@ -4101,7 +4129,7 @@ input.doc-image-caption:focus {
   align-items: center;
   gap: 2px;
   min-width: 0;
-  padding-left: calc(var(--depth, 0) * 12px);
+  padding-left: clamp(0px, calc(var(--depth, 0) * 12px), 48px);
   border-radius: var(--radius-sm);
 }
 .docs-navigation .docs-tree-row > .docs-nav-page {
@@ -4117,17 +4145,15 @@ input.doc-image-caption:focus {
   padding: 0;
   justify-content: center;
 }
-/* The ⋯ sits over the row's end, so titles keep the whole width. */
+/* Reserve a separate action column so the menu cannot cover the title. */
 .docs-navigation .docs-tree-more {
-  position: absolute;
-  top: 50%;
-  right: 4px;
+  position: static;
+  flex: none;
   width: 28px;
   min-height: 0;
   height: 28px;
   padding: 0;
   justify-content: center;
-  transform: translateY(-50%);
   background: var(--color-sunken);
   opacity: 0;
 }
@@ -4226,4 +4252,556 @@ input.doc-image-caption:focus {
   display: block;
   color: var(--color-muted);
   overflow-wrap: anywhere;
+}
+
+/* Collapse the library when the document workspace itself is narrow. */
+.docs-workspace.is-compact {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.docs-workspace.is-compact > .docs-nav-toggle {
+  display: inline-flex;
+  justify-self: start;
+  min-height: 44px;
+}
+.docs-workspace.is-compact > .docs-navigation {
+  display: none;
+  position: static;
+  max-height: 55dvh;
+}
+.docs-workspace.is-compact > .docs-navigation.is-open {
+  display: block;
+}
+.docs-workspace.is-compact .docs-navigation :is(button, summary) {
+  min-height: 44px;
+}
+.docs-workspace.is-compact .docs-library-show,
+.docs-workspace.is-compact .docs-library-hide {
+  display: none;
+}
+
+/* Menus follow the space left by the viewport and parent overlay. */
+.popover {
+  container: popover-pane / inline-size;
+}
+@container popover-pane (max-width: 380px) {
+  .doc-menu-kinds {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.doc-menu-text {
+  overflow-wrap: anywhere;
+}
+.agenda-day {
+  overflow-wrap: anywhere;
+  max-width: 100%;
+}
+
+.doc-chat {
+  overflow-y: auto;
+}
+.doc-chat-turn {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.doc-chat-turn p {
+  white-space: pre-wrap;
+}
+.doc-chat-source {
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+.doc-history-item,
+.doc-history-note {
+  overflow-wrap: anywhere;
+}
+
+.doc-comment-actions {
+  margin-left: auto;
+}
+.doc-comment-actions > summary {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: var(--radius-sm);
+}
+.doc-comment-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 4px;
+  background: var(--color-surfaceMuted);
+  border-radius: var(--radius-sm);
+}
+.doc-comment-actions button {
+  min-height: 44px;
+}
+.doc-comment-actions .is-danger {
+  color: var(--color-danger);
+}
+
+.doc-original > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.original-actions > summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  color: var(--color-textSoft);
+  font-size: 13px;
+}
+.original-actions button {
+  min-height: 44px;
+}
+
+/* Proposal contents stay intact while their metadata reflows. */
+.doc-suggest header {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}
+.doc-suggest header strong {
+  min-width: 0;
+}
+.doc-suggest-all {
+  flex-wrap: wrap;
+}
+.doc-suggest-change,
+.doc-suggest-note {
+  overflow-wrap: anywhere;
+}
+
+/* Link context is useful content, including in a narrow margin. */
+.linked-here-row {
+  min-height: 44px;
+}
+.linked-here-head {
+  flex-wrap: wrap;
+}
+.linked-here-head strong {
+  overflow: visible;
+  font-size: 13px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.linked-here-head small {
+  flex-shrink: 1;
+  overflow-wrap: anywhere;
+}
+.linked-here-context {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.doc-outline li button.doc-outline-move {
+  flex: none;
+  width: 44px;
+  min-height: 44px;
+  padding: 8px;
+}
+.page-info,
+.page-info-section {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.page-info-files li,
+.page-info-versions li {
+  flex-wrap: wrap;
+}
+.page-info-files .page-info-link span,
+.page-info-sources .page-info-link span {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+.page-info-space summary {
+  min-height: 44px;
+  display: list-item;
+  padding-block: 10px;
+  cursor: pointer;
+}
+
+/* Template editors keep one scroll surface and full names in narrow panes. */
+.modal.page-templates {
+  width: min(620px, calc(100vw - 24px));
+}
+.page-template-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.page-template-card span,
+.page-template-sections,
+.merge-list .doc-menu-text {
+  overflow-wrap: anywhere;
+}
+.page-templates-group h3 {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.page-templates-body {
+  padding: 0 16px 16px;
+}
+.link-card-head .link-pill-tick {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+  flex: none;
+}
+
+.uploads {
+  container: uploads-pane / inline-size;
+  min-width: 0;
+}
+.upload-main strong {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.upload-main small {
+  overflow-wrap: anywhere;
+}
+.upload-actions {
+  flex-wrap: wrap;
+}
+.uploads-empty {
+  padding: 24px 16px;
+  border-width: 1px;
+  border-radius: var(--radius-md);
+}
+@container uploads-pane (max-width: 560px) {
+  .upload-row {
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+  }
+  .upload-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-end;
+  }
+}
+
+/* Rich blocks expose full names and keep tools inside their owning block. */
+.doc-table-bar {
+  position: static;
+  flex-wrap: wrap;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 0 8px;
+  box-shadow: none;
+}
+.doc-table-bar .icon-button {
+  width: 44px;
+  height: 44px;
+  flex: none;
+}
+.doc-callout-fold {
+  min-width: 44px;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+}
+.doc-file {
+  flex-wrap: wrap;
+}
+.doc-file-text {
+  flex: 1 1 160px;
+}
+.doc-file-text strong,
+.doc-embed-head > span,
+.image-viewer-name {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.doc-file-text small {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+.doc-embed-head {
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+.doc-embed-head > span {
+  flex: 1 1 160px;
+}
+.doc-embed-head .text-button,
+.doc-diagram-toolbar button,
+.doc-code-toolbar button {
+  min-height: 44px;
+}
+dialog.image-viewer {
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.image-viewer-bar {
+  flex-wrap: wrap;
+  max-height: min(40dvh, 240px);
+  overflow: auto;
+}
+.image-viewer-name {
+  flex: 1 1 160px;
+}
+@media (max-width: 420px) {
+  .doc-table-wrap.is-editable input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
+
+.doc-download {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+}
+.doc-download > span {
+  font-size: 13px;
+  color: var(--color-danger);
+  overflow-wrap: anywhere;
+}
+
+/* Reference collections stay available without extending every page by default. */
+.doc-linked-details > summary {
+  display: list-item;
+  min-height: 36px;
+  padding: 8px 0;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.doc-linked-details > summary:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  .doc-linked-details > summary {
+    min-height: 44px;
+  }
+}
+
+.doc-suggest-details > summary {
+  cursor: pointer;
+  min-height: 36px;
+  padding: 8px 0;
+  font-size: 13px;
+  color: var(--color-accent);
+}
+.doc-suggest-details > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.doc-suggest-details .doc-suggest-change {
+  max-height: 240px;
+  overflow: auto;
+}
+.doc-suggest-change pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  margin: 4px 0 12px;
+}
+.doc-suggest-change.is-source pre {
+  font-family: monospace;
+}
+@media (pointer: coarse) {
+  .doc-suggest-details > summary {
+    min-height: 44px;
+  }
+}
+
+.doc-comment-quote summary {
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.doc-comment-quote pre {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  margin: 6px 0;
+}
+.doc-mention-box textarea {
+  max-height: 160px;
+  overflow-y: auto;
+  resize: none;
+}
+@media (pointer: coarse) {
+  .doc-comment-quote summary {
+    min-height: 44px;
+  }
+}
+
+/* Library state stays beside the current page; rename drafts keep explicit actions. */
+.docs-library-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  font-size: 13px;
+}
+.docs-library-feedback p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.docs-tree-rename-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.docs-tree-rename-form input {
+  flex: 1 1 140px;
+  width: auto;
+  min-width: 0;
+}
+.docs-tree-rename-form button {
+  min-height: 32px;
+  width: auto;
+  padding: 6px 10px;
+}
+.docs-head .docs-library-title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (pointer: coarse) {
+  .docs-tree-rename-form button {
+    min-height: 44px;
+  }
+}
+
+/* Comment fields grow modestly; longer drafts scroll within their field. */
+.doc-comment-new textarea,
+.doc-card textarea,
+.doc-mention-box textarea,
+.doc-chat-composer textarea {
+  min-width: 0;
+  min-height: 64px;
+  max-height: min(160px, 30dvh);
+  overflow-y: auto;
+  resize: none;
+}
+.doc-chat-head,
+.doc-chat-head h3,
+.doc-link-form,
+.page-info-head,
+.page-info-line {
+  flex-wrap: wrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.doc-link-form input {
+  max-width: 100%;
+  min-width: 0;
+}
+.doc-suggestions h3,
+.docs-group-title,
+.doc-outline-label,
+.page-info-section h3,
+.page-info-outline .doc-outline-label {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.aliases-chip {
+  height: auto;
+  min-height: 26px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+/* The remaining document pane can be narrow in a wide split workspace. */
+@container document-pane (max-width: 720px) {
+  .doc-handle {
+    left: auto;
+    right: 0;
+    top: 0;
+  }
+  .doc-block-row:has(> .doc-handle) > .doc-block,
+  .doc-block-row:has(> .doc-fold) > .doc-block {
+    padding-right: 30px;
+  }
+  .doc-fold {
+    left: auto;
+    right: 0;
+    top: 0;
+  }
+  .doc-block-row:has(> .doc-handle) > .doc-fold {
+    right: 26px;
+  }
+  .doc-block-row:has(> .doc-fold):has(> .doc-handle) > .doc-block {
+    padding-right: 56px;
+  }
+  .doc-history,
+  .doc-outline {
+    position: static;
+  }
+}
+@media (pointer: coarse) {
+  .docs-navigation .docs-tree-toggle,
+  .docs-navigation .docs-tree-more,
+  .docs-navigation .docs-library-hide,
+  .doc-handle,
+  .doc-fold {
+    width: 44px;
+    height: 44px;
+    min-height: 44px;
+    flex: none;
+  }
+  .doc-handle,
+  .doc-fold {
+    left: auto;
+    right: 0;
+    top: 0;
+    opacity: 1;
+  }
+  .doc-block-row:has(> .doc-handle) > .doc-fold {
+    right: 44px;
+  }
+  .doc-block-row:has(> .doc-handle) > .doc-block,
+  .doc-block-row:has(> .doc-fold) > .doc-block {
+    min-height: 44px;
+    padding-right: 46px;
+  }
+  .doc-block-row:has(> .doc-fold):has(> .doc-handle) > .doc-block {
+    padding-right: 90px;
+  }
+  .doc-mention-list button,
+  .doc-ai-menu button,
+  .doc-chat-quick button,
+  .doc-selection-bar button,
+  .aliases-chip button,
+  .page-info-link {
+    min-height: 44px;
+  }
+  .aliases-chip button {
+    min-width: 44px;
+    justify-content: center;
+  }
+  .page-info-sources li:has(.page-info-source-remove) {
+    padding-right: 46px;
+  }
 }

@@ -36,7 +36,7 @@ test("web and native status distinguish idle, pending, expired, unknown and comp
   );
   assert.equal(
     agendaPrivateSummaryText({ run: { ...run, state: "waiting" } }, now),
-    "Waiting for your connected Orbyn desktop app.",
+    "Waiting for your connected device.",
   );
   assert.equal(
     agendaPrivateSummaryText({ run }, Date.parse("2026-10-05T12:00:00Z")),

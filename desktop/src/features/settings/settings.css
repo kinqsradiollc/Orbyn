@@ -185,7 +185,9 @@
   font-size: var(--control-fs);
 }
 .settings-field textarea {
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
   line-height: 1.5;
 }
 .settings-field .day-toggles,
@@ -593,7 +595,9 @@
   margin-top: 10px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
 }
 .portability-actions {
   display: flex;
@@ -960,14 +964,19 @@
 }
 .ai-connection-list {
   display: grid;
-  gap: 12px;
+  gap: 8px;
+  max-height: min(42dvh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  min-width: 0;
 }
 .ai-connection-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px;
+  gap: 12px;
+  padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
 }
@@ -1079,4 +1088,309 @@
 .ai-model-settings .settings-subform li {
   margin-bottom: 8px;
   overflow-wrap: anywhere;
+}
+
+.frame-filters {
+  min-width: 0;
+  margin-top: 12px;
+}
+.frame-filters > summary {
+  min-height: 44px;
+  align-content: center;
+  font-size: 13px;
+  color: var(--color-textSoft);
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.frame-filter-fields {
+  display: grid;
+  gap: 12px;
+  padding-top: 8px;
+}
+.frame-filter-fields > p {
+  margin: 0;
+}
+
+/* Account preferences reflow inside the Settings pane, including wide windows. */
+.arrange-group h3 {
+  font-size: 13px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.arrange-name,
+.shortcut-name {
+  overflow-wrap: anywhere;
+}
+.arrange-row .icon-button {
+  width: 44px;
+  min-height: 44px;
+  flex: none;
+}
+.shortcut-row {
+  display: flex;
+  flex-wrap: wrap;
+}
+.shortcut-name {
+  flex: 1 1 180px;
+}
+.shortcut-keys,
+.shortcut-actions {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+.shortcut-actions button {
+  min-height: 44px;
+  white-space: normal;
+}
+
+/* Focused Settings editors stay independent of the Settings scroll pane. */
+dialog.settings-editor {
+  width: min(460px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px);
+  padding: 0;
+  margin: auto;
+}
+dialog.settings-editor::backdrop {
+  background: var(--color-backdrop);
+}
+.settings-editor .section-heading {
+  padding: 16px;
+  gap: 12px;
+}
+.settings-editor .section-heading h2 {
+  margin: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
+}
+.settings-editor .section-heading .icon-button {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+}
+.settings-editor-body {
+  padding: 0 16px 16px;
+  min-width: 0;
+}
+.settings-editor-body form {
+  padding: 0;
+}
+.settings-editor-body fieldset {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+.settings-editor-body .two-factor-setup,
+.settings-editor-body .two-factor-codes {
+  max-width: none;
+}
+.two-factor-secret {
+  font-size: 14px;
+  letter-spacing: 1px;
+  border-color: var(--color-border);
+}
+.two-factor-actions,
+.two-factor-on {
+  flex-wrap: wrap;
+}
+.two-factor-codes .mono {
+  overflow-wrap: anywhere;
+}
+.analytics-totals {
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.analytics-totals strong {
+  font-size: 18px;
+}
+.analytics-bars li {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 12px;
+}
+.analytics-name {
+  overflow-wrap: anywhere;
+}
+.analytics-track {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  background: var(--color-surfaceMuted);
+  border-color: var(--color-border);
+}
+.analytics-fill {
+  background: var(--color-accent);
+}
+.analytics-value {
+  color: var(--color-muted);
+}
+
+.tag-section .settings-list li {
+  flex-wrap: wrap;
+}
+.tag-section .tag-chip {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+.tag-section .settings-list-main {
+  flex-basis: 0;
+}
+.settings-editor-body .tag-edit label {
+  margin: 0;
+}
+
+.settings-editor-body .settings-row {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 130px), 1fr));
+}
+.settings-editor-body .settings-form-actions,
+.settings-editor-body .habit-plan-actions {
+  flex-wrap: wrap;
+}
+.settings-editor-body fieldset legend,
+.settings-editor-body .field-label {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 0 0 6px;
+}
+.settings-editor-body .settings-check {
+  display: flex;
+}
+.settings-editor-body .settings-check input {
+  width: auto;
+  margin: 0;
+}
+
+/* Planning values reflow within the focused editor. */
+.settings-list-main small,
+.estimate-tags li > span {
+  overflow-wrap: anywhere;
+}
+.hour-strip-legend,
+.hour-strip-axis {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.hour-strip-bars span {
+  border-radius: var(--radius-xs);
+}
+.hour-strip-legend i {
+  border-radius: var(--radius-xs);
+}
+
+/* Calendar connections stay scannable; actions float outside the scroll list. */
+.calendar-subscriptions {
+  max-height: min(42dvh, 360px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.calendar-subscriptions > li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: start;
+}
+.calendar-subscriptions .settings-list-main {
+  min-width: 0;
+}
+.calendar-subscriptions .settings-list-main details {
+  font-size: 13px;
+}
+.calendar-subscriptions .settings-list-main details small {
+  display: block;
+  margin-top: 4px;
+}
+.calendar-subscriptions .icon-button {
+  min-width: 36px;
+  min-height: 36px;
+}
+@media (pointer: coarse) {
+  .calendar-subscriptions .icon-button,
+  .kind-picker button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Settings adapts to its content pane and to independently opened editors. */
+.settings-content,
+.settings-editor-body {
+  container: settings-pane / inline-size;
+}
+.settings-field,
+.settings-field > label,
+.settings-label {
+  font-size: 13px;
+}
+.settings-card h2,
+.settings-form-actions,
+.habit-plan-actions,
+.settings-list li,
+.clip-keys li {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.settings-list-main {
+  flex-basis: 160px;
+}
+.settings-head > *,
+.clip-keys li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.settings-found {
+  max-height: min(40dvh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.settings-found button {
+  overflow-wrap: anywhere;
+}
+.hour-strip-bars span {
+  min-width: 0;
+}
+.settings-grid,
+.settings-row {
+  min-width: 0;
+}
+.ai-connection-row {
+  flex-wrap: wrap;
+}
+.ai-connection-row > div:first-child {
+  flex: 1 1 160px;
+}
+@container settings-pane (max-width: 600px) {
+  .settings-grid,
+  .settings-grid.settings-pairs,
+  .settings-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .theme-preference > .segmented {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+  .theme-preference > .segmented button {
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: center;
+    overflow-wrap: anywhere;
+    padding-inline: 6px;
+  }
+}
+@media (pointer: coarse) {
+  .settings-category-button,
+  .settings-found button,
+  .settings-form-actions button,
+  .habit-plan-actions button,
+  .chip-list .icon-button {
+    min-height: 44px;
+  }
+  .chip-list .icon-button {
+    min-width: 44px;
+  }
 }

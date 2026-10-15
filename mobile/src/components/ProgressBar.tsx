@@ -1,12 +1,9 @@
-import React, { useEffect, useRef } from "react";
-import { Animated, StyleSheet, View } from "react-native";
-import { motion } from "@orbyn/core";
-import { easeOut, isReducedMotion, useReducedMotion } from "../motion";
-import { colors } from "../theme";
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { colors, radii } from "../theme";
 
 /**
- * Horizontal progress bar. The fill grows from the left on mount and eases to
- * each new value over `motion.slow`; it jumps straight there under reduced motion.
+ * Progress is shown immediately; the value is also available to assistive technology.
  */
 export function ProgressBar({
   value,
@@ -23,26 +20,9 @@ export function ProgressBar({
   /** Spoken name, e.g. "Write report progress". */
   label?: string;
 }) {
-  const clamped = Math.max(0, Math.min(100, value));
-  const reduced = useReducedMotion();
-  const fill = useRef(
-    new Animated.Value(isReducedMotion() ? clamped / 100 : 0),
-  ).current;
-  useEffect(() => {
-    if (reduced) {
-      fill.stopAnimation();
-      fill.setValue(clamped / 100);
-      return;
-    }
-    const animation = Animated.timing(fill, {
-      toValue: clamped / 100,
-      duration: motion.slow,
-      easing: easeOut,
-      useNativeDriver: true,
-    });
-    animation.start();
-    return () => animation.stop();
-  }, [clamped, reduced, fill]);
+  const clamped = Number.isFinite(value)
+    ? Math.max(0, Math.min(100, value))
+    : 0;
   return (
     <View
       accessibilityRole="progressbar"
@@ -50,13 +30,13 @@ export function ProgressBar({
       accessibilityValue={{ min: 0, max: 100, now: clamped }}
       style={[
         s.track,
-        { height, borderRadius: height / 2, backgroundColor: track },
+        { height, borderRadius: radii.pill, backgroundColor: track },
       ]}
     >
-      <Animated.View
+      <View
         style={[
           s.fill,
-          { height, backgroundColor: color, transform: [{ scaleX: fill }] },
+          { height, width: `${clamped}%`, backgroundColor: color },
         ]}
       />
     </View>
@@ -65,5 +45,5 @@ export function ProgressBar({
 
 const s = StyleSheet.create({
   track: { flex: 1, overflow: "hidden" },
-  fill: { width: "100%", transformOrigin: "left" },
+  fill: { minWidth: 0 },
 });

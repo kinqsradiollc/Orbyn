@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Pressable } from "../motion";
 import {
@@ -17,6 +17,9 @@ import {
   type ShareChoice,
   type SharedContent,
 } from "@orbyn/core";
+import * as Crypto from "expo-crypto";
+import { session } from "../lib/session";
+import { InlineDetails } from "../components/InlineDetails";
 import { AssistChips } from "../components/AssistChips";
 import { BottomSheet } from "../components/BottomSheet";
 import { Button } from "../components/Button";
@@ -26,7 +29,14 @@ import { client } from "../lib/api";
 import { errorText } from "../lib/errors";
 import { readLocal, saveLocal } from "../lib/localPrefs";
 import { deviceTimeZone } from "../lib/planning";
-import { colors, controls, fonts, radii, themed } from "../theme";
+import {
+  inputFontSize,
+  colors,
+  controls,
+  fonts,
+  radii,
+  themed,
+} from "../theme";
 
 /** Where the last three destinations are kept, on this device. */
 const CHOICES_KEY = "orbyn-share-choices";
@@ -39,23 +49,47 @@ type Kind = ShareChoice["kind"];
  * then where it can go — an Inbox task "Read: …", today's agenda, a page,
  * a new page in a folder, or a project — and one Save.
  */
-export function ShareIntoSheet({
+type ShareIntoProps = {
+  shared: SharedContent | null;
+  userId?: string;
+  teamNames?: Record<string, string>;
+  canWriteIn: (teamId: string | null) => boolean;
+  onClose: () => void;
+  onSaved: (result: CaptureResult) => void;
+};
+export function ShareIntoSheet(props: ShareIntoProps) {
+  return props.shared ? (
+    <ShareIntoBody
+      key={`${session.token}:${JSON.stringify(props.shared)}`}
+      {...props}
+      shared={props.shared}
+    />
+  ) : null;
+}
+function ShareIntoBody({
   shared,
+  userId,
+  teamNames = {},
   canWriteIn,
   onClose,
   onSaved,
 }: {
   /** What was shared; the sheet shows while there is something. */
-  shared: SharedContent | null;
+  shared: SharedContent;
+  userId?: string;
+  teamNames?: Record<string, string>;
   /** Whether this person may add to a team's things (null: their own). */
   canWriteIn: (teamId: string | null) => boolean;
   onClose: () => void;
   onSaved: (result: CaptureResult) => void;
 }) {
+  const destinationLabel = (label: string, teamId: string | null) =>
+    `${label} · ${teamId ? (teamNames[teamId] ?? "Shared") : "Personal"}`;
+  const choicesKey = userId ? `${CHOICES_KEY}:${userId}` : null;
   const [title, setTitle] = useState<string | null>(null);
   const [site, setSite] = useState("");
   const [kept, setKept] = useState<ShareChoice[]>(() =>
-    readChoices(readLocal(CHOICES_KEY)),
+    choicesKey ? readChoices(readLocal(choicesKey)) : [],
   );
   const [kind, setKind] = useState<Kind>("inbox");
   /** The page, folder or project chosen for the kinds that need one. */
@@ -69,6 +103,23 @@ export function ShareIntoSheet({
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [searchError, setSearchError] = useState("");
+  const [searchRetry, setSearchRetry] = useState(0);
+  const [showAll, setShowAll] = useState(false);
+  const [captured, setCaptured] = useState<CaptureResult | null>(null);
+  const owner = useRef(session.token);
+  const mounted = useRef(false);
+  const lock = useRef(false);
+  const requests = useRef(new Map<string, string>());
+  const owns = () => mounted.current && owner.current === session.token;
+  const locked = busy || !!captured;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
   /** The lists that couldn't be fetched, each offered again. */
   const [failed, setFailed] = useState<Partial<Record<Kind, boolean>>>({});
   /**
@@ -83,7 +134,7 @@ export function ShareIntoSheet({
   // A new share starts from the place used last, with its title looked up.
   useEffect(() => {
     if (!shared) return;
-    const last = readChoices(readLocal(CHOICES_KEY));
+    const last = choicesKey ? readChoices(readLocal(choicesKey)) : [];
     setKept(last);
     choose(last[0] ?? { kind: "inbox" });
     setError("");
@@ -96,7 +147,7 @@ export function ShareIntoSheet({
     if (shared.url)
       client.linkPreview(shared.url).then(
         (p) => {
-          if (!current) return;
+          if (!current || !owns() || lock.current) return;
           setTitle(p.title);
           setSite(p.site);
         },
@@ -111,15 +162,27 @@ export function ShareIntoSheet({
   // The lists a destination chooses from, fetched when first needed.
   useEffect(() => {
     if (!shared || failed[kind]) return;
+    let live = true;
     const fail = (e: unknown) => {
+      if (!live || !owns()) return;
       setFailed((f) => ({ ...f, [kind]: true }));
       setError(errorText(e));
     };
-    if (kind === "page" && !pages) client.listDocs().then(setPages, fail);
+    if (kind === "page" && !pages)
+      client.listDocs().then((value) => {
+        if (live && owns()) setPages(value);
+      }, fail);
     if (kind === "new_page" && !folders)
-      client.listFolders().then(setFolders, fail);
+      client.listFolders().then((value) => {
+        if (live && owns()) setFolders(value);
+      }, fail);
     if (kind === "project" && !projects)
-      client.listProjects().then(setProjects, fail);
+      client.listProjects().then((value) => {
+        if (live && owns()) setProjects(value);
+      }, fail);
+    return () => {
+      live = false;
+    };
   }, [kind, shared, pages, folders, projects, failed]);
 
   // Words typed to find a page look through all of them on the server, not
@@ -127,12 +190,13 @@ export function ShareIntoSheet({
   useEffect(() => {
     const words = query.trim();
     setFound(null);
+    setSearchError("");
     if (kind !== "page" || words.length < 2) return;
     let current = true;
     const wait = setTimeout(() => {
       client.search(words, { type: "doc", limit: 20 }).then(
         (hits) => {
-          if (current)
+          if (current && owns())
             setFound(
               hits
                 .filter((h) => h.kind !== "agenda")
@@ -140,7 +204,8 @@ export function ShareIntoSheet({
             );
         },
         () => {
-          if (current) setFound([]);
+          if (current && owns())
+            setSearchError("Couldn’t search pages. Try again.");
         },
       );
     }, 250);
@@ -151,7 +216,7 @@ export function ShareIntoSheet({
     // canWriteIn is left out on purpose: it is a new function on every
     // parent render, and a search needn't run again for that. The hits are
     // filtered below, where the current teams are used.
-  }, [kind, query]);
+  }, [kind, query, searchRetry]);
 
   /** Offer a list that couldn't be fetched again. */
   const retry = (k: Kind) => {
@@ -160,6 +225,8 @@ export function ShareIntoSheet({
   };
 
   const choose = (c: ShareChoice) => {
+    if (lock.current || captured) return;
+    setShowAll(false);
     setKind(c.kind);
     setPicked("id" in c ? { id: c.id, label: c.label } : null);
     setQuery("");
@@ -175,15 +242,50 @@ export function ShareIntoSheet({
       .filter((d) =>
         words ? (d.title || "Untitled").toLowerCase().includes(words) : true,
       )
-      .map((d) => ({ id: d.id, title: d.title }));
+      .map((d) => ({
+        id: d.id,
+        title: destinationLabel(d.title || "Untitled", d.team_id),
+      }));
     // The newest that match first, then older ones the server found.
     const seen = new Set(listed.map((d) => d.id));
     const writable = (found ?? [])
       .filter((d) => !seen.has(d.id) && canWriteIn(d.team_id))
-      .map((d) => ({ id: d.id, title: d.title }));
-    return [...listed, ...writable].slice(0, 6);
-  }, [pages, query, found, canWriteIn]);
+      .map((d) => ({
+        id: d.id,
+        title: destinationLabel(d.title || "Untitled", d.team_id),
+      }));
+    return [...listed, ...writable];
+  }, [pages, query, found, canWriteIn, teamNames]);
 
+  const matchingFolders = (folders ?? []).filter(
+    (folder) =>
+      canWriteIn(folder.team_id) &&
+      destinationLabel(folder.name, folder.team_id)
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()),
+  );
+  const matchingProjects = (projects ?? []).filter(
+    (project) =>
+      canWriteIn(project.team_id) &&
+      destinationLabel(project.name, project.team_id)
+        .toLowerCase()
+        .includes(query.trim().toLowerCase()),
+  );
+  const pickerSearch = (
+    <TextInput
+      editable={!locked}
+      style={s.search}
+      value={query}
+      placeholder="Search destinations"
+      placeholderTextColor={colors.faint}
+      autoCorrect={false}
+      accessibilityLabel="Search destinations"
+      onChangeText={(value) => {
+        setQuery(value);
+        setShowAll(false);
+      }}
+    />
+  );
   const ready = kind === "inbox" || kind === "agenda" || !!picked;
   const destination = (): CaptureDestination | null => {
     if (kind === "inbox") return { kind: "inbox" };
@@ -196,17 +298,44 @@ export function ShareIntoSheet({
 
   const save = async () => {
     const to = destination();
-    if (!shared || !to) return;
+    if (!shared || !to || lock.current || !owns()) return;
+    if (captured) {
+      onSaved(captured);
+      return;
+    }
+    const target =
+      kind === "page"
+        ? ((pages ?? []).find((page) => page.id === picked?.id) ??
+          (found ?? []).find((page) => page.id === picked?.id))
+        : kind === "project"
+          ? (projects ?? []).find((project) => project.id === picked?.id)
+          : kind === "new_page"
+            ? (folders ?? []).find((folder) => folder.id === picked?.id)
+            : null;
+    if (target && !canWriteIn(target.team_id)) {
+      setError("Choose a destination you can edit.");
+      return;
+    }
+    lock.current = true;
     setBusy(true);
     setError("");
     try {
-      const result = await client.capture({
+      const input = {
         url: shared.url,
         text: shared.text,
         title,
         to,
         timezone: deviceTimeZone(),
-      });
+      };
+      const key = JSON.stringify(input);
+      let requestId = requests.current.get(key);
+      if (!requestId) {
+        requestId = Crypto.randomUUID();
+        requests.current.set(key, requestId);
+      }
+      const result = await client.once(requestId, () => client.capture(input));
+      if (!owns()) return;
+      setCaptured(result);
       const choice: ShareChoice =
         kind === "inbox" || kind === "agenda"
           ? { kind }
@@ -215,12 +344,13 @@ export function ShareIntoSheet({
             : { kind, id: picked!.id!, label: picked!.label };
       const next = rememberChoice(kept, choice);
       setKept(next);
-      saveLocal(CHOICES_KEY, JSON.stringify(next));
+      if (choicesKey) saveLocal(choicesKey, JSON.stringify(next));
       onSaved(result);
     } catch (e) {
-      setError(errorText(e));
+      if (owns()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (owns()) setBusy(false);
     }
   };
 
@@ -228,6 +358,7 @@ export function ShareIntoSheet({
     <Pressable
       key={k}
       accessibilityRole="radio"
+      disabled={locked}
       accessibilityState={{ checked: kind === k }}
       onPress={() => {
         if (kind !== k) choose({ kind: k } as ShareChoice);
@@ -244,17 +375,10 @@ export function ShareIntoSheet({
         color={kind === k ? colors.accent : colors.textSoft}
       />
       <View style={s.rowWords}>
-        <Text
-          style={[s.rowLabel, kind === k && { color: colors.accent }]}
-          numberOfLines={1}
-        >
+        <Text style={[s.rowLabel, kind === k && { color: colors.accent }]}>
           {label}
         </Text>
-        {!!detail && (
-          <Text style={s.rowDetail} numberOfLines={1}>
-            {detail}
-          </Text>
-        )}
+        {!!detail && <Text style={s.rowDetail}>{detail}</Text>}
       </View>
       {kind === k && <Icon name="check" size={16} color={colors.accent} />}
     </Pressable>
@@ -266,11 +390,12 @@ export function ShareIntoSheet({
     id: string | null,
     icon: IconName,
   ) => {
-    const on = picked?.id === id && picked?.label === label;
+    const on = picked?.id === id;
     return (
       <Pressable
         key={key}
         accessibilityRole="radio"
+        disabled={locked}
         accessibilityState={{ checked: on }}
         onPress={() => setPicked({ id, label })}
         style={({ pressed }) => [
@@ -280,10 +405,7 @@ export function ShareIntoSheet({
         ]}
       >
         <Icon name={icon} size={16} color={on ? colors.accent : colors.muted} />
-        <Text
-          style={[s.optionText, on && { color: colors.accent }]}
-          numberOfLines={1}
-        >
+        <Text style={[s.optionText, on && { color: colors.accent }]}>
           {label}
         </Text>
       </Pressable>
@@ -310,10 +432,13 @@ export function ShareIntoSheet({
     <BottomSheet
       visible={!!shared}
       title="Save to Orbyn"
-      onClose={onClose}
+      onClose={() => {
+        if (!lock.current && owns()) onClose();
+      }}
+      closeDisabled={busy}
       footer={
         <Button
-          title={busy ? "Saving…" : "Save"}
+          title={busy ? "Saving…" : captured ? "Open saved item" : "Save"}
           disabled={busy || !ready}
           onPress={() => void save()}
         />
@@ -339,6 +464,11 @@ export function ShareIntoSheet({
             )}
           </View>
 
+          <InlineDetails title="Shared content">
+            <Text selectable style={s.cardText}>
+              {[shared.url, shared.text].filter(Boolean).join("\n\n")}
+            </Text>
+          </InlineDetails>
           {/* Optional: the assistant reads the words shared in (AI-01). */}
           {(shared.text ?? "").trim().length >= 80 && (
             <AssistChips
@@ -352,7 +482,7 @@ export function ShareIntoSheet({
               {kept.map((c) => (
                 <Chip
                   key={choiceKey(c)}
-                  compact
+                  disabled={locked}
                   label={choiceLabel(c)}
                   selected={
                     kind === c.kind &&
@@ -384,6 +514,7 @@ export function ShareIntoSheet({
             {kind === "page" && (
               <View style={s.picker}>
                 <TextInput
+                  editable={!locked}
                   style={s.search}
                   value={query}
                   placeholder="Find a page"
@@ -400,14 +531,42 @@ export function ShareIntoSheet({
                   <Text style={s.muted}>
                     {!query.trim()
                       ? "No pages you can add to yet."
-                      : query.trim().length >= 2 && found === null
+                      : query.trim().length >= 2 &&
+                          found === null &&
+                          !searchError
                         ? "Looking…"
                         : "No page by that name."}
                   </Text>
                 ) : (
-                  writablePages.map((d) =>
-                    option(d.id, d.title || "Untitled", d.id, "fileText"),
-                  )
+                  writablePages
+                    .slice(0, showAll ? undefined : 8)
+                    .map((d) =>
+                      option(d.id, d.title || "Untitled", d.id, "fileText"),
+                    )
+                )}
+                {searchError && (
+                  <View>
+                    <Text accessibilityRole="alert" style={s.error}>
+                      {searchError}
+                    </Text>
+                    <Button
+                      title="Retry search"
+                      secondary
+                      disabled={locked}
+                      onPress={() => setSearchRetry((value) => value + 1)}
+                    />
+                  </View>
+                )}
+                {writablePages.length > 8 && (
+                  <Button
+                    secondary
+                    title={
+                      showAll
+                        ? "Show fewer"
+                        : `Show all ${writablePages.length} pages`
+                    }
+                    onPress={() => setShowAll(!showAll)}
+                  />
                 )}
               </View>
             )}
@@ -420,15 +579,35 @@ export function ShareIntoSheet({
             )}
             {kind === "new_page" && (
               <View style={s.picker}>
-                {option("none", "Unfiled", null, "fileText")}
+                {pickerSearch}
+                {option("none", "Unfiled · Personal", null, "fileText")}
                 {failed.new_page ? (
                   retryRow("new_page")
                 ) : folders === null ? (
                   <Text style={s.muted}>Loading…</Text>
                 ) : (
-                  folders
-                    .filter((f) => canWriteIn(f.team_id))
-                    .map((f) => option(f.id, f.name, f.id, "folder"))
+                  matchingFolders
+                    .slice(0, showAll ? undefined : 8)
+                    .map((f) =>
+                      option(
+                        f.id,
+                        destinationLabel(f.name, f.team_id),
+                        f.id,
+                        "folder",
+                      ),
+                    )
+                )}
+                {matchingFolders.length > 8 && (
+                  <Button
+                    secondary
+                    disabled={locked}
+                    title={
+                      showAll
+                        ? "Show fewer"
+                        : `Show all ${matchingFolders.length} folders`
+                    }
+                    onPress={() => setShowAll(!showAll)}
+                  />
                 )}
               </View>
             )}
@@ -440,17 +619,40 @@ export function ShareIntoSheet({
             )}
             {kind === "project" && (
               <View style={s.picker}>
+                {pickerSearch}
                 {failed.project ? (
                   retryRow("project")
                 ) : projects === null ? (
                   <Text style={s.muted}>Loading…</Text>
-                ) : projects.filter((p) => canWriteIn(p.team_id)).length ===
-                  0 ? (
-                  <Text style={s.muted}>No projects yet.</Text>
+                ) : matchingProjects.length === 0 ? (
+                  <Text style={s.muted}>
+                    {query.trim()
+                      ? "No matching projects."
+                      : "No projects you can add to."}
+                  </Text>
                 ) : (
-                  projects
-                    .filter((p) => canWriteIn(p.team_id))
-                    .map((p) => option(p.id, p.name, p.id, "boxes"))
+                  matchingProjects
+                    .slice(0, showAll ? undefined : 8)
+                    .map((p) =>
+                      option(
+                        p.id,
+                        destinationLabel(p.name, p.team_id),
+                        p.id,
+                        "boxes",
+                      ),
+                    )
+                )}
+                {matchingProjects.length > 8 && (
+                  <Button
+                    secondary
+                    disabled={locked}
+                    title={
+                      showAll
+                        ? "Show fewer"
+                        : `Show all ${matchingProjects.length} projects`
+                    }
+                    onPress={() => setShowAll(!showAll)}
+                  />
                 )}
               </View>
             )}
@@ -498,9 +700,9 @@ const s = themed(() =>
     rowWords: { flex: 1, minWidth: 0 },
     rowLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     rowDetail: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
-    picker: { gap: 2, paddingLeft: 42, paddingBottom: 6 },
+    picker: { gap: 2, paddingLeft: 12, paddingBottom: 6 },
     search: {
-      minHeight: controls.tap - 6,
+      minHeight: controls.tap,
       paddingHorizontal: 12,
       marginBottom: 4,
       borderRadius: radii.input,
@@ -509,13 +711,13 @@ const s = themed(() =>
       backgroundColor: colors.surface,
       color: colors.text,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: inputFontSize,
     },
     option: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      minHeight: controls.tap - 6,
+      minHeight: controls.tap,
       paddingHorizontal: 10,
       borderRadius: radii.input,
     },

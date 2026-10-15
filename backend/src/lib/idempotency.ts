@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { PoolClient } from "pg";
+import { pageImportInput } from "@orbyn/core";
+import { authenticate } from "./auth.js";
+import { requireTeam } from "./teams.js";
 import { pool } from "../db/pool.js";
 
 /**
@@ -43,7 +47,24 @@ export function idempotency(app: FastifyInstance) {
     const owner = ownerOf(request);
     // Without credentials there is no one to remember the answer for.
     if (!owner) return;
-    const path = request.url.split("?")[0];
+    const route = request.routeOptions.url;
+    const isImport = route === "/me/import" || route === "/imports/pages";
+    if (isImport) {
+      // A replay still belongs to a live account and the current team scope.
+      const person = await authenticate(request);
+      if (route === "/imports/pages") {
+        const input = pageImportInput.parse(request.body ?? {});
+        if (input.team_id)
+          await requireTeam(input.team_id, person, "items:write");
+      }
+    }
+    const basePath = request.url.split("?")[0];
+    // Imported input is private; store only its fingerprint with the receipt.
+    const path = isImport
+      ? `${basePath}#${createHash("sha256")
+          .update(JSON.stringify(request.body ?? null))
+          .digest("hex")}`
+      : basePath;
     // Now and then, forget keys older than a day.
     if (Math.random() < 0.02)
       void pool
@@ -102,16 +123,17 @@ export function idempotency(app: FastifyInstance) {
   app.addHook("onSend", async (request, reply, payload) => {
     const saved = (request as Tagged)[SAVED];
     if (!saved) return payload;
-    // A server error isn't an answer: let the same key try again.
+    // Retry an uncommitted failure; a transactionally committed receipt survives
+    // response delivery or serialization failure.
     if (reply.statusCode >= 500)
       await pool.query(
-        "DELETE FROM idempotency_keys WHERE owner = $1 AND key = $2",
+        "DELETE FROM idempotency_keys WHERE owner = $1 AND key = $2 AND status IS NULL",
         [saved.owner, saved.key],
       );
     else
       await pool.query(
         `UPDATE idempotency_keys SET status = $3, body = $4
-           WHERE owner = $1 AND key = $2`,
+           WHERE owner = $1 AND key = $2 AND status IS NULL`,
         [
           saved.owner,
           saved.key,
@@ -121,4 +143,21 @@ export function idempotency(app: FastifyInstance) {
       );
     return payload;
   });
+}
+
+/** Commit an import's result in the same transaction as its new content. */
+export async function rememberImportResult(
+  request: FastifyRequest,
+  db: PoolClient,
+  result: unknown,
+) {
+  const saved = (request as Tagged)[SAVED];
+  if (!saved) return;
+  const recorded = await db.query(
+    `UPDATE idempotency_keys SET status = 200, body = $3
+       WHERE owner = $1 AND key = $2 AND status IS NULL`,
+    [saved.owner, saved.key, JSON.stringify(result)],
+  );
+  if (recorded.rowCount !== 1)
+    throw new Error("Couldn't record this import. Try again.");
 }

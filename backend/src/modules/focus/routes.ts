@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
+import { activitySummary } from "./activity.js";
 import {
+  activitySummaryQuery,
   focusCurrentInput,
   focusSessionInput,
   focusSummaryQuery,
@@ -22,6 +24,11 @@ import {
  * to the task, and the phase running now is shared with your other devices.
  */
 export async function focusRoutes(app: FastifyInstance) {
+  app.get("/me/activity-summary", async (r) => {
+    const user = await authenticate(r);
+    const query = activitySummaryQuery.parse(r.query);
+    return activitySummary(reader(r.headers), user.id, query.days);
+  });
   app.post("/focus/sessions", async (r, reply) => {
     const u = await authenticate(r);
     const d = focusSessionInput.parse(r.body);

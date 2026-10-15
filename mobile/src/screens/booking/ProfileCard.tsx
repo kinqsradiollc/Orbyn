@@ -1,5 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Linking, StyleSheet, Text, TextInput, View } from "react-native";
+import {
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
 import { Alert } from "../../lib/alert";
 import { RESERVED_HANDLES, type Profile } from "@orbyn/core";
 import { Button } from "../../components/Button";
@@ -9,7 +16,7 @@ import { SmallAction } from "../../components/SmallAction";
 import { client, webOrigin } from "../../lib/api";
 import { shareText } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
-import { animateLayout } from "../../motion";
+import { Sheet } from "../../components/Sheet";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import { SLUG } from "./helpers";
@@ -61,7 +68,6 @@ export function ProfileCard() {
   const changed =
     clean !== (profile.handle ?? "") || bio.trim() !== profile.bio;
   const take = (p: Profile) => {
-    animateLayout();
     setProfile(p);
     setHandle(p.handle ?? "");
     setBio(p.bio ?? "");
@@ -70,8 +76,8 @@ export function ProfileCard() {
     run(async () => {
       take(
         await client.updateProfile({
-          // An empty handle keeps the page off; the bio is kept either way.
-          ...(clean ? { handle: clean } : {}),
+          // Clearing the handle turns the public page off; retain the bio.
+          handle: clean || null,
           bio: bio.trim(),
         }),
       );
@@ -97,10 +103,12 @@ export function ProfileCard() {
 
   return (
     <View style={[shared.card, s.card]}>
-      <ErrorBanner error={error} onDismiss={() => setError("")} />
+      {!editing && <ErrorBanner error={error} onDismiss={() => setError("")} />}
       <Text style={shared.sectionTitle}>Your profile page</Text>
       <Text style={[shared.small, s.line]}>
-        One link with a short bio and every booking page you host.
+        {profile.handle
+          ? "Public · Booking pages and bio"
+          : "Off · Booking pages stay available"}
       </Text>
       {profile.url ? (
         <>
@@ -130,7 +138,6 @@ export function ProfileCard() {
                 label="Edit"
                 disabled={false}
                 onPress={() => {
-                  animateLayout();
                   setEditing(true);
                 }}
               />
@@ -141,20 +148,33 @@ export function ProfileCard() {
         !editing && (
           <Button
             secondary
-            title="Make my profile page"
+            title="Set up profile"
             icon="plus"
             style={s.start}
             onPress={() => {
-              animateLayout();
               setEditing(true);
             }}
           />
         )
       )}
-      {editing && (
-        <View style={s.form}>
+      <Sheet
+        visible={editing}
+        title="Edit profile"
+        onClose={() => {
+          if (!busy) setEditing(false);
+        }}
+      >
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={{ padding: 16, gap: 12 }}
+        >
+          <Text style={shared.small}>
+            A handle makes your bio and active booking pages public.
+          </Text>
+          <ErrorBanner error={error} onDismiss={() => setError("")} />
           <Field label="Handle" hint={`${webOrigin}/u/${clean || "your-name"}`}>
             <TextInput
+              editable={!busy}
               style={shared.input}
               value={handle}
               onChangeText={(t) => setHandle(t.toLowerCase())}
@@ -169,8 +189,12 @@ export function ProfileCard() {
               <Text style={[shared.small, bs.warn, bs.top]}>{problem}</Text>
             )}
           </Field>
+          <Text style={shared.small}>
+            Clear the handle to turn the page off.
+          </Text>
           <Field label="Bio (optional)" hint={`${bio.length}/${MAX_BIO}`}>
             <TextInput
+              editable={!busy}
               style={[shared.input, bs.multiline]}
               value={bio}
               onChangeText={setBio}
@@ -198,9 +222,6 @@ export function ProfileCard() {
               label="Cancel"
               disabled={busy}
               onPress={() => {
-                animateLayout();
-                setHandle(profile.handle ?? "");
-                setBio(profile.bio ?? "");
                 setEditing(false);
               }}
             />
@@ -213,8 +234,8 @@ export function ProfileCard() {
               />
             )}
           </View>
-        </View>
-      )}
+        </ScrollView>
+      </Sheet>
     </View>
   );
 }
@@ -232,6 +253,5 @@ const s = themed(() =>
     bio: { marginTop: 8 },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 10 },
     start: { marginTop: 12, marginBottom: 0 },
-    form: { marginTop: 14 },
   }),
 );

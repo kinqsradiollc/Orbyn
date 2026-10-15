@@ -1,3 +1,4 @@
+import { useElementWidth } from "../../hooks/useElementWidth";
 import { useState } from "react";
 import { Select } from "../../components/Select";
 import "./admin-workspace.css";
@@ -41,7 +42,8 @@ import { AdminRequests } from "./AdminRequests";
 import { AdminAnalytics } from "./AdminAnalytics";
 import { AdminAgents } from "./AdminAgents";
 import { AdminUserDetail } from "./AdminUserDetail";
-import { stagger } from "../../lib/motion";
+import { errorText } from "../../lib/errors";
+import { session } from "../../lib/session";
 import "./insights.css";
 
 type Tab =
@@ -91,10 +93,22 @@ const STATS: { key: keyof AdminOverview; label: string; icon: LucideIcon }[] = [
 ];
 
 /** System admin console. Only rendered for `admin:access`; the server enforces it too. */
-export function AdminView({
+export function AdminView(
+  props: TeamActions & { onMaintenanceChange?: (m: Maintenance) => void },
+) {
+  return (
+    <AdminWorkspace
+      key={`${session.get()}:${props.user?.id ?? ""}`}
+      {...props}
+    />
+  );
+}
+function AdminWorkspace({
   onMaintenanceChange,
   ...props
 }: TeamActions & { onMaintenanceChange?: (m: Maintenance) => void }) {
+  const { ref: pageRef, width: pageWidth } = useElementWidth();
+  const { ref: contentRef, width: contentWidth } = useElementWidth();
   const [tab, setTab] = useState<Tab>("Overview");
   const [teamId, setTeamId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -119,8 +133,14 @@ export function AdminView({
       (t.label !== "System" || canManageSystem),
   );
 
+  const activeTab = tabs.some((entry) => entry.label === tab)
+    ? tab
+    : "Overview";
   return (
-    <div className="admin-workspace">
+    <div
+      ref={pageRef}
+      className={"admin-workspace" + (pageWidth < 900 ? " is-compact" : "")}
+    >
       <aside className="admin-navigation" aria-label="Admin sections">
         {[
           { label: "People", items: ["Overview", "Users", "Teams"] },
@@ -147,8 +167,8 @@ export function AdminView({
               {entries.map(({ label, icon: Icon }) => (
                 <button
                   key={label}
-                  aria-current={tab === label ? "page" : undefined}
-                  className={tab === label ? "active" : ""}
+                  aria-current={activeTab === label ? "page" : undefined}
+                  className={activeTab === label ? "active" : ""}
                   onClick={() => {
                     setTab(label);
                     setTeamId(null);
@@ -163,11 +183,19 @@ export function AdminView({
           );
         })}
       </aside>
-      <section className="admin-content" aria-label={tab}>
+      <section
+        ref={contentRef}
+        className={
+          "admin-content" +
+          (contentWidth < 780 ? " is-narrow" : "") +
+          (contentWidth < 640 ? " is-small" : "")
+        }
+        aria-label={activeTab}
+      >
         <label className="admin-section-picker">
           Section
           <Select
-            value={tab}
+            value={activeTab}
             onChange={(event) => {
               const chosen = tabs.find(
                 (entry) => entry.label === event.target.value,
@@ -186,7 +214,7 @@ export function AdminView({
             ))}
           </Select>
         </label>
-        {tab === "Overview" && (
+        {activeTab === "Overview" && (
           <OverviewPanel
             revision={props.revision}
             report={props.report}
@@ -194,13 +222,13 @@ export function AdminView({
             onNavigate={setTab}
           />
         )}
-        {tab === "Analytics" && canSeeAnalytics && (
+        {activeTab === "Analytics" && canSeeAnalytics && (
           <AdminAnalytics report={props.report} />
         )}
-        {tab === "Requests" && canSeeRequests && (
+        {activeTab === "Requests" && canSeeRequests && (
           <AdminRequests report={props.report} />
         )}
-        {tab === "Users" &&
+        {activeTab === "Users" &&
           (userId ? (
             <AdminUserDetail
               key={userId}
@@ -212,7 +240,7 @@ export function AdminView({
           ) : (
             <AdminUsers {...props} onOpen={setUserId} />
           ))}
-        {tab === "Teams" &&
+        {activeTab === "Teams" &&
           (teamId ? (
             <>
               <button className="text-button" onClick={() => setTeamId(null)}>
@@ -233,22 +261,22 @@ export function AdminView({
               onOpen={setTeamId}
             />
           ))}
-        {tab === "Audit log" && <AdminAudit report={props.report} />}
-        {tab === "Database" && canManageSystem && (
+        {activeTab === "Audit log" && <AdminAudit report={props.report} />}
+        {activeTab === "Database" && canManageSystem && (
           <AdminDatabase
             report={props.report}
             user={props.user}
             refresh={props.refresh}
           />
         )}
-        {tab === "Storage" && canManageSystem && (
+        {activeTab === "Storage" && canManageSystem && (
           <AdminStorage report={props.report} />
         )}
-        {tab === "AI" && canManageAi && <AdminAi {...props} />}
-        {tab === "Agents" && canManageSystem && (
+        {activeTab === "AI" && canManageAi && <AdminAi {...props} />}
+        {activeTab === "Agents" && canManageSystem && (
           <AdminAgents report={props.report} />
         )}
-        {tab === "System" && canManageSystem && (
+        {activeTab === "System" && canManageSystem && (
           <AdminSystem
             user={props.user}
             report={props.report}
@@ -269,21 +297,45 @@ function OverviewPanel({
   canManageSystem: boolean;
   onNavigate: (tab: Tab) => void;
 }) {
-  const data = useRemote(() => client.adminOverview(), [revision], report);
+  const [retry, setRetry] = useState(0);
+  const [dataError, setDataError] = useState("");
+  const [activityError, setActivityError] = useState("");
+  const data = useRemote(
+    () => client.adminOverview(),
+    [revision, retry],
+    (e) => {
+      setDataError(errorText(e));
+      report(e);
+    },
+  );
   const activity = useRemote(
     () => client.adminListAudit({ limit: 6 }),
-    [revision],
-    report,
+    [revision, retry],
+    (e) => {
+      setActivityError(errorText(e));
+      report(e);
+    },
   );
   return (
     <>
-      <div className="stat-grid">
-        {STATS.map(({ key, label, icon: Icon }, n) => (
-          <div
-            className="card stat-card fade-up stagger"
-            style={stagger(n)}
-            key={key}
+      {(dataError || activityError) && (
+        <div className="error" role="alert">
+          <p>{dataError || activityError}</p>
+          <button
+            className="secondary"
+            onClick={() => {
+              setDataError("");
+              setActivityError("");
+              setRetry((value) => value + 1);
+            }}
           >
+            Retry overview
+          </button>
+        </div>
+      )}
+      <div className="stat-grid">
+        {STATS.map(({ key, label, icon: Icon }) => (
+          <div className="stat-card" key={key}>
             <span>
               <Icon size={15} /> {label}
             </span>
@@ -317,25 +369,29 @@ function OverviewPanel({
               ))}
             </div>
           ) : (
-            <p className="muted admin-recent-empty">No changes recorded yet.</p>
+            <p className="muted admin-recent-empty">
+              {activity === null
+                ? activityError
+                  ? "Recent changes unavailable."
+                  : "Loading recent changes…"
+                : "No changes recorded yet."}
+            </p>
           )}
         </section>
-        <section className="card admin-safety">
-          <ShieldCheck size={20} />
-          <h2>Changes stay deliberate</h2>
-          <p>
-            Admin changes are confirmed and logged. Database previews mask
-            private content.
-          </p>
-          {canManageSystem && (
+        {canManageSystem && (
+          <section className="admin-safety">
             <button
               className="secondary"
               onClick={() => onNavigate("Database")}
             >
               <Database size={14} /> Explore database
             </button>
-          )}
-        </section>
+            <details>
+              <summary>Admin changes</summary>
+              <p>Changes are logged. Database previews mask private content.</p>
+            </details>
+          </section>
+        )}
       </div>
     </>
   );
@@ -348,14 +404,54 @@ function TeamsPanel({
 }: Pick<TeamActions, "revision" | "report"> & {
   onOpen: (id: string) => void;
 }) {
-  const teams = useRemote(() => client.adminListTeams(), [revision], report);
+  const [retry, setRetry] = useState(0);
+  const [error, setError] = useState("");
+  const [query, setQuery] = useState("");
+  const teams = useRemote(
+    () => client.adminListTeams(),
+    [revision, retry],
+    (e) => {
+      setError(errorText(e));
+      report(e);
+    },
+  );
+  const filtered = teams?.filter((team) =>
+    team.name.toLowerCase().includes(query.trim().toLowerCase()),
+  );
   return (
     <section className="card">
       <div className="section-heading">
         <h2>
-          All teams <span>{teams?.length ?? 0}</span>
+          Teams <span>{teams === null ? "—" : teams.length}</span>
         </h2>
       </div>
+      <label>
+        Search teams
+        <input
+          type="search"
+          value={query}
+          maxLength={200}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      </label>
+      {error && (
+        <div className="error" role="alert">
+          {error}
+          <button
+            className="secondary"
+            onClick={() => {
+              setError("");
+              setRetry((value) => value + 1);
+            }}
+          >
+            Retry teams
+          </button>
+        </div>
+      )}
+      {!teams && !error && <p className="muted">Loading teams…</p>}
+      {teams && !!teams.length && !filtered?.length && (
+        <p className="muted">No matching teams.</p>
+      )}
       <div className="table-wrap">
         <table className="data-table stack-table">
           <thead>
@@ -368,8 +464,8 @@ function TeamsPanel({
             </tr>
           </thead>
           <tbody>
-            {teams?.map((t, n) => (
-              <tr key={t.id} className="fade-up stagger" style={stagger(n)}>
+            {filtered?.map((t) => (
+              <tr key={t.id}>
                 <td>
                   <button className="link-button" onClick={() => onOpen(t.id)}>
                     {t.name}

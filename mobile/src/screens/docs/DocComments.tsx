@@ -25,7 +25,9 @@ export function DocComments({
   if (state.loading)
     return (
       <View style={styles.section}>
-        <Text style={styles.empty}>Loading…</Text>
+        <Text accessibilityLiveRegion="polite" style={styles.empty}>
+          Loading comments…
+        </Text>
       </View>
     );
 
@@ -33,14 +35,18 @@ export function DocComments({
     <View style={styles.section}>
       {state.failed && (
         <View>
-          <Text style={styles.empty}>Couldn’t refresh comments.</Text>
+          <Text accessibilityRole="alert" style={styles.empty}>
+            Couldn’t refresh comments.
+          </Text>
           <Button title="Retry" secondary onPress={() => void state.reload()} />
         </View>
       )}
-      <Text style={styles.title}>On the page</Text>
+      <Text accessibilityRole="header" style={styles.title}>
+        Page comments
+      </Text>
 
       {state.loose.length === 0 && (
-        <Text style={styles.empty}>Nothing about the page as a whole yet.</Text>
+        <Text style={styles.empty}>No page comments yet.</Text>
       )}
 
       <DocThread
@@ -54,6 +60,7 @@ export function DocComments({
         <Pressable
           onPress={() => state.setShowResolved(!state.showResolved)}
           accessibilityRole="button"
+          accessibilityState={{ expanded: state.showResolved }}
           style={styles.toggleRow}
         >
           <Text style={styles.toggle}>

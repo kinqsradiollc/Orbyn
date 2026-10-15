@@ -1,10 +1,10 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
 import type { Item, Status } from "@orbyn/core";
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { ItemCard } from "./ItemCard";
-import { FadeIn, animateLayout, Pressable } from "../motion";
+import { animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -55,9 +55,7 @@ export function SectionHeading({
         />
       )}
       {!!color && <View style={[s.dot, { backgroundColor: color }]} />}
-      <Text style={shared.sectionTitle} numberOfLines={1}>
-        {title}
-      </Text>
+      <Text style={[shared.sectionTitle, { flexShrink: 1 }]}>{title}</Text>
       {count !== undefined && (
         <View style={s.count}>
           <Text style={s.countText}>{count}</Text>
@@ -75,7 +73,6 @@ export function SectionHeading({
             accessibilityLabel={`${title}${count !== undefined ? `, ${count}` : ""}${time ? `, ${time}` : ""}`}
             accessibilityState={{ expanded: !folded }}
             accessibilityHint={folded ? "Shows this group" : "Folds this group"}
-            hitSlop={8}
             onPress={() => {
               animateLayout();
               onToggleFold();
@@ -97,7 +94,6 @@ export function SectionHeading({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`New task in ${title}`}
-            hitSlop={10}
             onPress={onAdd}
             style={({ pressed }) => [s.add, pressed && { opacity: 0.6 }]}
           >
@@ -204,6 +200,8 @@ export function ItemRows({
   const granted = useRef(false);
   const dragY = useRef(new Animated.Value(0)).current;
   const [dragId, setDragId] = useState<string | null>(null);
+  const mayMove = useRef<(item: Item) => boolean>(() => false);
+  mayMove.current = (item) => !busy && (canToggle?.(item) ?? true);
   const reorder = useRef(onReorder);
   reorder.current = onReorder;
   const dragging = useRef(onDragging);
@@ -222,6 +220,7 @@ export function ItemRows({
     return null;
   };
   const moveBy = (item: Item, dir: -1 | 1) => {
+    if (!mayMove.current(item)) return;
     const list = rowsRef.current;
     const at = list.findIndex((r) => r.item.id === item.id);
     const other =
@@ -248,6 +247,7 @@ export function ItemRows({
     const me = layouts.current.get(id);
     if (at < 0 || !me) return;
     const item = list[at].item;
+    if (!mayMove.current(item)) return;
     const center = me.y + me.height / 2 + dy;
     let target = list.findIndex((r) => {
       const l = layouts.current.get(r.item.id);
@@ -280,7 +280,17 @@ export function ItemRows({
     }),
   ).current;
 
+  useEffect(
+    () => () => {
+      armed.current = null;
+      dragging.current?.(false);
+      dragY.stopAnimation();
+    },
+    [dragY],
+  );
+
   const startDrag = (item: Item) => {
+    if (!mayMove.current(item)) return;
     armed.current = item.id;
     granted.current = false;
     setDragId(item.id);
@@ -313,7 +323,7 @@ export function ItemRows({
             }
             style={lifted && [s.lifted, { transform: [{ translateY: dragY }] }]}
           >
-            <FadeIn index={n}>
+            <View>
               <ItemCard
                 item={i}
                 busy={busy}
@@ -355,7 +365,7 @@ export function ItemRows({
                 onPickUp={!readOnly ? onPickUp : undefined}
                 onDragRelease={onReorder ? releaseDrag : undefined}
               />
-            </FadeIn>
+            </View>
           </Animated.View>
         );
       })}
@@ -378,7 +388,7 @@ export function EmptyState({
   onAction?: () => void;
 }) {
   return (
-    <FadeIn style={[shared.card, shared.empty]}>
+    <View style={[shared.card, shared.empty]}>
       <View style={shared.emptyIcon}>
         <Icon name={icon} size={26} color={colors.accent} />
       </View>
@@ -387,7 +397,7 @@ export function EmptyState({
       {action && onAction && (
         <Button secondary icon="plus" title={action} onPress={onAction} />
       )}
-    </FadeIn>
+    </View>
   );
 }
 
@@ -397,8 +407,8 @@ export function PlannerList({
   title,
   hint,
   empty = {
-    title: "A little breathing room.",
-    body: "Your day is open. Add something worth making time for.",
+    title: "No tasks here",
+    body: "Add a task to get started.",
   },
   busy,
   onToggle,
@@ -428,7 +438,7 @@ export function PlannerList({
           canToggle={canToggle}
         />
       ) : (
-        <EmptyState {...empty} action="Make a plan" onAction={onAdd} />
+        <EmptyState {...empty} action="Add task" onAction={onAdd} />
       )}
     </>
   );
@@ -438,12 +448,18 @@ const s = themed(() =>
   StyleSheet.create({
     headingWrap: { marginBottom: 10, gap: 2 },
     headingLine: { flexDirection: "row", alignItems: "center", gap: 8 },
-    heading: { flexDirection: "row", alignItems: "center", gap: 8 },
+    heading: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+      minHeight: 44,
+    },
     headingFlex: { flex: 1, minWidth: 0 },
     time: { fontFamily: fonts.medium, fontSize: 11, color: colors.muted },
     add: {
-      width: 34,
-      height: 34,
+      width: 44,
+      height: 44,
       alignItems: "center",
       justifyContent: "center",
       borderRadius: radii.pill,
@@ -451,7 +467,7 @@ const s = themed(() =>
     },
     count: {
       backgroundColor: colors.surfaceMuted,
-      borderRadius: 6,
+      borderRadius: radii.input,
       paddingHorizontal: 7,
       paddingVertical: 2,
     },
@@ -478,7 +494,7 @@ const s = themed(() =>
       borderColor: colors.accent,
       borderRadius: radii.input,
     },
-    dot: { width: 9, height: 9, borderRadius: 5 },
+    dot: { width: 9, height: 9, borderRadius: radii.pill },
     emptyText: { textAlign: "center", marginBottom: 16 },
   }),
 );

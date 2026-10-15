@@ -18,13 +18,11 @@ export function MaintenanceBanner({
       <Wrench size={15} aria-hidden="true" />
       {isAdmin ? (
         <p>
-          <strong>Maintenance mode is on.</strong> Members can&apos;t make
-          changes.
+          <strong>Maintenance on.</strong> Member edits are paused.
         </p>
       ) : (
         <p>
-          <strong>Orbyn is under maintenance.</strong> You can view everything,
-          but changes are paused.
+          <strong>Maintenance.</strong> Viewing is available; edits are paused.
           {maintenance.message && <span> {maintenance.message}</span>}
           {maintenance.until && (
             <span>
@@ -60,11 +58,14 @@ export function AnnouncementBanner() {
   });
   useEffect(() => {
     let alive = true;
-    const load = () =>
-      client.announcement().then(
-        (a) => alive && setNotice(a),
+    let request = 0;
+    const load = () => {
+      const epoch = ++request;
+      return client.announcement().then(
+        (a) => alive && epoch === request && setNotice(a),
         () => {},
       );
+    };
     void load();
     const id = setInterval(() => {
       if (document.visibilityState === "visible") void load();
@@ -118,7 +119,7 @@ export function UpdateBanner({ onDismiss }: { onDismiss: () => void }) {
   return (
     <div className="app-banner is-update" role="status">
       <Sparkles size={15} aria-hidden="true" />
-      <p>A new version of Orbyn is available.</p>
+      <p>Update available.</p>
       <button className="secondary" onClick={() => location.reload()}>
         <RefreshCw size={13} /> Reload
       </button>

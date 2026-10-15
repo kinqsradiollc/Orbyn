@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { viewersLabel, type DocViewer } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { onLive, setOpenDoc } from "../../lib/live";
@@ -18,10 +18,20 @@ const initials = (name: string) =>
  */
 export function useDocViewers(docId: string): DocViewer[] {
   const [viewers, setViewers] = useState<DocViewer[]>([]);
+  const request = useRef(0);
   const load = useCallback(() => {
-    client.docViewers(docId).then(setViewers, () => setViewers([]));
+    const version = ++request.current;
+    client.docViewers(docId).then(
+      (rows) => {
+        if (version === request.current) setViewers(rows);
+      },
+      () => {
+        if (version === request.current) setViewers([]);
+      },
+    );
   }, [docId]);
   useEffect(() => {
+    setViewers([]);
     setOpenDoc(docId);
     load();
     const stop = onLive((news) =>
@@ -33,6 +43,7 @@ export function useDocViewers(docId: string): DocViewer[] {
     // Someone whose app closed without saying so fades out on its own.
     const id = setInterval(load, 90_000);
     return () => {
+      request.current += 1;
       stop();
       clearInterval(id);
       setOpenDoc(null);

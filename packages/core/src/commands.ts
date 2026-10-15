@@ -694,8 +694,8 @@ export const SETTINGS_INDEX: SettingEntry[] = [
     "Email reminders",
     "A reminder before tasks and events are due",
     "account",
-    "Stay in the loop",
-    { section: "Stay in the loop" },
+    "Notifications",
+    { section: "Notifications" },
     "notifications email push alerts",
   ),
   setting(

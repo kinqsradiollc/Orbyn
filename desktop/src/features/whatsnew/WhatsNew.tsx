@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { ArrowUpRight, X } from "lucide-react";
 import { latestRelease, releasesSince } from "@orbyn/core";
 import { Releases } from "./Releases";
@@ -36,61 +38,50 @@ export function WhatsNew({
   onClose: () => void;
   onOpenChangelog: () => void;
 }) {
-  const close = useRef<HTMLButtonElement>(null);
-  // Read before the effect below marks the newest release as seen.
+  const focus = useModalFocus(onClose);
   const [releases] = useState(() => releasesSince(seenRelease()));
   useEffect(() => {
     markReleaseSeen();
-    const opener = document.activeElement as HTMLElement | null;
-    close.current?.focus();
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
+    const dialog = focus.ref.current as HTMLDialogElement | null;
+    dialog?.showModal();
+    return () => dialog?.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={focus.ref as React.RefObject<HTMLDialogElement>}
+      data-modal-focus={focus.id}
+      className="modal whats-new"
+      aria-labelledby="whats-new-title"
+      onCancel={(event) => {
+        event.preventDefault();
         onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      opener?.focus?.();
-    };
-  }, [onClose]);
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section
-        className="modal whats-new scale-in"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="whats-new-title"
-      >
-        <div className="section-heading">
-          <h2 id="whats-new-title">What's new</h2>
-          <button
-            ref={close}
-            className="icon-button"
-            aria-label="Close What's new"
-            onClick={onClose}
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <div className="whats-new-body">
-          <Releases releases={releases} headingLevel={3} />
-        </div>
-        <div className="whats-new-foot">
-          <button className="text-button" onClick={onOpenChangelog}>
-            Every release <ArrowUpRight size={14} />
-          </button>
-          <button className="primary" onClick={onClose}>
-            Got it
-          </button>
-        </div>
-      </section>
-    </div>
+      <div className="section-heading">
+        <h2 id="whats-new-title">What's new</h2>
+        <button
+          className="icon-button"
+          aria-label="Close What's new"
+          onClick={onClose}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <div className="whats-new-body">
+        <Releases releases={releases} headingLevel={3} />
+      </div>
+      <div className="whats-new-foot">
+        <button className="text-button" onClick={onOpenChangelog}>
+          Every release <ArrowUpRight size={14} />
+        </button>
+        <button className="primary" onClick={onClose}>
+          Got it
+        </button>
+      </div>
+    </dialog>,
+    document.body,
   );
 }

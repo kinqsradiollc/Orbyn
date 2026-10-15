@@ -13,6 +13,8 @@ import {
   type User,
 } from "@orbyn/core";
 import { Button } from "../../components/Button";
+import { MoreMenu } from "../../components/MoreMenu";
+import { InlineDetails } from "../../components/InlineDetails";
 import { Chip, ChipRow } from "../../components/Chip";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Field, NumberInput } from "../../components/Field";
@@ -21,6 +23,7 @@ import { Segmented } from "../../components/Segmented";
 import { sheetStyles } from "../../components/Sheet";
 import { SmallAction } from "../../components/SmallAction";
 import { client, webOrigin } from "../../lib/api";
+import { session } from "../../lib/session";
 import {
   LIST_COLORS,
   deviceTimeZone,
@@ -29,7 +32,7 @@ import {
   shareText,
 } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
-import { animateLayout, Pressable } from "../../motion";
+import { Pressable } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import {
@@ -131,21 +134,46 @@ function schedulingSummary(p: {
 /** Create or edit a booking page, in sections that open one at a time. */
 export function PageEditor({
   page,
+  visible = true,
   user,
   teams,
   onSaved,
   onDeleted,
   onShowBookings,
+  onBusyChange,
 }: {
   page: BookingPage | null;
+  visible?: boolean;
   user: User | null;
   teams: Team[];
   onSaved: (page: BookingPage) => void;
   onDeleted: () => void;
   /** Open the bookings list filtered to this page. */
   onShowBookings: (page: BookingPage) => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
-  const { busy, error, setError, run } = useRun();
+  const { busy, error, setError, run: runBase } = useRun();
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const run = async <T,>(fn: () => Promise<T>) => {
+    if (mutation.current) return;
+    mutation.current = true;
+    try {
+      return await runBase(fn);
+    } finally {
+      mutation.current = false;
+    }
+  };
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   const [saved, setSaved] = useState<BookingPage | null>(page);
   const [title, setTitle] = useState(page?.title ?? "");
   const [slug, setSlug] = useState(page?.slug ?? "");
@@ -217,6 +245,8 @@ export function PageEditor({
   const [people, setPeople] = useState<TeamMember[]>([]);
   /** Your teammates have loaded, so co-hosts outside them can be flagged. */
   const [peopleLoaded, setPeopleLoaded] = useState(false);
+  const [peopleFailed, setPeopleFailed] = useState(false);
+  const [peopleVersion, setPeopleVersion] = useState(0);
   const [openIds, setOpenIds] = useState<SectionId[]>(["basics"]);
   const [tried, setTried] = useState(false);
   const scroller = useRef<ScrollView>(null);
@@ -227,14 +257,23 @@ export function PageEditor({
   const teamIds = teams.map((t) => t.id).join(",");
   useEffect(() => {
     let alive = true;
+    const account = session.token;
+    const current = () => alive && account === session.token;
+    setPeopleLoaded(false);
+    setPeopleFailed(false);
     const ids = teamIds ? teamIds.split(",") : [];
-    Promise.all(ids.map((id) => client.getTeam(id).catch(() => null)))
+    Promise.allSettled(ids.map((id) => client.getTeam(id)))
       .then((details) => {
-        if (!alive) return;
+        if (!current()) return;
+        if (details.some((d) => d.status === "rejected")) {
+          setPeopleFailed(true);
+          return;
+        }
         const seen = new Map<string, TeamMember>();
         const of = new Map<string, Set<string>>();
-        details.forEach((d, n) => {
-          for (const m of d?.members ?? []) {
+        details.forEach((result, n) => {
+          if (result.status !== "fulfilled") return;
+          for (const m of result.value.members ?? []) {
             const set = of.get(m.user_id) ?? new Set<string>();
             set.add(ids[n]);
             of.set(m.user_id, set);
@@ -247,13 +286,16 @@ export function PageEditor({
         setTeamsOf(of);
         setPeopleLoaded(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (current()) setPeopleFailed(true);
+      });
     return () => {
       alive = false;
     };
-  }, [teamIds, ownerId]);
+  }, [teamIds, ownerId, peopleVersion]);
 
   const changeAvailability = (next: BookingAvailability) => {
+    if (busy) return;
     if (next.mode === "custom")
       setKept({ timezone: next.timezone, weekly: next.weekly });
     setAvailability(next);
@@ -302,7 +344,7 @@ export function PageEditor({
         "Link names use lowercase letters and numbers, with single dashes between words.",
       ];
     if (meetingUrl.trim() && !MEETING_URL.test(meetingUrl.trim()))
-      return ["basics", "Meeting links start with https://."];
+      return ["basics", "Enter a complete http:// or https:// link."];
     if (custom && !isTimeZone(custom.timezone.trim()))
       return ["availability", "Pick a time zone for your hours."];
     if (custom && !custom.weekly.length)
@@ -325,6 +367,10 @@ export function PageEditor({
         "scheduling",
         `Free time before and after is 0 to ${MAX_BUFFER} minutes.`,
       ];
+    if (maxPerDay.trim() && perDay === null)
+      return ["scheduling", "Enter a daily limit, or leave it empty."];
+    if (maxPerWeek.trim() && perWeek === null)
+      return ["scheduling", "Enter a weekly limit, or leave it empty."];
     if (perDay !== null && (perDay < 1 || perDay > 50))
       return ["scheduling", "Bookings a day is 1 to 50, or empty."];
     if (perWeek !== null && (perWeek < 1 || perWeek > 200))
@@ -337,6 +383,8 @@ export function PageEditor({
     if (hosts.length > MAX_HOSTS)
       return ["cohosts", `Pick up to ${MAX_HOSTS} co-hosts.`];
     // Unchanged co-hosts aren't sent, so a stale one only matters on a change.
+    if (hostsChanged && !peopleLoaded)
+      return ["cohosts", "Load co-hosts before changing the host list."];
     if (hostsChanged && staleHosts.size)
       return [
         "cohosts",
@@ -350,6 +398,7 @@ export function PageEditor({
 
   const sectionProps = (id: SectionId) => ({
     open: openIds.includes(id),
+    disabled: busy,
     onOpenChange: (open: boolean) =>
       setOpenIds((ids) => (open ? [...ids, id] : ids.filter((x) => x !== id))),
     onLayout: (e: { nativeEvent: { layout: { y: number } } }) => {
@@ -359,18 +408,18 @@ export function PageEditor({
 
   /** Open the section with the problem and scroll up to it. */
   const reveal = (id: SectionId) => {
-    animateLayout();
     setOpenIds((ids) => (ids.includes(id) ? ids : [...ids, id]));
     setTimeout(() => {
       scroller.current?.scrollTo({
         y: Math.max(0, columnY.current + (offsets.current[id] ?? 0) - 8),
-        animated: true,
+        animated: false,
       });
     }, 60);
   };
 
   const save = () =>
     run(async () => {
+      const account = session.token;
       // New questions get ids from their labels; saved ones keep theirs.
       const taken = new Set(
         questions.map((q) => q.id).filter((id): id is string => !!id),
@@ -425,7 +474,8 @@ export function PageEditor({
       const next = saved
         ? await client.updateBookingPage(saved.id, body)
         : await client.createBookingPage(body);
-      animateLayout();
+
+      if (!mounted.current || account !== session.token) return;
       setSaved(next);
       setSavedHostsKey(hostsKey(coHostsOf(next)));
       setSlug(next.slug);
@@ -435,6 +485,7 @@ export function PageEditor({
     });
 
   const trySave = () => {
+    if (busy) return;
     if (problem) {
       setTried(true);
       reveal(problem[0]);
@@ -470,6 +521,7 @@ export function PageEditor({
   const light = hexOk && accent !== color.toLowerCase();
   const titlePreview = eventTitlePreview(eventTitle, title).trim();
 
+  if (!visible) return null;
   return (
     <ScrollView
       ref={scroller}
@@ -487,20 +539,59 @@ export function PageEditor({
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         {saved && (
           <View style={[shared.softCard, s.linkCard]}>
-            <Text style={shared.label}>Booking link</Text>
+            <View style={s.linkHeader}>
+              <Text style={shared.label}>Booking link</Text>
+              {canEditPage(saved, user?.id) && (
+                <MoreMenu
+                  label="Booking page options"
+                  title={saved.title}
+                  disabled={busy}
+                  actions={[
+                    {
+                      label: "Delete page",
+                      icon: "trash",
+                      destructive: true,
+                      onPress: () =>
+                        Alert.alert(
+                          `Delete ${saved.title}?`,
+                          "The link stops working. Existing bookings stay on your calendar.",
+                          [
+                            { text: "Cancel", style: "cancel" },
+                            {
+                              text: "Delete",
+                              style: "destructive",
+                              onPress: () =>
+                                void run(async () => {
+                                  if (!mounted.current) return;
+                                  const account = session.token;
+                                  await client.deleteBookingPage(saved.id);
+                                  if (
+                                    mounted.current &&
+                                    account === session.token
+                                  )
+                                    onDeleted();
+                                }),
+                            },
+                          ],
+                        ),
+                    },
+                  ]}
+                />
+              )}
+            </View>
             <Text selectable style={s.link}>
               {link}
             </Text>
             <Button
               title="Share link"
               icon="share"
-              disabled={!saved.active}
+              disabled={busy || !saved.active}
               style={bs.last}
               onPress={() => void shareText(link)}
             />
             {!saved.active && (
               <Text style={[shared.small, bs.top]}>
-                This page is off, so the link shows nothing to book.
+                Page paused. No times are available to book.
               </Text>
             )}
             <Button
@@ -512,6 +603,7 @@ export function PageEditor({
               }
               icon="calendar"
               style={s.seeBookings}
+              disabled={busy}
               onPress={() => onShowBookings(saved)}
             />
           </View>
@@ -527,11 +619,12 @@ export function PageEditor({
               label="Whose page"
               hint={
                 teamId
-                  ? "Everyone in the team sees it; its owners and admins can change it. Co-hosts come from the team."
+                  ? "Team members can view; owners and admins can edit. Co-hosts must belong to the team."
                   : "Only you can change it."
               }
             >
               <Segmented
+                disabled={busy}
                 wrap
                 accessibilityLabel="Whose page"
                 options={ownerOptions}
@@ -543,6 +636,7 @@ export function PageEditor({
           )}
           <Field label="Title">
             <TextInput
+              editable={!busy}
               style={shared.input}
               value={title}
               onChangeText={(t) => {
@@ -560,6 +654,7 @@ export function PageEditor({
             hint={`${webOrigin}/book/${slug || "your-name"}`}
           >
             <TextInput
+              editable={!busy}
               style={shared.input}
               value={slug}
               onChangeText={(t) => {
@@ -582,6 +677,7 @@ export function PageEditor({
           </Field>
           <Field label="Description (optional)">
             <TextInput
+              editable={!busy}
               style={[shared.input, bs.multiline]}
               value={description}
               onChangeText={setDescription}
@@ -593,7 +689,7 @@ export function PageEditor({
               accessibilityLabel="Description"
             />
           </Field>
-          <Field label="Lengths people can book" hint="Up to four.">
+          <Field label="Meeting lengths" hint="Up to four.">
             <ChipRow label="Lengths" multi>
               {[
                 ...DURATIONS,
@@ -608,7 +704,7 @@ export function PageEditor({
                       multi
                       label={minutesLabel(d)}
                       selected={on}
-                      disabled={!on && durations.length >= 4}
+                      disabled={busy || (!on && durations.length >= 4)}
                       onPress={() => {
                         const next = on
                           ? durations.filter((x) => x !== d)
@@ -622,6 +718,7 @@ export function PageEditor({
           </Field>
           <Field label="Location (optional)">
             <TextInput
+              editable={!busy}
               style={shared.input}
               value={location}
               onChangeText={setLocation}
@@ -636,6 +733,7 @@ export function PageEditor({
             hint="Sent to people once they book."
           >
             <TextInput
+              editable={!busy}
               style={shared.input}
               value={meetingUrl}
               onChangeText={setMeetingUrl}
@@ -649,11 +747,12 @@ export function PageEditor({
             />
             {!!meetingUrl.trim() && !MEETING_URL.test(meetingUrl.trim()) && (
               <Text style={[shared.small, bs.warn, bs.top]}>
-                Meeting links start with https://.
+                Enter a complete http:// or https:// link.
               </Text>
             )}
           </Field>
           <SwitchRow
+            disabled={busy}
             title="Taking bookings"
             hint="Turn off to pause the page."
             value={active}
@@ -676,11 +775,14 @@ export function PageEditor({
           {...sectionProps("availability")}
         >
           <AvailabilityEditor
+            disabled={busy}
             availability={availability}
             onChange={changeAvailability}
             kept={kept}
             overrides={overrides}
-            onOverrides={setOverrides}
+            onOverrides={(value) => {
+              if (!busy) setOverrides(value);
+            }}
           />
         </Section>
 
@@ -702,6 +804,7 @@ export function PageEditor({
                   key={m}
                   label={minutesLabel(m)}
                   selected={slotInterval === m}
+                  disabled={busy}
                   onPress={() => setSlotInterval(m)}
                 />
               ))}
@@ -709,6 +812,7 @@ export function PageEditor({
           </Field>
           <Field label="Free time before each booking">
             <PresetMinutes
+              disabled={busy}
               label="Free time before each booking"
               presets={BUFFERS}
               value={before}
@@ -718,6 +822,7 @@ export function PageEditor({
           </Field>
           <Field label="Free time after each booking">
             <PresetMinutes
+              disabled={busy}
               label="Free time after each booking"
               presets={BUFFERS}
               value={after}
@@ -727,6 +832,7 @@ export function PageEditor({
           </Field>
           <Field label="Notice needed">
             <PresetMinutes
+              disabled={busy}
               label="Notice needed"
               presets={NOTICE}
               value={notice}
@@ -736,14 +842,16 @@ export function PageEditor({
           </Field>
           <Field label="Bookable up to">
             <NumberInput
+              editable={!busy}
               value={windowDays}
               onChangeText={setWindowDays}
               suffix="days ahead"
               accessibilityLabel="Bookable up to how many days ahead"
             />
           </Field>
-          <Field label="Most bookings a day" hint="Leave empty for no limit.">
+          <Field label="Daily booking limit" hint="Leave empty for no limit.">
             <NumberInput
+              editable={!busy}
               value={maxPerDay}
               onChangeText={setMaxPerDay}
               placeholder="No limit"
@@ -751,11 +859,12 @@ export function PageEditor({
             />
           </Field>
           <Field
-            label="Most bookings a week"
+            label="Weekly booking limit"
             hint="Leave empty for no limit."
             style={bs.last}
           >
             <NumberInput
+              editable={!busy}
               value={maxPerWeek}
               onChangeText={setMaxPerWeek}
               placeholder="No limit"
@@ -768,15 +877,18 @@ export function PageEditor({
           title="Questions"
           summary={
             questions.length
-              ? questions
-                  .map((q) => q.label.trim())
-                  .filter(Boolean)
-                  .join(", ")
+              ? `${questions.length} ${questions.length === 1 ? "question" : "questions"}`
               : "Just name and email"
           }
           {...sectionProps("questions")}
         >
-          <QuestionsEditor questions={questions} onChange={setQuestions} />
+          <QuestionsEditor
+            disabled={busy}
+            questions={questions}
+            onChange={(value) => {
+              if (!busy) setQuestions(value);
+            }}
+          />
         </Section>
 
         <Section
@@ -788,22 +900,22 @@ export function PageEditor({
           {...sectionProps("confirmation")}
         >
           <SwitchRow
+            disabled={busy}
             title="Approve each request"
             hint="Times stay held until you approve or decline."
             value={approval}
             onValueChange={setApproval}
           />
           <SwitchRow
-            title="Let people move their booking"
+            disabled={busy}
+            title="Allow rescheduling"
             hint="From the link in their confirmation email."
             value={reschedule}
             onValueChange={setReschedule}
           />
-          <Field
-            label="Calendar event title"
-            hint="{page} is this page’s title; {name} and {email} are the booker’s."
-          >
+          <Field label="Calendar event title">
             <TextInput
+              editable={!busy}
               style={shared.input}
               value={eventTitle}
               onChangeText={setEventTitle}
@@ -813,16 +925,23 @@ export function PageEditor({
               placeholderTextColor={colors.faint}
               accessibilityLabel="Calendar event title"
             />
-            <View style={s.inserts}>
-              {PLACEHOLDERS.map((p) => (
-                <SmallAction
-                  key={p}
-                  label={p}
-                  disabled={eventTitle.length + p.length >= 200}
-                  onPress={() => setEventTitle(`${eventTitle} ${p}`.trim())}
-                />
-              ))}
-            </View>
+            <InlineDetails title="Title placeholders">
+              <Text style={shared.small}>
+                {
+                  "{page}: page title · {name}: booker's name · {email}: booker's email"
+                }
+              </Text>
+              <View style={s.inserts}>
+                {PLACEHOLDERS.map((p) => (
+                  <SmallAction
+                    key={p}
+                    label={p}
+                    disabled={busy || eventTitle.length + p.length >= 200}
+                    onPress={() => setEventTitle(`${eventTitle} ${p}`.trim())}
+                  />
+                ))}
+              </View>
+            </InlineDetails>
             <Text
               style={[shared.small, bs.top]}
               accessibilityLiveRegion="polite"
@@ -832,10 +951,11 @@ export function PageEditor({
           </Field>
           <Field
             label="Message after booking (optional)"
-            hint={`Shown once they book and in their confirmation email. ${confirmation.length}/${MAX_CONFIRMATION}`}
+            hint={`Shown after booking and emailed. ${confirmation.length}/${MAX_CONFIRMATION}`}
             style={bs.last}
           >
             <TextInput
+              editable={!busy}
               style={[shared.input, bs.multiline]}
               value={confirmation}
               onChangeText={setConfirmation}
@@ -859,10 +979,13 @@ export function PageEditor({
           {...sectionProps("reminders")}
         >
           <Text style={[shared.small, bs.gap]}>
-            People who book get an email before the meeting with a link to move
-            or cancel it.
+            Reminder emails include a link to manage the booking.
           </Text>
-          <ReminderChips value={reminders} onChange={setReminders} />
+          <ReminderChips
+            disabled={busy}
+            value={reminders}
+            onChange={setReminders}
+          />
         </Section>
 
         <Section title="Colour" summary={color} {...sectionProps("colour")}>
@@ -877,7 +1000,8 @@ export function PageEditor({
                   key={c}
                   accessibilityRole="radio"
                   accessibilityLabel={c}
-                  accessibilityState={{ checked: on }}
+                  disabled={busy}
+                  accessibilityState={{ checked: on, disabled: busy }}
                   hitSlop={4}
                   onPress={() => setColor(c)}
                   style={[s.swatch, { backgroundColor: c }, on && s.swatchOn]}
@@ -895,6 +1019,7 @@ export function PageEditor({
               ]}
             />
             <TextInput
+              editable={!busy}
               style={[shared.input, bs.half]}
               value={color}
               onChangeText={(t) =>
@@ -940,10 +1065,27 @@ export function PageEditor({
             Only times when every required host is free are offered. Optional
             hosts join when they can. Up to {MAX_HOSTS} co-hosts.
           </Text>
+          {peopleFailed ? (
+            <View style={bs.gap}>
+              <Text style={[shared.small, bs.warn]} accessibilityRole="alert">
+                Couldn't load co-hosts.
+              </Text>
+              <SmallAction
+                label="Retry"
+                disabled={busy}
+                onPress={() => setPeopleVersion((v) => v + 1)}
+              />
+            </View>
+          ) : !peopleLoaded ? (
+            <Text style={shared.small} accessibilityLiveRegion="polite">
+              Loading co-hosts…
+            </Text>
+          ) : null}
           {hosts.length > 0 && (
             <View style={bs.gap}>
               <Text style={shared.label}>How bookings are shared</Text>
               <Segmented
+                disabled={busy}
                 accessibilityLabel="How bookings are shared"
                 options={["collective", "round_robin"] as const}
                 labels={{
@@ -955,12 +1097,12 @@ export function PageEditor({
               />
               <Text style={shared.small}>
                 {assignment === "round_robin"
-                  ? "A time is offered when any host is free; each booking goes to the host with the fewest so far."
-                  : "A time is offered only when every required host is free."}
+                  ? "Any available host can take a booking. The least-booked host is chosen."
+                  : "All required hosts must be free."}
               </Text>
             </View>
           )}
-          {candidates.length === 0 ? (
+          {candidates.length === 0 && peopleLoaded ? (
             <Text style={shared.small}>
               People in your teams can host with you. Join or make a team to add
               co-hosts.
@@ -969,7 +1111,7 @@ export function PageEditor({
             <View style={s.hostList}>
               {candidates.map((p, n) => {
                 const host = hosts.find((h) => h.user_id === p.user_id);
-                const blocked = !host && hostsFull;
+                const blocked = busy || !peopleLoaded || (!host && hostsFull);
                 return (
                   <View key={p.user_id} style={n > 0 && bs.divider}>
                     <Pressable
@@ -983,7 +1125,6 @@ export function PageEditor({
                       }}
                       disabled={blocked}
                       onPress={() => {
-                        animateLayout();
                         setHosts(
                           host
                             ? hosts.filter((h) => h.user_id !== p.user_id)
@@ -1005,13 +1146,9 @@ export function PageEditor({
                         )}
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={bs.rowTitle} numberOfLines={1}>
-                          {p.name}
-                        </Text>
+                        <Text style={bs.rowTitle}>{p.name}</Text>
                         {!!p.email && (
-                          <Text style={shared.small} numberOfLines={1}>
-                            {p.email}
-                          </Text>
+                          <Text style={shared.small}>{p.email}</Text>
                         )}
                         {staleHosts.has(p.user_id) && (
                           <Text style={[shared.small, bs.warn]}>
@@ -1029,6 +1166,7 @@ export function PageEditor({
                             : "Optional: joins when free"}
                         </Text>
                         <Switch
+                          disabled={busy}
                           value={host.required}
                           trackColor={{ true: colors.accent }}
                           accessibilityLabel={`${p.name} must be free`}
@@ -1070,33 +1208,6 @@ export function PageEditor({
           disabled={busy || !durations.length}
           onPress={trySave}
         />
-
-        {saved && canEditPage(saved, user?.id) && (
-          <Button
-            destructive
-            title="Delete page"
-            icon="trash"
-            disabled={busy}
-            onPress={() =>
-              Alert.alert(
-                `Delete ${saved.title}?`,
-                "The link stops working. Bookings already made stay on your calendar.",
-                [
-                  { text: "Cancel", style: "cancel" },
-                  {
-                    text: "Delete",
-                    style: "destructive",
-                    onPress: () =>
-                      void run(async () => {
-                        await client.deleteBookingPage(saved.id);
-                        onDeleted();
-                      }),
-                  },
-                ],
-              )
-            }
-          />
-        )}
       </View>
     </ScrollView>
   );
@@ -1105,6 +1216,12 @@ export function PageEditor({
 const s = themed(() =>
   StyleSheet.create({
     linkCard: { padding: 16 },
+    linkHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+    },
     link: {
       fontFamily: fonts.medium,
       fontSize: 15,
@@ -1116,7 +1233,7 @@ const s = themed(() =>
     swatch: {
       width: 38,
       height: 38,
-      borderRadius: 19,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -1125,7 +1242,7 @@ const s = themed(() =>
     preview: {
       width: 50,
       height: 50,
-      borderRadius: 12,
+      borderRadius: radii.card,
       borderWidth: 1,
       borderColor: colors.border,
     },
@@ -1152,7 +1269,7 @@ const s = themed(() =>
     hostList: {
       borderWidth: 1,
       borderColor: colors.border,
-      borderRadius: 12,
+      borderRadius: radii.card,
       overflow: "hidden",
     },
     hostMain: {
@@ -1167,7 +1284,7 @@ const s = themed(() =>
     check: {
       width: 22,
       height: 22,
-      borderRadius: 6,
+      borderRadius: radii.check,
       borderWidth: 1.5,
       borderColor: colors.checkBorder,
       alignItems: "center",

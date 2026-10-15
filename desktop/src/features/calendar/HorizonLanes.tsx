@@ -53,6 +53,7 @@ export function HorizonLanes({
     30;
 
   const move = async (d: Drag, day: string) => {
+    if (tuner.pending || !tuner.state) return;
     setNotice("");
     let start: Date;
     let end: Date;
@@ -100,9 +101,12 @@ export function HorizonLanes({
     <section className="horizon" aria-labelledby="horizon-title">
       <div className="planner-review-head">
         <h3 id="horizon-title">Days ahead</h3>
-        <small className="muted">
-          Drag a session to another day, or use Move to.
-        </small>
+        <details className="horizon-help">
+          <summary>Moving sessions</summary>
+          <p className="muted">
+            Choose a day or drag a session. Moved sessions stay pinned.
+          </p>
+        </details>
       </div>
       {notice && (
         <p className="horizon-notice" role="alert">
@@ -115,7 +119,7 @@ export function HorizonLanes({
             key={lane.day}
             className={"horizon-lane" + (over === lane.day ? " is-over" : "")}
             onDragOver={(e) => {
-              if (!drag) return;
+              if (!drag || tuner.pending) return;
               e.preventDefault();
               setOver(lane.day);
             }}
@@ -123,7 +127,7 @@ export function HorizonLanes({
             onDrop={(e) => {
               e.preventDefault();
               setOver(null);
-              if (drag) void move(drag, lane.day);
+              if (drag && !tuner.pending) void move(drag, lane.day);
               setDrag(null);
             }}
           >

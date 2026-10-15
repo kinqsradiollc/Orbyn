@@ -1,10 +1,10 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { ReentryBrief, ReentryLine } from "@orbyn/core";
 import { SmallAction } from "../SmallAction";
 import { client } from "../../lib/api";
-import { animateLayout, Pressable } from "../../motion";
-import { colors, fonts, themed } from "../../theme";
+import { Pressable } from "../../motion";
+import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 
 const SECTIONS: { key: keyof ReentryBrief; label: string }[] = [
@@ -30,8 +30,21 @@ export function WelcomeBack({
   onOpenAsks: () => void;
 }) {
   const [brief, setBrief] = useState<ReentryBrief | null>(null);
+  const dismissing = useRef(false);
+  const [expanded, setExpanded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
   useEffect(() => {
-    client.reentry().then(setBrief, () => setBrief(null));
+    let alive = true;
+    client.reentry().then(
+      (value) => {
+        if (alive) setBrief(value);
+      },
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
   }, []);
   if (!brief) return null;
   const sections = SECTIONS.map((sct) => ({
@@ -54,27 +67,34 @@ export function WelcomeBack({
             Welcome back
           </Text>
           <Text style={shared.small}>
-            You were away {brief.days_away}{" "}
-            {brief.days_away === 1 ? "day" : "days"}.
-            {sections.length ? " Here's what happened." : " Nothing needs you."}
+            {brief.days_away} {brief.days_away === 1 ? "day" : "days"} away
           </Text>
         </View>
         <SmallAction
           label="Got it"
-          disabled={false}
+          disabled={busy}
           onPress={() => {
-            animateLayout();
-            setBrief(null);
-            void client.dismissReentry().catch(() => {});
+            if (dismissing.current) return;
+            dismissing.current = true;
+            setBusy(true);
+            setError("");
+            void client.dismissReentry().then(
+              () => setBrief(null),
+              () => {
+                setError("Could not dismiss. Try again.");
+                dismissing.current = false;
+                setBusy(false);
+              },
+            );
           }}
         />
       </View>
       {sections.map((sct) => (
         <View key={sct.key} style={s.section}>
           <Text style={[shared.eyebrow, s.sectionLabel]}>
-            {sct.label.toUpperCase()} · {sct.lines.length}
+            {sct.label} · {sct.lines.length}
           </Text>
-          {sct.lines.slice(0, 3).map((l, n) => (
+          {(expanded ? sct.lines : sct.lines.slice(0, 3)).map((l, n) => (
             <Pressable
               key={n}
               accessibilityRole="button"
@@ -82,16 +102,24 @@ export function WelcomeBack({
               onPress={() => open(l)}
               style={({ pressed }) => [s.line, pressed && s.pressed]}
             >
-              <Text style={s.lineTitle} numberOfLines={1}>
-                {l.title}
-              </Text>
-              <Text style={shared.small} numberOfLines={1}>
-                {l.detail}
-              </Text>
+              <Text style={s.lineTitle}>{l.title}</Text>
+              <Text style={shared.small}>{l.detail}</Text>
             </Pressable>
           ))}
         </View>
       ))}
+      {sections.some((section) => section.lines.length > 3) && (
+        <SmallAction
+          label={expanded ? "Show less" : "Show all updates"}
+          disabled={busy}
+          onPress={() => setExpanded(!expanded)}
+        />
+      )}
+      {!!error && (
+        <Text style={shared.small} accessibilityRole="alert">
+          {error}
+        </Text>
+      )}
     </View>
   );
 }
@@ -100,11 +128,11 @@ const s = themed(() =>
   StyleSheet.create({
     card: { gap: 10, marginTop: 14 },
     head: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-    title: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },
+    title: { fontFamily: fonts.bold, fontSize: 16, color: colors.text },
     section: { gap: 2, marginTop: 4 },
     sectionLabel: { marginBottom: 2 },
-    line: { paddingVertical: 6, borderRadius: 8 },
+    line: { paddingVertical: 10, minHeight: 44, borderRadius: radii.input },
     pressed: { backgroundColor: colors.surfaceMuted },
-    lineTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    lineTitle: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
   }),
 );

@@ -5,7 +5,7 @@ description: "Design, implement, or review Orbyn UI and UX across web, desktop, 
 
 # Orbyn UI and UX Design
 
-Make Orbyn easy to scan and operate at real window sizes. Keep its palette and
+Make Orbyn easy to scan and operate at real window sizes. Use the agreed palette and
 shared components. Compact default text must remain readable and grow with user
 accessibility settings.
 
@@ -23,6 +23,13 @@ accessibility settings.
 - Inspect the owning screen and shared controls before adding a local override.
   Current tokens live in `packages/core/src/presentation.ts`,
   `desktop/src/styles/global.css`, and `mobile/src/theme/index.ts`.
+
+## Current product direction
+
+Use neutral surfaces and a restrained blue accent. Prefer grouped rows over nested cards,
+compact menus over repeated buttons, and modals/sheets for focused edits. Remove
+ornamental entrance, stagger and hover-lift motion. Preserve meaningful progress.
+Read the current decision in `docs/adr/README.md` before a broad redesign.
 
 ## Design and implement
 

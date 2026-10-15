@@ -54,15 +54,15 @@ export function ProjectDraftReview({
         <p className="muted">Project deadline: {time(project.deadline)}</p>
       )}
       <p className="muted">
-        Creates a project with {project.tasks.length} tasks. Times are in{" "}
-        {project.timezone}. Review covers {project.days} days.
+        Creates {project.tasks.length} tasks · {project.days}-day plan ·{" "}
+        {project.timezone}
       </p>
       {project.unplaced.length > 0 && (
         <p className="project-draft-warning">
           {project.unplaced.length}{" "}
           {project.unplaced.length === 1 ? "task cannot" : "tasks cannot"} be
-          fully scheduled. They will still be created; their unscheduled work
-          needs another plan.
+          fully scheduled. They will still be created; plan their remaining work
+          separately.
         </p>
       )}
       <ol>

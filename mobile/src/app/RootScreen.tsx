@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from "react";
+import { session } from "../lib/session";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   AppState,
   Platform,
@@ -16,7 +17,6 @@ import { clearAlerts } from "../lib/alert";
 import {
   createLabel,
   freshItem,
-  motion,
   planDayPrompt,
   readArrangement,
   deadlineOf,
@@ -60,13 +60,14 @@ import { PlanningProvider } from "../lib/planningContext";
 import { planIncluding, planOnly } from "../lib/plans";
 import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
 import { toggledStatus } from "../lib/progress";
-import { FadeIn, PressableScale, isReducedMotion } from "../motion";
+import { Pressable, isReducedMotion } from "../motion";
 import { AdminSheet } from "../screens/AdminSheet";
 import {
   AssistantComposer,
   AssistantScreen,
   AssistantTopBar,
 } from "../screens/AssistantScreen";
+import { usePaneWidth } from "../hooks/usePaneWidth";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { AuthScreen } from "../screens/AuthScreen";
 import { VerifyGateScreen } from "../screens/VerifyGateScreen";
@@ -124,7 +125,7 @@ import { WelcomeBack } from "../components/followthrough/WelcomeBack";
 import { FocusElsewhere } from "../components/FocusElsewhere";
 import { AnnouncementBanner } from "../screens/AdminInsights";
 import { usePresence } from "../hooks/usePresence";
-import { colors, spacing, themed } from "../theme";
+import { colors, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
 import { flushPending, setGlanceNames, takeNativeOpen } from "../lib/widget";
@@ -186,6 +187,22 @@ const ARRANGE_KEY = "orbyn-plus-arrangement";
  */
 export function RootScreen() {
   const planner = usePlanner();
+  return <AccountRoot key={planner.token || "signed-out"} planner={planner} />;
+}
+
+/** Account-owned sheet history and async destinations cannot survive a new sign-in. */
+function AccountRoot({ planner }: { planner: ReturnType<typeof usePlanner> }) {
+  const mounted = useRef(true);
+  const destinationRead = useRef(0);
+  const editorOperation = useRef(false);
+  const owner = planner.token;
+  const owns = () => mounted.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const {
     token,
     ready,
@@ -226,7 +243,10 @@ export function RootScreen() {
   );
   const insets = useSafeAreaInsets();
   /** An iPad or wide window: Tasks keeps the open task beside it (MOB-12). */
-  const wideScreen = useWindowDimensions().width >= SPLIT_WIDTH;
+  const { fontScale } = useWindowDimensions();
+  const pane = usePaneWidth();
+  const contentWidth = pane.width - insets.left - insets.right;
+  const wideScreen = contentWidth >= SPLIT_WIDTH * Math.max(1, fontScale);
   /** The current Terms version, to know whether to ask for agreement. */
   const [legal, setLegal] = useState<LegalSummary | null>(null);
   useEffect(() => {
@@ -246,12 +266,16 @@ export function RootScreen() {
       clearInterval(timer);
     };
   }, [token]);
-  const [tab, setTab] = useState<Tab>(() => {
+  const [tab, setTabState] = useState<Tab>(() => {
     if (readLocal("orbyn-assistant-view-open") === "true") return "AI";
     // What opens at start on this phone (NAV-12).
     const start = startScreen();
     return start === "tasks" ? "Tasks" : "Today";
   });
+  const setTab = (next: Tab) => {
+    destinationRead.current += 1;
+    setTabState(next);
+  };
   useEffect(() => {
     if (token)
       saveLocal("orbyn-assistant-view-open", tab === "AI" ? "true" : "false");
@@ -267,11 +291,35 @@ export function RootScreen() {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Editing | null>(null);
   const [overnightId, setOvernightId] = useState<string | undefined>();
-  const [sheet, setSheet] = useState<SheetName | null>(null);
+  const [sheet, setSheetState] = useState<SheetName | null>(null);
+  const setSheet = (next: SheetName | null) => {
+    destinationRead.current += 1;
+    setSheetState(next);
+  };
   /** A template to open for review, from a "ready to start" notice. */
   const [templateToOpen, setTemplateToOpen] = useState<string | null>(null);
   /** The task shown in the detail sheet. */
   const [task, setTask] = useState<Item | null>(null);
+  const currentTask = useRef(task);
+  currentTask.current = task;
+  const settingsLock = useRef(false);
+  const [settingsWriting, setSettingsWriting] = useState(false);
+  const projectBeforeLeave = useRef<(() => Promise<boolean>) | null>(null);
+  const documentBeforeLeave = useRef<(() => Promise<boolean>) | null>(null);
+  const taskGuard = useRef<{
+    id: string;
+    guard: () => Promise<boolean>;
+  } | null>(null);
+  const registerTaskGuard = useCallback(
+    (id: string, guard: () => Promise<boolean>) => {
+      const entry = { id, guard };
+      taskGuard.current = entry;
+      return () => {
+        if (taskGuard.current === entry) taskGuard.current = null;
+      };
+    },
+    [],
+  );
   /** The task is open beside Tasks (MOB-12), not in a sheet. */
   const [besideOpen, setBesideOpen] = useState(false);
   /** The meeting note being read, opened from its event. */
@@ -281,13 +329,21 @@ export function RootScreen() {
   /** A saved view to open (from a link or Browse), and the pinned ones. */
   const [viewToOpen, setViewToOpen] = useState<string | null>(null);
   const [pinnedViews, setPinnedViews] = useState<SavedView[]>([]);
-  const loadPinnedViews = () =>
+  const [pinnedFailure, setPinnedFailure] = useState(false);
+  const pinnedRead = useRef(0);
+  const loadPinnedViews = () => {
+    const request = ++pinnedRead.current;
+    setPinnedFailure(false);
     void client.listViews().then(
-      (views) => setPinnedViews(views.filter((v) => v.pinned)),
+      (views) => {
+        if (owns() && request === pinnedRead.current)
+          setPinnedViews(views.filter((v) => v.pinned));
+      },
       () => {
-        // Browse goes without pinned views until the next look.
+        if (owns() && request === pinnedRead.current) setPinnedFailure(true);
       },
     );
+  };
   const [projectSectionToOpen, setProjectSectionToOpen] = useState<
     "decisions" | "history" | null
   >(null);
@@ -304,6 +360,8 @@ export function RootScreen() {
   }, [sheet]);
   /** The task in focus mode. */
   const [focus, setFocus] = useState<Item | null>(null);
+  const currentFocus = useRef(focus);
+  currentFocus.current = focus;
   /** A plan to open the Plan my day sheet on (unfinished work moved forward). */
   const [planSeed, setPlanSeed] = useState<Plan | null>(null);
   /** The booking to open the Booking sheet on (from a notification). */
@@ -338,6 +396,13 @@ export function RootScreen() {
   /** The space above the tab bar; on the AI tab it makes room for the keyboard. */
   const keyboardArea = useRef<React.ComponentRef<typeof View>>(null);
   const keyboard = useKeyboardInset(keyboardArea, tab === "AI");
+  const centerNewChat =
+    tab === "AI" &&
+    assistant.turns.length === 0 &&
+    !assistant.thinking &&
+    !assistant.restoringChat &&
+    !assistant.runProgress &&
+    !assistant.activeChatId;
   // Show the newest message: once per new message or reply, after it's laid
   // out. Tied to the count, not to content size, so it can't feed back.
   const messages = assistant.turns.length + (assistant.thinking ? 1 : 0);
@@ -445,9 +510,18 @@ export function RootScreen() {
     if (start === "agenda") presentRef.current?.({ sheet: "agenda" });
     else if (start === "last-page") {
       const id = lastPage();
+      const request = destinationRead.current;
+      const account = session.token;
+      let alive = true;
       if (id)
         void client.getDoc(id).then(
           (doc) => {
+            if (
+              !alive ||
+              session.token !== account ||
+              request !== destinationRead.current
+            )
+              return;
             setNoteBlockId(null);
             setNote(doc);
             presentRef.current?.({ sheet: "note" });
@@ -456,28 +530,46 @@ export function RootScreen() {
             // Gone or no longer yours: Today, as usual.
           },
         );
+      return () => {
+        alive = false;
+      };
     }
   }, [inApp]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!token || Platform.OS === "web") return;
+    let checking = false;
     const check = async () => {
-      // Ticks and captures from widgets, controls, Siri and the tile.
-      void flushPending().then((sent) => {
-        if (sent) void refresh({ silent: true }).catch(() => {});
-      });
-      const asked = takeNativeOpen();
-      const link = asked ? parseAppLink(asked) : null;
-      if (link) openLink.current?.(link);
-      const { files, shared: words } = await takeShared();
-      if (words) {
-        if (presentRef.current) presentRef.current({ share: words });
-        else setSharedIn(words);
+      if (checking || !owns()) return;
+      checking = true;
+      try {
+        // Ticks and captures from widgets, controls, Siri and the tile.
+        const flushed = await flushPending();
+        if (!owns()) return;
+        if (flushed) void refresh({ silent: true }).catch(() => {});
+        const asked = takeNativeOpen();
+        const link = asked ? parseAppLink(asked) : null;
+        if (link) openLink.current?.(link);
+        const { files, shared: words } = await takeShared();
+        if (!owns()) return;
+        if (words) {
+          if (presentRef.current) presentRef.current({ share: words });
+          else setSharedIn(words);
+        }
+        if (!files.length) return;
+        for (const file of files) {
+          if (!owns()) return;
+          await sendLocalFile(file).catch((e: Error) => {
+            if (owns()) setError(errorText(e));
+          });
+        }
+        if (!owns()) return;
+        setDocsInUploads(true);
+        if (!words) presentRef.current?.({ sheet: "docs" });
+      } catch (error) {
+        if (owns()) setError(errorText(error));
+      } finally {
+        checking = false;
       }
-      if (!files.length) return;
-      for (const file of files)
-        await sendLocalFile(file).catch((e: Error) => setError(errorText(e)));
-      setDocsInUploads(true);
-      if (!words) presentRef.current?.({ sheet: "docs" });
     };
     void check();
     const sub = AppState.addEventListener("change", (state) => {
@@ -492,6 +584,7 @@ export function RootScreen() {
     if (!token) return;
     void registerReviewActions();
     const handle = (response: Notifications.NotificationResponse) => {
+      if (!owns()) return;
       const request = response.notification.request;
       const key = `${request.identifier}:${response.actionIdentifier}`;
       if (handledPush.current === key) return;
@@ -501,7 +594,9 @@ export function RootScreen() {
       if (answer) {
         void answerReview(answer).then(
           () => void Notifications.dismissNotificationAsync(request.identifier),
-          (e: Error) => setError(errorText(e)),
+          (e: Error) => {
+            if (owns()) setError(errorText(e));
+          },
         );
         return;
       }
@@ -569,6 +664,7 @@ export function RootScreen() {
     );
 
   const show = (next: Next) => {
+    if (!owns()) return;
     if ("sheet" in next) {
       if (next.sheet === "overnight") setOvernightId(next.nightId);
       setSheet(next.sheet);
@@ -577,6 +673,8 @@ export function RootScreen() {
   };
   /** Present a sheet or the editor; an open sheet closes first and returns later. */
   const present = (next: Next) => {
+    if (!owns() || (sheet === "settings" && settingsLock.current)) return;
+    destinationRead.current += 1;
     if (sheet) {
       back.current.push(sheet);
       setSheet(null);
@@ -605,17 +703,65 @@ export function RootScreen() {
   };
   /** On Android there is no onDismiss, so return to the previous sheet now. */
   const closeSheet = () => {
+    if (sheet === "settings" && settingsLock.current) return;
+    destinationRead.current += 1;
     setSheet(null);
     if (Platform.OS !== "ios") goBack();
   };
   const closeEditor = () => {
+    destinationRead.current += 1;
     setEditing(null);
     if (Platform.OS !== "ios") goBack();
   };
-  const openTask = (item: Item, occurrence?: OccurrenceRef | null) => {
+  const openTask = async (item: Item, occurrence?: OccurrenceRef | null) => {
+    if (!owns()) return;
+    const request = ++destinationRead.current;
+    const projectDeparture =
+      sheet === "projects" ? projectBeforeLeave.current : null;
+    const documentDeparture = documentBeforeLeave.current;
+    const previous = currentTask.current?.id;
+    const guard = taskGuard.current;
+    if (
+      previous &&
+      guard?.id === previous &&
+      previous !== item.id &&
+      !(await guard.guard())
+    )
+      return;
+    if (
+      !owns() ||
+      request !== destinationRead.current ||
+      previous !== currentTask.current?.id
+    )
+      return;
+    if (
+      projectDeparture &&
+      (projectBeforeLeave.current !== projectDeparture ||
+        !(await projectDeparture()))
+    )
+      return;
+    if (
+      !owns() ||
+      request !== destinationRead.current ||
+      previous !== currentTask.current?.id ||
+      (projectDeparture && projectBeforeLeave.current !== projectDeparture)
+    )
+      return;
+    if (
+      documentDeparture &&
+      (documentBeforeLeave.current !== documentDeparture ||
+        !(await documentDeparture()))
+    )
+      return;
+    if (
+      !owns() ||
+      request !== destinationRead.current ||
+      (documentDeparture && documentBeforeLeave.current !== documentDeparture)
+    )
+      return;
     setTask(item);
     setTaskOccurrence(occurrence ?? null);
-    // Wide, on Tasks: beside the list rather than over it.
+    if (sheet === "task" || (besideOpen && tab === "Tasks" && !sheet)) return;
     if (wideScreen && tab === "Tasks" && !sheet) {
       setBesideOpen(true);
       return;
@@ -650,6 +796,55 @@ export function RootScreen() {
     setEditRepeat(null);
     present({ edit: item });
   };
+  /** Adopt a loaded or newly-created page only while its source still owns navigation. */
+  const showDocument = async (
+    load: () => Promise<Doc>,
+    blockId: string | null = null,
+  ) => {
+    if (!owns()) return;
+    const request = ++destinationRead.current;
+    const departureOwner =
+      sheet === "projects"
+        ? projectBeforeLeave
+        : documentBeforeLeave.current
+          ? documentBeforeLeave
+          : null;
+    const departure = departureOwner?.current;
+    const taskDeparture = sheet === "task" ? taskGuard.current : null;
+    const doc = await load();
+    if (!owns() || request !== destinationRead.current) return;
+    if (
+      taskDeparture &&
+      (taskGuard.current !== taskDeparture || !(await taskDeparture.guard()))
+    )
+      return;
+    if (
+      departure &&
+      (departureOwner?.current !== departure || !(await departure()))
+    )
+      return;
+    if (
+      !owns() ||
+      request !== destinationRead.current ||
+      (departure && departureOwner?.current !== departure) ||
+      (taskDeparture && taskGuard.current !== taskDeparture)
+    )
+      return;
+    setNote(doc);
+    setNoteBlockId(blockId);
+    present({ sheet: "note" });
+  };
+  const openDocument = (
+    id: string,
+    blockId: string | null = null,
+    forEditor = false,
+  ) =>
+    act(() =>
+      showDocument(
+        () => (forEditor ? client.getDocForEditor(id) : client.getDoc(id)),
+        blockId,
+      ),
+    );
   const clearError = () => setError("");
 
   const today = new Date();
@@ -660,7 +855,7 @@ export function RootScreen() {
   /** Personal pages are always yours; a team's need `items:write`. */
   const canWriteIn = (teamId: string | null) => {
     const team = teamId && teams.find((t) => t.id === teamId);
-    return !team || hasTeamPermission(team.role, "items:write");
+    return !teamId || (!!team && hasTeamPermission(team.role, "items:write"));
   };
 
   const listHandlers = {
@@ -669,7 +864,9 @@ export function RootScreen() {
     onOpen: openTask,
     canToggle: (i: Item) => {
       const team = i.team_id && teams.find((t) => t.id === i.team_id);
-      return !team || hasTeamPermission(team.role, "items:write");
+      return (
+        !i.team_id || (!!team && hasTeamPermission(team.role, "items:write"))
+      );
     },
     onToggle: (i: Item) =>
       act(async () => {
@@ -722,9 +919,28 @@ export function RootScreen() {
     setFocus(item);
     present({ sheet: "focus" });
   };
-  const closeFocus = () => {
-    // Return to the detail of the task last in focus.
-    if (focus) setTask((t) => (t && t.id === focus.id ? t : focus));
+  const closeFocus = async () => {
+    const request = ++destinationRead.current;
+    const target = currentFocus.current;
+    const previous = currentTask.current?.id;
+    const guard = taskGuard.current;
+    const allowed =
+      !target ||
+      !previous ||
+      previous === target.id ||
+      !guard ||
+      guard.id !== previous ||
+      (await guard.guard());
+    if (
+      !owns() ||
+      request !== destinationRead.current ||
+      previous !== currentTask.current?.id ||
+      target?.id !== currentFocus.current?.id
+    )
+      return;
+    if (allowed && target)
+      setTask((current) => (current?.id === target.id ? current : target));
+    // Keeping the draft returns to the original task rather than trapping Focus.
     closeSheet();
   };
   const openPlanner = (seed: Plan | null, title?: string) => {
@@ -768,12 +984,14 @@ export function RootScreen() {
     });
   /** Opens a task or event by id, fetching it when the list doesn't have it. */
   const openTaskById = (id: string) => {
+    if (!owns()) return;
     const found = items.find((i) => i.id === id);
-    if (found) openTask(found);
-    else
-      void act(async () => {
-        openTask(await client.getItem(id));
-      });
+    if (found) return openTask(found);
+    const request = ++destinationRead.current;
+    void act(async () => {
+      const item = await client.getItem(id);
+      if (owns() && request === destinationRead.current) openTask(item);
+    });
   };
   /** A planner notice's action; the notice is marked read alongside. */
   const noticeAction = (n: Notice, start: () => Promise<void>) => {
@@ -786,27 +1004,32 @@ export function RootScreen() {
   };
   /** Scan a page of notes: the camera, then Uploads, where it's read. */
   const runScan = () =>
-    void scanAndSend((m) => setError(m)).then((sent) => {
-      if (!sent) return;
+    void scanAndSend((m) => {
+      if (owns()) setError(m);
+    }).then((sent) => {
+      if (!sent || !owns()) return;
       setDocsInUploads(true);
       present({ sheet: "docs" });
       showToast({ text: "Scanned. It’s being read into a page in Uploads." });
     });
 
   /** Focus on what's most worth doing now, as Up next picks it. */
-  const startFocus = () =>
-    void act(async () => {
+  const startFocus = () => {
+    const request = ++destinationRead.current;
+    return act(async () => {
       const next = await client.getUpNext().catch(() => null);
+      if (!owns() || request !== destinationRead.current) return;
       const id = next?.suggestions[0]?.item_id;
-      const picked =
-        (id &&
-          (items.find((i) => i.id === id) ??
-            (await client.getItem(id).catch(() => null)))) ||
-        nextUp(items)[0];
+      let picked = id ? items.find((item) => item.id === id) : undefined;
+      if (id && !picked)
+        picked = (await client.getItem(id).catch(() => null)) ?? undefined;
+      if (!owns() || request !== destinationRead.current) return;
+      picked ??= nextUp(items)[0];
       if (!picked)
         return showToast({ text: "Add a task first, then focus on it." });
       openFocus(picked);
     });
+  };
 
   /** What each way of starting something from the + does. */
   const runCreate = (id: CreateActionId) => {
@@ -838,13 +1061,7 @@ export function RootScreen() {
 
   /** A page or task from recent changes (SHR-02). */
   const openChange = (kind: "doc" | "task", id: string) =>
-    kind === "doc"
-      ? void act(async () => {
-          setNote(await client.getDoc(id));
-          setNoteBlockId(null);
-          present({ sheet: "note" });
-        })
-      : void act(async () => openTask(await client.getItem(id)));
+    kind === "doc" ? openDocument(id) : openTaskById(id);
 
   /** Open Settings, at a section when a search chose one (NAV-10). */
   const openSettingsAt = (section: string | null) => {
@@ -862,7 +1079,7 @@ export function RootScreen() {
     back.current = [];
     setTab(to);
   };
-  const commandRun: Record<string, () => void> = {
+  const commandRun: Record<string, () => void | Promise<void>> = {
     "go.overview": tabTo("Today"),
     "go.my-tasks": tabTo("Tasks"),
     "go.calendar": tabTo("Calendar"),
@@ -914,7 +1131,7 @@ export function RootScreen() {
     const place = entry?.phone;
     if (place && "sheet" in place) return present({ sheet: place.sheet });
     if (place) return openSettingsAt(place.section);
-    commandRun[c.id]?.();
+    return commandRun[c.id]?.();
   };
 
   /** A link into the app (orbyn://, a quick action, a shared link) opens its thing. */
@@ -932,7 +1149,22 @@ export function RootScreen() {
               : { kind: "view", id: item.id },
     );
 
-  openLink.current = (link) => {
+  openLink.current = async (link) => {
+    if (link.kind !== "doc" && link.kind !== "task") {
+      const request = ++destinationRead.current;
+      const departure =
+        documentBeforeLeave.current ??
+        (sheet === "projects" ? projectBeforeLeave.current : null);
+      if (departure) {
+        try {
+          if (!(await departure())) return;
+        } catch (error) {
+          if (owns()) setError(errorText(error));
+          return;
+        }
+      }
+      if (!owns() || request !== destinationRead.current) return;
+    }
     switch (link.kind) {
       case "add":
         // Words to add fill Today's quick add, to check and add with a tap:
@@ -968,14 +1200,9 @@ export function RootScreen() {
           present({ share: { url: link.url, text: link.text ?? "" } });
         return;
       case "task":
-        return void act(async () => openTask(await client.getItem(link.id)));
+        return openTaskById(link.id);
       case "doc":
-        return void act(async () => {
-          // A link to one line of a page opens the page there (LNK-04).
-          setNoteBlockId(link.block ?? null);
-          setNote(await client.getDocForEditor(link.id));
-          present({ sheet: "note" });
-        });
+        return openDocument(link.id, link.block ?? null, true);
       case "project":
         setProjectsStart({ open: link.id });
         return present({ sheet: "projects" });
@@ -1035,10 +1262,7 @@ export function RootScreen() {
       });
     } else if (kind === "mention" && text("ref").startsWith("doc:")) {
       const docId = text("ref").slice(4).split(":")[0];
-      void act(async () => {
-        setNote(await client.getDoc(docId));
-        present({ sheet: "note" });
-      });
+      void openDocument(docId);
     } else if (kind === "review" && text("ref").startsWith("proposal:")) {
       setReviewFocus(text("ref").slice("proposal:".length));
       present({ sheet: "review" });
@@ -1049,10 +1273,19 @@ export function RootScreen() {
       void act(async () => openTask(await client.getItem(itemId)));
   };
   const planChanged = () => void refresh({ animate: true }).catch(() => {});
+  const editAction = (operation: () => Promise<void>) => {
+    if (!owns() || editorOperation.current) return Promise.resolve();
+    editorOperation.current = true;
+    return act(operation).finally(() => {
+      editorOperation.current = false;
+    });
+  };
   const saveEditing = () =>
-    act(async () => {
-      if (!editing) return;
-      let sent: unknown = true;
+    editAction(async () => {
+      if (!editing || !owns()) return;
+      if (!canWriteIn(editing.team_id))
+        throw new Error("You cannot change this item.");
+      let sent: Item | null;
       if ("id" in editing) {
         // What the edit started from: what "changed" is measured against if
         // it has to wait for a connection.
@@ -1063,7 +1296,7 @@ export function RootScreen() {
         const repeat = editRepeat?.itemId === editing.id ? editRepeat : null;
         if (repeat) {
           const scope = await askScope(editing.kind, "save");
-          if (!scope) return;
+          if (!scope || !owns()) return;
           sent = await outbox.updateItem(
             base,
             scope === "all"
@@ -1078,23 +1311,35 @@ export function RootScreen() {
             { scope, occurrence: repeat.occurrence },
           );
         } else sent = await outbox.updateItem(base, body);
-        const saved = editing;
+        if (!owns()) return;
+        const saved = sent ?? editing;
         setTask((t) => (t && t.id === saved.id ? { ...t, ...saved } : t));
       } else sent = await outbox.createItem(editing);
+      if (!owns()) return;
       closeEditor();
       // Kept on the phone: the lists already show it; there's nothing to fetch.
-      if (sent) await refresh();
+      if (sent) {
+        try {
+          await refresh();
+        } catch {
+          if (owns())
+            setError("Item saved. Refresh your planner to update the list.");
+        }
+      }
     });
   const deleteEditing = () =>
-    act(async () => {
-      if (!editing || !("id" in editing)) return;
+    editAction(async () => {
+      if (!editing || !("id" in editing) || !owns()) return;
+      if (!canWriteIn(editing.team_id))
+        throw new Error("You cannot delete this item.");
       const repeat = editRepeat?.itemId === editing.id ? editRepeat : null;
       const scope = repeat ? await askScope(editing.kind, "delete") : "all";
-      if (!scope) return;
+      if (!scope || !owns()) return;
       const sent = await outbox.deleteItem(
         editing,
         repeat ? { scope, occurrence: repeat.occurrence } : undefined,
       );
+      if (!owns()) return;
       // Don't return to the detail sheet of an item that's gone.
       if (
         scope !== "this" &&
@@ -1103,7 +1348,14 @@ export function RootScreen() {
       )
         back.current.pop();
       closeEditor();
-      if (sent !== null) await refresh();
+      if (sent !== null) {
+        try {
+          await refresh();
+        } catch {
+          if (owns())
+            setError("Item deleted. Refresh your planner to update the list.");
+        }
+      }
     });
   const sidePadding = {
     paddingLeft: insets.left + spacing.page,
@@ -1139,15 +1391,19 @@ export function RootScreen() {
   /** The task, as a sheet or (on an iPad or wide window) beside Tasks (MOB-12). */
   const taskDetail = (inline: boolean) => (
     <TaskDetail
-      visible={inline ? !!task : sheet === "task"}
+      visible={
+        inline
+          ? !!task && !sheet && !editing
+          : sheet === "task" ||
+            (besideOpen && tab === "Tasks" && !sheet && !editing)
+      }
       inline={inline}
       item={task}
       items={items}
       teams={teams}
-      onOpenItem={(i) => {
-        // Switch in place: a subtask or the task above it.
-        setTaskOccurrence(null);
-        setTask(i);
+      registerLeaveGuard={registerTaskGuard}
+      onOpenItem={(item) => {
+        void openTask(item);
       }}
       onOpenProject={(id) => {
         setProjectToOpen(id);
@@ -1160,39 +1416,25 @@ export function RootScreen() {
         setSheet(null);
         setTab("AI");
       }}
-      onOpenPage={(id, blockId) =>
-        void client.getDoc(id).then(
-          (doc) => {
-            setNote(doc);
-            setNoteBlockId(blockId ?? null);
-            // Closing the page returns to the task.
-            present({ sheet: "note" });
-          },
-          (e) => setError(errorText(e)),
-        )
-      }
-      onClose={inline ? () => setBesideOpen(false) : closeSheet}
-      onDismiss={onSheetDismissed}
+      onOpenPage={(id, blockId) => openDocument(id, blockId ?? null)}
+      onClose={besideOpen ? () => setBesideOpen(false) : closeSheet}
+      onDismiss={besideOpen ? undefined : onSheetDismissed}
       occurrence={
         task && taskOccurrence?.itemId === task.id
           ? taskOccurrence.occurrence
           : null
       }
       onOpenNote={(event: Item, series?: boolean) =>
-        void client
-          // Opened on one class of a repeating event: that class's
-          // note, unless the series' own was asked for.
-          .itemNote(
-            event.id,
-            !series && event.rrule && taskOccurrence?.itemId === event.id
-              ? taskOccurrence.occurrence
-              : null,
-          )
-          .then((made) => {
-            setNote(made);
-            setSheet("note");
-          })
-          .catch((e: Error) => setError(errorText(e)))
+        void act(() =>
+          showDocument(() =>
+            client.itemNote(
+              event.id,
+              !series && event.rrule && taskOccurrence?.itemId === event.id
+                ? taskOccurrence.occurrence
+                : null,
+            ),
+          ),
+        )
       }
       onEdit={editItem}
       onFocus={openFocus}
@@ -1215,7 +1457,7 @@ export function RootScreen() {
       planned={planned}
       today={todayList}
     >
-      <View style={s.screen}>
+      <View style={s.screen} onLayout={pane.onLayout}>
         {tab === "AI" ? (
           // The assistant draws its own bar (menu, name, new chat), as chat apps do.
           <View style={{ paddingTop: insets.top }} />
@@ -1226,7 +1468,7 @@ export function RootScreen() {
             <View style={s.headerRow}>
               <Brand size={24} />
               <View style={s.headerActions}>
-                <PressableScale
+                <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={
                     notices.some((n) => !n.read)
@@ -1242,10 +1484,10 @@ export function RootScreen() {
                     color={tab === "Inbox" ? colors.accent : colors.textSoft}
                   />
                   {notices.some((n) => !n.read) && <View style={s.unreadDot} />}
-                </PressableScale>
+                </Pressable>
                 {/* One + on every tab: a tap runs the favourite (New task
                   unless another is chosen), a long press offers the rest. */}
-                <PressableScale
+                <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={createLabel(arrangement.favourite)}
                   accessibilityHint="Hold for every way to start something."
@@ -1259,7 +1501,6 @@ export function RootScreen() {
                     if (e.nativeEvent.actionName === "longpress")
                       setCreating(true);
                   }}
-                  hitSlop={8}
                   delayLongPress={350}
                   onPress={() => runCreate(arrangement.favourite)}
                   onLongPress={() => {
@@ -1271,10 +1512,10 @@ export function RootScreen() {
                   <Icon
                     name="plus"
                     size={20}
-                    color={colors.white}
+                    color={colors.onAccent}
                     strokeWidth={2.2}
                   />
-                </PressableScale>
+                </Pressable>
               </View>
             </View>
           </View>
@@ -1314,7 +1555,11 @@ export function RootScreen() {
               style={s.scroll}
               scrollEnabled={!dragging}
               stickyHeaderIndices={tab === "Calendar" ? [1] : undefined}
-              contentContainerStyle={[s.content, sidePadding]}
+              contentContainerStyle={[
+                s.content,
+                sidePadding,
+                centerNewChat && { flexGrow: 1 },
+              ]}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="interactive"
               refreshControl={
@@ -1329,27 +1574,42 @@ export function RootScreen() {
               <View style={s.column}>
                 {tab === "Today" && (
                   <Text style={shared.eyebrow}>
-                    {today
-                      .toLocaleDateString([], {
-                        weekday: "long",
-                        month: "long",
-                        day: "numeric",
-                      })
-                      .toUpperCase()}
+                    {today.toLocaleDateString([], {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}
                   </Text>
                 )}
                 {/* Chat and Calendar provide their own compact page headings. */}
                 {tab !== "AI" && tab !== "Calendar" && (
-                  <FadeIn key={`head-${tab}`} duration={motion.slow}>
+                  <View key={`head-${tab}`}>
                     <Text style={shared.title}>{tabTitle(tab, user)}</Text>
-                    {tab === "Today" && (
+                    {tab === "Today" && tabSubtitle(tab) && (
                       <Text style={[shared.subtitle, s.subtitle]}>
                         {tabSubtitle(tab)}
                       </Text>
                     )}
-                  </FadeIn>
+                  </View>
                 )}
                 <ErrorBanner error={error} onDismiss={() => setError("")} />
+                {tab === "Browse" && pinnedFailure && (
+                  <View style={s.readRecovery}>
+                    <Text
+                      accessibilityRole="alert"
+                      style={[shared.small, s.recoveryText]}
+                    >
+                      Pinned views unavailable.
+                    </Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={loadPinnedViews}
+                      style={s.retry}
+                    >
+                      <Text style={[shared.small, s.retryText]}>Retry</Text>
+                    </Pressable>
+                  </View>
+                )}
                 <SyncBar
                   outbox={planner.outbox}
                   onOpen={() => present({ sheet: "sync" })}
@@ -1378,20 +1638,18 @@ export function RootScreen() {
                 onLayout={(e) => {
                   contentY.current = e.nativeEvent.layout.y;
                 }}
-                style={s.column}
+                style={[s.column, centerNewChat && s.fill]}
               >
-                <FadeIn key={`body-${tab}`} duration={motion.slow}>
+                <View
+                  key={`body-${tab}`}
+                  style={centerNewChat ? s.fill : undefined}
+                >
                   {tab === "Today" && (
                     <WelcomeBack
                       onOpenItem={(id) =>
                         void act(async () => openTask(await client.getItem(id)))
                       }
-                      onOpenDoc={(docId) =>
-                        void client.getDoc(docId).then((doc) => {
-                          setNote(doc);
-                          present({ sheet: "note" });
-                        })
-                      }
+                      onOpenDoc={openDocument}
                       onOpenAsks={() => setTab("Inbox")}
                     />
                   )}
@@ -1527,17 +1785,14 @@ export function RootScreen() {
                         if (target === "project") {
                           setProjectsStart({ open: id });
                           present({ sheet: "projects" });
-                        } else
-                          void act(async () => {
-                            setNote(await client.getDoc(id));
-                            present({ sheet: "note" });
-                          });
+                        } else void openDocument(id);
                       }}
                       {...listHandlers}
                     />
                   )}
                   {tab === "AI" && (
                     <AssistantScreen
+                      centerComposer={centerNewChat}
                       assistant={assistant}
                       drawerOpen={assistantMenu}
                       onDrawerChange={setAssistantMenu}
@@ -1553,11 +1808,7 @@ export function RootScreen() {
                       busy={busy}
                       onOpenSource={(source) => {
                         if ("doc_id" in source)
-                          void client.getDoc(source.doc_id).then((doc) => {
-                            setNoteBlockId(source.block_id ?? null);
-                            setNote(doc);
-                            setSheet("note");
-                          });
+                          openDocument(source.doc_id, source.block_id ?? null);
                         else if (source.kind === "task")
                           openTaskById(source.id);
                         else if (source.project_id) {
@@ -1571,12 +1822,7 @@ export function RootScreen() {
                           setSheet("projects");
                         }
                       }}
-                      onKeptNote={(docId) =>
-                        void client.getDoc(docId).then((doc) => {
-                          setNote(doc);
-                          setSheet("note");
-                        })
-                      }
+                      onKeptNote={openDocument}
                       onShowOnCalendar={(at) => {
                         setSearch("");
                         setTab("Calendar");
@@ -1648,19 +1894,9 @@ export function RootScreen() {
                         )
                       }
                       onOpenDoc={(n, docId) =>
-                        void noticeAction(n, () =>
-                          act(async () => {
-                            setNote(await client.getDoc(docId));
-                            present({ sheet: "note" });
-                          }),
-                        )
+                        void noticeAction(n, () => openDocument(docId))
                       }
-                      onOpenPage={(docId) =>
-                        void act(async () => {
-                          setNote(await client.getDoc(docId));
-                          present({ sheet: "note" });
-                        })
-                      }
+                      onOpenPage={(docId) => void openDocument(docId)}
                       onStartSession={(n) =>
                         void noticeAction(n, () =>
                           act(async () => {
@@ -1696,12 +1932,20 @@ export function RootScreen() {
                       }
                     />
                   )}
-                </FadeIn>
+                </View>
               </View>
             </ScrollView>
-            {taskBeside && <View style={s.splitPanel}>{taskDetail(true)}</View>}
+            <View
+              style={
+                taskBeside
+                  ? [s.splitPanel, { width: 420 * Math.max(1, fontScale) }]
+                  : s.taskModalAnchor
+              }
+            >
+              {taskDetail(taskBeside)}
+            </View>
           </View>
-          {tab === "AI" && (
+          {tab === "AI" && !centerNewChat && (
             <View style={[s.footer, sidePadding]}>
               <View style={s.column}>
                 <AssistantComposer assistant={assistant} busy={busy} />
@@ -1738,6 +1982,10 @@ export function RootScreen() {
           onClose={() => setCreating(false)}
         />
         <ShareIntoSheet
+          userId={user?.id}
+          teamNames={Object.fromEntries(
+            teams.map((team) => [team.id, team.name]),
+          )}
           shared={sharedIn}
           canWriteIn={canWriteIn}
           onClose={() => setSharedIn(null)}
@@ -1753,14 +2001,7 @@ export function RootScreen() {
                 : doc
                   ? {
                       label: "Open",
-                      run: () =>
-                        void client.getDoc(doc.id).then(
-                          (d) => {
-                            setNote(d);
-                            present({ sheet: "note" });
-                          },
-                          () => {},
-                        ),
+                      run: () => void openDocument(doc.id),
                     }
                   : undefined,
             });
@@ -1781,7 +2022,6 @@ export function RootScreen() {
           onClose={closeEditor}
           onDismissed={goBack}
         />
-        {!taskBeside && taskDetail(false)}
         <FocusScreen
           item={sheet === "focus" ? focus : null}
           items={items}
@@ -1825,17 +2065,38 @@ export function RootScreen() {
           openViewId={viewToOpen}
           onViewOpened={() => setViewToOpen(null)}
           actions={{
-            onToggle: listHandlers.onToggle,
-            onSetStatus: listHandlers.onSetStatus,
+            onToggle: async (item) => {
+              if (!listHandlers.canToggle(item))
+                throw new Error("You cannot change this task.");
+              const owner = token;
+              const status = toggledStatus(item);
+              const sent = await outbox.postItemUpdate(item, { status });
+              if (session.token !== owner)
+                throw new Error("Your account changed.");
+              if (sent) {
+                if (status === "done") celebrate(item.title);
+                await refresh();
+              }
+              return sent ? "saved" : "queued";
+            },
+            onSetStatus: async (item, status) => {
+              if (!listHandlers.canToggle(item))
+                throw new Error("You cannot change this task.");
+              const owner = token;
+              const sent = await outbox.postItemUpdate(item, { status });
+              if (session.token !== owner)
+                throw new Error("Your account changed.");
+              if (sent) {
+                if (status === "done") celebrate(item.title);
+                await refresh();
+              }
+              return sent ? "saved" : "queued";
+            },
           }}
           onOpenRow={(row) => {
             if (row.kind === "task")
               void act(async () => openTask(await client.getItem(row.id)));
-            else if (row.kind === "page")
-              void act(async () => {
-                setNote(await client.getDoc(row.id));
-                present({ sheet: "note" });
-              });
+            else if (row.kind === "page") void openDocument(row.id);
             else {
               setProjectsStart({ open: row.id });
               present({ sheet: "projects" });
@@ -1859,6 +2120,8 @@ export function RootScreen() {
         <Sheet
           visible={sheet === "settings"}
           title="Settings"
+          closeDisabled={settingsWriting}
+          guardedClose
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
         >
@@ -1872,6 +2135,10 @@ export function RootScreen() {
           >
             <View style={sheetStyles.column}>
               <SettingsScreen
+                onBusyChange={(pending) => {
+                  settingsLock.current = pending;
+                  setSettingsWriting(pending);
+                }}
                 user={user}
                 busy={busy}
                 act={act}
@@ -1890,8 +2157,14 @@ export function RootScreen() {
                 openAt={settingsAt}
                 arrangement={accountPrefs.prefs.sidebar}
                 onArrange={(sidebar) => accountPrefs.save({ sidebar })}
+                preferencesReady={accountPrefs.ready}
+                preferencesError={accountPrefs.error}
+                onReloadPreferences={accountPrefs.reload}
                 scrollTo={(y) =>
-                  settingsScroller.current?.scrollTo({ y, animated: true })
+                  settingsScroller.current?.scrollTo({
+                    y,
+                    animated: !isReducedMotion(),
+                  })
                 }
                 onAccountDeleted={() => {
                   setSheet(null);
@@ -1908,18 +2181,19 @@ export function RootScreen() {
           teams={teams}
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
-          onOpen={(type, id, blockId) => {
-            if (type === "doc")
-              void act(async () => {
-                setNote(await client.getDoc(id));
-                setNoteBlockId(blockId);
-                present({ sheet: "note" });
-              });
-            else if (type === "project") {
+          onOpen={async (type, id, blockId) => {
+            if (!owns()) return;
+            const request = ++destinationRead.current;
+            if (type === "doc") {
+              await showDocument(() => client.getDoc(id), blockId);
+            } else if (type === "project") {
               setProjectsStart({ open: id });
               present({ sheet: "projects" });
-            } else if (type === "task" || type === "event")
-              void act(async () => openTask(await client.getItem(id)));
+            } else if (type === "task" || type === "event") {
+              const item = await client.getItem(id);
+              if (!owns() || request !== destinationRead.current) return;
+              await openTask(item);
+            }
           }}
           canRun={canRunCommand}
           // What a command opens comes over the search, as a result does.
@@ -1944,12 +2218,7 @@ export function RootScreen() {
               markReleaseSeen();
               setUser(next);
               void refresh();
-              if (made?.brief_id)
-                void act(async () => {
-                  setNote(await client.getDoc(made.brief_id!));
-                  setNoteBlockId(null);
-                  present({ sheet: "note" });
-                });
+              if (made?.brief_id) void openDocument(made.brief_id);
             }}
           />
         )}
@@ -1971,12 +2240,12 @@ export function RootScreen() {
           onClose={closeSheet}
           onDismiss={onSheetDismissed}
           onOpenPage={(doc) => {
-            setNote(doc);
-            present({ sheet: "note" });
+            void act(() => showDocument(() => Promise.resolve(doc)));
           }}
           onPlanned={() => void refresh()}
         />
         <DocsSheet
+          beforeLeave={documentBeforeLeave}
           onSearch={() => {
             setSearchStart("");
             present({ sheet: "search" });
@@ -2011,6 +2280,7 @@ export function RootScreen() {
           }}
         />
         <DocsSheet
+          beforeLeave={documentBeforeLeave}
           onSearch={() => {
             setSearchStart("");
             present({ sheet: "search" });
@@ -2029,6 +2299,7 @@ export function RootScreen() {
           onItemsChanged={() => void refresh()}
         />
         <DocsSheet
+          beforeLeave={documentBeforeLeave}
           onSearch={() => {
             setSearchStart("");
             present({ sheet: "search" });
@@ -2042,6 +2313,7 @@ export function RootScreen() {
           onItemsChanged={() => void refresh()}
         />
         <ProjectsSheet
+          beforeLeave={projectBeforeLeave}
           initialProjectId={projectToOpen}
           initialSection={projectSectionToOpen}
           initialSourceId={projectSourceId}
@@ -2067,7 +2339,7 @@ export function RootScreen() {
           onDismiss={onSheetDismissed}
           onOpenItem={openTask}
           onOpenPlanner={openPlanner}
-          onAskProject={(project, question) => {
+          onAskProject={(project, question, chatId) => {
             assistant.setScope({
               kind: "project",
               id: project.id,
@@ -2078,14 +2350,12 @@ export function RootScreen() {
             pending.current = null;
             setSheet(null);
             setTab("AI");
+            if (chatId)
+              void assistant
+                .openChat(chatId)
+                .catch((error) => setError(errorText(error)));
           }}
-          onOpenNote={(docId, blockId) =>
-            void client.getDoc(docId).then((doc) => {
-              setNote(doc);
-              setNoteBlockId(blockId ?? null);
-              present({ sheet: "note" });
-            })
-          }
+          onOpenNote={(id, blockId) => openDocument(id, blockId ?? null)}
           onItemsChanged={() => void refresh()}
         />
         <TagsSheet
@@ -2192,7 +2462,7 @@ const s = themed(() =>
     notification: {
       width: 44,
       height: 44,
-      borderRadius: 22,
+      borderRadius: radii.pill,
       backgroundColor: colors.surface,
       alignItems: "center",
       justifyContent: "center",
@@ -2203,7 +2473,7 @@ const s = themed(() =>
       right: 10,
       width: 7,
       height: 7,
-      borderRadius: 4,
+      borderRadius: radii.check,
       backgroundColor: colors.highText,
     },
     header: {
@@ -2219,12 +2489,14 @@ const s = themed(() =>
       width: "100%",
       maxWidth: spacing.maxContent,
       alignSelf: "center",
+      flexWrap: "wrap",
+      gap: 8,
     },
     // The way to make anything, on every screen: it gets a thumb's worth.
     add: {
       width: 44,
       height: 44,
-      borderRadius: 22,
+      borderRadius: radii.pill,
       backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",
@@ -2234,6 +2506,7 @@ const s = themed(() =>
     fill: { flex: 1 },
     split: { flex: 1, flexDirection: "row" },
     splitPanel: { width: 420, maxWidth: "45%" },
+    taskModalAnchor: { width: 0, height: 0 },
     body: { flex: 1 },
     footer: {
       backgroundColor: colors.background,
@@ -2242,13 +2515,27 @@ const s = themed(() =>
       paddingTop: 8,
       paddingBottom: 8,
     },
-    content: { paddingTop: 18, paddingBottom: 32 },
+    content: { paddingTop: 12, paddingBottom: 24 },
     column: {
       width: "100%",
       maxWidth: spacing.maxContent,
       alignSelf: "center",
     },
-    subtitle: { marginBottom: 20 },
+    subtitle: { marginBottom: 12 },
+    readRecovery: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexWrap: "wrap",
+      gap: 8,
+    },
+    recoveryText: { flexShrink: 1 },
+    retryText: { color: colors.accent },
+    retry: {
+      minWidth: 44,
+      minHeight: 44,
+      justifyContent: "center",
+      paddingHorizontal: 8,
+    },
     /** The sticky header: opaque, so the page scrolls under it. */
     sticky: { backgroundColor: colors.background },
   }),

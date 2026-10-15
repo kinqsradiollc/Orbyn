@@ -36,69 +36,63 @@ export const SCREENS: Record<View, Screen> = {
   ...screens,
   Background: {
     title: "Background",
-    subtitle: "Your agent's current work and results.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Overnight: {
     title: "Overnight",
-    subtitle: "Review what your assistant worked on while you were away.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Lists: {
     title: "Lists",
-    subtitle: "Group tasks the way you think about them.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Agenda: {
     title: "Agenda",
-    subtitle: "Today at a glance, written for you — and yours to edit.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Projects: {
     title: "Projects",
-    subtitle:
-      "Group related tasks into stages and see a piece of work end to end.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Docs: {
     title: "Documents",
-    subtitle:
-      "Notes, briefs and working pages — with formulas that render as you type.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Memory: {
     title: "Memory",
-    subtitle:
-      "What your agent remembers, with the sources you can edit or forget.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Agent: {
     title: "Agent notes",
-    subtitle: "Notes your agent has made for its work.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Study: {
     title: "Study",
-    subtitle:
-      "Flashcards from your own pages, reviewed at the right time and planned around your exams.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Review: {
     title: "Review",
-    subtitle:
-      "Changes your connected agents and the assistant suggest, waiting for you to approve.",
-    eyebrow: "SHARED ORBITS",
+    subtitle: "",
+    eyebrow: "",
   },
   Views: {
     title: "Views",
-    subtitle:
-      "Saved filters, sorts and layouts over your tasks, pages and projects.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Booking: {
     title: "Booking pages",
-    subtitle: "Let people pick a time that works for everyone.",
-    eyebrow: "SHARED ORBITS",
+    subtitle: "",
+    eyebrow: "",
   },
 };
 
@@ -137,8 +131,6 @@ export const NAV_GROUPS: { label: string; items: NavEntry[] }[] = [
       { label: "Study", icon: CONCEPT_ICON.study },
       { label: "Lists", icon: ListChecks },
       { label: "AI assistant", icon: Sparkles },
-      { label: "Background", icon: Sparkles },
-      { label: "Overnight", icon: Sparkles },
     ],
   },
   {

@@ -1,5 +1,6 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { session } from "../../lib/session";
 import { Button } from "../../components/Button";
 import type { IconName } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
@@ -36,14 +37,36 @@ export function ActionMenu({
   menu: Menu | null;
   onClose: () => void;
 }) {
-  const pending = useRef<(() => void) | null>(null);
+  const picked = useRef(false);
+  useEffect(() => {
+    picked.current = false;
+  }, [menu]);
+  const pending = useRef<{ owner: string; run: () => void } | null>(null);
+  const mounted = useRef(true);
+  const menuOwner = useRef({ menu, owner: session.token });
+  if (menuOwner.current.menu !== menu)
+    menuOwner.current = { menu, owner: session.token };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      pending.current = null;
+    };
+  }, []);
   const runPending = () => {
     const next = pending.current;
     pending.current = null;
-    next?.();
+    if (mounted.current && next?.owner === session.token) next.run();
   };
   const pick = (action: MenuAction) => {
-    pending.current = action.run;
+    if (
+      picked.current ||
+      !mounted.current ||
+      menuOwner.current.owner !== session.token
+    )
+      return;
+    picked.current = true;
+    pending.current = { owner: menuOwner.current.owner, run: action.run };
     onClose();
     // iOS runs it from onDismiss, after the sheet's animation.
     if (Platform.OS !== "ios") runPending();
@@ -60,7 +83,7 @@ export function ActionMenu({
           {!!menu?.detail && (
             <Text
               style={[
-                shared.subtitle,
+                shared.small,
                 s.detail,
                 !!menu.facts?.length && s.detailTight,
               ]}

@@ -41,6 +41,7 @@ import {
 } from "@orbyn/core";
 import { Popover } from "../../components/Popover";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { LinkCardPopover } from "./LinkCard";
 import { DocNavigationContext } from "./doc-navigation";
 import { CONCEPT_ICON } from "../../app/concept-icons";
@@ -168,19 +169,26 @@ export function useLinkPills(blocks: DocBlock[], report: (e: unknown) => void) {
   const [pills, setPills] = useState(() => new Map<string, LinkPill>());
   const [round, setRound] = useState(0);
   useEffect(() => {
+    setPills(new Map());
     if (!refs.length) return;
     let live = true;
+    const account = session.get();
     const chunks: ObjectRef[][] = [];
     for (let i = 0; i < refs.length; i += 60)
       chunks.push(refs.slice(i, i + 60));
-    Promise.all(chunks.map((c) => client.resolveLinks(c))).then((all) => {
-      if (!live) return;
-      setPills((was) => {
-        const next = new Map(was);
-        for (const p of all.flat()) next.set(pillKey(p), p);
-        return next;
-      });
-    }, report);
+    Promise.all(chunks.map((c) => client.resolveLinks(c))).then(
+      (all) => {
+        if (!live || account !== session.get()) return;
+        setPills((was) => {
+          const next = new Map(was);
+          for (const p of all.flat()) next.set(pillKey(p), p);
+          return next;
+        });
+      },
+      (error) => {
+        if (live && account === session.get()) report(error);
+      },
+    );
     return () => {
       live = false;
     };
@@ -317,7 +325,7 @@ export function LinkPillView({
         modOpen();
       }}
       onKeyDown={(e) => {
-        if (openable && e.key === "Enter") {
+        if (e.target === e.currentTarget && openable && e.key === "Enter") {
           e.preventDefault();
           e.stopPropagation();
           if (e.metaKey || e.ctrlKey) modOpen();
@@ -436,6 +444,11 @@ export function LinkPicker({
 }) {
   const q = query.trim();
   const [found, setFound] = useState<LinkOption[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const rowsRef = useRef<HTMLDivElement | null>(null);
+  const inputOwner = useRef(document.activeElement);
   /** `[[Page#words`: the page it names, and its headings. */
   const wantsLine = splitHeadingQuery(query);
   const [lines, setLines] = useState<{
@@ -444,30 +457,48 @@ export function LinkPicker({
   } | null>(null);
   useEffect(() => {
     let live = true;
-    const t = window.setTimeout(() => {
-      if (wantsLine)
-        client
-          .pickLinks(wantsLine.page, 5)
-          .then(async (hits) => {
-            const doc = hits.find((h) => h.kind === "doc");
-            if (!doc) return live && setLines(null);
-            const headings = await client.pageHeadings(
-              doc.id,
-              wantsLine.heading.trim(),
-            );
-            if (live) setLines({ doc, headings });
-          })
-          .catch(report);
-      else
-        client.pickLinks(q, 12).then((hits) => live && setFound(hits), report);
+    const account = session.get();
+    setLoading(true);
+    setFailed(false);
+    setFound([]);
+    setLines(null);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          if (wantsLine) {
+            const hits = await client.pickLinks(wantsLine.page, 5);
+            const doc = hits.find((hit) => hit.kind === "doc");
+            if (doc) {
+              const headings = await client.pageHeadings(
+                doc.id,
+                wantsLine.heading.trim(),
+              );
+              if (live && account === session.get())
+                setLines({ doc, headings });
+            }
+          } else {
+            const hits = await client.pickLinks(q, 12);
+            if (live && account === session.get()) setFound(hits);
+          }
+        } catch (error) {
+          if (live && account === session.get()) {
+            setFailed(true);
+            report(error);
+          }
+        } finally {
+          if (live && account === session.get()) setLoading(false);
+        }
+      })();
     }, 120);
     return () => {
       live = false;
-      window.clearTimeout(t);
+      window.clearTimeout(timer);
     };
+    // Query owns the search; callbacks must not restart it on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [q, retry]);
   const rows = useMemo<Row[]>(() => {
+    if (loading || failed) return [];
     if (wantsLine)
       return lines
         ? [
@@ -499,9 +530,14 @@ export function LinkPicker({
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [found, q, lines]);
+  }, [found, q, lines, loading, failed]);
   const [highlight, setHighlight] = useState(0);
-  useEffect(() => setHighlight(0), [q]);
+  useEffect(() => setHighlight(0), [q, rows.length]);
+  useEffect(() => {
+    rowsRef.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView({ block: "nearest" });
+  }, [highlight]);
 
   const take = useCallback(
     (row: Row | undefined) => {
@@ -530,9 +566,19 @@ export function LinkPicker({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        e.altKey ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.target !== inputOwner.current ||
+        !inputOwner.current?.isConnected
+      )
+        return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setHighlight((h) => Math.min(h + 1, rows.length - 1));
+        setHighlight((h) => Math.max(0, Math.min(h + 1, rows.length - 1)));
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setHighlight((h) => Math.max(h - 1, 0));
@@ -566,14 +612,32 @@ export function LinkPicker({
       <div className="doc-menu link-picker">
         {!rows.length && (
           <p className="doc-menu-note">
-            {wantsLine
-              ? "No page is called that, or it has no headings."
-              : q
-                ? "Nothing is called that."
-                : "Type to find a page, task, project, person or date. Add # after a page for one of its headings."}
+            {loading
+              ? "Searching…"
+              : failed
+                ? "Search couldn’t be loaded."
+                : wantsLine
+                  ? "No matching page or headings."
+                  : q
+                    ? "No matches."
+                    : "Type to find an item. Use # for page headings."}
+            {failed && (
+              <button
+                className="text-button"
+                onClick={() => setRetry((value) => value + 1)}
+              >
+                Retry
+              </button>
+            )}
           </p>
         )}
-        <div className="link-picker-rows" role="listbox" aria-label="Link to">
+        <div
+          ref={rowsRef}
+          className="link-picker-rows"
+          role="listbox"
+          aria-label="Link to"
+          aria-busy={loading}
+        >
           {rows.map((row, i) => {
             const kind =
               row.type === "option"
@@ -683,7 +747,11 @@ function OptionRow({ option }: { option: LinkOption }) {
  * with a Link button, and for a page, the pages that read like it
  * ("Related", LNK-06). Hidden when there is none of these.
  */
-export function LinkedHere({
+export function LinkedHere(props: Parameters<typeof LinkedHereBody>[0]) {
+  return <LinkedHereBody key={`${props.kind}:${props.id}`} {...props} />;
+}
+
+function LinkedHereBody({
   kind,
   id,
   refresh = 0,
@@ -708,22 +776,47 @@ export function LinkedHere({
   const [related, setRelated] = useState<RelatedPage[]>([]);
   const [showMentions, setShowMentions] = useState(false);
   const [round, setRound] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [linking, setLinking] = useState(false);
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  const renderAccount = session.get();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     let live = true;
-    client.linksHere(kind, id).then((l) => {
-      if (!live) return;
-      setList(l);
-      onCount?.(l.count);
-    }, report);
+    const account = session.get();
+    setFailed(false);
+    client.linksHere(kind, id).then(
+      (l) => {
+        if (!live || account !== session.get()) return;
+        setList(l);
+        onCount?.(l.count);
+      },
+      (error) => {
+        if (live && account === session.get()) {
+          setFailed(true);
+          report(error);
+        }
+      },
+    );
     if (kind === "doc" || kind === "project")
       client.unlinkedMentions(kind, id).then(
-        (m) => live && setMentions(m),
-        () => setMentions([]),
+        (m) => live && account === session.get() && setMentions(m),
+        () => {
+          if (live && account === session.get()) setMentions([]);
+        },
       );
     if (kind === "doc")
       client.relatedPages(id).then(
-        (r) => live && setRelated(r),
-        () => setRelated([]),
+        (r) => live && account === session.get() && setRelated(r),
+        () => {
+          if (live && account === session.get()) setRelated([]);
+        },
       );
     return () => {
       live = false;
@@ -731,7 +824,16 @@ export function LinkedHere({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, id, refresh, round]);
   const link = (m: UnlinkedMention) => {
-    if (!m.block_id || (kind !== "doc" && kind !== "project")) return;
+    if (
+      !m.block_id ||
+      (kind !== "doc" && kind !== "project") ||
+      mutation.current ||
+      !mounted.current ||
+      renderAccount !== session.get()
+    )
+      return;
+    mutation.current = true;
+    setLinking(true);
     void client
       .linkMention({
         doc_id: m.doc_id,
@@ -739,25 +841,62 @@ export function LinkedHere({
         matched: m.matched,
         target: { kind, id },
       })
-      .then(() => setRound((n) => n + 1), report);
+      .then(
+        () => {
+          if (mounted.current && renderAccount === session.get())
+            setRound((n) => n + 1);
+        },
+        (error) => {
+          if (mounted.current && renderAccount === session.get()) report(error);
+        },
+      )
+      .finally(() => {
+        mutation.current = false;
+        if (mounted.current && renderAccount === session.get())
+          setLinking(false);
+      });
   };
-  if (!list) return null;
+  if (!list)
+    return failed ? (
+      <div role="alert">
+        <p>Links couldn’t be loaded.</p>
+        <button
+          className="text-button"
+          onClick={() => setRound((value) => value + 1)}
+        >
+          Retry
+        </button>
+      </div>
+    ) : null;
   if (!list.count && !mentions.length && !related.length) return null;
   return (
     <section
       className={"linked-here" + (compact ? " is-compact" : "")}
       aria-label="Linked here"
     >
+      {failed && (
+        <p role="alert">
+          Links couldn’t be refreshed.{" "}
+          <button
+            className="text-button"
+            onClick={() => setRound((value) => value + 1)}
+          >
+            Retry
+          </button>
+        </p>
+      )}
       {list.count > 0 && (
         <>
-          <h3 className="linked-here-title">Linked here · {list.count}</h3>
-          <ul>
-            {list.items.map((e) => (
-              <li key={`${e.kind}:${e.id}`}>
-                <LinkedRow entry={e} />
-              </li>
-            ))}
-          </ul>
+          <details className="doc-linked-details">
+            <summary>Linked here · {list.count}</summary>
+            <ul>
+              {list.items.map((e) => (
+                <li key={`${e.kind}:${e.id}`}>
+                  <LinkedRow entry={e} />
+                </li>
+              ))}
+            </ul>
+          </details>
         </>
       )}
       {mentions.length > 0 && (
@@ -803,6 +942,7 @@ export function LinkedHere({
                     <button
                       type="button"
                       className="link-card-action"
+                      disabled={linking}
                       onClick={() => link(m)}
                     >
                       <Link2 size={13} aria-hidden="true" /> Link
@@ -816,42 +956,44 @@ export function LinkedHere({
       )}
       {related.length > 0 && (
         <div className="linked-here-more">
-          <h3 className="linked-here-title">Related</h3>
-          <ul>
-            {related.map((r) => (
-              <li key={r.doc_id} className="linked-here-mention">
-                <button
-                  type="button"
-                  className="linked-here-row"
-                  onClick={() => openObject({ kind: "doc", id: r.doc_id })}
-                >
-                  <FileText size={15} aria-hidden="true" />
-                  <span className="linked-here-text">
-                    <span className="linked-here-head">
-                      <strong>{r.title}</strong>
-                      <small>
-                        {[r.hint, r.reason].filter(Boolean).join(" · ")}
-                      </small>
-                    </span>
-                  </span>
-                </button>
-                {onLinkRelated && (
+          <details className="doc-linked-details">
+            <summary>Related pages · {related.length}</summary>
+            <ul>
+              {related.map((r) => (
+                <li key={r.doc_id} className="linked-here-mention">
                   <button
                     type="button"
-                    className="link-card-action"
-                    onClick={() => {
-                      onLinkRelated(r);
-                      setRelated((all) =>
-                        all.filter((x) => x.doc_id !== r.doc_id),
-                      );
-                    }}
+                    className="linked-here-row"
+                    onClick={() => openObject({ kind: "doc", id: r.doc_id })}
                   >
-                    <Link2 size={13} aria-hidden="true" /> Link
+                    <FileText size={15} aria-hidden="true" />
+                    <span className="linked-here-text">
+                      <span className="linked-here-head">
+                        <strong>{r.title}</strong>
+                        <small>
+                          {[r.hint, r.reason].filter(Boolean).join(" · ")}
+                        </small>
+                      </span>
+                    </span>
                   </button>
-                )}
-              </li>
-            ))}
-          </ul>
+                  {onLinkRelated && (
+                    <button
+                      type="button"
+                      className="link-card-action"
+                      onClick={() => {
+                        onLinkRelated(r);
+                        setRelated((all) =>
+                          all.filter((x) => x.doc_id !== r.doc_id),
+                        );
+                      }}
+                    >
+                      <Link2 size={13} aria-hidden="true" /> Link
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
       )}
     </section>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import {
   clockMinutes,
@@ -13,6 +13,7 @@ import {
   type TeamAnalytics,
   type TeamMember,
 } from "@orbyn/core";
+import { InlineDetails } from "../components/InlineDetails";
 import { Button } from "../components/Button";
 import { Chip, ChipRow } from "../components/Chip";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -20,6 +21,7 @@ import type { Editing } from "../components/ItemEditor";
 import { Pill } from "../components/Pill";
 import { ProgressBar } from "../components/ProgressBar";
 import { SmallAction } from "../components/SmallAction";
+import { session } from "../lib/session";
 import { client } from "../lib/api";
 import * as outbox from "../lib/outbox";
 import { TeamCapacity } from "./TeamCapacity";
@@ -27,7 +29,7 @@ import { TeamAttention } from "../components/followthrough/Attention";
 import { dayStart, minutesLabel, rangeLabel, slotLabel } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { FadeIn, animateLayout } from "../motion";
-import { colors, fonts, themed } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
 
@@ -83,7 +85,11 @@ export function TeamTime({
   canManage = false,
   onCreated,
   onOpenItem,
+  disabled = false,
+  onBusyChange,
 }: {
+  disabled?: boolean;
+  onBusyChange?: (busy: boolean) => void;
   teamId: string;
   members: TeamMember[];
   userId?: string;
@@ -96,11 +102,40 @@ export function TeamTime({
   /** Open the item editor, e.g. with a meeting time filled in. */
   onOpenItem?: (editing: Editing) => void;
 }) {
-  const { busy, error, setError, run } = useRun();
+  const { busy, error, setError, run: execute } = useRun();
+  const mutation = useRef(false);
+  const budgetLock = useRef(false);
+  const [budgetBusy, setBudgetBusy] = useState(false);
+  const mounted = useRef(true);
+  const owner = useRef(session.token).current;
+  const reporter = useRef(onBusyChange);
+  reporter.current = onBusyChange;
+  const current = () => mounted.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      reporter.current?.(false);
+    };
+  }, []);
+  const run = async <T,>(fn: () => Promise<T>) => {
+    if (!current() || mutation.current || budgetLock.current || disabled)
+      return;
+    mutation.current = true;
+    reporter.current?.(true);
+    try {
+      return await execute(fn);
+    } finally {
+      mutation.current = false;
+      if (current()) reporter.current?.(false);
+    }
+  };
   const [weekStart, setWeekStart] = useState(() => mondayOf(new Date()));
   const [availability, setAvailability] = useState<MemberAvailability[] | null>(
     null,
   );
+  const [readError, setReadError] = useState("");
+  const [readRevision, setReadRevision] = useState(0);
   const [workload, setWorkload] = useState<MemberWorkload[] | null>(null);
   const [pinned, setPinned] = useState<string[]>([]);
   const [people, setPeople] = useState<string[]>(() =>
@@ -108,11 +143,23 @@ export function TeamTime({
   );
   const [length, setLength] = useState(30);
   const [title, setTitle] = useState("Team meeting");
-  const [slots, setSlots] = useState<MeetingSlot[] | null>(null);
+  const queryKey = JSON.stringify([
+    teamId,
+    people,
+    length,
+    members.map((m) => m.user_id),
+  ]);
+  const query = useRef(queryKey);
+  query.current = queryKey;
+  const [result, setResult] = useState<{
+    key: string;
+    slots: MeetingSlot[];
+  } | null>(null);
+  const slots = result?.key === queryKey ? result.slots : null;
   const [booked, setBooked] = useState("");
   /** The most people a hand-picked search can ask about (the server's limit). */
   const MAX_PEOPLE = 50;
-  const everyone = people.length === members.length;
+  const everyone = members.every((member) => people.includes(member.user_id));
   const tooMany = !everyone && people.length > MAX_PEOPLE;
 
   const days = Array.from({ length: 7 }, (_, n) => dayStart(n, weekStart));
@@ -127,7 +174,9 @@ export function TeamTime({
   useEffect(() => {
     client
       .getPlannerPrefs()
-      .then((prefs) => setPinned(prefs.pinned_user_ids))
+      .then((prefs) => {
+        if (current()) setPinned(prefs.pinned_user_ids);
+      })
       .catch(() => {});
   }, []);
 
@@ -150,6 +199,7 @@ export function TeamTime({
     let alive = true;
     setAvailability(null);
     setWorkload(null);
+    setReadError("");
     const from = weekStart.toISOString();
     const to = dayStart(7, weekStart).toISOString();
     Promise.all([
@@ -162,11 +212,13 @@ export function TeamTime({
         setAvailability(a);
         setWorkload(w);
       })
-      .catch((e: Error) => alive && setError(errorText(e)));
+      .catch((e: Error) => {
+        if (alive && current()) setReadError(errorText(e));
+      });
     return () => {
       alive = false;
     };
-  }, [teamId, weekStart, setError]);
+  }, [teamId, weekStart, readRevision]);
 
   const order = (a: { user_id: string; name: string }, b: typeof a) =>
     Number(pinned.includes(b.user_id)) - Number(pinned.includes(a.user_id)) ||
@@ -177,6 +229,7 @@ export function TeamTime({
         ? pinned.filter((x) => x !== id)
         : [...pinned, id].slice(-20);
       const prefs = await client.updatePlannerPrefs({ pinned_user_ids: next });
+      if (!current()) return;
       animateLayout();
       setPinned(prefs.pinned_user_ids);
     });
@@ -185,6 +238,7 @@ export function TeamTime({
     if (tooMany)
       return setError(`Pick up to ${MAX_PEOPLE} people, or everyone.`);
     return run(async () => {
+      const key = queryKey;
       // Start on the next quarter hour, like the web.
       const from = new Date();
       from.setMinutes(Math.ceil(from.getMinutes() / 15) * 15, 0, 0);
@@ -195,8 +249,9 @@ export function TeamTime({
         // Everyone: the server asks about every member by default.
         ...(everyone ? {} : { user_ids: people }),
       });
+      if (!current() || query.current !== key) return;
       animateLayout();
-      setSlots(found.slice(0, 8));
+      setResult({ key, slots: found.slice(0, 8) });
       setBooked("");
     });
   };
@@ -205,6 +260,9 @@ export function TeamTime({
 
   /** Open the event in the editor to check before saving. */
   const openInEditor = (slot: MeetingSlot) =>
+    canWrite &&
+    current() &&
+    slots?.includes(slot) &&
     onOpenItem?.({
       ...freshItem(),
       kind: "event",
@@ -216,6 +274,9 @@ export function TeamTime({
 
   /** Save the event straight away. */
   const book = (slot: MeetingSlot) =>
+    canWrite &&
+    current() &&
+    slots?.includes(slot) &&
     run(async () => {
       const made = await outbox.createItem({
         title: meetingTitle(),
@@ -224,8 +285,9 @@ export function TeamTime({
         end_at: slot.end_at,
         team_id: teamId,
       });
+      if (!current()) return;
       animateLayout();
-      setSlots(null);
+      setResult(null);
       setBooked(
         made
           ? `Added for ${slotLabel(slot.start_at, slot.end_at)}.`
@@ -242,6 +304,18 @@ export function TeamTime({
     <>
       <ErrorBanner error={error} onDismiss={() => setError("")} />
 
+      {!!readError && (
+        <View>
+          <Text accessibilityRole="alert" style={shared.small}>
+            {readError}
+          </Text>
+          <Button
+            secondary
+            title="Retry team time"
+            onPress={() => setReadRevision((value) => value + 1)}
+          />
+        </View>
+      )}
       <View style={s.weekHead}>
         <Text style={[shared.eyebrow, s.weekEyebrow]}>TEAM TIME</Text>
         <Text style={s.weekLabel} accessibilityLiveRegion="polite">
@@ -250,117 +324,119 @@ export function TeamTime({
         <View style={s.weekNav}>
           <SmallAction
             label="Earlier"
-            disabled={false}
+            disabled={budgetBusy}
             onPress={() => setWeekStart(dayStart(-7, weekStart))}
           />
           <SmallAction
             label="This week"
-            disabled={thisWeek}
+            disabled={thisWeek || budgetBusy}
             onPress={() => setWeekStart(mondayOf(new Date()))}
           />
           <SmallAction
             label="Later"
-            disabled={false}
+            disabled={budgetBusy}
             onPress={() => setWeekStart(weekEnd)}
           />
         </View>
       </View>
 
-      <Text style={[shared.eyebrow, s.eyebrow]}>AVAILABILITY</Text>
-      <View style={shared.card}>
-        <Text style={[shared.small, s.gap]}>
-          Each bar shows a day. Shaded means work hours; dark means busy. Event
-          details stay private.
-        </Text>
-        {availability === null && (
-          <Text style={shared.small}>Loading availability…</Text>
-        )}
-        {[...(availability ?? [])].sort(order).map((m, n) => {
-          const me = m.user_id === userId;
-          const isPinned = pinned.includes(m.user_id);
-          return (
-            <FadeIn
-              key={m.user_id}
-              index={n}
-              style={[s.member, n > 0 && s.divider]}
-            >
-              <View style={s.memberTop}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.name} numberOfLines={1}>
-                    {m.name}
-                    {me ? " (you)" : ""}
-                  </Text>
-                  <Text style={shared.small} numberOfLines={1}>
-                    {m.timezone.replace(/_/g, " ")}
-                  </Text>
-                </View>
-                {!me && (
-                  <SmallAction
-                    label={isPinned ? "Unpin" : "Pin"}
-                    disabled={busy}
-                    onPress={() => void togglePin(m.user_id)}
-                  />
-                )}
-              </View>
-              {days.map((day) => {
-                const segs = segments(m.busy, day);
-                const work = workWindow(m, day);
-                const label = day.toLocaleDateString([], {
-                  weekday: "short",
-                  day: "numeric",
-                });
-                const spoken = segs.length
-                  ? `busy ${segs.map((x) => x.label).join(", ")}`
-                  : work
-                    ? "free"
-                    : "not working";
-                const today = dayKey(day) === todayKey;
-                return (
-                  <View
-                    key={day.toISOString()}
-                    style={s.dayRow}
-                    accessible
-                    accessibilityLabel={`${m.name}, ${day.toLocaleDateString(
-                      [],
-                      { weekday: "long" },
-                    )}: ${spoken}`}
-                  >
-                    <Text style={[s.dayLabel, today && s.today]}>{label}</Text>
-                    <View style={s.bar}>
-                      {work && frac(work.to) > frac(work.from) && (
-                        <View
-                          style={[
-                            s.work,
-                            {
-                              left: `${frac(work.from) * 100}%`,
-                              width: `${(frac(work.to) - frac(work.from)) * 100}%`,
-                            },
-                          ]}
-                        />
-                      )}
-                      {segs.map((x) => (
-                        <View
-                          key={x.key}
-                          style={[
-                            s.busy,
-                            {
-                              left: `${frac(x.from) * 100}%`,
-                              width: `${Math.max((frac(x.to) - frac(x.from)) * 100, 1.5)}%`,
-                            },
-                          ]}
-                        />
-                      ))}
-                    </View>
+      <InlineDetails title="Availability">
+        <View style={s.panel}>
+          <Text style={[shared.small, s.gap]}>
+            Work hours and busy times only. Event details stay private.
+          </Text>
+          {availability === null && !readError && (
+            <Text style={shared.small}>Loading availability…</Text>
+          )}
+          {[...(availability ?? [])].sort(order).map((m, n) => {
+            const me = m.user_id === userId;
+            const isPinned = pinned.includes(m.user_id);
+            return (
+              <FadeIn
+                key={m.user_id}
+                index={n}
+                style={[s.member, n > 0 && s.divider]}
+              >
+                <View style={s.memberTop}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.name}>
+                      {m.name}
+                      {me ? " (you)" : ""}
+                    </Text>
+                    <Text style={shared.small}>
+                      {m.timezone.replace(/_/g, " ")}
+                    </Text>
                   </View>
-                );
-              })}
-            </FadeIn>
-          );
-        })}
-      </View>
+                  {!me && (
+                    <SmallAction
+                      label={isPinned ? "Unpin" : "Pin"}
+                      disabled={busy}
+                      onPress={() => void togglePin(m.user_id)}
+                    />
+                  )}
+                </View>
+                {days.map((day) => {
+                  const segs = segments(m.busy, day);
+                  const work = workWindow(m, day);
+                  const label = day.toLocaleDateString([], {
+                    weekday: "short",
+                    day: "numeric",
+                  });
+                  const spoken = segs.length
+                    ? `busy ${segs.map((x) => x.label).join(", ")}`
+                    : work
+                      ? "free"
+                      : "not working";
+                  const today = dayKey(day) === todayKey;
+                  return (
+                    <View
+                      key={day.toISOString()}
+                      style={s.dayRow}
+                      accessible
+                      accessibilityLabel={`${m.name}, ${day.toLocaleDateString(
+                        [],
+                        { weekday: "long" },
+                      )}: ${spoken}`}
+                    >
+                      <Text style={[s.dayLabel, today && s.today]}>
+                        {label}
+                      </Text>
+                      <View style={s.bar}>
+                        {work && frac(work.to) > frac(work.from) && (
+                          <View
+                            style={[
+                              s.work,
+                              {
+                                left: `${frac(work.from) * 100}%`,
+                                width: `${(frac(work.to) - frac(work.from)) * 100}%`,
+                              },
+                            ]}
+                          />
+                        )}
+                        {segs.map((x) => (
+                          <View
+                            key={x.key}
+                            style={[
+                              s.busy,
+                              {
+                                left: `${frac(x.from) * 100}%`,
+                                width: `${Math.max((frac(x.to) - frac(x.from)) * 100, 1.5)}%`,
+                              },
+                            ]}
+                          />
+                        ))}
+                      </View>
+                    </View>
+                  );
+                })}
+              </FadeIn>
+            );
+          })}
+        </View>
+      </InlineDetails>
 
       <Text style={[shared.eyebrow, s.eyebrow]}>WHO HAS ROOM</Text>
-      <View style={shared.card}>
+      <View style={s.panel}>
         <TeamCapacity
           teamId={teamId}
           weekStart={weekStart}
@@ -370,8 +446,14 @@ export function TeamTime({
       </View>
 
       <Text style={[shared.eyebrow, s.eyebrow]}>MEETING BUDGET</Text>
-      <View style={shared.card}>
+      <View style={s.panel}>
         <TeamAttention
+          disabled={busy || disabled}
+          onBusyChange={(pending) => {
+            budgetLock.current = pending;
+            setBudgetBusy(pending);
+            reporter.current?.(pending);
+          }}
           teamId={teamId}
           weekStart={weekStart}
           canManage={canManage}
@@ -379,8 +461,8 @@ export function TeamTime({
       </View>
 
       <Text style={[shared.eyebrow, s.eyebrow]}>WORKLOAD</Text>
-      <View style={shared.card}>
-        {workload === null && (
+      <View style={s.panel}>
+        {workload === null && !readError && (
           <Text style={shared.small}>Loading workload…</Text>
         )}
         {[...(workload ?? [])].sort(order).map((w, n) => {
@@ -388,16 +470,14 @@ export function TeamTime({
           return (
             <View key={w.user_id} style={[s.member, n > 0 && s.divider]}>
               <View style={s.memberTop}>
-                <Text style={s.name} numberOfLines={1}>
-                  {w.name}
-                </Text>
+                <Text style={s.name}>{w.name}</Text>
                 {w.overloaded && <Pill label="Overloaded" tone="danger" />}
                 {w.at_risk > 0 && (
                   <Pill label={`${w.at_risk} at risk`} tone="warning" />
                 )}
               </View>
               <View style={s.loadRow}>
-                <View style={{ flex: 1 }}>
+                <View style={{ flex: 1, minWidth: 0 }}>
                   <ProgressBar
                     value={Math.min(100, pct)}
                     height={8}
@@ -424,10 +504,9 @@ export function TeamTime({
       {atRisk.length > 0 && (
         <>
           <Text style={[shared.eyebrow, s.eyebrow]}>AT-RISK TASKS</Text>
-          <View style={shared.card}>
+          <View style={s.panel}>
             <Text style={[shared.small, s.gap]}>
-              Tasks that can’t get enough time before they’re due. Those due
-              soonest take the free time first.
+              Not enough time before the deadline.
             </Text>
             {atRisk.map((t, n) => (
               <View
@@ -436,9 +515,7 @@ export function TeamTime({
                 accessible
                 accessibilityLabel={`${t.title}, ${t.assignee_name}, due ${dueDateOf(t)}, needs ${minutesLabel(t.remaining_minutes) || "more time"}`}
               >
-                <Text style={s.name} numberOfLines={2}>
-                  {t.title}
-                </Text>
+                <Text style={s.name}>{t.title}</Text>
                 <Text style={shared.small}>
                   {t.assignee_name} · due {dueDateOf(t)} · needs{" "}
                   {minutesLabel(t.remaining_minutes) || "more time"}
@@ -451,158 +528,155 @@ export function TeamTime({
 
       {analytics && analytics.total_planned_minutes > 0 && (
         <>
-          <Text style={[shared.eyebrow, s.eyebrow]}>
-            SESSIONS · LAST 30 DAYS
-          </Text>
-          <View style={shared.card}>
-            {analytics.members
-              .filter((m) => m.planned_minutes > 0 || m.completed > 0)
-              .map((m) => (
-                <View key={m.user_id} style={s.analyticsRow}>
-                  <Text style={s.analyticsName} numberOfLines={1}>
-                    {m.name}
-                  </Text>
-                  <Text style={s.analyticsHours}>
-                    {Math.round(m.planned_minutes / 60)} h
-                  </Text>
-                  <Text style={s.analyticsDone}>{m.completed} done</Text>
-                </View>
-              ))}
-          </View>
+          <InlineDetails title="Sessions · last 30 days">
+            <View style={s.panel}>
+              {analytics.members
+                .filter((m) => m.planned_minutes > 0 || m.completed > 0)
+                .map((m) => (
+                  <View key={m.user_id} style={s.analyticsRow}>
+                    <Text style={s.analyticsName}>{m.name}</Text>
+                    <Text style={s.analyticsHours}>
+                      {Math.round(m.planned_minutes / 60)} h
+                    </Text>
+                    <Text style={s.analyticsDone}>{m.completed} done</Text>
+                  </View>
+                ))}
+            </View>
+          </InlineDetails>
         </>
       )}
 
-      <Text style={[shared.eyebrow, s.eyebrow]}>FIND A TIME</Text>
-      <View style={shared.card}>
-        <Text style={shared.label}>Who</Text>
-        <ChipRow label="Who needs to be there" multi>
-          {members.map((m) => {
-            const on = people.includes(m.user_id);
-            return (
-              <Chip
-                key={m.user_id}
-                multi
-                label={m.user_id === userId ? `${m.name} (you)` : m.name}
-                selected={on}
-                onPress={() => {
-                  const next = on
-                    ? people.filter((x) => x !== m.user_id)
-                    : [...people, m.user_id];
-                  if (next.length) setPeople(next);
-                }}
-              />
-            );
-          })}
-        </ChipRow>
-        {tooMany && (
-          <Text
-            style={[shared.small, { color: colors.danger, marginTop: 8 }]}
-            accessibilityLiveRegion="polite"
-          >
-            Pick up to {MAX_PEOPLE} people, or everyone ({people.length}{" "}
-            picked).
-          </Text>
-        )}
-        <Text style={[shared.label, s.labelTop]}>How long</Text>
-        <ChipRow label="Meeting length">
-          {LENGTHS.map((l) => (
-            <Chip
-              key={l}
-              label={minutesLabel(l)}
-              selected={length === l}
-              onPress={() => setLength(l)}
-            />
-          ))}
-        </ChipRow>
-        <Button
-          secondary
-          title={busy && !slots ? "Looking…" : "Find times"}
-          icon="search"
-          disabled={busy}
-          style={s.find}
-          onPress={() => void find()}
-        />
-        {!!booked && (
-          <Text style={s.booked} accessibilityRole="alert">
-            {booked}
-          </Text>
-        )}
-        {slots && slots.length === 0 && (
-          <Text style={shared.small}>
-            No time in the next week when everyone is free. Try fewer people or
-            a shorter meeting.
-          </Text>
-        )}
-        {slots && slots.length > 0 && (
-          <>
-            {canWrite && (
-              <>
-                <TextInput
-                  style={[shared.input, s.gap]}
-                  value={title}
-                  onChangeText={setTitle}
-                  maxLength={200}
-                  placeholder="Team meeting"
-                  placeholderTextColor={colors.faint}
-                  accessibilityLabel="Meeting title"
+      <InlineDetails title="Find meeting times">
+        <View style={s.panel}>
+          <Text style={shared.label}>Who</Text>
+          <ChipRow label="Who needs to be there" multi>
+            {members.map((m) => {
+              const on = people.includes(m.user_id);
+              return (
+                <Chip
+                  key={m.user_id}
+                  multi
+                  label={m.user_id === userId ? `${m.name} (you)` : m.name}
+                  selected={on}
+                  onPress={() => {
+                    const next = on
+                      ? people.filter((x) => x !== m.user_id)
+                      : [...people, m.user_id];
+                    if (next.length) setPeople(next);
+                  }}
                 />
-                {onOpenItem && (
-                  <Text style={[shared.small, s.gap]}>
-                    Book opens the event so you can check it before saving. Add
-                    now saves it straight away.
-                  </Text>
-                )}
-              </>
-            )}
-            {slots.map((slot, n) => (
-              <View key={slot.start_at} style={[s.slot, n > 0 && s.divider]}>
-                <View style={s.slotMain}>
-                  <Text style={s.slotText}>
-                    {slotLabel(slot.start_at, slot.end_at)}
-                  </Text>
-                  <Text
-                    style={[shared.small, slot.disruption > 0 && s.disrupts]}
-                  >
-                    {slot.disruption > 0
-                      ? "Breaks someone’s focus time"
-                      : "No one’s focus time is split"}
-                  </Text>
-                </View>
-                {canWrite && (
-                  <View style={s.slotActions}>
-                    {onOpenItem ? (
-                      <>
+              );
+            })}
+          </ChipRow>
+          {tooMany && (
+            <Text
+              style={[shared.small, { color: colors.danger, marginTop: 8 }]}
+              accessibilityLiveRegion="polite"
+            >
+              Pick up to {MAX_PEOPLE} people, or everyone ({people.length}{" "}
+              picked).
+            </Text>
+          )}
+          <Text style={[shared.label, s.labelTop]}>How long</Text>
+          <ChipRow label="Meeting length">
+            {LENGTHS.map((l) => (
+              <Chip
+                key={l}
+                label={minutesLabel(l)}
+                selected={length === l}
+                onPress={() => setLength(l)}
+              />
+            ))}
+          </ChipRow>
+          <Button
+            secondary
+            title={busy && !slots ? "Looking…" : "Find times"}
+            icon="search"
+            disabled={busy || tooMany}
+            style={s.find}
+            onPress={() => void find()}
+          />
+          {!!booked && (
+            <Text style={s.booked} accessibilityRole="alert">
+              {booked}
+            </Text>
+          )}
+          {slots && slots.length === 0 && (
+            <Text style={shared.small}>
+              No shared time next week. Try fewer people or a shorter meeting.
+            </Text>
+          )}
+          {slots && slots.length > 0 && (
+            <>
+              {canWrite && (
+                <>
+                  <TextInput
+                    style={[shared.input, s.gap]}
+                    value={title}
+                    onChangeText={setTitle}
+                    maxLength={200}
+                    placeholder="Team meeting"
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="Meeting title"
+                  />
+                  {onOpenItem && (
+                    <Text style={[shared.small, s.gap]}>
+                      Review before saving, or save the event now.
+                    </Text>
+                  )}
+                </>
+              )}
+              {slots.map((slot, n) => (
+                <View key={slot.start_at} style={[s.slot, n > 0 && s.divider]}>
+                  <View style={s.slotMain}>
+                    <Text style={s.slotText}>
+                      {slotLabel(slot.start_at, slot.end_at)}
+                    </Text>
+                    <Text
+                      style={[shared.small, slot.disruption > 0 && s.disrupts]}
+                    >
+                      {slot.disruption > 0
+                        ? "Breaks someone’s focus time"
+                        : "No one’s focus time is split"}
+                    </Text>
+                  </View>
+                  {canWrite && (
+                    <View style={s.slotActions}>
+                      {onOpenItem ? (
+                        <>
+                          <SmallAction
+                            label="Review event"
+                            disabled={busy}
+                            onPress={() => openInEditor(slot)}
+                          />
+                          <SmallAction
+                            label="Save event"
+                            disabled={busy}
+                            onPress={() => void book(slot)}
+                          />
+                        </>
+                      ) : (
                         <SmallAction
-                          label="Book"
-                          disabled={busy}
-                          onPress={() => openInEditor(slot)}
-                        />
-                        <SmallAction
-                          label="Add now"
+                          label="Save event"
                           disabled={busy}
                           onPress={() => void book(slot)}
                         />
-                      </>
-                    ) : (
-                      <SmallAction
-                        label="Book"
-                        disabled={busy}
-                        onPress={() => void book(slot)}
-                      />
-                    )}
-                  </View>
-                )}
-              </View>
-            ))}
-          </>
-        )}
-      </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+              ))}
+            </>
+          )}
+        </View>
+      </InlineDetails>
     </>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
+    panel: { paddingVertical: 8, marginBottom: 12, minWidth: 0 },
     eyebrow: { marginTop: 8 },
     analyticsRow: {
       flexDirection: "row",
@@ -610,7 +684,7 @@ const s = themed(() =>
       gap: 10,
       paddingVertical: 6,
     },
-    analyticsName: { flex: 1, color: colors.text, fontSize: 15 },
+    analyticsName: { flex: 1, minWidth: 0, color: colors.text, fontSize: 15 },
     analyticsHours: {
       color: colors.text,
       fontSize: 15,
@@ -643,12 +717,14 @@ const s = themed(() =>
     member: { paddingVertical: 10 },
     memberTop: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 8,
       marginBottom: 6,
     },
     name: {
       flex: 1,
+      minWidth: 0,
       fontFamily: fonts.semibold,
       fontSize: 15,
       color: colors.text,
@@ -669,7 +745,7 @@ const s = themed(() =>
     bar: {
       flex: 1,
       height: 10,
-      borderRadius: 5,
+      borderRadius: radii.check,
       backgroundColor: colors.surfaceMuted,
       overflow: "hidden",
     },
@@ -684,7 +760,7 @@ const s = themed(() =>
       top: 0,
       bottom: 0,
       backgroundColor: colors.mediumText,
-      borderRadius: 3,
+      borderRadius: radii.check,
     },
     loadRow: { flexDirection: "row", alignItems: "center", gap: 10 },
     pct: {
@@ -704,13 +780,14 @@ const s = themed(() =>
     },
     slot: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 10,
       minHeight: 48,
       paddingVertical: 8,
     },
-    slotMain: { flex: 1, gap: 2 },
-    slotActions: { flexDirection: "row", gap: 6 },
+    slotMain: { flex: 1, minWidth: 0, flexBasis: 180, gap: 2 },
+    slotActions: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     disrupts: { color: colors.warning },
     slotText: {
       fontFamily: fonts.medium,

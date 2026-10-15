@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import * as Crypto from "expo-crypto";
 import {
@@ -21,7 +21,7 @@ const actions: Record<AssistantActionRule["action"], string> = {
   any_change: "Any change",
   create: "Create",
   edit: "Edit",
-  delete_move_restore: "Delete or move",
+  delete_move_restore: "Delete, move or restore",
   email: "Email",
   notify: "Notify",
   publish: "Publish",
@@ -49,19 +49,25 @@ function Choice({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   label: string;
   value: string;
   options: { id: string; label: string }[];
   onChange: (id: string) => void;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
   return (
     <Field label={label}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${label}: ${options.find((option) => option.id === value)?.label ?? value}`}
-        accessibilityState={{ expanded: open }}
+        accessibilityState={{ expanded: open, disabled }}
+        disabled={disabled}
         onPress={() => setOpen(true)}
         style={s.choice}
       >
@@ -74,7 +80,9 @@ function Choice({
         label={label}
         actions={options.map((option) => ({
           label: option.label,
-          onPress: () => onChange(option.id),
+          onPress: () => {
+            if (!disabled) onChange(option.id);
+          },
         }))}
         onClose={() => setOpen(false)}
       />
@@ -83,6 +91,9 @@ function Choice({
 }
 
 export function AssistantRulesSection({ userId }: { userId: string }) {
+  return <AssistantRulesBody key={userId} userId={userId} />;
+}
+function AssistantRulesBody({ userId }: { userId: string }) {
   const [revision, setRevision] = useState<number | null>(null);
   const [rules, setRules] = useState<AssistantActionRule[]>([]);
   const [saved, setSaved] = useState<AssistantActionRule[]>([]);
@@ -91,37 +102,44 @@ export function AssistantRulesSection({ userId }: { userId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [loading, setLoading] = useState(false);
+  const mounted = useRef(false);
+  const request = useRef(0);
+  const mutation = useRef(false);
 
-  const reload = async () => {
-    const value = await client.assistantRules();
-    setRevision(value.revision);
-    setRules(value.rules);
-    setSaved(value.rules);
-    setEditing(null);
+  const reload = useCallback(async () => {
+    if (!userId || mutation.current) return;
+    const epoch = ++request.current;
+    setLoading(true);
     setError("");
-  };
-  useEffect(() => {
-    let live = true;
-    setRevision(null);
-    setRules([]);
-    setSaved([]);
-    if (!userId) return;
-    void Promise.all([client.assistantRules(), client.listTeams()]).then(
-      ([value, membership]) => {
-        if (!live) return;
+    setNotice("");
+    try {
+      const [value, membership] = await Promise.all([
+        client.assistantRules(),
+        client.listTeams(),
+      ]);
+      if (mounted.current && epoch === request.current) {
         setRevision(value.revision);
         setRules(value.rules);
         setSaved(value.rules);
         setTeams(membership.filter((team) => team.role !== null));
-      },
-      () => {
-        if (live) setError("Couldn't load rules. Retry.");
-      },
-    );
-    return () => {
-      live = false;
-    };
+        setEditing(null);
+      }
+    } catch {
+      if (mounted.current && epoch === request.current)
+        setError("Couldn't load rules. Retry.");
+    } finally {
+      if (mounted.current && epoch === request.current) setLoading(false);
+    }
   }, [userId]);
+  useEffect(() => {
+    mounted.current = true;
+    void reload();
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
+  }, [reload]);
 
   const change = (id: string, next: AssistantActionRule) =>
     setRules((list) => list.map((rule) => (rule.id === id ? next : rule)));
@@ -141,20 +159,24 @@ export function AssistantRulesSection({ userId }: { userId: string }) {
     setNotice("");
   };
   const save = async () => {
-    if (revision === null || busy) return;
+    if (revision === null || mutation.current || loading) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
       const value = await client.replaceAssistantRules(revision, rules);
+      if (!mounted.current) return;
       setRevision(value.revision);
       setRules(value.rules);
       setSaved(value.rules);
       setEditing(null);
       setNotice("Rules saved");
     } catch {
-      setError("Couldn't save rules. Reload if they changed elsewhere.");
+      if (mounted.current)
+        setError("Couldn't save rules. Retry or reload the latest rules.");
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -174,12 +196,8 @@ export function AssistantRulesSection({ userId }: { userId: string }) {
           {!!error && (
             <SmallAction
               label="Retry"
-              disabled={busy}
-              onPress={() =>
-                void reload().catch(() =>
-                  setError("Couldn't load rules. Retry."),
-                )
-              }
+              disabled={busy || loading}
+              onPress={() => void reload()}
             />
           )}
         </View>
@@ -189,6 +207,7 @@ export function AssistantRulesSection({ userId }: { userId: string }) {
             {editing === rule.id ? (
               <>
                 <Choice
+                  disabled={busy || loading}
                   label="Agent"
                   value={rule.lane}
                   options={Object.entries(lanes).map(([id, label]) => ({
@@ -203,6 +222,7 @@ export function AssistantRulesSection({ userId }: { userId: string }) {
                   }
                 />
                 <Choice
+                  disabled={busy || loading}
                   label="Action"
                   value={rule.action}
                   options={ASSISTANT_RULE_ACTIONS.map((id) => ({
@@ -217,6 +237,7 @@ export function AssistantRulesSection({ userId }: { userId: string }) {
                   }
                 />
                 <Choice
+                  disabled={busy || loading}
                   label="Space"
                   value={
                     rule.scope.kind === "team" ? rule.scope.id : rule.scope.kind
@@ -239,6 +260,7 @@ export function AssistantRulesSection({ userId }: { userId: string }) {
                   }
                 />
                 <Choice
+                  disabled={busy || loading}
                   label="Rule"
                   value={rule.decision}
                   options={[
@@ -266,13 +288,13 @@ export function AssistantRulesSection({ userId }: { userId: string }) {
             <View style={s.actions}>
               <SmallAction
                 label={editing === rule.id ? "Done" : "Edit"}
-                disabled={busy}
+                disabled={busy || loading}
                 onPress={() => setEditing(editing === rule.id ? null : rule.id)}
               />
               <SmallAction
                 label="Remove"
                 destructive
-                disabled={busy}
+                disabled={busy || loading}
                 onPress={() => {
                   setRules((list) =>
                     list.filter((item) => item.id !== rule.id),
@@ -290,24 +312,28 @@ export function AssistantRulesSection({ userId }: { userId: string }) {
         <View style={s.actions}>
           <SmallAction
             label="Add rule"
-            disabled={busy || rules.length >= 100}
+            disabled={busy || loading || rules.length >= 100}
             onPress={add}
           />
           <SmallAction
-            label="Reload"
-            disabled={busy}
-            onPress={() =>
-              void reload().catch(() =>
-                setError("Couldn't reload rules. Retry."),
-              )
+            label={
+              loading
+                ? "Reloading…"
+                : JSON.stringify(rules) !== JSON.stringify(saved)
+                  ? "Discard changes and reload"
+                  : "Reload"
             }
+            disabled={busy || loading}
+            onPress={() => void reload()}
           />
         </View>
       )}
       {revision !== null && (
         <Button
           title={busy ? "Saving…" : "Save rules"}
-          disabled={busy || JSON.stringify(rules) === JSON.stringify(saved)}
+          disabled={
+            busy || loading || JSON.stringify(rules) === JSON.stringify(saved)
+          }
           onPress={() => void save()}
         />
       )}

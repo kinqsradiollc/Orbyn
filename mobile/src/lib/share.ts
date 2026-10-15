@@ -93,14 +93,16 @@ export async function copyText(text: string, done = "Copied") {
     } else {
       const clipboard = nativeClipboard();
       if (!clipboard) {
-        await Share.share({ message: text });
-        return;
+        const result = await Share.share({ message: text });
+        return result.action === Share.sharedAction;
       }
       await clipboard.setStringAsync(text);
     }
     showToast({ text: done });
+    return true;
   } catch {
     showToast({ text: "Couldn't copy it" });
+    return false;
   }
 }
 

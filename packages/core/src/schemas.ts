@@ -638,6 +638,8 @@ export const docAssistRequest = z
     range_start: z.number().int().min(0).max(100_000),
     range_end: z.number().int().min(0).max(100_000),
     action: z.enum(DOC_AI_ACTIONS),
+    version: z.number().int().positive().optional(),
+    quote: z.string().max(100_000).optional(),
     /** Used when the action is "custom": what they actually asked for. */
     instruction: z.string().trim().max(500).default(""),
   })

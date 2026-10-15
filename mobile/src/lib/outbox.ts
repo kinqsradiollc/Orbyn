@@ -8,13 +8,16 @@ import {
   waitingPageSave,
   type Doc,
   type PageSave,
+  type Habit,
   type HabitInput,
   type Item,
+  type ItemDetail,
   type ItemInput,
   type OutboxEntry,
   type OutboxOp,
 } from "@orbyn/core";
 import { client } from "./api";
+import { session } from "./session";
 import { errorText } from "./errors";
 import { rememberPage } from "./pageCache";
 
@@ -49,6 +52,8 @@ let state: State = {
 };
 const listeners = new Set<(s: State) => void>();
 let loaded: Promise<void> | null = null;
+let generation = 0;
+let clearing: Promise<void> | null = null;
 /** Told after a send lands, so the lists re-read the server. */
 let onSent: () => void = () => {};
 
@@ -69,9 +74,12 @@ function persist() {
 }
 
 /** Read the queue saved on the phone. Safe to call more than once. */
-export function loadOutbox() {
+export function loadOutbox(): Promise<void> {
+  if (clearing) return clearing.then(() => loadOutbox());
+  const epoch = generation;
   loaded ??= AsyncStorage.getItem(KEY)
     .then((raw) => {
+      if (epoch !== generation) return;
       const saved = raw ? (JSON.parse(raw) as OutboxEntry[]) : [];
       if (Array.isArray(saved) && saved.length)
         set({ entries: [...saved, ...state.entries] });
@@ -105,10 +113,20 @@ export function whenSent(listener: () => void) {
 }
 
 /** Forget everything waiting: signing out, or starting over. */
-export async function clearOutbox() {
+export function clearOutbox(): Promise<void> {
+  generation++;
+  loaded = null;
   set({ entries: [], syncedAt: null, offline: false });
-  await writeTail;
-  await AsyncStorage.removeItem(KEY).catch(() => {});
+  const previous = clearing;
+  const work = (async () => {
+    await previous;
+    await writeTail;
+    await AsyncStorage.removeItem(KEY).catch(() => {});
+  })();
+  clearing = work;
+  return work.finally(() => {
+    if (clearing === work) clearing = null;
+  });
 }
 
 function enqueue(op: OutboxOp, key = newId()) {
@@ -396,8 +414,11 @@ export async function resolve(key: string, choice: "mine" | "retry" | "drop") {
  * A page edit made with no connection (SHR-03): kept on the phone and sent
  * when the signal is back, merged into whatever the page became meanwhile.
  */
-export async function savePageOffline(save: PageSave) {
+export async function savePageOffline(save: PageSave, account = session.token) {
+  const epoch = generation;
   await loadOutbox();
+  if (!account || account !== session.token || epoch !== generation)
+    throw new Error("The account changed. Reopen the page.");
   set({
     entries: queueChange(state.entries, {
       key: newId(),
@@ -445,17 +466,18 @@ export const deleteItem = (
 export const postItemUpdate = (
   item: Pick<Item, "id" | "title">,
   body: { status?: Item["status"]; progress?: number; body?: string },
-) => run({ type: "item.post", id: item.id, title: item.title, body });
+) =>
+  run<ItemDetail>({ type: "item.post", id: item.id, title: item.title, body });
 
 export const createHabit = (body: HabitInput) =>
-  run({ type: "habit.create", body });
+  run<Habit>({ type: "habit.create", body });
 export const updateHabit = (
   id: string,
   name: string,
   patch: Partial<HabitInput>,
-) => run({ type: "habit.update", id, name, patch });
+) => run<Habit>({ type: "habit.update", id, name, patch });
 export const deleteHabit = (id: string, name: string) =>
-  run({ type: "habit.delete", id, name });
+  run<void>({ type: "habit.delete", id, name });
 
 export const approveBooking = (id: string, who: string) =>
   run({ type: "booking.approve", id, who });

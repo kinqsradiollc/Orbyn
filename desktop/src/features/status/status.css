@@ -3,7 +3,7 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: #fbfcf8;
+  background: var(--color-canvas);
   color: var(--color-text);
   overflow-x: hidden;
 }
@@ -36,7 +36,7 @@
   color: var(--color-accent);
 }
 .status-page .status-nav .primary {
-  color: #fff;
+  color: var(--color-onAccent);
 }
 .status-main {
   flex: 1;
@@ -81,27 +81,27 @@
 }
 .status-banner .icon-button {
   color: inherit;
-  background: #ffffff99;
+  background: var(--color-surface);
 }
 .status-banner.is-operational {
-  background: #eaf3ea;
-  border-color: #d3e5d4;
-  color: #2f5f3f;
+  background: var(--color-selected);
+  border-color: var(--color-borderStrong);
+  color: var(--color-accentText);
 }
 .status-banner.is-degraded {
-  background: #fcf3e0;
-  border-color: #f1dfb5;
-  color: #7f5812;
+  background: var(--color-warnSoft);
+  border-color: var(--color-warnBorder);
+  color: var(--color-warn);
 }
 .status-banner.is-outage {
   background: var(--color-dangerSoft);
-  border-color: #f0d2c6;
-  color: #97462d;
+  border-color: var(--color-dangerBorder);
+  color: var(--color-danger);
 }
 .status-banner.is-unknown {
-  background: #f2f4f0;
-  border-color: #e3e8e1;
-  color: #5f6b63;
+  background: var(--color-surfaceMuted);
+  border-color: var(--color-border);
+  color: var(--color-textSoft);
 }
 
 /* Maintenance notice, above the headline while maintenance mode is on. */
@@ -110,10 +110,10 @@
   align-items: flex-start;
   gap: 14px;
   padding: 18px 22px;
-  border: 1px solid #d8e2ef;
+  border: 1px solid var(--color-borderStrong);
   border-radius: var(--radius-md);
-  background: #eef3f9;
-  color: #34506f;
+  background: var(--color-selected);
+  color: var(--color-accentText);
   margin-bottom: 16px;
 }
 .status-maintenance > svg {
@@ -150,20 +150,20 @@
   white-space: nowrap;
 }
 .state-pill.is-operational {
-  background: #e7f0e5;
-  color: #3c6349;
+  background: var(--color-selected);
+  color: var(--color-accentText);
 }
 .state-pill.is-degraded {
-  background: #fbf1dc;
-  color: #8a6116;
+  background: var(--color-warnSoft);
+  color: var(--color-warn);
 }
 .state-pill.is-outage {
   background: var(--color-dangerSoft);
-  color: #a24d33;
+  color: var(--color-danger);
 }
 .state-pill.is-unknown {
-  background: #f1f3ef;
-  color: #7a857e;
+  background: var(--color-chip);
+  color: var(--color-textMuted);
 }
 
 /* Components, in groups: a healthy group is one line, a troubled one opens. */
@@ -273,26 +273,26 @@
 .status-bars .bar {
   flex: 1 1 0;
   min-width: 0;
-  border-radius: 2px;
-  cursor: pointer;
+  border-radius: var(--radius-xs);
+  cursor: default;
   transition:
     opacity var(--motion-fast) var(--ease-out),
     transform var(--motion-fast) var(--ease-out);
 }
 .status-bars .bar.is-great {
-  background: #4f8a5f;
+  background: var(--color-accentText);
 }
 .status-bars .bar.is-good {
-  background: #a3c99f;
+  background: var(--color-accentSoft);
 }
 .status-bars .bar.is-warn {
-  background: #e2ad45;
+  background: var(--color-warn);
 }
 .status-bars .bar.is-bad {
-  background: #c8664a;
+  background: var(--color-danger);
 }
 .status-bars .bar.is-none {
-  background: #e3e7e1;
+  background: var(--color-border);
 }
 .status-bars:hover .bar:not(:hover),
 .status-bars:has(.is-active) .bar:not(.is-active) {
@@ -398,20 +398,20 @@
   flex: none;
   width: 8px;
   height: 8px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
 }
 .status-dot.is-resolved {
-  background: #9ab68c;
+  background: var(--color-muted);
 }
 .status-dot.is-ongoing {
-  background: #c8664a;
+  background: var(--color-danger);
 }
 .status-empty {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 0 23px 22px;
-  color: #5d7854;
+  color: var(--color-accentText);
 }
 .status-empty p {
   margin: 0;
@@ -433,7 +433,12 @@
   width: 40%;
   border-radius: var(--radius-xs);
   margin-bottom: 12px;
-  background: linear-gradient(90deg, #eef1ec 25%, #f7f9f5 50%, #eef1ec 75%);
+  background: linear-gradient(
+    90deg,
+    var(--color-chip) 25%,
+    var(--color-sunken) 50%,
+    var(--color-chip) 75%
+  );
   background-size: 200% 100%;
   animation: status-shimmer 1.4s linear infinite;
 }
@@ -546,4 +551,68 @@
   .status-chevron {
     transition: none;
   }
+}
+
+.status-nav {
+  flex-wrap: wrap;
+}
+.status-banner {
+  padding: 16px;
+  flex-wrap: wrap;
+}
+.status-banner h1 {
+  font-size: 20px;
+  letter-spacing: normal;
+}
+.status-banner > div {
+  flex: 1 1 200px;
+}
+.status-banner .icon-button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.status-main > .eyebrow {
+  text-transform: none;
+  letter-spacing: normal;
+}
+.status-group-toggle,
+.status-incident-toggle,
+.status-component-head,
+.status-more {
+  flex-wrap: wrap;
+}
+.status-group-name,
+.status-incident-main {
+  flex: 1 1 160px;
+  overflow-wrap: anywhere;
+}
+.status-component-head > div {
+  flex: 1 1 160px;
+}
+.status-component-head h4,
+.status-updates li > span,
+.state-pill {
+  overflow-wrap: anywhere;
+}
+.state-pill {
+  white-space: normal;
+}
+.status-daily-details {
+  margin-top: 8px;
+  font-size: 13px;
+}
+.status-daily-details summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--color-accentText);
+}
+.status-daily-details .select {
+  width: 100%;
+}
+.status-nav .primary,
+.status-nav .text-button {
+  min-height: 44px;
+  font-size: 13px;
 }

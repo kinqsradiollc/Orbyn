@@ -1,11 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  StyleSheet,
-  Text,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import {
   dateLabel,
   isClosed,
@@ -31,7 +25,8 @@ import {
   subtasksLabel,
   updatesLabel,
 } from "../lib/progress";
-import { pop, usePressScale, useReducedMotion, Pressable } from "../motion";
+import { Pressable } from "../motion";
+import { usePaneWidth } from "../hooks/usePaneWidth";
 import { colors, fonts, radii, themed, statusTones } from "../theme";
 import { tap } from "../lib/haptics";
 import { copyLink } from "../lib/share";
@@ -50,7 +45,6 @@ const INDENT = 22;
 /**
  * One planner row: quick-complete checkbox, title, status pill, a slim progress
  * bar and checklist / update counts. Tapping the row opens the task detail.
- * Shrinks slightly while pressed; the check mark pops when the item becomes done.
  * Subtasks sit indented under their task, which can fold them away.
  */
 export function ItemCard({
@@ -101,23 +95,16 @@ export function ItemCard({
   const cancelled = item.status === "cancelled";
   const percent = percentOf(item);
   const tone = statusTones[item.status];
-  const reduced = useReducedMotion();
-  const press = usePressScale();
-  const tick = useRef(new Animated.Value(1)).current;
+  const { width, onLayout } = usePaneWidth();
   // The tick box grows with the phone's text size, as the title does, but
   // never shrinks below 22 so its touch area stays full size.
   const box = Math.round(
     22 * Math.max(1, Math.min(2, useWindowDimensions().fontScale)),
   );
-  const wasDone = useRef(done);
   const longPressed = useRef(false);
   useEffect(() => {
-    if (done && !wasDone.current && !reduced) {
-      tick.setValue(0.6);
-      pop(tick).start();
-    }
-    wasDone.current = done;
-  }, [done, reduced, tick]);
+    setMenuOpen(false);
+  }, [item.id, busy]);
   const showProgress = item.kind === "task" || percent > 0;
   // "Planned 9:15" for a session today, and the task's status only within a
   // week of its deadline or with a session after it.
@@ -142,6 +129,7 @@ export function ItemCard({
    */
   const [menuOpen, setMenuOpen] = useState(false);
   const menu = () => {
+    if (busy) return;
     tap();
     setMenuOpen(true);
   };
@@ -210,12 +198,14 @@ export function ItemCard({
     item.priority
   ];
   return (
-    <Animated.View
+    <View
+      onLayout={onLayout}
       style={[
         s.row,
         !first && s.divider,
-        depth > 0 && { paddingLeft: 16 + depth * INDENT },
-        press.style,
+        depth > 0 && {
+          paddingLeft: 16 + Math.min(depth * INDENT, Math.max(0, width - 240)),
+        },
       ]}
     >
       <Pressable
@@ -223,143 +213,137 @@ export function ItemCard({
         accessibilityState={{ checked: done, disabled: busy || readOnly }}
         accessibilityLabel={(done ? "Reopen " : "Complete ") + item.title}
         disabled={busy || readOnly}
-        hitSlop={12}
         onPress={() => {
           // A light tap under the thumb as a task is ticked off.
           if (!done) tap();
           onToggle(item);
         }}
-        style={[
-          s.check,
-          { width: box, height: box },
-          done && s.checked,
-          readOnly && s.checkLocked,
-        ]}
+        style={s.checkTarget}
       >
-        {done && (
-          <Animated.View style={{ transform: [{ scale: tick }] }}>
+        <View
+          style={[
+            s.check,
+            { width: box, height: box },
+            done && s.checked,
+            readOnly && s.checkLocked,
+          ]}
+        >
+          {done && (
             <Icon
               name="check"
               size={Math.round(box * 0.6)}
-              color={colors.white}
+              color={colors.onAccent}
               strokeWidth={3}
             />
-          </Animated.View>
-        )}
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`Open ${item.title}${depth > 0 ? ", subtask" : ""}`}
-        accessibilityHint={
-          onDragStart && canReorder
-            ? "Shows steps, progress and updates. Long-press and drag to reorder."
-            : "Shows steps, progress and updates"
-        }
-        style={({ pressed }) => [s.main, pressed && { opacity: 0.6 }]}
-        onPressIn={press.onPressIn}
-        onPressOut={() => {
-          press.onPressOut();
-          if (!longPressed.current) return;
-          longPressed.current = false;
-          // Held without moving: the menu, as without manual order.
-          if (!onDragRelease?.()) menu();
-        }}
-        onPress={() => onOpen(item)}
-        onLongPress={
-          onDragStart && canReorder
-            ? () => {
-                longPressed.current = true;
-                onDragStart(item);
-              }
-            : onPickUp
-              ? () => {
-                  tap();
-                  onPickUp(item);
-                }
-              : menu
-        }
-        accessibilityActions={actions}
-        onAccessibilityAction={(e) => {
-          const name = e.nativeEvent.actionName;
-          if (name === "longpress" && onPickUp) onPickUp(item);
-          else if (name === "longpress") menu();
-          else if (name === "moveUp") onMoveBy?.move(-1);
-          else if (name === "moveDown") onMoveBy?.move(1);
-        }}
-      >
-        <View style={s.top}>
-          <Text
-            numberOfLines={2}
-            style={[s.title, done && s.done, cancelled && s.cancelled]}
-          >
-            {item.title}
-          </Text>
-          <StatusPill status={item.status} />
+          )}
         </View>
-        {!!note && (
-          <Text numberOfLines={1} style={s.note}>
-            {note}
-          </Text>
-        )}
-        <View style={s.meta}>
-          <Icon
-            name={item.kind === "event" ? "calendar" : "clock"}
-            size={12}
-            color={colors.muted}
-          />
-          <Text numberOfLines={1} style={s.metaText}>
-            {item.all_day && item.due_at
-              ? `${shortDay(item.due_at)} · All day`
-              : dateLabel(item.due_at)}
-            {item.kind === "event" ? " · Event" : ""}
-          </Text>
-          <Text
-            style={[s.priority, priorityTone]}
-            accessibilityLabel={`${PRIORITY_NAMES[item.priority]} priority`}
-          >
-            {PRIORITY_NAMES[item.priority]}
-          </Text>
-          {score != null && (
-            <Text
-              style={s.score}
-              accessibilityLabel={`Priority score ${score.toFixed(1)}`}
-            >
-              {score.toFixed(1)}
+      </Pressable>
+      <View style={s.main}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={busy}
+          accessibilityLabel={`Open ${item.title}${depth > 0 ? ", subtask" : ""}`}
+          accessibilityHint={
+            onDragStart && canReorder
+              ? "Shows steps, progress and updates. Long-press and drag to reorder."
+              : "Shows steps, progress and updates"
+          }
+          style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+          onPressOut={() => {
+            if (!longPressed.current) return;
+            longPressed.current = false;
+            // Held without moving: the menu, as without manual order.
+            if (!onDragRelease?.()) menu();
+          }}
+          onPress={() => onOpen(item)}
+          onLongPress={
+            onDragStart && canReorder
+              ? () => {
+                  longPressed.current = true;
+                  onDragStart(item);
+                }
+              : onPickUp
+                ? () => {
+                    tap();
+                    onPickUp(item);
+                  }
+                : menu
+          }
+          accessibilityActions={actions}
+          onAccessibilityAction={(e) => {
+            if (busy) return;
+            const name = e.nativeEvent.actionName;
+            if (name === "longpress" && onPickUp) onPickUp(item);
+            else if (name === "longpress") menu();
+            else if (name === "moveUp") onMoveBy?.move(-1);
+            else if (name === "moveDown") onMoveBy?.move(1);
+          }}
+        >
+          <View style={s.top}>
+            <Text style={[s.title, done && s.done, cancelled && s.cancelled]}>
+              {item.title}
+            </Text>
+            <StatusPill status={item.status} />
+          </View>
+          {!!note && (
+            <Text numberOfLines={1} style={s.note}>
+              {note}
             </Text>
           )}
-          {!!item.team_name && (
-            <View style={s.team}>
-              <Icon name="users" size={10} color={colors.accent} />
-              <Text numberOfLines={1} style={s.teamText}>
-                {item.team_name}
+          <View style={s.meta}>
+            <Icon
+              name={item.kind === "event" ? "calendar" : "clock"}
+              size={12}
+              color={colors.muted}
+            />
+            <Text style={s.metaText}>
+              {item.all_day && item.due_at
+                ? `${shortDay(item.due_at)} · All day`
+                : dateLabel(item.due_at)}
+              {item.kind === "event" ? " · Event" : ""}
+            </Text>
+            <Text
+              style={[s.priority, priorityTone]}
+              accessibilityLabel={`${PRIORITY_NAMES[item.priority]} priority`}
+            >
+              {PRIORITY_NAMES[item.priority]}
+            </Text>
+            {score != null && (
+              <Text
+                style={s.score}
+                accessibilityLabel={`Priority score ${score.toFixed(1)}`}
+              >
+                {score.toFixed(1)}
               </Text>
-            </View>
-          )}
-        </View>
-        <PlanningMeta item={item} />
-        {(!!plannedToday || !!fitChip) && (
-          <View style={s.plan}>
-            {!!plannedToday && <Pill label={plannedToday} tone="accent" />}
-            {!!fitChip && (
-              <Pill label={fitChip.text} tone={chipTone(fitChip.tone)} />
+            )}
+            {!!item.team_name && (
+              <View style={s.team}>
+                <Icon name="users" size={10} color={colors.accent} />
+                <Text style={s.teamText}>{item.team_name}</Text>
+              </View>
             )}
           </View>
-        )}
-        {showProgress && (
-          <View style={s.progress}>
-            <ProgressBar
-              value={percent}
-              color={tone.fg}
-              label={`${item.title} progress`}
-            />
-            <Text style={s.percent}>{percent}%</Text>
-          </View>
-        )}
-        {!!footer && (
-          <Text numberOfLines={1} style={s.footer}>
-            {footer}
-          </Text>
-        )}
+          <PlanningMeta item={item} />
+          {(!!plannedToday || !!fitChip) && (
+            <View style={s.plan}>
+              {!!plannedToday && <Pill label={plannedToday} tone="accent" />}
+              {!!fitChip && (
+                <Pill label={fitChip.text} tone={chipTone(fitChip.tone)} />
+              )}
+            </View>
+          )}
+          {showProgress && (
+            <View style={s.progress}>
+              <ProgressBar
+                value={percent}
+                color={tone.fg}
+                label={`${item.title} progress`}
+              />
+              <Text style={s.percent}>{percent}%</Text>
+            </View>
+          )}
+          {!!footer && <Text style={s.footer}>{footer}</Text>}
+        </Pressable>
         {subtasks && (
           <Pressable
             accessibilityRole="button"
@@ -368,7 +352,7 @@ export function ItemCard({
               subtasks.open ? "Hides its subtasks" : "Shows its subtasks"
             }
             accessibilityState={{ expanded: subtasks.open }}
-            hitSlop={8}
+            disabled={busy}
             onPress={subtasks.onToggle}
             style={s.subtasks}
           >
@@ -386,15 +370,18 @@ export function ItemCard({
             <SmallAction label="Move to…" disabled={busy} onPress={menu} />
           </View>
         )}
-      </Pressable>
+      </View>
       <ActionSheet
         visible={menuOpen}
         label="Task menu"
         title={item.title}
-        actions={menuActions}
+        actions={menuActions.map((action) => ({
+          ...action,
+          disabled: busy || action.disabled,
+        }))}
         onClose={() => setMenuOpen(false)}
       />
-    </Animated.View>
+    </View>
   );
 }
 
@@ -403,8 +390,8 @@ const s = themed(() =>
     row: {
       flexDirection: "row",
       alignItems: "flex-start",
-      gap: 14,
-      paddingVertical: 15,
+      gap: 8,
+      paddingVertical: 12,
       paddingHorizontal: 16,
     },
     divider: {
@@ -422,12 +409,19 @@ const s = themed(() =>
       justifyContent: "center",
       marginTop: 1,
     },
+    checkTarget: { minWidth: 44, minHeight: 44, alignItems: "center" },
     checked: { backgroundColor: colors.accent, borderColor: colors.accent },
     checkLocked: { opacity: 0.5 },
-    main: { flex: 1 },
-    top: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+    main: { flex: 1, minWidth: 0 },
+    top: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "flex-start",
+      gap: 6,
+    },
     title: {
       flex: 1,
+      minWidth: 100,
       fontFamily: fonts.medium,
       fontSize: 15,
       lineHeight: 20,
@@ -484,7 +478,7 @@ const s = themed(() =>
       alignItems: "center",
       gap: 4,
       flexShrink: 1,
-      maxWidth: 140,
+      maxWidth: "100%",
       backgroundColor: colors.accentSoft,
       borderRadius: radii.pill,
       paddingHorizontal: 7,
@@ -492,6 +486,7 @@ const s = themed(() =>
       marginLeft: 3,
     },
     teamText: {
+      flexShrink: 1,
       fontFamily: fonts.semibold,
       fontSize: 11,
       color: colors.accent,
@@ -521,7 +516,7 @@ const s = themed(() =>
       alignSelf: "flex-start",
       gap: 4,
       marginTop: 8,
-      minHeight: 24,
+      minHeight: 44,
     },
     subtasksText: {
       fontFamily: fonts.semibold,

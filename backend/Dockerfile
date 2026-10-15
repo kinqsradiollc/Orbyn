@@ -76,5 +76,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 USER node
 CMD ["node", "backend/dist/services/pdf.js"]
 
+# Standalone LaTeX compiler. Packages are provisioned at build time; jobs cannot download.
+FROM runtime AS latex
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bubblewrap texlive-latex-base texlive-latex-recommended texlive-fonts-recommended \
+  && rm -rf /var/lib/apt/lists/*
+USER node
+CMD ["node", "backend/dist/services/latex.js"]
+
 # The default API/worker image retains its existing system dependencies.
 FROM runtime AS backend

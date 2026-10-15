@@ -3115,6 +3115,14 @@ while the first is still running gets `409`, and the key used for a different re
 Keys belong to the credentials they came with. `POST /items` also accepts an `id` made on the
 device: sending it again answers `200` with the same item.
 
+For task imports (`POST /me/import`) and page imports (`POST /imports/pages`),
+replays recheck the live account and current target-team write permission. The
+receipt also matches the request-body fingerprint. A confirmed import stores
+its result in the same transaction as the imported content; later response
+failure cannot erase or replace that committed receipt. Clients must keep the
+same key for a retry of the same attempt within the one-day receipt window.
+A new, deliberately repeated import needs a new key.
+
 ## Team capacity
 
 ### `GET /teams/:id/capacity?from=&to=` (auth, `items:read`)
@@ -3643,3 +3651,15 @@ Collection honors Privacy analytics opt-out. Existing records remain until their
 30-day expiry; account/job deletion cascades them. Only hashed deduplication keys,
 owner/job references, timestamps and counters are retained, without prompts,
 replies, raw response identifiers or provider credentials.
+
+
+### Standalone LaTeX preview
+
+`POST /docs/:id/latex/preview` accepts `{source, version}` and returns a PDF.
+Requires a signed-in writer; stale revisions return 409. Authority/revision are
+rechecked after compilation. Draft compilation does not save or change the note.
+The body is limited to 256 KiB of source, six requests per minute, and no file
+attachments or remote packages. Source saves use the existing named code-block
+contract (`lang: "latex-document"`, maximum 20,000 characters per saved block).
+Normal note blocks remain intact; regular history and reviewed assistant proposals
+apply. The first standalone source block is edited by the LaTeX view.

@@ -1,0 +1,10 @@
+# Architecture decisions
+
+| Decision                                                      | State                    | Purpose                         |
+| ------------------------------------------------------------- | ------------------------ | ------------------------------- |
+| [003 — Product UI/UX redesign](003-product-ui-ux-redesign.md) | In progress              | Current web and mobile redesign |
+| [001 — Agent platform](archive/001-devday-agent-platform.md)  | Archived, accepted scope | Previous platform delivery      |
+| [002 — Unified MCP](archive/002-unified-mcp-integration.md)   | Archived, accepted scope | Canonical MCP and previews      |
+
+Current implementation and qualification: [redesign delivery](../reviews/ui-ux-redesign.md).
+Archives preserve decisions, evidence and accepted limitations. An archive is not a claim that deferred checks passed.

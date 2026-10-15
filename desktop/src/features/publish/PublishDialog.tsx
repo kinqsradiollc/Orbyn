@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Copy, ExternalLink, Globe, X } from "lucide-react";
 import { PUBLISH_SLUG, type PublishState } from "@orbyn/core";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import { copyText } from "../../lib/planning";
 import { webOrigin } from "../../lib/links";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { useConfirm } from "../../components/Confirm";
 import "./publish.css";
 import { PagePublicationDialog } from "./PagePublicationDialog";
@@ -18,7 +20,10 @@ export function PublishDialog(props: {
   return props.kind === "doc" ? (
     <PagePublicationDialog id={props.id} onClose={props.onClose} />
   ) : (
-    <LegacyPublishDialog {...props} />
+    <LegacyPublishDialog
+      key={`${session.get()}:${props.kind}:${props.id}`}
+      {...props}
+    />
   );
 }
 
@@ -50,7 +55,32 @@ function LegacyPublishDialog({
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const { ask } = useConfirm();
-  const closeRef = useRef<HTMLButtonElement>(null);
+  const owner = useRef(session.get());
+  const mounted = useRef(false);
+  const lock = useRef(false);
+  const titleId = useId();
+  const baseline = useRef("");
+  const current = () => mounted.current && owner.current === session.get();
+  const snapshot = () =>
+    JSON.stringify([slug, description, pageDescription, hidden, password]);
+  const close = async () => {
+    if (lock.current || !current()) return;
+    if (state && baseline.current !== snapshot()) {
+      lock.current = true;
+      setBusy(true);
+      const yes = await ask({
+        title: "Discard publishing changes?",
+        confirmLabel: "Discard",
+        destructive: true,
+      });
+      lock.current = false;
+      if (!current()) return;
+      setBusy(false);
+      if (!yes) return;
+    }
+    onClose();
+  };
+  const modal = useModalFocus(() => void close(), busy);
 
   const take = (s: PublishState) => {
     setState(s);
@@ -59,29 +89,53 @@ function LegacyPublishDialog({
     setHidden(s.published?.noindex ?? true);
     setPageDescription(s.web_description);
     setPassword("");
+    baseline.current = JSON.stringify([
+      s.published?.slug ?? "",
+      s.published?.description ?? "",
+      s.web_description,
+      s.published?.noindex ?? true,
+      "",
+    ]);
+  };
+  const load = async () => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await client.getPublish(kind, id);
+      if (current()) take(next);
+    } catch (e) {
+      if (current()) setError(errorText(e));
+    } finally {
+      lock.current = false;
+      if (current()) setBusy(false);
+    }
   };
   useEffect(() => {
-    client.getPublish(kind, id).then(take, (e) => setError(errorText(e)));
-  }, [kind, id]);
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const run = async (fn: () => Promise<PublishState | void>, done?: string) => {
+    if (lock.current || !current()) return;
+    lock.current = true;
     setBusy(true);
     setError("");
     setNote("");
     try {
       const next = await fn();
+      if (!current()) return;
       if (next) take(next);
       if (done) setNote(done);
     } catch (e) {
-      setError(errorText(e));
+      if (current()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (current()) setBusy(false);
     }
   };
 
@@ -91,6 +145,48 @@ function LegacyPublishDialog({
   const viaUrl = state?.via_folder ? `${origin}${state.via_folder.path}` : "";
   const slugOk = !slug || PUBLISH_SLUG.test(slug);
   const noun = kind === "doc" ? "page" : "folder";
+
+  const unpublish = async () => {
+    if (lock.current || !current()) return;
+    lock.current = true;
+    setBusy(true);
+    const yes = await ask({
+      title: `Unpublish this ${noun}?`,
+      body: "The public address stops working. You can publish it again later.",
+      confirmLabel: "Unpublish",
+      destructive: true,
+    });
+    lock.current = false;
+    if (!current()) return;
+    setBusy(false);
+    if (yes) await run(() => client.unpublish(kind, id), "Unpublished.");
+  };
+
+  const removePassword = async () => {
+    if (!published || lock.current || !current()) return;
+    lock.current = true;
+    setBusy(true);
+    const yes = await ask({
+      title: "Remove password?",
+      body: "Anyone with the public link will be able to read this folder.",
+      confirmLabel: "Remove password",
+      destructive: true,
+    });
+    lock.current = false;
+    if (!current()) return;
+    setBusy(false);
+    if (yes)
+      await run(
+        () =>
+          client.publish(kind, id, {
+            slug: published.slug,
+            noindex: hidden,
+            description: kind === "folder" ? description : pageDescription,
+            password: null,
+          }),
+        "Password removed.",
+      );
+  };
 
   const save = (publishing: boolean) =>
     void run(
@@ -114,24 +210,27 @@ function LegacyPublishDialog({
     <div
       className="modal-backdrop"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (!busy && e.target === e.currentTarget) void close();
       }}
     >
       <section
-        className="modal publish-dialog scale-in"
+        ref={modal.ref}
+        data-modal-focus={modal.id}
+        tabIndex={-1}
+        className="modal publish-dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="publish-title"
+        aria-labelledby={titleId}
       >
         <div className="section-heading">
-          <h2 id="publish-title">
+          <h2 id={titleId}>
             <Globe size={18} aria-hidden="true" /> Publish to web
           </h2>
           <button
-            ref={closeRef}
+            disabled={busy}
             className="icon-button"
             aria-label="Close"
-            onClick={onClose}
+            onClick={() => void close()}
           >
             <X size={20} />
           </button>
@@ -142,8 +241,8 @@ function LegacyPublishDialog({
             <>
               <p className="muted">
                 {published
-                  ? `“${name}” is on the web. Anyone with the link can read it, without an account.`
-                  : `Put “${name}” on the web: anyone with the link can read it, without an account. It stays off until you publish it.`}
+                  ? `“${name}” is published. ${published.has_password ? "Password required to read it." : "Anyone with the link can read it."}`
+                  : `“${name}” stays private until published. ${password ? "Readers will need the password." : "Anyone with the link will be able to read it."}`}
               </p>
               {state.via_folder && (
                 <p className="publish-via">
@@ -185,7 +284,7 @@ function LegacyPublishDialog({
                 </div>
               )}
               {state.can_publish && (
-                <div className="publish-fields">
+                <fieldset disabled={busy} className="publish-fields">
                   <label>
                     Address
                     <span className="publish-slug">
@@ -211,7 +310,7 @@ function LegacyPublishDialog({
                       rows={2}
                       maxLength={300}
                       value={kind === "doc" ? pageDescription : description}
-                      placeholder="A line for the card a shared link shows"
+                      placeholder="Short link preview"
                       onChange={(e) =>
                         kind === "doc"
                           ? setPageDescription(e.target.value)
@@ -229,7 +328,10 @@ function LegacyPublishDialog({
                     />
                     <span>
                       Hide from search engines
-                      <small>On: only people with the link find it.</small>
+                      <small>
+                        Requests exclusion from search results. Access settings
+                        are unchanged.
+                      </small>
                     </span>
                   </label>
                   <label>
@@ -253,26 +355,12 @@ function LegacyPublishDialog({
                     <button
                       className="text-button"
                       disabled={busy}
-                      onClick={() =>
-                        void run(
-                          () =>
-                            client.publish(kind, id, {
-                              slug: published.slug,
-                              noindex: hidden,
-                              description:
-                                kind === "folder"
-                                  ? description
-                                  : pageDescription,
-                              password: null,
-                            }),
-                          "The password is gone.",
-                        )
-                      }
+                      onClick={() => void removePassword()}
                     >
-                      Remove the password
+                      Remove password
                     </button>
                   )}
-                </div>
+                </fieldset>
               )}
               {kind === "doc" && !state.can_publish && state.via_folder && (
                 <label>
@@ -297,6 +385,11 @@ function LegacyPublishDialog({
               {error}
             </p>
           )}
+          {!state && error && (
+            <button disabled={busy} onClick={() => void load()}>
+              Retry
+            </button>
+          )}
           {note && (
             <p role="status" className="muted">
               {note}
@@ -306,26 +399,16 @@ function LegacyPublishDialog({
         {state && (
           <div className="publish-foot">
             {published ? (
-              <button
-                className="danger"
-                disabled={busy}
-                onClick={() =>
-                  void ask({
-                    title: `Unpublish this ${noun}?`,
-                    body: "The address stops working at once. You can publish it again later.",
-                    confirmLabel: "Unpublish",
-                    destructive: true,
-                  }).then((yes) => {
-                    if (yes)
-                      void run(
-                        () => client.unpublish(kind, id),
-                        `The ${noun} is off the web.`,
-                      );
-                  })
-                }
-              >
-                Unpublish
-              </button>
+              <details className="publish-options">
+                <summary>Options</summary>
+                <button
+                  className="danger"
+                  disabled={busy}
+                  onClick={() => void unpublish()}
+                >
+                  Unpublish
+                </button>
+              </details>
             ) : (
               <span />
             )}
@@ -353,57 +436,98 @@ function LegacyPublishDialog({
  * once (they come back if it is turned on again).
  */
 export function TeamPublishing({ teamId }: { teamId: string }) {
+  return (
+    <TeamPublishingBody key={`${session.get()}:${teamId}`} teamId={teamId} />
+  );
+}
+function TeamPublishingBody({ teamId }: { teamId: string }) {
   const [state, setState] = useState<{
     allowed: boolean;
     published: number;
     can_change: boolean;
   } | null>(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const owner = useRef(session.get());
+  const mounted = useRef(false);
+  const lock = useRef(false);
+  const owns = () => mounted.current && owner.current === session.get();
+  const load = async () => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await client.getTeamPublishing(teamId);
+      if (owns()) setState(next);
+    } catch (e) {
+      if (owns()) setError(errorText(e));
+    } finally {
+      lock.current = false;
+      if (owns()) setBusy(false);
+    }
+  };
   useEffect(() => {
-    client.getTeamPublishing(teamId).then(setState, () => setState(null));
-  }, [teamId]);
-  if (!state) return null;
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const change = async (allowed: boolean) => {
+    if (!state?.can_change || lock.current || !owns()) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await client.setTeamPublishing(teamId, allowed);
+      if (owns()) setState(next);
+    } catch (e) {
+      if (owns()) setError(errorText(e));
+    } finally {
+      lock.current = false;
+      if (owns()) setBusy(false);
+    }
+  };
+  const titleId = useId();
   return (
-    <section
-      className="card team-publishing"
-      aria-labelledby="team-publishing-title"
-    >
-      <h3 id="team-publishing-title">
+    <section className="team-publishing" aria-labelledby={titleId}>
+      <h3 id={titleId}>
         <Globe size={15} aria-hidden="true" /> Pages on the web
       </h3>
-      <label className="switch-line">
-        <input
-          type="checkbox"
-          role="switch"
-          className="ai-switch"
-          checked={state.allowed}
-          disabled={!state.can_change}
-          onChange={(e) =>
-            client.setTeamPublishing(teamId, e.target.checked).then(
-              (s) => {
-                setError("");
-                setState(s);
-              },
-              (err) => setError(errorText(err)),
-            )
-          }
-        />
-        <span>
-          Members can publish the team's pages
-          <small>
-            {state.published
-              ? `${state.published} page${state.published === 1 ? " or folder is" : "s or folders are"} published.`
-              : "Nothing is published."}{" "}
-            {state.can_change
-              ? "Turning this off takes them all off the web at once."
-              : "Owners and admins can change this."}
-          </small>
-        </span>
-      </label>
+      {!state && !error && (
+        <p className="muted">Loading publishing settings…</p>
+      )}
+      {state && (
+        <label className="switch-line">
+          <input
+            type="checkbox"
+            role="switch"
+            className="ai-switch"
+            checked={state.allowed}
+            disabled={busy || !state.can_change}
+            onChange={(event) => void change(event.target.checked)}
+          />
+          <span>
+            Members can publish pages
+            <small>
+              {state.published} published.{" "}
+              {state.can_change
+                ? "Turning this off removes all public team pages."
+                : "Owners and admins can change this."}
+            </small>
+          </span>
+        </label>
+      )}
       {error && (
         <p role="alert" className="publish-error">
           {error}
         </p>
+      )}
+      {!state && error && (
+        <button disabled={busy} onClick={() => void load()}>
+          Retry
+        </button>
       )}
     </section>
   );

@@ -1,8 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  Animated,
   Linking,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -15,9 +13,9 @@ import {
   dueLine,
   hasTeamPermission,
   isClosed,
+  isOfflineError,
   seriesNoteFor,
   pageAboutTask,
-  projectPlace,
   statusLabels,
   statusOrder,
   type EventNoteRef,
@@ -33,7 +31,6 @@ import {
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { SmallAction } from "../components/SmallAction";
-import { Chip, ChipRow } from "../components/Chip";
 import { CelebrationHost, celebrate } from "../components/Celebration";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
@@ -46,9 +43,11 @@ import { PlanningMeta } from "../components/PlanningMeta";
 import { ProgressBar } from "../components/ProgressBar";
 import { SessionsPanel } from "../components/SessionsPanel";
 import { HeaderButton, Sheet, sheetStyles } from "../components/Sheet";
-import { ActionSheet } from "../components/MoreMenu";
+import { ActionSheet, MoreMenu } from "../components/MoreMenu";
 import { copyLink, shareLink } from "../lib/share";
-import { confirmAction } from "../lib/confirm";
+import { session } from "../lib/session";
+import { ChoicePicker } from "../components/ChoicePicker";
+import { InlineDetails } from "../components/InlineDetails";
 import { useKeyboardInset } from "../hooks/useKeyboardInset";
 import { useNow } from "../hooks/useNow";
 import { client } from "../lib/api";
@@ -63,14 +62,7 @@ import {
   subtasksLabel,
   timeAgo,
 } from "../lib/progress";
-import {
-  animateLayout,
-  FadeIn,
-  pop,
-  PressableScale,
-  useReducedMotion,
-  Pressable,
-} from "../motion";
+import { FadeIn, PressableScale, Pressable } from "../motion";
 import {
   controls,
   colors,
@@ -83,7 +75,6 @@ import {
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
 import { LinkedHere } from "./docs/links";
-import { tap } from "../lib/haptics";
 
 const PROGRESS_STEPS = [0, 25, 50, 75, 100];
 /** Line height of the update box; it grows to five lines before scrolling. */
@@ -116,7 +107,17 @@ const PRIORITY = themed<
  * Opened by tapping a task anywhere. "Edit details" hands off to ItemEditor
  * (RootScreen closes this sheet first and reopens it afterwards).
  */
-export function TaskDetail({
+type TaskDetailProps = Omit<Parameters<typeof TaskDetailSession>[0], "item"> & {
+  item: Item | null;
+};
+
+/** Keep the account controller and explicitly reset item data across identity changes. */
+export function TaskDetail(props: TaskDetailProps) {
+  if (!props.item) return null;
+  return <TaskDetailSession key={session.token} {...props} item={props.item} />;
+}
+
+function TaskDetailSession({
   visible,
   item,
   items,
@@ -134,7 +135,12 @@ export function TaskDetail({
   onAskTask,
   onOpenPage,
   inline = false,
+  registerLeaveGuard,
 }: {
+  registerLeaveGuard?: (
+    id: string,
+    guard: () => Promise<boolean>,
+  ) => () => void;
   /**
    * Beside the list rather than over it (MOB-12): on an iPad or a wide
    * window the task sits in a panel next to Tasks.
@@ -142,7 +148,7 @@ export function TaskDetail({
   inline?: boolean;
   visible: boolean;
   /** The row that was tapped; shown straight away while the detail loads. */
-  item: Item | null;
+  item: Item;
   /** Everything loaded, for the task's parent and subtasks. */
   items: Item[];
   teams: Team[];
@@ -170,28 +176,56 @@ export function TaskDetail({
   onAskTask?: (item: Item) => void;
   onOpenPage?: (id: string, blockId?: string | null) => void;
 }) {
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const currentItem = useRef(item);
+  currentItem.current = item;
+  const owns = (id?: string) =>
+    mounted.current &&
+    session.token === owner &&
+    (!id || currentItem.current?.id === id);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   /** The ⋯ in the header: sharing the task's link. */
   const [menu, setMenu] = useState(false);
   const [cancelAction, setCancelAction] = useState<CancelAction | null>(null);
   const currentCancelAction = useRef(cancelAction);
   currentCancelAction.current = cancelAction;
   /** Whether this task is starred (NAV-07), read when its menu opens. */
-  const [starred, setStarred] = useState(false);
+  const [starred, setStarred] = useState<boolean | null>(null);
+  const [starFailure, setStarFailure] = useState(false);
+  const [starAttempt, setStarAttempt] = useState(0);
+  const [menuError, setMenuError] = useState("");
+  const starring = useRef(false);
+  const [starPending, setStarPending] = useState(false);
+  useEffect(() => {
+    setMenu(false);
+    setCancelAction(null);
+    setMenuError("");
+  }, [item?.id, visible]);
   useEffect(() => {
     if (!menu || !item) return;
     let live = true;
+    setStarred(null);
+    setStarFailure(false);
+    const id = item.id;
     client.listFavourites().then(
-      (all) =>
-        live &&
-        setStarred(
-          all.some((f) => f.kind === "task" && f.target_id === item.id),
-        ),
-      () => {},
+      (all) => {
+        if (live && owns(id))
+          setStarred(all.some((f) => f.kind === "task" && f.target_id === id));
+      },
+      () => {
+        if (live && owns(id)) setStarFailure(true);
+      },
     );
     return () => {
       live = false;
     };
-  }, [menu, item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [menu, item?.id, starAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
   // Opened: it leads the search's recent list, and ⌘K's on the web.
   const openedId = visible ? item?.id : undefined;
   useEffect(() => {
@@ -205,28 +239,99 @@ export function TaskDetail({
       onPress={() => setMenu(true)}
     />
   ) : undefined;
+  const presentation = useRef({ visible, inline, onDismiss });
+  presentation.current = { visible, inline, onDismiss };
+  const model = useTaskDetailContent({
+    seed: item,
+    active: visible,
+    inline,
+    items,
+    teams,
+    onEdit,
+    onFocus,
+    onChanged,
+    onOpenNote,
+    occurrence,
+    onOpenItem,
+    onShowOnCalendar,
+    onOpenProject,
+    onAskTask,
+    onOpenPage,
+    onCancelReady: setCancelAction,
+  });
+  const prepareLeave = useRef<() => Promise<boolean>>(async () => true);
+  prepareLeave.current = () => {
+    if (starring.current) {
+      setMenuError("Wait for this change to finish.");
+      return Promise.resolve(false);
+    }
+    return model.beforeLeave();
+  };
+  useEffect(
+    () => registerLeaveGuard?.(item.id, () => prepareLeave.current()),
+    [item.id, registerLeaveGuard],
+  );
+  const closing = useRef(false);
+  const close = () => {
+    if (closing.current) return;
+    closing.current = true;
+    void prepareLeave
+      .current()
+      .then((allowed) => {
+        if (allowed && owns(item.id) && presentation.current.visible) onClose();
+      })
+      .finally(() => {
+        closing.current = false;
+      });
+  };
   const body = (
     <>
-      {item && (
-        <Body
-          key={item.id}
-          seed={item}
-          items={items}
-          teams={teams}
-          onEdit={onEdit}
-          onFocus={onFocus}
-          onChanged={onChanged}
-          onOpenNote={onOpenNote}
-          occurrence={occurrence}
-          onOpenItem={onOpenItem}
-          onShowOnCalendar={onShowOnCalendar}
-          onOpenProject={onOpenProject}
-          onAskTask={onAskTask}
-          onOpenPage={onOpenPage}
-          onCancelReady={setCancelAction}
-        />
+      {!!menuError && (
+        <ErrorBanner error={menuError} onDismiss={() => setMenuError("")} />
       )}
+      {model.content}
       <CelebrationHost />
+    </>
+  );
+  const surface = inline ? (
+    visible && item ? (
+      <View style={panel.box} accessibilityLabel="Task beside the list">
+        <View style={panel.head}>
+          <Text style={panel.kind}>
+            {item.kind === "event" ? "Event" : "Task"}
+          </Text>
+          {options}
+          <HeaderButton
+            icon="x"
+            label="Close"
+            disabled={model.pending || starPending}
+            onPress={close}
+          />
+        </View>
+        <View style={panel.body}>{body}</View>
+      </View>
+    ) : null
+  ) : (
+    <Sheet
+      avoidKeyboard={false}
+      visible={visible}
+      title={item?.kind === "event" ? "Event" : "Task"}
+      onClose={close}
+      onDismiss={() => {
+        const latest = presentation.current;
+        if (!latest.visible && !latest.inline) latest.onDismiss?.();
+      }}
+      guardedClose
+      closeDisabled={model.pending || starPending}
+      actions={options}
+    >
+      {body}
+    </Sheet>
+  );
+  return (
+    <>
+      {surface}
+      {model.overlays}
       {item && (
         <ActionSheet
           visible={menu}
@@ -243,20 +348,59 @@ export function TaskDetail({
               onPress: () =>
                 void shareLink({ kind: "task", id: item.id }, item.title),
             },
-            {
-              label: starred ? "Unstar" : "Star",
-              onPress: () => {
-                const on = !starred;
-                setStarred(on);
-                client.setFavourite("task", item.id, on).then(
-                  () => {
-                    announceStars();
-                    showToast({ text: on ? "Starred" : "Unstarred" });
+            ...(starFailure
+              ? [
+                  {
+                    label: "Retry star status",
+                    onPress: () => {
+                      setStarAttempt((a) => a + 1);
+                      setMenu(true);
+                    },
                   },
-                  () => setStarred(!on),
-                );
-              },
-            },
+                ]
+              : [
+                  {
+                    label:
+                      starred === null
+                        ? "Loading star status…"
+                        : starred
+                          ? "Unstar"
+                          : "Star",
+                    disabled: starred === null || starPending,
+                    onPress: () => {
+                      if (
+                        !owns(item.id) ||
+                        starring.current ||
+                        starred === null
+                      )
+                        return;
+                      starring.current = true;
+                      setStarPending(true);
+                      setMenuError("");
+                      const on = !starred;
+                      void client
+                        .setFavourite("task", item.id, on)
+                        .then(
+                          () => {
+                            if (!owns(item.id)) return;
+                            setStarred(on);
+                            announceStars();
+                            showToast({ text: on ? "Starred" : "Unstarred" });
+                          },
+                          () => {
+                            if (owns(item.id))
+                              setMenuError(
+                                "Star could not be updated. Try again.",
+                              );
+                          },
+                        )
+                        .finally(() => {
+                          starring.current = false;
+                          if (owns()) setStarPending(false);
+                        });
+                    },
+                  },
+                ]),
             ...(cancelAction?.id === item.id
               ? [
                   {
@@ -277,36 +421,6 @@ export function TaskDetail({
         />
       )}
     </>
-  );
-  if (inline)
-    return visible && item ? (
-      <View style={panel.box} accessibilityLabel="Task beside the list">
-        <View style={panel.head}>
-          <Text style={panel.kind}>
-            {item.kind === "event" ? "Event" : "Task"}
-          </Text>
-          {options}
-          <HeaderButton icon="x" label="Close" on={false} onPress={onClose} />
-        </View>
-        <ScrollView
-          contentContainerStyle={panel.body}
-          keyboardShouldPersistTaps="handled"
-        >
-          {body}
-        </ScrollView>
-      </View>
-    ) : null;
-  return (
-    <Sheet
-      avoidKeyboard={false}
-      visible={visible}
-      title={item?.kind === "event" ? "Event" : "Task"}
-      onClose={onClose}
-      onDismiss={onDismiss}
-      actions={options}
-    >
-      {body}
-    </Sheet>
   );
 }
 
@@ -334,12 +448,14 @@ const panel = themed(() =>
       fontSize: 15,
       color: colors.text,
     },
-    body: { padding: spacing.page, gap: 12 },
+    body: { flex: 1, minHeight: 0, gap: 12 },
   }),
 );
 
-function Body({
+function useTaskDetailContent({
   seed,
+  active,
+  inline,
   items,
   teams,
   onEdit,
@@ -355,6 +471,8 @@ function Body({
   onCancelReady,
 }: {
   seed: Item;
+  active: boolean;
+  inline: boolean;
   items: Item[];
   teams: Team[];
   onEdit: (item: Item) => void;
@@ -369,19 +487,78 @@ function Body({
   onOpenPage?: (id: string, blockId?: string | null) => void;
   onCancelReady: (action: CancelAction | null) => void;
 }) {
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const currentSeed = useRef(seed.id);
+  currentSeed.current = seed.id;
+  const modelId = useRef(seed.id);
+  const owns = () =>
+    mounted.current &&
+    session.token === owner &&
+    currentSeed.current === seed.id;
+  const mutation = useRef(false);
+  const detailRead = useRef(0);
+  const contextRead = useRef(0);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState("");
+  const [detailOffline, setDetailOffline] = useState(false);
+  const [projectFailure, setProjectFailure] = useState(false);
+  const [contextFailure, setContextFailure] = useState(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      leaveResolver.current?.(false);
+      leaveResolver.current = null;
+    };
+  }, []);
   const [newSubtask, setNewSubtask] = useState("");
   /** The task above, when it isn't among the loaded items. */
   const [fetchedParent, setFetchedParent] = useState<Item | null>(null);
-  const [detail, setDetail] = useState<ItemDetail | null>(null);
+  const [detailValue, setDetail] = useState<ItemDetail | null>(null);
+  const detail = detailValue?.id === seed.id ? detailValue : null;
   const [context, setContext] = useState<ItemContext | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [saveState, setSaveState] = useState("");
   const [cancelConfirmId, setCancelConfirmId] = useState<string | null>(null);
+  const [cancelVisible, setCancelVisible] = useState(false);
+  const [leaveVisible, setLeaveVisible] = useState(false);
+  const leaveResolver = useRef<((allowed: boolean) => void) | null>(null);
+  const leavePromise = useRef<Promise<boolean> | null>(null);
   const [newStep, setNewStep] = useState("");
+  const [stepDrafts, setStepDrafts] = useState<Record<string, string>>({});
+  const stepDraftRef = useRef(stepDrafts);
+  stepDraftRef.current = stepDrafts;
+  const renamingSteps = useRef(new Set<string>());
+  const writeStepDraft = (id: string, text: string | null) => {
+    const next = { ...stepDraftRef.current };
+    if (text === null) delete next[id];
+    else next[id] = text;
+    stepDraftRef.current = next;
+    setStepDrafts(next);
+  };
   const [note, setNote] = useState("");
   const [noteStatus, setNoteStatus] = useState<Status | null>(null);
   /** The update box has focus: its status choices show above it. */
   const [composing, setComposing] = useState(false);
+  const detailScroller = useRef<React.ComponentRef<typeof ScrollView>>(null);
+  const scrollY = useRef(0);
+  const restoreScroll = useRef(false);
+  useEffect(() => {
+    restoreScroll.current = true;
+    const frame = requestAnimationFrame(() => {
+      if (owns() && active && detailScroller.current) {
+        detailScroller.current.scrollTo({
+          y: scrollY.current,
+          animated: false,
+        });
+        restoreScroll.current = false;
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [inline, active]);
   const area = useRef<React.ComponentRef<typeof View>>(null);
   const keyboard = useKeyboardInset(area);
   const { fontScale } = useWindowDimensions();
@@ -396,20 +573,71 @@ function Body({
   );
 
   useEffect(() => {
+    if (modelId.current === seed.id) return;
+    modelId.current = seed.id;
+    setNewSubtask("");
+    setNewStep("");
+    setNote("");
+    setNoteStatus(null);
+    setComposing(false);
+    setDraft(null);
+    stepDraftRef.current = {};
+    setStepDrafts({});
+    setDetail(null);
+    setContext(null);
+    setFetchedParent(null);
+    setProjects(null);
+    setSeriesNote(null);
+    setError("");
+    setSaveState("");
+    setDetailLoading(true);
+    setDetailError("");
+    setDetailOffline(false);
+    setContextFailure(false);
+    setProjectFailure(false);
+    createdPage.current = null;
+    setCancelConfirmId(null);
+    setCancelVisible(false);
+    leaveResolver.current?.(false);
+    leaveResolver.current = null;
+    leavePromise.current = null;
+    setLeaveVisible(false);
+    if (progressTimer.current) clearTimeout(progressTimer.current);
+    progressTimer.current = null;
+    scrollY.current = 0;
+    restoreScroll.current = true;
+  }, [seed.id]);
+
+  useEffect(() => {
+    if (!active) return;
     let alive = true;
+    const request = ++detailRead.current;
+    setDetailLoading(true);
+    setDetailError("");
+    setDetailOffline(false);
     client
       .getItem(seed.id)
       .then((d) => {
-        if (!alive) return;
-        animateLayout();
+        if (!alive || !owns() || request !== detailRead.current) return;
         setDetail(d);
       })
-      .catch((e: Error) => alive && setError(errorText(e)));
+      .catch((e: Error) => {
+        if (alive && owns() && request === detailRead.current) {
+          setDetailError(errorText(e));
+          setDetailOffline(isOfflineError(e));
+        }
+      })
+      .finally(() => {
+        if (alive && owns() && request === detailRead.current)
+          setDetailLoading(false);
+      });
     return () => {
       alive = false;
     };
     // Reload when the task changes elsewhere, not only when another opens.
   }, [
+    active,
+    readAttempt,
     seed.id,
     seed.version,
     seed.status,
@@ -419,24 +647,34 @@ function Body({
     seed.last_update_at,
   ]);
   useEffect(() => {
-    if (seed.kind !== "task") return;
+    if (!active || seed.kind !== "task") return;
     let alive = true;
+    const request = ++contextRead.current;
+    setContextFailure(false);
     void client.itemContext(seed.id).then(
-      (value) => alive && setContext(value),
-      (e) => alive && setError(errorText(e)),
+      (value) => {
+        if (alive && owns() && request === contextRead.current)
+          setContext(value);
+      },
+      () => {
+        if (alive && owns() && request === contextRead.current)
+          setContextFailure(true);
+      },
     );
     return () => {
       alive = false;
     };
-  }, [seed.id, seed.version]);
+  }, [active, seed.id, seed.version, readAttempt]);
 
   const item: Item = detail ?? seed;
+  const latestItem = useRef(item);
+  latestItem.current = item;
   // Opened on one class of a repeating event: that class opens its own
   // note, so a note the series keeps for every class is pointed to here.
   const [seriesNote, setSeriesNote] = useState<EventNoteRef | null>(null);
   const noteKind = seed.kind === "event" && !!seed.rrule && !!onOpenNote;
   useEffect(() => {
-    if (!noteKind || !occurrence) return;
+    if (!active || !noteKind || !occurrence) return;
     let alive = true;
     client.eventNotes([seed.id]).then(
       (notes) =>
@@ -453,11 +691,18 @@ function Body({
     return () => {
       alive = false;
     };
-  }, [seed.id, seed.team_id, noteKind, occurrence]);
+  }, [active, seed.id, seed.team_id, noteKind, occurrence]);
   const team = item.team_id
     ? teams.find((t) => t.id === item.team_id)
     : undefined;
-  const readOnly = !!team && !hasTeamPermission(team.role, "items:write");
+  const readOnly =
+    !!item.team_id && (!team || !hasTeamPermission(team.role, "items:write"));
+  const readingLocked =
+    !active || busy || detailLoading || (!!detailError && !detailOffline);
+  const locked =
+    readOnly || readingLocked || leaveVisible || leavePromise.current !== null;
+  const writeState = useRef({ locked });
+  writeState.current = { locked };
   const teamName = item.team_name ?? team?.name ?? seed.team_name;
   const steps = (detail?.steps ?? [])
     .slice()
@@ -471,12 +716,12 @@ function Body({
   const tone = statusTones[item.status];
   const priority = PRIORITY[item.priority];
   const meetingUrl = item.meeting_url ?? "";
-  const now = useNow(30_000, !!meetingUrl);
+  const now = useNow(30_000, active && !!meetingUrl);
   const joinable = canJoin(
     { meeting_url: meetingUrl, start_at: item.due_at, end_at: item.end_at },
     now,
   );
-  const canWork = item.kind === "task" && !isClosed(item.status) && !readOnly;
+  const canWork = item.kind === "task" && !isClosed(item.status) && !locked;
 
   /**
    * Which project a task belongs to, and which stage within it. Loaded only
@@ -484,29 +729,50 @@ function Body({
    */
   const [projects, setProjects] = useState<Project[] | null>(null);
   useEffect(() => {
-    if (item?.kind !== "task" || readOnly) return;
-    // Only projects in the task's own space: a team task files into its
-    // team's projects, a personal task into personal ones.
-    client.listProjects().then(
-      (all) =>
-        setProjects(
-          all.filter((p) => (p.team_id ?? null) === (item?.team_id ?? null)),
-        ),
-      () => setProjects([]),
+    if (!active || item.kind !== "task" || readOnly) return;
+    let alive = true;
+    setProjectFailure(false);
+    void client.listProjects().then(
+      (all) => {
+        if (alive && owns())
+          setProjects(
+            all.filter((p) => (p.team_id ?? null) === (item.team_id ?? null)),
+          );
+      },
+      () => {
+        if (alive && owns()) setProjectFailure(true);
+      },
     );
-  }, [item?.kind, item?.team_id, readOnly]);
+    return () => {
+      alive = false;
+    };
+  }, [active, item.kind, item.team_id, readOnly, readAttempt]);
 
   const project = projects?.find((p) => p.id === detail?.project_id) ?? null;
 
   const putInProject = (projectId: string | null, stageId?: string | null) =>
     void run(async () => {
-      await client.setItemProject(item.id, {
+      const previous = detail;
+      if (!previous) throw new Error("Reload task details first.");
+      const saved = await client.setItemProject(item.id, {
         project_id: projectId,
         ...(stageId === undefined ? {} : { stage_id: stageId }),
       });
-      setContext(await client.itemContext(item.id));
-      // `run` adopts what it is given, so hand back the item as it now is.
-      return client.getItem(item.id);
+      if (!owns()) return null;
+      // The write receipt is authoritative; context refresh is a separate read.
+      const request = ++contextRead.current;
+      setContextFailure(false);
+      void client.itemContext(item.id).then(
+        (value) => {
+          if (owns() && request === contextRead.current) setContext(value);
+        },
+        () => {
+          if (owns() && request === contextRead.current)
+            setContextFailure(true);
+        },
+      );
+      const { attendees: _attendees, links: _links, ...fields } = saved.item;
+      return { ...previous, ...fields };
     });
   const byId = new Map(items.map((i) => [i.id, i]));
   const parent = item.parent_id
@@ -516,7 +782,7 @@ function Body({
   const parentId = item.parent_id ?? null;
   const parentKnown = !parentId || byId.has(parentId);
   useEffect(() => {
-    if (!parentId || parentKnown) return;
+    if (!active || !parentId || parentKnown) return;
     let alive = true;
     client
       .getItem(parentId)
@@ -525,7 +791,7 @@ function Body({
     return () => {
       alive = false;
     };
-  }, [parentId, parentKnown]);
+  }, [active, parentId, parentKnown, readAttempt]);
   /** 1 for a task, 2 for a subtask, 3 for a subtask's subtask. */
   let level = 1;
   for (
@@ -550,11 +816,19 @@ function Body({
   const left = leftLabel(item);
   const addSubtask = async () => {
     const title = newSubtask.trim();
-    if (!title || busy) return;
+    if (
+      !title ||
+      !owns() ||
+      mutation.current ||
+      writeState.current.locked ||
+      !canAddSubtask
+    )
+      return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
-      await outbox.createItem({
+      const sent = await outbox.createItem({
         title,
         kind: "task",
         status: "todo",
@@ -563,28 +837,22 @@ function Body({
         team_id: item.team_id ?? null,
         list_id: item.list_id ?? null,
       });
-      animateLayout();
-      setNewSubtask("");
+      if (!owns()) return;
+      setSaveState(sent ? "" : "Saved on this device. Syncs when online.");
+      setNewSubtask((current) => (current.trim() === title ? "" : current));
       onChanged();
     } catch (e) {
-      setError(errorText(e));
+      if (owns()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (owns()) setBusy(false);
     }
   };
   const cancelTask = () => {
-    if (Platform.OS === "web") {
+    if (owns() && !writeState.current.locked && !mutation.current) {
       setCancelConfirmId(item.id);
-      return;
+      setCancelVisible(true);
     }
-    confirmAction(
-      "Cancel this task?",
-      subtasks.length
-        ? "It leaves your plans and its sessions are removed. Its subtasks stay as they are. You can reopen it later."
-        : "It leaves your plans and its sessions are removed. You can reopen it later.",
-      "Cancel task",
-      () => setStatus("cancelled"),
-    );
   };
   const cancelTaskRef = useRef(cancelTask);
   cancelTaskRef.current = cancelTask;
@@ -594,19 +862,20 @@ function Body({
     if (cancelConfirmId === item.id && canCancel && !busy)
       setStatus("cancelled");
     setCancelConfirmId(null);
+    setCancelVisible(false);
   };
   useEffect(() => {
     onCancelReady(
       canCancel
         ? {
             id: item.id,
-            disabled: busy,
+            disabled: locked,
             onPress: () => cancelTaskRef.current(),
           }
         : null,
     );
     return () => onCancelReady(null);
-  }, [item.id, canCancel, busy, onCancelReady]);
+  }, [item.id, canCancel, locked, onCancelReady]);
 
   /**
    * Run a change; the server answers with the fresh detail. Offline, a
@@ -617,30 +886,40 @@ function Body({
     fn: () => Promise<ItemDetail | null>,
     expected?: Partial<ItemDetail>,
   ) => {
+    if (!owns() || mutation.current || writeState.current.locked) return false;
+    mutation.current = true;
     setBusy(true);
     setError("");
     const before = item.status;
     try {
       const answer = await fn();
-      animateLayout();
+      if (!owns()) return false;
+      detailRead.current += 1;
+      setDetailLoading(false);
+      setSaveState(answer ? "" : "Saved on this device. Syncs when online.");
       if (answer) setDetail(answer);
       else setDetail((d) => (d ? { ...d, ...expected } : d));
       const status = answer?.status ?? expected?.status ?? item.status;
       // A status change, an update or the last checklist step can finish it.
-      if (status === "done" && before !== "done") {
-        tap();
+      if (answer && status === "done" && before !== "done") {
         celebrate(answer?.title ?? item.title);
       }
-      onChanged();
+      try {
+        onChanged();
+      } catch {
+        setError("Saved. Refresh the task list to update it.");
+      }
       return true;
     } catch (e) {
+      if (!owns()) return false;
       setError(errorText(e));
       // The task changed elsewhere (steps added, a newer version): reload it.
       if ((e as { status?: number }).status === 409)
-        client.getItem(seed.id).then(setDetail, () => {});
+        setReadAttempt((attempt) => attempt + 1);
       return false;
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (owns()) setBusy(false);
     }
   };
 
@@ -654,26 +933,43 @@ function Body({
         { status, ...(status === "done" ? { progress: 100 } : {}) },
       );
   };
-  /** Set progress by hand; saved half a second after the last change. */
+  const saveProgress = async (next: number) => {
+    if (latestItem.current.status === "done") {
+      if (owns()) setDraft(null);
+      return;
+    }
+    const ok = await run(
+      () =>
+        outbox.postItemUpdate(latestItem.current, {
+          progress: next,
+        }) as Promise<ItemDetail | null>,
+      { progress: next },
+    );
+    if (ok && owns())
+      setDraft((current) => (current === next ? null : current));
+  };
+  /** Save after the last selection; failed progress remains visible for Retry. */
   const setProgress = (value: number) => {
+    if (!owns() || mutation.current || writeState.current.locked) return;
     const next = Math.max(0, Math.min(100, Math.round(value)));
     setDraft(next);
     if (progressTimer.current) clearTimeout(progressTimer.current);
     progressTimer.current = setTimeout(() => {
       progressTimer.current = null;
-      void run(
-        () =>
-          outbox.postItemUpdate(item, {
-            progress: next,
-          }) as Promise<ItemDetail | null>,
-        { progress: next },
-      ).then(() => setDraft(null));
+      void saveProgress(next);
     }, 500);
   };
+  useEffect(() => {
+    if (!active && progressTimer.current) {
+      clearTimeout(progressTimer.current);
+      progressTimer.current = null;
+    }
+  }, [active]);
   const addStep = async () => {
     const title = newStep.trim();
     if (!title) return;
-    if (await run(() => client.addStep(item.id, { title }))) setNewStep("");
+    if ((await run(() => client.addStep(item.id, { title }))) && owns())
+      setNewStep((current) => (current.trim() === title ? "" : current));
   };
   const postNote = async () => {
     const body = note.trim();
@@ -687,9 +983,9 @@ function Body({
         }) as Promise<ItemDetail | null>,
       status ? { status } : {},
     );
-    if (ok) {
-      setNote("");
-      setNoteStatus(null);
+    if (ok && owns()) {
+      setNote((current) => (current.trim() === body ? "" : current));
+      setNoteStatus((current) => (current === noteStatus ? null : current));
     }
   };
   const openEditor = () => {
@@ -708,10 +1004,121 @@ function Body({
         : {}),
     });
   };
+  const createdPage = useRef<string | null>(null);
+  const createTaskPage = async () => {
+    if (!owns() || mutation.current || writeState.current.locked || !onOpenPage)
+      return;
+    if (createdPage.current) {
+      onOpenPage(createdPage.current);
+      return;
+    }
+    mutation.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const doc = await client.createDoc(pageAboutTask(latestItem.current));
+      if (!owns()) return;
+      createdPage.current = doc.id;
+      onOpenPage(doc.id);
+    } catch (error) {
+      if (owns()) setError(errorText(error));
+    } finally {
+      mutation.current = false;
+      if (owns()) setBusy(false);
+    }
+  };
   const canPost =
-    !busy && (!!note.trim() || (!!noteStatus && noteStatus !== item.status));
+    !locked && (!!note.trim() || (!!noteStatus && noteStatus !== item.status));
 
-  return (
+  const settleLeave = (allowed: boolean) => {
+    if (allowed && owns() && !mutation.current) {
+      setNote("");
+      setNoteStatus(null);
+      setNewStep("");
+      setNewSubtask("");
+      setDraft(null);
+      stepDraftRef.current = {};
+      setStepDrafts({});
+      if (progressTimer.current) clearTimeout(progressTimer.current);
+      progressTimer.current = null;
+    }
+    const resolve = leaveResolver.current;
+    leaveResolver.current = null;
+    leavePromise.current = null;
+    setLeaveVisible(false);
+    resolve?.(allowed && owns() && !mutation.current);
+  };
+  const beforeLeave = () => {
+    if (!owns()) return Promise.resolve(false);
+    if (mutation.current) {
+      setError("Wait for this change to finish.");
+      return Promise.resolve(false);
+    }
+    if (leavePromise.current) return leavePromise.current;
+    const pendingProgress = progressTimer.current !== null;
+    if (progressTimer.current) clearTimeout(progressTimer.current);
+    progressTimer.current = null;
+    const dirty =
+      !!note.trim() ||
+      !!noteStatus ||
+      !!newStep.trim() ||
+      !!newSubtask.trim() ||
+      draft !== null ||
+      pendingProgress ||
+      Object.keys(stepDraftRef.current).length > 0;
+    if (!dirty) return Promise.resolve(true);
+    const pending = new Promise<boolean>((resolve) => {
+      leaveResolver.current = resolve;
+    });
+    leavePromise.current = pending;
+    setLeaveVisible(true);
+    return pending;
+  };
+  const overlays = (
+    <>
+      <ActionSheet
+        visible={leaveVisible}
+        label="Unsent task changes"
+        title={`Discard changes to “${item.title}”?`}
+        cancelLabel="Keep editing"
+        actions={[
+          {
+            label: "Discard changes",
+            destructive: true,
+            onPress: () => settleLeave(true),
+          },
+        ]}
+        onClose={(selection) => {
+          setLeaveVisible(false);
+          if (selection !== "selected") settleLeave(false);
+        }}
+      />
+      <ActionSheet
+        visible={cancelVisible && cancelConfirmId === item.id && canCancel}
+        label="Cancel task confirmation"
+        title="Cancel this task?"
+        message={
+          subtasks.length
+            ? "It leaves your plans and its sessions are removed. Its subtasks stay as they are. You can reopen it later."
+            : "It leaves your plans and its sessions are removed. You can reopen it later."
+        }
+        cancelLabel="Keep task"
+        actions={[
+          {
+            label: "Cancel task",
+            destructive: true,
+            disabled: busy,
+            onPress: () => confirmCancellation.current(),
+          },
+        ]}
+        onClose={(selection) => {
+          setCancelVisible(false);
+          if (selection !== "selected") setCancelConfirmId(null);
+        }}
+      />
+    </>
+  );
+  const content = (
     <View
       ref={area}
       collapsable={false}
@@ -719,6 +1126,21 @@ function Body({
       style={[s.fill, { paddingBottom: keyboard.inset }]}
     >
       <ScrollView
+        ref={detailScroller}
+        onScroll={(event) => {
+          if (!restoreScroll.current)
+            scrollY.current = event.nativeEvent.contentOffset.y;
+        }}
+        scrollEventThrottle={16}
+        onContentSizeChange={() => {
+          if (restoreScroll.current && active) {
+            detailScroller.current?.scrollTo({
+              y: scrollY.current,
+              animated: false,
+            });
+            restoreScroll.current = false;
+          }
+        }}
         style={s.fill}
         contentContainerStyle={sheetStyles.body}
         keyboardShouldPersistTaps="handled"
@@ -726,6 +1148,35 @@ function Body({
       >
         <View style={sheetStyles.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
+          {!!saveState && (
+            <Text style={shared.small} accessibilityLiveRegion="polite">
+              {saveState}
+            </Text>
+          )}
+          {!!detailError && <ErrorBanner error={detailError} />}
+          {!!detailError && (
+            <Button
+              title="Retry task details"
+              secondary
+              onPress={() => setReadAttempt((a) => a + 1)}
+            />
+          )}
+          {detailLoading && <Text style={shared.small}>Loading details…</Text>}
+          {(contextFailure || projectFailure) && (
+            <View style={{ gap: 8 }}>
+              <Text style={shared.small}>
+                {contextFailure
+                  ? "Related work unavailable."
+                  : "Projects unavailable."}
+              </Text>
+              <Button
+                title="Retry related work"
+                secondary
+                disabled={locked}
+                onPress={() => setReadAttempt((a) => a + 1)}
+              />
+            </View>
+          )}
 
           {/* Header */}
           <FadeIn style={s.header}>
@@ -736,13 +1187,14 @@ function Body({
                   parent ? `Subtask of ${parent.title}` : "Subtask"
                 }
                 accessibilityHint={parent ? "Opens that task" : undefined}
-                disabled={!parent}
-                hitSlop={6}
-                onPress={() => parent && onOpenItem(parent)}
+                disabled={busy || !parent}
+                onPress={() => {
+                  if (!mutation.current && parent) onOpenItem(parent);
+                }}
                 style={({ pressed }) => [s.crumb, pressed && { opacity: 0.6 }]}
               >
                 <Icon name="chevronLeft" size={13} color={colors.accent} />
-                <Text style={s.crumbText} numberOfLines={1}>
+                <Text style={s.crumbText}>
                   {parent ? `Subtask of ${parent.title}` : "Subtask"}
                 </Text>
               </Pressable>
@@ -757,7 +1209,7 @@ function Body({
             {item.kind === "task" && onAskTask && (
               <SmallAction
                 label="Ask about this task"
-                disabled={busy}
+                disabled={readingLocked}
                 onPress={() => onAskTask(item)}
               />
             )}
@@ -834,15 +1286,9 @@ function Body({
                     ]}
                   >
                     <Icon name="link" size={14} color={colors.accent} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.linkTitle} numberOfLines={1}>
-                        {l.title || l.url}
-                      </Text>
-                      {!!l.title && (
-                        <Text style={shared.small} numberOfLines={1}>
-                          {l.url}
-                        </Text>
-                      )}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={s.linkTitle}>{l.title || l.url}</Text>
+                      {!!l.title && <Text style={shared.small}>{l.url}</Text>}
                     </View>
                   </Pressable>
                 ))}
@@ -904,19 +1350,21 @@ function Body({
             <View style={s.viewOnly}>
               <Icon name="users" size={16} color={colors.accent} />
               <Text style={s.viewOnlyText}>
-                View only — you’re a viewer in {teamName}. You can read steps
-                and updates but not change them.
+                View only{teamName ? ` in ${teamName}` : ""}.
               </Text>
             </View>
           )}
 
           {/* Status */}
-          <Text style={shared.label}>Status</Text>
           <StatusChoice
             value={item.status}
-            disabled={readOnly || busy}
-            onChange={setStatus}
-            accessibilityLabel="Task status"
+            disabled={locked}
+            onChange={(status) => {
+              if (status) setStatus(status);
+            }}
+            accessibilityLabel={
+              item.kind === "event" ? "Event status" : "Status"
+            }
           />
 
           {item.kind === "task" && !!item.team_id && (
@@ -924,11 +1372,21 @@ function Body({
           )}
 
           {/* Progress */}
-          <FadeIn index={1} style={[shared.card, s.progressCard]}>
+          <FadeIn index={1} style={[s.section, s.progressCard]}>
             <View style={s.progressTop}>
               <Text style={shared.sectionTitle}>Progress</Text>
               <Text style={[s.bigPercent, { color: tone.fg }]}>{percent}%</Text>
             </View>
+            {draft !== null &&
+              !progressTimer.current &&
+              item.status !== "done" && (
+                <Button
+                  secondary
+                  title="Save progress"
+                  disabled={locked}
+                  onPress={() => void saveProgress(draft)}
+                />
+              )}
             <ProgressBar
               value={percent}
               height={10}
@@ -938,8 +1396,7 @@ function Body({
             />
             {stepsTotal > 0 ? (
               <Text style={[shared.small, s.progressHint]}>
-                {stepsLabel(stepsDone, stepsTotal)} · Progress follows the
-                checklist
+                {stepsLabel(stepsDone, stepsTotal)}
               </Text>
             ) : readOnly ? null : item.status === "done" ? (
               <Text style={[shared.small, s.progressHint]}>
@@ -947,9 +1404,7 @@ function Body({
               </Text>
             ) : (
               <>
-                <Text style={[shared.small, s.progressHint]}>
-                  No checklist yet. Set progress by hand:
-                </Text>
+                <Text style={[shared.small, s.progressHint]}>Set progress</Text>
                 <View style={s.segments} accessibilityRole="radiogroup">
                   {PROGRESS_STEPS.map((value) => {
                     const active = percent === value;
@@ -960,7 +1415,7 @@ function Body({
                         accessibilityRole="radio"
                         accessibilityLabel={`Set progress to ${value}%`}
                         accessibilityState={{ checked: active, disabled: busy }}
-                        disabled={busy}
+                        disabled={locked}
                         onPress={() => !active && setProgress(value)}
                         style={[
                           s.segment,
@@ -1013,7 +1468,7 @@ function Body({
           </FadeIn>
 
           {item.kind === "task" && (
-            <ProofSection itemId={item.id} canWrite={!readOnly} />
+            <ProofSection itemId={item.id} canWrite={!locked} />
           )}
           {item.kind === "event" &&
             (!!item.team_id || !!detail?.attendees?.length) && (
@@ -1024,76 +1479,74 @@ function Body({
                     attendees: detail?.attendees ?? item.attendees,
                   } as Item
                 }
-                canWrite={!readOnly}
+                canWrite={!locked}
               />
             )}
 
-          {/* Which project this belongs to, and where in it. */}
-          {item.kind === "task" &&
-            (context?.project || (!readOnly && !!projects?.length)) && (
-              <FadeIn index={2} style={shared.card}>
-                <View style={s.cardHeading}>
-                  <Text style={shared.sectionTitle} accessibilityRole="header">
-                    Project
-                  </Text>
-                </View>
-                {!!context?.project && !!onOpenProject && (
-                  <Chip
-                    label={`Open ${projectPlace(context.project)}`}
-                    selected={false}
+          {item.kind === "task" && (context?.project || !readOnly) && (
+            <View style={s.relatedFields}>
+              {!!context?.project &&
+                context.project.id === item.project_id &&
+                !!onOpenProject && (
+                  <SmallAction
+                    label={`Open ${project?.name ?? context.project.name}`}
+                    disabled={busy}
                     onPress={() => onOpenProject(context.project!.id)}
                   />
                 )}
-                {!readOnly && !!projects?.length && (
-                  <ChipRow label="Project">
-                    <Chip
-                      label="None"
-                      selected={!project}
-                      disabled={busy}
-                      onPress={() => putInProject(null)}
-                    />
-                    {projects.map((p) => (
-                      <Chip
-                        key={p.id}
-                        label={p.name}
-                        selected={project?.id === p.id}
-                        disabled={busy}
-                        onPress={() => putInProject(p.id)}
-                      />
-                    ))}
-                  </ChipRow>
-                )}
-                {!readOnly && !!project && (
-                  <ChipRow label="Stage">
-                    <Chip
-                      label="No stage"
-                      selected={!detail?.stage_id}
-                      disabled={busy}
-                      onPress={() => putInProject(project.id, null)}
-                    />
-                    {project.stages.map((stage) => (
-                      <Chip
-                        key={stage.id}
-                        label={stage.name}
-                        selected={detail?.stage_id === stage.id}
-                        disabled={busy}
-                        onPress={() => putInProject(project.id, stage.id)}
-                      />
-                    ))}
-                  </ChipRow>
-                )}
-              </FadeIn>
-            )}
+              {!readOnly && projects === null && !projectFailure && (
+                <Text style={shared.small}>Loading projects…</Text>
+              )}
+              {!readOnly && projects !== null && (
+                <ChoicePicker<string>
+                  label="Project"
+                  value={
+                    detail ? (detail.project_id ?? "") : (seed.project_id ?? "")
+                  }
+                  disabled={locked || projects === null || projectFailure}
+                  options={[
+                    { value: "", label: "None" },
+                    ...(context?.project &&
+                    !projects?.some((p) => p.id === context.project!.id)
+                      ? [
+                          {
+                            value: context.project.id,
+                            label: context.project.name,
+                          },
+                        ]
+                      : []),
+                    ...(projects ?? []).map((p) => ({
+                      value: p.id,
+                      label: p.name,
+                    })),
+                  ]}
+                  onChange={(id) => putInProject(id || null)}
+                />
+              )}
+              {!readOnly && !!project && (
+                <ChoicePicker<string>
+                  label="Stage"
+                  value={detail?.stage_id ?? ""}
+                  disabled={locked || projectFailure}
+                  options={[
+                    { value: "", label: "No stage" },
+                    ...project.stages.map((stage) => ({
+                      value: stage.id,
+                      label: stage.name,
+                    })),
+                  ]}
+                  onChange={(id) => putInProject(project.id, id || null)}
+                />
+              )}
+            </View>
+          )}
           {item.kind === "task" && !!onOpenPage && (
-            <FadeIn index={2} style={shared.card}>
-              <Text style={shared.sectionTitle} accessibilityRole="header">
-                Pages
-              </Text>
+            <InlineDetails title="Pages">
               {!!context?.came_from && (
                 <View>
-                  <Chip
+                  <SmallAction
                     label={`Came from ${context.came_from.title}`}
-                    selected={false}
+                    disabled={readingLocked}
                     onPress={() =>
                       onOpenPage(
                         context.came_from!.doc_id,
@@ -1109,31 +1562,30 @@ function Body({
                 </View>
               )}
               {context?.pages.map((page) => (
-                <Chip
+                <SmallAction
                   key={page.id}
                   label={page.title}
-                  selected={false}
+                  disabled={readingLocked}
                   onPress={() => onOpenPage(page.id, page.block_id)}
                 />
               ))}
               {!readOnly && (
-                <Chip
-                  label="New page about this task"
-                  selected={false}
-                  onPress={() =>
-                    void client.createDoc(pageAboutTask(item)).then(
-                      (doc) => onOpenPage(doc.id),
-                      (e) => setError(errorText(e)),
-                    )
+                <SmallAction
+                  label={
+                    createdPage.current
+                      ? "Open created page"
+                      : "New page about this task"
                   }
+                  disabled={locked}
+                  onPress={() => void createTaskPage()}
                 />
               )}
-            </FadeIn>
+            </InlineDetails>
           )}
 
           {/* Subtasks */}
           {item.kind === "task" && (subtasks.length > 0 || canAddSubtask) && (
-            <FadeIn index={2} style={shared.card}>
+            <FadeIn index={2} style={s.section}>
               <View style={s.cardHeading}>
                 <Text style={shared.sectionTitle} accessibilityRole="header">
                   Subtasks
@@ -1145,33 +1597,29 @@ function Body({
                   </Text>
                 )}
               </View>
-              {!subtasks.length && (
-                <Text style={[shared.small, s.gapBelow]}>
-                  Split bigger work into tasks of their own, each with its own
-                  date and estimate.
-                </Text>
-              )}
               {subtasks.map((c, n) => (
                 <Pressable
                   key={c.id}
                   accessibilityRole="button"
                   accessibilityLabel={`${c.title}, ${statusLabels[c.status]}, ${percentOf(c)}%`}
                   accessibilityHint="Opens this subtask"
-                  onPress={() => onOpenItem(c)}
+                  disabled={busy}
+                  onPress={() => {
+                    if (!mutation.current) onOpenItem(c);
+                  }}
                   style={({ pressed }) => [
                     s.subtask,
                     n > 0 && s.stepDivider,
                     pressed && { opacity: 0.6 },
                   ]}
                 >
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
                     <Text
                       style={[s.stepText, isClosed(c.status) && s.stepDone]}
-                      numberOfLines={2}
                     >
                       {c.title}
                     </Text>
-                    <Text style={shared.small} numberOfLines={1}>
+                    <Text style={shared.small}>
                       {[
                         `${percentOf(c)}%`,
                         c.due_at ? dateLabel(c.due_at) : "",
@@ -1191,6 +1639,7 @@ function Body({
                   <TextInput
                     style={[shared.input, s.addInput]}
                     value={newSubtask}
+                    editable={!locked}
                     onChangeText={setNewSubtask}
                     maxLength={200}
                     placeholder="Add subtask"
@@ -1216,7 +1665,7 @@ function Body({
                     <Icon
                       name="plus"
                       size={18}
-                      color={colors.white}
+                      color={colors.onAccent}
                       strokeWidth={2.2}
                     />
                   </PressableScale>
@@ -1234,7 +1683,7 @@ function Body({
           )}
 
           {/* Checklist */}
-          <FadeIn index={2} style={shared.card}>
+          <FadeIn index={2} style={s.section}>
             <View style={s.cardHeading}>
               <Text style={shared.sectionTitle} accessibilityRole="header">
                 Checklist
@@ -1249,17 +1698,14 @@ function Body({
               <Text style={shared.small}>Loading steps…</Text>
             )}
             {detail && !steps.length && (
-              <Text style={[shared.small, s.gapBelow]}>
-                Break this into small steps. Progress updates as you tick them
-                off.
-              </Text>
+              <Text style={[shared.small, s.gapBelow]}>No steps yet.</Text>
             )}
             {steps.map((step, n) => (
               <StepRow
                 key={step.id}
                 step={step}
                 first={n === 0}
-                disabled={readOnly || busy}
+                disabled={locked}
                 readOnly={readOnly}
                 onToggle={() =>
                   void run(() =>
@@ -1269,9 +1715,41 @@ function Body({
                 onDelete={() =>
                   void run(() => client.deleteStep(item.id, step.id))
                 }
-                onRename={(title) =>
-                  void run(() => client.updateStep(item.id, step.id, { title }))
-                }
+                renameDraft={stepDrafts[step.id] ?? null}
+                onStartRename={() => {
+                  if (!writeState.current.locked)
+                    writeStepDraft(step.id, step.title);
+                }}
+                onRenameText={(text) => writeStepDraft(step.id, text)}
+                onFinishRename={async () => {
+                  const text = stepDraftRef.current[step.id];
+                  if (
+                    text === undefined ||
+                    !text.trim() ||
+                    renamingSteps.current.has(step.id) ||
+                    writeState.current.locked
+                  )
+                    return;
+                  const next = text.trim();
+                  if (next === step.title) {
+                    writeStepDraft(step.id, null);
+                    return;
+                  }
+                  renamingSteps.current.add(step.id);
+                  try {
+                    const ok = await run(() =>
+                      client.updateStep(item.id, step.id, { title: next }),
+                    );
+                    if (
+                      ok &&
+                      owns() &&
+                      stepDraftRef.current[step.id]?.trim() === next
+                    )
+                      writeStepDraft(step.id, null);
+                  } finally {
+                    renamingSteps.current.delete(step.id);
+                  }
+                }}
               />
             ))}
             {!readOnly && (
@@ -1279,6 +1757,7 @@ function Body({
                 <TextInput
                   style={[shared.input, s.addInput]}
                   value={newStep}
+                  editable={!locked}
                   onChangeText={setNewStep}
                   maxLength={200}
                   placeholder="Add a step"
@@ -1302,7 +1781,7 @@ function Body({
                   <Icon
                     name="plus"
                     size={18}
-                    color={colors.white}
+                    color={colors.onAccent}
                     strokeWidth={2.2}
                   />
                 </PressableScale>
@@ -1311,7 +1790,7 @@ function Body({
           </FadeIn>
 
           {/* Updates */}
-          <FadeIn index={3} style={shared.card}>
+          <FadeIn index={3} style={s.section}>
             <View style={s.cardHeading}>
               <Text style={shared.sectionTitle} accessibilityRole="header">
                 Updates
@@ -1321,10 +1800,7 @@ function Body({
               )}
             </View>
             {detail && !updates.length && (
-              <Text style={shared.small}>
-                No updates yet.
-                {readOnly ? "" : " Post one to keep everyone in the loop."}
-              </Text>
+              <Text style={shared.small}>No updates yet.</Text>
             )}
             {updates.map((u, n) => (
               <UpdateRow key={u.id} update={u} first={n === 0} />
@@ -1335,6 +1811,7 @@ function Body({
             secondary
             title={readOnly ? "View all details" : "Edit details"}
             icon="arrowRight"
+            disabled={readingLocked}
             onPress={openEditor}
           />
           {item.kind === "event" && !readOnly && !!onOpenNote && (
@@ -1342,7 +1819,7 @@ function Body({
               secondary
               title="Meeting note"
               icon="fileText"
-              disabled={busy}
+              disabled={locked}
               onPress={() => onOpenNote(item)}
             />
           )}
@@ -1355,7 +1832,7 @@ function Body({
                 secondary
                 title={`Series note: “${seriesNote.title || "Untitled"}”`}
                 icon="fileText"
-                disabled={busy}
+                disabled={locked}
                 onPress={() => onOpenNote(item, true)}
               />
             )}
@@ -1367,17 +1844,12 @@ function Body({
           <View style={sheetStyles.column}>
             {(composing || !!note.trim() || !!noteStatus) && (
               <>
-                <Text style={[shared.label, s.composerLabel]}>
-                  Change status (optional)
-                </Text>
                 <StatusChoice
                   compact
                   value={noteStatus}
-                  disabled={busy}
-                  onChange={(st) =>
-                    setNoteStatus((prev) => (prev === st ? null : st))
-                  }
-                  accessibilityLabel="Status to set with this update"
+                  disabled={locked}
+                  onChange={setNoteStatus}
+                  accessibilityLabel="Update status"
                 />
               </>
             )}
@@ -1389,13 +1861,14 @@ function Body({
                   { maxHeight: NOTE_LINE * 5 * fontScale + 26 },
                 ]}
                 value={note}
+                editable={!locked}
                 onChangeText={setNote}
                 onFocus={() => setComposing(true)}
                 onBlur={() => setComposing(false)}
                 multiline
                 maxLength={2000}
                 textAlignVertical="top"
-                placeholder="Share progress, a blocker or a win…"
+                placeholder="Add an update…"
                 placeholderTextColor={colors.faint}
                 accessibilityLabel="Update text"
               />
@@ -1414,7 +1887,7 @@ function Body({
                 <Icon
                   name="arrowRight"
                   size={18}
-                  color={colors.white}
+                  color={colors.onAccent}
                   strokeWidth={2.2}
                 />
               </PressableScale>
@@ -1422,31 +1895,24 @@ function Body({
           </View>
         </View>
       )}
-      <ActionSheet
-        visible={cancelConfirmId === item.id && canCancel}
-        label="Cancel task confirmation"
-        title="Cancel this task?"
-        message={
-          subtasks.length
-            ? "It leaves your plans and its sessions are removed. Its subtasks stay as they are. You can reopen it later."
-            : "It leaves your plans and its sessions are removed. You can reopen it later."
-        }
-        cancelLabel="Keep task"
-        actions={[
-          {
-            label: "Cancel task",
-            destructive: true,
-            disabled: busy,
-            onPress: () => confirmCancellation.current(),
-          },
-        ]}
-        onClose={() => setCancelConfirmId(null)}
-      />
     </View>
   );
+  const sameItem = modelId.current === seed.id;
+  return {
+    content: sameItem ? (
+      content
+    ) : (
+      <View style={s.fill}>
+        <Text style={shared.small}>Loading details…</Text>
+      </View>
+    ),
+    overlays: sameItem ? overlays : null,
+    beforeLeave,
+    pending: busy || leavePromise.current !== null,
+  };
 }
 
-/** Four colored status chips. `value` null means none chosen (composer). */
+/** One current value, with full status choices in an owned sheet. */
 function StatusChoice({
   value,
   onChange,
@@ -1455,52 +1921,30 @@ function StatusChoice({
   accessibilityLabel,
 }: {
   value: Status | null;
-  onChange: (status: Status) => void;
+  onChange: (status: Status | null) => void;
   disabled: boolean;
   compact?: boolean;
   accessibilityLabel: string;
 }) {
   return (
-    <View
-      style={[s.statusRow, compact && s.statusRowCompact]}
-      accessibilityRole="radiogroup"
-      accessibilityLabel={accessibilityLabel}
-    >
-      {STATUS_CHOICES.map((status) => {
-        const active = status === value;
-        const t = statusTones[status];
-        return (
-          <PressableScale
-            key={status}
-            accessibilityRole="radio"
-            accessibilityLabel={statusLabels[status]}
-            accessibilityState={{ checked: active, disabled }}
-            disabled={disabled}
-            onPress={() => onChange(status)}
-            style={[
-              s.statusChip,
-              compact && s.statusChipCompact,
-              active && { backgroundColor: t.bg, borderColor: t.fg },
-              disabled && !active && { opacity: 0.55 },
-            ]}
-          >
-            <View style={[s.statusDot, { backgroundColor: t.fg }]} />
-            <Text
-              numberOfLines={1}
-              style={[s.statusText, active && { color: t.fg }]}
-            >
-              {statusLabels[status]}
-            </Text>
-          </PressableScale>
-        );
-      })}
-    </View>
+    <ChoicePicker<string>
+      label={accessibilityLabel}
+      value={value ?? "none"}
+      disabled={disabled}
+      options={[
+        ...(compact ? [{ value: "none", label: "No change" }] : []),
+        ...STATUS_CHOICES.map((status) => ({
+          value: status,
+          label: statusLabels[status],
+        })),
+      ]}
+      onChange={(next) => onChange(next === "none" ? null : (next as Status))}
+    />
   );
 }
 
 /**
- * One checklist step: tick with a pop, tap its title to rename it, delete
- * with the trash button.
+ * One checklist step: stable checked state, title rename and an options menu.
  */
 function StepRow({
   step,
@@ -1509,7 +1953,10 @@ function StepRow({
   readOnly,
   onToggle,
   onDelete,
-  onRename,
+  renameDraft,
+  onStartRename,
+  onRenameText,
+  onFinishRename,
 }: {
   step: ItemStep;
   first: boolean;
@@ -1517,62 +1964,46 @@ function StepRow({
   readOnly: boolean;
   onToggle: () => void;
   onDelete: () => void;
-  onRename: (title: string) => void;
+  renameDraft: string | null;
+  onStartRename: () => void;
+  onRenameText: (text: string) => void;
+  onFinishRename: () => Promise<void>;
 }) {
-  const [renaming, setRenaming] = useState(false);
-  const [title, setTitle] = useState(step.title);
-  // Submitting blurs the field too; save once.
-  const saving = useRef(false);
-  const startRename = () => {
-    setTitle(step.title);
-    saving.current = false;
-    setRenaming(true);
-  };
-  const finishRename = () => {
-    if (saving.current) return;
-    saving.current = true;
-    setRenaming(false);
-    const next = title.trim();
-    if (next && next !== step.title) onRename(next);
-  };
-  const reduced = useReducedMotion();
-  const scale = useRef(new Animated.Value(1)).current;
-  const was = useRef(step.done);
-  useEffect(() => {
-    if (step.done && !was.current && !reduced) {
-      scale.setValue(0.6);
-      pop(scale, 1.2).start();
-    }
-    was.current = step.done;
-  }, [step.done, reduced, scale]);
   return (
     <View style={[s.step, !first && s.stepDivider]}>
       <Pressable
         accessibilityRole="checkbox"
         accessibilityLabel={step.title}
-        accessibilityState={{ checked: step.done, disabled }}
-        disabled={disabled}
-        hitSlop={8}
+        accessibilityState={{
+          checked: step.done,
+          disabled: disabled || readOnly,
+        }}
+        disabled={disabled || readOnly}
+        style={s.stepCheckTarget}
         onPress={onToggle}
       >
-        <Animated.View
-          style={[s.check, step.done && s.checked, { transform: [{ scale }] }]}
-        >
+        <View style={[s.check, step.done && s.checked]}>
           {step.done && (
-            <Icon name="check" size={12} color={colors.white} strokeWidth={3} />
+            <Icon
+              name="check"
+              size={12}
+              color={colors.onAccent}
+              strokeWidth={3}
+            />
           )}
-        </Animated.View>
+        </View>
       </Pressable>
-      {renaming ? (
+      {renameDraft !== null ? (
         <TextInput
           style={[shared.input, s.stepRename]}
-          value={title}
-          onChangeText={setTitle}
+          value={renameDraft}
+          editable={!disabled && !readOnly}
+          onChangeText={onRenameText}
           autoFocus
           maxLength={200}
           returnKeyType="done"
-          onSubmitEditing={finishRename}
-          onBlur={finishRename}
+          onSubmitEditing={() => void onFinishRename()}
+          onBlur={() => void onFinishRename()}
           accessibilityLabel={`Rename step ${step.title}`}
         />
       ) : (
@@ -1581,7 +2012,7 @@ function StepRow({
           accessibilityLabel={step.title}
           accessibilityHint={readOnly ? undefined : "Renames this step"}
           disabled={readOnly || disabled}
-          onPress={startRename}
+          onPress={onStartRename}
           style={s.stepTitle}
         >
           <Text style={[s.stepText, step.done && s.stepDone]}>
@@ -1590,16 +2021,15 @@ function StepRow({
         </Pressable>
       )}
       {!readOnly && (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={`Delete step ${step.title}`}
+        <MoreMenu
+          label={`Step options: ${step.title}`}
+          title={step.title}
           disabled={disabled}
-          hitSlop={8}
-          onPress={onDelete}
-          style={({ pressed }) => [s.trash, pressed && s.trashPressed]}
-        >
-          <Icon name="trash" size={16} color={colors.muted} />
-        </Pressable>
+          actions={[
+            { label: "Rename step", onPress: onStartRename },
+            { label: "Delete step", destructive: true, onPress: onDelete },
+          ]}
+        />
       )}
     </View>
   );
@@ -1613,11 +2043,9 @@ function UpdateRow({ update, first }: { update: ItemUpdate; first: boolean }) {
       <View style={s.avatar}>
         <Text style={s.avatarText}>{initial}</Text>
       </View>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 0 }}>
         <View style={s.updateTop}>
-          <Text style={s.author} numberOfLines={1}>
-            {update.author_name || "Someone"}
-          </Text>
+          <Text style={s.author}>{update.author_name || "Someone"}</Text>
           <Text style={shared.small}>
             {update.via_agent ? `via ${update.via_agent} · ` : ""}
             {timeAgo(update.created_at)}
@@ -1647,10 +2075,10 @@ const s = themed(() =>
     headerTop: { flexDirection: "row", alignItems: "center", gap: 8 },
     kind: { fontFamily: fonts.semibold, fontSize: 11, color: colors.muted },
     title: {
-      fontFamily: fonts.display,
-      fontSize: 24,
-      lineHeight: 30,
-      letterSpacing: -0.6,
+      fontFamily: fonts.bold,
+      fontSize: 18,
+      lineHeight: 26,
+      letterSpacing: -0.2,
       color: colors.text,
       marginTop: 10,
     },
@@ -1661,16 +2089,25 @@ const s = themed(() =>
       gap: 8,
       marginTop: 10,
     },
-    metaItem: { flexDirection: "row", alignItems: "center", gap: 5 },
+    metaItem: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      maxWidth: "100%",
+    },
     metaLine: { marginTop: 10 },
     meeting: { marginTop: 14, gap: 6 },
     join: { marginBottom: 0 },
     metaText: {
+      flexShrink: 1,
       fontFamily: fonts.medium,
       fontSize: 13,
       color: colors.textSoft,
     },
     chip: {
+      minWidth: 0,
+      maxWidth: "100%",
+      flexShrink: 1,
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
@@ -1680,9 +2117,10 @@ const s = themed(() =>
     },
     teamChip: { backgroundColor: colors.accentSoft },
     progressChip: { backgroundColor: colors.surfaceMuted },
-    chipText: { fontFamily: fonts.semibold, fontSize: 11 },
+    chipText: { fontFamily: fonts.semibold, fontSize: 11, flexShrink: 1 },
     notes: { ...shared.body, marginTop: 12 },
     crumb: {
+      minHeight: controls.tap,
       flexDirection: "row",
       alignItems: "center",
       alignSelf: "flex-start",
@@ -1712,6 +2150,7 @@ const s = themed(() =>
       paddingHorizontal: 12,
     },
     linkTitle: {
+      flexShrink: 1,
       fontFamily: fonts.semibold,
       fontSize: 15,
       color: colors.accent,
@@ -1761,26 +2200,41 @@ const s = themed(() =>
       paddingHorizontal: 10,
     },
     statusChipCompact: { flexBasis: "auto", minHeight: 44, flexGrow: 0 },
-    statusDot: { width: 8, height: 8, borderRadius: 4 },
+    statusDot: { width: 8, height: 8, borderRadius: radii.pill, flexShrink: 0 },
     statusText: {
+      flexShrink: 1,
+      textAlign: "center",
       fontFamily: fonts.semibold,
       fontSize: 13,
       color: colors.textSoft,
     },
+    section: {
+      paddingVertical: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    relatedFields: { gap: 8, marginVertical: 12 },
     progressCard: { gap: 12 },
-    progressTop: { flexDirection: "row", alignItems: "baseline" },
+    progressTop: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      alignItems: "baseline",
+    },
     bigPercent: {
       marginLeft: "auto",
-      fontFamily: fonts.display,
-      fontSize: 24,
-      letterSpacing: -0.6,
+      fontFamily: fonts.semibold,
+      fontSize: 15,
     },
     progressHint: { marginTop: -2 },
-    segments: { flexDirection: "row", gap: 6 },
+    segments: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     segment: {
       flex: 1,
+      minWidth: controls.tap,
+      paddingHorizontal: 6,
+      paddingVertical: 6,
       minHeight: controls.tap,
-      borderRadius: 10,
+      borderRadius: radii.input,
       borderWidth: 1.5,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -1795,8 +2249,8 @@ const s = themed(() =>
     },
     stepperButton: {
       minWidth: 64,
-      minHeight: 40,
-      borderRadius: 10,
+      minHeight: controls.tap,
+      borderRadius: radii.input,
       borderWidth: 1.5,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -1816,8 +2270,25 @@ const s = themed(() =>
       color: colors.text,
     },
     faded: { opacity: 0.45 },
-    stepTitle: { flex: 1, paddingVertical: 4 },
-    stepRename: { flex: 1, minHeight: 40, paddingVertical: 8 },
+    stepCheckTarget: {
+      width: controls.tap,
+      minHeight: controls.tap,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    stepTitle: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: controls.tap,
+      justifyContent: "center",
+      paddingVertical: 4,
+    },
+    stepRename: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: controls.tap,
+      paddingVertical: 8,
+    },
     segmentText: {
       fontFamily: fonts.semibold,
       fontSize: 13,
@@ -1825,6 +2296,8 @@ const s = themed(() =>
     },
     cardHeading: {
       flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
       alignItems: "center",
       marginBottom: 10,
     },
@@ -1834,7 +2307,7 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.muted,
       backgroundColor: colors.surfaceMuted,
-      borderRadius: 6,
+      borderRadius: radii.check,
       overflow: "hidden",
       paddingHorizontal: 8,
       paddingVertical: 2,
@@ -1855,7 +2328,7 @@ const s = themed(() =>
     check: {
       width: 22,
       height: 22,
-      borderRadius: 7,
+      borderRadius: radii.check,
       borderWidth: 1.5,
       borderColor: colors.checkBorder,
       backgroundColor: colors.surface,
@@ -1874,7 +2347,7 @@ const s = themed(() =>
     trash: {
       width: 36,
       height: 36,
-      borderRadius: 18,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -1905,7 +2378,7 @@ const s = themed(() =>
     send: {
       width: 50,
       height: 50,
-      borderRadius: 25,
+      borderRadius: radii.pill,
       backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",
@@ -1914,13 +2387,18 @@ const s = themed(() =>
     avatar: {
       width: 32,
       height: 32,
-      borderRadius: 16,
+      borderRadius: radii.pill,
       backgroundColor: colors.accentSoft,
       alignItems: "center",
       justifyContent: "center",
     },
     avatarText: { fontFamily: fonts.bold, fontSize: 15, color: colors.accent },
-    updateTop: { flexDirection: "row", alignItems: "baseline", gap: 8 },
+    updateTop: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "baseline",
+      gap: 8,
+    },
     author: {
       flexShrink: 1,
       fontFamily: fonts.semibold,

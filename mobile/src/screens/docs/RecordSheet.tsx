@@ -24,7 +24,7 @@ import { Icon } from "../../components/Icon";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import { tap } from "../../lib/haptics";
-import { colors, fonts, radii, themed } from "../../theme";
+import { inputFontSize, colors, fonts, radii, themed } from "../../theme";
 
 /**
  * Record audio into a page (CAP-10). The sheet says first what happens to
@@ -71,6 +71,21 @@ export function RecordSheet({
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState("");
   const started = useRef(0);
+  const mutation = useRef(false);
+  const generation = useRef(0);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  useEffect(() => {
+    generation.current++;
+    return () => {
+      generation.current++;
+      if (recorder.isRecording)
+        void recorder
+          .stop()
+          .then(() => setAudioModeAsync({ allowsRecording: false }))
+          .catch(() => {});
+    };
+  }, [visible]);
   useEffect(() => {
     if (state !== "on") return;
     const t = setInterval(() => {
@@ -89,16 +104,22 @@ export function RecordSheet({
   }, [visible]);
 
   const start = async () => {
+    if (mutation.current || state !== "ready" || !visibleRef.current) return;
+    mutation.current = true;
+    const epoch = generation.current;
     setError("");
     setState("asking");
     const permission = await requestRecordingPermissionsAsync().catch(
       () => null,
     );
+    if (epoch !== generation.current || !visibleRef.current) {
+      mutation.current = false;
+      return;
+    }
     if (!permission?.granted) {
+      mutation.current = false;
       setState("ready");
-      setError(
-        "Orbyn wasn't allowed to use the microphone. Allow it in Settings, then try again.",
-      );
+      setError("Allow microphone access in Settings, then retry.");
       return;
     }
     try {
@@ -107,21 +128,33 @@ export function RecordSheet({
         playsInSilentMode: true,
       });
       await recorder.prepareToRecordAsync();
+      if (epoch !== generation.current || !visibleRef.current) {
+        await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+        return;
+      }
       recorder.record();
       started.current = Date.now();
       setSeconds(0);
       setState("on");
       tap();
     } catch (e) {
-      setState("ready");
-      setError(errorText(e));
+      if (epoch === generation.current) {
+        setState("ready");
+        setError(errorText(e));
+      }
+    } finally {
+      mutation.current = false;
     }
   };
   const stop = async () => {
+    if (mutation.current || state !== "on") return;
+    mutation.current = true;
+    const epoch = generation.current;
     setState("saving");
     try {
       await recorder.stop();
       await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+      if (epoch !== generation.current || !visibleRef.current) return;
       const uri = recorder.uri;
       if (!uri) throw new Error("Nothing was recorded. Try again.");
       const web = Platform.OS === "web";
@@ -136,19 +169,23 @@ export function RecordSheet({
       tap();
       onDone({ uri, name, mime: web ? "audio/webm" : "audio/mp4" });
     } catch (e) {
-      setState("ready");
-      setError(errorText(e));
+      if (epoch === generation.current) {
+        setState("ready");
+        setError(errorText(e));
+      }
+    } finally {
+      mutation.current = false;
     }
   };
 
   return (
     <BottomSheet
       visible={visible}
-      title="Record into this page"
+      title="Record audio"
       onClose={() => {
-        if (state === "on") void recorder.stop().catch(() => {});
-        onClose();
+        if (state === "ready" && !mutation.current) onClose();
       }}
+      closeDisabled={state !== "ready"}
     >
       <View style={s.body}>
         <Text style={s.note}>{RECORDING_CONSENT}</Text>
@@ -207,6 +244,8 @@ export function RecordingSummarySheet({
   const [error, setError] = useState("");
   const [made, setMade] = useState<Set<number>>(new Set());
   const summaryGeneration = useRef(0);
+  const mutation = useRef(false);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     summaryGeneration.current++;
     setAsked(false);
@@ -214,12 +253,15 @@ export function RecordingSummarySheet({
     setResult(null);
     setError("");
     setMade(new Set());
+    setBusy(false);
+    mutation.current = false;
     return () => {
       summaryGeneration.current++;
     };
   }, [target?.fileId]);
   const ask = () => {
-    if (!target) return;
+    if (!target || mutation.current || asked) return;
+    mutation.current = true;
     const generation = summaryGeneration.current;
     setAsked(true);
     setError("");
@@ -227,44 +269,55 @@ export function RecordingSummarySheet({
       .summariseRecording(target.fileId, transcript.trim() || undefined)
       .then(
         (value) => {
-          if (generation === summaryGeneration.current) setResult(value);
+          if (generation === summaryGeneration.current) {
+            mutation.current = false;
+            setResult(value);
+          }
         },
         (e) => {
           if (generation !== summaryGeneration.current) return;
+          mutation.current = false;
           setError(errorText(e));
           setAsked(false);
         },
       );
   };
-  const makeTask = (i: number) => {
+  const makeTask = async (i: number) => {
     const a = result?.actions[i];
-    if (!a) return;
+    if (!a || mutation.current || made.has(i)) return;
+    mutation.current = true;
+    setBusy(true);
     const generation = summaryGeneration.current;
-    client
-      .createItem({
+    try {
+      await client.createItem({
         title: a.title,
         kind: "task",
         ...(a.due
           ? { due_at: new Date(`${a.due}T17:00:00`).toISOString() }
           : {}),
-      })
-      .then(
-        () => {
-          if (generation === summaryGeneration.current)
-            setMade((s) => new Set(s).add(i));
-        },
-        (e) => {
-          if (generation === summaryGeneration.current) setError(errorText(e));
-        },
-      );
+      });
+      if (generation === summaryGeneration.current)
+        setMade((s) => new Set(s).add(i));
+    } catch (e) {
+      if (generation === summaryGeneration.current) setError(errorText(e));
+    } finally {
+      if (generation === summaryGeneration.current) {
+        mutation.current = false;
+        setBusy(false);
+      }
+    }
   };
   return (
     <BottomSheet
       visible={!!target}
-      title={target ? `Summary of ${target.name}` : "Summary"}
-      onClose={onClose}
+      title="Recording summary"
+      closeDisabled={busy || (asked && !result)}
+      onClose={() => {
+        if (!mutation.current) onClose();
+      }}
     >
       <View style={s.body}>
+        {target && <Text style={s.note}>{target.name}</Text>}
         {!result ? (
           <>
             <Text style={s.note}>
@@ -306,7 +359,7 @@ export function RecordingSummarySheet({
               </Text>
             ))}
             {result.actions.length > 0 && (
-              <Text style={s.label}>ACTION ITEMS</Text>
+              <Text style={s.label}>Action items</Text>
             )}
             {result.actions.map((a, i) => (
               <View key={i} style={s.action}>
@@ -316,8 +369,9 @@ export function RecordingSummarySheet({
                 </Text>
                 <Pressable
                   accessibilityRole="button"
-                  disabled={made.has(i)}
+                  disabled={busy || made.has(i)}
                   hitSlop={8}
+                  style={{ minHeight: 44, justifyContent: "center" }}
                   onPress={() => makeTask(i)}
                 >
                   <Text style={s.link}>
@@ -334,7 +388,9 @@ export function RecordingSummarySheet({
             {onAddToPage && (
               <Button
                 title="Add to page"
+                disabled={busy}
                 onPress={() => {
+                  if (mutation.current) return;
                   onAddToPage(summaryLines(result));
                   onClose();
                 }}
@@ -358,11 +414,16 @@ const s = themed(() =>
       borderColor: colors.border,
       borderRadius: radii.input,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: inputFontSize,
       color: colors.text,
       textAlignVertical: "top",
     },
-    clock: { flexDirection: "row", alignItems: "center", gap: 10 },
+    clock: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 10,
+    },
     dot: {
       width: 12,
       height: 12,
@@ -372,7 +433,7 @@ const s = themed(() =>
     dotOn: { backgroundColor: colors.danger },
     time: {
       fontFamily: fonts.display,
-      fontSize: 36,
+      fontSize: 28,
       color: colors.text,
       fontVariant: ["tabular-nums"],
     },
@@ -380,12 +441,12 @@ const s = themed(() =>
     summary: { fontFamily: fonts.regular, fontSize: 15, color: colors.text },
     label: {
       fontFamily: fonts.semibold,
-      fontSize: 11,
-      letterSpacing: 0.6,
+      fontSize: 13,
       color: colors.muted,
     },
     action: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 12,
       paddingVertical: 8,
@@ -395,7 +456,9 @@ const s = themed(() =>
       borderColor: colors.border,
     },
     actionText: {
-      flex: 1,
+      flexGrow: 1,
+      flexBasis: 160,
+      minWidth: 0,
       fontFamily: fonts.regular,
       fontSize: 13,
       color: colors.text,

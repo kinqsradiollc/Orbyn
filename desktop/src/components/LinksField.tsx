@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { Plus, X } from "lucide-react";
 import "./event-fields.css";
 
@@ -21,21 +21,30 @@ export function LinksField({
   value,
   onChange,
   state,
+  onDraftChange,
 }: {
   value: LinkDraft[];
   onChange: (next: LinkDraft[]) => void;
   /** Saved links load with the item; they can't be changed until then. */
   state: "loading" | "ready" | "failed";
+  onDraftChange?: (pending: boolean) => void;
 }) {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    onDraftChange?.(!!url.trim() || !!title.trim());
+  }, [url, title, onDraftChange]);
   const add = () => {
+    if (state !== "ready") return;
     const address = url.trim();
     if (!LINK_RE.test(address))
       return setError("Links start with http:// or https://.");
     if (value.length >= MAX_LINKS) return setError("Up to 20 links.");
+    if (value.some((link) => link.url === address))
+      return setError("That link is already here.");
+    onDraftChange?.(false);
     onChange([...value, { url: address, title: title.trim() }]);
     setUrl("");
     setTitle("");
@@ -56,7 +65,10 @@ export function LinksField({
           <ul className="event-chips">
             {value.map((l, n) => (
               <li key={n} className="chip">
-                <span>{l.title || l.url}</span>
+                <span>
+                  {l.title || l.url}
+                  {l.title && <small className="field-hint">{l.url}</small>}
+                </span>
                 <button
                   type="button"
                   className="icon-button"
@@ -79,7 +91,11 @@ export function LinksField({
             value={url}
             maxLength={2000}
             onKeyDown={onEnter(add)}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              onDraftChange?.(!!e.target.value.trim() || !!title.trim());
+              setUrl(e.target.value);
+              setError("");
+            }}
           />
           <input
             placeholder="Title (optional)"
@@ -87,7 +103,10 @@ export function LinksField({
             value={title}
             maxLength={200}
             onKeyDown={onEnter(add)}
-            onChange={(e) => setTitle(e.target.value)}
+            onChange={(e) => {
+              onDraftChange?.(!!url.trim() || !!e.target.value.trim());
+              setTitle(e.target.value);
+            }}
           />
           <button type="button" className="secondary" onClick={add}>
             <Plus size={13} /> Add link

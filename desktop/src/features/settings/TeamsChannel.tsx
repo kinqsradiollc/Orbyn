@@ -119,14 +119,13 @@ export function TeamsChannelSettings() {
                 Send agent DMs to me
               </label>
               <span className="muted">
-                Background updates, questions and morning Overnight results.
+                Background questions and updates; Overnight results.
               </span>
             </>
           )}
           {state.status && !state.status.delivery_available && (
             <p className="muted">
-              Messaging is unavailable until your administrator configures the
-              Teams bot.
+              Ask your administrator to configure Teams messaging.
             </p>
           )}
         </>
@@ -169,7 +168,7 @@ export function TeamsChannelSettings() {
           className="agent-channel-review"
           aria-label="Link personal Teams chat"
         >
-          <p>Send this command in your personal chat with the Orbyn bot.</p>
+          <p>Send this command to Orbyn in your personal Teams chat.</p>
           <code className="agent-channel-command">
             {state.challenge.command}
           </code>
@@ -223,7 +222,7 @@ export function TeamsChannelSettings() {
           disabled={state.busy}
           onClick={() => void store.refresh()}
         >
-          Refresh Teams
+          Refresh
         </button>
         {pending && ["pending", "exchanging"].includes(pending.state) && (
           <button

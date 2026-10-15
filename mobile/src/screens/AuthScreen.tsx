@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -16,9 +16,9 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { LegalSheet } from "../components/LegalSheet";
 import type { SignInInput } from "../hooks/usePlanner";
-import { FadeIn, animateLayout, Pressable } from "../motion";
-import { MINIMUM_AGE, motion, type LegalDoc } from "@orbyn/core";
-import { colors, fonts, themed } from "../theme";
+import { Pressable } from "../motion";
+import { MINIMUM_AGE, type LegalDoc } from "@orbyn/core";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 export function AuthScreen({
@@ -58,6 +58,23 @@ export function AuthScreen({
       alive = false;
     };
   }, []);
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const run = async (fn: () => Promise<void>) => {
+    if (busy || pending.current || !mounted.current) return;
+    pending.current = true;
+    try {
+      await act(fn);
+    } finally {
+      pending.current = false;
+    }
+  };
   const link = (doc: LegalDoc, label: string) => (
     <Text
       style={s.link}
@@ -79,36 +96,29 @@ export function AuthScreen({
           {
             paddingTop: insets.top + 24,
             paddingBottom: insets.bottom + 24,
-            paddingLeft: insets.left + 24,
-            paddingRight: insets.right + 24,
+            paddingLeft: insets.left + 16,
+            paddingRight: insets.right + 16,
           },
         ]}
       >
         <View style={s.column}>
-          {/* Logo, headline, form and actions rise in one after another. */}
-          <FadeIn index={0} duration={motion.slow}>
+          <View>
             <Brand size={30} />
-          </FadeIn>
-          <FadeIn index={2} duration={motion.slow}>
-            <Text style={[shared.eyebrow, s.eyebrow]}>
-              A LITTLE CLARITY. A LOT MORE POSSIBILITY.
-            </Text>
+          </View>
+          <View>
             <Text style={s.hero}>
-              {register ? "A fresh start\nawaits." : "Welcome\nback."}
+              {register ? "Create account" : "Sign in"}
             </Text>
-            <Text style={[shared.subtitle, s.intro]}>
-              {register
-                ? "Create your account and find your flow."
-                : "Your plans are right where you left them."}
-            </Text>
-          </FadeIn>
-          <FadeIn index={4} duration={motion.slow}>
+          </View>
+          <View>
             {register && (
               <Field label="Your name">
                 <TextInput
                   style={shared.input}
                   placeholder="Alex Morgan"
                   placeholderTextColor={colors.faint}
+                  editable={!busy}
+                  accessibilityLabel="Your name"
                   value={name}
                   onChangeText={setName}
                   maxLength={80}
@@ -123,6 +133,8 @@ export function AuthScreen({
                 style={shared.input}
                 placeholder="you@example.com"
                 placeholderTextColor={colors.faint}
+                editable={!busy}
+                accessibilityLabel="Email address"
                 value={email}
                 onChangeText={setEmail}
                 keyboardType="email-address"
@@ -139,6 +151,8 @@ export function AuthScreen({
                 placeholder="At least 10 characters"
                 placeholderTextColor={colors.faint}
                 secureTextEntry
+                editable={!busy}
+                accessibilityLabel="Password"
                 value={password}
                 onChangeText={setPassword}
                 maxLength={128}
@@ -154,6 +168,8 @@ export function AuthScreen({
                   style={shared.input}
                   placeholder="123456 or a recovery code"
                   placeholderTextColor={colors.faint}
+                  editable={!busy}
+                  accessibilityLabel="Authenticator code"
                   value={code}
                   onChangeText={setCode}
                   keyboardType="number-pad"
@@ -164,20 +180,21 @@ export function AuthScreen({
                 />
               </Field>
             )}
-          </FadeIn>
-          <FadeIn index={6} duration={motion.slow}>
+          </View>
+          <View>
             {register && (
               <View style={s.consent}>
                 <Pressable
                   accessibilityRole="checkbox"
-                  accessibilityState={{ checked: agreed }}
+                  disabled={busy}
+                  accessibilityState={{ checked: agreed, disabled: busy }}
                   accessibilityLabel={`I'm ${MINIMUM_AGE} or older and I agree to the Terms of Service and Privacy Policy`}
-                  hitSlop={8}
+                  hitSlop={11}
                   onPress={() => setAgreed(!agreed)}
                   style={[s.box, agreed && s.boxOn]}
                 >
                   {agreed && (
-                    <Icon name="check" size={14} color={colors.white} />
+                    <Icon name="check" size={14} color={colors.onAccent} />
                   )}
                 </Pressable>
                 <Text style={s.consentText}>
@@ -189,24 +206,20 @@ export function AuthScreen({
             )}
             {register && (
               <Text style={s.fine}>
-                Orbyn counts feature use, never what you write. Turn it off in
-                Settings → Privacy.
+                Feature usage only; never your content. Opt out in Settings →
+                Privacy.
               </Text>
             )}
             {!!notice && <Text style={s.notice}>{notice}</Text>}
             <ErrorBanner error={error} />
             <Button
               title={
-                busy
-                  ? "One moment…"
-                  : register
-                    ? "Create your space"
-                    : "Sign in"
+                busy ? "One moment…" : register ? "Create account" : "Sign in"
               }
               icon={busy ? undefined : "arrowRight"}
               disabled={busy || (register && !agreed)}
               onPress={() =>
-                act(async () => {
+                run(async () => {
                   const ok = await signIn({
                     email,
                     password,
@@ -215,7 +228,7 @@ export function AuthScreen({
                     code,
                     acceptTerms: register && agreed ? termsVersion : undefined,
                   });
-                  if (ok) {
+                  if (ok && mounted.current) {
                     setPassword("");
                     setCode("");
                   }
@@ -228,12 +241,13 @@ export function AuthScreen({
                 style={s.forgot}
                 disabled={busy}
                 onPress={() =>
-                  act(async () => {
+                  run(async () => {
                     clearError();
                     setNotice("");
                     await client.forgotPassword(email.trim());
+                    if (!mounted.current) return;
                     setNotice(
-                      "If an account uses that address, a link to reset your password is on its way.",
+                      "If an account uses this email, a reset link is on its way.",
                     );
                   })
                 }
@@ -244,9 +258,8 @@ export function AuthScreen({
             <Pressable
               accessibilityRole="button"
               style={s.switch}
+              disabled={busy}
               onPress={() => {
-                // The name field slides in or out with the mode switch.
-                animateLayout();
                 setRegister(!register);
                 clearError();
               }}
@@ -265,7 +278,7 @@ export function AuthScreen({
                 {link("privacy", "Privacy Policy")}.
               </Text>
             )}
-          </FadeIn>
+          </View>
         </View>
       </ScrollView>
       <LegalSheet doc={reading} onClose={() => setReading(null)} />
@@ -296,7 +309,7 @@ const s = themed(() =>
     eyebrow: { marginTop: 36 },
     hero: {
       fontFamily: fonts.display,
-      fontSize: 36,
+      fontSize: 24,
       lineHeight: 44,
       letterSpacing: -1.4,
       color: colors.text,
@@ -331,7 +344,7 @@ const s = themed(() =>
     box: {
       width: 22,
       height: 22,
-      borderRadius: 7,
+      borderRadius: radii.check,
       borderWidth: 1.5,
       borderColor: colors.border,
       backgroundColor: colors.surface,

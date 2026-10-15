@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import type { AssistantBudgetView } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
+import { InlineDetails } from "../../components/InlineDetails";
 import { Pressable } from "../../motion";
 import { client } from "../../lib/api";
-import { colors, fonts, radii, themed } from "../../theme";
+import { inputFontSize, colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import { SettingsSection } from "./SettingsSection";
 
@@ -38,15 +39,30 @@ const draftOf = (value: AssistantBudgetView): Draft => ({
 });
 
 export function AssistantBudgetSection({ userId }: { userId: string }) {
+  return <AssistantBudgetBody key={userId} userId={userId} />;
+}
+function AssistantBudgetBody({ userId }: { userId: string }) {
   const [budgets, setBudgets] = useState<Budgets | null>(null);
   const [lane, setLane] = useState<Lane>("background");
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [retry, setRetry] = useState(0);
+  const mounted = useRef(false);
+  const mutation = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     let live = true;
     setBudgets(null);
+    setDraft(null);
+    setError("");
+    setNotice("");
     if (userId)
       void client.assistantBudgets().then(
         (value) => {
@@ -59,10 +75,10 @@ export function AssistantBudgetSection({ userId }: { userId: string }) {
     return () => {
       live = false;
     };
-  }, [userId]);
+  }, [userId, retry]);
   const current = budgets?.[lane];
   const save = async () => {
-    if (!current || !draft || busy) return;
+    if (!current || !draft || mutation.current) return;
     const values = Object.fromEntries(
       limits.map(({ key }) => [key, Number(draft[key])]),
     ) as Record<keyof Draft, number>;
@@ -77,6 +93,7 @@ export function AssistantBudgetSection({ userId }: { userId: string }) {
       setError("Check the limit values.");
       return;
     }
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -84,13 +101,16 @@ export function AssistantBudgetSection({ userId }: { userId: string }) {
         revision: current.revision,
         ...values,
       });
+      if (!mounted.current) return;
       setBudgets((before) => before && { ...before, [lane]: next });
       setDraft(null);
       setNotice("Limits saved");
     } catch {
-      setError("Couldn't save limits. Reload if they changed elsewhere.");
+      if (mounted.current)
+        setError("Couldn't save limits. Retry or reload the latest limits.");
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
   return (
@@ -100,7 +120,11 @@ export function AssistantBudgetSection({ userId }: { userId: string }) {
           <Pressable
             key={option}
             accessibilityRole="button"
-            accessibilityState={{ selected: option === lane }}
+            accessibilityState={{
+              selected: option === lane,
+              disabled: busy || !!draft,
+            }}
+            disabled={busy || !!draft}
             onPress={() => {
               setLane(option);
               setDraft(null);
@@ -167,7 +191,12 @@ export function AssistantBudgetSection({ userId }: { userId: string }) {
           )}
         </>
       ) : (
-        <Text style={shared.small}>{error || "Loading limits…"}</Text>
+        <Text
+          style={shared.small}
+          accessibilityRole={error ? "alert" : undefined}
+        >
+          {error || "Loading limits…"}
+        </Text>
       )}
       {!!error && current && (
         <Text accessibilityRole="alert" style={s.error}>
@@ -179,6 +208,21 @@ export function AssistantBudgetSection({ userId }: { userId: string }) {
           {notice}
         </Text>
       )}
+      {!!error && (
+        <Button
+          secondary
+          title={
+            draft ? "Discard draft and reload limits" : "Retry loading limits"
+          }
+          disabled={busy}
+          onPress={() => setRetry((value) => value + 1)}
+        />
+      )}
+      <InlineDetails title="About these numbers">
+        <Text style={shared.small}>
+          Estimates control Orbyn work. Provider usage and billing are separate.
+        </Text>
+      </InlineDetails>
     </SettingsSection>
   );
 }
@@ -198,9 +242,9 @@ const s = themed(() =>
       borderColor: colors.accent,
       backgroundColor: colors.surfaceMuted,
     },
-    laneText: { color: colors.text, fontFamily: fonts.medium, fontSize: 14 },
+    laneText: { color: colors.text, fontFamily: fonts.medium, fontSize: 15 },
     field: { gap: 6 },
-    label: { color: colors.text, fontFamily: fonts.medium, fontSize: 14 },
+    label: { color: colors.text, fontFamily: fonts.medium, fontSize: 15 },
     input: {
       minHeight: 44,
       borderWidth: 1,
@@ -208,7 +252,7 @@ const s = themed(() =>
       borderRadius: radii.input,
       paddingHorizontal: 12,
       color: colors.text,
-      fontSize: 15,
+      fontSize: inputFontSize,
     },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     error: { color: colors.danger, fontFamily: fonts.medium },

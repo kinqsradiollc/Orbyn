@@ -3,7 +3,7 @@
 Status: implemented and accepted for the owner-approved C6 release scope in
 round 2/3. Runtime checkpoint `4f9e8e88` and bounded live closeout `a779176c`
 are on main. Current evidence and explicit host/deployment limits are in the
-[C6 assessment](../reviews/c6-acceptance-assessment-2026-10-12.md).
+[C6 assessment](../../reviews/c6-acceptance-assessment-2026-10-12.md).
 Owner direction: 11 October 2026.
 
 ## Decision
@@ -126,6 +126,6 @@ workspace; do not recreate `.env.production.example`.
 This replaces C6's requirement for two permanent public integration endpoints.
 It preserves its feature, authority and inference requirements. C6 and U1 have
 accepted deliveries within their recorded owner-approved scopes; the
-[final reconciliation](../reviews/final-integration-2026-10-12.md) retains all
+[final reconciliation](../../reviews/final-integration-2026-10-12.md) retains all
 deferred and unverified cases. Existing `/plugin` production read and Today
 evidence proves the legacy path only; canonical evidence is recorded separately.

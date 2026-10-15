@@ -51,6 +51,7 @@ export function AuthPage({
   }, [register]);
   const open = (path: string) => (e: MouseEvent) => {
     e.preventDefault();
+    if (busy) return;
     onNavigate(path);
   };
   const legalLinks = (
@@ -71,48 +72,23 @@ export function AuthPage({
           ← Back to Orbyn
         </button>
       )}
-      <div className="auth-story fade-in motion-slow">
+      <div className="auth-story">
         <div className="brand">
           <Orbit /> orbyn<span>•</span>
         </div>
         <div>
-          <span className="eyebrow">
-            A LITTLE CLARITY. A LOT MORE POSSIBILITY.
-          </span>
-          <h1>
-            Your life.
-            <br />
-            In a better orbit.
-          </h1>
-          <p>
-            Bring your tasks, plans, and big ideas together.
-            <br />
-            Make space for what matters.
-          </p>
-          <div className="orbit-art">
-            <div />
-            <div />
-            <div />
-            <span>✦</span>
-          </div>
+          <h1>Make room for your work.</h1>
+          <p>Tasks, calendar and documents in one place.</p>
         </div>
-        <small>Thoughtfully planned. Entirely yours.</small>
       </div>
       <main className="auth-form">
-        <div className="auth-card fade-up motion-slow">
+        <div className="auth-card">
           {notice}
-          <span className="eyebrow">WELCOME TO YOUR SPACE</span>
-          <h2>
-            {register ? "A fresh start awaits." : "Good to have you back."}
-          </h2>
-          <p>
-            {register
-              ? "Create your account and find your flow."
-              : "Sign in to pick up where you left off."}
-          </p>
+          <h2>{register ? "Create account" : "Sign in"}</h2>
           <form
             onSubmit={(e) => {
               e.preventDefault();
+              if (busy) return;
               const values = Object.fromEntries(
                 new FormData(e.currentTarget),
               ) as Record<string, string>;
@@ -123,6 +99,7 @@ export function AuthPage({
               <label>
                 Your name
                 <input
+                  disabled={busy}
                   name="name"
                   required
                   maxLength={80}
@@ -134,6 +111,7 @@ export function AuthPage({
             <label>
               Email address
               <input
+                disabled={busy}
                 name="email"
                 type="email"
                 required
@@ -144,6 +122,7 @@ export function AuthPage({
             <label>
               Password
               <input
+                disabled={busy}
                 name="password"
                 type="password"
                 minLength={10}
@@ -157,6 +136,7 @@ export function AuthPage({
               <label>
                 Authenticator code
                 <input
+                  disabled={busy}
                   name="code"
                   inputMode="numeric"
                   autoComplete="one-time-code"
@@ -170,6 +150,7 @@ export function AuthPage({
               <button
                 type="button"
                 className="text-button auth-forgot"
+                disabled={busy}
                 onClick={() => onNavigate("/forgot-password")}
               >
                 Forgot your password?
@@ -179,6 +160,7 @@ export function AuthPage({
               <div className="auth-consent">
                 <label className="check-line">
                   <input
+                    disabled={busy}
                     type="checkbox"
                     name="accept_terms"
                     value={termsVersion}
@@ -190,8 +172,8 @@ export function AuthPage({
                   </span>
                 </label>
                 <p>
-                  Orbyn counts feature use, never what you write. Turn it off in
-                  Settings → Privacy.
+                  Feature usage only; never your content. Opt out in Settings →
+                  Privacy.
                 </p>
               </div>
             )}
@@ -201,11 +183,7 @@ export function AuthPage({
               </div>
             )}
             <button className="primary wide" disabled={busy}>
-              {busy
-                ? "One moment…"
-                : register
-                  ? "Create your space"
-                  : "Sign in"}
+              {busy ? "One moment…" : register ? "Create account" : "Sign in"}
               <ArrowRight size={17} />
             </button>
             {!register && onPasskey && (
@@ -227,6 +205,7 @@ export function AuthPage({
           </form>
           <button
             className="text-button"
+            disabled={busy}
             onClick={() => {
               if (onSwitchMode) onSwitchMode();
               else onNavigate(register ? "/login" : "/signup");

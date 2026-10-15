@@ -72,6 +72,7 @@ type SummaryRow = Omit<
 const listQuery = z.object({
   search: z.string().trim().max(200).default(""),
   project_id: z.uuid().optional(),
+  kind: z.enum(["all", "chat", "work"]).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
@@ -420,12 +421,20 @@ export async function listAiChats(
         LEFT JOIN projects p ON p.id = c.project_id
        WHERE c.user_id = $1 AND ${PROJECT_VISIBLE} AND c.origin <> 'idea'
          AND ($2::uuid IS NULL OR c.project_id = $2)
+         AND ($5 = 'all' OR ($5 = 'chat' AND c.project_id IS NULL)
+           OR ($5 = 'work' AND c.project_id IS NOT NULL))
          AND ($3 = '' OR c.title ILIKE '%' || $3 || '%'
            OR EXISTS (SELECT 1 FROM jsonb_array_elements(c.turns) t
                        WHERE t->>'text' ILIKE '%' || $3 || '%'))
        ORDER BY c.pinned DESC, c.last_used_at DESC, c.id
        LIMIT $4`,
-      [userId, options.project_id ?? null, options.search, options.limit],
+      [
+        userId,
+        options.project_id ?? null,
+        options.search,
+        options.limit,
+        options.kind ?? "all",
+      ],
     )
   ).rows;
   return rows.map(summaryOf);

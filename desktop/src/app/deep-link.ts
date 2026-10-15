@@ -164,15 +164,31 @@ export function takeDeepLink(search = ""): DeepLink | null {
  * Scroll a page's line into view once the page has drawn it, and mark it
  * for a moment so the eye finds it.
  */
-export function focusDocBlock(blockId: string, tries = 40) {
+export function focusDocBlock(
+  blockId: string,
+  tries = 40,
+  isCurrent: () => boolean = () => true,
+) {
   const selector = `[data-block-id="${CSS.escape(blockId)}"]`;
   const look = (left: number) => {
-    const el = document.querySelector<HTMLElement>(selector);
+    if (!isCurrent()) return;
+    const el = Array.from(
+      document.querySelectorAll<HTMLElement>(selector),
+    ).find(
+      (candidate) =>
+        !candidate.closest('[hidden], [inert], [aria-hidden="true"]') &&
+        candidate.getClientRects().length > 0,
+    );
     if (!el) {
       if (left > 0) window.setTimeout(() => look(left - 1), 100);
       return;
     }
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+      block: "center",
+    });
     el.classList.add("deep-linked-block");
     window.setTimeout(() => el.classList.remove("deep-linked-block"), 2600);
   };

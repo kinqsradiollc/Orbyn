@@ -27,13 +27,15 @@ import {
   type StatusIncident,
   type StatusReport,
 } from "@orbyn/core";
+import { Button } from "../components/Button";
+import { InlineDetails } from "../components/InlineDetails";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { formatUntil, maintenanceTone } from "../components/MaintenanceBanner";
 import { Pill } from "../components/Pill";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { client } from "../lib/api";
-import { FadeIn, Pressable } from "../motion";
+import { Pressable } from "../motion";
 import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -135,6 +137,9 @@ export function StatusSheet({
   const [refreshing, setRefreshing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const seq = useRef(0);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const refreshingRef = useRef(false);
 
   const load = useCallback(async () => {
     const mine = ++seq.current;
@@ -152,6 +157,7 @@ export function StatusSheet({
 
   useEffect(() => {
     if (!visible) return;
+    setRefreshing(false);
     void load();
     const timer = setInterval(() => void load(), REFRESH_MS);
     return () => {
@@ -161,9 +167,12 @@ export function StatusSheet({
   }, [visible, load]);
 
   const onRefresh = async () => {
+    if (refreshingRef.current || !visibleRef.current) return;
+    refreshingRef.current = true;
     setRefreshing(true);
     await load();
-    setRefreshing(false);
+    refreshingRef.current = false;
+    if (visibleRef.current) setRefreshing(false);
   };
 
   return (
@@ -186,11 +195,17 @@ export function StatusSheet({
       >
         <View style={sheetStyles.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
+          {!!error && (
+            <Button
+              title="Retry"
+              secondary
+              disabled={refreshing}
+              onPress={() => void onRefresh()}
+            />
+          )}
           {!report ? (
             <Text style={shared.small}>
-              {error
-                ? "Couldn't load the status report. Pull down to try again."
-                : "Checking our systems…"}
+              {error ? "Couldn't load status." : "Loading status…"}
             </Text>
           ) : (
             <>
@@ -202,13 +217,13 @@ export function StatusSheet({
               <ActiveIncidents
                 incidents={splitIncidents(report.incidents).active}
               />
-              <Text style={[shared.eyebrow, s.section]}>COMPONENTS</Text>
-              {groupStatusComponents(report.components).map((g, n) => (
-                <FadeIn key={g.id} index={n + 1}>
-                  <GroupCard group={g} />
-                </FadeIn>
+              <Text style={[shared.sectionTitle, s.section]}>Components</Text>
+              {groupStatusComponents(report.components).map((g) => (
+                <GroupCard key={g.id} group={g} />
               ))}
-              <Text style={[shared.eyebrow, s.section]}>PAST INCIDENTS</Text>
+              <Text style={[shared.sectionTitle, s.section]}>
+                Past incidents
+              </Text>
               <PastIncidents
                 incidents={splitIncidents(report.incidents).past}
               />
@@ -223,9 +238,14 @@ export function StatusSheet({
 /** Shown above the headline while an admin has maintenance mode on. */
 function MaintenanceNotice({ maintenance }: { maintenance: Maintenance }) {
   return (
-    <FadeIn style={s.maintenance}>
-      <View style={[s.bannerIcon, { backgroundColor: maintenanceTone.fg }]}>
-        <Icon name="clock" size={18} color={colors.white} strokeWidth={2.2} />
+    <View style={s.maintenance}>
+      <View style={[s.bannerIcon, { backgroundColor: maintenanceTone.bg }]}>
+        <Icon
+          name="clock"
+          size={18}
+          color={maintenanceTone.fg}
+          strokeWidth={2.2}
+        />
       </View>
       <View style={{ flex: 1 }} accessible accessibilityRole="alert">
         <Text style={[s.bannerTitle, { color: maintenanceTone.fg }]}>
@@ -233,7 +253,7 @@ function MaintenanceNotice({ maintenance }: { maintenance: Maintenance }) {
         </Text>
         <Text style={shared.body}>
           {maintenance.message.trim() ||
-            "You can view everything, but changes are paused."}
+            "Viewing is available; edits are paused."}
         </Text>
         {maintenance.until && (
           <Text style={[shared.small, s.until]}>
@@ -241,16 +261,21 @@ function MaintenanceNotice({ maintenance }: { maintenance: Maintenance }) {
           </Text>
         )}
       </View>
-    </FadeIn>
+    </View>
   );
 }
 
 /** Shown while the server's clock is out against outside time. */
 function ClockNotice({ skewMs }: { skewMs: number }) {
   return (
-    <FadeIn style={s.maintenance}>
-      <View style={[s.bannerIcon, { backgroundColor: maintenanceTone.fg }]}>
-        <Icon name="clock" size={18} color={colors.white} strokeWidth={2.2} />
+    <View style={s.maintenance}>
+      <View style={[s.bannerIcon, { backgroundColor: maintenanceTone.bg }]}>
+        <Icon
+          name="clock"
+          size={18}
+          color={maintenanceTone.fg}
+          strokeWidth={2.2}
+        />
       </View>
       <View style={{ flex: 1 }} accessible accessibilityRole="alert">
         <Text style={[s.bannerTitle, { color: maintenanceTone.fg }]}>
@@ -258,19 +283,19 @@ function ClockNotice({ skewMs }: { skewMs: number }) {
         </Text>
         <Text style={shared.body}>{clockSkewText(skewMs)}</Text>
       </View>
-    </FadeIn>
+    </View>
   );
 }
 
 function Headline({ report, now }: { report: StatusReport; now: number }) {
   const tone = STATE_TONE[report.state];
   return (
-    <FadeIn style={[s.banner, { backgroundColor: tone.bg }]}>
-      <View style={[s.bannerIcon, { backgroundColor: tone.fg }]}>
+    <View style={[s.banner, { backgroundColor: tone.bg }]}>
+      <View style={[s.bannerIcon, { backgroundColor: tone.bg }]}>
         <Icon
           name={report.state === "operational" ? "check" : "activity"}
           size={18}
-          color={colors.white}
+          color={tone.fg}
           strokeWidth={2.2}
         />
       </View>
@@ -286,7 +311,7 @@ function Headline({ report, now }: { report: StatusReport; now: number }) {
         </Text>
         <Text style={shared.small}>{updatedAgo(report.updated_at, now)}</Text>
       </View>
-    </FadeIn>
+    </View>
   );
 }
 
@@ -305,7 +330,7 @@ function GroupCard({ group: g }: { group: StatusGroup }) {
         onPress={() => setOpen(!open)}
         style={({ pressed }) => [s.groupHead, pressed && { opacity: 0.65 }]}
       >
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexGrow: 1, flexBasis: 140, minWidth: 0 }}>
           <Text style={s.name}>{g.name}</Text>
           <Text style={shared.small}>
             {groupSummary(g.components)}
@@ -340,7 +365,7 @@ function ComponentRow({ component: c }: { component: StatusComponent }) {
   return (
     <View style={[s.component, s.divider]}>
       <View style={s.cardTop}>
-        <View style={{ flex: 1, minWidth: 0 }}>
+        <View style={{ flexGrow: 1, flexBasis: 140, minWidth: 0 }}>
           <Text style={s.componentName}>{c.name}</Text>
           {!!c.description && <Text style={shared.small}>{c.description}</Text>}
         </View>
@@ -362,6 +387,14 @@ function ComponentRow({ component: c }: { component: StatusComponent }) {
           />
         ))}
       </View>
+      <InlineDetails title="Daily uptime">
+        {c.history.map((day) => (
+          <Text key={day.date} style={shared.small}>
+            {day.date} ·{" "}
+            {day.uptime === null ? "No data" : formatUptime(day.uptime)}
+          </Text>
+        ))}
+      </InlineDetails>
       <View style={s.stripLegend}>
         <Text style={shared.small}>{HISTORY_DAYS} days ago</Text>
         <Text style={shared.small}>Today</Text>
@@ -451,10 +484,8 @@ function IncidentRow({
         onPress={() => setOpen(!open)}
         style={({ pressed }) => [s.incidentTop, pressed && { opacity: 0.65 }]}
       >
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text style={s.componentName} numberOfLines={1}>
-            {incident.name}
-          </Text>
+        <View style={{ flexGrow: 1, flexBasis: 140, minWidth: 0 }}>
+          <Text style={s.componentName}>{incident.name}</Text>
           <Text style={shared.small}>
             {incidentSpan(incident)} · {ongoing ? "for " : ""}
             {formatDuration(incident.duration_s)}
@@ -504,7 +535,7 @@ const s = themed(() =>
       borderWidth: 1,
       borderColor: maintenanceTone.border,
       backgroundColor: maintenanceTone.bg,
-      padding: 18,
+      padding: 14,
       marginBottom: 12,
     },
     until: { marginTop: 4 },
@@ -513,13 +544,13 @@ const s = themed(() =>
       alignItems: "center",
       gap: 14,
       borderRadius: radii.card,
-      padding: 18,
+      padding: 14,
       marginBottom: 16,
     },
     bannerIcon: {
       width: 36,
       height: 36,
-      borderRadius: 18,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -533,6 +564,7 @@ const s = themed(() =>
     group: { padding: 0, overflow: "hidden" },
     groupHead: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 10,
       minHeight: controls.tap,
@@ -544,7 +576,7 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.text,
     },
-    figures: { marginTop: 6, fontSize: 11, fontVariant: ["tabular-nums"] },
+    figures: { marginTop: 6, fontSize: 13, fontVariant: ["tabular-nums"] },
     activeList: { borderColor: colors.danger },
     updates: {
       marginTop: 4,
@@ -558,6 +590,7 @@ const s = themed(() =>
     update: { gap: 2 },
     more: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
@@ -574,7 +607,12 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.accent,
     },
-    cardTop: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+    cardTop: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "flex-start",
+      gap: 12,
+    },
     name: {
       fontFamily: fonts.semibold,
       fontSize: 15,
@@ -582,7 +620,7 @@ const s = themed(() =>
       marginBottom: 2,
     },
     strip: { flexDirection: "row", gap: 2, height: 18, marginTop: 8 },
-    bar: { flex: 1, borderRadius: 2 },
+    bar: { flex: 1, borderRadius: radii.check },
     stripLegend: {
       flexDirection: "row",
       justifyContent: "space-between",
@@ -603,6 +641,7 @@ const s = themed(() =>
     incident: { paddingVertical: 6, paddingHorizontal: 16, gap: 4 },
     incidentTop: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 10,
       minHeight: controls.tap,

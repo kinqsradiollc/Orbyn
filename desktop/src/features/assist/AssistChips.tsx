@@ -4,10 +4,14 @@ import {
   aiFeatureProviderLabel,
   ASSIST_CHIPS,
   CHIP_CARDS,
-  withSummary,
+  withDocumentSummary,
+  HttpError,
+  type DocEditorUpdate,
   type AssistChip,
   type CaptureAssistResult,
 } from "@orbyn/core";
+import { useModalFocus } from "../../hooks/useModalFocus";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import { formatDateTime } from "../../lib/format";
@@ -23,10 +27,13 @@ const ICONS = {
 /**
  * The assistant's chips on a page just imported or scanned (AI-01):
  * Summarise, Pull out deadlines as tasks, Make 10 flashcards. Optional,
- * through Orbyn's hosted assistant only, and each comes back as a
+ * through the selected provider, and each comes back as a
  * suggestion: nothing changes until you take it.
  */
-export function AssistChips({
+export function AssistChips(props: Parameters<typeof AssistChipsBody>[0]) {
+  return <AssistChipsBody key={`${session.get()}:${props.docId}`} {...props} />;
+}
+function AssistChipsBody({
   docId,
   title,
   report,
@@ -39,6 +46,15 @@ export function AssistChips({
   onChanged?: () => void;
 }) {
   const [open, setOpen] = useState<AssistChip | null>(null);
+  const owner = session.get();
+  const mounted = useRef(true);
+  const current = () => mounted.current && session.get() === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   return (
     <>
       <span
@@ -64,9 +80,12 @@ export function AssistChips({
         <MakeCardsDialog
           docId={docId}
           title={title}
-          report={report}
+          report={(e) => {
+            if (current()) report(e);
+          }}
           max={CHIP_CARDS}
           onClose={(added) => {
+            if (!current()) return;
             setOpen(null);
             if (added) onChanged?.();
           }}
@@ -74,10 +93,12 @@ export function AssistChips({
       )}
       {(open === "summarise" || open === "deadlines") && (
         <AssistDialog
+          key={open}
           action={open}
           docId={docId}
           title={title}
           onClose={(changed) => {
+            if (!current()) return;
             setOpen(null);
             if (changed) onChanged?.();
           }}
@@ -103,45 +124,125 @@ function AssistDialog({
   const [keep, setKeep] = useState<boolean[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const close = useRef<HTMLButtonElement>(null);
+  const [summary, setSummary] = useState("");
+  const [added, setAdded] = useState<number[]>([]);
+  const addedTasks = useRef(new Set<number>());
+  const taskKeys = useRef<string[]>([]);
+  const summaryWrite = useRef<{ key: string; input: DocEditorUpdate } | null>(
+    null,
+  );
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  const owner = session.get();
+  const current = () => mounted.current && session.get() === owner;
+  const changed = useRef(false);
+  const leave = () => {
+    if (!pending.current && current()) onClose(changed.current);
+  };
+  const focus = useModalFocus(leave, busy);
+  const read = useRef<Promise<CaptureAssistResult> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const load = async () => {
+    if (!current() || pending.current) return;
+    setLoading(true);
+    setError("");
+    try {
+      const r = await (read.current ??= client.assistCapture({
+        action,
+        doc_id: docId,
+      }));
+      if (!current()) return;
+      if (r.action !== action)
+        throw new Error("Unexpected suggestion. Try again.");
+      setResult(r);
+      setSummary(r.summary);
+      setKeep(r.tasks.map(() => true));
+      taskKeys.current = r.tasks.map(() => crypto.randomUUID());
+    } catch (e) {
+      if (current()) {
+        read.current = null;
+        setError(errorText(e));
+      }
+    } finally {
+      if (current()) setLoading(false);
+    }
+  };
   useEffect(() => {
-    client.assistCapture({ action, doc_id: docId }).then(
-      (r) => {
-        setResult(r);
-        setKeep(r.tasks.map(() => true));
-      },
-      (e) => setError(errorText(e)),
-    );
-    close.current?.focus();
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose(false);
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [action, docId, onClose]);
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const take = async () => {
-    if (!result) return;
+    if (!result || pending.current || !current()) return;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
       if (action === "summarise") {
-        const doc = await client.getDoc(docId);
-        await client.updateDoc(docId, {
-          version: doc.version,
-          content: withSummary(doc.content, result.summary),
-        });
-      } else
-        for (const [n, t] of result.tasks.entries())
-          if (keep[n])
-            await client.createItem({
-              title: t.title,
+        if (!summaryWrite.current) {
+          const doc = await client.getDocForEditor(docId);
+          if (!current()) return;
+          summaryWrite.current = {
+            key: crypto.randomUUID(),
+            input: {
+              version: doc.version,
+              document: withDocumentSummary(
+                doc.document ?? { format: 1, blocks: doc.content },
+                summary,
+              ),
+            },
+          };
+        }
+        const snapshot = summaryWrite.current;
+        await client.once(snapshot.key, () =>
+          client.updateDocForEditor(docId, snapshot.input),
+        );
+        if (!current()) return;
+        changed.current = true;
+      } else {
+        for (const [n, task] of result.tasks.entries()) {
+          if (!keep[n] || addedTasks.current.has(n)) continue;
+          if (!current()) return;
+          await client.once(taskKeys.current[n], () =>
+            client.createItem({
+              id: taskKeys.current[n],
+              title: task.title,
               kind: "task",
-              due_at: t.due_at,
-              notes: t.source ? `From “${title}”: ${t.source}` : "",
-            });
-      onClose(true);
+              due_at: task.due_at,
+              notes: task.source ? `From “${title}”: ${task.source}` : "",
+            }),
+          );
+          if (!current()) return;
+          addedTasks.current.add(n);
+          changed.current = true;
+          setAdded([...addedTasks.current]);
+          setKeep((all) =>
+            all.map((value, index) => (index === n ? false : value)),
+          );
+        }
+      }
+      if (current()) onClose(changed.current);
     } catch (e) {
-      setError(errorText(e));
-      setBusy(false);
+      if (
+        e instanceof HttpError &&
+        (e.status === 400 ||
+          (e.status === 409 &&
+            e.message ===
+              "This document changed somewhere else. Refresh and try again."))
+      )
+        summaryWrite.current = null;
+      if (current())
+        setError(
+          addedTasks.current.size
+            ? `${addedTasks.current.size} tasks added. ${errorText(e)} Retry the remaining tasks.`
+            : errorText(e),
+        );
+    } finally {
+      pending.current = false;
+      if (current()) setBusy(false);
     }
   };
   const chosen = keep.filter(Boolean).length;
@@ -149,45 +250,54 @@ function AssistDialog({
     <div
       className="modal-backdrop"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose(false);
+        if (e.target === e.currentTarget) leave();
       }}
     >
       <section
-        className="modal assist-dialog scale-in"
+        ref={focus.ref}
+        data-modal-focus={focus.id}
+        tabIndex={-1}
+        className="modal assist-dialog"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="assist-title"
+        aria-labelledby={`${focus.id}-title`}
       >
         <div className="section-heading">
-          <h2 id="assist-title">
+          <h2 id={`${focus.id}-title`}>
             {action === "summarise" ? "Summary" : "Deadlines found"}
           </h2>
           <button
-            ref={close}
             className="icon-button"
             aria-label="Close"
-            onClick={() => onClose(false)}
+            disabled={busy}
+            onClick={leave}
           >
             <X size={20} />
           </button>
         </div>
         <div className="assist-body">
-          <p className="muted">
-            From “{title}”, by Orbyn's assistant. Nothing changes until you take
-            it.
-          </p>
+          <p className="muted">From “{title}”</p>
           {result?.provider && (
             <small className="muted assist-provider">
               {aiFeatureProviderLabel(result.provider)}
             </small>
           )}
-          {!result && !error && (
+          {loading && !result && (
             <p className="muted" aria-live="polite">
               Reading the page…
             </p>
           )}
           {result && action === "summarise" && (
-            <div className="assist-summary">{result.summary}</div>
+            <label className="assist-summary-edit">
+              Review summary
+              <textarea
+                maxLength={4000}
+                value={summary}
+                disabled={busy || !!summaryWrite.current}
+                onChange={(e) => setSummary(e.target.value)}
+                rows={6}
+              />
+            </label>
           )}
           {result && action === "deadlines" && !result.tasks.length && (
             <p className="muted">No deadlines were found on this page.</p>
@@ -199,7 +309,8 @@ function AssistDialog({
                   <label>
                     <input
                       type="checkbox"
-                      checked={keep[n] ?? false}
+                      disabled={busy || added.includes(n)}
+                      checked={added.includes(n) || (keep[n] ?? false)}
                       onChange={(e) =>
                         setKeep((k) =>
                           k.map((v, i) => (i === n ? e.target.checked : v)),
@@ -208,17 +319,37 @@ function AssistDialog({
                     />
                     <span>
                       <strong>{t.title}</strong>
+                      {added.includes(n) && <small>Added</small>}
                       <small>
                         {t.due_at
                           ? `Due ${formatDateTime(t.due_at)}`
                           : "No date"}
-                        {t.source ? ` · “${t.source}”` : ""}
                       </small>
                     </span>
                   </label>
+                  {t.source && (
+                    <details>
+                      <summary>Source</summary>
+                      <p>{t.source}</p>
+                    </details>
+                  )}
                 </li>
               ))}
             </ul>
+          )}
+          {!result && error && (
+            <button
+              className="secondary"
+              disabled={loading}
+              onClick={() => void load()}
+            >
+              Retry
+            </button>
+          )}
+          {error && summaryWrite.current && (
+            <p className="muted">
+              Retry this save before changing the summary.
+            </p>
           )}
           {error && (
             <p role="alert" className="assist-error">
@@ -227,17 +358,17 @@ function AssistDialog({
           )}
         </div>
         <div className="assist-foot">
-          <button className="secondary" onClick={() => onClose(false)}>
-            Leave it
+          <button className="secondary" disabled={busy} onClick={leave}>
+            Cancel
           </button>
           {result &&
             (action === "summarise" ? (
               <button
                 className="primary"
-                disabled={busy}
+                disabled={busy || !summary.trim()}
                 onClick={() => void take()}
               >
-                Add to the top of the page
+                Add summary
               </button>
             ) : (
               result.tasks.length > 0 && (

@@ -2,29 +2,29 @@ import type { Status } from "./types.js";
 
 /** Platform-neutral visual tokens and product copy used by web and mobile. */
 export const colors = {
-  background: "#f7f8fa",
+  background: "#fafafa",
   surface: "#ffffff",
-  surfaceMuted: "#f3f5f2",
-  border: "#e8ece9",
-  divider: "#f0f2ef",
-  text: "#27382f",
-  textSoft: "#526158",
-  muted: "#849089",
-  faint: "#aab3ad",
-  accent: "#376c51",
-  accentPressed: "#2c5842",
-  accentSoft: "#e7f0ea",
-  dot: "#9ab68c",
-  soft: "#eef3ec",
-  softBorder: "#dde7da",
-  danger: "#b0573b",
-  dangerSoft: "#fbeee8",
-  highBg: "#fbefea",
-  highText: "#c28c70",
-  mediumBg: "#eef3ec",
-  mediumText: "#6d8a6f",
-  lowBg: "#f2f4f0",
-  lowText: "#96a18b",
+  surfaceMuted: "#f4f4f5",
+  border: "#e4e4e7",
+  divider: "#eeeeef",
+  text: "#202124",
+  textSoft: "#52525b",
+  muted: "#67676f",
+  faint: "#6b6b74",
+  accent: "#2563eb",
+  accentPressed: "#1d4ed8",
+  accentSoft: "#eff6ff",
+  dot: "#60a5fa",
+  soft: "#f4f4f5",
+  softBorder: "#e4e4e7",
+  danger: "#b42318",
+  dangerSoft: "#fff1f0",
+  highBg: "#fff1f0",
+  highText: "#b42318",
+  mediumBg: "#eff6ff",
+  mediumText: "#1d4ed8",
+  lowBg: "#f4f4f5",
+  lowText: "#52525b",
   white: "#ffffff",
 } as const;
 
@@ -35,30 +35,30 @@ export const colors = {
  * The web's theme.css stays the source; a test keeps the two equal.
  */
 export const darkColors: Record<keyof typeof colors, string> = {
-  background: "#121614",
-  surface: "#1a1f1c",
-  surfaceMuted: "#212722",
-  border: "#2c342f",
-  divider: "#242b26",
-  text: "#e2e8e3",
-  textSoft: "#b4bfb7",
-  muted: "#8e9a92",
-  faint: "#5f6a63",
-  accent: "#7cc49a",
-  accentPressed: "#9ad3b0",
-  accentSoft: "#1e3327",
-  dot: "#7fa472",
-  soft: "#1f2a22",
-  softBorder: "#2f3f33",
-  danger: "#ec8f71",
-  dangerSoft: "#3a231d",
-  highBg: "#3a261f",
-  highText: "#e5a888",
-  mediumBg: "#1f2c23",
-  mediumText: "#9dc29f",
-  lowBg: "#252b27",
-  lowText: "#a4ae9b",
-  white: "#1a1f1c",
+  background: "#171717",
+  surface: "#202020",
+  surfaceMuted: "#292929",
+  border: "#383838",
+  divider: "#303030",
+  text: "#f4f4f5",
+  textSoft: "#d4d4d8",
+  muted: "#a1a1aa",
+  faint: "#999999",
+  accent: "#93c5fd",
+  accentPressed: "#bfdbfe",
+  accentSoft: "#213047",
+  dot: "#60a5fa",
+  soft: "#292929",
+  softBorder: "#383838",
+  danger: "#fda29b",
+  dangerSoft: "#402522",
+  highBg: "#402522",
+  highText: "#fda29b",
+  mediumBg: "#213047",
+  mediumText: "#93c5fd",
+  lowBg: "#292929",
+  lowText: "#d4d4d8",
+  white: "#202020",
 };
 
 export type ScreenName =
@@ -77,51 +77,50 @@ export const screens: Record<
 > = {
   Overview: {
     title: "",
-    subtitle: "Let's make room for a good day.",
-    eyebrow: "A FRESH PERSPECTIVE",
+    subtitle: "",
+    eyebrow: "",
   },
   "My tasks": {
-    title: "Small steps. Big things.",
-    subtitle: "Everything on your mind, with a place to land.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    title: "Tasks",
+    subtitle: "",
+    eyebrow: "",
   },
   Calendar: {
     title: "Calendar",
-    subtitle: "A little perspective on the days ahead.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   "AI assistant": {
-    title: "A little help thinking ahead.",
-    subtitle:
-      "Summarize your plans, untangle your week, or make a fresh start.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    title: "Assistant",
+    subtitle: "",
+    eyebrow: "",
   },
   Teams: {
-    title: "Plans are better together.",
-    subtitle: "Share tasks and events with the people you plan with.",
-    eyebrow: "SHARED ORBITS",
+    title: "Teams",
+    subtitle: "",
+    eyebrow: "",
   },
   Notifications: {
     title: "Notifications",
-    subtitle: "Deadline reminders land here.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   Settings: {
     title: "Settings",
-    subtitle: "Your space, just the way you like it.",
-    eyebrow: "YOUR PERSONAL ORBIT",
+    subtitle: "",
+    eyebrow: "",
   },
   // The phone's answer to the desktop's sidebar: every destination that is
   // not one of the five tabs, in the sidebar's own order and wording.
   Browse: {
-    title: "Everything else.",
-    subtitle: "Projects, pages, the people you plan with.",
-    eyebrow: "YOUR WHOLE SPACE",
+    title: "Browse",
+    subtitle: "",
+    eyebrow: "",
   },
   Admin: {
     title: "Workspace admin",
-    subtitle: "Accounts, teams, and a record of every change.",
-    eyebrow: "WORKSPACE CONTROL",
+    subtitle: "",
+    eyebrow: "",
   },
 };
 export const screenTitle = (screen: ScreenName, name?: string) =>
@@ -162,14 +161,14 @@ export const emptyPlans = {
   body: "Add a task or event.",
 };
 export const emptySearch = {
-  title: "No matching items.",
+  title: "No matching items",
   body: "Try a different title or a word from your notes.",
 };
 
 /** Empty state for a calendar day with nothing planned, on web and mobile. */
 export const emptyDay = {
-  title: "A little breathing room.",
-  body: "No plans for this day.",
+  title: "No plans",
+  body: "Add a task or event.",
 };
 
 /** Heading for the selected calendar day, e.g. "Monday, 14 Sep". */
@@ -261,19 +260,19 @@ export const CONCEPT_ICONS = {
  */
 export const motion = {
   /** Presses, hovers, checkbox ticks. */
-  fast: 140,
+  fast: 100,
   /** Most enter and exit transitions. */
-  base: 220,
+  base: 140,
   /** Screen changes, sheets, and the homepage hero. */
-  slow: 360,
+  slow: 180,
   /** Delay between consecutive list items as they appear. */
-  stagger: 35,
+  stagger: 0,
   /** Items after this index appear without extra delay. */
   maxStagger: 8,
   /** How far an element travels while it enters. */
-  distance: 8,
+  distance: 0,
   /** Scale applied while a button or card is pressed. */
-  pressScale: 0.97,
+  pressScale: 1,
   /** Cubic-bezier control points; web uses cubic-bezier(), mobile Easing.bezier(). */
   easeOut: [0.22, 1, 0.36, 1],
   easeInOut: [0.65, 0, 0.35, 1],
@@ -328,8 +327,8 @@ export const statusOrder: Status[] = ["todo", "in_progress", "blocked", "done"];
 /** Explain why the in-progress section can be empty despite a nonzero total. */
 export const inProgressEmpty = (count: number) =>
   count > 0
-    ? "Your in-progress work is listed under Needs attention because it is past due."
-    : "Nothing underway yet. Open a task and set it to In progress when you start.";
+    ? "Past-due tasks appear under Needs attention."
+    : "No tasks in progress.";
 
 /** "320 of 500 signups", "4.5 of 10", or "" when the task has no target. */
 export function measureLabel(i: {

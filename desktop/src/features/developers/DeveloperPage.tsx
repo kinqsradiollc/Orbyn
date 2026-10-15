@@ -57,11 +57,24 @@ const ERRORS: [string, string][] = [
 export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
   const [catalog, setCatalog] = useState<McpCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
-    client.developerCatalog().then(setCatalog, (e) => setError(errorText(e)));
-  }, []);
+    let alive = true;
+    setError(null);
+    client.developerCatalog().then(
+      (value) => {
+        if (alive) setCatalog(value);
+      },
+      (e) => {
+        if (alive) setError(errorText(e));
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [retry]);
 
   const go = (path: string) => (e: MouseEvent) => {
     e.preventDefault();
@@ -89,7 +102,7 @@ export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
         </a>
         {signedIn ? (
           <a href="/app" className="primary" onClick={go("/app")}>
-            Open your planner <ArrowUpRight size={15} />
+            Open planner <ArrowUpRight size={15} />
           </a>
         ) : (
           <a href="/login" className="text-button" onClick={go("/login")}>
@@ -99,14 +112,11 @@ export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
       </header>
 
       <main className="status-main developers-main">
-        <span className="eyebrow">FOR DEVELOPERS</span>
+        <span className="eyebrow">Developers</span>
         <h1>Orbyn for AI agents</h1>
         <p className="developers-lede">
-          Orbyn is a hosted planner. Agents such as Claude, ChatGPT, Claude
-          Code, Codex and Cursor connect to it over the Model Context Protocol
-          (MCP) and see only what their person can open, in the spaces the
-          person chose. Agents use their own models. Optional Workspace AI calls
-          use Orbyn’s configured provider with separate permission.
+          Connect your AI agent to Orbyn through MCP. It can access only your
+          chosen spaces and permissions.
         </p>
 
         <section className="card developers-card" aria-labelledby="dev-address">
@@ -150,11 +160,20 @@ export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
             </li>
             <li>
               <strong>Access levels.</strong>{" "}
-              {Object.values(AGENT_ACCESS_LABELS)
-                .map((l) => `${l.name}: ${l.blurb}`)
-                .join(" ")}
+              <dl className="developers-access">
+                {Object.values(AGENT_ACCESS_LABELS).map((level) => (
+                  <div key={level.name}>
+                    <dt>{level.name}</dt>
+                    <dd>{level.blurb}</dd>
+                  </div>
+                ))}
+              </dl>
             </li>
           </ul>
+          <p className="muted">
+            Agents use their own models. Optional Workspace AI uses Orbyn’s
+            provider with separate permission.
+          </p>
         </section>
 
         {catalog && (
@@ -198,16 +217,20 @@ export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
 
         <section className="card developers-card" aria-labelledby="dev-errors">
           <h2 id="dev-errors">Errors</h2>
-          <dl className="developers-errors">
-            {ERRORS.map(([code, text]) => (
-              <div key={code}>
-                <dt>
-                  <code>{code}</code>
-                </dt>
-                <dd>{text}</dd>
-              </div>
-            ))}
-          </dl>
+          <details className="developers-disclosure">
+            <summary>Error reference</summary>
+            <dl className="developers-errors">
+              {ERRORS.map(([code, text]) => (
+                <div key={code}>
+                  <dt>
+                    <code>{code}</code>
+                  </dt>
+                  <dd>{text}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+
           <p className="muted">
             A tool that can't do what was asked answers with isError and one of
             these codes, followed by a fix, so the model can correct itself.
@@ -217,6 +240,9 @@ export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
         {error && (
           <section className="card developers-card" role="alert">
             <p>The tool list couldn't load: {error}</p>
+            <button className="secondary" onClick={() => setRetry(retry + 1)}>
+              Retry
+            </button>
           </section>
         )}
 
@@ -230,11 +256,7 @@ export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
               the person turns on.
             </p>
             {catalog.toolsets.map((set) => (
-              <details
-                key={set.name}
-                className="card developers-toolset"
-                open={set.name === "core"}
-              >
+              <details key={set.name} className="card developers-toolset">
                 <summary>
                   <strong>{AGENT_TOOLSET_LABELS[set.name].name}</strong>
                   <span className="muted">
@@ -269,26 +291,29 @@ export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
             aria-labelledby="dev-resources"
           >
             <h2 id="dev-resources">Resources and prompts</h2>
-            <ul className="developers-list">
-              {catalog.resources.map((r) => (
-                <li key={r.uri}>
-                  <code>{r.uri}</code> · {r.name}
-                </li>
-              ))}
-              {catalog.resource_templates.map((r) => (
-                <li key={r.uri_template}>
-                  <code>{r.uri_template}</code> · {r.description}
-                </li>
-              ))}
-            </ul>
-            <ul className="developers-list">
-              {catalog.prompts.map((p) => (
-                <li key={p.name}>
-                  <strong>{p.title}</strong> <code>{p.name}</code> ·{" "}
-                  {p.description}
-                </li>
-              ))}
-            </ul>
+            <details className="developers-disclosure">
+              <summary>Browse resources and prompts</summary>
+              <ul className="developers-list">
+                {catalog.resources.map((r) => (
+                  <li key={r.uri}>
+                    <code>{r.uri}</code> · {r.name}
+                  </li>
+                ))}
+                {catalog.resource_templates.map((r) => (
+                  <li key={r.uri_template}>
+                    <code>{r.uri_template}</code> · {r.description}
+                  </li>
+                ))}
+              </ul>
+              <ul className="developers-list">
+                {catalog.prompts.map((p) => (
+                  <li key={p.name}>
+                    <strong>{p.title}</strong> <code>{p.name}</code> ·{" "}
+                    {p.description}
+                  </li>
+                ))}
+              </ul>
+            </details>
           </section>
         )}
 
@@ -298,23 +323,26 @@ export function DeveloperPage({ signedIn, onNavigate, onHome }: Props) {
             aria-labelledby="dev-versions"
           >
             <h2 id="dev-versions">How tools change</h2>
-            <ul className="developers-list">
-              {catalog.versioning.map((line) => (
-                <li key={line}>{line}</li>
+            <details className="developers-disclosure">
+              <summary>Version history</summary>
+              <ul className="developers-list">
+                {catalog.versioning.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+              <p className="muted">Catalog version {catalog.version}.</p>
+              <h3>Changelog</h3>
+              {catalog.changelog.map((c) => (
+                <div key={c.date} className="developers-change">
+                  <strong>{c.date}</strong>
+                  <ul className="developers-list">
+                    {c.changes.map((x) => (
+                      <li key={x}>{x}</li>
+                    ))}
+                  </ul>
+                </div>
               ))}
-            </ul>
-            <p className="muted">Catalog version {catalog.version}.</p>
-            <h3>Changelog</h3>
-            {catalog.changelog.map((c) => (
-              <div key={c.date} className="developers-change">
-                <strong>{c.date}</strong>
-                <ul className="developers-list">
-                  {c.changes.map((x) => (
-                    <li key={x}>{x}</li>
-                  ))}
-                </ul>
-              </div>
-            ))}
+            </details>
           </section>
         )}
 

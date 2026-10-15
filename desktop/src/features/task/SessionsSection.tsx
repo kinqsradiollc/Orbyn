@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CalendarClock, CalendarPlus, Wand2 } from "lucide-react";
 import {
   atRiskReason,
@@ -118,15 +118,26 @@ export function SessionsSection({
     onDialogChange?.(open);
   };
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const writing = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
+    setData(null);
+    setLoadError("");
     client.itemSessions(item.id).then(
       (d) => alive && setData(d),
       (e) => {
         if (!alive) return;
         setData(null);
-        setError(errorText(e));
+        setLoadError(errorText(e));
         if ((e as HttpError).status === 401) onError(e);
       },
     );
@@ -137,22 +148,36 @@ export function SessionsSection({
   }, [item.id, reloadKey, tick]);
 
   const change = async (fn: () => Promise<unknown>) => {
+    if (writing.current) return false;
+    writing.current = true;
     setPending(true);
     setError("");
     try {
       await fn();
+      if (!mounted.current) return true;
       setTick((n) => n + 1);
-      await onChanged();
+      try {
+        await onChanged();
+      } catch (e) {
+        if (mounted.current)
+          setError(`Saved. Couldn't refresh the planner. ${errorText(e)}`);
+      }
+      return true;
     } catch (e) {
-      setError(errorText(e));
-      if ((e as HttpError).status === 401) onError(e);
+      if (mounted.current) {
+        setError(errorText(e));
+        if ((e as HttpError).status === 401) onError(e);
+      }
+      return false;
     } finally {
-      setPending(false);
+      writing.current = false;
+      if (mounted.current) setPending(false);
     }
   };
 
   const open = !isClosed(item.status);
-  const canPlan = canWrite && open && data?.assigned_to_me !== false;
+  const canPlan =
+    !!data && !pending && canWrite && open && data.assigned_to_me !== false;
   const now = Date.now();
   const sessions = data?.sessions ?? [];
   const findLabel = data?.deadline_at
@@ -241,14 +266,17 @@ export function SessionsSection({
               type="button"
               className="text-button"
               disabled={pending}
-              onClick={() => setAdding(true)}
+              onClick={() => {
+                setError("");
+                setAdding(true);
+              }}
             >
               <CalendarPlus size={14} aria-hidden="true" /> Add session…
             </button>
           </span>
         )}
       </div>
-      {error && (
+      {error && !adding && (
         <div className="error" role="alert">
           {error}
         </div>
@@ -279,8 +307,22 @@ export function SessionsSection({
             )}
           </p>
         )}
-      {data === null && !error ? (
-        <p className="drawer-hint">Loading sessions…</p>
+      {loadError ? (
+        <div className="error" role="alert">
+          {loadError}
+          <button
+            type="button"
+            className="text-button"
+            disabled={pending}
+            onClick={() => setTick((n) => n + 1)}
+          >
+            Retry sessions
+          </button>
+        </div>
+      ) : data === null ? (
+        <p className="drawer-hint" role="status">
+          Loading sessions…
+        </p>
       ) : sessions.length ? (
         <>
           <p className="drawer-hint sessions-summary">
@@ -318,16 +360,21 @@ export function SessionsSection({
           subject={item.title}
           start={nextQuarter()}
           minutes={Math.min(item.estimate_minutes ?? 30, 1440)}
-          onClose={() => setAdding(false)}
+          busy={pending}
+          error={error}
+          onClose={() => {
+            if (!writing.current) setAdding(false);
+          }}
           onSave={(start, end) => {
-            setAdding(false);
             void change(() =>
               client.createBlock({
                 item_id: item.id,
                 start_at: start.toISOString(),
                 end_at: end.toISOString(),
               }),
-            );
+            ).then((saved) => {
+              if (saved && mounted.current) setAdding(false);
+            });
           }}
         />
       )}

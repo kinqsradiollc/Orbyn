@@ -1,5 +1,7 @@
 import {
   Fragment,
+  useContext,
+  useId,
   useEffect,
   useMemo,
   useRef,
@@ -62,7 +64,7 @@ import {
   snippetRuns,
   type CalendarSearchResult,
   type Doc,
-  type DocSource,
+  type AssistantSource,
   type FindHit,
   type StarredItem,
   type Item,
@@ -76,12 +78,14 @@ import {
   type SearchHit,
   type Team,
 } from "@orbyn/core";
+import { session } from "../lib/session";
 import { client } from "../lib/api";
 import { celebrate } from "../lib/celebrate";
 import { peekObject } from "../features/docs/DocLinks";
 import { usePlanning } from "../app/planning";
 import { NAV, type View } from "../app/views";
 import {
+  commandForKey,
   EMPTY_MEMORY,
   keysFor,
   orderCommands,
@@ -94,7 +98,7 @@ import {
   type CommandIcon,
   type CommandMemory,
 } from "../app/commands";
-import { openPageCommands } from "../app/page-commands";
+import { PageCommandScope, openPageCommands } from "../app/page-commands";
 import { openInNewTab, wantsNewTab } from "../app/tabs";
 import { usePrefs } from "../app/prefs";
 import {
@@ -103,6 +107,8 @@ import {
   fromDayKey,
   minutesLabel,
 } from "../lib/planning";
+import { useModalFocus } from "../hooks/useModalFocus";
+import { hasHigherDialog } from "../lib/dialogLayers";
 import { Popover } from "./Popover";
 import { ProposalReview } from "./ProposalReview";
 import "./event-fields.css";
@@ -124,6 +130,10 @@ type Props = {
   view?: View;
   /** Words to start with (a quick-add link, orbyn://search). */
   initialQuery?: string;
+  /** Refocus an existing search without changing its query/results. */
+  focusRequest?: number;
+  /** An explicit search/add link supplies a fresh query. */
+  queryRequest?: number;
   /**
    * The words came from an add or share link: making them leads, to
    * confirm with Enter. A search link's words only look for things.
@@ -156,7 +166,7 @@ type Props = {
   /** After a plan is applied: the calendar at its first changed session. */
   onShowOnCalendar?: (at: string) => void;
   /** Opens a page the assistant read, at the line it cited. */
-  onOpenSource?: (source: DocSource) => void;
+  onOpenSource?: (source: AssistantSource) => void;
   /** Opens a note once it has been kept. */
   onKeptNote?: (docId: string) => void;
   /** Refresh the planner after something is created or applied. */
@@ -194,6 +204,19 @@ type Ask = {
 };
 
 /** The longest text event search and quick add take (the assistant takes 4000). */
+const duplicateName = (
+  list: readonly { name: string }[],
+  name: string | null,
+) =>
+  !!name &&
+  list.filter(
+    (row) => row.name.trim().toLowerCase() === name.trim().toLowerCase(),
+  ).length > 1;
+const uniqueNamed = <T extends { id: string; name: string }>(
+  list: readonly T[],
+  name: string | null,
+) => (duplicateName(list, name) ? null : findNamed(list, name));
+
 const SEARCH_MAX = 100;
 const QUICK_MAX = 500;
 const MEMORY_KEY = "orbyn-commands";
@@ -321,6 +344,8 @@ export function CommandBar({
   isAdmin = false,
   view,
   initialQuery = "",
+  focusRequest = 0,
+  queryRequest = 0,
   initialAdd = false,
   onClose,
   onOpenItem,
@@ -342,6 +367,8 @@ export function CommandBar({
   onApplyPlan,
   onOpenPlan,
   onShowOnCalendar,
+  onOpenSource,
+  onKeptNote,
   onApplied,
   onShowShortcuts,
   onOpenWhatsNew,
@@ -352,6 +379,28 @@ export function CommandBar({
   report,
 }: Props) {
   const { prefs } = usePrefs();
+  const scope = useContext(PageCommandScope);
+  const instance = useId();
+  const listId = `${instance}-results`;
+  const summaryId = `${instance}-summary`;
+  const rowId = (id: string) => `${instance}-${id}`;
+  const owner = useRef(session.get()).current;
+  const mounted = useRef(true);
+  const operation = useRef<object | null>(null);
+  const owns = () => mounted.current && session.get() === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [createdQuery, setCreatedQuery] = useState("");
+  const [quickReceipt, setQuickReceipt] = useState<Awaited<
+    ReturnType<typeof client.quickAdd>
+  > | null>(null);
+  const quickConfirmed = useRef<Awaited<
+    ReturnType<typeof client.quickAdd>
+  > | null>(null);
   /** Archived pages too (SRCH-03), for this search. */
   const [withArchived, setWithArchived] = useState(false);
   const { lists, tags } = usePlanning();
@@ -360,32 +409,68 @@ export function CommandBar({
   const [ask, setAsk] = useState<Ask | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
+  const begin = () => {
+    if (!owns() || operation.current) return null;
+    const ticket = {};
+    operation.current = ticket;
+    setBusy(true);
+    return ticket;
+  };
+  const finish = (ticket: object) => {
+    if (operation.current !== ticket) return;
+    operation.current = null;
+    if (owns()) setBusy(false);
+  };
   const [members, setMembers] = useState<QuickAddMember[]>([]);
+  const [memberFailure, setMemberFailure] = useState(false);
   const [events, setEvents] = useState<CalendarSearchResult[]>([]);
   const [found, setFound] = useState<FindHit[]>([]);
-  const [searched, setSearched] = useState<SearchHit[] | null>(null);
+  const [searchedValues, setSearched] = useState<SearchHit[] | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectStatus, setProjectStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [readAttempt, setReadAttempt] = useState(0);
+  const foundReceipt = useRef("");
+  const eventReceipt = useRef("");
+  const searchReceipt = useRef("");
+  const [findFailure, setFindFailure] = useState<string | null>(null);
+  const [eventFailure, setEventFailure] = useState<string | null>(null);
+  const [searchFailure, setSearchFailure] = useState<string | null>(null);
   const [memory, setMemory] = useState<CommandMemory>(loadMemory);
+  const [filterChoices, setFilterChoices] = useState<
+    Partial<Record<"project" | "tag" | "team", { id: string; name: string }>>
+  >({});
   const [picking, setPicking] = useState<{
     kind: "project" | "tag" | "team" | "date";
     anchor: DOMRect;
   } | null>(null);
   const input = useRef<HTMLInputElement>(null);
-  const dialog = useRef<HTMLDivElement>(null);
+  const modal = useModalFocus(onClose, busy);
+  const querySeed = useRef(queryRequest);
 
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    input.current?.focus();
-    return () => opener?.focus?.();
-  }, []);
+    if (!busy && !ask && !hasHigherDialog(modal.ref.current))
+      input.current?.focus({ preventScroll: true });
+  }, [focusRequest]);
+  useEffect(() => {
+    if (querySeed.current === queryRequest || busy || ask) return;
+    querySeed.current = queryRequest;
+    setQuery(initialQuery);
+    setFilterChoices({});
+    setActive(0);
+    setNotice("");
+  }, [queryRequest, initialQuery, busy, ask]);
 
   // Teammates, for "@name" in quick add.
   useEffect(() => {
+    setMembers([]);
+    setMemberFailure(false);
     if (!teams.length) return;
     let alive = true;
     Promise.all(teams.map((t) => client.getTeam(t.id))).then(
       (details) => {
-        if (!alive) return;
+        if (!alive || !owns()) return;
         const byId = new Map<string, QuickAddMember>();
         for (const team of details)
           for (const m of team.members) {
@@ -401,41 +486,94 @@ export function CommandBar({
           }
         setMembers([...byId.values()]);
       },
-      () => undefined,
+      () => {
+        if (alive && owns()) setMemberFailure(true);
+      },
     );
     return () => {
       alive = false;
     };
-  }, [teams]);
+  }, [teams, readAttempt]);
 
   // Projects by name, for the Project filter.
   useEffect(() => {
-    void client.listProjects().then(setProjects, () => setProjects([]));
-  }, []);
+    let alive = true;
+    setProjectStatus("loading");
+    setProjects([]);
+    void client.listProjects().then(
+      (rows) => {
+        if (alive && owns()) {
+          setProjects(rows);
+          setProjectStatus("ready");
+        }
+      },
+      () => {
+        if (alive && owns()) {
+          setProjects([]);
+          setProjectStatus("error");
+        }
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [readAttempt]);
 
   const go = (fn: () => void) => () => {
+    if (!owns() || operation.current) return;
     onClose();
     fn();
   };
   const q = query.trim();
   const filters = useMemo(() => parseSearch(query), [query]);
   const filtering = hasSearchFilters(filters);
+  const foundKey = JSON.stringify([q, filtering, withArchived]);
+  const eventKey = JSON.stringify([q, filtering]);
+  const visibleFound = foundReceipt.current === foundKey ? found : [];
+  const visibleEvents = eventReceipt.current === eventKey ? events : [];
   const words = filters.words;
 
   // The names a filter was typed with, as the lists hold them.
   const named = {
-    project: findNamed(projects, filters.project),
-    tag: findNamed(tags, filters.tag),
-    team: findSearchTeam(teams, filters.team),
+    project:
+      filterChoices.project?.name === filters.project
+        ? (projects.find(
+            (project) => project.id === filterChoices.project?.id,
+          ) ?? null)
+        : uniqueNamed(projects, filters.project),
+    tag:
+      filterChoices.tag?.name === filters.tag
+        ? (tags.find((tag) => tag.id === filterChoices.tag?.id) ?? null)
+        : uniqueNamed(tags, filters.tag),
+    team:
+      filterChoices.team?.name === filters.team
+        ? filterChoices.team.id === PERSONAL_SPACE.id
+          ? PERSONAL_SPACE
+          : (teams.find((team) => team.id === filterChoices.team?.id) ?? null)
+        : duplicateName(teams, filters.team)
+          ? null
+          : findSearchTeam(teams, filters.team),
   };
   const unknown =
-    filters.project && !named.project
-      ? `No project called “${filters.project}”.`
-      : filters.tag && !named.tag
-        ? `No tag called “${filters.tag}”.`
-        : filters.team && !named.team
-          ? `No team called “${filters.team}”.`
-          : "";
+    filtering && words.length > 200
+      ? "Use up to 200 characters for search."
+      : filters.project && !named.project
+        ? projectStatus === "loading"
+          ? "Loading projects…"
+          : projectStatus === "error"
+            ? "Project filters unavailable."
+            : duplicateName(projects, filters.project)
+              ? "Choose a project from the filter."
+              : `No project called “${filters.project}”.`
+        : filters.tag && !named.tag
+          ? duplicateName(tags, filters.tag)
+            ? "Choose a tag from the filter."
+            : `No tag called “${filters.tag}”.`
+          : filters.team && !named.team
+            ? duplicateName(teams, filters.team)
+              ? "Choose a team from the filter."
+              : `No team called “${filters.team}”.`
+            : "";
 
   // The quick switcher: names from the first letter; with nothing typed,
   // what was opened last.
@@ -453,8 +591,20 @@ export function CommandBar({
             ...(withArchived ? { include_archived: true } : {}),
           })
           .then(
-            (hits) => alive && setFound(hits),
-            () => alive && setFound([]),
+            (hits) => {
+              if (alive && owns()) {
+                foundReceipt.current = foundKey;
+                setFound(hits);
+                setFindFailure(null);
+              }
+            },
+            () => {
+              if (alive && owns()) {
+                foundReceipt.current = foundKey;
+                setFound([]);
+                setFindFailure(foundKey);
+              }
+            },
           ),
       q ? 120 : 0,
     );
@@ -462,7 +612,7 @@ export function CommandBar({
       alive = false;
       clearTimeout(timer);
     };
-  }, [q, filtering, withArchived]);
+  }, [q, filtering, withArchived, readAttempt]);
 
   // A search with filters goes to the server's search, filters and all.
   const searchKey = filtering
@@ -477,12 +627,14 @@ export function CommandBar({
         withArchived,
       ])
     : "";
+  const searched = searchReceipt.current === searchKey ? searchedValues : null;
   useEffect(() => {
     if (!filtering) {
       setSearched(null);
       return;
     }
     if (unknown) {
+      searchReceipt.current = searchKey;
       setSearched([]);
       return;
     }
@@ -499,11 +651,18 @@ export function CommandBar({
           ...(withArchived ? { include_archived: true } : {}),
         })
         .then(
-          (hits) => alive && setSearched(hits),
+          (hits) => {
+            if (alive && owns()) {
+              searchReceipt.current = searchKey;
+              setSearched(hits);
+              setSearchFailure(null);
+            }
+          },
           (e) => {
-            if (!alive) return;
+            if (!alive || !owns()) return;
+            searchReceipt.current = searchKey;
             setSearched([]);
-            setNotice(errorText(e));
+            setSearchFailure(searchKey);
           },
         );
     }, 180);
@@ -511,7 +670,7 @@ export function CommandBar({
       alive = false;
       clearTimeout(timer);
     };
-  }, [searchKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchKey, readAttempt]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Events, past and future, once there's something to look for.
   useEffect(() => {
@@ -522,15 +681,27 @@ export function CommandBar({
     let alive = true;
     const id = setTimeout(() => {
       client.searchCalendar(q).then(
-        (r) => alive && setEvents(r.results.slice(0, 5)),
-        () => alive && setEvents([]),
+        (r) => {
+          if (alive && owns()) {
+            eventReceipt.current = eventKey;
+            setEvents(r.results.slice(0, 5));
+            setEventFailure(null);
+          }
+        },
+        () => {
+          if (alive && owns()) {
+            eventReceipt.current = eventKey;
+            setEvents([]);
+            setEventFailure(eventKey);
+          }
+        },
       );
     }, 250);
     return () => {
       alive = false;
       clearTimeout(id);
     };
-  }, [q, filtering]);
+  }, [q, filtering, readAttempt]);
 
   // What the text would make as an item, parsed here without AI.
   const quick = useMemo(() => {
@@ -552,40 +723,81 @@ export function CommandBar({
     }
   }, [q, filtering, lists, tags, members, userId]);
 
+  const openQuickReceipt = () => {
+    if (!owns() || operation.current || !quickConfirmed.current) return;
+    const made = quickConfirmed.current;
+    onClose();
+    if (made.item) onOpenItem(made.item);
+    else onNavigate("Settings");
+  };
   const createQuick = async () => {
-    if (q.length > QUICK_MAX) return;
-    setBusy(true);
+    if (q.length > QUICK_MAX) {
+      setNotice(`Quick add accepts up to ${QUICK_MAX} characters.`);
+      return;
+    }
+    if (quickConfirmed.current && createdQuery === q) {
+      openQuickReceipt();
+      return;
+    }
+    const ticket = begin();
+    if (!ticket) return;
     setNotice("");
     try {
       const created = await client.quickAdd(q, deviceTimeZone());
-      await onApplied();
+      if (!owns()) return;
+      quickConfirmed.current = created;
+      setCreatedQuery(q);
+      setQuickReceipt(created);
+      try {
+        await onApplied();
+      } catch {
+        if (owns())
+          setNotice("Created. Refresh your planner to update the list.");
+        return;
+      }
+      if (!owns()) return;
       onClose();
-      // A habit has no item to open: the planner finds its time.
       if (created.item) onOpenItem(created.item);
       else onNavigate("Settings");
     } catch (e) {
+      if (!owns()) return;
       if ((e as { status?: number }).status === 401) report(e);
       setNotice(errorText(e));
     } finally {
-      setBusy(false);
+      finish(ticket);
     }
   };
 
-  /** Open a page, task or project the switcher or search found. */
-  const openFound = (type: string, id: string, blockId?: string | null) => {
-    onClose();
-    if (type === "doc")
-      void client
-        .getDoc(id)
-        .then((full) => onOpenDoc?.(full, blockId))
-        .catch(report);
-    else if (type === "project") onGoToProjects?.(id);
-    else if (type === "task" || type === "event") onOpenItemById(id);
+  /** Keep the search owned until a document read confirms its destination. */
+  const openFound = async (
+    type: string,
+    id: string,
+    blockId?: string | null,
+  ) => {
+    const ticket = begin();
+    if (!ticket) return;
+    setNotice("");
+    try {
+      const full = type === "doc" ? await client.getDoc(id) : null;
+      if (!owns()) return;
+      onClose();
+      if (full) onOpenDoc?.(full, blockId);
+      else if (type === "project") onGoToProjects?.(id);
+      else if (type === "task" || type === "event") onOpenItemById(id);
+    } catch (e) {
+      if (owns()) {
+        setNotice(errorText(e));
+        if ((e as { status?: number }).status === 401) report(e);
+      }
+    } finally {
+      finish(ticket);
+    }
   };
 
   // ------------------------------------------------------------ commands
-  const pageOpen = openPageCommands();
+  const pageOpen = openPageCommands(scope);
   const runDef = (def: CommandDef) => {
+    if (!owns() || operation.current) return;
     const next = recordCommand(memory, def.id);
     setMemory(next);
     saveMemory(next);
@@ -682,7 +894,7 @@ export function CommandBar({
         (c) => c.group !== "Pinned" && c.group !== "Recent commands",
       );
 
-  const foundRows = found.map((h): Command => ({
+  const foundRows = visibleFound.map((h): Command => ({
     id: `find-${h.type}-${h.id}`,
     label: h.title,
     hint: h.hint ?? undefined,
@@ -711,7 +923,7 @@ export function CommandBar({
     ];
   });
 
-  const eventRows = events.map((e, n): Command => ({
+  const eventRows = visibleEvents.map((e, n): Command => ({
     id: "event-" + n,
     label: e.title,
     hint:
@@ -722,36 +934,43 @@ export function CommandBar({
   }));
   const chips = (quick?.chips ?? []).filter((c) => c.kind !== "kind");
   const quickCommand: Command | null =
-    quick && quick.input.title
+    quickReceipt && createdQuery === q
       ? {
-          id: "quick",
-          label: (
-            <>
-              {quick.habit
-                ? "Create habit"
-                : quick.input.kind === "event"
-                  ? "Create event"
-                  : "Create task"}
-              : <em>“{quick.input.title}”</em>
-              {chips.length > 0 && (
-                <span className="quick-chips">
-                  {chips.map((c, n) => (
-                    <span key={n} className="quick-chip">
-                      {chipLabel(c)}
-                    </span>
-                  ))}
-                </span>
-              )}
-            </>
-          ),
-          icon: quick.habit
-            ? Repeat
-            : quick.input.kind === "event"
-              ? CalendarPlus
-              : Plus,
-          run: () => void createQuick(),
+          id: "created",
+          label: `Open created ${quickReceipt.item?.title ?? "habit"}`,
+          icon: ArrowUpRight,
+          run: openQuickReceipt,
         }
-      : null;
+      : quick && quick.input.title
+        ? {
+            id: "quick",
+            label: (
+              <>
+                {quick.habit
+                  ? "Create habit"
+                  : quick.input.kind === "event"
+                    ? "Create event"
+                    : "Create task"}
+                : <em>“{quick.input.title}”</em>
+                {chips.length > 0 && (
+                  <span className="quick-chips">
+                    {chips.map((c, n) => (
+                      <span key={n} className="quick-chip">
+                        {chipLabel(c)}
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </>
+            ),
+            icon: quick.habit
+              ? Repeat
+              : quick.input.kind === "event"
+                ? CalendarPlus
+                : Plus,
+            run: () => void createQuick(),
+          }
+        : null;
   const askCommand: Command | null =
     q && !filtering
       ? {
@@ -787,29 +1006,45 @@ export function CommandBar({
         { question, quickFirst, addFirst },
       );
   const current = Math.min(active, Math.max(0, commands.length - 1));
+  const activeResultId = commands[current]?.id;
+  useEffect(() => {
+    if (!activeResultId) return;
+    const row = document.getElementById(rowId(activeResultId));
+    if (row && modal.ref.current?.contains(row))
+      row.scrollIntoView({ block: "nearest" });
+  }, [activeResultId]);
 
   /** Shift+Enter: make what was typed, a task on the task screens. */
   const createTyped = () => {
-    if (!words) return;
+    if (!owns() || operation.current || !words) return;
     if (view === "My tasks" || view === "Lists") void createQuick();
     else {
+      if (words.length > 200) {
+        setNotice(
+          "Page titles can have up to 200 characters. Shorten the title.",
+        );
+        return;
+      }
       onClose();
-      onNewPage(words.slice(0, 200));
+      onNewPage(words);
     }
   };
 
   const startAsk = async (text: string) => {
+    const ticket = begin();
+    if (!ticket) return;
     setAsk({ question: text, proposal: null, state: "info", error: "" });
-    setBusy(true);
     try {
       const { proposal } = await client.chat(text, deviceTimeZone(), []);
-      setAsk({
-        question: text,
-        proposal,
-        state: proposal.actions.length ? "pending" : "info",
-        error: "",
-      });
+      if (owns())
+        setAsk({
+          question: text,
+          proposal,
+          state: proposal.actions.length ? "pending" : "info",
+          error: "",
+        });
     } catch (e) {
+      if (!owns()) return;
       if ((e as { status?: number }).status === 401) report(e);
       setAsk({
         question: text,
@@ -818,17 +1053,21 @@ export function CommandBar({
         error: errorText(e),
       });
     } finally {
-      setBusy(false);
+      finish(ticket);
     }
   };
 
   const apply = async () => {
-    if (!ask?.proposal) return;
-    setBusy(true);
+    if (!ask?.proposal || ask.state !== "pending") return;
+    const ticket = begin();
+    if (!ticket) return;
+    let applied = false;
+    setAsk({ ...ask, error: "" });
     try {
       await client.applyProposal(ask.proposal.id);
-      setAsk({ ...ask, state: "applied" });
-      // Celebrate when the assistant's changes finish a task.
+      if (!owns()) return;
+      applied = true;
+      setAsk({ ...ask, state: "applied", error: "" });
       const finished = ask.proposal.actions.some(
         (a) =>
           a.operation === "update" &&
@@ -838,65 +1077,94 @@ export function CommandBar({
       if (finished) celebrate();
       await onApplied();
     } catch (e) {
-      setAsk({ ...ask, error: errorText(e) });
+      if (owns())
+        setAsk({
+          ...ask,
+          state: applied ? "applied" : ask.state,
+          error: applied
+            ? "Changes saved. Refresh your planner to update the list."
+            : errorText(e),
+        });
     } finally {
-      setBusy(false);
+      finish(ticket);
     }
   };
 
   /** Change one filter, keeping the rest and the words. */
-  const setFilter = (change: Partial<SearchFilters>) => {
+  const setFilter = (
+    change: Partial<SearchFilters>,
+    choice?: { kind: "project" | "tag" | "team"; id: string; name: string },
+  ) => {
+    if (!owns() || operation.current) return;
+    setFilterChoices((previous) => {
+      const next = { ...previous };
+      for (const kind of ["project", "tag", "team"] as const) {
+        if (Object.prototype.hasOwnProperty.call(change, kind)) {
+          if (choice?.kind === kind && change[kind] !== null)
+            next[kind] = { id: choice.id, name: choice.name };
+          else delete next[kind];
+        }
+      }
+      return next;
+    });
     setQuery(formatSearch({ ...filters, ...change }));
     setActive(0);
     setPicking(null);
     input.current?.focus();
   };
 
-  // Escape closes; Tab stays inside.
+  // The open search owns repeat-search shortcuts; modal focus owns Escape/Tab.
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (document.querySelector(".popover")) return;
-        e.preventDefault();
-        onClose();
-      }
-      if (e.key !== "Tab" || !dialog.current) return;
-      const focusable = dialog.current.querySelectorAll<HTMLElement>(
-        "input, button:not(:disabled), a[href]",
-      );
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (!first || !last) return;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        busy ||
+        ask ||
+        event.key === "Escape" ||
+        event.key === "Tab" ||
+        (event.target instanceof HTMLElement &&
+          !!event.target.closest("[data-modal-owner]")) ||
+        !modal.ref.current ||
+        hasHigherDialog(modal.ref.current)
+      )
+        return;
+      if (commandForKey(event, prefs.shortcuts)?.id !== "app.search") return;
+      event.preventDefault();
+      input.current?.focus({ preventScroll: true });
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [prefs.shortcuts, busy, ask]);
 
-  const pickOptions: { label: string; pick: () => void; on: boolean }[] =
+  const pickOptions: {
+    id?: string;
+    label: string;
+    pick: () => void;
+    on: boolean;
+  }[] =
     picking?.kind === "project"
       ? projects
           .filter((p) => p.status !== "archived")
           .map((p) => ({
-            label: p.name,
+            id: p.id,
+            label: `${p.name} · ${p.team_id ? p.team_name || teams.find((t) => t.id === p.team_id)?.name || "Team" : "Personal"}`,
             on: named.project?.id === p.id,
             pick: () =>
-              setFilter({
-                project: named.project?.id === p.id ? null : p.name,
-              }),
+              setFilter(
+                { project: named.project?.id === p.id ? null : p.name },
+                { kind: "project", id: p.id, name: p.name },
+              ),
           }))
       : picking?.kind === "tag"
         ? tags.map((t) => ({
-            label: t.name,
+            id: t.id,
+            label: `${t.name} · ${t.team_id ? teams.find((team) => team.id === t.team_id)?.name || "Team" : "Personal"}`,
             on: named.tag?.id === t.id,
             pick: () =>
-              setFilter({ tag: named.tag?.id === t.id ? null : t.name }),
+              setFilter(
+                { tag: named.tag?.id === t.id ? null : t.name },
+                { kind: "tag", id: t.id, name: t.name },
+              ),
           }))
         : picking?.kind === "team"
           ? [
@@ -904,18 +1172,29 @@ export function CommandBar({
                 label: "Personal (no team)",
                 on: named.team?.id === PERSONAL_SPACE.id,
                 pick: () =>
-                  setFilter({
-                    team:
-                      named.team?.id === PERSONAL_SPACE.id
-                        ? null
-                        : PERSONAL_SPACE.id,
-                  }),
+                  setFilter(
+                    {
+                      team:
+                        named.team?.id === PERSONAL_SPACE.id
+                          ? null
+                          : PERSONAL_SPACE.id,
+                    },
+                    {
+                      kind: "team",
+                      id: PERSONAL_SPACE.id,
+                      name: PERSONAL_SPACE.id,
+                    },
+                  ),
               },
               ...teams.map((t) => ({
+                id: t.id,
                 label: t.name,
                 on: named.team?.id === t.id,
                 pick: () =>
-                  setFilter({ team: named.team?.id === t.id ? null : t.name }),
+                  setFilter(
+                    { team: named.team?.id === t.id ? null : t.name },
+                    { kind: "team", id: t.id, name: t.name },
+                  ),
               })),
             ]
           : picking?.kind === "date"
@@ -936,6 +1215,7 @@ export function CommandBar({
     <button
       type="button"
       className={value ? "active" : ""}
+      disabled={busy}
       aria-haspopup="menu"
       aria-expanded={picking?.kind === kind}
       onClick={(e) =>
@@ -954,11 +1234,15 @@ export function CommandBar({
     <div
       className="command-backdrop"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (!busy && e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        ref={dialog}
+        ref={(node) => {
+          modal.ref.current = node;
+        }}
+        tabIndex={-1}
+        data-modal-focus={modal.id}
         className="command-bar scale-in"
         role="dialog"
         aria-modal="true"
@@ -968,6 +1252,7 @@ export function CommandBar({
           <div className="command-ask">
             <button
               className="text-button"
+              disabled={busy}
               onClick={() => {
                 setAsk(null);
                 setTimeout(() => input.current?.focus(), 0);
@@ -977,14 +1262,15 @@ export function CommandBar({
             </button>
             <p className="command-question">{ask.question}</p>
             <div aria-live="polite">
+              {ask.error && (
+                <div className="error" role="alert">
+                  {ask.error}
+                </div>
+              )}
               {busy && !ask.proposal ? (
                 <p className="muted" role="status">
                   <Sparkles size={14} /> Thinking…
                 </p>
-              ) : ask.error ? (
-                <div className="error" role="alert">
-                  {ask.error}
-                </div>
               ) : ask.proposal ? (
                 <ProposalReview
                   proposal={ask.proposal}
@@ -994,6 +1280,24 @@ export function CommandBar({
                   onApply={() => void apply()}
                   onDismiss={() => setAsk({ ...ask, state: "discarded" })}
                   onApplyPlan={onApplyPlan}
+                  onOpenSource={
+                    onOpenSource &&
+                    ((source) => {
+                      if (owns() && !operation.current) {
+                        onClose();
+                        onOpenSource(source);
+                      }
+                    })
+                  }
+                  onKeptNote={
+                    onKeptNote &&
+                    ((id) => {
+                      if (owns()) {
+                        onClose();
+                        onKeptNote(id);
+                      }
+                    })
+                  }
                   onOpenPlan={(plan) => {
                     onClose();
                     onOpenPlan(plan);
@@ -1017,28 +1321,33 @@ export function CommandBar({
                 ref={input}
                 role="combobox"
                 aria-expanded="true"
-                aria-controls="command-list"
+                aria-controls={listId}
                 aria-activedescendant={
-                  commands[current] ? "cmd-" + commands[current].id : undefined
+                  commands[current] ? rowId(commands[current].id) : undefined
                 }
                 aria-autocomplete="list"
                 aria-label="Search, add something, or ask the assistant"
-                aria-describedby="command-summary"
-                placeholder={
-                  // The full hint doesn't fit a phone's width.
-                  window.matchMedia?.("(max-width: 520px)").matches
-                    ? "Search, add or ask…"
-                    : "Jump to, search, add “Lunch fri 1pm”, or ask…"
-                }
+                aria-describedby={summaryId}
+                placeholder="Search, add or ask…"
                 value={query}
                 maxLength={4000}
                 disabled={busy}
                 onChange={(e) => {
-                  setQuery(e.target.value);
+                  const nextQuery = e.target.value;
+                  const nextFilters = parseSearch(nextQuery);
+                  setFilterChoices((previous) => {
+                    const next = { ...previous };
+                    for (const kind of ["project", "tag", "team"] as const)
+                      if (next[kind]?.name !== nextFilters[kind])
+                        delete next[kind];
+                    return next;
+                  });
+                  setQuery(nextQuery);
                   setActive(0);
                   setNotice("");
                 }}
                 onKeyDown={(e) => {
+                  if (!owns() || operation.current) return;
                   if (e.key === "ArrowDown") {
                     e.preventDefault();
                     setActive((current + 1) % Math.max(1, commands.length));
@@ -1072,6 +1381,7 @@ export function CommandBar({
                 <button
                   key={chip.kind}
                   type="button"
+                  disabled={busy}
                   className={filters.type === chip.kind ? "active" : ""}
                   aria-pressed={filters.type === chip.kind}
                   onClick={() =>
@@ -1096,6 +1406,7 @@ export function CommandBar({
               <button
                 type="button"
                 className={withArchived ? "active" : ""}
+                disabled={busy}
                 aria-pressed={withArchived}
                 title="Find archived pages too"
                 onClick={() => setWithArchived((v) => !v)}
@@ -1114,7 +1425,7 @@ export function CommandBar({
                   {pickOptions.length ? (
                     pickOptions.map((o) => (
                       <button
-                        key={o.label}
+                        key={o.id ?? o.label}
                         className={"doc-menu-item" + (o.on ? " is-on" : "")}
                         role="menuitemcheckbox"
                         aria-checked={o.on}
@@ -1125,14 +1436,32 @@ export function CommandBar({
                     ))
                   ) : (
                     <p className="muted command-pick-empty">
-                      Nothing to choose yet.
+                      {picking.kind === "project"
+                        ? projectStatus === "loading"
+                          ? "Loading projects…"
+                          : projectStatus === "error"
+                            ? "Project filters unavailable."
+                            : "No projects yet."
+                        : "Nothing to choose yet."}
+                      {picking.kind === "project" &&
+                        projectStatus === "error" && (
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() =>
+                              setReadAttempt((attempt) => attempt + 1)
+                            }
+                          >
+                            Retry
+                          </button>
+                        )}
                     </p>
                   )}
                 </div>
               </Popover>
             )}
             <p
-              id="command-summary"
+              id={summaryId}
               className={"command-summary" + (filtering ? "" : " is-keys")}
               role="status"
               aria-live="polite"
@@ -1140,16 +1469,79 @@ export function CommandBar({
               {filtering
                 ? unknown || searchSummary(filters)
                 : q
-                  ? `Enter opens · Shift+Enter makes it · ${MAC ? "⌘" : "Ctrl+"}Enter opens it beside`
-                  : "Recent first · type to jump anywhere, or use tag: project: is:"}
+                  ? "Enter to open"
+                  : "Recently opened"}
             </p>
+            <details className="command-help">
+              <summary>Search tips</summary>
+              <p>Use tag:, project: or is:task to narrow results.</p>
+              <p>
+                Enter opens · Shift+Enter creates · {MAC ? "⌘" : "Ctrl+"}Enter
+                opens beside.
+              </p>
+            </details>
+            {quickReceipt && (createdQuery !== q || filtering) && (
+              <div className="command-recovery">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={openQuickReceipt}
+                >
+                  {quickReceipt.item
+                    ? `Open “${quickReceipt.item.title}”`
+                    : "Open habit settings"}
+                </button>
+              </div>
+            )}
+            {busy && (
+              <p className="command-summary" role="status">
+                Working…
+              </p>
+            )}
+            {((!filtering && findFailure === foundKey) ||
+              (filtering && searchFailure === searchKey && !unknown) ||
+              (!filtering && eventFailure === eventKey && q.length >= 2)) && (
+              <div className="command-recovery" role="alert">
+                <span>
+                  {filtering
+                    ? "Search unavailable."
+                    : findFailure === foundKey
+                      ? "Search unavailable. Commands still work."
+                      : "Event search unavailable."}
+                </span>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => setReadAttempt((attempt) => attempt + 1)}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {memberFailure && !filtering && q.includes("@") && (
+              <div className="command-recovery" role="alert">
+                <span>
+                  Teammates unavailable. Retry before assigning someone.
+                </span>
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => setReadAttempt((attempt) => attempt + 1)}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
             {notice && (
               <div className="error" role="alert">
                 {notice}
               </div>
             )}
             <ul
-              id="command-list"
+              id={listId}
               role="listbox"
               aria-label="Results"
               className="command-list"
@@ -1169,13 +1561,17 @@ export function CommandBar({
                       </li>
                     )}
                     <li
-                      id={"cmd-" + c.id}
+                      id={rowId(c.id)}
                       role="option"
                       aria-selected={n === current}
                       className={n === current ? "active" : ""}
-                      onMouseEnter={() => setActive(n)}
+                      onMouseEnter={() => {
+                        if (!operation.current) setActive(n);
+                      }}
                       onMouseDown={(e) => e.preventDefault()}
+                      aria-disabled={busy}
                       onClick={(e) => {
+                        if (!owns() || operation.current) return;
                         // ⌘-click a page or project: a new tab (W4).
                         const t = c.target;
                         if (t && t.kind !== "task" && wantsNewTab(e)) {
@@ -1184,6 +1580,7 @@ export function CommandBar({
                         } else c.run();
                       }}
                       onAuxClick={(e) => {
+                        if (!owns() || operation.current) return;
                         const t = c.target;
                         if (!t || t.kind === "task" || !wantsNewTab(e)) return;
                         e.preventDefault();
@@ -1203,7 +1600,8 @@ export function CommandBar({
                           className={
                             "icon-button command-pin" + (pinned ? " is-on" : "")
                           }
-                          tabIndex={-1}
+                          tabIndex={0}
+                          disabled={busy}
                           aria-label={pinned ? "Unpin" : "Pin to the top"}
                           title={pinned ? "Unpin" : "Pin to the top"}
                           onClick={(e) => {
@@ -1218,15 +1616,19 @@ export function CommandBar({
                   </Fragment>
                 );
               })}
-              {!commands.length && (
-                <li role="presentation" className="command-empty">
-                  {filtering
-                    ? searched === null
-                      ? "Looking…"
-                      : "Nothing matches these filters."
-                    : "Nothing matches. Type a question to ask the assistant."}
-                </li>
-              )}
+              {!commands.length &&
+                !unknown &&
+                !(filtering && searchFailure === searchKey) && (
+                  <li role="presentation" className="command-empty">
+                    {filtering
+                      ? searched === null
+                        ? "Looking…"
+                        : searchFailure === searchKey
+                          ? "Search unavailable."
+                          : unknown || "Nothing matches these filters."
+                      : "Nothing matches. Type a question to ask the assistant."}
+                  </li>
+                )}
             </ul>
           </>
         )}

@@ -31,6 +31,7 @@ import type {
   UpdateInfo,
 } from "@orbyn/core";
 import { clockSkewText } from "@orbyn/core";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { formatDateTime, fromLocalInput, toLocalInput } from "../../lib/format";
 import type { TeamActions } from "../teams/TeamDetail";
@@ -50,8 +51,7 @@ type Props = Pick<TeamActions, "user" | "report"> & {
   onMaintenanceChange?: (m: Maintenance) => void;
 };
 
-const APPLY_NOTE =
-  "Changes apply to every server within about 10 seconds. No restart needed.";
+const APPLY_NOTE = "Applies within 10 seconds.";
 
 const errorText = (e: unknown) => {
   const err = e as Error;
@@ -69,19 +69,42 @@ function useAction(report: Report) {
   const [outcome, setOutcome] = useState<Outcome>(null);
   const reportRef = useRef(report);
   reportRef.current = report;
-  const run = useCallback(async (fn: () => Promise<string | void>) => {
-    setPending(true);
-    setOutcome(null);
-    try {
-      const text = await fn();
-      if (text) setOutcome({ ok: true, text });
-    } catch (e) {
-      if ((e as HttpError).status === 401) reportRef.current(e);
-      else setOutcome({ ok: false, text: errorText(e) });
-    } finally {
-      setPending(false);
-    }
+  const mounted = useRef(true);
+  const ticket = useRef<object | null>(null);
+  const account = session.get();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      ticket.current = null;
+    };
   }, []);
+  const run = useCallback(
+    async (fn: (current: () => boolean) => Promise<string | void>) => {
+      if (!mounted.current || ticket.current || session.get() !== account)
+        return;
+      const owned = {};
+      ticket.current = owned;
+      const current = () =>
+        mounted.current &&
+        ticket.current === owned &&
+        session.get() === account;
+      setPending(true);
+      setOutcome(null);
+      try {
+        const text = await fn(current);
+        if (current() && text) setOutcome({ ok: true, text });
+      } catch (e) {
+        if (!current()) return;
+        if ((e as HttpError).status === 401) reportRef.current(e);
+        else setOutcome({ ok: false, text: errorText(e) });
+      } finally {
+        if (current()) setPending(false);
+        if (ticket.current === owned) ticket.current = null;
+      }
+    },
+    [account],
+  );
   return { pending, outcome, setOutcome, run };
 }
 
@@ -278,6 +301,7 @@ function NumberField(props: {
         max={props.max}
         step={1}
         value={props.value}
+        disabled={props.busy}
         aria-describedby={props.id + "-hint"}
         onChange={(e) => props.onChange(e.target.value)}
       />
@@ -299,8 +323,9 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
 
   const load = useCallback(
     () =>
-      void run(async () => {
+      void run(async (current) => {
         const next = await client.getSystemSettings();
+        if (!current()) return;
         setView(next);
         setDraft(draftFrom(next.settings));
       }),
@@ -328,16 +353,18 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
     const labels = Object.keys(body).map(
       (key) => LABELS[key as SystemSettingKey],
     );
-    if (
-      !(await ask({
-        title: `Save ${labels.join(", ")} for the whole workspace?`,
-        body: APPLY_NOTE,
-        confirmLabel: "Save settings",
-      }))
-    )
-      return;
-    void save.run(async () => {
+    void save.run(async (current) => {
+      if (
+        !(await ask({
+          title: "Save workspace settings?",
+          body: `${labels.join(", ")}. ${APPLY_NOTE}`,
+          confirmLabel: "Save settings",
+        })) ||
+        !current()
+      )
+        return;
       const next = await client.updateSystemSettings(body);
+      if (!current()) return;
       setView(next);
       setDraft(draftFrom(next.settings));
       return "Saved. " + APPLY_NOTE;
@@ -346,15 +373,18 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
 
   /** Resets one setting and refreshes only its fields, keeping other edits. */
   const reset = async (key: SystemSettingKey) => {
-    if (
-      !(await ask({
-        title: `Reset ${LABELS[key]} to its .env value for the whole workspace?`,
-        confirmLabel: "Reset setting",
-      }))
-    )
-      return;
-    void save.run(async () => {
+    void save.run(async (current) => {
+      if (
+        !(await ask({
+          title: `Reset ${LABELS[key]}?`,
+          body: "Restores its .env value for the whole workspace.",
+          confirmLabel: "Reset setting",
+        })) ||
+        !current()
+      )
+        return;
       const next = await client.updateSystemSettings({ reset: [key] });
+      if (!current()) return;
       setView(next);
       const fresh = draftFrom(next.settings);
       const picked = Object.fromEntries(
@@ -367,14 +397,15 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
 
   const sendTest = async (e: FormEvent) => {
     e.preventDefault();
-    if (
-      !(await ask({
-        title: `Send a test email to ${testTo.trim() || user?.email || "the configured address"}?`,
-        confirmLabel: "Send test",
-      }))
-    )
-      return;
-    void test.run(async () => {
+    void test.run(async (current) => {
+      if (
+        !(await ask({
+          title: `Send a test email to ${testTo.trim() || user?.email || "the configured address"}?`,
+          confirmLabel: "Send test",
+        })) ||
+        !current()
+      )
+        return;
       const result = await client.sendTestEmail(testTo.trim() || undefined);
       return `Test email sent to ${result.to}.`;
     });
@@ -385,7 +416,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
   const busy = save.pending;
 
   return (
-    <section className="card system-card fade-up">
+    <section className="card system-card">
       <div className="section-heading">
         <h2>Settings</h2>
         {view?.updated_at && (
@@ -395,7 +426,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
         )}
       </div>
       <p className="muted system-lead">
-        Values saved here override the server&apos;s .env. {APPLY_NOTE}
+        Saved settings override .env. {APPLY_NOTE}
       </p>
       {view?.clock && (
         <p className="error" role="alert">
@@ -420,7 +451,15 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
         </div>
       ) : (
         <>
-          <form className="system-form" onSubmit={submit}>
+          <form
+            className="system-form"
+            onSubmit={submit}
+            onInvalidCapture={(event) => {
+              const field = event.target as HTMLElement;
+              const details = field.closest("details");
+              if (details) details.open = true;
+            }}
+          >
             <div className="system-field system-wide">
               <SettingHead
                 source={sources.cors_origins}
@@ -432,6 +471,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
               <textarea
                 id="sys-origins"
                 rows={3}
+                disabled={busy}
                 required
                 spellCheck={false}
                 autoCapitalize="off"
@@ -460,7 +500,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
             <NumberField
               id="sys-lanes"
               label="Reminder delivery lanes"
-              hint="How many reminders each notifier sends at once (1–64)."
+              hint="Concurrent reminders per notifier (1–64)."
               value={draft.lanes}
               min={1}
               max={64}
@@ -472,7 +512,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
             <NumberField
               id="sys-interval"
               label="Status check interval (seconds)"
-              hint="How often the status page checks each service (5–3600)."
+              hint="Service checks every 5–3600 seconds."
               value={draft.interval}
               min={5}
               max={3600}
@@ -482,11 +522,8 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
               onReset={() => reset("status_interval_ms")}
             />
 
-            <div
-              className="system-field system-wide"
-              role="group"
-              aria-labelledby="sys-smtp-title"
-            >
+            <details className="system-field system-wide system-email">
+              <summary>Email delivery</summary>
               <SettingHead
                 source={sources.smtp}
                 busy={busy}
@@ -505,6 +542,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
                     spellCheck={false}
                     maxLength={200}
                     placeholder="smtp.example.com"
+                    disabled={busy}
                     value={draft.host}
                     onChange={(e) => set("host", e.target.value)}
                   />
@@ -517,6 +555,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
                     required
                     min={1}
                     max={65535}
+                    disabled={busy}
                     value={draft.port}
                     onChange={(e) => set("port", e.target.value)}
                   />
@@ -527,6 +566,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
                     autoComplete="off"
                     spellCheck={false}
                     maxLength={200}
+                    disabled={busy}
                     value={draft.user}
                     onChange={(e) => set("user", e.target.value)}
                   />
@@ -543,7 +583,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
                     autoComplete="new-password"
                     spellCheck={false}
                     maxLength={500}
-                    disabled={draft.removePassword}
+                    disabled={busy || draft.removePassword}
                     placeholder={
                       smtp.has_password
                         ? "Leave blank to keep the saved password"
@@ -559,6 +599,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
                     maxLength={200}
                     spellCheck={false}
                     placeholder="Orbyn <reminders@example.com>"
+                    disabled={busy}
                     value={draft.from}
                     onChange={(e) => set("from", e.target.value)}
                   />
@@ -566,6 +607,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
                 <label className="system-check system-wide">
                   <input
                     type="checkbox"
+                    disabled={busy}
                     checked={draft.secure}
                     onChange={(e) => set("secure", e.target.checked)}
                   />
@@ -584,6 +626,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
                     <button
                       type="button"
                       className="link-button"
+                      disabled={busy}
                       onClick={() => {
                         set("removePassword", false);
                       }}
@@ -604,7 +647,7 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
                     <Trash2 size={13} /> Remove saved password
                   </button>
                 ))}
-            </div>
+            </details>
 
             <div className="system-footer system-wide">
               <button className="primary" disabled={busy}>
@@ -614,29 +657,33 @@ function SettingsCard({ user, report }: Pick<Props, "user" | "report">) {
             </div>
           </form>
 
-          <form className="system-test" onSubmit={sendTest}>
-            <label htmlFor="sys-test-to">Send a test email</label>
-            <div className="system-test-row">
-              <input
-                id="sys-test-to"
-                type="email"
-                autoComplete="off"
-                maxLength={254}
-                placeholder={user?.email ?? "you@example.com"}
-                value={testTo}
-                aria-describedby="sys-test-hint"
-                onChange={(e) => setTestTo(e.target.value)}
-              />
-              <button className="secondary" disabled={test.pending}>
-                <Send size={13} />{" "}
-                {test.pending ? "Sending…" : "Send test email"}
-              </button>
-            </div>
-            <small id="sys-test-hint" className="field-hint">
-              Uses the saved settings. Leave blank to send it to yourself.
-            </small>
-            <OutcomeNote outcome={test.outcome} />
-          </form>
+          <details className="system-test-details">
+            <summary>Test email delivery</summary>
+            <form className="system-test" onSubmit={sendTest}>
+              <label htmlFor="sys-test-to">Send a test email</label>
+              <div className="system-test-row">
+                <input
+                  id="sys-test-to"
+                  type="email"
+                  autoComplete="off"
+                  maxLength={254}
+                  placeholder={user?.email ?? "you@example.com"}
+                  disabled={test.pending || busy}
+                  value={testTo}
+                  aria-describedby="sys-test-hint"
+                  onChange={(e) => setTestTo(e.target.value)}
+                />
+                <button className="secondary" disabled={test.pending || busy}>
+                  <Send size={13} />{" "}
+                  {test.pending ? "Sending…" : "Send test email"}
+                </button>
+              </div>
+              <small id="sys-test-hint" className="field-hint">
+                Uses the saved settings. Leave blank to send it to yourself.
+              </small>
+              <OutcomeNote outcome={test.outcome} />
+            </form>
+          </details>
         </>
       )}
     </section>
@@ -668,27 +715,36 @@ function MaintenanceCard({
   }, []);
 
   const load = useCallback(
-    () => void run(async () => show(await client.getMaintenance())),
+    () =>
+      void run(async (current) => {
+        const next = await client.getMaintenance();
+        if (current()) show(next);
+      }),
     [run, show],
   );
   useEffect(load, [load]);
 
   const apply = async (enabled: boolean) => {
-    if (
-      !(await ask({
-        title: enabled
-          ? "Apply maintenance mode settings? Members will be unable to make changes while it is on."
-          : "Turn off maintenance mode? Members will be able to make changes again.",
-        confirmLabel: "Apply change",
-      }))
-    )
-      return;
-    void action.run(async () => {
+    void action.run(async (current) => {
+      if (
+        !(await ask({
+          title: enabled
+            ? "Apply maintenance mode?"
+            : "Turn off maintenance mode?",
+          body: enabled
+            ? "Members can view but cannot make changes. Admins can keep working."
+            : "Members can make changes again.",
+          confirmLabel: "Apply change",
+        })) ||
+        !current()
+      )
+        return;
       const next = await client.setMaintenance({
         enabled,
         message: message.trim(),
         until: fromLocalInput(until),
       });
+      if (!current()) return;
       show(next);
       onChangeRef.current?.(next);
       if (!enabled) return "Maintenance mode is off.";
@@ -701,7 +757,7 @@ function MaintenanceCard({
   const on = !!state?.enabled;
 
   return (
-    <section className="card system-card fade-up">
+    <section className="card system-card">
       <div className="section-heading">
         <h2>Maintenance</h2>
         {state && (
@@ -730,8 +786,8 @@ function MaintenanceCard({
             <label htmlFor="sys-maintenance">
               <strong>Maintenance mode</strong>
               <small>
-                Members can view everything but can&apos;t change anything.
-                Admins can still work.
+                Members can view but cannot make changes. Admins can keep
+                working.
                 {on && state.updated_at
                   ? ` On since ${formatDateTime(state.updated_at)}.`
                   : ""}
@@ -747,62 +803,68 @@ function MaintenanceCard({
               onChange={(e) => toggle(e.target.checked)}
             />
           </div>
-          <form
-            className="system-form"
-            onSubmit={(e) => {
-              e.preventDefault();
-              apply(on);
-            }}
-          >
-            <label className="system-field system-wide system-label">
-              Message
-              <textarea
-                rows={2}
-                maxLength={500}
-                placeholder="We're upgrading the database. Back soon."
-                value={message}
-                onChange={(e) => {
-                  setMessage(e.target.value);
-                  action.setOutcome(null);
-                }}
-              />
-              <small className="field-hint">
-                Shown in the apps and on the status page.
-              </small>
-            </label>
-            <label className="system-field system-label">
-              Expected back (optional)
-              <DateField
-                type="datetime-local"
-                value={until}
-                onChange={(e) => {
-                  setUntil(e.target.value);
-                  action.setOutcome(null);
-                }}
-              />
-              {until && (
-                <button
-                  type="button"
-                  className="link-button system-clear"
-                  onClick={() => setUntil("")}
-                >
-                  Clear
-                </button>
-              )}
-            </label>
-            <div className="system-footer system-wide">
-              {on ? (
-                <button className="primary" disabled={action.pending}>
-                  <Save size={14} /> Save message
-                </button>
-              ) : (
+          <details className="system-notice">
+            <summary>Maintenance notice</summary>
+            <form
+              className="system-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                apply(on);
+              }}
+            >
+              <label className="system-field system-wide system-label">
+                Message
+                <textarea
+                  rows={2}
+                  maxLength={500}
+                  placeholder="We're upgrading the database. Back soon."
+                  disabled={action.pending}
+                  value={message}
+                  onChange={(e) => {
+                    setMessage(e.target.value);
+                    action.setOutcome(null);
+                  }}
+                />
                 <small className="field-hint">
-                  The message and time are shown when you turn maintenance on.
+                  Shown in the apps and on the status page.
                 </small>
-              )}
-              <OutcomeNote outcome={action.outcome} />
-            </div>
-          </form>
+              </label>
+              <label className="system-field system-label">
+                Expected back (optional)
+                <DateField
+                  disabled={action.pending}
+                  type="datetime-local"
+                  value={until}
+                  onChange={(e) => {
+                    setUntil(e.target.value);
+                    action.setOutcome(null);
+                  }}
+                />
+                {until && (
+                  <button
+                    type="button"
+                    className="link-button system-clear"
+                    disabled={action.pending}
+                    onClick={() => setUntil("")}
+                  >
+                    Clear
+                  </button>
+                )}
+              </label>
+              <div className="system-footer system-wide">
+                {on ? (
+                  <button className="primary" disabled={action.pending}>
+                    <Save size={14} /> Save message
+                  </button>
+                ) : (
+                  <small className="field-hint">
+                    The message and time are shown when you turn maintenance on.
+                  </small>
+                )}
+                <OutcomeNote outcome={action.outcome} />
+              </div>
+            </form>
+          </details>
         </>
       )}
     </section>
@@ -823,8 +885,9 @@ function AnnouncementCard({ report }: { report: Report }) {
 
   const load = useCallback(
     () =>
-      void run(async () => {
+      void run(async (current) => {
         const a = await client.announcement();
+        if (!current()) return;
         setLive(a);
         if (a) {
           setMessage(a.message);
@@ -837,22 +900,24 @@ function AnnouncementCard({ report }: { report: Report }) {
   useEffect(load, [load]);
 
   const publish = async (clear: boolean) => {
-    if (
-      !(await ask({
-        title: clear
-          ? "Remove the announcement for everyone?"
-          : "Show this announcement to everyone?",
-        body: clear ? undefined : message.trim(),
-        confirmLabel: clear ? "Remove" : "Publish",
-      }))
-    )
-      return;
-    void action.run(async () => {
+    void action.run(async (current) => {
+      if (
+        !(await ask({
+          title: clear
+            ? "Remove the announcement for everyone?"
+            : "Show this announcement to everyone?",
+          body: clear ? undefined : message.trim(),
+          confirmLabel: clear ? "Remove" : "Publish",
+        })) ||
+        !current()
+      )
+        return;
       const saved = await client.setAnnouncement({
         message: clear ? "" : message.trim(),
         tone,
         until: clear ? null : fromLocalInput(until),
       });
+      if (!current()) return;
       setLive(saved.message ? saved : null);
       if (clear) {
         setMessage("");
@@ -864,7 +929,7 @@ function AnnouncementCard({ report }: { report: Report }) {
   };
 
   return (
-    <section className="card system-card fade-up">
+    <section className="card system-card">
       <div className="section-heading">
         <h2>Announcement</h2>
         <span className={"system-pill " + (live ? "is-ok" : "is-off")}>
@@ -884,6 +949,7 @@ function AnnouncementCard({ report }: { report: Report }) {
             rows={2}
             maxLength={300}
             placeholder="Planned update tonight at 10pm — Orbyn may be slow for a few minutes."
+            disabled={action.pending}
             value={message}
             onChange={(e) => {
               setMessage(e.target.value);
@@ -897,6 +963,7 @@ function AnnouncementCard({ report }: { report: Report }) {
         <label className="system-field system-label">
           Tone
           <Select
+            disabled={action.pending}
             aria-label="Tone"
             value={tone}
             onChange={(e) => setTone(e.target.value as "info" | "warning")}
@@ -908,6 +975,7 @@ function AnnouncementCard({ report }: { report: Report }) {
         <label className="system-field system-label">
           Stop showing (optional)
           <DateField
+            disabled={action.pending}
             type="datetime-local"
             value={until}
             onChange={(e) => setUntil(e.target.value)}
@@ -962,7 +1030,11 @@ function RetentionCard({ report }: { report: Report }) {
     );
   }, []);
   const load = useCallback(
-    () => void run(async () => show(await client.adminSweep())),
+    () =>
+      void run(async (current) => {
+        const next = await client.adminSweep();
+        if (current()) show(next);
+      }),
     [run, show],
   );
   useEffect(load, [load]);
@@ -973,44 +1045,51 @@ function RetentionCard({ report }: { report: Report }) {
       )
     : [];
 
+  const invalidDays = changed.some(
+    (r) => !/^\d+$/.test(draft[r.key] ?? "") || Number(draft[r.key]) > 3650,
+  );
   const save = async () => {
-    if (!changed.length) return;
+    if (!changed.length || invalidDays || action.pending) return;
     const shorter = changed.filter((r) => {
       const next = Number(draft[r.key]);
       return next > 0 && (r.days === 0 || next < (r.days ?? 0));
     });
-    if (
-      !(await ask({
-        title: "Save how long records are kept?",
-        body: shorter.length
-          ? `Older ${shorter.map((r) => r.label.toLowerCase()).join(", ")} will be removed at the next sweep, and can't be brought back.`
-          : undefined,
-        confirmLabel: "Save",
-        destructive: shorter.length > 0,
-      }))
-    )
-      return;
-    void action.run(async () => {
-      show(
-        await client.setRetention(
-          Object.fromEntries(changed.map((r) => [r.key, Number(draft[r.key])])),
-        ),
+    void action.run(async (current) => {
+      if (
+        !(await ask({
+          title: "Save how long records are kept?",
+          body: shorter.length
+            ? `Older ${shorter.map((r) => r.label.toLowerCase()).join(", ")} will be removed at the next sweep, and can't be brought back.`
+            : undefined,
+          confirmLabel: "Save",
+          destructive: shorter.length > 0,
+        })) ||
+        !current()
+      )
+        return;
+      const next = await client.setRetention(
+        Object.fromEntries(changed.map((r) => [r.key, Number(draft[r.key])])),
       );
+      if (!current()) return;
+      show(next);
       return "Saved.";
     });
   };
 
   const sweep = async () => {
-    if (
-      !(await ask({
-        title: "Sweep now?",
-        body: "Clears everything past its keep time, as the hourly sweep does.",
-        confirmLabel: "Sweep now",
-      }))
-    )
-      return;
-    void action.run(async () => {
+    void action.run(async (current) => {
+      if (
+        !(await ask({
+          title: "Sweep now?",
+          body: "Permanently removes expired records. This cannot be undone.",
+          destructive: true,
+          confirmLabel: "Sweep now",
+        })) ||
+        !current()
+      )
+        return;
       const v = await client.runSweep();
+      if (!current()) return;
       show(v);
       const n = Object.values(v.last?.removed ?? {}).reduce((a, b) => a + b, 0);
       return `Swept: ${n.toLocaleString()} record${n === 1 ? "" : "s"} removed.`;
@@ -1018,7 +1097,7 @@ function RetentionCard({ report }: { report: Report }) {
   };
 
   return (
-    <section className="card system-card fade-up">
+    <section className="card system-card">
       <div className="section-heading">
         <h2>Data retention</h2>
         {view?.last && (
@@ -1048,19 +1127,23 @@ function RetentionCard({ report }: { report: Report }) {
               <tbody>
                 {view.rules.map((r) => (
                   <tr key={r.key}>
-                    <td>
+                    <td data-label="Record">
                       <strong>{r.label}</strong>
-                      <small className="muted">{r.detail}</small>
+                      <details className="system-rule-detail">
+                        <summary>About these records</summary>
+                        <p>{r.detail}</p>
+                      </details>
                     </td>
-                    <td>
+                    <td data-label="Now">
                       {r.rows.toLocaleString()} {r.rows === 1 ? "row" : "rows"}
                       <small className="muted">{r.size}</small>
                     </td>
-                    <td>
+                    <td data-label="Keep for">
                       {r.configurable ? (
                         <label className="system-days">
                           <input
                             type="number"
+                            disabled={action.pending}
                             min={0}
                             max={3650}
                             aria-label={`Days to keep ${r.label.toLowerCase()}`}
@@ -1077,7 +1160,7 @@ function RetentionCard({ report }: { report: Report }) {
                         <span className="muted">Until expired</span>
                       )}
                     </td>
-                    <td>
+                    <td data-label="Last sweep">
                       {view.last?.errors[r.key] ? (
                         <span className="danger-text">Failed</span>
                       ) : view.last?.removed[r.key] !== undefined ? (
@@ -1091,10 +1174,15 @@ function RetentionCard({ report }: { report: Report }) {
               </tbody>
             </table>
           </div>
+          {invalidDays && (
+            <p className="error system-body" role="alert">
+              Use whole days from 0 to 3650.
+            </p>
+          )}
           <div className="system-footer">
             <button
               className="primary"
-              disabled={action.pending || !changed.length}
+              disabled={action.pending || !changed.length || invalidDays}
               onClick={() => void save()}
             >
               <Save size={14} /> Save
@@ -1116,8 +1204,6 @@ function RetentionCard({ report }: { report: Report }) {
 
 // ---- Version and updates ----
 
-const firstLine = (text: string) => text.split("\n")[0].trim();
-
 function VersionCard({ report }: { report: Report }) {
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const action = useAction(report);
@@ -1125,8 +1211,9 @@ function VersionCard({ report }: { report: Report }) {
 
   const check = useCallback(
     () =>
-      void run(async () => {
-        setInfo(await client.getUpdates());
+      void run(async (current) => {
+        const next = await client.getUpdates();
+        if (current()) setInfo(next);
       }),
     [run],
   );
@@ -1135,7 +1222,7 @@ function VersionCard({ report }: { report: Report }) {
   const latest = info?.latest;
 
   return (
-    <section className="card system-card fade-up">
+    <section className="card system-card">
       <div className="section-heading">
         <h2>Version and updates</h2>
         <button className="secondary" disabled={action.pending} onClick={check}>
@@ -1169,11 +1256,14 @@ function VersionCard({ report }: { report: Report }) {
           <div className="system-body">
             <h3 className="system-subtitle">Latest on GitHub</h3>
             {!info.checks_enabled ? (
-              <p className="muted system-note">
-                Update checks are off. Set <code>UPDATE_REPO</code> (like
-                owner/repo) on the server to turn them on. Private repositories
-                also need <code>GITHUB_TOKEN</code>.
-              </p>
+              <div className="muted system-note">
+                Update checks are off.
+                <details>
+                  <summary>Configure update checks</summary>
+                  Set <code>UPDATE_REPO</code> to owner/repo on the server.
+                  Private repositories also need <code>GITHUB_TOKEN</code>.
+                </details>
+              </div>
             ) : (
               <>
                 {info.error && (
@@ -1195,7 +1285,10 @@ function VersionCard({ report }: { report: Report }) {
                       </span>
                       <code>{latest.version}</code>
                     </div>
-                    <p>{firstLine(latest.message) || "No commit message"}</p>
+                    <details className="system-rule-detail">
+                      <summary>Commit message</summary>
+                      <p>{latest.message || "No commit message"}</p>
+                    </details>
                     <small>
                       <time dateTime={latest.date}>
                         {formatDateTime(latest.date)}

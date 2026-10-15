@@ -18,6 +18,7 @@ type Props = {
 export function LegalPage({ doc, signedIn, onNavigate, onHome }: Props) {
   const [document, setDocument] = useState<LegalDocument | null>(null);
   const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     let alive = true;
@@ -30,7 +31,7 @@ export function LegalPage({ doc, signedIn, onNavigate, onHome }: Props) {
     return () => {
       alive = false;
     };
-  }, [doc]);
+  }, [doc, retry]);
 
   const go = (path: string) => (e: MouseEvent) => {
     e.preventDefault();
@@ -80,7 +81,16 @@ export function LegalPage({ doc, signedIn, onNavigate, onHome }: Props) {
           </a>
         </nav>
         {error ? (
-          <p className="legal-error">{error}</p>
+          <div role="status">
+            <p className="legal-error">{error}</p>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setRetry((value) => value + 1)}
+            >
+              Retry
+            </button>
+          </div>
         ) : document ? (
           <article>
             <LegalText body={document.body} />

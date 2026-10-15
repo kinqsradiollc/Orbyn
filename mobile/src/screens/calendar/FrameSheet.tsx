@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Alert } from "../../lib/alert";
 import type { Frame, Team } from "@orbyn/core";
@@ -23,8 +23,14 @@ export function FrameSheet({
   /** After a change, so the calendar reloads. */
   onSaved: () => void;
 }) {
+  const [pending, setPending] = useState(false);
   return (
-    <Sheet visible={!!frame} title="Frame" onClose={onClose}>
+    <Sheet
+      visible={!!frame}
+      title="Edit frame"
+      onClose={onClose}
+      closeDisabled={pending}
+    >
       {frame && (
         <Body
           key={frame.id}
@@ -32,6 +38,7 @@ export function FrameSheet({
           teams={teams}
           onClose={onClose}
           onSaved={onSaved}
+          onBusyChange={setPending}
         />
       )}
     </Sheet>
@@ -43,14 +50,36 @@ function Body({
   teams,
   onClose,
   onSaved,
+  onBusyChange,
 }: {
   frame: Frame;
   teams: Team[];
   onClose: () => void;
   onSaved: () => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
-  const { busy, error, setError, run } = useRun();
+  const { busy, error, setError, run: execute } = useRun();
   const [current, setCurrent] = useState(frame);
+  const alive = useRef(true);
+  const saving = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      onBusyChange(false);
+    };
+  }, [onBusyChange]);
+  const run = async (fn: () => Promise<void>) => {
+    if (saving.current || !alive.current) return;
+    saving.current = true;
+    onBusyChange(true);
+    try {
+      await execute(fn);
+    } finally {
+      saving.current = false;
+      if (alive.current) onBusyChange(false);
+    }
+  };
   return (
     <ScrollView
       contentContainerStyle={sheetStyles.body}
@@ -66,34 +95,44 @@ function Body({
             frame={current}
             teams={teams}
             busy={busy}
-            onCancel={onClose}
+            onCancel={() => {
+              if (!saving.current) onClose();
+            }}
             onSave={(input) =>
               void run(async () => {
                 await client.updateFrame(frame.id, input);
+                if (!alive.current) return;
                 onSaved();
                 onClose();
               })
             }
             onUnskip={(date) =>
               void run(async () => {
-                setCurrent(await client.unskipFrame(frame.id, date));
+                const next = await client.unskipFrame(frame.id, date);
+                if (!alive.current) return;
+                setCurrent(next);
                 onSaved();
               })
             }
             onDelete={() =>
-              Alert.alert(`Delete ${frame.name}?`, "Tasks aren’t affected.", [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Delete",
-                  style: "destructive",
-                  onPress: () =>
-                    void run(async () => {
-                      await client.deleteFrame(frame.id);
-                      onSaved();
-                      onClose();
-                    }),
-                },
-              ])
+              Alert.alert(
+                `Delete ${frame.name}?`,
+                "All occurrences of this frame are removed. Tasks are unchanged.",
+                [
+                  { text: "Cancel", style: "cancel" },
+                  {
+                    text: "Delete",
+                    style: "destructive",
+                    onPress: () =>
+                      void run(async () => {
+                        await client.deleteFrame(frame.id);
+                        if (!alive.current) return;
+                        onSaved();
+                        onClose();
+                      }),
+                  },
+                ],
+              )
             }
           />
         </View>

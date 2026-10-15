@@ -9,3 +9,16 @@
   max-width: 360px;
   margin-top: 12px;
 }
+
+.nudge-dialog .agents-identity-form {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.nudge-dialog .button-row {
+  flex-wrap: wrap;
+}
+.nudge-dialog input {
+  width: 100%;
+  min-width: 0;
+}

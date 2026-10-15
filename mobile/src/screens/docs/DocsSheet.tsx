@@ -1,3 +1,4 @@
+import { usePaneWidth } from "../../hooks/usePaneWidth";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { onLive } from "../../lib/live";
 import { headerHiddenAfter, hidesHeaderWhileReading } from "../../lib/reading";
@@ -10,12 +11,12 @@ import {
 import { waitingSave } from "../../lib/outbox";
 import {
   AppState,
+  useWindowDimensions,
   ScrollView,
   StyleSheet,
   Text,
   RefreshControl,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -58,11 +59,18 @@ import { EmptyState } from "../../components/EmptyState";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
 import { tap } from "../../lib/haptics";
-import { confirmAction } from "../../lib/confirm";
+import { session } from "../../lib/session";
 import { deviceTimeZone } from "../../lib/planning";
 import { shared } from "../../styles";
 import { useRun } from "../../hooks/useRun";
-import { colors, controls, fonts, radii, themed } from "../../theme";
+import {
+  colors,
+  controls,
+  fonts,
+  inputFontSize,
+  radii,
+  themed,
+} from "../../theme";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { UploadsList, useImports } from "./Uploads";
@@ -75,6 +83,10 @@ import {
 import { copyLink, shareLink } from "../../lib/share";
 import { PublishSheet } from "./PublishSheet";
 import { DocComments } from "./DocComments";
+import {
+  CommentDraftContext,
+  useCommentDraftOwner,
+} from "./doc-comment-drafts";
 import { DocHistory } from "./DocHistory";
 import { DocEditor } from "./DocEditor";
 import { useDocComments } from "./useDocComments";
@@ -98,7 +110,11 @@ const when = (iso: string) => {
  * read as symbols here and are typeset on the desktop; the source is the
  * same either way.
  */
-export function DocsSheet({
+export function DocsSheet(props: React.ComponentProps<typeof DocsBody>) {
+  return <DocsBody key={`${session.token}:${props.userId ?? ""}`} {...props} />;
+}
+
+function DocsBody({
   visible,
   agenda,
   initialDoc,
@@ -116,7 +132,9 @@ export function DocsSheet({
   onOpenProject,
   onSearch,
   fixedKind,
+  beforeLeave,
 }: {
+  beforeLeave?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   /** Pull down on the library or a page: "Search & do" (MOB-09). */
   onSearch?: () => void;
   /** A separate Memory or Agent notes library. */
@@ -147,11 +165,61 @@ export function DocsSheet({
   onItemsChanged?: () => void;
 }) {
   const beforePageLeave = useRef<(() => Promise<boolean>) | null>(null);
-  const leavePage = (action: () => void) => {
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const shownRef = useRef(visible);
+  shownRef.current = visible;
+  const owns = () =>
+    mounted.current && shownRef.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const departing = useRef(false);
+  const writeLock = useRef(false);
+  const [navigating, setNavigating] = useState(false);
+  const pageIdentity = useRef<string | null>(null);
+  const pageRequest = useRef(0);
+  const leavePage = (action: () => void | Promise<void>) => {
+    if (!owns() || departing.current || writeLock.current) return;
+    const page = pageIdentity.current;
+    const request = ++pageRequest.current;
+    departing.current = true;
+    setNavigating(true);
     void (async () => {
-      if (!beforePageLeave.current || (await beforePageLeave.current()))
-        action();
+      try {
+        const guard = beforePageLeave.current;
+        if (guard && !(await guard())) return;
+        if (
+          !owns() ||
+          pageIdentity.current !== page ||
+          request !== pageRequest.current
+        )
+          return;
+        await action();
+      } catch (e) {
+        if (owns()) setError(errorText(e));
+      } finally {
+        departing.current = false;
+        if (mounted.current) setNavigating(false);
+      }
     })();
+  };
+  const [confirmation, setConfirmation] = useState<{
+    title: string;
+    message: string;
+    label: string;
+    action: () => void;
+  } | null>(null);
+  const confirmAction = (
+    title: string,
+    message: string,
+    label: string,
+    action: () => void,
+  ) => {
+    if (owns()) setConfirmation({ title, message, label, action });
   };
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
@@ -178,6 +246,25 @@ export function DocsSheet({
   const [sort, setSort] = useState<"recent" | "title">("recent");
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [open, setOpen] = useState<Doc | null>(null);
+  pageIdentity.current = open?.id ?? null;
+  useEffect(() => {
+    if (!beforeLeave || !visible) return;
+    const guard = async () => {
+      if (!owns() || departing.current || writeLock.current) return false;
+      const page = pageIdentity.current;
+      const editor = beforePageLeave.current;
+      if (editor && !(await editor())) return false;
+      return (
+        owns() &&
+        pageIdentity.current === page &&
+        beforePageLeave.current === editor
+      );
+    };
+    beforeLeave.current = guard;
+    return () => {
+      if (beforeLeave.current === guard) beforeLeave.current = null;
+    };
+  }, [beforeLeave, visible, open?.id]);
   /**
    * null = every kind but agendas; "note" = only notes; "doc" = only plain
    * pages; "agenda" = the daily agendas, which have their own section.
@@ -202,7 +289,9 @@ export function DocsSheet({
   const [flash, setFlash] = useState<string | null>(null);
   const [moveQuery, setMoveQuery] = useState("");
   /** An iPad or wide window: the library stays beside the page (MOB-12). */
-  const wideScreen = useWindowDimensions().width >= 1000;
+  const { width: paneWidth, onLayout: measurePane } = usePaneWidth();
+  const { fontScale } = useWindowDimensions();
+  const wideScreen = paneWidth >= Math.max(1000, 1000 * fontScale);
   /** What has been typed into the search box, and what came back for it. */
   const [query, setQuery] = useState("");
   const [hits, setHits] = useState<SearchHit[] | null>(null);
@@ -246,7 +335,16 @@ export function DocsSheet({
     localDateKey(new Date(), agendaZone.current),
   );
   const [agendaGap, setAgendaGap] = useState<string | null>(null);
-  const { busy, error, setError, run } = useRun();
+  const { busy, error, setError, run: execute } = useRun();
+  const run = async <T,>(action: () => Promise<T>): Promise<T | undefined> => {
+    if (!owns() || writeLock.current || departing.current) return undefined;
+    writeLock.current = true;
+    try {
+      return await execute(action);
+    } finally {
+      writeLock.current = false;
+    }
+  };
   /** The page's header buttons and the keyboard toolbar, filled by the page. */
   const headerSlot = useSlot();
   const toolbarSlot = useSlot();
@@ -326,12 +424,21 @@ export function DocsSheet({
 
   useEffect(() => {
     if (!visible) return;
-    if (initialDoc) return setOpen(initialDoc);
+    const request = ++pageRequest.current;
+    let active = true;
+    const current = () => active && owns() && request === pageRequest.current;
+    if (initialDoc) {
+      setOpen(initialDoc);
+      return () => {
+        active = false;
+      };
+    }
     if (agenda) {
       // Today's page is written on the server the first time it is asked for.
       setAgendaGap(null);
       client.agendaToday(deviceTimeZone()).then(
         (doc) => {
+          if (!current()) return;
           setOpen(doc);
           if (doc.agenda_date) setAgendaToday(doc.agenda_date);
         },
@@ -343,10 +450,14 @@ export function DocsSheet({
                 (d) => d.kind === "agenda" && d.agenda_date === today,
               )
             : undefined;
+          if (!current()) return;
           setOpen(kept ? withPendingSave(kept, waitingSave(kept.id)) : null);
+          if (!kept) setError(errorText(e));
         },
       );
-      return;
+      return () => {
+        active = false;
+      };
     }
     void loadList();
     if (startInUploads) {
@@ -363,7 +474,15 @@ export function DocsSheet({
     }
     // Folders and stars are small lists and only matter beside the pages,
     // so they are fetched with them rather than kept in the app's state.
-    client.listFavourites().then(setStars, () => setStars([]));
+    client.listFavourites().then(
+      (next) => {
+        if (current()) setStars(next);
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, agenda, initialDoc, fixedKind]);
 
@@ -405,22 +524,22 @@ export function DocsSheet({
     // Folder state follows edits made on the web, including archive/restore.
     void client.listFolders().then(
       (next) => {
-        if (seq === collectionLoadSeq.current) setFolders(next);
+        if (owns() && seq === collectionLoadSeq.current) setFolders(next);
       },
       () => {},
     );
     return client.listDocs(fixedKind ? { kind: fixedKind } : {}).then(
       (list) => {
-        if (seq !== collectionLoadSeq.current) return;
+        if (!owns() || seq !== collectionLoadSeq.current) return;
         setDocs(list);
         setFailed(false);
         setOfflineList(false);
       },
       async (e: Error) => {
-        if (seq !== collectionLoadSeq.current) return;
+        if (!owns() || seq !== collectionLoadSeq.current) return;
         if (isOfflineError(e)) {
           const kept = await keptPages();
-          if (seq !== collectionLoadSeq.current) return;
+          if (!owns() || seq !== collectionLoadSeq.current) return;
           const categoryPages = kept.filter((doc) =>
             fixedKind
               ? doc.kind === fixedKind
@@ -438,7 +557,6 @@ export function DocsSheet({
             return;
           }
         }
-        setDocs(null);
         setFailed(true);
         setError(errorText(e));
       },
@@ -591,8 +709,10 @@ export function DocsSheet({
 
   /** Step to another day's agenda, or to the gap where it would be. */
   const goAgenda = (date: string) =>
-    void run(async () => {
+    leavePage(async () => {
+      const request = pageRequest.current;
       const day = await client.agendaOn(date, deviceTimeZone());
+      if (!owns() || request !== pageRequest.current) return;
       setAgendaToday(day.today);
       if (day.doc) {
         setAgendaGap(null);
@@ -619,7 +739,7 @@ export function DocsSheet({
       void loadList();
       showToast({
         text: `Restored “${back.title || "Untitled"}”`,
-        action: { label: "Open", run: () => setOpen(back) },
+        action: { label: "Open", run: () => leavePage(() => setOpen(back)) },
       });
     });
 
@@ -883,7 +1003,6 @@ export function DocsSheet({
                 accessibilityRole="button"
                 accessibilityLabel={`${expanded ? "Close" : "Open"} the pages in ${title}`}
                 accessibilityState={{ expanded }}
-                hitSlop={8}
                 onPress={() => toggleTree(doc.id)}
                 style={styles.treeToggle}
               >
@@ -1103,18 +1222,23 @@ export function DocsSheet({
 
   /** Open a page from the list, which for a search hit means fetching it. */
   const openHit = (id: string) =>
-    void run(async () => {
+    leavePage(async () => {
+      const request = pageRequest.current;
+      const current = () => owns() && request === pageRequest.current;
       try {
-        setOpen(await client.getDocForEditor(id));
+        const doc = await client.getDocForEditor(id);
+        if (!current()) return;
+        setOpen(doc);
       } catch (e) {
         // Deleted for good or no longer shared: stop keeping it.
         await forgetIfGone(id, e);
         // No signal: the copy kept on this phone, with any edit waiting.
         const kept = isOfflineError(e) ? await keptPage(id) : null;
+        if (!current()) return;
         if (!kept) throw e;
         setOpen(withPendingSave(kept, waitingSave(id)));
       }
-      setNavigationOpen(false);
+      if (current()) setNavigationOpen(false);
     });
 
   /** The editor hands back whatever went wrong; show it where they are. */
@@ -1242,6 +1366,8 @@ export function DocsSheet({
                     ? "Agent notes"
                     : "Documents"
       }
+      guardedClose
+      closeDisabled={busy || navigating}
       onClose={() => leavePage(onClose)}
       // A page's header is Back, its title, Info and ⋯: with no list
       // behind it, Back closes.
@@ -1257,7 +1383,10 @@ export function DocsSheet({
       collapsed={chromeHidden}
       onExpand={() => setChromeHidden(false)}
     >
-      <View style={besideList ? styles.split : styles.fill}>
+      <View
+        onLayout={measurePane}
+        style={besideList ? styles.split : styles.fill}
+      >
         {besideList && (
           <ScrollView
             style={styles.sideList}
@@ -1277,7 +1406,7 @@ export function DocsSheet({
                 ]}
               >
                 <Icon name="fileText" size={15} color={colors.muted} />
-                <Text style={styles.sideTitle} numberOfLines={1}>
+                <Text style={styles.sideTitle} numberOfLines={2}>
                   {d.title || "Untitled"}
                 </Text>
               </Pressable>
@@ -1294,7 +1423,7 @@ export function DocsSheet({
                 refreshing={false}
                 onRefresh={() => {
                   tap();
-                  onSearch();
+                  leavePage(onSearch);
                 }}
                 title="Search & do"
                 titleColor={colors.muted}
@@ -1507,7 +1636,7 @@ export function DocsSheet({
                   <AgendaNav
                     date={agendaGap ?? open?.agenda_date ?? agendaToday}
                     today={agendaToday}
-                    busy={busy}
+                    busy={busy || navigating}
                     onGo={goAgenda}
                   />
                 )}
@@ -1532,7 +1661,11 @@ export function DocsSheet({
                       key={open!.id}
                       doc={open!}
                       beforeLeave={beforePageLeave}
-                      onOpenProject={onOpenProject}
+                      onOpenProject={
+                        onOpenProject
+                          ? (id) => leavePage(() => onOpenProject(id))
+                          : undefined
+                      }
                       initialBlockId={
                         initialDoc?.id === open!.id ? initialBlockId : null
                       }
@@ -1577,23 +1710,28 @@ export function DocsSheet({
                       toolbarSlot={toolbarSlot}
                       historyKey={historyKey}
                       onShowHistory={showHistory}
-                      onShowInLibrary={() => {
-                        const here = open!;
-                        backToList();
-                        if (here.archived)
-                          selectCollection(
-                            null,
-                            null,
-                            false,
-                            null,
-                            false,
-                            false,
-                            true,
-                          );
-                        else selectCollection(here.folder_id ?? "none");
-                        setFlash(here.id);
-                        setTimeout(() => setFlash(null), 2000);
-                      }}
+                      onShowInLibrary={() =>
+                        leavePage(() => {
+                          const here = open!;
+                          setOpen(null);
+                          setAgendaGap(null);
+                          if (here.archived)
+                            selectCollection(
+                              null,
+                              null,
+                              false,
+                              null,
+                              false,
+                              false,
+                              true,
+                            );
+                          else selectCollection(here.folder_id ?? "none");
+                          setFlash(here.id);
+                          setTimeout(() => {
+                            if (owns()) setFlash(null);
+                          }, 2000);
+                        })
+                      }
                       onMoveTo={
                         !canWriteDoc || canWriteDoc(open!.team_id)
                           ? () => {
@@ -1625,15 +1763,13 @@ export function DocsSheet({
                   void loadList();
                 }}
               />
-            ) : failed ? (
+            ) : failed && docs === null ? (
               <View style={styles.list}>
-                <Text style={styles.empty}>
-                  Your documents could not be reached. They are still there.
-                </Text>
+                <Text style={styles.empty}>Couldn't load documents.</Text>
                 <Button
-                  title="Try again"
+                  title="Retry"
                   secondary
-                  disabled={busy}
+                  disabled={busy || navigating}
                   onPress={() => void loadList()}
                 />
               </View>
@@ -1641,6 +1777,20 @@ export function DocsSheet({
               <Text style={styles.empty}>Loading…</Text>
             ) : (
               <View style={styles.list}>
+                {failed && (
+                  <View style={styles.libraryToolbar}>
+                    <Text style={shared.small}>
+                      Couldn't refresh documents.
+                    </Text>
+                    <SmallAction
+                      label="Retry"
+                      disabled={busy || navigating}
+                      onPress={() => {
+                        void loadList();
+                      }}
+                    />
+                  </View>
+                )}
                 <View style={styles.libraryToolbar}>
                   {/* Memory and Agent notes are one list each: there are
                       no folders to browse, so no second panel of the same
@@ -1711,14 +1861,6 @@ export function DocsSheet({
                           : []),
                         ["Favorites", null, null, true],
                         ["Uploads", null, null, false, true],
-                        ...folders
-                          .filter((folder) => !folder.archived_at)
-                          .map((folder) => [
-                            folder.name,
-                            folder.id,
-                            null,
-                            false,
-                          ]),
                         ["Unfiled", "none", null, false],
                         ["Trash", null, null, false, false, true],
                       ] as [
@@ -1839,57 +1981,45 @@ export function DocsSheet({
                       ))}
                     </ScrollView>
                   )}
-                {/* The main way in full width, the other two side by side, as
-              on Projects. */}
-                {fixedKind ? (
-                  <View style={styles.newActions}>
-                    <Button
-                      title={
-                        fixedKind === "memory"
-                          ? "New Memory note"
-                          : "New Agent note"
-                      }
-                      icon="plus"
-                      disabled={busy}
-                      onPress={() => create(fixedKind)}
+                <View style={styles.newRow}>
+                  <Button
+                    title={
+                      fixedKind === "memory"
+                        ? "New Memory note"
+                        : fixedKind === "agent"
+                          ? "New Agent note"
+                          : "New document"
+                    }
+                    icon="plus"
+                    disabled={busy || navigating || imports.busy}
+                    style={styles.newHalf}
+                    onPress={() => create(fixedKind ?? "doc")}
+                  />
+                  {!fixedKind && (
+                    <MoreMenu
+                      label="More create options"
+                      disabled={busy || navigating || imports.busy}
+                      actions={[
+                        {
+                          label: "New note",
+                          icon: "plus",
+                          onPress: () => create("note"),
+                        },
+                        {
+                          label: "Use template",
+                          icon: "fileText",
+                          onPress: () => setTemplating(true),
+                        },
+                        {
+                          label: "Import file",
+                          icon: "arrowUp",
+                          onPress: importFile,
+                        },
+                      ]}
                     />
-                  </View>
-                ) : (
-                  <View style={styles.newActions}>
-                    <View style={styles.newRow}>
-                      <Button
-                        title="New document"
-                        icon="plus"
-                        disabled={busy}
-                        style={styles.newHalf}
-                        onPress={() => create("doc")}
-                      />
-                      <Button
-                        title="From template"
-                        secondary
-                        disabled={busy}
-                        style={styles.newHalf}
-                        onPress={() => setTemplating(true)}
-                      />
-                    </View>
-                    <View style={styles.newRow}>
-                      <Button
-                        title="New note"
-                        secondary
-                        disabled={busy}
-                        style={styles.newHalf}
-                        onPress={() => create("note")}
-                      />
-                      <Button
-                        title={imports.busy ? "Uploading…" : "Import file"}
-                        secondary
-                        disabled={imports.busy}
-                        style={styles.newHalf}
-                        onPress={importFile}
-                      />
-                    </View>
-                  </View>
-                )}
+                  )}
+                </View>
+                {imports.busy && <Text style={shared.small}>Uploading…</Text>}
                 {/* A folder can go on the web as a whole (SHR-05). */}
                 {!!folderFilter &&
                   folderFilter !== "none" &&
@@ -2092,6 +2222,9 @@ export function DocsSheet({
                   <UploadsList
                     report={(e) => setError(errorText(e))}
                     jobs={imports.jobs}
+                    loading={imports.loading}
+                    loadError={imports.loadError}
+                    onRetry={() => void imports.refresh()}
                     docs={docs}
                     busy={imports.busy}
                     onOpen={openHit}
@@ -2267,7 +2400,6 @@ export function DocsSheet({
                                 !starred.has(favouriteKey("doc", doc.id)),
                               );
                             }}
-                            hitSlop={8}
                             accessibilityRole="button"
                             accessibilityLabel={
                               starred.has(favouriteKey("doc", doc.id))
@@ -2296,7 +2428,6 @@ export function DocsSheet({
                                 event.stopPropagation();
                                 setFiling(doc as DocSummary);
                               }}
-                              hitSlop={8}
                               accessibilityRole="button"
                               accessibilityLabel={`File ${doc.title || "Untitled"}`}
                               style={styles.rowIcon}
@@ -2325,6 +2456,27 @@ export function DocsSheet({
         title={held?.title || "Untitled"}
         actions={held ? rowActions(held) : []}
         onClose={() => setHeld(null)}
+      />
+      <ActionSheet
+        visible={!!confirmation}
+        label="Confirm page action"
+        title={confirmation?.title}
+        message={confirmation?.message}
+        actions={
+          confirmation
+            ? [
+                {
+                  label: confirmation.label,
+                  destructive: true,
+                  disabled: busy || navigating,
+                  onPress: () => {
+                    if (owns()) confirmation.action();
+                  },
+                },
+              ]
+            : []
+        }
+        onClose={() => setConfirmation(null)}
       />
       {publishing && (
         <PublishSheet
@@ -2396,30 +2548,102 @@ function OpenDoc({
       : blocks;
   const comments = useDocComments(doc.id, commentBlocks, report);
   const [rewriting, setRewriting] = useState(false);
+  const [rewriteAsk, setRewriteAsk] = useState(false);
   const [rewritten, setRewritten] = useState("");
-  const rewrite = () =>
-    confirmAction(
-      "Rewrite today's agenda?",
-      "Everything above Notes is written again from your calendar as it is now. Your notes and end-of-day answers stay as they are.",
-      "Rewrite",
-      () => {
-        setRewriting(true);
-        setRewritten("");
-        client.rewriteAgenda(deviceTimeZone()).then(
-          (next) => {
-            setRewriting(false);
-            setRewritten(agendaRewriteFeedback(next));
-            onChanged(next);
-          },
-          (e) => {
-            setRewriting(false);
-            report(e);
-          },
+  const commentDrafts = useCommentDraftOwner();
+  const rewriteLock = useRef(false);
+  const historyLock = useRef(false);
+  const [restoringHistory, setRestoringHistory] = useState(false);
+  const editorBeforeLeave = useRef<(() => Promise<boolean>) | null>(null);
+  useEffect(() => {
+    if (!beforeLeave) return;
+    const guard = async () => {
+      if (rewriteLock.current || historyLock.current) return false;
+      if (!(await commentDrafts.prepare())) return false;
+      if (editorBeforeLeave.current && !(await editorBeforeLeave.current()))
+        return false;
+      return true;
+    };
+    beforeLeave.current = guard;
+    return () => {
+      if (beforeLeave.current === guard) beforeLeave.current = null;
+    };
+  }, [beforeLeave, commentDrafts]);
+  const mounted = useRef(true);
+  const owner = useRef(session.token).current;
+  const writable = canWriteDoc ? canWriteDoc(doc.team_id) : !doc.team_id;
+  const latest = useRef({ doc, isToday, writable });
+  latest.current = { doc, isToday, writable };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const owns = () => mounted.current && session.token === owner;
+  const rewrite = async () => {
+    if (
+      rewriteLock.current ||
+      historyLock.current ||
+      !owns() ||
+      !latest.current.isToday ||
+      !latest.current.writable
+    )
+      return;
+    rewriteLock.current = true;
+    setRewritten("");
+    try {
+      // Settle the page's local edits before rewriting its calendar section.
+      if (editorBeforeLeave.current && !(await editorBeforeLeave.current()))
+        return;
+      if (!owns() || !latest.current.isToday || !latest.current.writable)
+        return;
+      setRewriting(true);
+      const next = await client.rewriteAgenda(deviceTimeZone());
+      if (!owns()) return;
+      if (next.id !== latest.current.doc.id) {
+        setRewritten(
+          "Today's agenda changed. Open Today to see the rewritten page.",
         );
-      },
-    );
+        return;
+      }
+      setRewritten(agendaRewriteFeedback(next));
+      onChanged(next);
+    } catch (e) {
+      if (owns()) report(e);
+    } finally {
+      rewriteLock.current = false;
+      if (mounted.current) setRewriting(false);
+    }
+  };
+  const prepareHistoryRestore = async () => {
+    if (
+      !owns() ||
+      rewriteLock.current ||
+      historyLock.current ||
+      !latest.current.writable
+    )
+      return false;
+    historyLock.current = true;
+    let prepared = false;
+    try {
+      if (editorBeforeLeave.current && !(await editorBeforeLeave.current()))
+        return false;
+      if (!(await commentDrafts.prepare())) return false;
+      if (!owns() || !latest.current.writable) return false;
+      setRestoringHistory(true);
+      prepared = true;
+      return true;
+    } finally {
+      if (!prepared) historyLock.current = false;
+    }
+  };
+  const endHistoryRestore = () => {
+    historyLock.current = false;
+    if (owns()) setRestoringHistory(false);
+  };
   return (
-    <>
+    <CommentDraftContext.Provider value={commentDrafts}>
       {doc.project_id && doc.project_name && (
         <SmallAction
           label={`In project: ${doc.project_name}`}
@@ -2430,26 +2654,25 @@ function OpenDoc({
       {doc.kind === "agenda" && (
         <View style={styles.agendaBar}>
           <Text style={[shared.small, { flex: 1 }]}>
-            {rewritten ||
-              "Written from your calendar. Notes are yours: a rewrite leaves them alone."}
+            {rewritten || "From your calendar"}
           </Text>
-          {isToday && (
+          {isToday && writable && (
             <SmallAction
               label={rewriting ? "Rewriting…" : "Rewrite"}
-              disabled={rewriting}
-              onPress={rewrite}
+              disabled={rewriting || restoringHistory}
+              onPress={() => setRewriteAsk(true)}
             />
           )}
         </View>
       )}
       <DocEditor
         doc={doc}
-        beforeLeave={beforeLeave}
+        beforeLeave={editorBeforeLeave}
         initialBlockId={initialBlockId}
         onTargetOffset={onTargetOffset}
         comments={comments}
         userId={userId}
-        canWrite={canWriteDoc ? canWriteDoc(doc.team_id) : true}
+        canWrite={writable && !rewriting && !restoringHistory}
         onBlocksChange={setBlocks}
         onChanged={onChanged}
         onItemsChanged={onItemsChanged}
@@ -2462,15 +2685,33 @@ function OpenDoc({
         onMoveTo={onMoveTo}
         report={report}
       />
+      <ActionSheet
+        visible={rewriteAsk}
+        label="Rewrite agenda"
+        title="Rewrite today's agenda?"
+        message="Replace the calendar section with your current schedule. Notes and end-of-day answers stay."
+        actions={[
+          {
+            label: "Rewrite",
+            disabled: rewriting || !isToday || !writable,
+            onPress: () => {
+              void rewrite();
+            },
+          },
+        ]}
+        onClose={() => setRewriteAsk(false)}
+      />
       <DocComments state={comments} userId={userId} />
       <DocHistory
         doc={doc}
-        canWrite={canWriteDoc ? canWriteDoc(doc.team_id) : true}
+        beforeRestore={prepareHistoryRestore}
+        onRestoreEnd={endHistoryRestore}
+        canWrite={writable && !rewriting}
         onRestored={onChanged}
         openKey={historyKey}
         report={report}
       />
-    </>
+    </CommentDraftContext.Provider>
   );
 }
 
@@ -2507,7 +2748,6 @@ function AgendaNav({
         accessibilityLabel={by < 0 ? "The day before" : "The day after"}
         accessibilityState={{ disabled: off }}
         disabled={off}
-        hitSlop={6}
         onPress={() => onGo(addDays(date, by))}
         style={({ pressed }) => [
           styles.dayArrow,
@@ -2552,14 +2792,15 @@ const styles = themed(() =>
     },
     agendaNav: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 4,
       marginBottom: 8,
     },
     dayArrow: {
-      width: 34,
-      height: 34,
-      borderRadius: radii.pill,
+      width: controls.tap,
+      height: controls.tap,
+      borderRadius: radii.input,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -2630,8 +2871,8 @@ const styles = themed(() =>
     },
     collections: { gap: 8, paddingVertical: 2 },
     collectionChip: {
-      minHeight: 40,
-      maxWidth: 160,
+      minHeight: controls.tap,
+      maxWidth: 180,
       paddingHorizontal: 14,
       justifyContent: "center",
       borderRadius: radii.pill,
@@ -2665,7 +2906,7 @@ const styles = themed(() =>
       alignItems: "center",
       padding: 10,
       minHeight: 48,
-      borderRadius: 8,
+      borderRadius: radii.input,
     },
     navTitle: {
       flex: 1,
@@ -2675,8 +2916,8 @@ const styles = themed(() =>
     },
     treeRow: { flexDirection: "row", alignItems: "center" },
     treeToggle: {
-      width: 28,
-      height: 34,
+      width: controls.tap,
+      height: controls.tap,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -2695,7 +2936,7 @@ const styles = themed(() =>
     newHalf: { flex: 1, minWidth: 0, marginBottom: 0 },
     search: {
       color: colors.text,
-      fontSize: 15,
+      fontSize: inputFontSize,
       minHeight: 44,
       borderWidth: 1,
       borderColor: colors.border,
@@ -2726,7 +2967,7 @@ const styles = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      minHeight: 40,
+      minHeight: controls.tap,
       paddingHorizontal: 10,
       borderRadius: radii.input,
     },
@@ -2744,7 +2985,7 @@ const styles = themed(() =>
       backgroundColor: colors.surface,
       paddingHorizontal: 12,
       borderRadius: radii.input,
-      fontSize: 15,
+      fontSize: inputFontSize,
       color: colors.text,
     },
     filing: {
@@ -2767,22 +3008,17 @@ const styles = themed(() =>
     // preview was down to 125pt — "We ship the conne…" — which told nobody
     // anything.
     row: {
-      gap: 8,
-      paddingTop: 16,
-      paddingHorizontal: 16,
-      paddingBottom: 6,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.card,
-      backgroundColor: colors.surface,
+      gap: 6,
+      paddingVertical: 12,
+      paddingHorizontal: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
     },
     rowPressed: { backgroundColor: colors.surfaceMuted },
-    // The icons keep 44pt targets; the negative margin stops those targets
-    // from padding the card's edge.
+    // Action targets occupy their own space beside the page metadata.
     rowActions: {
       flexDirection: "row",
       alignItems: "center",
-      marginRight: -12,
     },
     rowKind: {
       flex: 1,
@@ -2794,14 +3030,14 @@ const styles = themed(() =>
     rowTitle: {
       flex: 1,
       color: colors.text,
-      fontSize: 18,
-      lineHeight: 24,
+      fontSize: 16,
+      lineHeight: 22,
       fontFamily: fonts.semibold,
     },
     rowPreview: { color: colors.muted, fontSize: 13, lineHeight: 18 },
     rowWhen: { color: colors.muted, fontSize: 13 },
     page: { gap: 12 },
-    title: { color: colors.text, fontSize: 24, fontFamily: fonts.display },
+    title: { color: colors.text, fontSize: 18, fontFamily: fonts.bold },
     meta: { color: colors.muted, fontSize: 13, marginTop: -6 },
     hint: {
       color: colors.muted,

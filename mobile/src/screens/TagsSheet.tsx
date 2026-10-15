@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Alert } from "../lib/alert";
 import { hasTeamPermission, type Tag, type Team } from "@orbyn/core";
@@ -7,12 +7,12 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
-import { SmallAction } from "../components/SmallAction";
+import { MoreMenu } from "../components/MoreMenu";
 import { client } from "../lib/api";
+import { session } from "../lib/session";
 import { LIST_COLORS } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { Swatches } from "./ListsSheet";
@@ -35,21 +35,55 @@ export function TagsSheet({
   onClose: () => void;
   onDismiss?: () => void;
 }) {
+  const [busy, setBusy] = useState(false);
   return (
     <Sheet
       visible={visible}
       title="Tags"
-      onClose={onClose}
+      closeDisabled={busy}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
       onDismiss={onDismiss}
     >
-      <Body teams={teams} />
+      <Body teams={teams} onBusyChange={setBusy} />
     </Sheet>
   );
 }
 
-function Body({ teams }: { teams: Team[] }) {
+function Body({
+  teams,
+  onBusyChange,
+}: {
+  teams: Team[];
+  onBusyChange: (busy: boolean) => void;
+}) {
   const { tags, reload } = usePlanning();
-  const { busy, error, setError, run } = useRun();
+  const { busy, error, setError, run: runBase } = useRun();
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  const account = session.token;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      onBusyChange(false);
+    };
+  }, [onBusyChange]);
+  const run = async <T,>(fn: () => Promise<T>) => {
+    if (pending.current || account !== session.token || !mounted.current)
+      return undefined;
+    pending.current = true;
+    onBusyChange(true);
+    try {
+      const result = await runBase(fn);
+      return mounted.current && account === session.token ? result : undefined;
+    } finally {
+      pending.current = false;
+      onBusyChange(false);
+    }
+  };
+  const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [color, setColor] = useState<string>(LIST_COLORS[1]);
   const [scope, setScope] = useState(PERSONAL);
@@ -84,8 +118,9 @@ function Body({ teams }: { teams: Team[] }) {
         team_id: scope === PERSONAL ? null : scope,
       });
       await reload();
-      animateLayout();
+      if (!mounted.current || account !== session.token) return;
       setName("");
+      setCreating(false);
     });
 
   return (
@@ -97,9 +132,12 @@ function Body({ teams }: { teams: Team[] }) {
     >
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
-        <Text style={[shared.subtitle, s.intro]}>
-          Tags organize work across lists. Team tags are shared.
-        </Text>
+        <Button
+          title="New tag"
+          icon="plus"
+          disabled={busy}
+          onPress={() => setCreating(true)}
+        />
 
         {sections.length === 0 && (
           <View style={[shared.card, shared.empty]}>
@@ -108,7 +146,7 @@ function Body({ teams }: { teams: Team[] }) {
             </View>
             <Text style={shared.sectionTitle}>No tags yet.</Text>
             <Text style={[shared.subtitle, s.center]}>
-              Make one below, or add them when you edit a task.
+              Add a tag here or when editing a task.
             </Text>
           </View>
         )}
@@ -126,14 +164,17 @@ function Body({ teams }: { teams: Team[] }) {
                   open={expanded === t.id}
                   editable={canEdit(t)}
                   busy={busy}
+                  error={error}
+                  onDismissError={() => setError("")}
                   onToggle={() => {
-                    animateLayout();
+                    if (busy) return;
                     setExpanded(expanded === t.id ? null : t.id);
                   }}
                   onSave={(patch) =>
                     run(async () => {
                       await client.updateTag(t.id, patch);
                       await reload();
+                      return true;
                     })
                   }
                   onDelete={() =>
@@ -149,8 +190,8 @@ function Body({ teams }: { teams: Team[] }) {
                             void run(async () => {
                               await client.deleteTag(t.id);
                               await reload();
-                              animateLayout();
-                              setExpanded(null);
+                              if (mounted.current && account === session.token)
+                                setExpanded(null);
                             }),
                         },
                       ],
@@ -162,39 +203,56 @@ function Body({ teams }: { teams: Team[] }) {
           </View>
         ))}
 
-        <View style={shared.card}>
-          <Text style={shared.label}>New tag</Text>
-          <TextInput
-            style={[shared.input, s.gap]}
-            value={name}
-            onChangeText={setName}
-            maxLength={40}
-            placeholder="Tag name"
-            placeholderTextColor={colors.faint}
-            returnKeyType="done"
-            accessibilityLabel="New tag name"
-          />
-          {scopes.length > 1 && (
-            <View style={s.gap}>
-              <Segmented
-                wrap
-                accessibilityLabel="Whose tag"
-                options={scopes}
-                labels={scopeLabels}
-                value={scope}
-                onChange={setScope}
+        <Sheet
+          visible={creating}
+          closeDisabled={busy}
+          title="New tag"
+          onClose={() => {
+            if (!busy) setCreating(false);
+          }}
+        >
+          <ScrollView
+            contentContainerStyle={sheetStyles.body}
+            keyboardShouldPersistTaps="handled"
+            automaticallyAdjustKeyboardInsets
+          >
+            <View style={sheetStyles.column}>
+              <ErrorBanner error={error} onDismiss={() => setError("")} />
+              <TextInput
+                style={[shared.input, s.gap]}
+                value={name}
+                editable={!busy}
+                onChangeText={setName}
+                maxLength={40}
+                placeholder="Tag name"
+                placeholderTextColor={colors.faint}
+                returnKeyType="done"
+                accessibilityLabel="New tag name"
+              />
+              {scopes.length > 1 && (
+                <View style={s.gap}>
+                  <Segmented
+                    wrap
+                    accessibilityLabel="Whose tag"
+                    options={scopes}
+                    labels={scopeLabels}
+                    value={scope}
+                    disabled={busy}
+                    onChange={setScope}
+                  />
+                </View>
+              )}
+              <Swatches value={color} disabled={busy} onChange={setColor} />
+              <Button
+                title="Add tag"
+                icon="plus"
+                style={s.add}
+                disabled={busy || !name.trim() || !scopes.includes(scope)}
+                onPress={() => void create()}
               />
             </View>
-          )}
-          <Swatches value={color} onChange={setColor} />
-          <Button
-            title="Add tag"
-            icon="plus"
-            style={s.add}
-            disabled={busy || !name.trim()}
-            onPress={() => void create()}
-          />
-        </View>
+          </ScrollView>
+        </Sheet>
       </View>
     </ScrollView>
   );
@@ -206,6 +264,8 @@ function TagRow({
   open,
   editable,
   busy,
+  error,
+  onDismissError,
   onToggle,
   onSave,
   onDelete,
@@ -215,61 +275,87 @@ function TagRow({
   open: boolean;
   editable: boolean;
   busy: boolean;
+  error: string;
+  onDismissError: () => void;
   onToggle: () => void;
-  onSave: (patch: { name?: string; color?: string }) => void;
+  onSave: (patch: {
+    name?: string;
+    color?: string;
+  }) => Promise<boolean | undefined>;
   onDelete: () => void;
 }) {
   const [name, setName] = useState(tag.name);
+  const [color, setColor] = useState(tag.color);
+  useEffect(() => {
+    if (!open) {
+      setName(tag.name);
+      setColor(tag.color);
+    }
+  }, [tag.name, tag.color, open]);
   return (
-    <FadeIn style={!first && s.divider}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={tag.name}
-        accessibilityHint={editable ? "Rename, recolour or delete" : undefined}
-        accessibilityState={{ expanded: open, disabled: !editable }}
-        disabled={!editable}
-        onPress={onToggle}
-        style={({ pressed }) => [s.row, pressed && s.pressed]}
-      >
+    <View style={!first && s.divider}>
+      <View style={s.row}>
         <View style={[s.dot, { backgroundColor: tag.color }]} />
-        <Text style={s.rowName} numberOfLines={1}>
-          {tag.name}
-        </Text>
+        <Text style={s.rowName}>{tag.name}</Text>
         {editable && (
-          <Icon name="chevronRight" size={16} color={colors.faint} />
+          <MoreMenu
+            label={`${tag.name} options`}
+            title={tag.name}
+            disabled={busy}
+            actions={[
+              { label: "Edit tag", disabled: busy, onPress: onToggle },
+              {
+                label: "Delete tag",
+                destructive: true,
+                disabled: busy,
+                onPress: onDelete,
+              },
+            ]}
+          />
         )}
-      </Pressable>
-      {open && (
-        <View style={s.edit}>
-          <View style={s.renameRow}>
+      </View>
+      <Sheet
+        visible={open && editable}
+        closeDisabled={busy}
+        title="Edit tag"
+        onClose={() => {
+          if (!busy) onToggle();
+        }}
+      >
+        <ScrollView
+          contentContainerStyle={sheetStyles.body}
+          keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets
+        >
+          <View style={sheetStyles.column}>
+            <ErrorBanner error={error} onDismiss={onDismissError} />
+            <Text style={shared.label}>Name</Text>
             <TextInput
-              style={[shared.input, s.rename]}
+              style={shared.input}
               value={name}
+              editable={!busy}
               onChangeText={setName}
               maxLength={40}
-              accessibilityLabel={`Rename ${tag.name}`}
+              accessibilityLabel={`Tag name for ${tag.name}`}
             />
-            <SmallAction
-              label="Rename"
-              disabled={busy || !name.trim() || name.trim() === tag.name}
-              onPress={() => onSave({ name: name.trim() })}
-            />
-          </View>
-          <Swatches
-            value={tag.color}
-            onChange={(color) => color !== tag.color && onSave({ color })}
-          />
-          <View style={s.deleteRow}>
-            <SmallAction
-              label="Delete tag"
-              destructive
-              disabled={busy}
-              onPress={onDelete}
+            <Swatches value={color} disabled={busy} onChange={setColor} />
+            <Button
+              title={busy ? "Saving…" : "Save tag"}
+              disabled={
+                busy ||
+                !name.trim() ||
+                (name.trim() === tag.name && color === tag.color)
+              }
+              onPress={() => {
+                void onSave({ name: name.trim(), color }).then((saved) => {
+                  if (saved) onToggle();
+                });
+              }}
             />
           </View>
-        </View>
-      )}
-    </FadeIn>
+        </ScrollView>
+      </Sheet>
+    </View>
   );
 }
 
@@ -295,7 +381,8 @@ const s = themed(() =>
       alignItems: "center",
       gap: 12,
       minHeight: 52,
-      paddingHorizontal: 16,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
     },
     pressed: { backgroundColor: colors.surfaceMuted },
     rowName: {
@@ -304,7 +391,7 @@ const s = themed(() =>
       fontSize: 15,
       color: colors.text,
     },
-    dot: { width: 12, height: 12, borderRadius: 6 },
+    dot: { width: 12, height: 12, borderRadius: radii.pill },
     edit: { paddingHorizontal: 16, paddingBottom: 14, gap: 12 },
     renameRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     rename: { flex: 1, minHeight: 44, paddingVertical: 10 },

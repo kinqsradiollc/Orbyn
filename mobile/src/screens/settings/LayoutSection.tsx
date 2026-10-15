@@ -23,9 +23,7 @@ export function StartChoice() {
   const [start, setStart] = useState<StartScreen>(startScreen);
   return (
     <View style={s.body}>
-      <Text style={s.hint}>
-        What Orbyn shows when it opens, saved on this phone only.
-      </Text>
+      <Text style={s.hint}>Saved on this device.</Text>
       <ChipRow label="Open to">
         {START_SCREENS.map((id) => (
           <Chip
@@ -79,14 +77,11 @@ export function ArrangeList({
     const shown = fixed || !arrangement.hidden.includes(title);
     return (
       <View key={title} style={s.row}>
-        <Text style={[s.name, !shown && s.off]} numberOfLines={1}>
-          {title}
-        </Text>
+        <Text style={[s.name, !shown && s.off]}>{title}</Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Move ${title} up`}
           disabled={i === 0}
-          hitSlop={8}
           onPress={() => reorder(group, moveEntry(titles, title, -1))}
           style={[s.arrow, i === 0 && s.dim]}
         >
@@ -96,7 +91,6 @@ export function ArrangeList({
           accessibilityRole="button"
           accessibilityLabel={`Move ${title} down`}
           disabled={i === titles.length - 1}
-          hitSlop={8}
           onPress={() => reorder(group, moveEntry(titles, title, 1))}
           style={[s.arrow, i === titles.length - 1 && s.dim]}
         >
@@ -117,8 +111,7 @@ export function ArrangeList({
   return (
     <View style={s.body}>
       <Text style={s.hint}>
-        Show, hide and reorder what Workspace lists, the same list that arranges
-        the web’s sidebar.
+        Navigation order and visibility follow your account.
       </Text>
       {groups.map((g) => (
         <View key={g.label} style={s.group}>
@@ -127,7 +120,7 @@ export function ArrangeList({
         </View>
       ))}
       <View style={s.group}>
-        <Text style={s.label}>MORE</Text>
+        <Text style={s.label}>More</Text>
         <View style={s.row}>
           <Text style={s.name}>Starred</Text>
           <Switch
@@ -142,7 +135,7 @@ export function ArrangeList({
       </View>
       {(arrangement.order.length > 0 || arrangement.hidden.length > 0) && (
         <SmallAction
-          label="Back to how it came"
+          label="Reset navigation"
           disabled={false}
           onPress={() => onChange({ order: [], hidden: [] })}
         />
@@ -158,8 +151,7 @@ const s = themed(() =>
     group: { gap: 4 },
     label: {
       fontFamily: fonts.semibold,
-      fontSize: 11,
-      letterSpacing: 0.6,
+      fontSize: 13,
       color: colors.muted,
     },
     row: {
@@ -168,6 +160,7 @@ const s = themed(() =>
       gap: 8,
       minHeight: 48,
       paddingHorizontal: 12,
+      paddingVertical: 6,
       borderRadius: radii.input,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: colors.border,
@@ -175,14 +168,15 @@ const s = themed(() =>
     },
     name: {
       flex: 1,
+      minWidth: 0,
       fontFamily: fonts.medium,
       fontSize: 15,
       color: colors.text,
     },
     off: { color: colors.muted },
     arrow: {
-      width: 34,
-      height: 34,
+      width: 44,
+      minHeight: 44,
       alignItems: "center",
       justifyContent: "center",
     },

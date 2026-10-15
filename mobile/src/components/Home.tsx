@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   DEFAULT_HOME,
@@ -70,19 +70,31 @@ function HubStrip({
     docs: [],
     study: null,
   });
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     let live = true;
+    setFailed(false);
     void Promise.all([
-      client.listProjects().catch(() => [] as Project[]),
-      client.listDocs().catch(() => [] as DocSummary[]),
-      client.study().catch(() => null),
-    ]).then(([projects, docs, study]) => {
-      if (live) setSources({ projects, docs, study });
-    });
+      client.listProjects(),
+      client.listDocs(),
+      client.study(),
+    ]).then(
+      ([projects, docs, study]) => {
+        if (live) {
+          setSources({ projects, docs, study });
+          setReady(true);
+        }
+      },
+      () => {
+        if (live) setFailed(true);
+      },
+    );
     return () => {
       live = false;
     };
-  }, []);
+  }, [retry]);
   if (!layout.hubs.length) return null;
   return (
     <ScrollView
@@ -92,16 +104,14 @@ function HubStrip({
       style={s.stripScroll}
     >
       {layout.hubs.map((hub) => {
-        const links = linksOf(hub, sources).slice(0, 3);
+        const links = linksOf(hub, sources);
         return (
           <View key={hub.id} style={s.hub}>
             <CoverImage fileId={hub.cover_file_id} height={56} />
             <View style={s.hubBody}>
               <View style={s.hubHead}>
                 <LookIconView icon={hub.icon} size={15} />
-                <Text style={s.hubTitle} numberOfLines={1}>
-                  {hub.title}
-                </Text>
+                <Text style={s.hubTitle}>{hub.title}</Text>
               </View>
               {links.length ? (
                 links.map((l) => (
@@ -113,16 +123,22 @@ function HubStrip({
                     style={({ pressed }) => [s.hubLink, pressed && s.pressed]}
                     hitSlop={4}
                   >
-                    <Text style={s.hubLinkText} numberOfLines={1}>
-                      {l.label}
-                    </Text>
+                    <Text style={s.hubLinkText}>{l.label}</Text>
                     <Text style={s.tag}>
                       {l.tag || HUB_LINK_KIND_LABELS[l.kind]}
                     </Text>
                   </Pressable>
                 ))
+              ) : !hub.auto || ready ? (
+                <Text style={shared.small}>No links yet</Text>
+              ) : failed ? (
+                <Button
+                  title="Retry links"
+                  secondary
+                  onPress={() => setRetry((value) => value + 1)}
+                />
               ) : (
-                <Text style={shared.small}>Nothing here yet.</Text>
+                <Text style={shared.small}>Loading links…</Text>
               )}
             </View>
           </View>
@@ -152,7 +168,7 @@ function PanelHead({
           accessibilityRole="button"
           onPress={action.onPress}
           hitSlop={8}
-          style={({ pressed }) => pressed && s.pressed}
+          style={({ pressed }) => [s.panelAction, pressed && s.pressed]}
         >
           <Text style={s.action}>{action.label}</Text>
         </Pressable>
@@ -191,35 +207,49 @@ export function HomeSection({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const [upcoming, setUpcoming] = useState(false);
+  const [readFailure, setReadFailure] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     let live = true;
+    setReadFailure(false);
     client.getHome().then(
       (d) => live && setData(d),
-      () => live && setData(null),
+      () => live && setReadFailure(true),
     );
     return () => {
       live = false;
     };
-  }, []);
+  }, [retry]);
 
   const add = async () => {
     const line = text.trim();
-    if (!line || busy) return;
+    if (!line || mutation.current || !data) return;
+    mutation.current = true;
     setBusy(true);
     setNote("");
     try {
       const saved = await client.addReflection(line);
+      if (!mounted.current) return;
       setText("");
       setData((d) =>
         d
           ? { ...d, reflection: saved.reflection, agenda_doc_id: saved.doc_id }
           : d,
       );
-      setNote("Added to today's agenda.");
+      setNote("Added to Agenda.");
     } catch {
-      setNote("That didn't save. Try again.");
+      if (mounted.current) setNote("Couldn't save. Retry.");
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -241,7 +271,9 @@ export function HomeSection({
             action={{ label: "Upcoming", onPress: () => setUpcoming(true) }}
           />
           {!data ? (
-            <Text style={shared.small}>Loading…</Text>
+            readFailure ? null : (
+              <Text style={shared.small}>Loading…</Text>
+            )
           ) : data.goals.length ? (
             data.goals.map((g) => (
               <View key={g.id} style={s.row}>
@@ -262,9 +294,7 @@ export function HomeSection({
               </View>
             ))
           ) : (
-            <Text style={shared.small}>
-              No active goals. Add one in Upcoming.
-            </Text>
+            <Text style={shared.small}>No active goals</Text>
           )}
         </View>
       );
@@ -277,13 +307,13 @@ export function HomeSection({
             action={{ label: "Upcoming", onPress: () => setUpcoming(true) }}
           />
           {!data ? (
-            <Text style={shared.small}>Loading…</Text>
+            readFailure ? null : (
+              <Text style={shared.small}>Loading…</Text>
+            )
           ) : data.routines.length ? (
             data.routines.map((r) => (
               <View key={r.id} style={s.row}>
-                <Text style={s.rowTitle} numberOfLines={2}>
-                  {r.name}
-                </Text>
+                <Text style={s.rowTitle}>{r.name}</Text>
                 <Text style={shared.small}>
                   {new Date(r.next_run_at).toLocaleString([], {
                     weekday: "short",
@@ -297,7 +327,7 @@ export function HomeSection({
               </View>
             ))
           ) : (
-            <Text style={shared.small}>No routines scheduled.</Text>
+            <Text style={shared.small}>No scheduled routines</Text>
           )}
         </View>
       );
@@ -312,9 +342,7 @@ export function HomeSection({
           >
             <View style={{ flex: 1 }}>
               <Text style={s.rowTitle}>Today's brief</Text>
-              <Text style={shared.small} numberOfLines={1}>
-                {data.brief.title}
-              </Text>
+              <Text style={shared.small}>{data.brief.title}</Text>
               {data.brief.overnight && (
                 <Text style={shared.small}>{data.brief.overnight}</Text>
               )}
@@ -334,6 +362,7 @@ export function HomeSection({
           placeholder="How did today go?"
           placeholderTextColor={colors.faint}
           value={text}
+          editable={!busy && !!data}
           maxLength={500}
           onChangeText={setText}
           onSubmitEditing={() => void add()}
@@ -349,7 +378,7 @@ export function HomeSection({
           <Button
             title="Add"
             secondary
-            disabled={busy || !text.trim()}
+            disabled={busy || !data || !text.trim()}
             onPress={() => void add()}
             style={s.addButton}
           />
@@ -365,11 +394,23 @@ export function HomeSection({
 
   return (
     <>
+      {readFailure && (
+        <View style={s.recovery}>
+          <Text style={shared.small} accessibilityRole="alert">
+            Couldn't load Overview.
+          </Text>
+          <Button
+            title="Retry"
+            secondary
+            onPress={() => setRetry((value) => value + 1)}
+          />
+        </View>
+      )}
+      {homePanels(home).map(panel)}
       <HomeCompanions
         canOpen={canOpenAgentOutput}
         onOpenChat={onOpenAgentOutput}
       />
-      {homePanels(home).map(panel)}
       <AssistantUpcoming
         agentName={agentName}
         visible={upcoming}
@@ -404,10 +445,13 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      minHeight: 34,
+      minHeight: 44,
+      flexWrap: "wrap",
     },
     hubLinkText: {
-      flex: 1,
+      flexGrow: 1,
+      flexBasis: 120,
+      minWidth: 0,
       fontFamily: fonts.regular,
       fontSize: 13,
       color: colors.text,
@@ -424,11 +468,14 @@ const s = themed(() =>
     },
     panelHead: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 8,
       marginBottom: 10,
     },
-    panelTitle: { flex: 1 },
+    panelTitle: { flexGrow: 1, flexBasis: 100, minWidth: 0 },
+    panelAction: { minHeight: 44, justifyContent: "center" },
+    recovery: { gap: 8, marginBottom: 12 },
     action: { fontFamily: fonts.semibold, fontSize: 13, color: colors.accent },
     row: { gap: 6, paddingVertical: 8 },
     rowTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
@@ -445,6 +492,7 @@ const s = themed(() =>
     },
     reflectRow: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 10,
       marginTop: 10,

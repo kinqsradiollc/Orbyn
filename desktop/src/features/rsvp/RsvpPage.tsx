@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CalendarClock,
   Clock,
@@ -76,6 +76,10 @@ function whenText(v: RsvpView) {
  * Opening the page never answers; only the buttons do.
  */
 export function RsvpPage({ path, onHome }: Props) {
+  return <RsvpBody key={path} path={path} onHome={onHome} />;
+}
+
+function RsvpBody({ path, onHome }: Props) {
   useNoIndex();
   const token = decodeURIComponent(path.split("/").filter(Boolean)[1] ?? "");
   const suggested = new URLSearchParams(window.location.search).get("r");
@@ -83,12 +87,22 @@ export function RsvpPage({ path, onHome }: Props) {
   const [missing, setMissing] = useState(!token);
   const [error, setError] = useState("");
   const [pending, setPending] = useState<Answer | null>(null);
+  const mutation = useRef(false);
+  const [retry, setRetry] = useState(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [answered, setAnswered] = useState<Answer | null>(null);
 
   useEffect(() => {
     document.title = "Invitation · Orbyn";
     if (!token) return;
     let alive = true;
+    setError("");
     client.getRsvp(token).then(
       (v) => {
         if (!alive) return;
@@ -104,18 +118,24 @@ export function RsvpPage({ path, onHome }: Props) {
     return () => {
       alive = false;
     };
-  }, [token]);
+  }, [token, retry]);
 
   const answer = async (status: Answer) => {
+    if (mutation.current || !view || !token) return;
+    mutation.current = true;
     setPending(status);
     setError("");
     try {
-      setView(await client.answerRsvp(token, status));
-      setAnswered(status);
+      const next = await client.answerRsvp(token, status);
+      if (mounted.current) {
+        setView(next);
+        setAnswered(status);
+      }
     } catch (e) {
-      setError(errorText(e));
+      if (mounted.current) setError(errorText(e));
     } finally {
-      setPending(null);
+      mutation.current = false;
+      if (mounted.current) setPending(null);
     }
   };
 
@@ -150,7 +170,15 @@ export function RsvpPage({ path, onHome }: Props) {
           />
         ) : !view ? (
           error ? (
-            <Message title="Couldn't load the invitation." body={error} />
+            <>
+              <Message title="Couldn't load the invitation." body={error} />
+              <button
+                className="secondary"
+                onClick={() => setRetry((n) => n + 1)}
+              >
+                Retry
+              </button>
+            </>
           ) : (
             <p className="muted" role="status">
               Loading the invitation…
@@ -158,10 +186,10 @@ export function RsvpPage({ path, onHome }: Props) {
           )
         ) : (
           <section
-            className="public-card rsvp-card fade-up"
+            className="public-card rsvp-card"
             aria-labelledby="rsvp-title"
           >
-            <p className="eyebrow">YOU&apos;RE INVITED</p>
+            <p className="eyebrow">Invitation</p>
             <h1 id="rsvp-title">{view.title}</h1>
             <ul className="rsvp-facts">
               <li>
@@ -223,8 +251,7 @@ export function RsvpPage({ path, onHome }: Props) {
             </div>
             {answered && (
               <p className="inline-outcome ok" role="status">
-                Thanks, the organizer has been told. You can change your answer
-                here any time.
+                Answer sent. You can change it here.
               </p>
             )}
             {error && (

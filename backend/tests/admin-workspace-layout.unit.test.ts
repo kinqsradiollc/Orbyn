@@ -8,7 +8,7 @@ import React from "react";
 const read = (path: string) =>
   readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
-function menu(platform: "ios" | "android") {
+function menu(platform: "ios" | "android" | "web", reducedMotion = false) {
   const timers: (() => void)[] = [];
   let calls = 0;
   let closed = 0;
@@ -36,7 +36,11 @@ function menu(platform: "ios" | "android") {
           View: "View",
           StyleSheet: { create: (value: unknown) => value },
         };
-      if (name.endsWith("/motion")) return { Pressable: "Pressable" };
+      if (name.endsWith("/motion"))
+        return {
+          Pressable: "Pressable",
+          useReducedMotion: () => reducedMotion,
+        };
       if (name.endsWith("/Icon")) return { Icon: "Icon" };
       if (name === "react-native-safe-area-context")
         return { useSafeAreaInsets: () => ({ bottom: 34 }) };
@@ -162,4 +166,12 @@ test("budget disclosures preserve validation and bounded menu labels can wrap", 
   const css = read("desktop/src/features/admin/admin-workspace.css");
   assert.ok(css.includes("grid-template-columns: 200px minmax(0, 1fr)"));
   assert.ok(css.includes("@media (max-width: 1000px)"));
+});
+
+test("action sheets open immediately on web and respect native Reduce Motion", () => {
+  assert.equal(menu("web").tree.props.animationType, "none");
+  for (const platform of ["ios", "android"] as const) {
+    assert.equal(menu(platform).tree.props.animationType, "slide");
+    assert.equal(menu(platform, true).tree.props.animationType, "none");
+  }
 });

@@ -5,8 +5,8 @@ import type { BookingDetail, BusyInterval } from "@orbyn/core";
 import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { clockLabel, deviceTimeZone, slotLabel } from "../../lib/planning";
-import { animateLayout } from "../../motion";
 import { colors, themed } from "../../theme";
 import { shared } from "../../styles";
 import { dayKeyLabel, dayKeyOf, lengthOf } from "./helpers";
@@ -57,11 +57,13 @@ export function RescheduleSlots({
   const [slots, setSlots] = useState<BusyInterval[] | null>(null);
   const [day, setDay] = useState<string | null>(null);
   const [problem, setProblem] = useState("");
+  const [retry, setRetry] = useState(0);
   const length = lengthOf(booking);
 
   // The host route ignores notice and pages that are switched off.
   useEffect(() => {
     let alive = true;
+    const account = session.token;
     setSlots(null);
     setProblem("");
     client
@@ -71,15 +73,13 @@ export function RescheduleSlots({
         timezone: deviceTimeZone(),
       })
       .then((p) => {
-        if (!alive) return;
+        if (!alive || account !== session.token) return;
         const free = p.slots.filter((s) => s.start_at !== booking.start_at);
-        animateLayout();
         setSlots(free);
         setDay(free.length ? dayKeyOf(new Date(free[0].start_at)) : null);
       })
       .catch((e: Error) => {
-        if (!alive) return;
-        animateLayout();
+        if (!alive || account !== session.token) return;
         // The server's own reason; there's no free-entry fallback, since a
         // time that isn't free would be refused anyway.
         setProblem(errorText(e));
@@ -87,7 +87,7 @@ export function RescheduleSlots({
     return () => {
       alive = false;
     };
-  }, [booking.id, from, length, booking.start_at]);
+  }, [booking.id, from, length, booking.start_at, retry]);
 
   const byDay = new Map<string, BusyInterval[]>();
   for (const s of slots ?? []) {
@@ -102,7 +102,7 @@ export function RescheduleSlots({
       <View style={s.nav}>
         <SmallAction
           label="Earlier"
-          disabled={from <= today}
+          disabled={busy || from <= today}
           onPress={() =>
             setFrom(addDays(from, -DAYS) < today ? today : addDays(from, -DAYS))
           }
@@ -112,14 +112,25 @@ export function RescheduleSlots({
         </Text>
         <SmallAction
           label="Later"
-          disabled={false}
+          disabled={busy}
           onPress={() => setFrom(addDays(from, DAYS))}
         />
       </View>
       {problem ? (
-        <Text style={[shared.small, s.warn]}>{problem}</Text>
+        <View style={bs.gap}>
+          <Text accessibilityRole="alert" style={[shared.small, s.warn]}>
+            {problem}
+          </Text>
+          <SmallAction
+            label="Retry"
+            disabled={busy}
+            onPress={() => setRetry((value) => value + 1)}
+          />
+        </View>
       ) : slots === null ? (
-        <Text style={shared.small}>Finding free times…</Text>
+        <Text accessibilityLiveRegion="polite" style={shared.small}>
+          Finding free times…
+        </Text>
       ) : byDay.size === 0 ? (
         <Text style={shared.small}>No free times these days. Try later.</Text>
       ) : (
@@ -130,6 +141,7 @@ export function RescheduleSlots({
                 key={key}
                 label={dayKeyLabel(key)}
                 selected={day === key}
+                disabled={busy}
                 onPress={() => setDay(key)}
               />
             ))}
@@ -157,10 +169,11 @@ const s = themed(() =>
     nav: {
       flexDirection: "row",
       alignItems: "center",
+      flexWrap: "wrap",
       gap: 8,
       marginBottom: 12,
     },
-    range: { flex: 1, textAlign: "center" },
+    range: { flex: 1, minWidth: 120, textAlign: "center" },
     warn: { color: colors.danger },
   }),
 );

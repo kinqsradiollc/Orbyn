@@ -1,8 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Users } from "lucide-react";
 import { hoursLabel, type Item, type WorkRecord } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/planning";
+
+export function MeetingOutcome(
+  props: Parameters<typeof MeetingOutcomeBody>[0],
+) {
+  return <MeetingOutcomeBody key={props.item.id} {...props} />;
+}
 
 /** The people in a meeting: those invited, and whoever holds it. */
 export const meetingPeople = (i: Item) =>
@@ -20,7 +26,7 @@ export const meetingMinutes = (i: Item) =>
  * the people in it — time, never money. The outcome is a line or two, kept
  * as a record beside the meeting (and its project, when it has one).
  */
-export function MeetingOutcome({
+function MeetingOutcomeBody({
   item,
   canWrite,
 }: {
@@ -31,21 +37,44 @@ export function MeetingOutcome({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const load = useCallback(() => {
-    client
-      .listWorkRecords({
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  const load = useCallback(async () => {
+    if (!mounted.current) return;
+    const version = ++request.current;
+    try {
+      const rows = await client.listWorkRecords({
         kind: "meeting_outcome",
         source_item_id: item.id,
         limit: 20,
-      })
-      .then(setRecords, () => setRecords([]));
+      });
+      if (version === request.current) {
+        setRecords(rows);
+        setError("");
+      }
+    } catch (reason) {
+      if (version === request.current) setError(errorText(reason));
+    }
   }, [item.id]);
-  useEffect(load, [load]);
+  useEffect(() => {
+    mounted.current = true;
+    setRecords(null);
+    setText("");
+    setError("");
+    void load();
+    return () => {
+      mounted.current = false;
+      request.current += 1;
+    };
+  }, [load]);
   const minutes = meetingMinutes(item);
   const people = meetingPeople(item);
   if (!minutes || item.all_day) return null;
   const ended = Date.parse(item.end_at!) <= Date.now();
   const save = async () => {
+    if (mutation.current || !canWrite || !ended || !text.trim()) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -60,11 +89,12 @@ export function MeetingOutcome({
         participant_count: people,
       });
       setText("");
-      load();
+      await load();
     } catch (e) {
       setError(errorText(e));
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
   return (
@@ -82,7 +112,7 @@ export function MeetingOutcome({
       </p>
       {records?.map((r) => (
         <p key={r.id} className="meeting-outcome">
-          <strong>Came out of it:</strong> {r.details || r.outcome}
+          <strong>Outcome:</strong> {r.details || r.outcome}
         </p>
       ))}
       {canWrite && ended && records?.length === 0 && (
@@ -94,22 +124,36 @@ export function MeetingOutcome({
           }}
         >
           <input
+            disabled={busy}
             value={text}
             maxLength={4000}
-            placeholder="What came out of it? A decision, a next step…"
-            aria-label="What came out of it"
+            placeholder="Decision or next step"
+            aria-label="Meeting outcome"
             onChange={(e) => setText(e.target.value)}
           />
           <div className="proof-actions">
             <button className="secondary" disabled={busy || !text.trim()}>
-              Keep it
+              Save outcome
             </button>
           </div>
         </form>
       )}
+      {records === null && !error && <p className="muted">Loading outcomes…</p>}
       {error && (
         <p className="error" role="alert">
           {error}
+          {records === null && (
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => {
+                setError("");
+                void load();
+              }}
+            >
+              Retry
+            </button>
+          )}
         </p>
       )}
     </section>

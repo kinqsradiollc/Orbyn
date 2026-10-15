@@ -3,6 +3,7 @@ import {
   docAskRequest,
   docAssistRequest,
   DOC_AI_LABELS,
+  DOC_LATEX_LANGUAGE,
   blockText,
   fail,
   HttpError,
@@ -89,6 +90,11 @@ export async function aiDocRoutes(app: FastifyInstance) {
     const source = blockText(doc.content[at]);
     const quote = source.slice(d.range_start, d.range_end);
     if (!quote.trim()) fail(422, "There are no words there to work on");
+    if (
+      (d.version !== undefined && d.version !== doc.version) ||
+      (d.quote !== undefined && d.quote !== quote)
+    )
+      fail(409, "The selected text changed. Refresh it before asking again.");
 
     const context = doc.content
       .slice(Math.max(0, at - AROUND), at + AROUND + 1)
@@ -100,7 +106,11 @@ export async function aiDocRoutes(app: FastifyInstance) {
         ? d.instruction || "Rewrite it."
         : DOC_AI_LABELS[d.action].asks;
 
+    const latexDocument =
+      doc.content[at].type === "code" &&
+      doc.content[at].lang === DOC_LATEX_LANGUAGE;
     const system = `You are editing one passage of a document.
+${latexDocument ? "This passage is standalone LaTeX source. Return valid LaTeX, preserving the document class, preamble and document environment when present. Do not translate it into Markdown or prose." : ""}
 Reply with the replacement passage and NOTHING else: no preamble, no
 quotation marks around it, no explanation, no Markdown fences. Keep the
 author's voice and any Markdown formatting the passage already uses. If the

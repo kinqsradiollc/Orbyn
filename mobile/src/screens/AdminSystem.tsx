@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Linking, StyleSheet, Text, TextInput, View } from "react-native";
 import { Alert } from "../lib/alert";
 import { Switch } from "../components/Switch";
@@ -10,12 +10,14 @@ import type {
   UpdateInfo,
   VersionInfo,
 } from "@orbyn/core";
+import { InlineDetails } from "../components/InlineDetails";
 import { Button } from "../components/Button";
 import { formatUntil } from "../components/MaintenanceBanner";
 import { Pill } from "../components/Pill";
 import { SmallAction } from "../components/SmallAction";
+import { session } from "../lib/session";
 import { client } from "../lib/api";
-import { FadeIn, Pressable } from "../motion";
+import { Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -73,17 +75,43 @@ export function AdminSystem({
   const [maintenance, setMaintenance] = useState<Maintenance | null>(null);
   const [failed, setFailed] = useState(false);
 
+  const account = session.token;
+  const mounted = useRef(true);
+  const request = useRef(0);
+  const mutation = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
+  }, []);
+  const current = () => mounted.current && session.token === account;
+  const ownedAct: Act = async (fn) => {
+    if (!current() || mutation.current) return;
+    mutation.current = true;
+    try {
+      await act(async () => {
+        if (current()) await fn();
+      });
+    } finally {
+      mutation.current = false;
+    }
+  };
   const firstLoad = () =>
-    act(async () => {
+    ownedAct(async () => {
+      const ticket = ++request.current;
       setFailed(false);
       try {
         const [v, m] = await Promise.all([
           client.getSystemSettings(),
           client.getMaintenance(),
         ]);
+        if (!current() || ticket !== request.current) return;
         setView(v);
         setMaintenance(m);
       } catch (e) {
+        if (!current() || ticket !== request.current) return;
         setFailed(true);
         throw e;
       }
@@ -98,9 +126,6 @@ export function AdminSystem({
     return failed ? (
       <View style={[shared.card, shared.empty]}>
         <Text style={shared.sectionTitle}>Couldn't load system settings.</Text>
-        <Text style={[shared.subtitle, s.center, s.gapBelow]}>
-          Check the error above, then try again.
-        </Text>
         <Button
           secondary
           title="Try again"
@@ -118,8 +143,9 @@ export function AdminSystem({
       <MaintenanceCard
         maintenance={maintenance}
         busy={busy}
-        act={act}
+        act={ownedAct}
         onChanged={(m) => {
+          if (!current()) return;
           setMaintenance(m);
           onMaintenance(m);
         }}
@@ -129,8 +155,13 @@ export function AdminSystem({
         key={JSON.stringify(view)}
         view={view}
         busy={busy}
-        act={act}
-        onSaved={setView}
+        act={ownedAct}
+        onSaved={(next) => {
+          if (current()) {
+            request.current++;
+            setView(next);
+          }
+        }}
       />
       <VersionCard />
     </>
@@ -183,6 +214,15 @@ function SettingsCard({
   onSaved: (view: SystemSettingsView) => void;
 }) {
   const { settings, sources } = view;
+  const account = session.token;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () => mounted.current && session.token === account;
   const [origins, setOrigins] = useState(settings.cors_origins.join("\n"));
   const [rate, setRate] = useState(String(settings.rate_limit_per_minute));
   const [lanes, setLanes] = useState(String(settings.notifier_concurrency));
@@ -245,6 +285,7 @@ function SettingsCard({
   const save = () =>
     act(async () => {
       const next = await client.updateSystemSettings(body);
+      if (!current()) return;
       // Never keep a password around after it has been sent.
       setPassword("");
       onSaved(next);
@@ -268,21 +309,22 @@ function SettingsCard({
       autoCapitalize="none"
       autoCorrect={false}
       accessibilityLabel={label}
+      editable={!busy}
       {...extra}
     />
   );
 
   return (
-    <FadeIn index={1} style={shared.card}>
+    <View style={shared.card}>
       <Text style={shared.sectionTitle}>Settings</Text>
       <Text style={[shared.small, s.gapBelow]}>
-        Changes apply within 10 seconds. Reset restores the .env value.
+        Applies within 10 seconds. Reset uses .env.
       </Text>
 
       <FieldHead
         label="Allowed origins"
         source={sources.cors_origins}
-        busy={busy}
+        busy={busy || dirty}
         onReset={() => reset("cors_origins")}
       />
       {input(origins, setOrigins, "Allowed origins", {
@@ -291,14 +333,12 @@ function SettingsCard({
         keyboardType: "url",
         style: [shared.input, s.input, s.multiline],
       })}
-      <Text style={[shared.small, s.hint]}>
-        Browser origins that may call the API, one per line.
-      </Text>
+      <Text style={[shared.small, s.hint]}>One API origin per line.</Text>
 
       <FieldHead
         label="Rate limit per minute"
         source={sources.rate_limit_per_minute}
-        busy={busy}
+        busy={busy || dirty}
         onReset={() => reset("rate_limit_per_minute")}
       />
       {input(rate, setRate, "Rate limit per minute", {
@@ -311,104 +351,107 @@ function SettingsCard({
       <FieldHead
         label="Reminder lanes"
         source={sources.notifier_concurrency}
-        busy={busy}
+        busy={busy || dirty}
         onReset={() => reset("notifier_concurrency")}
       />
       {input(lanes, setLanes, "Reminder lanes", {
         keyboardType: "number-pad",
       })}
       <Text style={[shared.small, s.hint]}>
-        Reminders each notifier delivers at the same time.
+        Concurrent deliveries per notifier.
       </Text>
 
       <FieldHead
         label="Status check interval (seconds)"
         source={sources.status_interval_ms}
-        busy={busy}
+        busy={busy || dirty}
         onReset={() => reset("status_interval_ms")}
       />
       {input(interval, setInterval_, "Status check interval in seconds", {
         keyboardType: "number-pad",
       })}
-      <Text style={[shared.small, s.hint]}>
-        How often the status page checks every service.
-      </Text>
+      <Text style={[shared.small, s.hint]}>Time between service checks.</Text>
 
       <View style={s.divider} />
-      <FieldHead
-        label="Email (SMTP)"
-        source={sources.smtp}
-        busy={busy}
-        onReset={() => reset("smtp")}
-      />
-      <Text style={[shared.small, s.hint]}>
-        Leave the host empty to turn email reminders off.
-      </Text>
-      <Text style={shared.label}>Host</Text>
-      {input(host, setHost, "SMTP host", { placeholder: "smtp.example.com" })}
-      <View style={s.pair}>
-        <View style={{ flex: 1 }}>
-          <Text style={shared.label}>Port</Text>
-          {input(port, setPort, "SMTP port", { keyboardType: "number-pad" })}
+      <InlineDetails
+        title="Email delivery"
+        reveal={int(port) < 1 || int(port) > 65535 || Number.isNaN(int(port))}
+      >
+        <FieldHead
+          label="Email (SMTP)"
+          source={sources.smtp}
+          busy={busy || dirty}
+          onReset={() => reset("smtp")}
+        />
+        <Text style={[shared.small, s.hint]}>
+          Leave the host empty to turn email reminders off.
+        </Text>
+        <Text style={shared.label}>Host</Text>
+        {input(host, setHost, "SMTP host", { placeholder: "smtp.example.com" })}
+        <View style={s.pair}>
+          <View style={{ flex: 1 }}>
+            <Text style={shared.label}>Port</Text>
+            {input(port, setPort, "SMTP port", { keyboardType: "number-pad" })}
+          </View>
+          <View style={s.secure}>
+            <Text style={shared.label}>TLS</Text>
+            <Switch
+              value={secure}
+              disabled={busy}
+              trackColor={{ true: colors.accent }}
+              accessibilityLabel="Use TLS for SMTP"
+              onValueChange={setSecure}
+            />
+          </View>
         </View>
-        <View style={s.secure}>
-          <Text style={shared.label}>TLS</Text>
-          <Switch
-            value={secure}
-            disabled={busy}
-            trackColor={{ true: colors.accent }}
-            accessibilityLabel="Use TLS for SMTP"
-            onValueChange={setSecure}
-          />
-        </View>
-      </View>
-      <Text style={shared.label}>Username</Text>
-      {input(smtpUser, setSmtpUser, "SMTP username")}
-      <Text style={shared.label}>From address</Text>
-      {input(from, setFrom, "From address", {
-        placeholder: "Orbyn <reminders@example.com>",
-        keyboardType: "email-address",
-      })}
-      <Text style={shared.label}>Password</Text>
-      {input(
-        password,
-        (v) => {
-          setPassword(v);
-          if (v) setRemovePassword(false);
-        },
-        "SMTP password",
-        {
-          editable: !removePassword,
-          secureTextEntry: true,
-          autoComplete: "off",
-          textContentType: "none",
-          placeholder: removePassword
-            ? "Saved password will be removed"
-            : settings.smtp.has_password
-              ? "Leave blank to keep the saved password"
-              : "Optional",
-        },
-      )}
-      {settings.smtp.has_password && (
-        <View style={s.keyRow}>
-          <Text style={[shared.small, { flex: 1 }]}>
-            {removePassword
-              ? "The saved password is removed when you save."
-              : password
-                ? "The saved password is replaced when you save."
-                : "A password is saved."}
-          </Text>
-          <SmallAction
-            destructive={!removePassword}
-            label={removePassword ? "Keep saved password" : "Remove password"}
-            disabled={busy}
-            onPress={() => {
-              setPassword("");
-              setRemovePassword((v) => !v);
-            }}
-          />
-        </View>
-      )}
+        <Text style={shared.label}>Username</Text>
+        {input(smtpUser, setSmtpUser, "SMTP username")}
+        <Text style={shared.label}>From address</Text>
+        {input(from, setFrom, "From address", {
+          placeholder: "Orbyn <reminders@example.com>",
+          keyboardType: "email-address",
+        })}
+        <Text style={shared.label}>Password</Text>
+        {input(
+          password,
+          (v) => {
+            setPassword(v);
+            if (v) setRemovePassword(false);
+          },
+          "SMTP password",
+          {
+            editable: !busy && !removePassword,
+            secureTextEntry: true,
+            autoComplete: "off",
+            textContentType: "none",
+            placeholder: removePassword
+              ? "Saved password will be removed"
+              : settings.smtp.has_password
+                ? "Leave blank to keep the saved password"
+                : "Optional",
+          },
+        )}
+        {settings.smtp.has_password && (
+          <View style={s.keyRow}>
+            <Text style={[shared.small, { flex: 1 }]}>
+              {removePassword
+                ? "The saved password is removed when you save."
+                : password
+                  ? "The saved password is replaced when you save."
+                  : "A password is saved."}
+            </Text>
+            <SmallAction
+              destructive={!removePassword}
+              label={removePassword ? "Keep saved password" : "Remove password"}
+              disabled={busy}
+              onPress={() => {
+                setPassword("");
+                setRemovePassword((v) => !v);
+              }}
+            />
+          </View>
+        )}
+      </InlineDetails>
 
       {!!problem && (
         <Text style={[shared.small, s.problem]} accessibilityRole="alert">
@@ -416,37 +459,42 @@ function SettingsCard({
         </Text>
       )}
       <Button title="Save settings" disabled={busy || !dirty} onPress={save} />
+      {dirty && (
+        <Text style={shared.small}>Save changes before resetting a field.</Text>
+      )}
 
       <View style={s.divider} />
-      <Text style={shared.label}>Test email</Text>
-      <Text style={[shared.small, s.hint]}>
-        Sends saved settings to your admin address. Local mail goes to Mailpit.
-      </Text>
-      {!!sent && (
-        <Text
-          accessibilityLiveRegion="polite"
-          style={[s.result, { color: colors.accent }]}
-        >
-          {sent}
+      <InlineDetails title="Test email delivery">
+        <Text style={shared.label}>Test email</Text>
+        <Text style={[shared.small, s.hint]}>
+          Uses saved settings and sends to your admin address.
         </Text>
-      )}
-      <View style={s.actions}>
-        <SmallAction
-          label="Send test email"
-          disabled={busy || dirty}
-          onPress={() =>
-            act(async () => {
-              setSent("");
-              const r = await client.sendTestEmail();
-              setSent(`Sent to ${r.to}.`);
-            })
-          }
-        />
-      </View>
-      {dirty && (
-        <Text style={shared.small}>Save your changes before testing.</Text>
-      )}
-    </FadeIn>
+        {!!sent && (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[s.result, { color: colors.accent }]}
+          >
+            {sent}
+          </Text>
+        )}
+        <View style={s.actions}>
+          <SmallAction
+            label="Send test email"
+            disabled={busy || dirty}
+            onPress={() =>
+              act(async () => {
+                setSent("");
+                const r = await client.sendTestEmail();
+                if (current()) setSent(`Sent to ${r.to}.`);
+              })
+            }
+          />
+        </View>
+        {dirty && (
+          <Text style={shared.small}>Save your changes before testing.</Text>
+        )}
+      </InlineDetails>
+    </View>
   );
 }
 
@@ -463,6 +511,15 @@ function MaintenanceCard({
   act: Act;
   onChanged: (m: Maintenance) => void;
 }) {
+  const account = session.token;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () => mounted.current && session.token === account;
   const [message, setMessage] = useState(maintenance.message);
   /** Minutes from now for the end time; null keeps the saved one. */
   const [minutes, setMinutes] = useState<number | null>(null);
@@ -482,6 +539,7 @@ function MaintenanceCard({
         message: message.trim(),
         until: enabled ? until() : null,
       });
+      if (!current()) return;
       setMinutes(null);
       setMessage(next.message);
       onChanged(next);
@@ -491,7 +549,7 @@ function MaintenanceCard({
     Alert.alert(
       enabled ? "Turn on maintenance mode?" : "Turn off maintenance mode?",
       enabled
-        ? "Members can still view everything, but their changes are refused until you turn it off. Admins can keep working."
+        ? "Members can view but cannot make changes. Admins can keep working."
         : "Members can make changes again straight away.",
       [
         { text: "Cancel", style: "cancel" },
@@ -507,7 +565,7 @@ function MaintenanceCard({
     message.trim() !== maintenance.message.trim() || minutes !== null;
 
   return (
-    <FadeIn style={shared.card}>
+    <View style={shared.card}>
       <View style={s.cardHead}>
         <Text style={[shared.sectionTitle, { flex: 1 }]}>Maintenance</Text>
         <Switch
@@ -529,58 +587,62 @@ function MaintenanceCard({
         </Text>
       </View>
 
-      <Text style={shared.label}>Message</Text>
-      <TextInput
-        style={[shared.input, s.input, s.multiline]}
-        value={message}
-        onChangeText={setMessage}
-        multiline
-        maxLength={500}
-        placeholder="We're upgrading the database. Back shortly."
-        placeholderTextColor={colors.faint}
-        accessibilityLabel="Maintenance message"
-      />
-      <Text style={shared.label}>Expected to end</Text>
-      <View style={s.chips}>
-        {UNTIL_CHOICES.map((c) => {
-          const selected =
-            minutes === null
-              ? c.minutes === 0 && !maintenance.until
-              : minutes === c.minutes;
-          return (
-            <Pressable
-              key={c.label}
-              accessibilityRole="radio"
-              accessibilityState={{ checked: selected }}
-              onPress={() => setMinutes(c.minutes)}
-              style={[s.chip, selected && s.chipActive]}
-            >
-              <Text style={[s.chipText, selected && s.chipTextActive]}>
-                {c.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-      <Text style={[shared.small, s.hint]}>
-        {minutes === null
-          ? maintenance.until
-            ? `Saved: ${formatUntil(maintenance.until)}`
-            : "Shown to members with the message."
-          : minutes === 0
-            ? "No end time is shown."
-            : `Ends around ${shortDate(until() as string)}.`}
-      </Text>
-      {on && (
-        <Button
-          secondary
-          title="Update notice"
-          disabled={busy || !edited}
-          style={s.flushButton}
-          onPress={() => void send(true)}
+      <InlineDetails title="Maintenance notice">
+        <Text style={shared.label}>Message</Text>
+        <TextInput
+          style={[shared.input, s.input, s.multiline]}
+          editable={!busy}
+          value={message}
+          onChangeText={setMessage}
+          multiline
+          maxLength={500}
+          placeholder="We're upgrading the database. Back shortly."
+          placeholderTextColor={colors.faint}
+          accessibilityLabel="Maintenance message"
         />
-      )}
-    </FadeIn>
+        <Text style={shared.label}>Expected to end</Text>
+        <View style={s.chips}>
+          {UNTIL_CHOICES.map((c) => {
+            const selected =
+              minutes === null
+                ? c.minutes === 0 && !maintenance.until
+                : minutes === c.minutes;
+            return (
+              <Pressable
+                key={c.label}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: selected, disabled: busy }}
+                disabled={busy}
+                onPress={() => setMinutes(c.minutes)}
+                style={[s.chip, selected && s.chipActive]}
+              >
+                <Text style={[s.chipText, selected && s.chipTextActive]}>
+                  {c.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <Text style={[shared.small, s.hint]}>
+          {minutes === null
+            ? maintenance.until
+              ? `Saved: ${formatUntil(maintenance.until)}`
+              : "Shown to members with the message."
+            : minutes === 0
+              ? "No end time is shown."
+              : `Expected back ${shortDate(until() as string)}.`}
+        </Text>
+        {on && (
+          <Button
+            secondary
+            title="Update notice"
+            disabled={busy || !edited}
+            style={s.flushButton}
+            onPress={() => void send(true)}
+          />
+        )}
+      </InlineDetails>
+    </View>
   );
 }
 
@@ -592,23 +654,40 @@ function VersionCard() {
   const [error, setError] = useState("");
   const [checking, setChecking] = useState(false);
 
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  const account = session.token;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () => mounted.current && session.token === account;
+
   // Kept out of `act`: a GitHub hiccup belongs on this card, not the sheet.
   const check = async () => {
+    if (!current() || pending.current) return;
+    pending.current = true;
     setChecking(true);
     setError("");
     try {
       const next = await client.getUpdates();
+      if (!current()) return;
       setInfo(next);
       setVersion(next.current);
     } catch (e) {
+      if (!current()) return;
       setError(errorText(e));
       try {
-        setVersion(await client.getVersion());
+        const fallback = await client.getVersion();
+        if (current()) setVersion(fallback);
       } catch {
         // The error above already explains it.
       }
     } finally {
-      setChecking(false);
+      pending.current = false;
+      if (current()) setChecking(false);
     }
   };
 
@@ -627,7 +706,7 @@ function VersionCard() {
           : null;
 
   return (
-    <FadeIn index={2} style={shared.card}>
+    <View style={shared.card}>
       <View style={s.cardHead}>
         <Text style={[shared.sectionTitle, { flex: 1 }]}>
           Version and updates
@@ -641,9 +720,7 @@ function VersionCard() {
         <>
           <View style={s.kv}>
             <Text style={shared.small}>Running</Text>
-            <Text style={s.kvValue} numberOfLines={1}>
-              {version.version}
-            </Text>
+            <Text style={s.kvValue}>{version.version}</Text>
           </View>
           {version.built_at && (
             <View style={s.kv}>
@@ -660,15 +737,17 @@ function VersionCard() {
       {info?.latest && (
         <View style={s.kv}>
           <Text style={shared.small}>Latest</Text>
-          <Text style={s.kvValue} numberOfLines={1}>
+          <Text style={s.kvValue}>
             {info.latest.version} · {shortDate(info.latest.date)}
           </Text>
         </View>
       )}
       {!!info?.latest?.message && (
-        <Text style={[shared.body, s.commit]} numberOfLines={3}>
-          {info.latest.message}
-        </Text>
+        <InlineDetails title="Commit message">
+          <Text selectable style={[shared.body, s.commit]}>
+            {info.latest.message}
+          </Text>
+        </InlineDetails>
       )}
       {info && !info.checks_enabled && (
         <Text style={[shared.small, s.hint]}>
@@ -701,7 +780,7 @@ function VersionCard() {
           onPress={() => void Linking.openURL(info.deploy_url!)}
         />
       )}
-    </FadeIn>
+    </View>
   );
 }
 
@@ -724,14 +803,27 @@ const s = themed(() =>
     },
     fieldHead: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 8,
       marginBottom: 8,
     },
-    fieldLabel: { flex: 1, marginBottom: 0 },
-    reset: { fontFamily: fonts.semibold, fontSize: 13, color: colors.accent },
+    fieldLabel: { flex: 1, minWidth: 100, marginBottom: 0 },
+    reset: {
+      minHeight: 44,
+      textAlignVertical: "center",
+      paddingVertical: 12,
+      fontFamily: fonts.semibold,
+      fontSize: 13,
+      color: colors.accent,
+    },
     input: { marginBottom: 6 },
-    multiline: { minHeight: 76, textAlignVertical: "top", paddingTop: 13 },
+    multiline: {
+      minHeight: 76,
+      maxHeight: 160,
+      textAlignVertical: "top",
+      paddingTop: 13,
+    },
     hint: { marginBottom: 14 },
     pair: { flexDirection: "row", gap: 12 },
     secure: { alignItems: "flex-start", marginBottom: 6 },
@@ -761,6 +853,8 @@ const s = themed(() =>
     },
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 8 },
     chip: {
+      minHeight: 44,
+      justifyContent: "center",
       borderRadius: radii.pill,
       borderWidth: 1,
       borderColor: colors.border,
@@ -780,6 +874,7 @@ const s = themed(() =>
     chipTextActive: { color: colors.accent, fontFamily: fonts.semibold },
     kv: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
@@ -789,6 +884,7 @@ const s = themed(() =>
     },
     kvValue: {
       flexShrink: 1,
+      minWidth: 0,
       fontFamily: fonts.medium,
       fontSize: 15,
       color: colors.text,

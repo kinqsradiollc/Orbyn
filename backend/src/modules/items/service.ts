@@ -1180,6 +1180,11 @@ export async function mutate(
     await openAsk(db, actor.id, result);
   const audience = { user_id: owner, team_id: d.team_id };
   await queueWebhooks(db, "item.updated", audience, result);
+  if (d.kind === "task" && d.status === "done" && current.status !== "done")
+    await db.query(
+      "INSERT INTO item_completions(user_id, item_id) VALUES($1,$2)",
+      [actor.id, current.id],
+    );
   if (d.status === "done" && current.status !== "done")
     await queueWebhooks(db, "item.completed", audience, result);
   return result;

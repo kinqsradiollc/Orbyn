@@ -1,15 +1,22 @@
-import React, { useEffect, useRef, useState } from "react";
-import { Animated, PanResponder, StyleSheet, Text, View } from "react-native";
-import { motion, sameDay, type Status } from "@orbyn/core";
-import { easeOut, isReducedMotion, Pressable } from "../../motion";
-import { colors, fonts, themed, statusTones } from "../../theme";
+import React, { useRef, useState } from "react";
+import {
+  PanResponder,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import { sameDay, type Status } from "@orbyn/core";
+import { Pressable } from "../../motion";
+import { colors, fonts, radii, themed, statusTones } from "../../theme";
 import { startOfWeek, weekDays } from "./dates";
 
 const SWIPE_DISTANCE = 50;
 
 /**
  * Seven days with plan dots colored by status. Swipe left or right for the
- * next or previous week; the selected day's pill glides between days.
+ * next or previous week. Narrow panes scroll without squeezing touch targets.
  */
 export function WeekStrip({
   selected,
@@ -25,149 +32,91 @@ export function WeekStrip({
   onShiftWeek: (direction: 1 | -1) => void;
 }) {
   const [width, setWidth] = useState(0);
-  const cell = width / 7;
-  const slide = useRef(new Animated.Value(0)).current;
-  const pill = useRef(new Animated.Value(0)).current;
+  const { fontScale } = useWindowDimensions();
+  const contentWidth = Math.max(
+    width,
+    Math.ceil(Math.max(44, 34 * fontScale) * 7),
+  );
   const days = weekDays(startOfWeek(selected));
-  const index = selected.getDay();
-  const weekKey = days[0].toDateString();
-
-  // Latest values for the long-lived PanResponder.
-  const latest = useRef({ width, onShiftWeek });
-  latest.current = { width, onShiftWeek };
-
+  const latest = useRef(onShiftWeek);
+  latest.current = onShiftWeek;
   const pan = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) =>
         Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderMove: (_, g) => slide.setValue(g.dx),
       onPanResponderRelease: (_, g) => {
-        const { width: w, onShiftWeek: shift } = latest.current;
-        const swiped = Math.abs(g.dx) > SWIPE_DISTANCE || Math.abs(g.vx) > 0.5;
-        if (!swiped) {
-          Animated.timing(slide, {
-            toValue: 0,
-            duration: motion.fast,
-            easing: easeOut,
-            useNativeDriver: true,
-          }).start();
-          return;
-        }
-        const direction: 1 | -1 = g.dx < 0 ? 1 : -1;
-        if (isReducedMotion()) {
-          slide.setValue(0);
-          shift(direction);
-          return;
-        }
-        Animated.timing(slide, {
-          toValue: -direction * w,
-          duration: motion.fast,
-          easing: easeOut,
-          useNativeDriver: true,
-        }).start(() => {
-          shift(direction);
-          slide.setValue(direction * w);
-          Animated.timing(slide, {
-            toValue: 0,
-            duration: motion.base,
-            easing: easeOut,
-            useNativeDriver: true,
-          }).start();
-        });
+        if (Math.abs(g.dx) > SWIPE_DISTANCE || Math.abs(g.vx) > 0.5)
+          latest.current(g.dx < 0 ? 1 : -1);
       },
-      onPanResponderTerminate: () => slide.setValue(0),
     }),
   ).current;
-
-  // Glide within a week; jump when the week itself changes.
-  const shownWeek = useRef(weekKey);
-  useEffect(() => {
-    const target = index * cell;
-    if (shownWeek.current !== weekKey || isReducedMotion() || !cell) {
-      pill.setValue(target);
-    } else {
-      Animated.timing(pill, {
-        toValue: target,
-        duration: motion.base,
-        easing: easeOut,
-        useNativeDriver: true,
-      }).start();
-    }
-    shownWeek.current = weekKey;
-  }, [index, cell, weekKey, pill]);
-
   const today = new Date();
   return (
     <View
       style={s.clip}
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       accessibilityHint="Swipe left or right to see other weeks"
-      {...pan.panHandlers}
+      {...(contentWidth <= width ? pan.panHandlers : {})}
     >
-      <Animated.View style={[s.row, { transform: [{ translateX: slide }] }]}>
-        {cell > 0 && (
-          <Animated.View
-            pointerEvents="none"
-            style={[
-              s.pill,
-              { width: cell - 6, transform: [{ translateX: pill }] },
-            ]}
-          />
-        )}
-        {days.map((day) => {
-          const active = sameDay(day, selected);
-          const isToday = sameDay(day, today);
-          const plans = plansOn(day);
-          return (
-            <Pressable
-              key={day.toDateString()}
-              accessibilityRole="button"
-              accessibilityLabel={`${day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}${isToday ? ", today" : ""}, ${plans.length} plan${plans.length === 1 ? "" : "s"}`}
-              accessibilityState={{ selected: active }}
-              onPress={() => onSelect(day)}
-              style={s.day}
-            >
-              <Text
-                style={[
-                  s.weekday,
-                  isToday && s.todayText,
-                  active && s.activeText,
-                ]}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={contentWidth > width}
+      >
+        <View style={[s.row, { width: contentWidth }]}>
+          {days.map((day) => {
+            const active = sameDay(day, selected);
+            const isToday = sameDay(day, today);
+            const plans = plansOn(day);
+            return (
+              <Pressable
+                key={day.toDateString()}
+                accessibilityRole="button"
+                accessibilityLabel={`${day.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}${isToday ? ", today" : ""}, ${plans.length} plan${plans.length === 1 ? "" : "s"}`}
+                accessibilityState={{ selected: active }}
+                onPress={() => onSelect(day)}
+                style={[s.day, active && s.dayActive]}
               >
-                {day.toLocaleDateString([], { weekday: "short" })}
-              </Text>
-              <View style={[s.dateWrap, isToday && !active && s.todayRing]}>
                 <Text
                   style={[
-                    s.date,
+                    s.weekday,
                     isToday && s.todayText,
                     active && s.activeText,
                   ]}
                 >
-                  {day.getDate()}
+                  {day.toLocaleDateString([], { weekday: "short" })}
                 </Text>
-              </View>
-              <View style={s.dots}>
-                {plans.slice(0, 3).map((i) => (
-                  <View
-                    key={i.key}
+                <View style={[s.dateWrap, isToday && !active && s.todayRing]}>
+                  <Text
                     style={[
-                      s.dot,
-                      {
-                        // On the green pill a status dot could vanish; use white.
-                        backgroundColor: active
-                          ? colors.white
-                          : (i.color ?? statusTones[i.status].fg),
-                      },
+                      s.date,
+                      isToday && s.todayText,
+                      active && s.activeText,
                     ]}
-                  />
-                ))}
-              </View>
-            </Pressable>
-          );
-        })}
-      </Animated.View>
+                  >
+                    {day.getDate()}
+                  </Text>
+                </View>
+                <View style={s.dots}>
+                  {plans.slice(0, 3).map((i) => (
+                    <View
+                      key={i.key}
+                      style={[
+                        s.dot,
+                        {
+                          // Keep the selected day aligned with its soft accent surface.
+                          backgroundColor: active
+                            ? colors.accent
+                            : (i.color ?? statusTones[i.status].fg),
+                        },
+                      ]}
+                    />
+                  ))}
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+      </ScrollView>
     </View>
   );
 }
@@ -176,26 +125,24 @@ const s = themed(() =>
   StyleSheet.create({
     clip: { overflow: "hidden" },
     row: { flexDirection: "row" },
-    pill: {
-      position: "absolute",
-      left: 3,
-      top: 0,
-      bottom: 0,
-      borderRadius: 16,
-      backgroundColor: colors.accent,
+    day: {
+      flex: 1,
+      minWidth: 44,
+      alignItems: "center",
+      paddingVertical: 8,
+      minHeight: 64,
     },
-    day: { flex: 1, alignItems: "center", paddingVertical: 10, minHeight: 78 },
+    dayActive: { backgroundColor: colors.accentSoft, borderRadius: radii.card },
     weekday: {
       fontFamily: fonts.medium,
       fontSize: 11,
       color: colors.muted,
-      textTransform: "uppercase",
-      letterSpacing: 0.4,
     },
     dateWrap: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      minWidth: 32,
+      minHeight: 32,
+      paddingHorizontal: 4,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
       marginTop: 4,
@@ -205,8 +152,8 @@ const s = themed(() =>
     todayRing: { borderColor: colors.accent },
     date: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     todayText: { color: colors.accent },
-    activeText: { color: colors.white },
+    activeText: { color: colors.accent },
     dots: { height: 8, flexDirection: "row", gap: 3, marginTop: 3 },
-    dot: { width: 6, height: 6, borderRadius: 3 },
+    dot: { width: 6, height: 6, borderRadius: radii.pill },
   }),
 );

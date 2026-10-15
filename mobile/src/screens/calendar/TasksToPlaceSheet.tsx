@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   dueDateOf,
@@ -27,7 +27,7 @@ import {
   slotLabel,
 } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
-import { FadeIn, animateLayout } from "../../motion";
+import { BottomSheet } from "../../components/BottomSheet";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 
@@ -66,9 +66,22 @@ export function TasksToPlaceSheet({
   /** A block was added; show its day. */
   onBooked: (start: Date) => void;
 }) {
+  const [pending, setPending] = useState(false);
   return (
-    <Sheet visible={visible} title="Tasks to place" onClose={onClose}>
-      {visible && <Body items={items} canEdit={canEdit} onBooked={onBooked} />}
+    <Sheet
+      visible={visible}
+      title="Tasks to place"
+      onClose={onClose}
+      closeDisabled={pending}
+    >
+      {visible && (
+        <Body
+          items={items}
+          canEdit={canEdit}
+          onBooked={onBooked}
+          onBusyChange={setPending}
+        />
+      )}
     </Sheet>
   );
 }
@@ -77,18 +90,29 @@ function Body({
   items,
   canEdit,
   onBooked,
+  onBusyChange,
 }: {
   items: Item[];
   canEdit: (item: Item) => boolean;
   onBooked: (start: Date) => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const { busy, error, setError, run } = useRun();
+  const alive = useRef(true);
+  const saving = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      onBusyChange(false);
+    };
+  }, [onBusyChange]);
   const [all, setAll] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
   const [start, setStart] = useState(nextHalfHour);
   const [lengthText, setLengthText] = useState("30");
   const [done, setDone] = useState("");
-  const { byItem } = usePlanned();
+  const { byItem, feed } = usePlanned();
   const tasks = items
     .filter(
       (i) =>
@@ -114,136 +138,158 @@ function Body({
   const end = new Date(start.getTime() + (length ?? 0) * 60_000);
 
   const pick = (task: Item) => {
-    animateLayout();
+    if (saving.current) return;
+    setError("");
+    setStart(nextHalfHour());
     setDone("");
     if (open === task.id) return setOpen(null);
     setOpen(task.id);
     setLengthText(String(Math.min(MAX_LENGTH, task.estimate_minutes || 30)));
   };
   const pickDay = (day: string | null) => {
-    if (!day) return;
+    if (!day || saving.current) return;
     const [y, m, d] = day.split("-").map(Number);
     const next = new Date(start);
     next.setFullYear(y, m - 1, d);
     setStart(next);
   };
-  const book = (task: Item) =>
-    run(async () => {
-      await client.createBlock({
-        item_id: task.id,
-        start_at: start.toISOString(),
-        end_at: end.toISOString(),
+  const selected = tasks.find((t) => t.id === open);
+  const book = async (task: Item) => {
+    if (
+      saving.current ||
+      !lengthOk ||
+      !Number.isFinite(start.getTime()) ||
+      !tasks.some((t) => t.id === task.id && canEdit(t))
+    )
+      return;
+    saving.current = true;
+    onBusyChange(true);
+    try {
+      await run(async () => {
+        await client.createBlock({
+          item_id: task.id,
+          start_at: start.toISOString(),
+          end_at: end.toISOString(),
+        });
+        if (!alive.current) return;
+        setOpen(null);
+        setDone(`Scheduled ${task.title} · ${slotLabel(start, end)}`);
+        onBooked(start);
       });
-      animateLayout();
-      setOpen(null);
-      setDone(`Session planned for ${task.title}: ${slotLabel(start, end)}.`);
-      onBooked(start);
-    });
+    } finally {
+      saving.current = false;
+      if (alive.current) onBusyChange(false);
+    }
+  };
 
   return (
-    <ScrollView
-      contentContainerStyle={sheetStyles.body}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      automaticallyAdjustKeyboardInsets
-    >
-      <View style={sheetStyles.column}>
-        <ErrorBanner error={error} onDismiss={() => setError("")} />
-        <Text style={[shared.subtitle, s.intro]}>
-          Plan a session for a task. It shows on the calendar, and you can move
-          it later.
-        </Text>
-        {!!done && (
-          <Text style={s.done} accessibilityRole="alert">
-            {done}
-          </Text>
-        )}
-        {tasks.length === 0 ? (
-          <Text style={shared.small}>
-            Nothing left to place: every open task has its time planned.
-          </Text>
-        ) : (
-          <View style={s.list}>
-            {shown.map((t, n) => (
-              <View key={t.id} style={n > 0 && s.divider}>
-                <View style={s.row}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.title} numberOfLines={2}>
-                      {t.title}
-                    </Text>
-                    <Text style={shared.small}>
-                      {placeLine(t, stillToPlan(byItem.get(t.id)))}
-                    </Text>
-                    {status(t)}
-                  </View>
-                  <SmallAction
-                    label={open === t.id ? "Close" : "Schedule"}
-                    disabled={busy}
-                    onPress={() => pick(t)}
-                  />
-                </View>
-                {open === t.id && (
-                  <FadeIn style={s.form}>
-                    <Field label="Day">
-                      <DateField
-                        label={`Day for ${t.title}`}
-                        value={dayKey(start)}
-                        onChange={pickDay}
-                      />
-                    </Field>
-                    <Field label="Starts at">
-                      <TimeField
-                        label="Start time"
-                        value={start}
-                        onChange={setStart}
-                      />
-                    </Field>
-                    <Field
-                      label="Length"
-                      hint={`${MIN_LENGTH} to ${MAX_LENGTH} minutes.`}
-                    >
-                      <NumberInput
-                        value={lengthText}
-                        onChangeText={setLengthText}
-                        suffix="minutes"
-                        accessibilityLabel={`Length in minutes, ${MIN_LENGTH} to ${MAX_LENGTH}`}
-                      />
-                    </Field>
-                    <Button
-                      title={
-                        lengthOk
-                          ? `Book ${slotLabel(start, end)}`
-                          : "Pick a length"
-                      }
-                      icon="check"
-                      disabled={busy || !lengthOk}
-                      style={s.last}
-                      onPress={() => void book(t)}
+    <>
+      <ScrollView
+        contentContainerStyle={sheetStyles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+      >
+        <View style={sheetStyles.column}>
+          {!selected && (
+            <ErrorBanner error={error} onDismiss={() => setError("")} />
+          )}
+          <Text style={[shared.small, s.intro]}>Choose a task and time.</Text>
+          {!!done && (
+            <Text style={s.done} accessibilityRole="alert">
+              {done}
+            </Text>
+          )}
+          {tasks.length === 0 ? (
+            <Text style={shared.small}>
+              {feed
+                ? "No tasks need scheduling."
+                : "No editable tasks available."}
+            </Text>
+          ) : (
+            <View style={s.list}>
+              {shown.map((t, n) => (
+                <View key={t.id} style={n > 0 && s.divider}>
+                  <View style={s.row}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.title}>{t.title}</Text>
+                      <Text style={shared.small}>
+                        {placeLine(t, stillToPlan(byItem.get(t.id)))}
+                      </Text>
+                      {status(t)}
+                    </View>
+                    <SmallAction
+                      label="Schedule"
+                      disabled={busy}
+                      onPress={() => pick(t)}
                     />
-                  </FadeIn>
-                )}
-              </View>
-            ))}
-          </View>
-        )}
-        {tasks.length > SHOWN && (
-          <Button
-            secondary
-            title={all ? "Show fewer" : `Show all ${tasks.length}`}
-            onPress={() => {
-              animateLayout();
-              setAll(!all);
-            }}
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+          {tasks.length > SHOWN && (
+            <Button
+              secondary
+              title={all ? "Show fewer" : `Show all ${tasks.length}`}
+              onPress={() => {
+                setAll(!all);
+              }}
+            />
+          )}
+        </View>
+      </ScrollView>
+      <BottomSheet
+        visible={!!selected}
+        title="Schedule task"
+        onClose={() => setOpen(null)}
+        closeDisabled={busy}
+      >
+        <Text style={shared.sectionTitle}>{selected?.title}</Text>
+        <ErrorBanner error={error} onDismiss={() => setError("")} />
+
+        <Field label="Day">
+          <DateField
+            label={`Day for ${selected?.title ?? "task"}`}
+            value={dayKey(start)}
+            onChange={pickDay}
+            disabled={busy}
           />
-        )}
-      </View>
-    </ScrollView>
+        </Field>
+        <Field label="Starts at">
+          <TimeField
+            label="Start time"
+            value={start}
+            onChange={setStart}
+            disabled={busy}
+          />
+        </Field>
+        <Field label="Length" hint={`${MIN_LENGTH}–${MAX_LENGTH} minutes`}>
+          <NumberInput
+            editable={!busy}
+            value={lengthText}
+            onChangeText={setLengthText}
+            suffix="minutes"
+            accessibilityLabel={`Length in minutes, ${MIN_LENGTH} to ${MAX_LENGTH}`}
+          />
+        </Field>
+        <Button
+          title={lengthOk ? "Schedule task" : "Pick a length"}
+          icon="check"
+          disabled={busy || !lengthOk}
+          style={s.last}
+          onPress={() => selected && void book(selected)}
+        />
+
+        {lengthOk && <Text style={shared.small}>{slotLabel(start, end)}</Text>}
+      </BottomSheet>
+    </>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
-    intro: { marginTop: 0, marginBottom: 18 },
+    intro: { marginTop: 0, marginBottom: 12 },
     done: {
       fontFamily: fonts.semibold,
       fontSize: 13,
@@ -275,7 +321,7 @@ const s = themed(() =>
       color: colors.text,
       marginBottom: 2,
     },
-    form: { paddingHorizontal: 14, paddingBottom: 14 },
+
     status: { flexDirection: "row", marginTop: 6 },
     last: { marginBottom: 0 },
   }),

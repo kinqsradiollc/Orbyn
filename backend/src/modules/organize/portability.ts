@@ -18,6 +18,7 @@ export type ExportArchive = {
   tags: { name: string; color: string }[];
   habits: unknown[];
   items: ExportItem[];
+  completion_history?: { item_id: string; created_at: string }[];
 };
 type ExportItem = {
   title: string;
@@ -88,6 +89,16 @@ export async function exportData(
     due_at: r.due_at ? r.due_at.toISOString() : null,
     end_at: r.end_at ? r.end_at.toISOString() : null,
   }));
+  const completions = (
+    await db.query<{ item_id: string; created_at: Date }>(
+      `SELECT c.item_id, c.created_at FROM item_completions c JOIN items i ON i.id=c.item_id
+     WHERE c.user_id=$1 AND i.user_id=$1 AND i.team_id IS NULL ORDER BY c.created_at,c.id`,
+      [userId],
+    )
+  ).rows.map((row) => ({
+    item_id: row.item_id,
+    created_at: row.created_at.toISOString(),
+  }));
   return {
     version: 1,
     exported_at: new Date().toISOString(),
@@ -95,6 +106,7 @@ export async function exportData(
     tags,
     habits,
     items,
+    completion_history: completions,
   };
 }
 

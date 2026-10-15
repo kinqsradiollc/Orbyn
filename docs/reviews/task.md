@@ -778,7 +778,7 @@ all original branches/worktrees; no cleanup or deployment at this checkpoint.
 
 ## Scope and boundaries
 
-Complete `docs/adr/001-devday-agent-platform.md` under the full acceptance contract
+Complete `docs/adr/archive/001-devday-agent-platform.md` under the full acceptance contract
 `docs/reviews/devday-2026-implementation-review.md` C1–C6/M1/D1/U1. Goal active and
 incomplete. Every web/desktop feature needs mobile parity. Preserve root user
 files and concurrent character work. Qualified main commits/merges/push are

@@ -17,6 +17,10 @@ import { client } from "../../lib/api";
 import { Select } from "../../components/Select";
 import { errorText } from "../../lib/errors";
 
+export function DocChat(props: Parameters<typeof DocChatBody>[0]) {
+  return <DocChatBody key={props.docId} {...props} />;
+}
+
 /** The actions worth one click; "custom" is whatever gets typed instead. */
 const QUICK = DOC_AI_ACTIONS.filter((a) => a !== "custom");
 
@@ -43,7 +47,7 @@ const nextId = () => `t${++seq}`;
  * back is a proposal, reviewed beside every other proposal. Nothing it writes
  * reaches the page without someone taking it.
  */
-export function DocChat({
+function DocChatBody({
   docId,
   blocks,
   canWrite,
@@ -67,6 +71,14 @@ export function DocChat({
   const [busy, setBusy] = useState(false);
   /** Which line the conversation is about; null is the page as a whole. */
   const [target, setTarget] = useState<number | null>(null);
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const threadRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -83,8 +95,8 @@ export function DocChat({
 
   // A line that goes away takes the conversation back to the page.
   useEffect(() => {
-    if (target !== null && !blocks[target]) setTarget(null);
-  }, [blocks, target]);
+    if (target !== null && (!blocks[target] || !canWrite)) setTarget(null);
+  }, [blocks, target, canWrite]);
 
   const say = (turn: Omit<Turn, "id">) =>
     setTurns((list) => [...list, { ...turn, id: nextId() }]);
@@ -97,9 +109,12 @@ export function DocChat({
 
   /** Ask something of the page, answered from the page alone. */
   const ask = async (question: string) => {
+    if (mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       const answer = await client.askDoc(docId, question);
+      if (!mounted.current) return;
       say({
         role: "orbyn",
         text: answer.answer,
@@ -107,15 +122,17 @@ export function DocChat({
         provider: answer.provider,
       });
     } catch (e) {
-      fail(e);
+      if (mounted.current) fail(e);
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
   /** Ask for the targeted line to be changed. What comes back is a proposal. */
   const change = async (action: DocAiAction, instruction = "") => {
-    if (target === null || !line) return;
+    if (target === null || !line || !canWrite || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       const blockId = onNameBlock(target);
@@ -127,23 +144,25 @@ export function DocChat({
         action,
         instruction,
       });
+      if (!mounted.current) return;
       onSuggested(made);
       say({
         role: "orbyn",
-        text: "Proposed. It waits with the rest of them.",
+        text: "Proposal ready for review.",
         proposed: made,
         provider: made.provider,
       });
     } catch (e) {
-      fail(e);
+      if (mounted.current) fail(e);
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
   const send = () => {
     const said = message.trim();
-    if (!said || busy) return;
+    if (!said || mutation.current || (target !== null && !canWrite)) return;
     setMessage("");
     say({ role: "you", text: said });
     if (target === null) void ask(said);
@@ -151,12 +170,17 @@ export function DocChat({
   };
 
   return (
-    <aside className="doc-chat" aria-label="Talk about this page">
+    <aside className="doc-chat" aria-label="Page assistant">
       <header className="doc-chat-head">
         <h3>
-          <Sparkles size={14} aria-hidden="true" /> Talk about this page
+          <Sparkles size={14} aria-hidden="true" /> Page assistant
         </h3>
-        <button className="icon-button" aria-label="Close" onClick={onClose}>
+        <button
+          className="icon-button"
+          aria-label="Close"
+          disabled={busy}
+          onClick={onClose}
+        >
           <X size={15} />
         </button>
       </header>
@@ -167,17 +191,20 @@ export function DocChat({
         <label htmlFor="doc-chat-about">About</label>
         <Select
           id="doc-chat-about"
+          disabled={busy}
           value={target === null ? "" : String(target)}
           onChange={(e) =>
             setTarget(e.target.value === "" ? null : Number(e.target.value))
           }
         >
           <option value="">The whole page</option>
-          {lines.map((l) => (
-            <option key={l.index} value={l.index}>
-              {plainText(l.text).slice(0, 60)}
-            </option>
-          ))}
+          {canWrite &&
+            lines.map((l) => (
+              <option key={l.index} value={l.index} title={plainText(l.text)}>
+                {plainText(l.text).slice(0, 60)}
+                {plainText(l.text).length > 60 ? "…" : ""}
+              </option>
+            ))}
         </Select>
       </div>
 
@@ -185,8 +212,8 @@ export function DocChat({
         {turns.length === 0 && (
           <p className="doc-chat-empty">
             {target === null
-              ? "Ask anything about this page. The answer comes from this page and nothing else, and names the lines it leant on."
-              : "Ask for this line to be changed. What comes back is a proposal, for you or anyone else to take or leave."}
+              ? "Ask a question. Answers use this page and cite their sources."
+              : "Request a change. Review the proposal before applying it."}
           </p>
         )}
         {turns.map((turn) => (
@@ -252,6 +279,10 @@ export function DocChat({
           ref={inputRef}
           rows={2}
           maxLength={1000}
+          disabled={busy}
+          aria-label={
+            target === null ? "Question about this page" : "Requested change"
+          }
           value={message}
           placeholder={
             target === null

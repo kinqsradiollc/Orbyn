@@ -1,11 +1,12 @@
 /* The guided first run (DSN-02). */
 .first-run {
-  width: 560px;
-  padding: 22px 24px 18px;
+  width: min(560px, 100%);
+  overflow-wrap: anywhere;
+  padding: 16px 20px;
 }
 .first-run h2 {
   margin: 4px 0 8px;
-  font-size: 24px;
+  font-size: 18px;
   line-height: 1.25;
   outline: none;
 }
@@ -76,6 +77,7 @@
 }
 .first-run-foot {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
@@ -83,6 +85,7 @@
 }
 .first-run-nav {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 @media (max-width: 600px) {

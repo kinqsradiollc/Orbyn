@@ -4,10 +4,13 @@ import {
   Linking,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
 } from "react-native";
-import { Alert } from "../lib/alert";
+import { BottomSheet } from "../components/BottomSheet";
+import { session } from "../lib/session";
+import { usePaneWidth } from "../hooks/usePaneWidth";
 import {
   addMonths,
   byDueDate,
@@ -40,13 +43,9 @@ import {
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { celebrate } from "../components/Celebration";
-import { Chip, ChipRow } from "../components/Chip";
+import { Chip } from "../components/Chip";
 import { ClockField, DateField, Field } from "../components/Field";
-import {
-  PlannerList,
-  SectionHeading,
-  type ListHandlers,
-} from "../components/PlannerList";
+import { PlannerList, type ListHandlers } from "../components/PlannerList";
 import { Icon } from "../components/Icon";
 import { ReviewCard } from "../components/ReviewCard";
 import { Segmented } from "../components/Segmented";
@@ -74,7 +73,7 @@ import {
   unpinBlock,
 } from "../lib/plans";
 import { askScope, seriesTimes, type OccurrenceRef } from "../lib/scope";
-import { FadeIn, PressableScale, animateLayout, Pressable } from "../motion";
+import { PressableScale, Pressable } from "../motion";
 import { colors, fonts, radii, statusTones, themed } from "../theme";
 import { shared } from "../styles";
 import { ActionMenu, type Menu, type MenuAction } from "./calendar/ActionMenu";
@@ -218,7 +217,13 @@ const fieldTarget = (
   return target === "page" || target === "project" ? { target, id } : null;
 };
 
-export function CalendarScreen({
+export function CalendarScreen(
+  props: Parameters<typeof CalendarScreenBody>[0],
+) {
+  return <CalendarScreenBody key={session.token} {...props} />;
+}
+
+function CalendarScreenBody({
   items,
   teams,
   act,
@@ -269,6 +274,28 @@ export function CalendarScreen({
   onOpenFieldTarget?: (target: FieldDate["target"], id: string) => void;
 }) {
   const { listById } = usePlanning();
+  const owner = session.token;
+  const mounted = useRef(true);
+  const current = () => mounted.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const planMutation = useRef(false);
+  const [planBusy, setPlanBusy] = useState(false);
+  const busy = handlers.busy || planBusy;
+  const previewRef = useRef(preview);
+  previewRef.current = preview;
+  const [calendarError, setCalendarError] = useState(false);
+  const [fieldError, setFieldError] = useState(false);
+  const [keepError, setKeepError] = useState("");
+  const [deletingEntry, setDeletingEntry] = useState<CalendarEntry | null>(
+    null,
+  );
+  const deletePending = useRef(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [mode, setModeState] = useState<Mode>(() => {
     const saved = readLocal(MODE_KEY);
     return MODES.find((m) => m === saved) ?? "day";
@@ -302,6 +329,8 @@ export function CalendarScreen({
   const [movingEntry, setMovingEntry] = useState<CalendarEntry | null>(null);
   /** The "Find an event" sheet is open. */
   const [searching, setSearching] = useState(false);
+  const [choosingSet, setChoosingSet] = useState(false);
+  const [setQuery, setSetQuery] = useState("");
   /** The frame in the frame editor. */
   const [editingFrame, setEditingFrame] = useState<Frame | null>(null);
   /**
@@ -330,8 +359,11 @@ export function CalendarScreen({
   const tuned = useRef(new Set<string>());
   const now = useNow(30_000);
   // Tablets and landscape: three days side by side in the day and week views.
-  const { width } = useWindowDimensions();
-  const multi = width >= GRID_WIDTH && (mode === "day" || mode === "week");
+  const { width, onLayout } = usePaneWidth();
+  const { fontScale } = useWindowDimensions();
+  const multi =
+    width >= GRID_WIDTH * Math.max(1, fontScale) &&
+    (mode === "day" || mode === "week");
   /** "Show all 24 hours" for the days side by side (they share one window). */
   const [gridAllHours, setGridAllHours] = useState(false);
 
@@ -362,11 +394,18 @@ export function CalendarScreen({
   // change (unchanged polls keep the same array) or after an edit.
   useEffect(() => {
     let alive = true;
+    setCalendarError(false);
     client
       .calendar(fromIso, toIso)
-      .then((data) => alive && setView({ key: `${fromIso}/${toIso}`, data }))
+      .then(
+        (data) =>
+          alive && current() && setView({ key: `${fromIso}/${toIso}`, data }),
+      )
       .catch(() => {
-        // Older servers have no calendar view; the items below still show.
+        if (alive && current()) {
+          setView(null);
+          setCalendarError(true);
+        }
       });
     return () => {
       alive = false;
@@ -379,9 +418,16 @@ export function CalendarScreen({
   const toDay = dayKey(range.to);
   useEffect(() => {
     let alive = true;
+    setFieldDates([]);
+    setFieldError(false);
     client.fieldDates(fromDay, toDay).then(
-      (dates) => alive && setFieldDates(dates),
-      () => alive && setFieldDates([]),
+      (dates) => alive && current() && setFieldDates(dates),
+      () => {
+        if (alive && current()) {
+          setFieldDates([]);
+          setFieldError(true);
+        }
+      },
     );
     return () => {
       alive = false;
@@ -395,7 +441,7 @@ export function CalendarScreen({
     let alive = true;
     client
       .getPlannerPrefs()
-      .then((p) => alive && setPrefs(p))
+      .then((p) => alive && current() && setPrefs(p))
       .catch(() => {
         // Without settings the calendar shows everything in local time.
       });
@@ -442,14 +488,15 @@ export function CalendarScreen({
   }, [late]);
   /** A short message after an action ("Done. Next on …"): the app's toast. */
   const showNote = (text: string) => {
+    if (!current()) return;
     setLate(null);
     showToast({ text });
   };
   /** Warn when a session now ends after its task's deadline. */
   const warnIfLate = (block: TimeBlock) => {
+    if (!current()) return false;
     const text = lateSessionWarning(block);
     if (!text) return false;
-    animateLayout();
     setLate({ block, text: `${text}.` });
     AccessibilityInfo.announceForAccessibility(text);
     return true;
@@ -470,7 +517,6 @@ export function CalendarScreen({
   const sets = prefs?.calendar_sets ?? [];
   const activeSet = sets.find((set) => set.id === setId) ?? null;
   const chooseSet = (id: string) => {
-    animateLayout();
     setSetId(id);
     saveLocal(SET_KEY, id);
   };
@@ -662,6 +708,7 @@ export function CalendarScreen({
   const itemFor = async (itemId: string) =>
     items.find((i) => i.id === itemId) ?? (await client.getItem(itemId));
   const assertEditable = (item: Item) => {
+    if (!current()) throw new Error("The calendar or account changed.");
     if (handlers.canToggle && !handlers.canToggle(item))
       throw new Error("You can view this team’s items but not change them.");
   };
@@ -669,7 +716,9 @@ export function CalendarScreen({
     const item = items.find((i) => i.id === itemId);
     return !item || !handlers.canToggle || handlers.canToggle(item);
   };
-  const reload = () => setVersion((v) => v + 1);
+  const reload = () => {
+    if (current()) setVersion((v) => v + 1);
+  };
   const select = (day: Date) => {
     setSelected(day);
     if (day.getMonth() !== month.getMonth()) setMonth(day);
@@ -678,9 +727,10 @@ export function CalendarScreen({
     if (onFocus) void act(async () => onFocus(await itemFor(itemId)));
   };
   const join = (e: CalendarEntry) =>
-    void Linking.openURL(e.meeting_url).catch(() =>
-      Alert.alert("That meeting link couldn’t be opened."),
-    );
+    void act(async () => {
+      if (!current()) return;
+      await Linking.openURL(e.meeting_url);
+    });
 
   /** Save a block's new times; it shows there at once and the reload confirms. */
   const saveBlock = (block: TimeBlock, start: Date, end: Date) => {
@@ -877,6 +927,7 @@ export function CalendarScreen({
         if (entry.occurrence && item.rrule) {
           const scope = await askScope(item.kind, "move");
           if (!scope) return;
+          assertEditable(item);
           const times =
             scope === "all"
               ? seriesTimes(
@@ -946,43 +997,39 @@ export function CalendarScreen({
     });
   };
   /** Delete an entry's item; a repeating one asks which occurrences go. */
-  const deleteEntry = (entry: CalendarEntry) =>
-    act(async () => {
-      const item = await itemFor(entry.item_id);
-      assertEditable(item);
-      if (entry.occurrence && item.rrule) {
-        const scope = await askScope(item.kind, "delete");
-        if (!scope) return;
-        await outbox.deleteItem(item, {
-          scope,
-          occurrence: entry.occurrence,
-        });
-      } else {
-        const sure = await new Promise<boolean>((resolve) =>
-          Alert.alert(
-            `Delete ${entry.title}?`,
-            "This removes it from your planner.",
-            [
-              {
-                text: "Cancel",
-                style: "cancel",
-                onPress: () => resolve(false),
-              },
-              {
-                text: "Delete",
-                style: "destructive",
-                onPress: () => resolve(true),
-              },
-            ],
-            { cancelable: true, onDismiss: () => resolve(false) },
-          ),
-        );
-        if (!sure) return;
-        await outbox.deleteItem(item);
-      }
-      reload();
-      onChanged();
-    });
+  const deleteEntry = async (entry: CalendarEntry, confirmed = false) => {
+    if (!current() || deletePending.current) return;
+    if (!entry.occurrence && !confirmed) {
+      setDeletingEntry(entry);
+      return;
+    }
+    deletePending.current = true;
+    setDeleteBusy(true);
+    try {
+      await act(async () => {
+        if (!current()) return;
+        const item = await itemFor(entry.item_id);
+        assertEditable(item);
+        if (entry.occurrence && item.rrule) {
+          const scope = await askScope(item.kind, "delete");
+          if (!scope) return;
+          assertEditable(item);
+          await outbox.deleteItem(item, {
+            scope,
+            occurrence: entry.occurrence,
+          });
+        } else await outbox.deleteItem(item);
+        if (!current()) return;
+        setDeletingEntry(null);
+        reload();
+        onChanged();
+      });
+    } finally {
+      deletePending.current = false;
+      if (current()) setDeleteBusy(false);
+    }
+  };
+
   const entryMenu = (entry: CalendarEntry) => {
     const when = entry.all_day
       ? "all day"
@@ -1052,18 +1099,18 @@ export function CalendarScreen({
     showSubscribed(x);
   };
   const showSubscribed = (x: ExternalEntry) =>
-    Alert.alert(
-      x.title,
-      [
-        x.all_day
-          ? `${shortDay(x.start_at)}, all day`
-          : slotLabel(x.start_at, x.end_at),
-        x.location,
-        `From ${x.name}. Change it in the calendar it comes from.`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    );
+    setMenu({
+      title: x.title,
+      detail: x.all_day
+        ? `${shortDay(x.start_at)}, all day`
+        : slotLabel(x.start_at, x.end_at),
+      facts: [
+        ...(x.location ? [{ text: x.location }] : []),
+        { text: `From ${x.name}. Edit it in its source calendar.` },
+      ],
+      actions: [],
+    });
+
   const frameMenu = (f: FrameOccurrence) =>
     setMenu({
       title: f.name,
@@ -1103,21 +1150,38 @@ export function CalendarScreen({
 
   // ---- the preview ----
   /** Change the preview; the plan that comes back replaces it in place. */
-  const tunePreview = (change: (plan: Plan) => Promise<Plan>) =>
-    act(async () => {
-      if (!preview) return;
-      let next: Plan;
-      try {
-        next = await change(preview);
-      } catch (e) {
-        // Expired or replaced: show it's stale, with Refresh.
-        if (isConflict(e)) return markStale();
-        throw e;
-      }
-      tuned.current.add(next.id);
-      animateLayout();
-      onPreviewChange(next);
-    });
+  const tunePreview = async (change: (plan: Plan) => Promise<Plan>) => {
+    const source = previewRef.current;
+    if (!source || !current() || planMutation.current || handlers.busy)
+      return false;
+    planMutation.current = true;
+    setPlanBusy(true);
+    let changed = false;
+    try {
+      await act(async () => {
+        if (!current()) return;
+        let next: Plan;
+        try {
+          next = await change(source);
+        } catch (e) {
+          if (isConflict(e)) {
+            if (current()) markStale();
+            return;
+          }
+          throw e;
+        }
+        if (!current() || previewRef.current?.id !== source.id) return;
+        tuned.current.add(next.id);
+        onPreviewChange(next);
+        changed = true;
+      });
+      return changed;
+    } finally {
+      planMutation.current = false;
+      if (current()) setPlanBusy(false);
+    }
+  };
+
   const ghostMenu = (g: PlannedBlock) => {
     const actions: MenuAction[] = [
       {
@@ -1145,7 +1209,7 @@ export function CalendarScreen({
     });
   };
   const pinGhost = (g: PlannedBlock, start: Date, end: Date) => {
-    if (!preview) return;
+    if (!preview || !current() || planMutation.current || handlers.busy) return;
     // Show it where it was dropped while the plan is made again around it.
     tuned.current.add(preview.id);
     onPreviewChange({
@@ -1191,16 +1255,25 @@ export function CalendarScreen({
     if (!keepForm) return;
     const start = atClock(keepForm.day, keepForm.from);
     const end = atClock(keepForm.day, keepForm.to);
-    if (end <= start) {
-      Alert.alert("A time to keep free ends after it starts.");
+    if (
+      !Number.isFinite(start.getTime()) ||
+      !Number.isFinite(end.getTime()) ||
+      end <= start
+    ) {
+      setKeepError("Choose an end time after the start.");
       return;
     }
+    setKeepError("");
     void tunePreview((p) =>
       setKeepFree(p, [
         ...(p.options?.keep_free ?? []),
         { start_at: start.toISOString(), end_at: end.toISOString() },
       ]),
-    ).then(() => setKeepForm(null));
+    ).then((changed) => {
+      if (!current()) return;
+      if (changed) setKeepForm(null);
+      else setKeepError("Couldn't update the plan. Refresh it or try again.");
+    });
   };
   /** A range drawn on empty time in the timeline (hold, then drag). */
   const keepRange = (start: Date, end: Date) => {
@@ -1210,25 +1283,35 @@ export function CalendarScreen({
         ...(p.options?.keep_free ?? []),
         { start_at: start.toISOString(), end_at: end.toISOString() },
       ]),
-    ).then(() =>
-      AccessibilityInfo.announceForAccessibility(
-        `Keeping ${slotLabel(start.toISOString(), end.toISOString())} free`,
-      ),
-    );
-  };
-  const applyPreview = () =>
-    act(async () => {
-      if (!preview) return;
-      // The moves the planner ticked; "Tune in planner" changes them.
-      const result = await client.applyPlan(preview.id);
-      onPreviewDone();
-      reload();
-      onChanged();
-      showNote(planOutcome(result, preview.at_risk));
+    ).then((changed) => {
+      if (current() && changed)
+        AccessibilityInfo.announceForAccessibility(
+          `Keeping ${slotLabel(start.toISOString(), end.toISOString())} free`,
+        );
     });
+  };
+  const applyPreview = async () => {
+    const source = previewRef.current;
+    if (!source || !current() || planMutation.current || handlers.busy) return;
+    planMutation.current = true;
+    setPlanBusy(true);
+    try {
+      await act(async () => {
+        if (!current()) return;
+        const result = await client.applyPlan(source.id);
+        if (!current() || previewRef.current?.id !== source.id) return;
+        onPreviewDone();
+        reload();
+        onChanged();
+        showNote(planOutcome(result, source.at_risk));
+      });
+    } finally {
+      planMutation.current = false;
+      if (current()) setPlanBusy(false);
+    }
+  };
 
   const changeMode = (next: Mode) => {
-    animateLayout();
     if (next === "month") setMonth(selected);
     setModeState(next);
     saveLocal(MODE_KEY, next);
@@ -1281,9 +1364,7 @@ export function CalendarScreen({
       zones={zones}
       keepFree={keepFree}
       onKeepFreeMenu={live ? keepFreeMenu : undefined}
-      onKeepFree={
-        live && !handlers.busy && keepFree.length < 20 ? keepRange : undefined
-      }
+      onKeepFree={live && !busy && keepFree.length < 20 ? keepRange : undefined}
       scrollKey={
         first && mode === "day"
           ? `${mode}-${multi ? "grid" : "day"}-${selected.toDateString()}`
@@ -1337,7 +1418,7 @@ export function CalendarScreen({
             onPress={() => setSelectedTask(null)}
             style={s.selectionChip}
           >
-            <Text style={s.todayLabel}>Showing linked sessions · Clear ×</Text>
+            <Text style={s.todayLabel}>Linked sessions · Clear</Text>
           </PressableScale>
           <PressableScale
             accessibilityRole="button"
@@ -1359,7 +1440,6 @@ export function CalendarScreen({
       <Text
         style={[shared.sectionTitle, s.headingText]}
         accessibilityRole="header"
-        numberOfLines={2}
       >
         {heading}
       </Text>
@@ -1411,39 +1491,75 @@ export function CalendarScreen({
       <View style={s.tools}>
         <SmallAction
           label="Plan"
-          disabled={handlers.busy}
+          disabled={busy}
           onPress={() => setPlanning({ seed: null })}
         />
         <SmallAction
-          label="Tasks to place"
-          disabled={false}
-          onPress={() => setPanel("tasks")}
-        />
-        {teams.length > 0 && (
-          <SmallAction
-            label={mates.length ? `Teammates (${mates.length})` : "Teammates"}
-            disabled={false}
-            onPress={() => setPanel("mates")}
-          />
-        )}
-        <SmallAction
-          label={sets.length ? "Edit sets" : "Calendar sets"}
-          disabled={!prefs}
-          onPress={() => setPanel("sets")}
+          label="Calendar options"
+          disabled={busy}
+          onPress={() =>
+            setMenu({
+              title: "Calendar options",
+              detail: "",
+              actions: [
+                { label: "Tasks to place", run: () => setPanel("tasks") },
+                ...(teams.length
+                  ? [
+                      {
+                        label: mates.length
+                          ? `Teammates (${mates.length})`
+                          : "Teammates",
+                        run: () => setPanel("mates"),
+                      },
+                    ]
+                  : []),
+                ...(prefs
+                  ? [{ label: "Calendar sets", run: () => setPanel("sets") }]
+                  : []),
+              ],
+            })
+          }
         />
       </View>
     </>
   );
 
   return (
-    <>
+    <View onLayout={onLayout} style={s.root}>
       {controlsSlot && (
         <SlotFill slot={controlsSlot}>
           <View style={s.stickyBar}>{controls}</View>
         </SlotFill>
       )}
+      {(calendarError || fieldError) && (
+        <View style={s.recovery}>
+          <Text style={shared.small} accessibilityLiveRegion="polite">
+            {calendarError
+              ? "Calendar unavailable. Saved items shown."
+              : "Page and project dates unavailable."}
+          </Text>
+          <SmallAction label="Retry" disabled={busy} onPress={reload} />
+        </View>
+      )}
+      {teammates.selected.length > 0 &&
+        (teammates.availabilityLoading || !!teammates.availabilityError) && (
+          <View style={{ gap: 8, paddingVertical: 8 }}>
+            <Text style={shared.small}>
+              {teammates.availabilityLoading
+                ? "Loading teammate availability…"
+                : "Teammate availability unavailable."}
+            </Text>
+            {!!teammates.availabilityError && (
+              <Button
+                secondary
+                title="Retry availability"
+                onPress={teammates.retry}
+              />
+            )}
+          </View>
+        )}
       {live && (
-        <FadeIn style={shared.card}>
+        <View style={shared.card}>
           <View style={s.previewHead}>
             <Icon name="sparkles" size={16} color={colors.accent} />
             <Text
@@ -1454,7 +1570,7 @@ export function CalendarScreen({
             </Text>
             <SmallAction
               label="Tune in planner"
-              disabled={handlers.busy}
+              disabled={busy}
               onPress={() => setPlanning({ seed: preview })}
             />
           </View>
@@ -1464,8 +1580,7 @@ export function CalendarScreen({
             {movesTicked
               ? `, and ${movesTicked} late session${movesTicked === 1 ? "" : "s"} moved before ${movesTicked === 1 ? "its deadline" : "their deadlines"}`
               : ""}
-            . Hold a proposed session to move it or see options. Drag empty time
-            to keep it free. Apply the plan to save.
+            . Apply to save.
           </Text>
           {stale && (
             <View style={s.stale} accessibilityRole="alert">
@@ -1474,99 +1589,54 @@ export function CalendarScreen({
               </Text>
               <SmallAction
                 label="Refresh"
-                disabled={handlers.busy}
+                disabled={busy}
                 onPress={() => void tunePreview(remakePlan)}
               />
             </View>
           )}
-          {keepForm ? (
-            <FadeIn style={s.keepForm}>
-              <Field label="Keep free on">
-                <DateField
-                  label="Day to keep free"
-                  value={keepForm.day}
-                  onChange={(day) => day && setKeepForm({ ...keepForm, day })}
-                />
-              </Field>
-              <View style={s.pair}>
-                <Field label="From" style={s.half}>
-                  <ClockField
-                    label="Free from"
-                    value={keepForm.from}
-                    onChange={(from) => setKeepForm({ ...keepForm, from })}
-                  />
-                </Field>
-                <Field label="Until" style={s.half}>
-                  <ClockField
-                    label="Free until"
-                    value={keepForm.to}
-                    onChange={(to) => setKeepForm({ ...keepForm, to })}
-                  />
-                </Field>
-              </View>
-              <View style={s.pair}>
-                <Button
-                  title="Keep it free"
-                  icon="check"
-                  disabled={handlers.busy}
-                  style={s.half}
-                  onPress={addKeepFree}
-                />
-                <Button
-                  secondary
-                  title="Cancel"
-                  style={s.half}
-                  onPress={() => setKeepForm(null)}
-                />
-              </View>
-            </FadeIn>
-          ) : (
-            <View style={s.previewTools}>
-              <SmallAction
-                label="Keep a time free…"
-                disabled={handlers.busy || keepFree.length >= 20}
-                onPress={() => {
-                  animateLayout();
-                  setKeepForm({
-                    day: dayKeyOf(selected),
-                    from: "13:00",
-                    to: "17:00",
-                  });
-                }}
-              />
-            </View>
-          )}
+          <View style={s.previewTools}>
+            <SmallAction
+              label="Keep time free"
+              disabled={busy || keepFree.length >= 20}
+              onPress={() => {
+                setKeepError("");
+                setKeepForm({
+                  day: dayKeyOf(selected),
+                  from: "13:00",
+                  to: "17:00",
+                });
+              }}
+            />
+          </View>
+
           <View style={s.previewActions}>
             <Button
-              title={handlers.busy ? "Saving…" : "Apply"}
+              title={busy ? "Saving…" : "Apply"}
               icon="check"
-              disabled={handlers.busy || (planned === 0 && movesTicked === 0)}
+              disabled={busy || (planned === 0 && movesTicked === 0)}
               style={s.previewButton}
               onPress={() => void applyPreview()}
             />
             <Button
               secondary
               title="Discard"
-              disabled={handlers.busy}
+              disabled={busy}
               style={s.previewButton}
               onPress={() => {
-                animateLayout();
                 setKeepForm(null);
                 onPreviewDone();
               }}
             />
           </View>
-        </FadeIn>
+        </View>
       )}
       {joinable.length > 0 && (
-        <FadeIn style={[shared.card, s.join]}>
+        <View style={[shared.card, s.join]}>
           <Text style={shared.label}>Happening now</Text>
           {joinable.map((e) => (
             <View key={`${e.item_id}-${e.start_at}`} style={s.joinRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.joinTitle} numberOfLines={1}>
-                  {e.title}
-                </Text>
+              <View style={{ flex: 1, minWidth: 160 }}>
+                <Text style={s.joinTitle}>{e.title}</Text>
                 <Text style={shared.small}>
                   {e.end_at
                     ? rangeLabel(e.start_at, e.end_at)
@@ -1581,12 +1651,11 @@ export function CalendarScreen({
               />
             </View>
           ))}
-        </FadeIn>
+        </View>
       )}
       <ReviewCard
         items={items}
         onPlan={(plan) => {
-          animateLayout();
           onPreviewChange(plan);
         }}
       />
@@ -1612,9 +1681,7 @@ export function CalendarScreen({
             {mates.map((m) => (
               <View key={m.user_id} style={s.legendItem}>
                 <View style={[s.legendDot, { backgroundColor: m.color }]} />
-                <Text style={s.legendName} numberOfLines={1}>
-                  {m.name}
-                </Text>
+                <Text style={s.legendName}>{m.name}</Text>
               </View>
             ))}
             <SmallAction
@@ -1625,22 +1692,16 @@ export function CalendarScreen({
           </View>
         )}
         {sets.length > 0 && (
-          <ChipRow label="Calendar set" style={s.sets}>
-            <Chip
-              label="Everything"
-              selected={!activeSet}
-              onPress={() => chooseSet("")}
-            />
-            {sets.map((set) => (
-              <Chip
-                key={set.id}
-                label={set.name}
-                selected={activeSet?.id === set.id}
-                onPress={() => chooseSet(set.id)}
-              />
-            ))}
-          </ChipRow>
+          <SmallAction
+            label={`Calendar: ${activeSet?.name ?? "Everything"}`}
+            disabled={busy}
+            onPress={() => {
+              setSetQuery("");
+              setChoosingSet(true);
+            }}
+          />
         )}
+
         {mode === "week" && (
           <WeekStrip
             selected={selected}
@@ -1666,7 +1727,7 @@ export function CalendarScreen({
       </View>
 
       {late && (
-        <FadeIn style={[s.undo, s.lateNote]}>
+        <View style={[s.undo, s.lateNote]}>
           <Text style={[s.undoText, s.lateText]} accessibilityRole="alert">
             {late.text}
           </Text>
@@ -1675,17 +1736,16 @@ export function CalendarScreen({
               label="Keep it"
               disabled={false}
               onPress={() => {
-                animateLayout();
                 setLate(null);
               }}
             />
             <SmallAction
               label="Find time before"
-              disabled={handlers.busy}
+              disabled={busy}
               onPress={() => void moveBeforeDeadline(late.block)}
             />
           </View>
-        </FadeIn>
+        </View>
       )}
 
       {mode === "agenda" ? (
@@ -1704,14 +1764,8 @@ export function CalendarScreen({
           onJoin={join}
         />
       ) : (
-        // Keyed by day so the timeline and agenda fade in on a new selection.
-        <FadeIn key={selected.toDateString()}>
-          {multi && (
-            <SectionHeading
-              title={heading}
-              count={columns.reduce((n, c) => n + c.dayEntries.length, 0)}
-            />
-          )}
+        // Reset day-owned timeline selection when the day changes.
+        <View key={selected.toDateString()}>
           {multi ? (
             <>
               <View style={s.grid}>
@@ -1722,7 +1776,10 @@ export function CalendarScreen({
                     // share what's left equally.
                     style={[
                       s.gridColumn,
-                      n === 0 && { flexBasis: gutterWidth(zones.length) },
+                      n === 0 && {
+                        flexBasis:
+                          gutterWidth(zones.length) * Math.max(1, fontScale),
+                      },
                     ]}
                   >
                     <Text
@@ -1730,7 +1787,6 @@ export function CalendarScreen({
                         s.gridDay,
                         sameDay(c.day, now) && { color: colors.accent },
                       ]}
-                      numberOfLines={1}
                       accessibilityRole="header"
                     >
                       {sameDay(c.day, now) ? "Today" : shortDay(c.day)}
@@ -1770,8 +1826,8 @@ export function CalendarScreen({
             <View style={[shared.card, s.external]}>
               <Text style={shared.label}>
                 {dayExternal.every((x) => fieldTarget(x))
-                  ? "Dates on your pages and projects"
-                  : "From calendars you subscribe to"}
+                  ? "Page and project dates"
+                  : "Subscribed calendars"}
               </Text>
               {dayExternal.map((x, n) => (
                 <Pressable
@@ -1786,9 +1842,7 @@ export function CalendarScreen({
                   ]}
                 >
                   <View style={[s.legendDot, { backgroundColor: x.color }]} />
-                  <Text style={s.externalTitle} numberOfLines={1}>
-                    {x.title}
-                  </Text>
+                  <Text style={s.externalTitle}>{x.title}</Text>
                   <Text style={shared.small}>
                     {x.all_day ? "All day" : rangeLabel(x.start_at, x.end_at)}
                   </Text>
@@ -1796,9 +1850,122 @@ export function CalendarScreen({
               ))}
             </View>
           )}
-        </FadeIn>
+        </View>
       )}
 
+      <BottomSheet
+        visible={choosingSet}
+        title="Choose calendar"
+        onClose={() => setChoosingSet(false)}
+      >
+        <Field label="Find calendar">
+          <TextInput
+            value={setQuery}
+            onChangeText={setSetQuery}
+            accessibilityLabel="Find calendar"
+            placeholder="Search calendars…"
+            placeholderTextColor={colors.faint}
+            style={shared.input}
+          />
+        </Field>
+        <Chip
+          label="Everything"
+          selected={!activeSet}
+          onPress={() => {
+            chooseSet("");
+            setChoosingSet(false);
+          }}
+        />
+        {sets
+          .filter((set) =>
+            set.name
+              .toLocaleLowerCase()
+              .includes(setQuery.trim().toLocaleLowerCase()),
+          )
+          .map((set) => (
+            <Chip
+              key={set.id}
+              label={set.name}
+              selected={activeSet?.id === set.id}
+              onPress={() => {
+                chooseSet(set.id);
+                setChoosingSet(false);
+              }}
+            />
+          ))}
+        {setQuery.trim() &&
+          !sets.some((set) =>
+            set.name
+              .toLocaleLowerCase()
+              .includes(setQuery.trim().toLocaleLowerCase()),
+          ) && <Text style={shared.small}>No calendars match.</Text>}
+      </BottomSheet>
+      <BottomSheet
+        visible={!!keepForm}
+        title="Keep time free"
+        closeDisabled={busy}
+        onClose={() => setKeepForm(null)}
+        footer={
+          <Button
+            title={busy ? "Saving…" : "Keep free"}
+            disabled={busy}
+            onPress={addKeepFree}
+          />
+        }
+      >
+        {keepError && (
+          <Text style={s.error} accessibilityLiveRegion="polite">
+            {keepError}
+          </Text>
+        )}
+        {keepForm && (
+          <View style={s.form}>
+            <Field label="Keep free on">
+              <DateField
+                label="Day to keep free"
+                value={keepForm.day}
+                onChange={(day) => day && setKeepForm({ ...keepForm, day })}
+              />
+            </Field>
+            <View style={s.pair}>
+              <Field label="From" style={s.half}>
+                <ClockField
+                  label="Free from"
+                  value={keepForm.from}
+                  onChange={(from) => setKeepForm({ ...keepForm, from })}
+                />
+              </Field>
+              <Field label="Until" style={s.half}>
+                <ClockField
+                  label="Free until"
+                  value={keepForm.to}
+                  onChange={(to) => setKeepForm({ ...keepForm, to })}
+                />
+              </Field>
+            </View>
+          </View>
+        )}
+      </BottomSheet>
+      <BottomSheet
+        visible={!!deletingEntry}
+        title="Delete item?"
+        closeDisabled={deleteBusy}
+        onClose={() => setDeletingEntry(null)}
+        footer={
+          <Button
+            destructive
+            title={deleteBusy ? "Deleting…" : "Delete"}
+            disabled={deleteBusy}
+            onPress={() => {
+              if (deletingEntry) void deleteEntry(deletingEntry, true);
+            }}
+          />
+        }
+      >
+        <Text style={shared.body}>
+          Remove “{deletingEntry?.title}” from your planner?
+        </Text>
+      </BottomSheet>
       <ActionMenu menu={menu} onClose={() => setMenu(null)} />
       <MoveBlockSheet
         block={moving}
@@ -1887,7 +2054,6 @@ export function CalendarScreen({
         teams={teams}
         onClose={() => setPanel(null)}
         onSaved={(next) => {
-          animateLayout();
           setPrefs(next);
           if (!next.calendar_sets.some((set) => set.id === setId))
             chooseSet("");
@@ -1915,16 +2081,19 @@ export function CalendarScreen({
         }}
         onShowOnCalendar={(plan) => {
           setPlanning(null);
-          animateLayout();
           onPreviewChange(plan);
         }}
       />
-    </>
+    </View>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
+    root: { minWidth: 0 },
+    recovery: { gap: 8, marginBottom: 12 },
+    form: { gap: 12 },
+    error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
     calendar: { padding: 12, marginBottom: 22 },
     /** The sticky header's controls. */
     stickyBar: {
@@ -1944,29 +2113,22 @@ const s = themed(() =>
       marginBottom: 6,
     },
     gridToggle: {
+      minHeight: 44,
       alignItems: "center",
       paddingVertical: 10,
-      marginTop: -12,
       marginBottom: 16,
     },
     previewHead: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 8,
       marginBottom: 6,
     },
     previewText: { marginBottom: 14 },
     previewTools: { flexDirection: "row", marginBottom: 14 },
-    keepForm: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.input,
-      padding: 12,
-      marginBottom: 14,
-    },
-    pair: { flexDirection: "row", gap: 10 },
-    half: { flex: 1, marginBottom: 0 },
+    pair: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    half: { flexGrow: 1, flexShrink: 1, flexBasis: 120, marginBottom: 0 },
     stale: {
       flexDirection: "row",
       alignItems: "center",
@@ -1985,8 +2147,8 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.warning,
     },
-    previewActions: { flexDirection: "row", gap: 10 },
-    previewButton: { flex: 1, marginBottom: 0 },
+    previewActions: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    previewButton: { flexGrow: 1, flexBasis: 120, marginBottom: 0 },
     undo: {
       flexDirection: "row",
       alignItems: "center",
@@ -2011,9 +2173,14 @@ const s = themed(() =>
       borderColor: colors.warningBorder,
     },
     lateText: { flexBasis: "100%", color: colors.warningStrong },
-    lateActions: { flexDirection: "row", gap: 8 },
+    lateActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     join: { paddingVertical: 14 },
-    joinRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+    joinRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 12,
+    },
     joinTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     joinButton: { marginBottom: 0, minHeight: 44 },
     heading: {
@@ -2022,7 +2189,7 @@ const s = themed(() =>
       alignItems: "center",
       marginBottom: 10,
     },
-    headingText: { fontSize: 24, lineHeight: 30, marginBottom: 8 },
+    headingText: { fontSize: 18, lineHeight: 26, marginBottom: 8 },
     tools: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -2047,12 +2214,22 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      maxWidth: 120,
+      maxWidth: "100%",
     },
-    legendDot: { width: 8, height: 8, borderRadius: 4 },
-    legendName: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
+    legendDot: { width: 8, height: 8, borderRadius: radii.pill },
+    legendName: {
+      flexShrink: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.text,
+    },
     sets: { paddingHorizontal: 4, marginBottom: 10 },
-    control: { padding: 8, minHeight: 44, justifyContent: "center" },
+    control: {
+      padding: 8,
+      minWidth: 44,
+      minHeight: 44,
+      justifyContent: "center",
+    },
     selectionChip: {
       paddingHorizontal: 12,
       paddingVertical: 8,
@@ -2071,12 +2248,15 @@ const s = themed(() =>
     external: { paddingVertical: 12 },
     externalRow: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 10,
       minHeight: 44,
     },
     externalTitle: {
       flex: 1,
+      flexBasis: 140,
+      minWidth: 0,
       fontFamily: fonts.medium,
       fontSize: 15,
       color: colors.text,

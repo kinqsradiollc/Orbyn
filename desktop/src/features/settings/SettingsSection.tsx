@@ -35,7 +35,11 @@ const REMEMBER = "orbyn-settings-open";
 /** Which sections someone has opened, kept between visits. */
 function remembered(): Record<string, boolean> {
   try {
-    return JSON.parse(localStorage.getItem(REMEMBER) ?? "{}");
+    const value: unknown = JSON.parse(localStorage.getItem(REMEMBER) ?? "{}");
+    if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+    return Object.fromEntries(
+      Object.entries(value).filter(([, open]) => open === true),
+    );
   } catch {
     return {};
   }
@@ -96,12 +100,7 @@ export function SettingsSection({
   // The heading's own text names the section in what we remember, so the
   // choice survives a re-order.
   const headText =
-    (typeof title === "string" && title) ||
-    (isValidElement(head) &&
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      String((head.props as any)?.children ?? "").slice(0, 60)) ||
-    labelledBy ||
-    "";
+    (typeof title === "string" && title) || textOf(head) || labelledBy || "";
   const key = labelledBy || headText;
   const [open, setOpen] = useState(
     () => defaultOpen || remembered()[key] === true,
@@ -122,10 +121,13 @@ export function SettingsSection({
     setOpen(true);
     setFlash(true);
     const t = window.setTimeout(() => setFlash(false), 1600);
-    requestAnimationFrame(() =>
-      box.current?.scrollIntoView({ behavior: "smooth", block: "start" }),
+    const frame = requestAnimationFrame(() =>
+      box.current?.scrollIntoView({ behavior: "auto", block: "start" }),
     );
-    return () => window.clearTimeout(t);
+    return () => {
+      window.clearTimeout(t);
+      cancelAnimationFrame(frame);
+    };
     // The counter, so choosing it again does it again.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chosen, focus?.seq]);

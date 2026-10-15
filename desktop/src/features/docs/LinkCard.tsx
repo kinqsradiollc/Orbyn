@@ -1,4 +1,10 @@
-import { useEffect, useState, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   CalendarDays,
   CheckCircle2,
@@ -56,7 +62,16 @@ function Row({ children }: { children: ReactNode }) {
   return <li className="link-card-row">{children}</li>;
 }
 
-export function LinkCardPopover({
+export function LinkCardPopover(props: Parameters<typeof LinkCardBody>[0]) {
+  return (
+    <LinkCardBody
+      key={`${props.target.kind}:${props.target.id}:${props.target.block ?? ""}`}
+      {...props}
+    />
+  );
+}
+
+function LinkCardBody({
   target,
   anchor,
   onOpen,
@@ -78,6 +93,11 @@ export function LinkCardPopover({
   onHover: (inside: boolean) => void;
   report: (e: unknown) => void;
 }) {
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const [failed, setFailed] = useState(false);
   const [card, setCard] = useState<LinkCard | null>(null);
   const [picking, setPicking] = useState(false);
   const [note, setNote] = useState("");
@@ -89,16 +109,33 @@ export function LinkCardPopover({
     target.kind === "project"
       ? target.kind
       : null;
-  const load = () => {
+  const load = useCallback(() => {
     if (!kind) return;
-    client
-      .linkCard({ kind, id: target.id, block: target.block })
-      .then(setCard, report);
-  };
-  useEffect(load, [target.kind, target.id, target.block]); // eslint-disable-line react-hooks/exhaustive-deps
+    const epoch = ++request.current;
+    setFailed(false);
+    void client.linkCard({ kind, id: target.id, block: target.block }).then(
+      (next) => {
+        if (epoch === request.current) setCard(next);
+      },
+      (reason) => {
+        if (epoch === request.current) {
+          setFailed(true);
+          reportRef.current(reason);
+        }
+      },
+    );
+  }, [kind, target.id, target.block]);
+  useEffect(() => {
+    load();
+    return () => {
+      request.current++;
+    };
+  }, [load]);
   if (!kind) return null;
 
   const run = (work: () => Promise<unknown>, said?: string) => {
+    if (mutation.current || !card || card.state !== "ok") return;
+    mutation.current = true;
     setBusy(true);
     setNote("");
     void work()
@@ -112,7 +149,10 @@ export function LinkCardPopover({
         if (message) setNote(message);
         else report(e);
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        mutation.current = false;
+        setBusy(false);
+      });
   };
 
   const tick = () =>
@@ -166,12 +206,23 @@ export function LinkCardPopover({
         onMouseLeave={() => onHover(false)}
       >
         {!card ? (
-          <p className="link-card-loading">Loading…</p>
+          failed ? (
+            <div role="alert">
+              <p>Couldn't load this link.</p>
+              <button className="link-card-action" onClick={load}>
+                Retry
+              </button>
+            </div>
+          ) : (
+            <p className="link-card-loading" role="status">
+              Loading…
+            </p>
+          )
         ) : gone ? (
           <p className="link-card-gone">
             {card.state === "deleted"
               ? `“${card.title}” is in Trash.`
-              : "This isn't there, or isn't yours to open."}
+              : "This item is unavailable."}
           </p>
         ) : (
           <>
@@ -287,6 +338,7 @@ export function LinkCardPopover({
                 <button
                   type="button"
                   className="link-card-action"
+                  disabled={busy}
                   onClick={() => moveTo(today)}
                 >
                   Today
@@ -294,6 +346,7 @@ export function LinkCardPopover({
                 <button
                   type="button"
                   className="link-card-action"
+                  disabled={busy}
                   onClick={() => moveTo(addDays(today, 1))}
                 >
                   Tomorrow
@@ -301,6 +354,7 @@ export function LinkCardPopover({
                 <button
                   type="button"
                   className="link-card-action"
+                  disabled={busy}
                   onClick={() => moveTo(addDays(today, 7))}
                 >
                   Next week
@@ -310,22 +364,28 @@ export function LinkCardPopover({
                     card.due_at ? localDateKey(new Date(card.due_at), zone) : ""
                   }
                   onChange={(e) => e.target.value && moveTo(e.target.value)}
+                  disabled={busy}
                   aria-label="New deadline"
                 />
               </div>
             )}
-            {note && <p className="link-card-note">{note}</p>}
+            {note && (
+              <p className="link-card-note" role="status">
+                {note}
+              </p>
+            )}
+            {failed && (
+              <button
+                className="link-card-action"
+                disabled={busy}
+                onClick={load}
+              >
+                Retry link details
+              </button>
+            )}
             <div className="link-card-actions">
               {card.kind === "task" && card.can_write && (
                 <>
-                  <button
-                    type="button"
-                    className="link-card-action"
-                    disabled={busy}
-                    onClick={tick}
-                  >
-                    {card.done ? "Untick" : "Tick"}
-                  </button>
                   <button
                     type="button"
                     className={"link-card-action" + (picking ? " is-on" : "")}
@@ -356,6 +416,7 @@ export function LinkCardPopover({
               <button
                 type="button"
                 className="link-card-action is-open"
+                disabled={busy}
                 onClick={() => {
                   // A merged page opens the page it went into.
                   if (card.moved_from) onOpenDoc(card.id);

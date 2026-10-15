@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Text, TextInput, View } from "react-native";
 import { NIGHT_SHIFT_KINDS, type NightShiftSettings } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Field } from "../components/Field";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { Switch } from "../components/Switch";
 import { DateTimeControl } from "../components/DateTimeControl";
 import { client } from "../lib/api";
@@ -29,10 +30,50 @@ export function NightShift({
 }) {
   const [value, setValue] = useState<NightShiftSettings | null>(null);
   const [picking, setPicking] = useState<"start" | "end" | null>(null);
-  useEffect(() => {
-    void run(async () => setValue(await client.nightShiftSettings()));
+  const mounted = useRef(true);
+  const request = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const load = useCallback(async () => {
+    const epoch = ++request.current;
+    setLoading(true);
+    try {
+      const next = await client.nightShiftSettings();
+      if (!mounted.current || epoch !== request.current) return;
+      setValue(next);
+      setError("");
+    } catch {
+      if (mounted.current && epoch === request.current)
+        setError("Couldn't load night shift.");
+    } finally {
+      if (mounted.current && epoch === request.current) setLoading(false);
+    }
   }, []);
-  if (!value) return <Text style={shared.small}>Loading night shift…</Text>;
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      ++request.current;
+    };
+  }, [load]);
+  if (!value)
+    return (
+      <View style={shared.card}>
+        <Text style={shared.label}>Night shift</Text>
+        <ErrorBanner error={error} />
+        {loading ? (
+          <Text style={shared.small}>Loading night shift…</Text>
+        ) : (
+          <Button
+            title="Retry night shift"
+            secondary
+            disabled={busy}
+            onPress={() => void load()}
+          />
+        )}
+      </View>
+    );
   const toggle = (
     label: string,
     checked: boolean,
@@ -91,7 +132,7 @@ export function NightShift({
           mode="time"
           value={date}
           onChange={(event, chosen) => {
-            if (chosen && event.type === "set")
+            if (!busy && chosen && event.type === "set")
               setValue({
                 ...value,
                 [picking]: `${String(chosen.getHours()).padStart(2, "0")}:${String(chosen.getMinutes()).padStart(2, "0")}`,
@@ -105,6 +146,7 @@ export function NightShift({
           accessibilityLabel="Night shift time zone"
           style={shared.input}
           value={value.timezone}
+          editable={!busy}
           onChangeText={(timezone) => setValue({ ...value, timezone })}
           autoCapitalize="none"
         />
@@ -130,9 +172,10 @@ export function NightShift({
         title="Save night shift"
         disabled={busy}
         onPress={() =>
-          void run(async () =>
-            setValue(await client.updateNightShiftSettings(value)),
-          )
+          void run(async () => {
+            const next = await client.updateNightShiftSettings(value);
+            if (mounted.current) setValue(next);
+          })
         }
       />
     </View>

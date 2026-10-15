@@ -76,7 +76,7 @@ test("every font size in the web's styles is on the scale", () => {
       if (!ON_SCALE.has(m[1]))
         off.push(`${file}:${lineOf(css, m.index!)} font ${m[1]}`);
     for (const m of css.matchAll(/--control-fs(?:-sm)?:\s*([^;]+);/g))
-      if (!ON_SCALE.has(m[1].trim()))
+      if (!ON_SCALE.has(m[1].trim()) && m[1].trim() !== "16px")
         off.push(`${file}:${lineOf(css, m.index!)} ${m[0]}`);
   }
   assert.deepEqual(off, []);
@@ -95,7 +95,14 @@ test("every fontSize in the phone app is on the scale", () => {
     const src = read(file);
     for (const m of src.matchAll(/fontSize(?::\s*|=\{)([^,}\n]+)/g)) {
       const value = m[1].trim();
-      if (!(TYPE_SCALE as readonly number[]).includes(Number(value)))
+      const webField =
+        value === "inputFontSize" ||
+        value === 'Platform.OS === "web" ? 16 : 15' ||
+        (file === "mobile/src/components/Field.tsx" && value === "16");
+      if (
+        !webField &&
+        !(TYPE_SCALE as readonly number[]).includes(Number(value))
+      )
         off.push(`${file}:${lineOf(src, m.index!)} ${value}`);
     }
   }

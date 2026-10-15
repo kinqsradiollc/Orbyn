@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../../motion";
 import {
@@ -32,11 +32,45 @@ export function LiveList({ text }: { text: string }) {
   const [result, setResult] = useState<ViewResult | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [stamp, setStamp] = useState(0);
+  const [note, setNote] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
+  const [queued, setQueued] = useState<Set<string>>(new Set());
+  const queuedHere = useRef(new Set<string>());
+  const writing = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    const update = (state: ReturnType<typeof outbox.outboxState>) => {
+      const next = new Set(
+        state.entries.flatMap((entry) =>
+          entry.op.type === "item.post" ? [entry.op.id] : [],
+        ),
+      );
+      setQueued(next);
+      const sent = [...queuedHere.current].some((id) => !next.has(id));
+      queuedHere.current = new Set(
+        [...queuedHere.current].filter((id) => next.has(id)),
+      );
+      if (sent) {
+        setNote("");
+        setStamp((n) => n + 1);
+      }
+    };
+    update(outbox.outboxState());
+    const stop = outbox.subscribeOutbox(update);
+    return () => {
+      mounted.current = false;
+      stop();
+    };
+  }, []);
   const key = JSON.stringify(spec);
+  const currentKey = useRef(key);
+  currentKey.current = key;
   useEffect(() => {
     if (!spec) return;
     let live = true;
     setFailed(null);
+    setResult(null);
     const run =
       "id" in spec
         ? client.runView(spec.id, spec.limit)
@@ -71,24 +105,41 @@ export function LiveList({ text }: { text: string }) {
       result?.time_zone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
   };
   /** Tick or untick as the app's ticks do: an update on the task's timeline. */
-  const tick = (row: ViewRow) => {
-    if (!row.item) return;
+  const tick = async (row: ViewRow) => {
+    if (!row.item || !row.can_write || writing.current || queued.has(row.id))
+      return;
+    writing.current = true;
+    setPending(row.id);
+    setNote("");
+    const owner = key;
     const status = toggledStatus(row.item);
-    void outbox
-      .postItemUpdate(row.item, { status })
-      .then(() => {
-        if (status === "done") celebrate(row.title);
-      })
-      .finally(() => setStamp((n) => n + 1));
+    try {
+      const saved = await outbox.postItemUpdate(row.item, { status });
+      if (!mounted.current) return;
+      if (saved === null) {
+        queuedHere.current.add(row.id);
+        setQueued((ids) => new Set([...ids, row.id]));
+        if (owner === currentKey.current) setNote("Waiting to sync");
+      } else {
+        if (owner === currentKey.current) {
+          if (status === "done") celebrate(row.title);
+          setStamp((n) => n + 1);
+        }
+      }
+    } catch {
+      if (mounted.current && owner === currentKey.current)
+        setNote("Couldn’t change task. Try again.");
+    } finally {
+      writing.current = false;
+      if (mounted.current) setPending(null);
+    }
   };
 
   return (
     <View style={s.box}>
       <View style={s.head}>
         <Icon name="filter" size={13} color={colors.muted} />
-        <Text style={s.title} numberOfLines={1}>
-          {title}
-        </Text>
+        <Text style={s.title}>{title}</Text>
         {spec && "id" in spec && (
           <Pressable
             accessibilityRole="link"
@@ -102,7 +153,16 @@ export function LiveList({ text }: { text: string }) {
       {!spec ? (
         <Text style={s.empty}>This list’s settings can’t be read.</Text>
       ) : failed ? (
-        <Text style={s.empty}>{failed}</Text>
+        <View style={s.recovery}>
+          <Text style={s.empty}>{failed}</Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setStamp((n) => n + 1)}
+            style={s.retry}
+          >
+            <Text style={s.link}>Retry list</Text>
+          </Pressable>
+        </View>
       ) : !result ? (
         <Text style={s.empty}>Loading…</Text>
       ) : !result.rows.length ? (
@@ -119,18 +179,21 @@ export function LiveList({ text }: { text: string }) {
                   accessibilityLabel={`${done ? "Reopen" : "Finish"} ${row.title}`}
                   accessibilityState={{
                     checked: done,
-                    disabled: !row.can_write,
+                    disabled:
+                      !row.can_write || pending !== null || queued.has(row.id),
                   }}
-                  disabled={!row.can_write}
+                  disabled={
+                    !row.can_write || pending !== null || queued.has(row.id)
+                  }
                   hitSlop={11}
-                  onPress={() => tick(row)}
+                  onPress={() => void tick(row)}
                   style={[s.tick, done && s.tickDone]}
                 >
                   {done && (
                     <Icon
                       name="check"
                       size={12}
-                      color={colors.white}
+                      color={colors.onAccent}
                       strokeWidth={3}
                     />
                   )}
@@ -141,7 +204,7 @@ export function LiveList({ text }: { text: string }) {
                 onPress={() => open(row)}
                 style={s.flex}
               >
-                <Text style={[s.rowTitle, done && s.done]} numberOfLines={1}>
+                <Text style={[s.rowTitle, done && s.done]}>
                   {row.title || "Untitled"}
                 </Text>
               </Pressable>
@@ -153,6 +216,11 @@ export function LiveList({ text }: { text: string }) {
             </View>
           );
         })
+      )}
+      {!!note && (
+        <Text style={s.empty} accessibilityLiveRegion="polite">
+          {note}
+        </Text>
       )}
     </View>
   );
@@ -168,24 +236,30 @@ const s = themed(() =>
       borderColor: colors.border,
       backgroundColor: colors.surfaceMuted,
     },
-    head: { flexDirection: "row", alignItems: "center", gap: 6 },
+    head: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 6,
+    },
     title: {
       flex: 1,
       fontFamily: fonts.semibold,
-      fontSize: 11,
-      letterSpacing: 0.6,
-      textTransform: "uppercase",
+      minWidth: 0,
+      fontSize: 13,
       color: colors.muted,
     },
     link: { fontFamily: fonts.medium, fontSize: 13, color: colors.accent },
+    recovery: { gap: 6 },
+    retry: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" },
     empty: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     row: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      minHeight: 34,
+      minHeight: 44,
     },
-    flex: { flex: 1 },
+    flex: { flex: 1, minWidth: 0 },
     rowTitle: { fontFamily: fonts.regular, fontSize: 15, color: colors.text },
     done: { color: colors.muted, textDecorationLine: "line-through" },
     left: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },

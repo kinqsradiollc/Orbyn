@@ -1,5 +1,14 @@
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { Select } from "../../components/Select";
-import { useEffect, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -24,6 +33,7 @@ import {
   type User,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Swatches } from "../lists/ListsView";
 import {
@@ -94,15 +104,6 @@ type Draft = {
 type SectionId =
   "details" | "rules" | "hours" | "dates" | "form" | "approval" | "look";
 
-const SECTIONS: [SectionId, string][] = [
-  ["details", "Details"],
-  ["rules", "Scheduling"],
-  ["hours", "Availability"],
-  ["dates", "Date overrides"],
-  ["form", "Booking form"],
-  ["approval", "Approval"],
-  ["look", "Look & messages"],
-];
 const LENGTHS = [15, 20, 30, 45, 60, 90, 120];
 const DAYS = [
   "Sunday",
@@ -222,7 +223,7 @@ const whole = (n: number, min: number, max: number) =>
   Number.isInteger(n) && n >= min && n <= max;
 
 /** The first thing to fix before saving, and the section it's in. */
-function problem(d: Draft): [SectionId, string] | null {
+function problem(d: Draft, ownerId?: string): [SectionId, string] | null {
   if (!d.durations.length) return ["rules", "Offer at least one length."];
   if (!whole(d.window_days, 1, 90))
     return ["rules", "Show between 1 and 90 days ahead."];
@@ -267,34 +268,56 @@ function problem(d: Draft): [SectionId, string] | null {
     if (new Set(options).size !== options.length)
       return ["form", `“${label}” lists the same option twice.`];
   }
+  if (
+    d.routing.some(
+      (r) =>
+        !d.questions.some((q) => q.key === r.question_id) ||
+        (r.host_user_id !== ownerId &&
+          !d.co_hosts.some((h) => h.user_id === r.host_user_id)) ||
+        !r.equals.trim() ||
+        r.equals.trim().length > 200,
+    )
+  )
+    return [
+      "details",
+      "Choose a question, answer and current host for every routing rule.",
+    ];
   if (!isHex(d.color)) return ["look", "Colours look like #376c51."];
   if (!d.event_title.trim()) return ["look", "Give the hosts' event a title."];
   return null;
 }
 
 function Section({
+  scope,
   id,
   title,
   hint,
+  value,
   children,
 }: {
+  scope: string;
   id: SectionId;
   title: string;
   hint?: string;
+  value?: string;
   children: ReactNode;
 }) {
   return (
-    <section
-      id={"bp-sec-" + id}
+    <details
+      open={id === "details" || id === "hours"}
+      id={scope + "-bp-sec-" + id}
       className="booking-section"
-      aria-labelledby={"bp-sec-" + id + "-title"}
+      aria-labelledby={scope + "-bp-sec-" + id + "-title"}
     >
-      <header>
-        <h3 id={"bp-sec-" + id + "-title"}>{title}</h3>
-        {hint && <p>{hint}</p>}
-      </header>
-      {children}
-    </section>
+      <summary id={scope + "-bp-sec-" + id + "-title"}>
+        {title}
+        {value && <span className="booking-section-value">{value}</span>}
+      </summary>
+      <div className="booking-section-body">
+        {hint && <p className="booking-section-note">{hint}</p>}
+        {children}
+      </div>
+    </details>
   );
 }
 
@@ -360,6 +383,7 @@ const embedSnippet = (slug: string) =>
 
 export function PageForm({
   page,
+  visible = true,
   user,
   teams,
   report,
@@ -367,12 +391,22 @@ export function PageForm({
   onSaved,
 }: {
   page: BookingPage | null;
+  visible?: boolean;
   user: User | null;
   teams: Team[];
   report: (e: unknown) => void;
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
+  const formScope = useId();
+  const fieldId = (id: string) => formScope + "-" + id;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [draft, setDraft] = useState<Draft>(() =>
     page ? draftFrom(page) : blank(),
   );
@@ -380,14 +414,20 @@ export function PageForm({
   const [people, setPeople] = useState<TeamMember[]>([]);
   const [embedCopied, setEmbedCopied] = useState(false);
   const [peopleLoaded, setPeopleLoaded] = useState(false);
+  const [peopleFailed, setPeopleFailed] = useState(false);
+  const [peopleVersion, setPeopleVersion] = useState(0);
   const action = useAction(report);
 
   // Co-hosts come from the people in your teams.
   useEffect(() => {
     let alive = true;
+    const account = session.get();
+    const current = () => alive && account === session.get();
+    setPeopleLoaded(false);
+    setPeopleFailed(false);
     Promise.all(teams.map((t) => client.getTeam(t.id))).then(
       (details) => {
-        if (!alive) return;
+        if (!current()) return;
         const seen = new Map<string, TeamMember>();
         for (const d of details)
           for (const m of d.members)
@@ -398,15 +438,18 @@ export function PageForm({
         );
         setPeopleLoaded(true);
       },
-      () => undefined,
+      () => {
+        if (current()) setPeopleFailed(true);
+      },
     );
     return () => {
       alive = false;
     };
-  }, [teams, user?.id]);
+  }, [teams, user?.id, peopleVersion]);
 
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) =>
-    setDraft((d) => ({ ...d, [k]: v }));
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
+    if (!action.pending) setDraft((d) => ({ ...d, [k]: v }));
+  };
   const lengths = [...new Set([...LENGTHS, ...draft.durations])].sort(
     (a, b) => a - b,
   );
@@ -424,15 +467,22 @@ export function PageForm({
     ? draft.co_hosts.filter((h) => !people.some((m) => m.user_id === h.user_id))
     : [];
   const hostName = (id: string) =>
-    page?.hosts.find((h) => h.user_id === id)?.name ?? "A co-host";
+    people.find((h) => h.user_id === id)?.name ??
+    page?.hosts.find((h) => h.user_id === id)?.name ??
+    "A co-host";
   // A page can belong to a team whose owners and admins manage it.
   const ownerTeams = teams.filter(
     (t) => t.role === "owner" || t.role === "admin" || t.id === draft.team_id,
   );
-  const jump = (id: SectionId) =>
-    document
-      .getElementById("bp-sec-" + id)
-      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const jump = (id: SectionId) => {
+    const section = document.getElementById(
+      fieldId("bp-sec-" + id),
+    ) as HTMLDetailsElement | null;
+    if (section) {
+      section.open = true;
+      section.scrollIntoView({ behavior: "auto", block: "start" });
+    }
+  };
 
   const setDay = (day: number, ranges: Range[]) =>
     set("weekly", [
@@ -483,6 +533,15 @@ export function PageForm({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (action.pending) return;
+    if (draft.co_hosts.length && coHostsChanged && !peopleLoaded) {
+      action.setOutcome({
+        ok: false,
+        text: "Load co-hosts before changing the host list.",
+      });
+      jump("details");
+      return;
+    }
     if (coHostsChanged && goneCoHosts.length) {
       action.setOutcome({
         ok: false,
@@ -491,7 +550,7 @@ export function PageForm({
       jump("details");
       return;
     }
-    const issue = problem(draft);
+    const issue = problem(draft, page?.owner_id ?? user?.id);
     if (issue) {
       action.setOutcome({ ok: false, text: issue[1] });
       jump(issue[0]);
@@ -500,9 +559,11 @@ export function PageForm({
     const taken = new Set(
       draft.questions.filter((q) => q.fixed).map((q) => q.id),
     );
+    const questionIds = new Map<string, string>();
     const questions = draft.questions.map((q) => {
       const id = q.fixed ? q.id : questionId(q.label, taken);
       taken.add(id);
+      questionIds.set(q.key, id);
       return {
         id,
         label: q.label.trim(),
@@ -544,9 +605,11 @@ export function PageForm({
         .map((o) => ({ date: o.date, hours: [...o.hours].sort(byStart) })),
       questions,
       assignment: draft.assignment,
-      routing: draft.routing.filter(
-        (r) => r.question_id && r.equals && r.host_user_id,
-      ),
+      routing: draft.routing.map((r) => ({
+        ...r,
+        question_id: questionIds.get(r.question_id) ?? r.question_id,
+        equals: r.equals.trim(),
+      })),
       requires_approval: draft.requires_approval,
       allow_reschedule: draft.allow_reschedule,
       event_title: draft.event_title.trim(),
@@ -554,12 +617,16 @@ export function PageForm({
       team_id: draft.team_id,
       remind_before_minutes: draft.remind_before_minutes,
     };
+    const account = session.get();
     void action
       .run(async () => {
         if (page) await client.updateBookingPage(page.id, body);
         else await client.createBookingPage(body);
       })
-      .then((ok) => ok && void onSaved());
+      .then(
+        (ok) =>
+          ok && mounted.current && account === session.get() && void onSaved(),
+      );
   };
 
   const numberOrNull = (value: string) => (value ? Number(value) : null);
@@ -567,969 +634,1118 @@ export function PageForm({
     isHex(draft.color) &&
     readableAccent(draft.color) !== draft.color.toLowerCase();
 
+  if (!visible) return null;
   return (
-    <section
-      className="card booking-form-card"
-      aria-labelledby="booking-form-title"
+    <BookingPageEditor
+      titleId={fieldId("booking-form-title")}
+      busy={action.pending}
+      onClose={onClose}
     >
-      <div className="section-heading">
-        <h2 id="booking-form-title">
-          {page ? "Edit booking page" : "New booking page"}
-        </h2>
-        <button
-          className="icon-button"
-          aria-label="Close form"
-          onClick={onClose}
+      <section
+        className="booking-form-card"
+        aria-labelledby={fieldId("booking-form-title")}
+      >
+        <div className="section-heading">
+          <h2 id={fieldId("booking-form-title")}>
+            {page ? "Edit booking page" : "New booking page"}
+          </h2>
+          <button
+            className="icon-button"
+            aria-label="Close form"
+            disabled={action.pending}
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <form
+          className="settings-form booking-form"
+          onSubmit={submit}
+          onInvalidCapture={(event) => {
+            const field = event.target as HTMLInputElement;
+            let ancestor = field.parentElement;
+            while (ancestor) {
+              if (ancestor instanceof HTMLDetailsElement) ancestor.open = true;
+              ancestor = ancestor.parentElement;
+            }
+          }}
         >
-          <X size={18} />
-        </button>
-      </div>
-      <form className="settings-form booking-form" onSubmit={submit}>
-        <nav className="booking-jump" aria-label="Form sections">
-          {SECTIONS.map(([id, label]) => (
-            <button key={id} type="button" onClick={() => jump(id)}>
-              {label}
-            </button>
-          ))}
-        </nav>
-
-        <Section id="details" title="Details">
-          {ownerTeams.length > 0 && (
-            <div className="settings-field">
-              <label htmlFor="bp-owner">Owner</label>
-              <Select
-                id="bp-owner"
-                value={draft.team_id ?? ""}
-                aria-describedby="bp-owner-hint"
-                onChange={(e) => set("team_id", e.target.value || null)}
-              >
-                <option value="">Me</option>
-                {ownerTeams.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </Select>
-              <small id="bp-owner-hint" className="field-hint">
-                A team&apos;s owners and admins can change its pages; every
-                member sees them.
-              </small>
-            </div>
-          )}
-          <div className="settings-grid">
-            <div className="settings-field wide">
-              <label htmlFor="bp-title">Title</label>
-              <input
-                id="bp-title"
-                required
-                autoFocus
-                maxLength={120}
-                value={draft.title}
-                placeholder="Coffee chat"
-                onChange={(e) => {
-                  set("title", e.target.value);
-                  if (!slugTouched) set("slug", slugify(e.target.value));
-                }}
-              />
-            </div>
-            <div className="settings-field wide">
-              <label htmlFor="bp-slug">Link</label>
-              <div className="field-row slug-row">
-                <span className="slug-prefix" aria-hidden="true">
-                  {bookingLink("")}
-                </span>
-                <input
-                  id="bp-slug"
-                  required
-                  minLength={3}
-                  maxLength={60}
-                  pattern="[a-z0-9]+(-[a-z0-9]+)*"
-                  title="Lowercase letters, numbers and single dashes"
-                  value={draft.slug}
-                  aria-describedby="bp-slug-hint"
-                  onChange={(e) => {
-                    setSlugTouched(true);
-                    set("slug", e.target.value.toLowerCase());
-                  }}
-                />
-              </div>
-              <small id="bp-slug-hint" className="field-hint">
-                Lowercase letters, numbers and single dashes.
-              </small>
-            </div>
-            <div className="settings-field wide">
-              <label htmlFor="bp-desc">Description</label>
-              <textarea
-                id="bp-desc"
-                rows={3}
-                maxLength={2000}
-                value={draft.description}
-                placeholder="What the time is for, and anything to bring."
-                onChange={(e) => set("description", e.target.value)}
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="bp-location">Location</label>
-              <input
-                id="bp-location"
-                maxLength={300}
-                value={draft.location}
-                placeholder="Office, a café, a phone call…"
-                onChange={(e) => set("location", e.target.value)}
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="bp-meeting">Meeting link</label>
-              <input
-                id="bp-meeting"
-                type="url"
-                maxLength={500}
-                pattern="https?://\S+"
-                title="Meeting links start with https://"
-                value={draft.meeting_url}
-                placeholder="https://"
-                onChange={(e) => set("meeting_url", e.target.value)}
-              />
-            </div>
-            <label className="switch-line settings-field wide">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={draft.active}
-                onChange={(e) => set("active", e.target.checked)}
-              />
-              <span>
-                Taking bookings
-                <small>Switch off to hide the page without deleting it.</small>
-              </span>
-            </label>
-            <fieldset className="settings-field wide check-group">
-              <legend>Co-hosts</legend>
-              {goneCoHosts.length > 0 && (
-                <ul className="cohost-list">
-                  {goneCoHosts.map((h) => (
-                    <li key={h.user_id}>
-                      <span className="check-line">
-                        {hostName(h.user_id)}
-                        <small>
-                          No longer in your teams — remove to save changes to
-                          co-hosts.
-                        </small>
-                      </span>
-                      <button
-                        type="button"
-                        className="link-button"
-                        onClick={() =>
-                          set(
-                            "co_hosts",
-                            draft.co_hosts.filter(
-                              (x) => x.user_id !== h.user_id,
-                            ),
-                          )
-                        }
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+          <fieldset
+            className="booking-pending-fields"
+            disabled={action.pending}
+          >
+            <Section scope={formScope} id="details" title="Details">
+              {ownerTeams.length > 0 && (
+                <div className="settings-field">
+                  <label htmlFor={fieldId("bp-owner")}>Owner</label>
+                  <Select
+                    id={fieldId("bp-owner")}
+                    value={draft.team_id ?? ""}
+                    aria-describedby={fieldId("bp-owner-hint")}
+                    onChange={(e) => set("team_id", e.target.value || null)}
+                  >
+                    <option value="">Me</option>
+                    {ownerTeams.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </Select>
+                  <small id={fieldId("bp-owner-hint")} className="field-hint">
+                    Team members can view. Owners and admins can edit.
+                  </small>
+                </div>
               )}
-              {!people.length ? (
-                <small className="field-hint">
-                  People in your teams can host with you. Join or make a team to
-                  add co-hosts.
-                </small>
-              ) : (
-                <ul className="cohost-list">
-                  {people.map((m) => {
-                    const host = draft.co_hosts.find(
-                      (h) => h.user_id === m.user_id,
-                    );
-                    return (
-                      <li key={m.user_id}>
-                        <label className="check-line">
-                          <input
-                            type="checkbox"
-                            checked={!!host}
-                            disabled={!host && draft.co_hosts.length >= 10}
-                            onChange={() =>
+              <div className="settings-grid">
+                <div className="settings-field wide">
+                  <label htmlFor={fieldId("bp-title")}>Title</label>
+                  <input
+                    id={fieldId("bp-title")}
+                    required
+                    autoFocus
+                    maxLength={120}
+                    value={draft.title}
+                    placeholder="Coffee chat"
+                    onChange={(e) => {
+                      set("title", e.target.value);
+                      if (!slugTouched) set("slug", slugify(e.target.value));
+                    }}
+                  />
+                </div>
+                <div className="settings-field wide">
+                  <label htmlFor={fieldId("bp-slug")}>Link</label>
+                  <div className="field-row slug-row">
+                    <span className="slug-prefix" aria-hidden="true">
+                      {bookingLink("")}
+                    </span>
+                    <input
+                      id={fieldId("bp-slug")}
+                      required
+                      minLength={3}
+                      maxLength={60}
+                      pattern="[a-z0-9]+(-[a-z0-9]+)*"
+                      title="Lowercase letters, numbers and single dashes"
+                      value={draft.slug}
+                      aria-describedby={fieldId("bp-slug-hint")}
+                      onChange={(e) => {
+                        setSlugTouched(true);
+                        set("slug", e.target.value.toLowerCase());
+                      }}
+                    />
+                  </div>
+                  <small id={fieldId("bp-slug-hint")} className="field-hint">
+                    Lowercase letters, numbers and single dashes.
+                  </small>
+                </div>
+                <div className="settings-field wide">
+                  <label htmlFor={fieldId("bp-desc")}>Description</label>
+                  <textarea
+                    id={fieldId("bp-desc")}
+                    rows={3}
+                    maxLength={2000}
+                    value={draft.description}
+                    placeholder="What the time is for, and anything to bring."
+                    onChange={(e) => set("description", e.target.value)}
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor={fieldId("bp-location")}>Location</label>
+                  <input
+                    id={fieldId("bp-location")}
+                    maxLength={300}
+                    value={draft.location}
+                    placeholder="Office, a café, a phone call…"
+                    onChange={(e) => set("location", e.target.value)}
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor={fieldId("bp-meeting")}>Meeting link</label>
+                  <input
+                    id={fieldId("bp-meeting")}
+                    type="url"
+                    maxLength={500}
+                    pattern="https?://\S+"
+                    title="Enter a complete http:// or https:// link."
+                    value={draft.meeting_url}
+                    placeholder="https://"
+                    onChange={(e) => set("meeting_url", e.target.value)}
+                  />
+                </div>
+                <label className="switch-line settings-field wide">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    className="ai-switch"
+                    checked={draft.active}
+                    onChange={(e) => set("active", e.target.checked)}
+                  />
+                  <span>
+                    Taking bookings
+                    <small>Turn off to pause this page.</small>
+                  </span>
+                </label>
+                <fieldset className="settings-field wide check-group">
+                  <legend>Co-hosts</legend>
+                  {goneCoHosts.length > 0 && (
+                    <ul className="cohost-list">
+                      {goneCoHosts.map((h) => (
+                        <li key={h.user_id}>
+                          <span className="check-line">
+                            {hostName(h.user_id)}
+                            <small>
+                              No longer in your teams — remove to save changes
+                              to co-hosts.
+                            </small>
+                          </span>
+                          <button
+                            type="button"
+                            className="link-button"
+                            onClick={() =>
                               set(
                                 "co_hosts",
-                                host
-                                  ? draft.co_hosts.filter(
-                                      (h) => h.user_id !== m.user_id,
-                                    )
-                                  : [
-                                      ...draft.co_hosts,
-                                      { user_id: m.user_id, required: true },
-                                    ],
+                                draft.co_hosts.filter(
+                                  (x) => x.user_id !== h.user_id,
+                                ),
                               )
                             }
-                          />
-                          {m.name}
-                          <small>{m.email}</small>
-                        </label>
-                        {host && (
-                          <label className="switch-line compact">
-                            <input
-                              type="checkbox"
-                              role="switch"
-                              className="ai-switch"
-                              checked={host.required}
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {peopleFailed ? (
+                    <div className="field-hint" role="alert">
+                      Couldn't load co-hosts.{" "}
+                      <button
+                        type="button"
+                        className="text-button"
+                        onClick={() => setPeopleVersion((v) => v + 1)}
+                      >
+                        Retry
+                      </button>
+                    </div>
+                  ) : !peopleLoaded ? (
+                    <small className="field-hint" role="status">
+                      Loading co-hosts…
+                    </small>
+                  ) : null}
+                  {!people.length && peopleLoaded ? (
+                    <small className="field-hint">
+                      Join a team to add co-hosts.
+                    </small>
+                  ) : (
+                    <ul className="cohost-list">
+                      {people.map((m) => {
+                        const host = draft.co_hosts.find(
+                          (h) => h.user_id === m.user_id,
+                        );
+                        return (
+                          <li key={m.user_id}>
+                            <label className="check-line">
+                              <input
+                                type="checkbox"
+                                checked={!!host}
+                                disabled={
+                                  !peopleLoaded ||
+                                  (!host && draft.co_hosts.length >= 10)
+                                }
+                                onChange={() =>
+                                  set(
+                                    "co_hosts",
+                                    host
+                                      ? draft.co_hosts.filter(
+                                          (h) => h.user_id !== m.user_id,
+                                        )
+                                      : [
+                                          ...draft.co_hosts,
+                                          {
+                                            user_id: m.user_id,
+                                            required: true,
+                                          },
+                                        ],
+                                  )
+                                }
+                              />
+                              {m.name}
+                              <small>{m.email}</small>
+                            </label>
+                            {host && (
+                              <label className="switch-line compact">
+                                <input
+                                  type="checkbox"
+                                  role="switch"
+                                  className="ai-switch"
+                                  checked={host.required}
+                                  onChange={(e) =>
+                                    set(
+                                      "co_hosts",
+                                      draft.co_hosts.map((h) =>
+                                        h.user_id === m.user_id
+                                          ? { ...h, required: e.target.checked }
+                                          : h,
+                                      ),
+                                    )
+                                  }
+                                />
+                                <span>
+                                  {host.required ? "Must be free" : "Optional"}
+                                </span>
+                              </label>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </fieldset>
+                {(draft.co_hosts.length > 0 || draft.routing.length > 0) && (
+                  <fieldset className="settings-field wide">
+                    <legend>How bookings are shared</legend>
+                    <label className="radio-line">
+                      <input
+                        type="radio"
+                        name={fieldId("assignment")}
+                        checked={draft.assignment === "collective"}
+                        onChange={() => set("assignment", "collective")}
+                      />
+                      <span>
+                        Everyone together
+                        <small>
+                          Required hosts must be free; each gets the booking.
+                        </small>
+                      </span>
+                    </label>
+                    <label className="radio-line">
+                      <input
+                        type="radio"
+                        name={fieldId("assignment")}
+                        checked={draft.assignment === "round_robin"}
+                        onChange={() => set("assignment", "round_robin")}
+                      />
+                      <span>
+                        Round-robin
+                        <small>
+                          Chooses an available host with the fewest bookings.
+                        </small>
+                      </span>
+                    </label>
+                    {((draft.assignment === "round_robin" &&
+                      draft.questions.length > 0) ||
+                      draft.routing.length > 0) && (
+                      <div className="routing-rules">
+                        <span className="settings-label">
+                          Send answers to a host
+                        </span>
+                        {draft.routing.map((rule, n) => (
+                          <div className="routing-rule" key={n}>
+                            <Select
+                              aria-label="Question"
+                              value={rule.question_id}
                               onChange={(e) =>
                                 set(
-                                  "co_hosts",
-                                  draft.co_hosts.map((h) =>
-                                    h.user_id === m.user_id
-                                      ? { ...h, required: e.target.checked }
-                                      : h,
+                                  "routing",
+                                  draft.routing.map((r, i) =>
+                                    i === n
+                                      ? { ...r, question_id: e.target.value }
+                                      : r,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="">Question…</option>
+                              {draft.questions.map((q) => (
+                                <option key={q.key} value={q.key}>
+                                  {q.label}
+                                </option>
+                              ))}
+                            </Select>
+                            <span aria-hidden="true">=</span>
+                            <input
+                              aria-label="Answer"
+                              placeholder="Answer"
+                              maxLength={200}
+                              value={rule.equals}
+                              onChange={(e) =>
+                                set(
+                                  "routing",
+                                  draft.routing.map((r, i) =>
+                                    i === n
+                                      ? { ...r, equals: e.target.value }
+                                      : r,
                                   ),
                                 )
                               }
                             />
-                            <span>
-                              {host.required ? "Must be free" : "Optional"}
-                            </span>
-                          </label>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </fieldset>
-            {draft.co_hosts.length > 0 && (
-              <fieldset className="settings-field wide">
-                <legend>How bookings are shared</legend>
-                <label className="radio-line">
-                  <input
-                    type="radio"
-                    name="assignment"
-                    checked={draft.assignment === "collective"}
-                    onChange={() => set("assignment", "collective")}
-                  />
-                  <span>
-                    Everyone together
-                    <small>
-                      A time is offered only when every required host is free,
-                      and it goes on all their calendars.
-                    </small>
-                  </span>
-                </label>
-                <label className="radio-line">
-                  <input
-                    type="radio"
-                    name="assignment"
-                    checked={draft.assignment === "round_robin"}
-                    onChange={() => set("assignment", "round_robin")}
-                  />
-                  <span>
-                    Round-robin
-                    <small>
-                      A time is offered when any host is free, and each booking
-                      goes to the host with the fewest so far.
-                    </small>
-                  </span>
-                </label>
-                {draft.assignment === "round_robin" &&
-                  draft.questions.length > 0 && (
-                    <div className="routing-rules">
-                      <span className="settings-label">
-                        Send answers to a host
-                      </span>
-                      {draft.routing.map((rule, n) => (
-                        <div className="routing-rule" key={n}>
-                          <Select
-                            aria-label="Question"
-                            value={rule.question_id}
-                            onChange={(e) =>
-                              set(
-                                "routing",
-                                draft.routing.map((r, i) =>
-                                  i === n
-                                    ? { ...r, question_id: e.target.value }
-                                    : r,
-                                ),
-                              )
-                            }
-                          >
-                            <option value="">Question…</option>
-                            {draft.questions.map((q) => (
-                              <option key={q.id} value={q.id}>
-                                {q.label}
-                              </option>
-                            ))}
-                          </Select>
-                          <span aria-hidden="true">=</span>
-                          <input
-                            aria-label="Answer"
-                            placeholder="answer"
-                            value={rule.equals}
-                            onChange={(e) =>
-                              set(
-                                "routing",
-                                draft.routing.map((r, i) =>
-                                  i === n
-                                    ? { ...r, equals: e.target.value }
-                                    : r,
-                                ),
-                              )
-                            }
-                          />
-                          <span aria-hidden="true">→</span>
-                          <Select
-                            aria-label="Host"
-                            value={rule.host_user_id}
-                            onChange={(e) =>
-                              set(
-                                "routing",
-                                draft.routing.map((r, i) =>
-                                  i === n
-                                    ? { ...r, host_user_id: e.target.value }
-                                    : r,
-                                ),
-                              )
-                            }
-                          >
-                            <option value="">Host…</option>
-                            {draft.co_hosts.map((h) => (
-                              <option key={h.user_id} value={h.user_id}>
-                                {hostName(h.user_id)}
-                              </option>
-                            ))}
-                          </Select>
+                            <span aria-hidden="true">→</span>
+                            <Select
+                              aria-label="Host"
+                              value={rule.host_user_id}
+                              onChange={(e) =>
+                                set(
+                                  "routing",
+                                  draft.routing.map((r, i) =>
+                                    i === n
+                                      ? { ...r, host_user_id: e.target.value }
+                                      : r,
+                                  ),
+                                )
+                              }
+                            >
+                              <option value="">Host…</option>
+                              {(page?.owner_id ?? user?.id) && (
+                                <option value={page?.owner_id ?? user?.id}>
+                                  Page owner
+                                </option>
+                              )}
+                              {draft.co_hosts.map((h) => (
+                                <option key={h.user_id} value={h.user_id}>
+                                  {hostName(h.user_id)}
+                                </option>
+                              ))}
+                            </Select>
+                            <button
+                              type="button"
+                              className="icon-button"
+                              aria-label="Remove rule"
+                              onClick={() =>
+                                set(
+                                  "routing",
+                                  draft.routing.filter((_, i) => i !== n),
+                                )
+                              }
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ))}
+                        {draft.routing.length < 20 && (
                           <button
                             type="button"
-                            className="icon-button"
-                            aria-label="Remove rule"
+                            className="secondary"
                             onClick={() =>
-                              set(
-                                "routing",
-                                draft.routing.filter((_, i) => i !== n),
-                              )
+                              set("routing", [
+                                ...draft.routing,
+                                {
+                                  question_id: "",
+                                  equals: "",
+                                  host_user_id: "",
+                                },
+                              ])
                             }
                           >
-                            <X size={14} />
+                            <Plus size={13} /> Add a rule
                           </button>
-                        </div>
-                      ))}
-                      {draft.routing.length < 20 && (
+                        )}
+                      </div>
+                    )}
+                  </fieldset>
+                )}
+              </div>
+            </Section>
+
+            <Section
+              scope={formScope}
+              id="rules"
+              title="Scheduling"
+              value={draft.durations.map(minutesLabel).join(" / ")}
+            >
+              <div className="settings-grid">
+                <fieldset className="settings-field wide check-group">
+                  <legend>Meeting lengths (up to 4)</legend>
+                  <div className="day-toggles">
+                    {lengths.map((m) => {
+                      const on = draft.durations.includes(m);
+                      return (
                         <button
+                          key={m}
                           type="button"
-                          className="secondary"
+                          aria-pressed={on}
+                          className={on ? "active" : ""}
+                          disabled={!on && draft.durations.length >= 4}
                           onClick={() =>
-                            set("routing", [
-                              ...draft.routing,
-                              { question_id: "", equals: "", host_user_id: "" },
-                            ])
+                            set(
+                              "durations",
+                              on
+                                ? draft.durations.filter((x) => x !== m)
+                                : [...draft.durations, m].sort((a, b) => a - b),
+                            )
                           }
                         >
-                          <Plus size={13} /> Add a rule
+                          {minutesLabel(m)}
                         </button>
-                      )}
-                    </div>
-                  )}
-              </fieldset>
-            )}
-          </div>
-        </Section>
-
-        <Section
-          id="rules"
-          title="Scheduling"
-          hint="How long bookings are, how often times start, and how much room to leave around them."
-        >
-          <div className="settings-grid">
-            <fieldset className="settings-field wide check-group">
-              <legend>Lengths people can pick (up to 4)</legend>
-              <div className="day-toggles">
-                {lengths.map((m) => {
-                  const on = draft.durations.includes(m);
-                  return (
-                    <button
-                      key={m}
-                      type="button"
-                      aria-pressed={on}
-                      className={on ? "active" : ""}
-                      disabled={!on && draft.durations.length >= 4}
-                      onClick={() =>
-                        set(
-                          "durations",
-                          on
-                            ? draft.durations.filter((x) => x !== m)
-                            : [...draft.durations, m].sort((a, b) => a - b),
-                        )
-                      }
-                    >
-                      {minutesLabel(m)}
-                    </button>
-                  );
-                })}
-              </div>
-            </fieldset>
-            <div className="settings-field">
-              <label htmlFor="bp-interval">Start times every</label>
-              <Select
-                id="bp-interval"
-                value={draft.slot_interval_minutes}
-                onChange={(e) =>
-                  set("slot_interval_minutes", Number(e.target.value))
-                }
-              >
-                {SLOT_INTERVALS.map((m) => (
-                  <option key={m} value={m}>
-                    {minutesLabel(m)}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="settings-field">
-              <label htmlFor="bp-window">Days ahead to show</label>
-              <input
-                id="bp-window"
-                type="number"
-                min={1}
-                max={90}
-                required
-                value={draft.window_days}
-                onChange={(e) => set("window_days", Number(e.target.value))}
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="bp-notice">Minimum notice (minutes)</label>
-              <input
-                id="bp-notice"
-                type="number"
-                min={0}
-                max={20160}
-                required
-                value={draft.min_notice_minutes}
-                aria-describedby="bp-notice-hint"
-                onChange={(e) =>
-                  set("min_notice_minutes", Number(e.target.value))
-                }
-              />
-              <small id="bp-notice-hint" className="field-hint">
-                {minutesLabel(draft.min_notice_minutes)} before a booking can
-                start.
-              </small>
-            </div>
-            <div className="settings-field">
-              <label htmlFor="bp-buffer-before">Buffer before (min)</label>
-              <input
-                id="bp-buffer-before"
-                type="number"
-                min={0}
-                max={120}
-                required
-                value={draft.buffer_before_minutes}
-                onChange={(e) =>
-                  set("buffer_before_minutes", Number(e.target.value))
-                }
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="bp-buffer-after">Buffer after (min)</label>
-              <input
-                id="bp-buffer-after"
-                type="number"
-                min={0}
-                max={120}
-                required
-                value={draft.buffer_after_minutes}
-                aria-describedby="bp-buffer-hint"
-                onChange={(e) =>
-                  set("buffer_after_minutes", Number(e.target.value))
-                }
-              />
-              <small id="bp-buffer-hint" className="field-hint">
-                Free time kept around each booking.
-              </small>
-            </div>
-            <div className="settings-field">
-              <label htmlFor="bp-max">Most bookings a day</label>
-              <input
-                id="bp-max"
-                type="number"
-                min={1}
-                max={50}
-                placeholder="No limit"
-                value={draft.max_per_day ?? ""}
-                onChange={(e) =>
-                  set("max_per_day", numberOrNull(e.target.value))
-                }
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="bp-max-week">Most bookings a week</label>
-              <input
-                id="bp-max-week"
-                type="number"
-                min={1}
-                max={200}
-                placeholder="No limit"
-                value={draft.max_per_week ?? ""}
-                onChange={(e) =>
-                  set("max_per_week", numberOrNull(e.target.value))
-                }
-              />
-            </div>
-          </div>
-        </Section>
-
-        <Section
-          id="hours"
-          title="Availability"
-          hint="When people can book. Busy time on every host's calendar is always left out."
-        >
-          <div
-            className="segmented hours-mode"
-            role="radiogroup"
-            aria-label="Hours"
-          >
-            <button
-              type="button"
-              role="radio"
-              aria-checked={draft.hours_mode === "working_hours"}
-              className={draft.hours_mode === "working_hours" ? "active" : ""}
-              onClick={() => set("hours_mode", "working_hours")}
-            >
-              Use my working hours
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={draft.hours_mode === "custom"}
-              className={draft.hours_mode === "custom" ? "active" : ""}
-              onClick={() => set("hours_mode", "custom")}
-            >
-              Custom hours
-            </button>
-          </div>
-          {draft.hours_mode === "working_hours" ? (
-            <p className="booking-section-note">
-              Times follow each host's working days and hours from Settings →
-              Planning.
-            </p>
-          ) : (
-            <>
-              <div className="settings-grid">
+                      );
+                    })}
+                  </div>
+                </fieldset>
                 <div className="settings-field">
-                  <label htmlFor="bp-zone">Time zone</label>
+                  <label htmlFor={fieldId("bp-interval")}>
+                    Start times every
+                  </label>
                   <Select
-                    id="bp-zone"
-                    value={draft.timezone}
-                    onChange={(e) => set("timezone", e.target.value)}
+                    id={fieldId("bp-interval")}
+                    value={draft.slot_interval_minutes}
+                    onChange={(e) =>
+                      set("slot_interval_minutes", Number(e.target.value))
+                    }
                   >
-                    {!zones.includes(draft.timezone) && (
-                      <option value={draft.timezone}>{draft.timezone}</option>
-                    )}
-                    {zones.map((z) => (
-                      <option key={z} value={z}>
-                        {z.replaceAll("_", " ")}
+                    {SLOT_INTERVALS.map((m) => (
+                      <option key={m} value={m}>
+                        {minutesLabel(m)}
                       </option>
                     ))}
                   </Select>
                 </div>
-              </div>
-              <div className="hours-week">
-                {WEEK.map((day) => {
-                  const ranges = draft.weekly
-                    .filter((w) => w.day === day)
-                    .map(({ start, end }) => ({ start, end }));
-                  return (
-                    <div key={day} className="hours-day">
-                      <strong>{DAYS[day]}</strong>
-                      <Ranges
-                        label={DAYS[day]}
-                        ranges={ranges}
-                        onChange={(next) => setDay(day, next)}
-                      />
-                      {ranges.length > 0 ? (
-                        <button
-                          type="button"
-                          className="link-button"
-                          title={`Use ${DAYS[day]}'s hours on every day`}
-                          onClick={() => copyToAll(ranges)}
-                        >
-                          <Copy size={12} /> Copy to all days
-                        </button>
-                      ) : (
-                        <span />
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </Section>
-
-        <Section
-          id="dates"
-          title="Date overrides"
-          hint="Different hours for particular dates, like a holiday or a late start."
-        >
-          {draft.date_overrides.length > 0 && (
-            <div className="override-list">
-              {draft.date_overrides.map((o, i) => (
-                <div key={i} className="override-row">
-                  <DateField
-                    type="date"
+                <div className="settings-field">
+                  <label htmlFor={fieldId("bp-window")}>
+                    Days ahead to show
+                  </label>
+                  <input
+                    id={fieldId("bp-window")}
+                    type="number"
+                    min={1}
+                    max={90}
                     required
-                    aria-label="Date"
-                    value={o.date}
+                    value={draft.window_days}
+                    onChange={(e) => set("window_days", Number(e.target.value))}
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor={fieldId("bp-notice")}>
+                    Minimum notice (minutes)
+                  </label>
+                  <input
+                    id={fieldId("bp-notice")}
+                    type="number"
+                    min={0}
+                    max={20160}
+                    required
+                    value={draft.min_notice_minutes}
+                    aria-describedby={fieldId("bp-notice-hint")}
                     onChange={(e) =>
-                      setOverride(i, { ...o, date: e.target.value })
+                      set("min_notice_minutes", Number(e.target.value))
                     }
                   />
-                  <Select
-                    aria-label={`Hours on ${o.date || "this date"}`}
-                    value={o.hours.length ? "custom" : "closed"}
-                    onChange={(e) =>
-                      setOverride(i, {
-                        ...o,
-                        hours:
-                          e.target.value === "closed"
-                            ? []
-                            : [{ start: "09:00", end: "17:00" }],
-                      })
-                    }
-                  >
-                    <option value="closed">Unavailable</option>
-                    <option value="custom">Custom hours</option>
-                  </Select>
-                  {o.hours.length > 0 && (
-                    <Ranges
-                      label={o.date || "This date"}
-                      ranges={o.hours}
-                      onChange={(hours) => setOverride(i, { ...o, hours })}
-                    />
-                  )}
-                  <button
-                    type="button"
-                    className="icon-button"
-                    aria-label={`Remove ${o.date || "this date"}`}
-                    onClick={() =>
-                      set(
-                        "date_overrides",
-                        draft.date_overrides.filter((_, n) => n !== i),
-                      )
-                    }
-                  >
-                    <Trash2 size={14} />
-                  </button>
+                  <small id={fieldId("bp-notice-hint")} className="field-hint">
+                    {minutesLabel(draft.min_notice_minutes)} before a booking
+                    can start.
+                  </small>
                 </div>
-              ))}
-            </div>
-          )}
-          <button
-            type="button"
-            className="secondary"
-            disabled={draft.date_overrides.length >= 100}
-            onClick={addOverride}
-          >
-            <CalendarPlus size={14} /> Add a date
-          </button>
-        </Section>
+                <div className="settings-field">
+                  <label htmlFor={fieldId("bp-buffer-before")}>
+                    Buffer before (min)
+                  </label>
+                  <input
+                    id={fieldId("bp-buffer-before")}
+                    type="number"
+                    min={0}
+                    max={120}
+                    required
+                    value={draft.buffer_before_minutes}
+                    onChange={(e) =>
+                      set("buffer_before_minutes", Number(e.target.value))
+                    }
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor={fieldId("bp-buffer-after")}>
+                    Buffer after (min)
+                  </label>
+                  <input
+                    id={fieldId("bp-buffer-after")}
+                    type="number"
+                    min={0}
+                    max={120}
+                    required
+                    value={draft.buffer_after_minutes}
+                    aria-describedby={fieldId("bp-buffer-hint")}
+                    onChange={(e) =>
+                      set("buffer_after_minutes", Number(e.target.value))
+                    }
+                  />
+                  <small id={fieldId("bp-buffer-hint")} className="field-hint">
+                    Free time kept around each booking.
+                  </small>
+                </div>
+                <div className="settings-field">
+                  <label htmlFor={fieldId("bp-max")}>Most bookings a day</label>
+                  <input
+                    id={fieldId("bp-max")}
+                    type="number"
+                    min={1}
+                    max={50}
+                    placeholder="No limit"
+                    value={draft.max_per_day ?? ""}
+                    onChange={(e) =>
+                      set("max_per_day", numberOrNull(e.target.value))
+                    }
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor={fieldId("bp-max-week")}>
+                    Most bookings a week
+                  </label>
+                  <input
+                    id={fieldId("bp-max-week")}
+                    type="number"
+                    min={1}
+                    max={200}
+                    placeholder="No limit"
+                    value={draft.max_per_week ?? ""}
+                    onChange={(e) =>
+                      set("max_per_week", numberOrNull(e.target.value))
+                    }
+                  />
+                </div>
+              </div>
+            </Section>
 
-        <Section
-          id="form"
-          title="Booking form"
-          hint="Everyone gives their name and email, and can add a note. Ask up to 10 more questions."
-        >
-          {draft.questions.length > 0 && (
-            <ol className="question-list">
-              {draft.questions.map((q, i) => (
-                <li key={q.key} className="question-card">
+            <Section
+              scope={formScope}
+              id="hours"
+              title="Availability"
+              value={
+                draft.hours_mode === "working_hours"
+                  ? "Working hours"
+                  : "Custom hours"
+              }
+              hint="Busy time on host calendars is excluded."
+            >
+              <div
+                className="segmented hours-mode"
+                role="radiogroup"
+                aria-label="Hours"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={draft.hours_mode === "working_hours"}
+                  className={
+                    draft.hours_mode === "working_hours" ? "active" : ""
+                  }
+                  onClick={() => set("hours_mode", "working_hours")}
+                >
+                  Use my working hours
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={draft.hours_mode === "custom"}
+                  className={draft.hours_mode === "custom" ? "active" : ""}
+                  onClick={() => set("hours_mode", "custom")}
+                >
+                  Custom hours
+                </button>
+              </div>
+              {draft.hours_mode === "working_hours" ? (
+                <p className="booking-section-note">
+                  Uses each host’s hours in Settings → Planning.
+                </p>
+              ) : (
+                <>
                   <div className="settings-grid">
-                    <div className="settings-field wide">
-                      <label htmlFor={`bq-${q.key}-label`}>
-                        Question {i + 1}
-                      </label>
-                      <input
-                        id={`bq-${q.key}-label`}
-                        required
-                        maxLength={200}
-                        value={q.label}
-                        placeholder="What would you like to talk about?"
-                        onChange={(e) =>
-                          setQuestion(q.key, { label: e.target.value })
-                        }
-                      />
-                    </div>
                     <div className="settings-field">
-                      <label htmlFor={`bq-${q.key}-type`}>Answer</label>
+                      <label htmlFor={fieldId("bp-zone")}>Time zone</label>
                       <Select
-                        id={`bq-${q.key}-type`}
-                        value={q.type}
-                        onChange={(e) =>
-                          setQuestion(q.key, {
-                            type: e.target.value as QuestionType,
-                          })
-                        }
+                        id={fieldId("bp-zone")}
+                        value={draft.timezone}
+                        onChange={(e) => set("timezone", e.target.value)}
                       >
-                        {QUESTION_TYPES.map((t) => (
-                          <option key={t} value={t}>
-                            {TYPE_LABELS[t]}
+                        {!zones.includes(draft.timezone) && (
+                          <option value={draft.timezone}>
+                            {draft.timezone}
+                          </option>
+                        )}
+                        {zones.map((z) => (
+                          <option key={z} value={z}>
+                            {z.replaceAll("_", " ")}
                           </option>
                         ))}
                       </Select>
                     </div>
-                    <label className="switch-line compact settings-field question-required">
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        className="ai-switch"
-                        checked={q.required}
+                  </div>
+                  <div className="hours-week">
+                    {WEEK.map((day) => {
+                      const ranges = draft.weekly
+                        .filter((w) => w.day === day)
+                        .map(({ start, end }) => ({ start, end }));
+                      return (
+                        <div key={day} className="hours-day">
+                          <strong>{DAYS[day]}</strong>
+                          <Ranges
+                            label={DAYS[day]}
+                            ranges={ranges}
+                            onChange={(next) => setDay(day, next)}
+                          />
+                          {ranges.length > 0 ? (
+                            <button
+                              type="button"
+                              className="link-button"
+                              title={`Use ${DAYS[day]}'s hours on every day`}
+                              onClick={() => copyToAll(ranges)}
+                            >
+                              <Copy size={12} /> Copy to all days
+                            </button>
+                          ) : (
+                            <span />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+            </Section>
+
+            <Section
+              scope={formScope}
+              id="dates"
+              title="Date overrides"
+              value={
+                draft.date_overrides.length
+                  ? `${draft.date_overrides.length} dates`
+                  : "None"
+              }
+              hint="Replace availability for specific dates."
+            >
+              {draft.date_overrides.length > 0 && (
+                <div className="override-list">
+                  {draft.date_overrides.map((o, i) => (
+                    <div key={i} className="override-row">
+                      <DateField
+                        type="date"
+                        required
+                        aria-label="Date"
+                        value={o.date}
                         onChange={(e) =>
-                          setQuestion(q.key, { required: e.target.checked })
+                          setOverride(i, { ...o, date: e.target.value })
                         }
                       />
-                      <span>Required</span>
-                    </label>
-                    {q.type === "choice" && (
-                      <div className="settings-field wide">
-                        <label htmlFor={`bq-${q.key}-options`}>
-                          Options, one per line
-                        </label>
-                        <textarea
-                          id={`bq-${q.key}-options`}
-                          rows={3}
-                          value={q.options.join("\n")}
-                          placeholder={"Intro call\nFollow-up"}
-                          onChange={(e) =>
-                            setQuestion(q.key, {
-                              options: e.target.value.split("\n"),
-                            })
-                          }
+                      <Select
+                        aria-label={`Hours on ${o.date || "this date"}`}
+                        value={o.hours.length ? "custom" : "closed"}
+                        onChange={(e) =>
+                          setOverride(i, {
+                            ...o,
+                            hours:
+                              e.target.value === "closed"
+                                ? []
+                                : [{ start: "09:00", end: "17:00" }],
+                          })
+                        }
+                      >
+                        <option value="closed">Unavailable</option>
+                        <option value="custom">Custom hours</option>
+                      </Select>
+                      {o.hours.length > 0 && (
+                        <Ranges
+                          label={o.date || "This date"}
+                          ranges={o.hours}
+                          onChange={(hours) => setOverride(i, { ...o, hours })}
                         />
-                      </div>
-                    )}
-                  </div>
-                  <div className="question-tools">
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label={`Move question ${i + 1} up`}
-                      disabled={i === 0}
-                      onClick={() => moveQuestion(i, -1)}
-                    >
-                      <ArrowUp size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label={`Move question ${i + 1} down`}
-                      disabled={i === draft.questions.length - 1}
-                      onClick={() => moveQuestion(i, 1)}
-                    >
-                      <ArrowDown size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label={`Remove question ${i + 1}`}
-                      onClick={() =>
-                        set(
-                          "questions",
-                          draft.questions.filter((x) => x.key !== q.key),
-                        )
-                      }
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ol>
-          )}
-          <button
-            type="button"
-            className="secondary"
-            disabled={draft.questions.length >= 10}
-            onClick={addQuestion}
-          >
-            <Plus size={14} /> Add a question
-          </button>
-        </Section>
-
-        <Section id="approval" title="Approval & changes">
-          <div className="booking-switches">
-            <label className="switch-line">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={draft.requires_approval}
-                onChange={(e) => set("requires_approval", e.target.checked)}
-              />
-              <span>
-                Require my approval
-                <small>
-                  New requests wait for you or a co-host to approve them. The
-                  time stays held until then.
-                </small>
-              </span>
-            </label>
-            <label className="switch-line">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={draft.allow_reschedule}
-                onChange={(e) => set("allow_reschedule", e.target.checked)}
-              />
-              <span>
-                Let bookers reschedule
-                <small>
-                  People can move their booking from the link in their email.
-                  They can always cancel.
-                </small>
-              </span>
-            </label>
-          </div>
-          <RemindersField
-            value={draft.remind_before_minutes}
-            onChange={(v) => set("remind_before_minutes", v)}
-          />
-        </Section>
-
-        <Section id="look" title="Look & messages">
-          <div className="settings-grid">
-            <div className="settings-field wide">
-              <span className="settings-label">Accent colour</span>
-              <div className="color-row">
-                <Swatches
-                  value={draft.color}
-                  onChange={(c) => set("color", c)}
-                  label="Accent colour"
-                />
-                <input
-                  type="color"
-                  aria-label="Pick any colour"
-                  value={
-                    isHex(draft.color)
-                      ? draft.color.toLowerCase()
-                      : DEFAULT_COLOR
-                  }
-                  onChange={(e) => set("color", e.target.value)}
-                />
-                <input
-                  className="hex-input"
-                  aria-label="Colour code"
-                  maxLength={7}
-                  pattern="#[0-9a-fA-F]{6}"
-                  title="Colours look like #376c51"
-                  value={draft.color}
-                  onChange={(e) => set("color", e.target.value.trim())}
-                />
-                <span
-                  className="accent-preview booking-accent"
-                  style={accentStyle(draft.color)}
-                  aria-hidden="true"
-                >
-                  <span className="primary">Book this time</span>
-                </span>
-              </div>
-              <small className="field-hint">
-                {lightColour
-                  ? "This colour is light, so buttons use a deeper shade to keep text readable."
-                  : "Used for buttons and highlights on the public page."}
-              </small>
-            </div>
-            <div className="settings-field wide">
-              <label htmlFor="bp-event-title">Event title for hosts</label>
-              <input
-                id="bp-event-title"
-                required
-                maxLength={200}
-                value={draft.event_title}
-                aria-describedby="bp-event-title-hint"
-                onChange={(e) => set("event_title", e.target.value)}
-              />
-              <div className="placeholder-chips">
-                {PLACEHOLDERS.map((p) => (
-                  <button
-                    key={p}
-                    type="button"
-                    className="chip"
-                    aria-label={`Add ${p}`}
-                    disabled={draft.event_title.length + p.length >= 200}
-                    onClick={() =>
-                      set("event_title", `${draft.event_title} ${p}`.trim())
-                    }
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
-              <small id="bp-event-title-hint" className="field-hint">
-                {"{page}"} is this page's title; {"{name}"} and {"{email}"} are
-                the booker's. Preview:{" "}
-                <strong className="title-preview">
-                  {fillTitle(
-                    draft.event_title,
-                    draft.title.trim() || "Coffee chat",
-                    "Sam Lee",
-                    "sam@example.com",
-                  ) || "—"}
-                </strong>
-              </small>
-            </div>
-            <div className="settings-field wide">
-              <label htmlFor="bp-confirm-message">Confirmation message</label>
-              <textarea
-                id="bp-confirm-message"
-                rows={3}
-                maxLength={1000}
-                value={draft.confirmation_message}
-                placeholder="Anything people should know once they're booked."
-                aria-describedby="bp-confirm-hint"
-                onChange={(e) => set("confirmation_message", e.target.value)}
-              />
-              <small id="bp-confirm-hint" className="field-hint">
-                Shown after booking and in the confirmation email.{" "}
-                {draft.confirmation_message.length}/1000
-              </small>
-            </div>
-            {page && (
-              <div className="settings-field wide">
-                <span className="settings-label">Embed on a website</span>
-                <div className="secret-row">
-                  <code className="embed-code">{embedSnippet(page.slug)}</code>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() =>
-                      void copyText(embedSnippet(page.slug)).then(
-                        setEmbedCopied,
-                      )
-                    }
-                  >
-                    <Copy size={13} /> {embedCopied ? "Copied" : "Copy"}
-                  </button>
+                      )}
+                      <button
+                        type="button"
+                        className="icon-button"
+                        aria-label={`Remove ${o.date || "this date"}`}
+                        onClick={() =>
+                          set(
+                            "date_overrides",
+                            draft.date_overrides.filter((_, n) => n !== i),
+                          )
+                        }
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-                <small className="field-hint">
-                  Paste it into your site&apos;s HTML. There the page shows
-                  without Orbyn&apos;s header and footer.
-                </small>
-              </div>
-            )}
-          </div>
-        </Section>
+              )}
+              <button
+                type="button"
+                className="secondary"
+                disabled={draft.date_overrides.length >= 100}
+                onClick={addOverride}
+              >
+                <CalendarPlus size={14} /> Add a date
+              </button>
+            </Section>
 
-        <div className="settings-footer">
-          <button className="primary" disabled={action.pending}>
-            {action.pending ? "Saving…" : page ? "Save page" : "Create page"}
-          </button>
-          <button type="button" className="secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <OutcomeNote outcome={action.outcome} />
-        </div>
-      </form>
-    </section>
+            <Section
+              scope={formScope}
+              id="form"
+              title="Booking form"
+              value={
+                draft.questions.length
+                  ? `${draft.questions.length} questions`
+                  : "Name and email"
+              }
+              hint="Name and email are required. Add up to 10 questions."
+            >
+              {draft.questions.length > 0 && (
+                <ol className="question-list">
+                  {draft.questions.map((q, i) => (
+                    <li key={q.key} className="question-card">
+                      <div className="settings-grid">
+                        <div className="settings-field wide">
+                          <label htmlFor={`${formScope}-bq-${q.key}-label`}>
+                            Question {i + 1}
+                          </label>
+                          <input
+                            id={`${formScope}-bq-${q.key}-label`}
+                            required
+                            maxLength={200}
+                            value={q.label}
+                            placeholder="What would you like to talk about?"
+                            onChange={(e) =>
+                              setQuestion(q.key, { label: e.target.value })
+                            }
+                          />
+                        </div>
+                        <div className="settings-field">
+                          <label htmlFor={`${formScope}-bq-${q.key}-type`}>
+                            Answer
+                          </label>
+                          <Select
+                            id={`${formScope}-bq-${q.key}-type`}
+                            value={q.type}
+                            onChange={(e) =>
+                              setQuestion(q.key, {
+                                type: e.target.value as QuestionType,
+                              })
+                            }
+                          >
+                            {QUESTION_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {TYPE_LABELS[t]}
+                              </option>
+                            ))}
+                          </Select>
+                        </div>
+                        <label className="switch-line compact settings-field question-required">
+                          <input
+                            type="checkbox"
+                            role="switch"
+                            className="ai-switch"
+                            checked={q.required}
+                            onChange={(e) =>
+                              setQuestion(q.key, { required: e.target.checked })
+                            }
+                          />
+                          <span>Required</span>
+                        </label>
+                        {q.type === "choice" && (
+                          <div className="settings-field wide">
+                            <label htmlFor={`${formScope}-bq-${q.key}-options`}>
+                              Options, one per line
+                            </label>
+                            <textarea
+                              id={`${formScope}-bq-${q.key}-options`}
+                              rows={3}
+                              value={q.options.join("\n")}
+                              placeholder={"Intro call\nFollow-up"}
+                              onChange={(e) =>
+                                setQuestion(q.key, {
+                                  options: e.target.value.split("\n"),
+                                })
+                              }
+                            />
+                          </div>
+                        )}
+                      </div>
+                      <div className="question-tools">
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={`Move question ${i + 1} up`}
+                          disabled={i === 0}
+                          onClick={() => moveQuestion(i, -1)}
+                        >
+                          <ArrowUp size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={`Move question ${i + 1} down`}
+                          disabled={i === draft.questions.length - 1}
+                          onClick={() => moveQuestion(i, 1)}
+                        >
+                          <ArrowDown size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-button"
+                          aria-label={`Remove question ${i + 1}`}
+                          onClick={() =>
+                            set(
+                              "questions",
+                              draft.questions.filter((x) => x.key !== q.key),
+                            )
+                          }
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <button
+                type="button"
+                className="secondary"
+                disabled={draft.questions.length >= 10}
+                onClick={addQuestion}
+              >
+                <Plus size={14} /> Add a question
+              </button>
+            </Section>
+
+            <Section
+              scope={formScope}
+              id="approval"
+              title="Approval & changes"
+              value={
+                draft.requires_approval
+                  ? "Approval required"
+                  : "Books immediately"
+              }
+            >
+              <div className="booking-switches">
+                <label className="switch-line">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    className="ai-switch"
+                    checked={draft.requires_approval}
+                    onChange={(e) => set("requires_approval", e.target.checked)}
+                  />
+                  <span>
+                    Require my approval
+                    <small>
+                      Times stay held until you or a co-host approve or decline.
+                    </small>
+                  </span>
+                </label>
+                <label className="switch-line">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    className="ai-switch"
+                    checked={draft.allow_reschedule}
+                    onChange={(e) => set("allow_reschedule", e.target.checked)}
+                  />
+                  <span>
+                    Allow rescheduling
+                    <small>
+                      Bookers can reschedule from their email. Cancellation
+                      remains available.
+                    </small>
+                  </span>
+                </label>
+              </div>
+              <RemindersField
+                disabled={action.pending}
+                value={draft.remind_before_minutes}
+                onChange={(v) => set("remind_before_minutes", v)}
+              />
+            </Section>
+
+            <Section scope={formScope} id="look" title="Look & messages">
+              <div className="settings-grid">
+                <div className="settings-field wide">
+                  <span className="settings-label">Accent colour</span>
+                  <div className="color-row">
+                    <Swatches
+                      value={draft.color}
+                      onChange={(c) => set("color", c)}
+                      label="Accent colour"
+                    />
+                    <input
+                      type="color"
+                      aria-label="Pick any colour"
+                      value={
+                        isHex(draft.color)
+                          ? draft.color.toLowerCase()
+                          : DEFAULT_COLOR
+                      }
+                      onChange={(e) => set("color", e.target.value)}
+                    />
+                    <input
+                      className="hex-input"
+                      aria-label="Colour code"
+                      maxLength={7}
+                      pattern="#[0-9a-fA-F]{6}"
+                      title="Colours look like #376c51"
+                      value={draft.color}
+                      onChange={(e) => set("color", e.target.value.trim())}
+                    />
+                    <span
+                      className="accent-preview booking-accent"
+                      style={accentStyle(draft.color)}
+                      aria-hidden="true"
+                    >
+                      <span className="primary">Book this time</span>
+                    </span>
+                  </div>
+                  <small className="field-hint">
+                    {lightColour
+                      ? "This colour is light, so buttons use a deeper shade to keep text readable."
+                      : "Used for buttons and highlights on the public page."}
+                  </small>
+                </div>
+                <div className="settings-field wide">
+                  <label htmlFor={fieldId("bp-event-title")}>
+                    Event title for hosts
+                  </label>
+                  <input
+                    id={fieldId("bp-event-title")}
+                    required
+                    maxLength={200}
+                    value={draft.event_title}
+                    aria-describedby={fieldId("bp-event-title-hint")}
+                    onChange={(e) => set("event_title", e.target.value)}
+                  />
+                  <details className="booking-field-help">
+                    <summary>Title placeholders</summary>
+                    <p className="field-hint">
+                      {"{page}"}: page title · {"{name}"}: booker's name ·{" "}
+                      {"{email}"}: booker's email
+                    </p>
+                    <div className="placeholder-chips">
+                      {PLACEHOLDERS.map((p) => (
+                        <button
+                          key={p}
+                          type="button"
+                          className="chip"
+                          aria-label={`Add ${p}`}
+                          disabled={draft.event_title.length + p.length >= 200}
+                          onClick={() =>
+                            set(
+                              "event_title",
+                              `${draft.event_title} ${p}`.trim(),
+                            )
+                          }
+                        >
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  </details>
+                  <small
+                    id={fieldId("bp-event-title-hint")}
+                    className="field-hint"
+                  >
+                    Preview:{" "}
+                    <strong className="title-preview">
+                      {fillTitle(
+                        draft.event_title,
+                        draft.title.trim() || "Coffee chat",
+                        "Sam Lee",
+                        "sam@example.com",
+                      ) || "—"}
+                    </strong>
+                  </small>
+                </div>
+                <div className="settings-field wide">
+                  <label htmlFor={fieldId("bp-confirm-message")}>
+                    Confirmation message
+                  </label>
+                  <textarea
+                    id={fieldId("bp-confirm-message")}
+                    rows={3}
+                    maxLength={1000}
+                    value={draft.confirmation_message}
+                    placeholder="Anything people should know once they're booked."
+                    aria-describedby={fieldId("bp-confirm-hint")}
+                    onChange={(e) =>
+                      set("confirmation_message", e.target.value)
+                    }
+                  />
+                  <small id={fieldId("bp-confirm-hint")} className="field-hint">
+                    Shown after booking and in the confirmation email.{" "}
+                    {draft.confirmation_message.length}/1000
+                  </small>
+                </div>
+                {page && (
+                  <details className="settings-field wide booking-field-help">
+                    <summary>Embed on a website</summary>
+                    <div className="secret-row">
+                      <code className="embed-code">
+                        {embedSnippet(page.slug)}
+                      </code>
+                      <button
+                        type="button"
+                        className="secondary"
+                        onClick={() =>
+                          void copyText(embedSnippet(page.slug)).then(
+                            setEmbedCopied,
+                          )
+                        }
+                      >
+                        <Copy size={13} /> {embedCopied ? "Copied" : "Copy"}
+                      </button>
+                    </div>
+                    <small className="field-hint">
+                      Paste into your site's HTML to show the booking page.
+                    </small>
+                  </details>
+                )}
+              </div>
+            </Section>
+          </fieldset>
+          <div className="settings-footer">
+            <button className="primary" disabled={action.pending}>
+              {action.pending ? "Saving…" : page ? "Save page" : "Create page"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={action.pending}
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <OutcomeNote outcome={action.outcome} />
+          </div>
+        </form>
+      </section>
+    </BookingPageEditor>
+  );
+}
+
+function BookingPageEditor({
+  titleId,
+  busy,
+  onClose,
+  children,
+}: {
+  titleId: string;
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const node = focus.ref.current as HTMLDialogElement;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      className="modal booking-page-editor"
+      data-modal-focus={focus.id}
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      {children}
+    </dialog>,
+    document.body,
   );
 }

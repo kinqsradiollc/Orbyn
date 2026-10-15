@@ -21,6 +21,9 @@
 .overnight-head h2,
 .overnight-head h3 {
   margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
 }
 .overnight-head span {
   color: var(--color-muted);
@@ -81,4 +84,19 @@
   .overnight-card {
     padding: 16px;
   }
+}
+
+.overnight > h2,
+.overnight-card > h3 {
+  font-size: 18px;
+  font-weight: 500;
+  margin-top: 0;
+  overflow-wrap: anywhere;
+}
+.overnight-head > div {
+  min-width: 0;
+}
+.overnight-card h4 {
+  font-size: 13px;
+  font-weight: 600;
 }

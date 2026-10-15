@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   atRiskLine,
@@ -12,7 +12,6 @@ import { SmallAction } from "./SmallAction";
 import { client } from "../lib/api";
 import { rangeLabel, slotLabel } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, animateLayout } from "../motion";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -48,23 +47,24 @@ export function ReviewCard({
    */
   showUnfinished?: boolean;
 }) {
+  const request = useRef(0);
+  const mutation = useRef(false);
   const [review, setReview] = useState<PlannerReview | null>(null);
   const [all, setAll] = useState(false);
   const [note, setNote] = useState("");
   const { busy, error, setError, run } = useRun();
 
   const load = useCallback(async () => {
-    try {
-      const next = await client.plannerReview();
-      animateLayout();
-      setReview(next);
-    } catch {
-      // Older servers have no planner; the card simply stays hidden.
-    }
+    const version = ++request.current;
+    const next = await client.plannerReview();
+    if (version === request.current) setReview(next);
   }, []);
 
   useEffect(() => {
-    void load();
+    void load().catch(() => undefined);
+    return () => {
+      request.current++;
+    };
   }, [load, items]);
 
   if (!review) return null;
@@ -74,25 +74,33 @@ export function ReviewCard({
     return null;
   const shownUnfinished = all ? unfinished : unfinished.slice(0, FEW);
 
+  const mutate = async (operation: () => Promise<void>) => {
+    if (mutation.current) return;
+    mutation.current = true;
+    try {
+      await run(operation);
+    } finally {
+      mutation.current = false;
+    }
+  };
   const moveForward = (ids?: string[]) =>
-    void run(async () => {
+    void mutate(async () => {
       onPlan(await client.rollForward(ids));
     });
 
   return (
-    <FadeIn style={shared.card}>
+    <View style={shared.card}>
       <View style={s.head}>
-        <View style={{ flex: 1 }}>
+        <View style={s.flex}>
           <Text style={shared.sectionTitle} accessibilityRole="header">
             Needs a look
           </Text>
-          <Text style={[shared.small, s.hint]}>Keep your plan honest.</Text>
         </View>
         <SmallAction
           label={busy ? "Checking…" : "Refresh"}
           disabled={busy}
           onPress={() =>
-            void run(async () => {
+            void mutate(async () => {
               setNote("");
               await load();
             })
@@ -111,10 +119,8 @@ export function ReviewCard({
           <Text style={shared.label}>Unfinished ({unfinished.length})</Text>
           {shownUnfinished.map((b) => (
             <View key={b.id} style={s.actionRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.title} numberOfLines={1}>
-                  {b.title}
-                </Text>
+              <View style={s.rowText}>
+                <Text style={s.title}>{b.title}</Text>
                 <Text style={shared.small}>
                   {slotLabel(b.start_at, b.end_at)}
                 </Text>
@@ -132,7 +138,6 @@ export function ReviewCard({
                 label={all ? "Show fewer" : `Show all ${unfinished.length}`}
                 disabled={false}
                 onPress={() => {
-                  animateLayout();
                   setAll(!all);
                 }}
               />
@@ -154,10 +159,8 @@ export function ReviewCard({
           <Text style={shared.label}>Clashes ({conflicts.length})</Text>
           {conflicts.map(({ block, entry }) => (
             <View key={block.id} style={s.actionRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.title} numberOfLines={1}>
-                  {block.title}
-                </Text>
+              <View style={s.rowText}>
+                <Text style={s.title}>{block.title}</Text>
                 <Text style={shared.small}>
                   {slotLabel(block.start_at, block.end_at)} overlaps{" "}
                   {entry.title}
@@ -170,7 +173,7 @@ export function ReviewCard({
                 label="Reschedule"
                 disabled={busy}
                 onPress={() =>
-                  void run(async () => {
+                  void mutate(async () => {
                     const moved = await client.rescheduleBlock(block.id);
                     setNote(
                       `${block.title} moved to ${slotLabel(moved.start_at, moved.end_at)}.`,
@@ -189,22 +192,21 @@ export function ReviewCard({
           <Text style={shared.label}>At risk ({at_risk.length})</Text>
           {at_risk.map((t) => (
             <View key={t.item_id} style={s.row}>
-              <Text style={s.title} numberOfLines={1}>
-                {t.title}
-              </Text>
+              <Text style={s.title}>{t.title}</Text>
               <Text style={shared.small}>{riskLine(t)}</Text>
             </View>
           ))}
         </View>
       )}
-    </FadeIn>
+    </View>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
     head: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-    hint: { marginTop: 2, marginBottom: 12 },
+    flex: { flex: 1, minWidth: 0 },
+    rowText: { flexGrow: 1, flexBasis: 160, minWidth: 0 },
     note: {
       fontFamily: fonts.semibold,
       fontSize: 13,
@@ -215,12 +217,13 @@ const s = themed(() =>
     row: { paddingVertical: 6 },
     actionRow: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 10,
       paddingVertical: 6,
     },
     more: { flexDirection: "row", marginTop: 4 },
-    title: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    title: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
     button: { marginTop: 8, marginBottom: 0 },
   }),
 );

@@ -51,9 +51,12 @@ export function SchedulePanel({ items, onSchedule }: Props) {
           Tasks to place <span>{open.length}</span>
         </h2>
       </div>
-      <p className="panel-hint">
-        Drag a task onto the calendar to plan a session, or choose Schedule.
-      </p>
+      <details className="schedule-help">
+        <summary>Placing tasks</summary>
+        <p className="panel-hint">
+          Choose Schedule or drag a task onto the calendar.
+        </p>
+      </details>
       {shown.length ? (
         <ul className="schedule-list">
           {shown.map((i) => (
@@ -77,6 +80,7 @@ export function SchedulePanel({ items, onSchedule }: Props) {
                 className="icon-button"
                 aria-label={`Schedule ${i.title}`}
                 title="Schedule…"
+                aria-haspopup="dialog"
                 onClick={() => onSchedule(i)}
               >
                 <CalendarPlus size={15} />
@@ -85,9 +89,7 @@ export function SchedulePanel({ items, onSchedule }: Props) {
           ))}
         </ul>
       ) : (
-        <p className="panel-hint">
-          Nothing left to place: every open task has its time planned.
-        </p>
+        <p className="panel-hint">No tasks need more planned time.</p>
       )}
       {open.length > SHOWN && (
         <button className="text-button panel-more" onClick={() => setAll(!all)}>

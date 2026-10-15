@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Archive,
   Bell,
@@ -39,12 +40,17 @@ import {
   LOOK_ICON_LABELS,
   LOOK_ICON_NAMES,
   pageFileType,
+  pageFileInput,
   parseLookIcon,
   type CoverPicture,
   type Look,
   type LookIconName,
 } from "@orbyn/core";
 import { client } from "../lib/api";
+import { session } from "../lib/session";
+import { errorText } from "../lib/planning";
+import { useModalFocus } from "../hooks/useModalFocus";
+import { useConfirm } from "./Confirm";
 import {
   fileLink,
   isPicture,
@@ -122,22 +128,30 @@ export function LookIcon({
 export function useCoverUrl(
   fileId: string | null | undefined,
 ): string | null | "gone" {
-  const [url, setUrl] = useState<string | null | "gone">(null);
+  const owner = session.get();
+  const [result, setResult] = useState<{
+    owner: string | null;
+    id: string;
+    url: string | "gone";
+  } | null>(null);
   useEffect(() => {
-    if (!fileId) {
-      setUrl(null);
-      return;
-    }
-    let live = true;
+    if (!fileId) return;
+    let alive = true;
     fileLink(fileId).then(
-      (l) => live && setUrl(l.url),
-      () => live && setUrl("gone"),
+      (link) => {
+        if (alive && session.get() === owner)
+          setResult({ owner, id: fileId, url: link.url });
+      },
+      () => {
+        if (alive && session.get() === owner)
+          setResult({ owner, id: fileId, url: "gone" });
+      },
     );
     return () => {
-      live = false;
+      alive = false;
     };
-  }, [fileId]);
-  return url;
+  }, [fileId, owner]);
+  return result?.owner === owner && result.id === fileId ? result.url : null;
 }
 
 /** A cover across the top of a header or card; nothing without one. */
@@ -166,67 +180,149 @@ function Thumb({ picture }: { picture: CoverPicture }) {
   );
 }
 
-/**
- * Change a cover and icon: pick an emoji or one of the app's icons, and
- * upload a picture (onto `uploadTo`, a page, when there is one) or choose
- * one of yours. Nothing is saved until "Save".
- */
-export function LookDialog({
+type LookDialogProps = {
+  title: string;
+  scope?: string;
+  look: Look;
+  /** Uploads are stored on this page immediately; appearance is applied on Save. */
+  uploadTo?: string | null;
+  onSave: (look: Look) => Promise<void> | void;
+  onClose: () => void;
+  report: (error: unknown) => void;
+};
+export function LookDialog(props: LookDialogProps) {
+  return (
+    <LookDialogBody
+      key={`${session.get()}:${props.scope ?? props.uploadTo ?? props.title}`}
+      {...props}
+    />
+  );
+}
+function LookDialogBody({
   title,
   look,
   uploadTo,
   onSave,
   onClose,
   report,
-}: {
-  title: string;
-  look: Look;
-  /** The page a new picture is added to; without one, pick from yours. */
-  uploadTo?: string | null;
-  onSave: (look: Look) => Promise<void> | void;
-  onClose: () => void;
-  report: (e: unknown) => void;
-}) {
-  const [icon, setIcon] = useState<string | null>(look.icon);
-  const [cover, setCover] = useState<string | null>(look.cover_file_id);
+}: LookDialogProps) {
+  const owner = useRef(session.get()).current;
+  const mounted = useRef(true),
+    operation = useRef(false),
+    closing = useRef(false),
+    read = useRef(0);
+  const owns = () => mounted.current && session.get() === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      read.current++;
+    };
+  }, []);
+  const { ask } = useConfirm();
+  const titleId = useId();
+  const initial = useRef(look).current;
+  const [category, setCategory] = useState<"emoji" | "icons" | "custom">(
+    look.icon?.startsWith("icon:") ? "icons" : "emoji",
+  );
+  const [phase, setPhase] = useState<"upload" | "save" | null>(null);
+  const [confirming, setConfirming] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const [pictureError, setPictureError] = useState("");
+  const [query, setQuery] = useState("");
+  const [icon, setIcon] = useState(look.icon);
+  const [cover, setCover] = useState(look.cover_file_id);
   const [typed, setTyped] = useState("");
   const [pictures, setPictures] = useState<CoverPicture[] | null>(null);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState("");
-
   useEffect(() => {
-    client.myPictures().then(setPictures, () => setPictures([]));
-  }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      if (document.querySelector(".popover")) return;
-      onClose();
+    let alive = true;
+    const request = ++read.current;
+    setPictureError("");
+    client.myPictures().then(
+      (pictures) => {
+        if (alive && owns() && request === read.current) setPictures(pictures);
+      },
+      (e) => {
+        if (alive && owns() && request === read.current)
+          setPictureError(errorText(e));
+      },
+    );
+    return () => {
+      alive = false;
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
+  }, [readAttempt]);
+  const close = async () => {
+    if (!owns() || operation.current || closing.current) return;
+    closing.current = true;
+    setConfirming(true);
+    try {
+      if (
+        (icon === initial.icon &&
+          cover === initial.cover_file_id &&
+          !typed.trim()) ||
+        (await ask({
+          title: "Discard appearance changes?",
+          body: "Uploaded pictures stay in the page's file library.",
+          confirmLabel: "Discard changes",
+          destructive: true,
+        }))
+      ) {
+        if (owns() && !operation.current) onClose();
+      }
+    } finally {
+      closing.current = false;
+      if (owns()) setConfirming(false);
+    }
+  };
+  const focus = useModalFocus(() => void close(), busy || confirming);
+  useEffect(() => {
+    const dialog = focus.ref.current as HTMLDialogElement | null;
+    dialog?.showModal();
+    return () => dialog?.close();
+  }, []);
   const upload = async (file: File) => {
-    if (!uploadTo) return;
+    if (!uploadTo || !owns() || operation.current || closing.current) return;
     if (!isPicture(file) || !pageFileType(file.name, file.type)) {
-      setNote("Covers are pictures: PNG, JPEG, GIF or WebP.");
+      setError("Choose a PNG, JPEG, GIF or WebP picture.");
       return;
     }
+    if (
+      !pageFileInput.safeParse({
+        name: file.name,
+        bytes: file.size,
+        mime: file.type,
+      }).success
+    ) {
+      setError("Choose a picture under 200 MB with a valid file name.");
+      return;
+    }
+    operation.current = true;
+    read.current++;
+    setPhase("upload");
     setBusy(true);
-    setNote("Adding the picture…");
+    setError("");
     try {
       const body = await scaledPicture(file, 2000);
-      const made = await client.createPageFile(uploadTo, {
-        name: file.name.slice(0, 300) || "Cover",
+      if (!owns()) return;
+      const metadata = pageFileInput.safeParse({
+        name: file.name,
         bytes: body.blob.size,
         mime: body.type,
         width: body.width,
         height: body.height,
       });
+      if (!metadata.success)
+        throw new Error(
+          "This picture cannot be uploaded. Choose another image.",
+        );
+      const made = await client.createPageFile(uploadTo, metadata.data);
+      if (!owns()) return;
       await client.uploadPageFile(made.upload_path, body.blob, body.type);
+      if (!owns()) return;
       setCover(made.file.id);
-      setPictures((p) => [
+      setPictures((all) => [
         {
           id: made.file.id,
           name: made.file.name,
@@ -236,203 +332,316 @@ export function LookDialog({
           height: body.height,
           created_at: made.file.created_at,
         },
-        ...(p ?? []),
+        ...(all ?? []).filter((p) => p.id !== made.file.id),
       ]);
-      setNote("");
+      setReadAttempt((n) => n + 1);
     } catch (e) {
-      setNote("");
-      report(e);
+      if (owns()) {
+        setError(errorText(e));
+        report(e);
+      }
     } finally {
-      setBusy(false);
+      operation.current = false;
+      if (owns()) {
+        setBusy(false);
+        setPhase(null);
+      }
     }
   };
-
   const save = async () => {
+    if (!owns() || operation.current || closing.current) return;
+    if (category !== "custom" && typed.trim()) {
+      setCategory("custom");
+      setError("Use or clear the custom emoji before saving.");
+      return;
+    }
+    const custom = category === "custom" ? typed.trim() : "";
+    if (custom && !isEmoji(custom)) {
+      setError("Type or paste one emoji.");
+      return;
+    }
+    operation.current = true;
     setBusy(true);
+    setPhase("save");
+    setError("");
     try {
-      await onSave({ icon, cover_file_id: cover });
-      onClose();
+      await onSave({ icon: custom || icon, cover_file_id: cover });
+      if (owns()) onClose();
     } catch (e) {
-      report(e);
+      if (owns()) {
+        setError(errorText(e));
+        report(e);
+      }
     } finally {
-      setBusy(false);
+      operation.current = false;
+      if (owns()) {
+        setBusy(false);
+        setPhase(null);
+      }
     }
   };
-
-  const takeTyped = () => {
-    const t = typed.trim();
-    if (!t) return;
-    if (isEmoji(t)) {
-      setIcon(t);
-      setTyped("");
-      setNote("");
-    } else setNote("That isn't an emoji. Type or paste one emoji.");
-  };
-
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+  const preview =
+    category === "custom" && isEmoji(typed.trim()) ? typed.trim() : icon;
+  const offered = (pictures ?? []).filter((p) =>
+    `${p.name} ${p.doc_title ?? ""}`
+      .toLowerCase()
+      .includes(query.trim().toLowerCase()),
+  );
+  return createPortal(
+    <dialog
+      ref={focus.ref as React.RefObject<HTMLDialogElement>}
+      data-modal-focus={focus.id}
+      tabIndex={-1}
+      className="modal look-dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        void close();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) void close();
+      }}
     >
-      <section
-        className="modal look-dialog scale-in"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="look-dialog-title"
-      >
-        <div className="section-heading">
-          <h2 id="look-dialog-title">{title}</h2>
-          <button className="icon-button" aria-label="Close" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </div>
-        <div className="modal-body look-body">
+      <div className="section-heading">
+        <h2 id={titleId}>Appearance</h2>
+        <span className="look-context">{title}</span>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Close appearance"
+          disabled={busy || confirming}
+          onClick={() => void close()}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <div className="modal-body look-body">
+        <fieldset className="plain-fieldset" disabled={busy || confirming}>
           <div className="look-preview">
             <Cover fileId={cover} className="look-preview-cover" />
             <span className="look-preview-icon">
-              {icon ? (
-                <LookIcon icon={icon} size={24} />
+              {preview ? (
+                <LookIcon icon={preview} size={24} />
               ) : (
                 <small className="muted">No icon</small>
               )}
             </span>
           </div>
-
           <h3 className="look-heading">Icon</h3>
-          <div className="look-grid" role="group" aria-label="Emoji">
-            {LOOK_EMOJI.map((e) => (
+          <div
+            className="segmented look-categories"
+            role="group"
+            aria-label="Icon type"
+          >
+            {(["emoji", "icons", "custom"] as const).map((value) => (
               <button
-                key={e}
+                key={value}
                 type="button"
-                className={"look-choice" + (icon === e ? " is-on" : "")}
-                aria-pressed={icon === e}
-                aria-label={`Emoji ${e}`}
-                onClick={() => setIcon(e)}
+                aria-pressed={category === value}
+                className={category === value ? "active" : ""}
+                onClick={() => {
+                  setCategory(value);
+                  setError("");
+                }}
               >
-                <span className="look-emoji">{e}</span>
+                {value === "emoji"
+                  ? "Emoji"
+                  : value === "icons"
+                    ? "Icons"
+                    : "Custom"}
               </button>
             ))}
           </div>
-          <div className="look-grid" role="group" aria-label="The app's icons">
-            {LOOK_ICON_NAMES.map((n) => {
-              const value = `icon:${n}`;
-              return (
+          {category === "emoji" && (
+            <div className="look-grid" role="group" aria-label="Emoji">
+              {LOOK_EMOJI.map((value) => (
                 <button
-                  key={n}
+                  key={value}
                   type="button"
-                  className={"look-choice" + (icon === value ? " is-on" : "")}
+                  className={`look-choice ${icon === value ? "is-on" : ""}`}
                   aria-pressed={icon === value}
-                  aria-label={LOOK_ICON_LABELS[n]}
-                  title={LOOK_ICON_LABELS[n]}
-                  onClick={() => setIcon(value)}
+                  aria-label={`Emoji ${value}`}
+                  onClick={() => {
+                    setIcon(value);
+                    setError("");
+                  }}
                 >
-                  <LookIcon icon={value} size={17} />
-                </button>
-              );
-            })}
-          </div>
-          <div className="look-typed">
-            <input
-              aria-label="Another emoji"
-              placeholder="Another emoji…"
-              maxLength={16}
-              value={typed}
-              onChange={(e) => setTyped(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  takeTyped();
-                }
-              }}
-            />
-            <button type="button" className="secondary" onClick={takeTyped}>
-              Use it
-            </button>
-            {icon && (
-              <button
-                type="button"
-                className="text-button"
-                onClick={() => setIcon(null)}
-              >
-                No icon
-              </button>
-            )}
-          </div>
-
-          <h3 className="look-heading">Cover</h3>
-          {!uploadTo && (
-            <p className="muted">
-              Choose one of your pictures. To use a new one, add it to any page
-              first.
-            </p>
-          )}
-          {uploadTo && (
-            <FilePicker
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              label="Upload a picture"
-              hint="PNG, JPEG, GIF or WebP"
-              disabled={busy}
-              onFile={(f) => void upload(f)}
-            />
-          )}
-          {pictures === null ? (
-            <p className="muted">Loading your pictures…</p>
-          ) : pictures.length ? (
-            <div
-              className="look-pictures"
-              role="group"
-              aria-label="Your pictures"
-            >
-              {pictures.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  className={"look-picture" + (cover === p.id ? " is-on" : "")}
-                  aria-pressed={cover === p.id}
-                  aria-label={`${p.name}${p.doc_title ? `, from ${p.doc_title}` : ""}`}
-                  title={p.doc_title ? `From ${p.doc_title}` : p.name}
-                  onClick={() => setCover(p.id)}
-                >
-                  <Thumb picture={p} />
+                  <span className="look-emoji">{value}</span>
                 </button>
               ))}
             </div>
+          )}
+          {category === "icons" && (
+            <div className="look-grid" role="group" aria-label="Icons">
+              {LOOK_ICON_NAMES.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  className={`look-choice ${icon === `icon:${name}` ? "is-on" : ""}`}
+                  aria-pressed={icon === `icon:${name}`}
+                  aria-label={LOOK_ICON_LABELS[name]}
+                  title={LOOK_ICON_LABELS[name]}
+                  onClick={() => {
+                    setIcon(`icon:${name}`);
+                    setError("");
+                  }}
+                >
+                  <LookIcon icon={`icon:${name}`} size={17} />
+                </button>
+              ))}
+            </div>
+          )}
+          {category === "custom" && (
+            <div className="look-typed">
+              <input
+                aria-label="Custom emoji"
+                placeholder="One emoji"
+                maxLength={16}
+                value={typed}
+                onChange={(event) => {
+                  setTyped(event.target.value);
+                  setError("");
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                    event.preventDefault();
+                    void save();
+                  }
+                }}
+              />
+            </div>
+          )}
+          <h3 className="look-heading">Cover</h3>
+          {uploadTo ? (
+            <>
+              <FilePicker
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                label="Upload picture"
+                hint="PNG, JPEG, GIF or WebP"
+                disabled={busy}
+                onFile={(file) => void upload(file)}
+              />
+              <small className="field-hint">
+                Uploaded pictures stay in this page's file library.
+              </small>
+            </>
           ) : (
             <p className="muted">
-              {uploadTo
-                ? "No pictures yet. Upload one above."
-                : "No pictures yet."}
+              Choose a stored picture, or add one to a page first.
             </p>
           )}
-          {cover && (
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => setCover(null)}
-            >
-              No cover
-            </button>
+          <details className="look-library">
+            <summary>Stored pictures</summary>
+            <input
+              aria-label="Find a picture"
+              placeholder="Find a picture"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+            {!!pictureError && (
+              <div className="error" role="alert">
+                {pictureError}
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setReadAttempt((n) => n + 1)}
+                >
+                  Retry pictures
+                </button>
+              </div>
+            )}
+            {pictures === null && !pictureError ? (
+              <p className="muted">Loading pictures…</p>
+            ) : offered.length ? (
+              <div
+                className="look-pictures"
+                role="group"
+                aria-label="Stored pictures"
+              >
+                {offered.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className={`look-picture ${cover === p.id ? "is-on" : ""}`}
+                    aria-pressed={cover === p.id}
+                    aria-label={`${p.name}${p.doc_title ? `, from ${p.doc_title}` : ""}`}
+                    onClick={() => setCover(p.id)}
+                  >
+                    <Thumb picture={p} />
+                    <span className="look-picture-caption">
+                      {p.name}
+                      {p.doc_title && <small>{p.doc_title}</small>}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              !pictureError && (
+                <p className="muted">
+                  {query.trim() ? "No matching pictures." : "No pictures yet."}
+                </p>
+              )
+            )}
+          </details>
+          {(icon || typed || cover) && (
+            <details className="look-removals">
+              <summary>Remove appearance</summary>
+              <div className="look-reset">
+                {(icon || typed) && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => {
+                      setIcon(null);
+                      setTyped("");
+                    }}
+                  >
+                    Remove icon
+                  </button>
+                )}
+                {cover && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setCover(null)}
+                  >
+                    Remove cover
+                  </button>
+                )}
+              </div>
+            </details>
           )}
-          {note && (
-            <p className="muted" role="status">
-              {note}
-            </p>
-          )}
-          <div className="button-row">
-            <button type="button" className="secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={busy}
-              onClick={() => void save()}
-            >
-              Save
-            </button>
-          </div>
+        </fieldset>
+        {!!error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+        <div className="button-row">
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy || confirming}
+            onClick={() => void close()}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={busy || confirming}
+            onClick={() => void save()}
+          >
+            {phase === "upload"
+              ? "Uploading…"
+              : phase === "save"
+                ? "Saving…"
+                : "Save"}
+          </button>
         </div>
-      </section>
-    </div>
+      </div>
+    </dialog>,
+    document.body,
   );
 }

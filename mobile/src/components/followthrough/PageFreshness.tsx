@@ -1,18 +1,21 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { ageLabel, pageFreshness, type Doc } from "@orbyn/core";
 import { SmallAction } from "../SmallAction";
 import { client } from "../../lib/api";
-import { animateLayout } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import { errorText } from "../../lib/errors";
+
+export function PageFreshness(props: Parameters<typeof PageFreshnessBody>[0]) {
+  return <PageFreshnessBody key={props.doc.id} {...props} />;
+}
 
 /**
  * A page nobody has changed or confirmed in months may not be true any
  * more. Say it still is, or that it needs updating (its author gets a task).
  */
-export function PageFreshness({
+function PageFreshnessBody({
   doc,
   canWrite,
   always = false,
@@ -25,6 +28,8 @@ export function PageFreshness({
    */
   always?: boolean;
 }) {
+  const mutation = useRef(false);
+  const [busy, setBusy] = useState(false);
   const [reviewed, setReviewed] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState("");
@@ -42,20 +47,25 @@ export function PageFreshness({
     input:
       { verdict: "still_true" } | { verdict: "needs_update"; note: string },
   ) => {
+    if (mutation.current || !canWrite) return;
+    mutation.current = true;
+    setBusy(true);
     setError("");
     try {
       const r = await client.reviewDoc(doc.id, input);
-      animateLayout();
       setReviewed(r.reviewed_at);
       setDone(
         input.verdict === "still_true"
-          ? "Thanks — marked as still true."
+          ? "Confirmed up to date."
           : r.task?.assignee_name
-            ? `A task to update it went to ${r.task.assignee_name}.`
-            : "A task to update it is on the list.",
+            ? `Update assigned to ${r.task.assignee_name}.`
+            : "Update task created.",
       );
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      mutation.current = false;
+      setBusy(false);
     }
   };
   return (
@@ -71,14 +81,13 @@ export function PageFreshness({
         <View style={s.actions}>
           <SmallAction
             label="Still true"
-            disabled={false}
+            disabled={busy}
             onPress={() => void review({ verdict: "still_true" })}
           />
           <SmallAction
             label="Needs update"
-            disabled={false}
+            disabled={busy}
             onPress={() => {
-              animateLayout();
               setAsking(true);
             }}
           />
@@ -88,6 +97,7 @@ export function PageFreshness({
         <View style={s.form}>
           <TextInput
             style={shared.input}
+            editable={!busy}
             value={note}
             onChangeText={setNote}
             maxLength={1000}
@@ -98,20 +108,24 @@ export function PageFreshness({
           <View style={s.actions}>
             <SmallAction
               label="Make a task"
-              disabled={false}
+              disabled={busy}
               onPress={() =>
                 void review({ verdict: "needs_update", note: note.trim() })
               }
             />
             <SmallAction
               label="Cancel"
-              disabled={false}
+              disabled={busy}
               onPress={() => setAsking(false)}
             />
           </View>
         </View>
       )}
-      {!!error && <Text style={[shared.small, s.staleText]}>{error}</Text>}
+      {!!error && (
+        <Text accessibilityRole="alert" style={[shared.small, s.staleText]}>
+          {error}
+        </Text>
+      )}
     </View>
   );
 }

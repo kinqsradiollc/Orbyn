@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Inbox,
   AlertTriangle,
@@ -28,7 +28,6 @@ import {
   type PageMention,
 } from "@orbyn/core";
 import { EmptyState } from "../../components/EmptyState";
-import { stagger } from "../../lib/motion";
 import { client } from "../../lib/api";
 import { CONCEPT_ICON } from "../../app/concept-icons";
 import { onLive } from "../../lib/live";
@@ -95,13 +94,38 @@ function AgentQuestions() {
   const [list, setList] = useState<AgentQuestion[]>([]);
   const [pending, setPending] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const [version, setVersion] = useState(0);
+  const answering = useRef(false);
   useEffect(() => {
-    const load = () => client.agentQuestions().then(setList, () => {});
+    let alive = true;
+    let latest = 0;
+    const load = async () => {
+      const serial = ++latest;
+      try {
+        const next = await client.agentQuestions();
+        if (alive && serial === latest) {
+          setList(next);
+          setLoadError("");
+        }
+      } catch (error) {
+        if (alive && serial === latest)
+          setLoadError(
+            error instanceof Error ? error.message : "Couldn't load questions.",
+          );
+      }
+    };
     void load();
-    return onLive((news) => news.kind === "changed" && void load());
-  }, []);
-  if (!list.length) return null;
+    const stop = onLive((news) => news.kind === "changed" && void load());
+    return () => {
+      alive = false;
+      stop();
+    };
+  }, [version]);
+  if (!list.length && !loadError && !error) return null;
   const answer = (q: AgentQuestion, choice: string) => {
+    if (answering.current) return;
+    answering.current = true;
     setPending(q.id);
     setError(null);
     client
@@ -110,13 +134,28 @@ function AgentQuestions() {
         () => setList((all) => all.filter((x) => x.id !== q.id)),
         (e: Error) => setError(e.message),
       )
-      .finally(() => setPending(null));
+      .finally(() => {
+        answering.current = false;
+        setPending(null);
+      });
   };
   return (
     <section className="card agent-questions" aria-labelledby="agent-questions">
       <h2 id="agent-questions">
         <MessageCircleQuestion size={16} aria-hidden="true" /> Your agents ask
       </h2>
+      {loadError && (
+        <div className="error" role="alert">
+          {loadError}
+          <button
+            className="text-button"
+            type="button"
+            onClick={() => setVersion((n) => n + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <ul>
         {list.map((q) => (
           <li key={q.id}>
@@ -140,7 +179,7 @@ function AgentQuestions() {
                   key={c}
                   type="button"
                   className="secondary"
-                  disabled={pending === q.id}
+                  disabled={pending !== null}
                   onClick={() => answer(q, c)}
                 >
                   {c}
@@ -165,17 +204,45 @@ function AgentQuestions() {
  */
 function MentionedIn({ onOpenDoc }: { onOpenDoc?: (docId: string) => void }) {
   const [list, setList] = useState<PageMention[] | null>(null);
+  const [error, setError] = useState("");
+  const [version, setVersion] = useState(0);
+  const [showAll, setShowAll] = useState(false);
   useEffect(() => {
-    client.mentions(20).then(setList, () => setList([]));
-  }, []);
-  if (!list?.length) return null;
+    let alive = true;
+    setError("");
+    client.mentions(20).then(
+      (next) => {
+        if (alive) setList(next);
+      },
+      (e) => {
+        if (alive)
+          setError(e instanceof Error ? e.message : "Couldn't load mentions.");
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [version]);
+  if (!list?.length && !error) return null;
   return (
     <section className="card mentioned-in" aria-labelledby="mentioned-in">
       <h2 id="mentioned-in">
         <AtSign size={16} aria-hidden="true" /> Mentioned in
       </h2>
+      {error && (
+        <div className="error" role="alert">
+          {error}
+          <button
+            className="text-button"
+            type="button"
+            onClick={() => setVersion((n) => n + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      )}
       <ul>
-        {list.slice(0, 6).map((m) => (
+        {(list ?? []).slice(0, showAll ? undefined : 6).map((m) => (
           <li key={`${m.doc_id}:${m.block_id}`}>
             <button
               type="button"
@@ -193,6 +260,16 @@ function MentionedIn({ onOpenDoc }: { onOpenDoc?: (docId: string) => void }) {
           </li>
         ))}
       </ul>
+      {(list?.length ?? 0) > 6 && (
+        <button
+          className="text-button"
+          type="button"
+          aria-expanded={showAll}
+          onClick={() => setShowAll(!showAll)}
+        >
+          {showAll ? "Show fewer" : "More mentions"}
+        </button>
+      )}
     </section>
   );
 }
@@ -216,12 +293,17 @@ export function NotificationsView({
   onOpenOvernight,
 }: Props) {
   const [pending, setPending] = useState<string | null>(null);
+  const running = useRef(false);
+  const [actionError, setActionError] = useState<{
+    id: string;
+    text: string;
+  } | null>(null);
   return (
     <>
       <AgentQuestions />
       <MentionedIn onOpenDoc={onOpenDoc} />
       <section className="card">
-        {notices.map((n, index) => {
+        {notices.map((n) => {
           const Icon = ICONS[n.kind ?? "reminder"] ?? Bell;
           // Booking notices point at a booking (`ref`), not an item.
           const bookingId = n.kind === "booking" ? n.ref : undefined;
@@ -243,16 +325,31 @@ export function NotificationsView({
           };
           /** Runs a notice's action once, marking it read. */
           const act = (fn: () => Promise<void>) => {
+            if (running.current) return;
+            running.current = true;
             setPending(n.id);
-            if (!n.read) onRead(n);
-            void fn().finally(() => setPending(null));
+            setActionError(null);
+            void Promise.resolve()
+              .then(fn)
+              .then(() => {
+                if (!n.read) onRead(n);
+              })
+              .catch((error) =>
+                setActionError({
+                  id: n.id,
+                  text:
+                    error instanceof Error
+                      ? error.message
+                      : "Couldn't complete this action. Try again.",
+                }),
+              )
+              .finally(() => {
+                running.current = false;
+                setPending(null);
+              });
           };
           return (
-            <div
-              className={"notice fade-up stagger " + (n.read ? "read" : "")}
-              style={stagger(index)}
-              key={n.id}
-            >
+            <div className={"notice " + (n.read ? "read" : "")} key={n.id}>
               <button
                 className="notice-main"
                 onClick={() =>
@@ -285,11 +382,8 @@ export function NotificationsView({
               {n.kind === "conflict" && n.ref && !n.read && (
                 <button
                   className="secondary notice-action"
-                  disabled={pending === n.id}
-                  onClick={() => {
-                    setPending(n.id);
-                    void onReschedule(n).finally(() => setPending(null));
-                  }}
+                  disabled={pending !== null}
+                  onClick={() => act(() => onReschedule(n))}
                 >
                   <CalendarClock size={14} />{" "}
                   {pending === n.id ? "Moving…" : "Reschedule"}
@@ -298,7 +392,7 @@ export function NotificationsView({
               {n.kind === "session" && n.ref && n.item_id && onStartSession && (
                 <button
                   className="secondary notice-action"
-                  disabled={pending === n.id}
+                  disabled={pending !== null}
                   onClick={() =>
                     act(() => onStartSession(n.ref!.split(":")[0], n.item_id!))
                   }
@@ -383,7 +477,7 @@ export function NotificationsView({
               {n.kind === "rollforward" && (
                 <button
                   className="secondary notice-action"
-                  disabled={pending === n.id}
+                  disabled={pending !== null}
                   onClick={() => act(() => onRollForward(n))}
                 >
                   <FastForward size={14} />{" "}
@@ -417,6 +511,11 @@ export function NotificationsView({
                   <CalendarCheck size={14} /> Open booking
                 </button>
               )}
+              {actionError?.id === n.id && (
+                <p className="error notice-error" role="alert">
+                  {actionError.text}
+                </p>
+              )}
               {n.kind === "booking" && !bookingId && (
                 <button
                   className="secondary notice-action"
@@ -434,8 +533,8 @@ export function NotificationsView({
         {!notices.length && (
           <EmptyState
             icon={Bell}
-            title="You’re all caught up."
-            body="Reminders, answers to invitations, clashes, planner heads-ups and new bookings will appear here."
+            title="No new notifications"
+            body="Updates will appear here."
           />
         )}
       </section>

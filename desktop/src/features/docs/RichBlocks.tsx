@@ -1,3 +1,4 @@
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { DocNavigationContext } from "./doc-navigation";
 import {
   createContext,
@@ -288,15 +289,16 @@ export function TableBlock({
     r: number,
     c: number,
   ) => {
+    if (e.nativeEvent.isComposing) return;
     const go = (nr: number, nc: number) =>
       wrap.current
         ?.querySelector<HTMLInputElement>(`input[data-cell="${nr}:${nc}"]`)
         ?.focus();
     if (e.key === "Tab") {
-      e.preventDefault();
-      e.stopPropagation();
       const flat = r * width + c + (e.shiftKey ? -1 : 1);
       if (flat < 0) return;
+      e.preventDefault();
+      e.stopPropagation();
       if (flat >= rows.length * width) return addRow(rows.length - 1);
       go(Math.floor(flat / width), flat % width);
     } else if (e.key === "Enter") {
@@ -556,12 +558,15 @@ export const cachedFileUrl = (id: string): string | null => {
 };
 
 /** A kept file's link, as a hook: null while it loads, "gone" when it can't. */
-function useFileLink(id: string): Link | null | "gone" {
-  const [link, setLink] = useState<Link | null | "gone">(
-    () => links.get(id) ?? null,
-  );
+function useFileLink(id: string, retry = 0): Link | null | "gone" {
+  const [link, setLink] = useState<Link | null | "gone">(() => {
+    const kept = links.get(id);
+    return kept && kept.until > Date.now() ? kept : null;
+  });
   useEffect(() => {
     let live = true;
+    const kept = links.get(id);
+    setLink(kept && kept.until > Date.now() ? kept : null);
     fileLink(id).then(
       (l) => live && setLink(l),
       () => live && setLink("gone"),
@@ -569,7 +574,7 @@ function useFileLink(id: string): Link | null | "gone" {
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [id, retry]);
   return link;
 }
 
@@ -594,7 +599,8 @@ export function ImageBlock({
   block: Extract<DocBlock, { type: "image" }>;
   onChange?: (block: DocBlock) => void;
 }) {
-  const link = useFileLink(block.file);
+  const [retry, setRetry] = useState(0);
+  const link = useFileLink(block.file, retry);
   const [viewing, setViewing] = useState(false);
   const [dragWidth, setDragWidth] = useState<number | null>(null);
   const figure = useRef<HTMLElement>(null);
@@ -644,7 +650,13 @@ export function ImageBlock({
     >
       {link === "gone" ? (
         <div className="doc-image-missing">
-          This picture isn't there any more.
+          Couldn't load this picture.{" "}
+          <button
+            className="text-button"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            Retry
+          </button>
         </div>
       ) : link ? (
         <button
@@ -688,7 +700,8 @@ export function ImageBlock({
           }}
           onKeyDown={(e) => {
             e.stopPropagation();
-            if (e.key === "Enter") e.currentTarget.blur();
+            if (e.key === "Enter" && !e.nativeEvent.isComposing)
+              e.currentTarget.blur();
           }}
         />
       ) : block.text ? (
@@ -724,14 +737,13 @@ function ImageViewer({
 }) {
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
-  const closeRef = useRef<HTMLButtonElement>(null);
+  const focus = useModalFocus(onClose);
   const clamp = (z: number) => Math.max(1, Math.min(6, z));
   useEffect(() => {
-    const was = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      else if (e.key === "+" || e.key === "=") setZoom((z) => clamp(z * 1.25));
+      if (e.key === "+" || e.key === "=") setZoom((z) => clamp(z * 1.25));
       else if (e.key === "-") setZoom((z) => clamp(z / 1.25));
       else if (e.key === "0") {
         setZoom(1);
@@ -741,9 +753,9 @@ function ImageViewer({
     document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("keydown", onKey);
-      was?.focus?.();
+      dialog.close();
     };
-  }, [onClose]);
+  }, []);
   useEffect(() => {
     if (zoom === 1) setPan({ x: 0, y: 0 });
   }, [zoom]);
@@ -763,10 +775,16 @@ function ImageViewer({
     el.addEventListener("pointerup", up);
   };
   return createPortal(
-    <div
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      data-modal-owner={focus.id}
       className="image-viewer"
-      role="dialog"
-      aria-modal="true"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
       aria-label={name}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -797,17 +815,8 @@ function ImageViewer({
         >
           <ZoomIn size={16} />
         </button>
+        <FileDownload id={fileId} iconOnly />
         <button
-          type="button"
-          className="icon-button"
-          aria-label="Download"
-          title="Download"
-          onClick={() => void downloadFile(fileId)}
-        >
-          <Download size={16} />
-        </button>
-        <button
-          ref={closeRef}
           type="button"
           className="icon-button"
           aria-label="Close"
@@ -828,7 +837,7 @@ function ImageViewer({
         onPointerDown={drag}
         onDoubleClick={() => setZoom((z) => (z > 1 ? 1 : 2))}
       />
-    </div>,
+    </dialog>,
     document.body,
   );
 }
@@ -847,7 +856,8 @@ export function FileCard({
 }: {
   block: Extract<DocBlock, { type: "file" }>;
 }) {
-  const link = useFileLink(block.file);
+  const [retry, setRetry] = useState(0);
+  const link = useFileLink(block.file, retry);
   const file = link && link !== "gone" ? link.file : null;
   const recording = useContext(RecordingContext);
   // A recording plays in the page, with Summarise beside it.
@@ -873,13 +883,7 @@ export function FileCard({
               <Sparkles size={14} aria-hidden="true" /> Summarise
             </button>
           )}
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => void downloadFile(block.file)}
-          >
-            <Download size={14} aria-hidden="true" /> Download
-          </button>
+          <FileDownload id={block.file} />
         </span>
       </div>
     );
@@ -890,7 +894,7 @@ export function FileCard({
         <strong>{block.text || file?.name || "File"}</strong>
         <small>
           {link === "gone"
-            ? "This file isn't there any more"
+            ? "Couldn't load this file"
             : file
               ? [
                   PAGE_FILE_TYPES[file.mime] ?? "File",
@@ -902,16 +906,64 @@ export function FileCard({
               : "…"}
         </small>
       </span>
-      {link !== "gone" && (
+      {link === "gone" && (
         <button
-          type="button"
           className="text-button"
-          onClick={() => void downloadFile(block.file)}
+          onClick={() => setRetry((value) => value + 1)}
         >
-          <Download size={14} aria-hidden="true" /> Download
+          Retry
         </button>
       )}
+      {link !== "gone" && <FileDownload id={block.file} />}
     </div>
+  );
+}
+
+function FileDownload({
+  id,
+  iconOnly = false,
+}: {
+  id: string;
+  iconOnly?: boolean;
+}) {
+  const pending = useRef(false);
+  const alive = useRef(true);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  return (
+    <span className="doc-download">
+      <button
+        type="button"
+        className={iconOnly ? "icon-button" : "text-button"}
+        aria-label="Download file"
+        disabled={busy}
+        onClick={() => {
+          if (pending.current) return;
+          pending.current = true;
+          setBusy(true);
+          setFailed(false);
+          void downloadFile(id)
+            .catch(() => {
+              if (alive.current) setFailed(true);
+            })
+            .finally(() => {
+              pending.current = false;
+              if (alive.current) setBusy(false);
+            });
+        }}
+      >
+        <Download size={iconOnly ? 16 : 14} aria-hidden="true" />
+        {!iconOnly &&
+          (busy ? "Downloading…" : failed ? "Retry download" : "Download")}
+      </button>
+      {failed && <span role="alert">Couldn't download. Try again.</span>}
+    </span>
   );
 }
 
@@ -1369,28 +1421,55 @@ export function EmbedBlock({
 
 function SectionEmbed({ doc, block }: { doc: string; block: string | null }) {
   const navigation = useContext(DocNavigationContext);
-  const [section, setSection] = useState<Section | null | "gone">(null);
-  const load = useCallback(
-    () =>
-      client.docSection(doc, block).then(setSection, () => setSection("gone")),
-    [doc, block],
-  );
+  const request = useRef(0);
+  const [failed, setFailed] = useState(false);
+  const [section, setSection] = useState<Section | null>(null);
+  const load = useCallback(async () => {
+    const epoch = ++request.current;
+    setFailed(false);
+    try {
+      const next = await client.docSection(doc, block);
+      if (epoch === request.current) setSection(next);
+    } catch {
+      if (epoch === request.current) setFailed(true);
+    }
+  }, [doc, block]);
   useEffect(() => {
+    setSection(null);
     void load();
-    // Kept up to date as the page it comes from changes.
-    return client.watchDoc(doc, () => void load());
+    const stop = client.watchDoc(doc, () => void load());
+    return () => {
+      request.current++;
+      stop();
+    };
   }, [load, doc]);
-  if (section === "gone")
+  if (!section)
     return (
-      <div className="doc-embed is-broken">
-        The page this showed isn't there, or isn't yours to open.
+      <div className="doc-embed" role={failed ? "alert" : "status"}>
+        {failed ? (
+          <>
+            Couldn't load this section.{" "}
+            <button className="text-button" onClick={() => void load()}>
+              Retry
+            </button>
+          </>
+        ) : (
+          "Loading section…"
+        )}
       </div>
     );
-  if (!section) return <div className="doc-embed is-loading" />;
   const numbers = new Map<string, number>();
   const texts = new Map<string, string>();
   return (
     <div className="doc-embed" onClick={(e) => e.stopPropagation()}>
+      {failed && (
+        <p role="alert">
+          Couldn't refresh this section.{" "}
+          <button className="text-button" onClick={() => void load()}>
+            Retry
+          </button>
+        </p>
+      )}
       <div className="doc-embed-head">
         <FileText size={14} aria-hidden="true" />
         <span>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Timer, X } from "lucide-react";
 import {
   focusRemaining,
@@ -32,16 +32,31 @@ export function FocusElsewhere({
   hidden: boolean;
   onOpen: (item: Item) => void;
 }) {
+  const request = useRef(0);
+  const mounted = useRef(false);
   const [current, setCurrent] = useState<FocusCurrent | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const load = useCallback(() => {
-    client.currentFocus().then(setCurrent, () => setCurrent(null));
+    if (!mounted.current) return;
+    const version = ++request.current;
+    client.currentFocus().then(
+      (next) => {
+        if (mounted.current && version === request.current) setCurrent(next);
+      },
+      () => {},
+    );
   }, []);
   useEffect(() => {
+    mounted.current = true;
     load();
-    return onLive((news) => {
+    const unsubscribe = onLive((news) => {
       if (news.kind === "focus") load();
     });
+    return () => {
+      mounted.current = false;
+      request.current++;
+      unsubscribe();
+    };
   }, [load]);
   // Leaving focus mode may have paused, finished or kept the session.
   useEffect(() => {
@@ -68,7 +83,10 @@ export function FocusElsewhere({
           {here ? what : `${what} on ${current.device ?? "another device"}`}
         </strong>
         {current.state.item_title && <span> · {current.state.item_title}</span>}
-        <span> · {running ? `${clock(left)} left` : "paused"}</span>
+        <span role="timer" aria-live="off">
+          {" "}
+          · {running ? `${clock(left)} left` : "Paused"}
+        </span>
       </p>
       {item && (
         <button className="secondary" onClick={() => onOpen(item)}>
@@ -78,7 +96,10 @@ export function FocusElsewhere({
       <button
         className="icon-button"
         aria-label="Hide for now"
-        onClick={() => setCurrent(null)}
+        onClick={() => {
+          request.current++;
+          setCurrent(null);
+        }}
       >
         <X size={15} />
       </button>

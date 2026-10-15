@@ -1,6 +1,7 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
-import { plainText, type DocSuggestion } from "@orbyn/core";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { type DocSuggestion } from "@orbyn/core";
+import { InlineDetails } from "../../components/InlineDetails";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
 import { colors, fonts, radii, themed } from "../../theme";
@@ -20,6 +21,7 @@ export function DocSuggestions({
   busy,
   onDecide,
   onWithdraw,
+  sourceBlockIds,
 }: {
   suggestions: DocSuggestion[];
   canDecide: boolean;
@@ -27,13 +29,14 @@ export function DocSuggestions({
   busy: boolean;
   onDecide: (s: DocSuggestion, take: boolean) => void;
   onWithdraw: (s: DocSuggestion) => void;
+  sourceBlockIds?: ReadonlySet<string>;
 }) {
   const open = suggestions.filter((s) => s.status === "open");
   if (!open.length) return null;
   return (
     <View style={s.wrap}>
       <Text style={s.eyebrow}>
-        {open.length} PROPOSED CHANGE{open.length === 1 ? "" : "S"}
+        {open.length} proposed change{open.length === 1 ? "" : "s"}
       </Text>
       {open.map((one) => (
         <View key={one.id} style={[s.card, one.detached && s.faded]}>
@@ -43,15 +46,46 @@ export function DocSuggestions({
               <Text style={s.via}> · via {one.via_agent}</Text>
             ) : null}
           </Text>
-          <Text style={s.change}>
-            {!!one.quote && <Text style={s.was}>{plainText(one.quote)}</Text>}
-            {!!one.quote && !!one.text && <Text style={s.arrow}> → </Text>}
-            {!!one.text && <Text style={s.now}>{plainText(one.text)}</Text>}
-          </Text>
+          <InlineDetails title="Review change">
+            <ScrollView
+              style={{ maxHeight: 240 }}
+              keyboardShouldPersistTaps="handled"
+            >
+              {!!one.quote && (
+                <View style={s.excerpt}>
+                  <Text style={s.note}>Before</Text>
+                  <Text
+                    selectable
+                    style={[
+                      s.change,
+                      sourceBlockIds?.has(one.block_id) && s.source,
+                    ]}
+                  >
+                    {one.quote}
+                  </Text>
+                </View>
+              )}
+              {!!one.text && (
+                <View style={s.excerpt}>
+                  <Text style={s.note}>After</Text>
+                  <Text
+                    selectable
+                    style={[
+                      s.change,
+                      sourceBlockIds?.has(one.block_id) && s.source,
+                    ]}
+                  >
+                    {one.text}
+                  </Text>
+                </View>
+              )}
+              {!one.text && <Text style={s.note}>Remove selected text</Text>}
+            </ScrollView>
+          </InlineDetails>
           {!!one.note && <Text style={s.note}>{one.note}</Text>}
           {one.detached ? (
             <Text style={s.note}>
-              The words this was about have gone. Nothing to apply it to.
+              The original text was removed. This change cannot be applied.
             </Text>
           ) : (
             <View style={s.actions}>
@@ -65,12 +99,12 @@ export function DocSuggestions({
               {canDecide && (
                 <>
                   <SmallAction
-                    label="Leave"
+                    label="Reject"
                     disabled={busy}
                     onPress={() => onDecide(one, false)}
                   />
                   <Button
-                    title="Take"
+                    title="Accept"
                     disabled={busy}
                     onPress={() => onDecide(one, true)}
                   />
@@ -90,7 +124,6 @@ const s = themed(() =>
     eyebrow: {
       color: colors.muted,
       fontSize: 11,
-      letterSpacing: 0.8,
       fontFamily: fonts.semibold,
     },
     card: {
@@ -104,7 +137,9 @@ const s = themed(() =>
     faded: { opacity: 0.7 },
     author: { color: colors.text, fontSize: 13, fontFamily: fonts.semibold },
     via: { color: colors.muted, fontFamily: fonts.regular },
-    change: { fontSize: 15, lineHeight: 20 },
+    change: { fontSize: 14, lineHeight: 20, color: colors.text },
+    source: { fontFamily: fonts.mono },
+    excerpt: { gap: 4, paddingBottom: 12 },
     was: { color: colors.muted, textDecorationLine: "line-through" },
     arrow: { color: colors.muted },
     now: { color: colors.accent, fontFamily: fonts.semibold },

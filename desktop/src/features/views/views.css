@@ -2,7 +2,7 @@
 
 .views-screen {
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 200px minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -102,20 +102,24 @@
 }
 .views-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   flex: none;
+  max-width: 100%;
   margin-left: auto;
 }
 .views-arrangement {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  padding: 14px 23px;
+  padding: 12px 16px;
   border-top: 1px solid var(--color-divider);
 }
 .views-arrangement .filter-select {
   flex: 1 1 180px;
   min-width: 0;
+  text-transform: none;
+  letter-spacing: 0;
 }
 .views-arrangement .select {
   width: 100%;
@@ -858,4 +862,173 @@
 }
 .views-screen.is-small .view-calendar-chip {
   padding: 2px 4px;
+}
+
+/* Focused view editors use the shared dialog's bounded scrolling body. */
+.new-view-fields {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.views-save-status {
+  margin: 0 16px 10px;
+  font-size: 13px;
+}
+.views-rail-item {
+  min-height: 44px;
+}
+.views-rail-item span {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+.view-calendar-head {
+  flex-wrap: wrap;
+}
+.view-calendar-agenda {
+  display: grid;
+  gap: 12px;
+}
+.view-calendar-agenda h4 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.view-calendar-agenda-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-bottom: 1px solid var(--color-divider);
+  border-radius: 0;
+  background: none;
+  color: var(--color-text);
+  text-align: left;
+}
+.view-calendar-agenda-row span {
+  flex: 1 1 150px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.view-calendar-agenda-row small {
+  color: var(--color-muted);
+}
+.view-list-title small,
+.field-row dt {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+.view-calendar-chip {
+  min-height: 44px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.view-list-title,
+.view-title-link,
+.view-list-head {
+  min-height: 44px;
+}
+.new-view-body {
+  padding: 0;
+}
+.new-view-fields > label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.new-view-actions {
+  flex-wrap: wrap;
+}
+.view-field-filter :is(input, .select) {
+  flex: 1 1 120px;
+  min-width: 0;
+  max-width: 100%;
+}
+.view-board-col {
+  min-width: 0;
+}
+.view-card :is(strong, small),
+.view-gallery-card :is(strong, small),
+.view-board-col header {
+  overflow-wrap: anywhere;
+}
+
+.live-list-head,
+.live-list li {
+  flex-wrap: wrap;
+}
+.live-list-head span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.live-list li button.view-title-link {
+  flex: 1 1 140px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+
+.field-input-owner {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+.field-input-owner > .error {
+  margin: 0;
+  padding: 4px 0;
+  font-size: 12px;
+}
+.settings-editor .new-field {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.field-input-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.field-input-recovery .error {
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+.new-field-actions {
+  flex-wrap: wrap;
+}
+
+.view-cell-editor {
+  min-width: 0;
+}
+.view-cell-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.view-cell-recovery .link-button {
+  min-height: 44px;
+}
+
+fieldset.view-menu {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }

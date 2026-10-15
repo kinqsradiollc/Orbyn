@@ -2,19 +2,43 @@ import { ManagedAiUsage } from "./ManagedAiUsage";
 import { AgendaPrivateSettings } from "./AgendaPrivateSettings";
 import { AiProviderChoiceControls } from "./AiProviderChoice";
 import { ChatgptUsage } from "./ChatgptUsage";
-import { useId, useState } from "react";
-import { Plus, RefreshCw, Sparkles } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { MoreHorizontal, Plus, RefreshCw, Sparkles } from "lucide-react";
 import { CHATGPT_USAGE_URL, type ChatgptDesktopCommand } from "@orbyn/core";
 import { Select } from "../../components/Select";
 import { chatgptStore, useChatgptConnection } from "../../lib/chatgpt";
 import { SettingsSection } from "./SettingsSection";
 import { ChatgptRemoteModels } from "./ChatgptRemoteModels";
+import { Popover } from "../../components/Popover";
+import { session as authSession } from "../../lib/session";
 
 /** Personal connections and defaults share the guarded desktop metadata store. */
-export function ChatgptConnections({ userId = "" }: { userId?: string }) {
+export function ChatgptConnections(props: { userId?: string }) {
+  return (
+    <ChatgptConnectionsBody
+      key={`${authSession.get()}:${props.userId ?? ""}`}
+      {...props}
+    />
+  );
+}
+
+function ChatgptConnectionsBody({ userId = "" }: { userId?: string }) {
+  const owner = useRef(authSession.get()).current;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const state = useChatgptConnection();
   const id = useId();
   const [query, setQuery] = useState("");
+  const [accountQuery, setAccountQuery] = useState("");
+  const [menu, setMenu] = useState<{
+    registrationId: string;
+    anchor: DOMRect;
+  } | null>(null);
   const [authenticating, setAuthenticating] = useState(false);
   const connection = state.connection;
   const catalog = connection?.catalog;
@@ -32,7 +56,19 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
       .toLowerCase()
       .includes(query.trim().toLowerCase()),
   );
+  const accounts = (connection?.connections ?? [])
+    .map((account, index) => ({ account, index }))
+    .filter(({ account, index }) =>
+      `ChatGPT account ${index + 1} ${account.selected ? "Selected" : "Saved"}`
+        .toLowerCase()
+        .includes(accountQuery.trim().toLowerCase()),
+    );
+  const managedAccount = connection?.connections.find(
+    (account) => account.registration_id === menu?.registrationId,
+  );
   const run = (command: ChatgptDesktopCommand) => {
+    if (!mounted.current || authSession.get() !== owner) return;
+    setMenu(null);
     // The shared store publishes a sanitized error for every failed command.
     const signIn =
       command.action === "connect" || command.action === "reconnect";
@@ -41,11 +77,12 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
       .command(command)
       .catch(() => {})
       .finally(() => {
-        if (signIn) setAuthenticating(false);
+        if (signIn && mounted.current && authSession.get() === owner)
+          setAuthenticating(false);
       });
   };
   return (
-    <SettingsSection className="card settings-card" defaultOpen>
+    <SettingsSection className="card settings-card">
       <h2>
         <Sparkles size={18} aria-hidden="true" />
         AI connections &amp; models
@@ -60,28 +97,34 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
           <div className="settings-head ai-connection-heading">
             <div>
               <h3>ChatGPT</h3>
-              <p className="muted">
-                Personal account · catalog read on this device
-              </p>
             </div>
             <button
               type="button"
               className="primary"
-              disabled={busy || !connection?.user_id}
+              disabled={busy || authenticating || !connection?.user_id}
               onClick={() => run({ action: "connect" })}
             >
               <Plus size={15} aria-hidden="true" />
               {connection?.connections.length
                 ? "Add account"
-                : "Connect to ChatGPT"}
+                : "Connect ChatGPT"}
             </button>
           </div>
-          {state.status === "loading" && (
-            <p role="status">Loading your desktop connections…</p>
+          {state.status === "loading" && <p role="status">Loading accounts…</p>}
+          {(connection?.connections.length ?? 0) > 4 && (
+            <label className="settings-field">
+              Find an account
+              <input
+                type="search"
+                value={accountQuery}
+                onChange={(event) => setAccountQuery(event.target.value)}
+                placeholder="Account number or status"
+              />
+            </label>
           )}
           {!!connection?.connections.length && (
             <div className="ai-connection-list" aria-label="ChatGPT accounts">
-              {connection.connections.map((account, index) => (
+              {accounts.map(({ account, index }) => (
                 <div
                   className="ai-connection-row"
                   key={account.registration_id}
@@ -113,56 +156,72 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
                         Use account
                       </button>
                     )}
-                    <details className="ai-connection-menu">
-                      <summary
-                        aria-label={`Manage ChatGPT account ${index + 1}`}
-                      >
-                        ⋯
-                      </summary>
-                      <div>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            run({
-                              action: "reconnect",
-                              registrationId: account.registration_id,
-                              requestPlanConsent: true,
-                            })
-                          }
-                        >
-                          Enable ChatGPT plan usage
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            run({
-                              action: "reconnect",
-                              registrationId: account.registration_id,
-                            })
-                          }
-                        >
-                          Reconnect
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() =>
-                            run({
-                              action: "disconnect",
-                              registrationId: account.registration_id,
-                            })
-                          }
-                        >
-                          Disconnect
-                        </button>
-                      </div>
-                    </details>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Manage ChatGPT account ${index + 1}`}
+                      aria-haspopup="dialog"
+                      aria-expanded={
+                        menu?.registrationId === account.registration_id
+                      }
+                      disabled={busy}
+                      onClick={(event) =>
+                        setMenu({
+                          registrationId: account.registration_id,
+                          anchor: event.currentTarget.getBoundingClientRect(),
+                        })
+                      }
+                    >
+                      <MoreHorizontal size={16} aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
               ))}
+              {!accounts.length && <p role="status">No matching accounts.</p>}
             </div>
+          )}
+          {menu && managedAccount && (
+            <Popover
+              anchor={menu.anchor}
+              label="Manage ChatGPT account"
+              onClose={() => setMenu(null)}
+              width={240}
+            >
+              <button
+                disabled={busy}
+                onClick={() =>
+                  run({
+                    action: "reconnect",
+                    registrationId: managedAccount.registration_id,
+                    requestPlanConsent: true,
+                  })
+                }
+              >
+                Enable plan access
+              </button>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  run({
+                    action: "reconnect",
+                    registrationId: managedAccount.registration_id,
+                  })
+                }
+              >
+                Reconnect
+              </button>
+              <button
+                disabled={busy}
+                onClick={() =>
+                  run({
+                    action: "disconnect",
+                    registrationId: managedAccount.registration_id,
+                  })
+                }
+              >
+                Disconnect
+              </button>
+            </Popover>
           )}
           {selected && (
             <div className="ai-model-settings">
@@ -227,8 +286,7 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
               </label>
               {!available && (
                 <p role="status" className="muted">
-                  Models are unavailable. Your saved default is retained;
-                  reconnect or refresh to choose a model.
+                  Models unavailable. Refresh or reconnect.
                 </p>
               )}
               {available && !models.length && (
@@ -252,21 +310,27 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
             <h3>Plan and usage</h3>
             <p>
               {selected?.sharing_granted
-                ? "ChatGPT plan permission granted"
-                : "ChatGPT plan permission not verified"}
+                ? "Plan access granted"
+                : "Plan access unverified"}
             </p>
             {connection?.verification && (
-              <p role="status">
-                Test request completed ·{" "}
-                {new Date(connection.verification.verified_at).toLocaleString()}
-              </p>
-            )}
-            {connection?.verification?.usage && (
-              <p>
-                Test request: {connection.verification.usage.input_tokens} input
-                + {connection.verification.usage.output_tokens} output ={" "}
-                {connection.verification.usage.total_tokens} tokens
-              </p>
+              <details>
+                <summary>Connection details</summary>
+                <p>
+                  Connection check completed ·{" "}
+                  {new Date(
+                    connection.verification.verified_at,
+                  ).toLocaleString()}
+                </p>
+                {connection.verification.usage && (
+                  <p>
+                    Connection check:{" "}
+                    {connection.verification.usage.input_tokens} input +{" "}
+                    {connection.verification.usage.output_tokens} output ={" "}
+                    {connection.verification.usage.total_tokens} tokens
+                  </p>
+                )}
+              </details>
             )}
             <div className="button-row start">
               <button
@@ -328,12 +392,12 @@ export function ChatgptConnections({ userId = "" }: { userId?: string }) {
       <AgendaPrivateSettings userId={userId} />
       {state.status !== "unsupported" && <ChatgptUsage userId={userId} />}
       <ManagedAiUsage userId={userId} />
-      <div className="ai-connection-note">
-        <strong>Workspace providers</strong>
+      <details className="ai-connection-note">
+        <summary>Workspace providers</summary>
         <p className="muted">
           Admins manage providers in Admin → AI; keys stay on the server.
         </p>
-      </div>
+      </details>
     </SettingsSection>
   );
 }

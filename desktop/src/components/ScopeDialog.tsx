@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../hooks/useModalFocus";
 import { X } from "lucide-react";
 import type { EditScope, Kind } from "@orbyn/core";
 import "./event-fields.css";
@@ -29,88 +31,83 @@ const TITLES = {
 /** "This event / This and following / All events" for a repeating item. */
 export function ScopeDialog({ kind, action, onChoose, onCancel }: Props) {
   const noun = kind === "event" ? "event" : "task";
-  const first = useRef<HTMLButtonElement>(null);
-
+  const focus = useModalFocus(onCancel);
+  const chosen = useRef(false);
+  const choose = (scope: EditScope) => {
+    if (!chosen.current) {
+      chosen.current = true;
+      onChoose(scope);
+    }
+  };
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    first.current?.focus();
-    return () => opener?.focus?.();
+    const dialog = focus.ref.current as HTMLDialogElement | null;
+    dialog?.showModal();
+    return () => dialog?.close();
   }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      // Only this dialog closes, not the editor under it.
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      onCancel();
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [onCancel]);
-
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onCancel();
+  return createPortal(
+    <dialog
+      ref={focus.ref as React.RefObject<HTMLDialogElement>}
+      data-modal-focus={focus.id}
+      className="modal scope-dialog"
+      role="alertdialog"
+      aria-labelledby="scope-title"
+      aria-describedby="scope-body"
+      onCancel={(event) => {
+        event.preventDefault();
+        onCancel();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onCancel();
       }}
     >
-      <section
-        className="modal scope-dialog scale-in"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="scope-title"
-        aria-describedby="scope-body"
-      >
-        <div className="section-heading">
-          <h2 id="scope-title">
-            {TITLES[action]} {noun}
-          </h2>
-          <button
-            type="button"
-            className="icon-button"
-            aria-label="Cancel"
-            onClick={onCancel}
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <p id="scope-body" className="scope-body">
-          Which {noun}s should this {action === "delete" ? "remove" : "change"}?
-        </p>
-        <div className="scope-options">
-          <button
-            ref={first}
-            type="button"
-            className="secondary"
-            onClick={() => onChoose("this")}
-          >
-            <strong>This {noun}</strong>
-            <small>Only this one</small>
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => onChoose("following")}
-          >
-            <strong>This and following {noun}s</strong>
-            <small>This one and every one after it</small>
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => onChoose("all")}
-          >
-            <strong>All {noun}s</strong>
-            <small>The whole series</small>
-          </button>
-        </div>
-        <div className="button-row">
-          <button type="button" className="text-button" onClick={onCancel}>
-            Cancel
-          </button>
-        </div>
-      </section>
-    </div>
+      <div className="section-heading">
+        <h2 id="scope-title">
+          {TITLES[action]} {noun}
+        </h2>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Cancel"
+          onClick={onCancel}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <p id="scope-body" className="scope-body">
+        Which {noun}s should this {action === "delete" ? "remove" : "change"}?
+      </p>
+      <div className="scope-options">
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => choose("this")}
+        >
+          <strong>This {noun}</strong>
+          <small>Only this one</small>
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => choose("following")}
+        >
+          <strong>This and following {noun}s</strong>
+          <small>This one and every one after it</small>
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => choose("all")}
+        >
+          <strong>All {noun}s</strong>
+          <small>The whole series</small>
+        </button>
+      </div>
+      <div className="button-row">
+        <button type="button" className="text-button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </dialog>,
+    document.body,
   );
 }

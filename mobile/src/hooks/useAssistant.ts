@@ -117,16 +117,42 @@ export function useAssistant({ token, act, refresh, items }: Options) {
   const [customizingCharacter, setCustomizingCharacter] = useState(false);
   const [identity, setIdentity] = useState<PersonalAgentSettings | null>(null);
 
+  const [historyKind, setHistoryKindState] = useState<"chat" | "work">("chat");
+  const historyKindRef = useRef<"chat" | "work">("chat");
+
+  const chatsContext = useRef("");
   const loadChats = () => {
     const request = ++chatsRequest.current;
-    return client.aiChats({ search: chatSearchRef.current }).then(
-      (list) => {
-        if (request === chatsRequest.current) setSavedChats(list);
-      },
-      () => {
-        if (request === chatsRequest.current) setSavedChats([]);
-      },
-    );
+    const scope = scopeRef.current;
+    const context = JSON.stringify([
+      scope?.kind,
+      scope?.id,
+      historyKindRef.current,
+      chatSearchRef.current,
+    ]);
+    if (chatsContext.current !== context) {
+      chatsContext.current = context;
+      setSavedChats(null);
+    }
+    return client
+      .aiChats({
+        search: chatSearchRef.current,
+        ...(scope?.kind === "project" ? { project_id: scope.id } : {}),
+        kind:
+          scope?.kind === "project"
+            ? "work"
+            : scope
+              ? "all"
+              : historyKindRef.current,
+      })
+      .then(
+        (list) => {
+          if (request === chatsRequest.current) setSavedChats(list);
+        },
+        () => {
+          if (request === chatsRequest.current) setSavedChats([]);
+        },
+      );
   };
 
   useEffect(() => {
@@ -250,6 +276,8 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     previousToken.current = token;
     setScopeState(null);
     scopeRef.current = null;
+    historyKindRef.current = "chat";
+    setHistoryKindState("chat");
     return () => {
       generation.current += 1;
       stopPolling();
@@ -744,6 +772,12 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     return note;
   };
 
+  const setHistoryKind = (kind: "chat" | "work") => {
+    historyKindRef.current = kind;
+    setHistoryKindState(kind);
+    void loadChats();
+  };
+
   const setScope = (next: AssistantScope | null) => {
     if (
       scopeRef.current?.kind === next?.kind &&
@@ -769,6 +803,8 @@ export function useAssistant({ token, act, refresh, items }: Options) {
     stopRun,
     scope,
     setScope,
+    historyKind,
+    setHistoryKind,
     /** The most recent reply still awaiting approval, if any. */
     proposal: pending && pending.role === "assistant" ? pending.proposal : null,
     ask,

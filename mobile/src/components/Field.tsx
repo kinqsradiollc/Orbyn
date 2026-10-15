@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Platform,
   StyleSheet,
@@ -95,6 +95,11 @@ function PickerField({
   minimumDate?: Date;
 }) {
   const [open, setOpen] = useState(false);
+  const latest = useRef({ disabled, onPick, minimumDate });
+  latest.current = { disabled, onPick, minimumDate };
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
   return (
     <>
       <View style={s.pickRow}>
@@ -125,7 +130,6 @@ function PickerField({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Clear ${label.toLowerCase()}`}
-            hitSlop={8}
             onPress={() => {
               setOpen(false);
               onClear();
@@ -145,6 +149,7 @@ function PickerField({
           {React.createElement("input", {
             type: mode,
             autoFocus: true,
+            disabled,
             "aria-label": label,
             value:
               mode === "date"
@@ -155,17 +160,25 @@ function PickerField({
                 ? dayKeyOf(minimumDate)
                 : undefined,
             onChange: (event: { target: { value: string } }) => {
+              if (latest.current.disabled) return;
               const next = event.target.value;
               if (!next) return;
               if (mode === "date") {
                 const [y, mo, d] = next.split("-").map(Number);
-                onPick(new Date(y, mo - 1, d));
+                const picked = new Date(y, mo - 1, d);
+                if (
+                  !Number.isFinite(picked.getTime()) ||
+                  (latest.current.minimumDate &&
+                    dayKeyOf(picked) < dayKeyOf(latest.current.minimumDate))
+                )
+                  return;
+                latest.current.onPick(picked);
                 return;
               }
               const [h, mi] = next.split(":").map(Number);
               const on = new Date(value ?? new Date());
               on.setHours(h, mi, 0, 0);
-              onPick(on);
+              if (Number.isFinite(on.getTime())) latest.current.onPick(on);
             },
             style: {
               width: "100%",
@@ -174,9 +187,9 @@ function PickerField({
               color: colors.text,
               background: colors.surface,
               border: `1px solid ${colors.border}`,
-              borderRadius: 12,
+              borderRadius: radii.input,
               font: "inherit",
-              fontSize: 15,
+              fontSize: 16,
             },
           })}
         </View>
@@ -194,7 +207,7 @@ function PickerField({
               // Android shows a dialog that closes itself; unmount it.
               if (Platform.OS === "android") setOpen(false);
               if (event.type === "dismissed") return;
-              if (date) onPick(date);
+              if (date && !latest.current.disabled) latest.current.onPick(date);
             }}
           />
           {Platform.OS === "ios" && (
@@ -202,8 +215,10 @@ function PickerField({
               title="Done"
               icon="check"
               style={{ marginBottom: 0 }}
+              disabled={disabled}
               onPress={() => {
-                if (!value) onPick(new Date());
+                if (latest.current.disabled) return;
+                if (!value) latest.current.onPick(new Date());
                 setOpen(false);
               }}
             />
@@ -254,6 +269,7 @@ export function DateField({
   placeholder = "Pick a date",
   clearable = false,
   minimumDate,
+  disabled = false,
 }: {
   value: string | null;
   onChange: (day: string | null) => void;
@@ -261,11 +277,13 @@ export function DateField({
   placeholder?: string;
   clearable?: boolean;
   minimumDate?: Date;
+  disabled?: boolean;
 }) {
   const [y, mo, d] = (value ?? "").split("-").map(Number);
   const date = value ? new Date(y, mo - 1, d) : null;
   return (
     <PickerField
+      disabled={disabled}
       mode="date"
       label={label}
       value={date}
@@ -291,13 +309,16 @@ export function TimeField({
   value,
   onChange,
   label,
+  disabled = false,
 }: {
+  disabled?: boolean;
   value: Date;
   onChange: (date: Date) => void;
   label: string;
 }) {
   return (
     <PickerField
+      disabled={disabled}
       mode="time"
       label={label}
       value={value}
@@ -318,13 +339,19 @@ const s = themed(() =>
   StyleSheet.create({
     field: { marginBottom: 18 },
     hint: { marginTop: 8 },
-    numberRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-    number: { width: 110 },
+    numberRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 10,
+    },
+    number: { width: 110, maxWidth: "100%" },
     suffix: { fontFamily: fonts.medium, fontSize: 15, color: colors.muted },
     pickRow: { flexDirection: "row", alignItems: "center", gap: 8 },
     pick: {
       flex: 1,
-      minHeight: 50,
+      minWidth: 0,
+      minHeight: 44,
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
@@ -344,7 +371,7 @@ const s = themed(() =>
     },
     clear: {
       width: 44,
-      height: 50,
+      height: 44,
       borderRadius: radii.input,
       borderWidth: 1,
       borderColor: colors.border,

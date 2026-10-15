@@ -25,22 +25,43 @@ export const SettingsFocus = createContext<{
   key: string;
   seq: number;
   scrollTo: (y: number) => void;
+  root?: React.RefObject<View | null>;
 } | null>(null);
 
 /** Opens and scrolls to itself when the search chose it. */
 function useFound(title: string, onFound: () => void) {
   const focus = useContext(SettingsFocus);
   const y = useRef(0);
+  const box = useRef<View>(null);
   const [lit, setLit] = useState(false);
   const chosen = !!focus && focus.key === sectionKey(title);
   useEffect(() => {
     if (!chosen) return;
+    let live = true;
     onFound();
     setLit(true);
     // After it has opened and laid out.
-    const t = setTimeout(() => focus?.scrollTo(Math.max(0, y.current - 8)), 60);
+    const t = setTimeout(() => {
+      const fallback = () => {
+        if (live) focus?.scrollTo(Math.max(0, y.current - 8));
+      };
+      if (box.current && focus?.root?.current) {
+        try {
+          box.current.measureLayout(
+            focus.root.current,
+            (_x, measuredY) => {
+              if (live) focus.scrollTo(Math.max(0, measuredY - 8));
+            },
+            fallback,
+          );
+        } catch {
+          fallback();
+        }
+      } else fallback();
+    }, 60);
     const off = setTimeout(() => setLit(false), 1600);
     return () => {
+      live = false;
       clearTimeout(t);
       clearTimeout(off);
     };
@@ -48,6 +69,7 @@ function useFound(title: string, onFound: () => void) {
   }, [chosen, focus?.seq]);
   return {
     lit,
+    ref: box,
     onLayout: (e: { nativeEvent: { layout: { y: number } } }) => {
       y.current = e.nativeEvent.layout.y;
     },
@@ -64,7 +86,7 @@ export function SettingsAnchor({
 }) {
   const found = useFound(name, () => {});
   return (
-    <View onLayout={found.onLayout} style={found.lit && s.lit}>
+    <View ref={found.ref} onLayout={found.onLayout} style={found.lit && s.lit}>
       {children}
     </View>
   );
@@ -72,7 +94,12 @@ export function SettingsAnchor({
 
 const openSet = (): Set<string> => {
   try {
-    return new Set(JSON.parse(readLocal(REMEMBER) ?? "[]") as string[]);
+    const value: unknown = JSON.parse(readLocal(REMEMBER) ?? "[]");
+    return new Set(
+      Array.isArray(value)
+        ? value.filter((entry): entry is string => typeof entry === "string")
+        : [],
+    );
   } catch {
     return new Set();
   }
@@ -97,11 +124,16 @@ export function SettingsSection({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(() => defaultOpen || openSet().has(title));
-  const found = useFound(title, () => setOpen(true));
+  const [openedOnce, setOpenedOnce] = useState(open);
+  const found = useFound(title, () => {
+    setOpen(true);
+    setOpenedOnce(true);
+  });
 
   const toggle = () => {
     const next = !open;
     setOpen(next);
+    if (next) setOpenedOnce(true);
     const all = openSet();
     if (next) all.add(title);
     else all.delete(title);
@@ -110,6 +142,7 @@ export function SettingsSection({
 
   return (
     <View
+      ref={found.ref}
       style={[shared.card, s.section, found.lit && s.lit]}
       onLayout={found.onLayout}
     >
@@ -126,14 +159,29 @@ export function SettingsSection({
           color={colors.muted}
         />
       </Pressable>
-      {open && <View style={s.body}>{children}</View>}
+      {openedOnce && (
+        <View
+          style={[s.body, !open && { display: "none" }]}
+          accessibilityElementsHidden={!open}
+          importantForAccessibility={open ? "auto" : "no-hide-descendants"}
+        >
+          {children}
+        </View>
+      )}
     </View>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
-    section: { padding: 0, overflow: "hidden" },
+    section: {
+      padding: 0,
+      overflow: "hidden",
+      borderWidth: 0,
+      borderBottomWidth: 1,
+      borderRadius: 0,
+      backgroundColor: colors.surface,
+    },
     lit: {
       borderColor: colors.accent,
       borderWidth: 2,
@@ -144,21 +192,23 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "space-between",
       gap: 12,
-      minHeight: 52,
-      paddingHorizontal: 16,
+      minHeight: 44,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
     },
     headPressed: { backgroundColor: colors.surfaceMuted },
     title: {
       flex: 1,
+      minWidth: 0,
       color: colors.text,
       fontSize: 15,
       fontFamily: fonts.semibold,
     },
     body: {
       gap: 12,
-      paddingHorizontal: 16,
+      paddingHorizontal: 12,
       paddingBottom: 16,
-      paddingTop: 14,
+      paddingTop: 8,
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },

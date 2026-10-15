@@ -4,7 +4,7 @@ import { Switch } from "../../components/Switch";
 import { Chip, ChipRow } from "../../components/Chip";
 import { NumberInput } from "../../components/Field";
 import { Icon } from "../../components/Icon";
-import { animateLayout, Pressable } from "../../motion";
+import { Pressable } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 
@@ -16,6 +16,7 @@ export function Section({
   title,
   summary,
   initiallyOpen = false,
+  disabled = false,
   open: controlled,
   onOpenChange,
   onLayout,
@@ -25,6 +26,7 @@ export function Section({
   /** One line under the title saying what's set, shown while closed. */
   summary?: string;
   initiallyOpen?: boolean;
+  disabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   onLayout?: (e: LayoutChangeEvent) => void;
@@ -38,27 +40,23 @@ export function Section({
         accessibilityRole="button"
         accessibilityLabel={title}
         accessibilityHint={summary}
-        accessibilityState={{ expanded: open }}
+        disabled={disabled}
+        accessibilityState={{ expanded: open, disabled }}
         onPress={() => {
-          animateLayout();
           setOwn(!open);
           onOpenChange?.(!open);
         }}
         style={({ pressed }) => [s.header, pressed && s.pressed]}
       >
-        <View style={{ flex: 1 }}>
+        <View style={s.flex}>
           <Text style={s.title}>{title}</Text>
-          {!open && !!summary && (
-            <Text style={shared.small} numberOfLines={2}>
-              {summary}
-            </Text>
-          )}
+          {!open && !!summary && <Text style={shared.small}>{summary}</Text>}
         </View>
         <View style={open && s.open}>
           <Icon name="chevronRight" size={16} color={colors.faint} />
         </View>
       </Pressable>
-      {open && <View style={s.body}>{children}</View>}
+      <View style={[s.body, !open && { display: "none" }]}>{children}</View>
     </View>
   );
 }
@@ -79,7 +77,7 @@ export function SwitchRow({
 }) {
   return (
     <View style={s.switchRow}>
-      <View style={{ flex: 1 }}>
+      <View style={s.flex}>
         <Text style={s.rowTitle}>{title}</Text>
         {!!hint && <Text style={shared.small}>{hint}</Text>}
       </View>
@@ -98,12 +96,16 @@ export function SwitchRow({
 export function RemoveButton({
   label,
   onPress,
+  disabled = false,
 }: {
   label: string;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
+      disabled={disabled}
+      accessibilityState={{ disabled }}
       accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={6}
@@ -125,12 +127,14 @@ export function PresetMinutes({
   value,
   onChange,
   max,
+  disabled = false,
 }: {
   label: string;
   presets: { value: number; label: string }[];
   value: number;
   onChange: (minutes: number) => void;
   max: number;
+  disabled?: boolean;
 }) {
   const [custom, setCustom] = useState(
     () => !presets.some((p) => p.value === value),
@@ -141,11 +145,11 @@ export function PresetMinutes({
       <ChipRow label={label}>
         {presets.map((p) => (
           <Chip
+            disabled={disabled}
             key={p.value}
             label={p.label}
             selected={!custom && value === p.value}
             onPress={() => {
-              animateLayout();
               setCustom(false);
               setText(String(p.value));
               onChange(p.value);
@@ -153,10 +157,10 @@ export function PresetMinutes({
           />
         ))}
         <Chip
+          disabled={disabled}
           label="Custom"
           selected={custom}
           onPress={() => {
-            animateLayout();
             setCustom(true);
           }}
         />
@@ -164,6 +168,7 @@ export function PresetMinutes({
       {custom && (
         <View style={s.custom}>
           <NumberInput
+            editable={!disabled}
             value={text}
             onChangeText={(t) => {
               setText(t);
@@ -199,9 +204,11 @@ export function reminderLabel(minutes: number) {
 export function ReminderChips({
   value,
   onChange,
+  disabled = false,
 }: {
   value: number[];
   onChange: (minutes: number[]) => void;
+  disabled?: boolean;
 }) {
   const options = [...new Set([...REMINDER_PRESETS, ...value])].sort(
     (a, b) => a - b,
@@ -218,7 +225,7 @@ export function ReminderChips({
               multi
               label={reminderLabel(m)}
               selected={on}
-              disabled={!on && full}
+              disabled={disabled || (!on && full)}
               accessibilityLabel={`${reminderLabel(m)} before`}
               onPress={() =>
                 onChange(
@@ -266,7 +273,7 @@ export const bookingStyles = themed(() =>
     gap: { marginBottom: 12 },
     last: { marginBottom: 0 },
     pair: { flexDirection: "row", alignItems: "center", gap: 8 },
-    half: { flex: 1 },
+    half: { flex: 1, minWidth: 0 },
     multiline: { minHeight: 80 },
     warn: { color: colors.danger },
   }),
@@ -274,13 +281,15 @@ export const bookingStyles = themed(() =>
 
 const s = themed(() =>
   StyleSheet.create({
+    flex: { flex: 1, minWidth: 0 },
     section: { padding: 0, overflow: "hidden" },
     header: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      paddingHorizontal: 18,
-      paddingVertical: 16,
+      minHeight: 52,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
     },
     pressed: { backgroundColor: colors.surfaceMuted },
     title: {
@@ -291,12 +300,12 @@ const s = themed(() =>
       marginBottom: 2,
     },
     open: { transform: [{ rotate: "90deg" }] },
-    body: { paddingHorizontal: 18, paddingBottom: 18, paddingTop: 2 },
+    body: { paddingHorizontal: 14, paddingBottom: 14, paddingTop: 2 },
     switchRow: {
       flexDirection: "row",
       alignItems: "center",
       gap: 16,
-      marginBottom: 18,
+      marginBottom: 12,
     },
     rowTitle: {
       fontFamily: fonts.semibold,
@@ -306,7 +315,7 @@ const s = themed(() =>
     },
     remove: {
       width: 44,
-      height: 50,
+      height: 44,
       borderRadius: radii.input,
       borderWidth: 1,
       borderColor: colors.border,

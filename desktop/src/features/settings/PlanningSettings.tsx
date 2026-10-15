@@ -1,10 +1,12 @@
 import { SettingsSection } from "./SettingsSection";
+import { SettingsEditor } from "./SettingsEditor";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { MapPin, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import {
   BREAK_LEVELS,
+  HttpError,
   TRAVEL_MODES,
   clockMinutes,
   describeRrule,
@@ -34,7 +36,6 @@ import {
   minutesLabel,
   timeZones,
   WEEKDAY_SHORT,
-  zoneCity,
 } from "../../lib/planning";
 import { DateField } from "../../components/DateField";
 
@@ -134,6 +135,21 @@ function HourStrip({
           <i className="is-good" /> usually goes well
           <i className="is-slipping" /> often slips
         </span>
+        <details>
+          <summary>Hourly history</summary>
+          <ul>
+            {shown.map(({ v, h }) => (
+              <li key={h}>
+                {clockText(h)} ·{" "}
+                {v >= 0.25
+                  ? "Usually goes well"
+                  : v <= -0.25
+                    ? "Often slips"
+                    : "About average"}
+              </li>
+            ))}
+          </ul>
+        </details>
       </figcaption>
     </figure>
   );
@@ -144,17 +160,46 @@ function HourStrip({
  * splits tasks, buffers and travel, extra time zones, frames and places.
  */
 export function PlanningSettings({ teams, report }: Props) {
-  const { prefs, savePrefs, lists } = usePlanning();
+  const { prefs, savePrefs, lists, reload } = usePlanning();
   const [draft, setDraft] = useState<Draft | null>(prefs && draftFrom(prefs));
+  const [editing, setEditing] = useState<string | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [zoneToAdd, setZoneToAdd] = useState("");
   const [learning, setLearning] = useState<PlannerLearning | null>(null);
+  const [learningLoading, setLearningLoading] = useState(true);
+  const [learningFailed, setLearningFailed] = useState(false);
+  const [learningAttempt, setLearningAttempt] = useState(0);
   const save = useAction(report);
   const preview = useAction(report);
   const zones = timeZones();
 
   useEffect(() => {
-    client.getLearning().then(setLearning, () => setLearning(null));
-  }, []);
+    let alive = true;
+    setLearningLoading(true);
+    setLearningFailed(false);
+    client
+      .getLearning()
+      .then(
+        (result) => {
+          if (alive) setLearning(result);
+        },
+        () => {
+          if (alive) setLearningFailed(true);
+        },
+      )
+      .finally(() => {
+        if (alive) setLearningLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [learningAttempt]);
 
   useEffect(() => {
     if (prefs && !draft) setDraft(draftFrom(prefs));
@@ -163,11 +208,21 @@ export function PlanningSettings({ teams, report }: Props) {
   if (!draft)
     return (
       <SettingsSection className="card settings-card">
-        <p className="muted">Loading your planning settings…</p>
+        <p className="muted">Planning settings are not available yet.</p>
+        <button
+          className="secondary"
+          disabled={save.pending}
+          onClick={() => void save.run(reload)}
+        >
+          Retry
+        </button>
+        <OutcomeNote outcome={save.outcome} />
       </SettingsSection>
     );
 
+  const busy = save.pending || preview.pending;
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) => {
+    if (busy) return;
     setDraft((d) => d && { ...d, [key]: value });
     save.setOutcome(null);
   };
@@ -220,8 +275,10 @@ export function PlanningSettings({ teams, report }: Props) {
     }
     void save.run(async () => {
       const next = await savePrefs(draft);
+      if (!mounted.current) return;
       setDraft(draftFrom(next));
-      return "Saved. The planner uses these from now on.";
+      setEditing(null);
+      return "Planning settings saved.";
     });
   };
 
@@ -231,578 +288,724 @@ export function PlanningSettings({ teams, report }: Props) {
         className="card settings-card"
         aria-labelledby="work-title"
       >
-        <h2 id="work-title">How you work</h2>
-        <form onSubmit={submit}>
-          <p className="muted">
-            The planner, buffers and travel time all follow these.
-          </p>
-          <div className="settings-grid">
-            <div className="settings-field wide">
-              <label htmlFor="pref-zone">Time zone</label>
-              <div className="field-row">
-                <Select
-                  id="pref-zone"
-                  value={draft.timezone}
-                  onChange={(e) => set("timezone", e.target.value)}
-                >
-                  {!zones.includes(draft.timezone) && (
-                    <option value={draft.timezone}>{draft.timezone}</option>
-                  )}
-                  {zones.map((z) => (
-                    <option key={z} value={z}>
-                      {z.replaceAll("_", " ")}
-                    </option>
-                  ))}
-                </Select>
-                <button
-                  type="button"
-                  className="secondary"
-                  disabled={draft.timezone === device}
-                  onClick={() => set("timezone", device)}
-                >
-                  Use this device&apos;s time zone
-                </button>
-              </div>
-              {draft.timezone !== device && (
-                <small className="field-hint">
-                  This device is set to {device.replaceAll("_", " ")}.
-                </small>
-              )}
-            </div>
-            <div className="settings-field wide">
-              <span className="settings-label" id="work-days-label">
-                Working days
+        <h2 id="work-title">Planning preferences</h2>
+        <ul className="settings-list">
+          {[
+            [
+              "Working hours",
+              `${(prefs ?? draft).work_start}–${(prefs ?? draft).work_end} · ${daysLabel((prefs ?? draft).work_days)} · ${(prefs ?? draft).timezone}`,
+            ],
+            [
+              "Planner",
+              `${(prefs ?? draft).horizon_days} days · ${BREAK_LABELS[(prefs ?? draft).break_level]}`,
+            ],
+            ["Planner notices", "Session and deadline reminders"],
+            ["Learning", "Estimates and work rhythm"],
+            ["Daily digest", "Morning and evening emails"],
+            [
+              "Buffers and travel",
+              `${(prefs ?? draft).buffer_before_minutes} min before · ${(prefs ?? draft).buffer_after_minutes} min after`,
+            ],
+            [
+              "Extra time zones",
+              `${(prefs ?? draft).extra_timezones.length} of 3`,
+            ],
+          ].map(([title, summary]) => (
+            <li key={title}>
+              <span className="settings-list-main">
+                <strong>{title}</strong>
+                <small>{summary}</small>
               </span>
-              <DayPicker
-                label="Working days"
-                value={draft.work_days}
-                onChange={(d) => set("work_days", d)}
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="pref-start">Work starts</label>
-              <DateField
-                id="pref-start"
-                type="time"
-                required
-                value={draft.work_start}
-                onChange={(e) => set("work_start", e.target.value)}
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="pref-end">Work ends</label>
-              <DateField
-                id="pref-end"
-                type="time"
-                required
-                value={draft.work_end}
-                onChange={(e) => set("work_end", e.target.value)}
-              />
-            </div>
-            <NumberInput
-              id="pref-days"
-              label="Days to plan by default"
-              value={draft.horizon_days}
-              min={1}
-              max={7}
-              onChange={(n) => set("horizon_days", n)}
-            />
-          </div>
-
-          <h3 className="settings-subtitle">Planner</h3>
-          <div className="settings-grid">
-            <NumberInput
-              id="pref-pad"
-              label="Padding (%)"
-              hint="Extra time added to each estimate."
-              value={draft.pad_percent}
-              min={0}
-              max={100}
-              onChange={(n) => set("pad_percent", n)}
-            />
-            <NumberInput
-              id="pref-split"
-              label="Split tasks longer than (min)"
-              hint="Longer tasks become several sessions."
-              value={draft.split_after_minutes}
-              min={15}
-              max={480}
-              onChange={(n) => set("split_after_minutes", n)}
-            />
-            <NumberInput
-              id="pref-min"
-              label="Shortest session (min)"
-              value={draft.min_block_minutes}
-              min={5}
-              max={240}
-              onChange={(n) => set("min_block_minutes", n)}
-            />
-            <div className="settings-field">
-              <label htmlFor="pref-breaks">Breaks</label>
-              <Select
-                id="pref-breaks"
-                value={draft.break_level}
-                onChange={(e) =>
-                  set("break_level", e.target.value as BreakLevel)
-                }
-              >
-                {BREAK_LEVELS.map((b) => (
-                  <option key={b} value={b}>
-                    {BREAK_LABELS[b]}
-                  </option>
-                ))}
-              </Select>
-            </div>
-          </div>
-
-          <label className="switch-line settings-field">
-            <input
-              type="checkbox"
-              role="switch"
-              className="ai-switch"
-              checked={draft.count_blocks_as_spent ?? false}
-              onChange={(e) => set("count_blocks_as_spent", e.target.checked)}
-            />
-            <span>
-              Count session time as worked when I complete a task
-              <small>
-                The past part of its sessions is added to the time spent on it.
-              </small>
-            </span>
-          </label>
-
-          <h3 className="settings-subtitle">Planner notices</h3>
-          <p className="muted">
-            Rollovers, due tasks, risks and clashes also appear in
-            Notifications.
-          </p>
-          <div className="settings-grid">
-            <div className="settings-field">
-              <label htmlFor="pref-session-reminder">
-                Remind me when a session starts
-              </label>
-              <Select
-                id="pref-session-reminder"
-                value={String(draft.session_reminder_minutes ?? "off")}
-                onChange={(e) =>
-                  set(
-                    "session_reminder_minutes",
-                    e.target.value === "off" ? null : Number(e.target.value),
-                  )
-                }
-              >
-                <option value="off">Off</option>
-                <option value="0">As it starts</option>
-                <option value="5">5 minutes before</option>
-                <option value="10">10 minutes before</option>
-                <option value="15">15 minutes before</option>
-              </Select>
-            </div>
-            <NumberInput
-              id="pref-deadline"
-              label="Warn about tasks due within (days)"
-              hint="For tasks with no sessions planned. 0 turns this off."
-              value={draft.deadline_notice_days ?? 1}
-              min={0}
-              max={14}
-              onChange={(n) => set("deadline_notice_days", n)}
-            />
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={draft.planner_notices?.push ?? true}
-                onChange={(e) =>
-                  set("planner_notices", {
-                    push: e.target.checked,
-                    email: draft.planner_notices?.email ?? false,
-                  })
-                }
-              />
-              <span>
-                Push notifications
-                <small>On phones signed in to the Orbyn app.</small>
-              </span>
-            </label>
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={draft.planner_notices?.email ?? false}
-                onChange={(e) =>
-                  set("planner_notices", {
-                    push: draft.planner_notices?.push ?? true,
-                    email: e.target.checked,
-                  })
-                }
-              />
-              <span>
-                Email
-                <small>Sent when the server has email set up.</small>
-              </span>
-            </label>
-          </div>
-
-          <h3 className="settings-subtitle">What Orbyn has learned</h3>
-          <p className="muted">
-            Only your completed work shapes future estimates and timing. Tasks
-            themselves stay unchanged.
-          </p>
-          <div className="settings-grid">
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={draft.learn_estimates ?? false}
-                onChange={(e) => set("learn_estimates", e.target.checked)}
-              />
-              <span>
-                Adjust estimates from history
-                <small>{learningSummary(learning).estimates}</small>
-              </span>
-            </label>
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={draft.learn_rhythm ?? true}
-                onChange={(e) => set("learn_rhythm", e.target.checked)}
-              />
-              <span>
-                Put demanding work in your best hours
-                <small>{learningSummary(learning).rhythm}</small>
-              </span>
-            </label>
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={draft.balance_load ?? true}
-                onChange={(e) => set("balance_load", e.target.checked)}
-              />
-              <span>
-                Keep days to what you usually get through
-                <small>{learningSummary(learning).load}</small>
-              </span>
-            </label>
-          </div>
-          {learning && learning.rhythm.confidence > 0 && (
-            <HourStrip
-              hours={learning.rhythm.hours}
-              from={Number(draft.work_start.slice(0, 2))}
-              to={Math.ceil(clockMinutes(draft.work_end) / 60)}
-            />
-          )}
-          {learning &&
-            (learning.estimates.tags.length > 0 ||
-              (learning.estimates.lists ?? []).length > 0) && (
-              <ul className="estimate-tags">
-                {learning.estimates.tags.slice(0, 6).map((t) => (
-                  <li key={t.tag_id}>
-                    <span>#{t.name}</span>
-                    <span className="mono">{t.ratio}×</span>
-                    <small className="muted">{t.samples} tasks</small>
-                  </li>
-                ))}
-                {(learning.estimates.lists ?? []).slice(0, 6).map((l) => (
-                  <li key={l.list_id}>
-                    <span>{l.name}</span>
-                    <span className="mono">{l.ratio}×</span>
-                    <small className="muted">{l.samples} tasks</small>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-          <h3 className="settings-subtitle">Daily digest</h3>
-          <p className="muted">
-            Choose when to receive your agenda and evening review by email.
-          </p>
-          <div className="settings-grid settings-pairs">
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={digest.morning}
-                onChange={(e) => setDigest({ morning: e.target.checked })}
-              />
-              <span>
-                Morning agenda
-                <small>Today’s events, due tasks and sessions.</small>
-              </span>
-            </label>
-            <label className="settings-field">
-              <span className="settings-label">Morning time</span>
-              <DateField
-                type="time"
-                value={digest.morning_time}
-                onChange={(e) => setDigest({ morning_time: e.target.value })}
-              />
-            </label>
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={digest.evening}
-                onChange={(e) => setDigest({ evening: e.target.checked })}
-              />
-              <span>
-                Evening review
-                <small>What’s still open, and a look at tomorrow.</small>
-              </span>
-            </label>
-            <label className="settings-field">
-              <span className="settings-label">Evening time</span>
-              <DateField
-                type="time"
-                value={digest.evening_time}
-                onChange={(e) => setDigest({ evening_time: e.target.value })}
-              />
-            </label>
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={digest.agents !== false}
-                onChange={(e) => setDigest({ agents: e.target.checked })}
-              />
-              <span>
-                What your agents did
-                <small>
-                  In the morning digest: what connected agents changed, with
-                  links, and what waits for you.
-                </small>
-              </span>
-            </label>
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={digest.agent_push !== false}
-                onChange={(e) => setDigest({ agent_push: e.target.checked })}
-              />
-              <span>
-                Tell me when an agent finishes a big job
-                <small>
-                  One notice when an agent makes more than 20 changes in one go.
-                </small>
-              </span>
-            </label>
-          </div>
-          <div className="digest-preview">
-            <button
-              type="button"
-              className="secondary"
-              disabled={preview.pending}
-              onClick={() =>
-                void preview.run(async () => {
-                  await client.sendTestDigest("morning");
-                  return "Sent a preview to your email.";
-                })
-              }
-            >
-              {preview.pending ? "Sending…" : "Email me a preview"}
-            </button>
-            <OutcomeNote outcome={preview.outcome} />
-          </div>
-
-          <h3 className="settings-subtitle">Buffers and travel</h3>
-          <div className="settings-grid">
-            <NumberInput
-              id="pref-before"
-              label="Buffer before events (min)"
-              value={draft.buffer_before_minutes}
-              min={0}
-              max={120}
-              onChange={(n) => set("buffer_before_minutes", n)}
-            />
-            <NumberInput
-              id="pref-after"
-              label="Buffer after events (min)"
-              value={draft.buffer_after_minutes}
-              min={0}
-              max={120}
-              onChange={(n) => set("buffer_after_minutes", n)}
-            />
-            <NumberInput
-              id="pref-travel"
-              label="Default travel time (min)"
-              hint="For events with a location that matches no place."
-              value={draft.default_travel_minutes}
-              min={0}
-              max={240}
-              onChange={(n) => set("default_travel_minutes", n)}
-            />
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={draft.adaptive_buffers}
-                onChange={(e) => set("adaptive_buffers", e.target.checked)}
-              />
-              <span>
-                Adaptive buffers
-                <small>Longer buffers around longer events.</small>
-              </span>
-            </label>
-            <NumberInput
-              id="pref-travel-pad"
-              label="Extra travel padding (min)"
-              hint="Added to every trip, there and back."
-              value={draft.travel_padding_minutes ?? 0}
-              min={0}
-              max={30}
-              onChange={(n) => set("travel_padding_minutes", n)}
-            />
-          </div>
-          <fieldset className="check-group">
-            <legend>Which events get buffers</legend>
-            <div className="check-grid">
-              <label className="check-line">
-                <input
-                  type="checkbox"
-                  checked={scope.personal}
-                  onChange={(e) => setScope({ personal: e.target.checked })}
-                />
-                Personal events
-              </label>
-              {teams.map((t) => (
-                <label key={t.id} className="check-line">
-                  <input
-                    type="checkbox"
-                    checked={
-                      scope.team_ids === null || scope.team_ids.includes(t.id)
-                    }
-                    onChange={() => toggleScopeTeam(t.id)}
-                  />
-                  {t.name}
-                </label>
-              ))}
-            </div>
-          </fieldset>
-          {lists.length > 0 && (
-            <fieldset className="check-group">
-              <legend>
-                Only events in these lists (none ticked: any list)
-              </legend>
-              <div className="check-grid">
-                {lists.map((l) => (
-                  <label key={l.id} className="check-line">
-                    <input
-                      type="checkbox"
-                      checked={scope.list_ids.includes(l.id)}
-                      onChange={() => toggleScopeList(l.id)}
-                    />
-                    {l.team_name ? `${l.name} · ${l.team_name}` : l.name}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-          )}
-          <div className="settings-grid">
-            <NumberInput
-              id="pref-buffer-min"
-              label="Only events at least (min)"
-              hint="Shorter events get no buffers. 0 for every event."
-              value={scope.min_minutes}
-              min={0}
-              max={1440}
-              onChange={(n) => setScope({ min_minutes: n })}
-            />
-            <label className="switch-line settings-field">
-              <input
-                type="checkbox"
-                role="switch"
-                className="ai-switch"
-                checked={scope.only_with_others}
-                onChange={(e) =>
-                  setScope({ only_with_others: e.target.checked })
-                }
-              />
-              <span>
-                Only meetings with others
-                <small>
-                  Events with people invited, a meeting link, or a team.
-                </small>
-              </span>
-            </label>
-          </div>
-
-          <h3 className="settings-subtitle">Extra time zones</h3>
-          <p className="muted">
-            Shown as extra columns on the calendar (up to 3).
-          </p>
-          <ul className="chip-list">
-            {draft.extra_timezones.map((z) => (
-              <li key={z} className="chip">
-                {zoneCity(z)}
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={`Remove ${z}`}
-                  onClick={() =>
-                    set(
-                      "extra_timezones",
-                      draft.extra_timezones.filter((x) => x !== z),
-                    )
-                  }
-                >
-                  <X size={12} />
-                </button>
-              </li>
-            ))}
-          </ul>
-          {draft.extra_timezones.length < 3 && (
-            <div className="field-row">
-              <label className="sr-only" htmlFor="pref-add-zone">
-                Time zone to add
-              </label>
-              <Select
-                id="pref-add-zone"
-                value={zoneToAdd}
-                onChange={(e) => setZoneToAdd(e.target.value)}
-              >
-                <option value="">Choose a time zone…</option>
-                {zones
-                  .filter((z) => !draft.extra_timezones.includes(z))
-                  .map((z) => (
-                    <option key={z} value={z}>
-                      {z.replaceAll("_", " ")}
-                    </option>
-                  ))}
-              </Select>
               <button
                 type="button"
-                className="secondary"
-                disabled={!zoneToAdd}
-                onClick={() => {
-                  set("extra_timezones", [...draft.extra_timezones, zoneToAdd]);
-                  setZoneToAdd("");
-                }}
+                className="icon-button"
+                aria-label={`Edit ${title}`}
+                disabled={busy}
+                onClick={() => setEditing(title)}
               >
-                <Plus size={14} /> Add
+                <Pencil size={14} />
               </button>
-            </div>
-          )}
+            </li>
+          ))}
+        </ul>
+        {!editing && <OutcomeNote outcome={save.outcome} />}
+        {editing && (
+          <SettingsEditor
+            title={editing}
+            pending={busy}
+            onClose={() => {
+              if (busy) return;
+              if (prefs) setDraft(draftFrom(prefs));
+              setEditing(null);
+            }}
+          >
+            <form onSubmit={submit}>
+              <fieldset disabled={busy}>
+                {editing === "Working hours" && (
+                  <>
+                    <div className="settings-grid">
+                      <div className="settings-field wide">
+                        <label htmlFor="pref-zone">Time zone</label>
+                        <div className="field-row">
+                          <Select
+                            disabled={busy}
+                            id="pref-zone"
+                            value={draft.timezone}
+                            onChange={(e) => set("timezone", e.target.value)}
+                          >
+                            {!zones.includes(draft.timezone) && (
+                              <option value={draft.timezone}>
+                                {draft.timezone}
+                              </option>
+                            )}
+                            {zones.map((z) => (
+                              <option key={z} value={z}>
+                                {z.replaceAll("_", " ")}
+                              </option>
+                            ))}
+                          </Select>
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={busy || draft.timezone === device}
+                            onClick={() => set("timezone", device)}
+                          >
+                            Use this device&apos;s time zone
+                          </button>
+                        </div>
+                        {draft.timezone !== device && (
+                          <small className="field-hint">
+                            This device is set to {device.replaceAll("_", " ")}.
+                          </small>
+                        )}
+                      </div>
+                      <div className="settings-field wide">
+                        <span className="settings-label" id="work-days-label">
+                          Working days
+                        </span>
+                        <DayPicker
+                          label="Working days"
+                          value={draft.work_days}
+                          onChange={(d) => set("work_days", d)}
+                        />
+                      </div>
+                      <div className="settings-field">
+                        <label htmlFor="pref-start">Work starts</label>
+                        <DateField
+                          disabled={busy}
+                          id="pref-start"
+                          type="time"
+                          required
+                          value={draft.work_start}
+                          onChange={(e) => set("work_start", e.target.value)}
+                        />
+                      </div>
+                      <div className="settings-field">
+                        <label htmlFor="pref-end">Work ends</label>
+                        <DateField
+                          disabled={busy}
+                          id="pref-end"
+                          type="time"
+                          required
+                          value={draft.work_end}
+                          onChange={(e) => set("work_end", e.target.value)}
+                        />
+                      </div>
+                      <NumberInput
+                        id="pref-days"
+                        label="Days to plan by default"
+                        value={draft.horizon_days}
+                        min={1}
+                        max={7}
+                        onChange={(n) => set("horizon_days", n)}
+                      />
+                    </div>
+                  </>
+                )}
+                {editing === "Planner" && (
+                  <>
+                    <div className="settings-grid">
+                      <NumberInput
+                        id="pref-pad"
+                        label="Padding (%)"
+                        hint="Extra time added to each estimate."
+                        value={draft.pad_percent}
+                        min={0}
+                        max={100}
+                        onChange={(n) => set("pad_percent", n)}
+                      />
+                      <NumberInput
+                        id="pref-split"
+                        label="Split tasks longer than (min)"
+                        hint="Longer tasks become several sessions."
+                        value={draft.split_after_minutes}
+                        min={15}
+                        max={480}
+                        onChange={(n) => set("split_after_minutes", n)}
+                      />
+                      <NumberInput
+                        id="pref-min"
+                        label="Shortest session (min)"
+                        value={draft.min_block_minutes}
+                        min={5}
+                        max={240}
+                        onChange={(n) => set("min_block_minutes", n)}
+                      />
+                      <div className="settings-field">
+                        <label htmlFor="pref-breaks">Breaks</label>
+                        <Select
+                          disabled={busy}
+                          id="pref-breaks"
+                          value={draft.break_level}
+                          onChange={(e) =>
+                            set("break_level", e.target.value as BreakLevel)
+                          }
+                        >
+                          {BREAK_LEVELS.map((b) => (
+                            <option key={b} value={b}>
+                              {BREAK_LABELS[b]}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
+                    </div>
 
-          <div className="settings-footer">
-            <button className="primary" disabled={save.pending}>
-              <Save size={14} />{" "}
-              {save.pending ? "Saving…" : "Save planning settings"}
-            </button>
-            <OutcomeNote outcome={save.outcome} />
-          </div>
-        </form>
+                    <label className="switch-line settings-field">
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        className="ai-switch"
+                        checked={draft.count_blocks_as_spent ?? false}
+                        onChange={(e) =>
+                          set("count_blocks_as_spent", e.target.checked)
+                        }
+                      />
+                      <span>
+                        Count session time as worked when I complete a task
+                        <small>
+                          The past part of its sessions is added to the time
+                          spent on it.
+                        </small>
+                      </span>
+                    </label>
+                  </>
+                )}
+                {editing === "Planner notices" && (
+                  <>
+                    <p className="muted">
+                      Rollovers, due tasks, risks and clashes also appear in
+                      Notifications.
+                    </p>
+                    <div className="settings-grid">
+                      <div className="settings-field">
+                        <label htmlFor="pref-session-reminder">
+                          Remind me when a session starts
+                        </label>
+                        <Select
+                          disabled={busy}
+                          id="pref-session-reminder"
+                          value={String(
+                            draft.session_reminder_minutes ?? "off",
+                          )}
+                          onChange={(e) =>
+                            set(
+                              "session_reminder_minutes",
+                              e.target.value === "off"
+                                ? null
+                                : Number(e.target.value),
+                            )
+                          }
+                        >
+                          <option value="off">Off</option>
+                          <option value="0">As it starts</option>
+                          <option value="5">5 minutes before</option>
+                          <option value="10">10 minutes before</option>
+                          <option value="15">15 minutes before</option>
+                        </Select>
+                      </div>
+                      <NumberInput
+                        id="pref-deadline"
+                        label="Warn about tasks due within (days)"
+                        hint="For tasks with no sessions planned. 0 turns this off."
+                        value={draft.deadline_notice_days ?? 1}
+                        min={0}
+                        max={14}
+                        onChange={(n) => set("deadline_notice_days", n)}
+                      />
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={draft.planner_notices?.push ?? true}
+                          onChange={(e) =>
+                            set("planner_notices", {
+                              push: e.target.checked,
+                              email: draft.planner_notices?.email ?? false,
+                            })
+                          }
+                        />
+                        <span>
+                          Push notifications
+                          <small>On phones signed in to the Orbyn app.</small>
+                        </span>
+                      </label>
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={draft.planner_notices?.email ?? false}
+                          onChange={(e) =>
+                            set("planner_notices", {
+                              push: draft.planner_notices?.push ?? true,
+                              email: e.target.checked,
+                            })
+                          }
+                        />
+                        <span>
+                          Email
+                          <small>Sent when the server has email set up.</small>
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
+                {editing === "Learning" && (
+                  <>
+                    {learningLoading && (
+                      <p className="muted" role="status">
+                        Loading history…
+                      </p>
+                    )}
+                    {learningFailed && (
+                      <p role="alert">Couldn't load work history.</p>
+                    )}
+                    <p className="muted">
+                      Only your completed work shapes future estimates and
+                      timing. Tasks themselves stay unchanged.
+                    </p>
+                    <div className="settings-grid">
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={draft.learn_estimates ?? false}
+                          onChange={(e) =>
+                            set("learn_estimates", e.target.checked)
+                          }
+                        />
+                        <span>
+                          Adjust estimates from history
+                          {!learningLoading && !learningFailed && (
+                            <small>{learningSummary(learning).estimates}</small>
+                          )}
+                        </span>
+                      </label>
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={draft.learn_rhythm ?? true}
+                          onChange={(e) =>
+                            set("learn_rhythm", e.target.checked)
+                          }
+                        />
+                        <span>
+                          Put demanding work in your best hours
+                          {!learningLoading && !learningFailed && (
+                            <small>{learningSummary(learning).rhythm}</small>
+                          )}
+                        </span>
+                      </label>
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={draft.balance_load ?? true}
+                          onChange={(e) =>
+                            set("balance_load", e.target.checked)
+                          }
+                        />
+                        <span>
+                          Keep days to what you usually get through
+                          {!learningLoading && !learningFailed && (
+                            <small>{learningSummary(learning).load}</small>
+                          )}
+                        </span>
+                      </label>
+                    </div>
+                    {learningFailed && (
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() => setLearningAttempt((n) => n + 1)}
+                      >
+                        Retry history
+                      </button>
+                    )}
+                    {!learningLoading &&
+                      !learningFailed &&
+                      learning &&
+                      learning.rhythm.confidence > 0 && (
+                        <HourStrip
+                          hours={learning.rhythm.hours}
+                          from={Number(draft.work_start.slice(0, 2))}
+                          to={Math.ceil(clockMinutes(draft.work_end) / 60)}
+                        />
+                      )}
+                    {!learningLoading &&
+                      !learningFailed &&
+                      learning &&
+                      (learning.estimates.tags.length > 0 ||
+                        (learning.estimates.lists ?? []).length > 0) && (
+                        <ul className="estimate-tags">
+                          {learning.estimates.tags.map((t) => (
+                            <li key={t.tag_id}>
+                              <span>#{t.name}</span>
+                              <span className="mono">{t.ratio}×</span>
+                              <small className="muted">{t.samples} tasks</small>
+                            </li>
+                          ))}
+                          {(learning.estimates.lists ?? []).map((l) => (
+                            <li key={l.list_id}>
+                              <span>{l.name}</span>
+                              <span className="mono">{l.ratio}×</span>
+                              <small className="muted">{l.samples} tasks</small>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                  </>
+                )}
+                {editing === "Daily digest" && (
+                  <>
+                    <p className="muted">
+                      Choose when to receive your agenda and evening review by
+                      email.
+                    </p>
+                    <div className="settings-grid settings-pairs">
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={digest.morning}
+                          onChange={(e) =>
+                            setDigest({ morning: e.target.checked })
+                          }
+                        />
+                        <span>
+                          Morning agenda
+                          <small>Today’s events, due tasks and sessions.</small>
+                        </span>
+                      </label>
+                      <label className="settings-field">
+                        <span className="settings-label">Morning time</span>
+                        <DateField
+                          disabled={busy}
+                          type="time"
+                          value={digest.morning_time}
+                          onChange={(e) =>
+                            setDigest({ morning_time: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={digest.evening}
+                          onChange={(e) =>
+                            setDigest({ evening: e.target.checked })
+                          }
+                        />
+                        <span>
+                          Evening review
+                          <small>
+                            What’s still open, and a look at tomorrow.
+                          </small>
+                        </span>
+                      </label>
+                      <label className="settings-field">
+                        <span className="settings-label">Evening time</span>
+                        <DateField
+                          disabled={busy}
+                          type="time"
+                          value={digest.evening_time}
+                          onChange={(e) =>
+                            setDigest({ evening_time: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={digest.agents !== false}
+                          onChange={(e) =>
+                            setDigest({ agents: e.target.checked })
+                          }
+                        />
+                        <span>
+                          What your agents did
+                          <small>
+                            In the morning digest: what connected agents
+                            changed, with links, and what waits for you.
+                          </small>
+                        </span>
+                      </label>
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={digest.agent_push !== false}
+                          onChange={(e) =>
+                            setDigest({ agent_push: e.target.checked })
+                          }
+                        />
+                        <span>
+                          Tell me when an agent finishes a big job
+                          <small>
+                            One notice when an agent makes more than 20 changes
+                            in one go.
+                          </small>
+                        </span>
+                      </label>
+                    </div>
+                    <div className="digest-preview">
+                      <button
+                        type="button"
+                        className="secondary"
+                        disabled={busy}
+                        onClick={() =>
+                          void preview.run(async () => {
+                            await client.sendTestDigest("morning");
+                            return "Sent a preview to your email.";
+                          })
+                        }
+                      >
+                        {preview.pending ? "Sending…" : "Email me a preview"}
+                      </button>
+                      <OutcomeNote outcome={preview.outcome} />
+                    </div>
+                  </>
+                )}
+                {editing === "Buffers and travel" && (
+                  <>
+                    <div className="settings-grid">
+                      <NumberInput
+                        id="pref-before"
+                        label="Buffer before events (min)"
+                        value={draft.buffer_before_minutes}
+                        min={0}
+                        max={120}
+                        onChange={(n) => set("buffer_before_minutes", n)}
+                      />
+                      <NumberInput
+                        id="pref-after"
+                        label="Buffer after events (min)"
+                        value={draft.buffer_after_minutes}
+                        min={0}
+                        max={120}
+                        onChange={(n) => set("buffer_after_minutes", n)}
+                      />
+                      <NumberInput
+                        id="pref-travel"
+                        label="Default travel time (min)"
+                        hint="For events with a location that matches no place."
+                        value={draft.default_travel_minutes}
+                        min={0}
+                        max={240}
+                        onChange={(n) => set("default_travel_minutes", n)}
+                      />
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={draft.adaptive_buffers}
+                          onChange={(e) =>
+                            set("adaptive_buffers", e.target.checked)
+                          }
+                        />
+                        <span>
+                          Adaptive buffers
+                          <small>Longer buffers around longer events.</small>
+                        </span>
+                      </label>
+                      <NumberInput
+                        id="pref-travel-pad"
+                        label="Extra travel padding (min)"
+                        hint="Added to every trip, there and back."
+                        value={draft.travel_padding_minutes ?? 0}
+                        min={0}
+                        max={30}
+                        onChange={(n) => set("travel_padding_minutes", n)}
+                      />
+                    </div>
+                    <fieldset className="check-group">
+                      <legend>Which events get buffers</legend>
+                      <div className="check-grid">
+                        <label className="check-line">
+                          <input
+                            type="checkbox"
+                            checked={scope.personal}
+                            onChange={(e) =>
+                              setScope({ personal: e.target.checked })
+                            }
+                          />
+                          Personal events
+                        </label>
+                        {teams.map((t) => (
+                          <label key={t.id} className="check-line">
+                            <input
+                              type="checkbox"
+                              checked={
+                                scope.team_ids === null ||
+                                scope.team_ids.includes(t.id)
+                              }
+                              onChange={() => toggleScopeTeam(t.id)}
+                            />
+                            {t.name}
+                          </label>
+                        ))}
+                      </div>
+                    </fieldset>
+                    {lists.length > 0 && (
+                      <fieldset className="check-group">
+                        <legend>
+                          Only events in these lists (none ticked: any list)
+                        </legend>
+                        <div className="check-grid">
+                          {lists.map((l) => (
+                            <label key={l.id} className="check-line">
+                              <input
+                                type="checkbox"
+                                checked={scope.list_ids.includes(l.id)}
+                                onChange={() => toggleScopeList(l.id)}
+                              />
+                              {l.team_name
+                                ? `${l.name} · ${l.team_name}`
+                                : l.name}
+                            </label>
+                          ))}
+                        </div>
+                      </fieldset>
+                    )}
+                    <div className="settings-grid">
+                      <NumberInput
+                        id="pref-buffer-min"
+                        label="Only events at least (min)"
+                        hint="Shorter events get no buffers. 0 for every event."
+                        value={scope.min_minutes}
+                        min={0}
+                        max={1440}
+                        onChange={(n) => setScope({ min_minutes: n })}
+                      />
+                      <label className="switch-line settings-field">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          checked={scope.only_with_others}
+                          onChange={(e) =>
+                            setScope({ only_with_others: e.target.checked })
+                          }
+                        />
+                        <span>
+                          Only meetings with others
+                          <small>
+                            Events with people invited, a meeting link, or a
+                            team.
+                          </small>
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
+                {editing === "Extra time zones" && (
+                  <>
+                    <p className="muted">
+                      Shown as extra columns on the calendar (up to 3).
+                    </p>
+                    <ul className="chip-list">
+                      {draft.extra_timezones.map((z) => (
+                        <li key={z} className="chip">
+                          {z.replaceAll("_", " ")}
+                          <button
+                            type="button"
+                            className="icon-button"
+                            aria-label={`Remove ${z}`}
+                            onClick={() =>
+                              set(
+                                "extra_timezones",
+                                draft.extra_timezones.filter((x) => x !== z),
+                              )
+                            }
+                          >
+                            <X size={12} />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                    {draft.extra_timezones.length < 3 && (
+                      <div className="field-row">
+                        <label className="sr-only" htmlFor="pref-add-zone">
+                          Time zone to add
+                        </label>
+                        <Select
+                          disabled={busy}
+                          id="pref-add-zone"
+                          value={zoneToAdd}
+                          onChange={(e) =>
+                            !busy && setZoneToAdd(e.target.value)
+                          }
+                        >
+                          <option value="">Choose a time zone…</option>
+                          {zones
+                            .filter((z) => !draft.extra_timezones.includes(z))
+                            .map((z) => (
+                              <option key={z} value={z}>
+                                {z.replaceAll("_", " ")}
+                              </option>
+                            ))}
+                        </Select>
+                        <button
+                          type="button"
+                          className="secondary"
+                          disabled={busy || !zoneToAdd}
+                          onClick={() => {
+                            set("extra_timezones", [
+                              ...draft.extra_timezones,
+                              zoneToAdd,
+                            ]);
+                            setZoneToAdd("");
+                          }}
+                        >
+                          <Plus size={14} /> Add
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </fieldset>
+              <div className="settings-footer">
+                <button className="primary" disabled={save.pending}>
+                  <Save size={14} /> {save.pending ? "Saving…" : "Save"}
+                </button>
+                <OutcomeNote outcome={save.outcome} />
+              </div>
+            </form>
+          </SettingsEditor>
+        )}
       </SettingsSection>
       <TimeAnalytics report={report} />
       <FramesEditor teams={teams} report={report} />
@@ -810,6 +1013,59 @@ export function PlanningSettings({ teams, report }: Props) {
       <PlacesEditor report={report} />
     </>
   );
+}
+
+function useCatalog<T>(
+  load: () => Promise<T[]>,
+  report: (error: unknown) => void,
+) {
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const reader = useRef(load);
+  reader.current = load;
+  const [items, setItems] = useState<T[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setFailed(false);
+    reader
+      .current()
+      .then(
+        (result) => {
+          if (alive) setItems(result);
+        },
+        (error) => {
+          if (!alive) return;
+          setFailed(true);
+          if (error instanceof HttpError && error.statusCode === 401)
+            reportRef.current(error);
+        },
+      )
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [attempt]);
+  return {
+    items,
+    setItems,
+    loading,
+    failed,
+    mounted,
+    retry: () => setAttempt((n) => n + 1),
+  };
 }
 
 // ---- Frames ------------------------------------------------------------------
@@ -828,21 +1084,19 @@ function filterSummary(f: FrameFilters, names: Map<string, string>) {
 
 /** Frames: recurring windows reserved for a kind of work. */
 function FramesEditor({ teams, report }: Props) {
-  const { ask, tell } = useConfirm();
+  const { ask } = useConfirm();
   const { lists, tags } = usePlanning();
-  const [frames, setFrames] = useState<Frame[] | null>(null);
+  const {
+    items: frames,
+    setItems: setFrames,
+    loading,
+    failed,
+    mounted,
+    retry,
+  } = useCatalog(() => client.listFrames(), report);
+  const [frameBusy, setFrameBusy] = useState(false);
   const [editing, setEditing] = useState<Frame | "new" | null>(null);
   const action = useAction(report);
-
-  const load = () =>
-    client.listFrames().then(setFrames, (e) => {
-      setFrames([]);
-      report(e);
-    });
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const names = new Map<string, string>([
     ...lists.map((l) => [l.id, l.name] as [string, string]),
@@ -854,14 +1108,17 @@ function FramesEditor({ teams, report }: Props) {
     if (
       !(await ask({
         title: `Delete the frame “${f.name}”?`,
+        body: "All occurrences are removed. Tasks are unchanged.",
         confirmLabel: "Delete",
         destructive: true,
       }))
     )
       return;
+    if (!mounted.current) return;
     void action.run(async () => {
       await client.deleteFrame(f.id);
-      await load();
+      if (!mounted.current) return;
+      setFrames((all) => (all ?? []).filter((item) => item.id !== f.id));
       return "Frame deleted.";
     });
   };
@@ -875,20 +1132,31 @@ function FramesEditor({ teams, report }: Props) {
           </p>
         </div>
         {editing === null && (
-          <button className="secondary" onClick={() => setEditing("new")}>
+          <button
+            className="secondary"
+            disabled={action.pending || loading || failed}
+            onClick={() => setEditing("new")}
+          >
             <Plus size={14} /> New frame
           </button>
         )}
       </div>
-      {frames === null ? (
+      {failed ? (
+        <>
+          <p role="alert">Couldn't load frames.</p>
+          <button className="secondary" onClick={retry}>
+            Retry
+          </button>
+        </>
+      ) : loading ? (
         <p className="muted">Loading frames…</p>
-      ) : frames.length === 0 && editing === null ? (
+      ) : !frames?.length && editing === null ? (
         <p className="muted">
           No frames yet. Tasks can go anywhere in your working hours.
         </p>
       ) : (
         <ul className="settings-list">
-          {frames.map((f) => (
+          {(frames ?? []).map((f) => (
             <li key={f.id}>
               <i
                 className="list-dot"
@@ -906,6 +1174,7 @@ function FramesEditor({ teams, report }: Props) {
               <button
                 className="icon-button"
                 aria-label={`Edit ${f.name}`}
+                disabled={action.pending || frameBusy}
                 onClick={() => setEditing(f)}
               >
                 <Pencil size={14} />
@@ -923,23 +1192,35 @@ function FramesEditor({ teams, report }: Props) {
         </ul>
       )}
       {editing !== null && (
-        <FrameForm
-          key={editing === "new" ? "new" : editing.id}
-          frame={editing === "new" ? null : editing}
-          teams={teams}
-          report={report}
-          heading={editing === "new" ? "New frame" : "Edit frame"}
-          onCancel={() => setEditing(null)}
-          onSaved={() => {
-            const added = editing === "new";
-            setEditing(null);
-            void load();
-            action.setOutcome({
-              ok: true,
-              text: added ? "Frame added." : "Frame saved.",
-            });
-          }}
-        />
+        <SettingsEditor
+          title={editing === "new" ? "Add frame" : "Edit frame"}
+          pending={frameBusy}
+          onClose={() => setEditing(null)}
+        >
+          <FrameForm
+            key={editing === "new" ? "new" : editing.id}
+            frame={editing === "new" ? null : editing}
+            teams={teams}
+            report={report}
+            onPendingChange={setFrameBusy}
+            onCancel={() => setEditing(null)}
+            onSaved={(saved) => {
+              const added = editing === "new";
+              setFrames((all) =>
+                added
+                  ? [...(all ?? []), saved]
+                  : (all ?? []).map((item) =>
+                      item.id === saved.id ? saved : item,
+                    ),
+              );
+              setEditing(null);
+              action.setOutcome({
+                ok: true,
+                text: added ? "Frame added." : "Frame saved.",
+              });
+            }}
+          />
+        </SettingsEditor>
       )}
       <OutcomeNote outcome={action.outcome} />
     </SettingsSection>
@@ -972,21 +1253,18 @@ const MODE_LABELS: Record<TravelMode, string> = {
 
 /** Places and how long it takes to get there, for travel time around events. */
 function PlacesEditor({ report }: { report: (e: unknown) => void }) {
-  const { ask, tell } = useConfirm();
-  const [places, setPlaces] = useState<Place[] | null>(null);
+  const { ask } = useConfirm();
+  const {
+    items: places,
+    setItems: setPlaces,
+    loading,
+    failed,
+    mounted,
+    retry,
+  } = useCatalog(() => client.listPlaces(), report);
   const [editing, setEditing] = useState<string | "new" | null>(null);
   const [draft, setDraft] = useState<PlaceDraft>(blankPlace);
   const action = useAction(report);
-
-  const load = () =>
-    client.listPlaces().then(setPlaces, (e) => {
-      setPlaces([]);
-      report(e);
-    });
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -997,28 +1275,51 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
       mode: draft.mode,
       peak_minutes: draft.peak_minutes,
     };
-    void action
-      .run(async () => {
-        if (editing === "new") await client.createPlace(body);
-        else if (editing) await client.updatePlace(editing, body);
-        await load();
-        return editing === "new" ? "Place added." : "Place saved.";
-      })
-      .then((ok) => ok && setEditing(null));
+    void action.run(async () => {
+      if (!body.label || !body.match)
+        throw new Error("Enter a name and location match.");
+      if (
+        !Number.isFinite(body.travel_minutes) ||
+        body.travel_minutes < 0 ||
+        body.travel_minutes > 240 ||
+        (body.peak_minutes !== null &&
+          (!Number.isFinite(body.peak_minutes) ||
+            body.peak_minutes < 0 ||
+            body.peak_minutes > 240))
+      ) {
+        throw new Error("Travel time must be between 0 and 240 minutes.");
+      }
+      const added = editing === "new";
+      if (!editing) return;
+      const saved = added
+        ? await client.createPlace(body)
+        : await client.updatePlace(editing, body);
+      if (!mounted.current) return;
+      setPlaces((all) =>
+        added
+          ? [...(all ?? []), saved]
+          : (all ?? []).map((item) => (item.id === saved.id ? saved : item)),
+      );
+      setEditing(null);
+      return added ? "Place added." : "Place saved.";
+    });
   };
 
   const remove = async (p: Place) => {
     if (
       !(await ask({
         title: `Delete the place “${p.label}”?`,
+        body: "Matching events will use the default travel time.",
         confirmLabel: "Delete",
         destructive: true,
       }))
     )
       return;
+    if (!mounted.current) return;
     void action.run(async () => {
       await client.deletePlace(p.id);
-      await load();
+      if (!mounted.current) return;
+      setPlaces((all) => (all ?? []).filter((item) => item.id !== p.id));
       return "Place deleted.";
     });
   };
@@ -1034,6 +1335,7 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
         {editing === null && (
           <button
             className="secondary"
+            disabled={action.pending || loading || failed}
             onClick={() => {
               setDraft(blankPlace());
               setEditing("new");
@@ -1043,13 +1345,20 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
           </button>
         )}
       </div>
-      {places === null ? (
+      {failed ? (
+        <>
+          <p role="alert">Couldn't load places.</p>
+          <button className="secondary" onClick={retry}>
+            Retry
+          </button>
+        </>
+      ) : loading ? (
         <p className="muted">Loading places…</p>
-      ) : places.length === 0 && editing === null ? (
+      ) : !places?.length && editing === null ? (
         <p className="muted">No places yet.</p>
       ) : (
         <ul className="settings-list">
-          {places.map((p) => (
+          {(places ?? []).map((p) => (
             <li key={p.id}>
               <MapPin size={15} aria-hidden="true" />
               <span className="settings-list-main">
@@ -1065,6 +1374,7 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
               <button
                 className="icon-button"
                 aria-label={`Edit ${p.label}`}
+                disabled={action.pending}
                 onClick={() => {
                   setDraft({
                     label: p.label,
@@ -1091,103 +1401,121 @@ function PlacesEditor({ report }: { report: (e: unknown) => void }) {
         </ul>
       )}
       {editing !== null && (
-        <form className="settings-subform" onSubmit={submit}>
-          <div className="settings-grid">
-            <div className="settings-field">
-              <label htmlFor="place-label">Name</label>
-              <input
-                id="place-label"
-                required
-                autoFocus
-                maxLength={60}
-                value={draft.label}
-                placeholder="Office"
-                onChange={(e) => setDraft({ ...draft, label: e.target.value })}
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="place-match">Location contains</label>
-              <input
-                id="place-match"
-                required
-                maxLength={200}
-                value={draft.match}
-                placeholder="Collins St"
-                onChange={(e) => setDraft({ ...draft, match: e.target.value })}
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="place-travel">Travel (min)</label>
-              <input
-                id="place-travel"
-                type="number"
-                required
-                min={0}
-                max={240}
-                value={draft.travel_minutes}
-                onChange={(e) =>
-                  setDraft({ ...draft, travel_minutes: Number(e.target.value) })
-                }
-              />
-            </div>
-            <div className="settings-field">
-              <label htmlFor="place-mode">How you get there</label>
-              <Select
-                id="place-mode"
-                value={draft.mode ?? ""}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    mode: (e.target.value || null) as TravelMode | null,
-                  })
-                }
+        <SettingsEditor
+          title={editing === "new" ? "Add place" : "Edit place"}
+          pending={action.pending}
+          onClose={() => setEditing(null)}
+        >
+          <form className="settings-subform" onSubmit={submit}>
+            <fieldset disabled={action.pending}>
+              <div className="settings-grid">
+                <div className="settings-field">
+                  <label htmlFor="place-label">Name</label>
+                  <input
+                    id="place-label"
+                    required
+                    autoFocus
+                    maxLength={60}
+                    value={draft.label}
+                    placeholder="Office"
+                    onChange={(e) =>
+                      setDraft({ ...draft, label: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor="place-match">Location contains</label>
+                  <input
+                    id="place-match"
+                    required
+                    maxLength={200}
+                    value={draft.match}
+                    placeholder="Collins St"
+                    onChange={(e) =>
+                      setDraft({ ...draft, match: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor="place-travel">Travel (min)</label>
+                  <input
+                    id="place-travel"
+                    type="number"
+                    required
+                    min={0}
+                    max={240}
+                    value={draft.travel_minutes}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        travel_minutes: Number(e.target.value),
+                      })
+                    }
+                  />
+                </div>
+                <div className="settings-field">
+                  <label htmlFor="place-mode">How you get there</label>
+                  <Select
+                    disabled={action.pending}
+                    id="place-mode"
+                    value={draft.mode ?? ""}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        mode: (e.target.value || null) as TravelMode | null,
+                      })
+                    }
+                  >
+                    <option value="">Not set</option>
+                    {TRAVEL_MODES.map((m) => (
+                      <option key={m} value={m}>
+                        {MODE_LABELS[m]}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="settings-field">
+                  <label htmlFor="place-peak">At rush hour (min)</label>
+                  <input
+                    id="place-peak"
+                    type="number"
+                    min={0}
+                    max={240}
+                    placeholder="Same"
+                    value={draft.peak_minutes ?? ""}
+                    aria-describedby="place-peak-hint"
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        peak_minutes:
+                          e.target.value === "" ? null : Number(e.target.value),
+                      })
+                    }
+                  />
+                  <small id="place-peak-hint" className="field-hint">
+                    Weekdays 7–9 AM and 4–6 PM. Empty: the same as usual.
+                  </small>
+                </div>
+              </div>
+            </fieldset>
+            <div className="button-row">
+              <button
+                type="button"
+                className="secondary"
+                disabled={action.pending}
+                onClick={() => setEditing(null)}
               >
-                <option value="">Not set</option>
-                {TRAVEL_MODES.map((m) => (
-                  <option key={m} value={m}>
-                    {MODE_LABELS[m]}
-                  </option>
-                ))}
-              </Select>
+                Cancel
+              </button>
+              <button className="primary" disabled={action.pending}>
+                {editing === "new" ? "Add place" : "Save place"}
+              </button>
             </div>
-            <div className="settings-field">
-              <label htmlFor="place-peak">At rush hour (min)</label>
-              <input
-                id="place-peak"
-                type="number"
-                min={0}
-                max={240}
-                placeholder="Same"
-                value={draft.peak_minutes ?? ""}
-                aria-describedby="place-peak-hint"
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    peak_minutes:
-                      e.target.value === "" ? null : Number(e.target.value),
-                  })
-                }
-              />
-              <small id="place-peak-hint" className="field-hint">
-                Weekdays 7–9 AM and 4–6 PM. Empty: the same as usual.
-              </small>
-            </div>
-          </div>
-          <div className="button-row">
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => setEditing(null)}
-            >
-              Cancel
-            </button>
-            <button className="primary" disabled={action.pending}>
-              {editing === "new" ? "Add place" : "Save place"}
-            </button>
-          </div>
-        </form>
+            <OutcomeNote outcome={action.outcome} />
+          </form>
+        </SettingsEditor>
       )}
-      <OutcomeNote outcome={action.outcome} />
+      {!editing && <OutcomeNote outcome={action.outcome} />}
     </SettingsSection>
   );
 }

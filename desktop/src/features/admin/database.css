@@ -254,9 +254,8 @@
   font-size: 13px;
 }
 .db-table-list button span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .db-table-list button:hover {
   background: var(--color-hover);
@@ -355,9 +354,8 @@
 .db-grid td {
   max-width: 260px;
   padding: 10px 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .db-grid th:first-child,
 .db-grid td:first-child {
@@ -454,5 +452,131 @@
   .db-intro {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+}
+
+/* Remaining pane width controls these layouts without containing fixed dialogs. */
+
+.admin-content.is-narrow .admin-overview-lower {
+  grid-template-columns: minmax(0, 1fr);
+}
+.admin-content.is-narrow .db-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.admin-content.is-narrow .db-sidebar {
+  max-height: 210px;
+}
+.admin-content.is-narrow .db-intro {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.admin-database.is-compact .db-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+.db-table-picker {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+}
+.db-intro {
+  flex-wrap: wrap;
+  padding: 16px;
+  gap: 12px;
+}
+.db-intro > div {
+  min-width: 0;
+}
+.db-intro-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.db-main-head {
+  padding: 16px;
+}
+.db-tabs {
+  padding: 0 16px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.db-pager,
+.db-pager > div,
+.db-editor-actions {
+  flex-wrap: wrap;
+}
+.db-editor {
+  margin: 0 16px 16px;
+}
+.db-editor-fields label {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.db-editor-fields .select,
+.db-editor-fields input:not([type="checkbox"]) {
+  min-width: 0;
+  width: 100%;
+}
+.db-value-detail > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--color-accentText);
+}
+.db-value-detail pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 240px;
+  overflow-y: auto;
+  margin: 8px 0;
+  font: inherit;
+}
+.db-indexes strong,
+.db-editor-head strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.modal.db-editor {
+  margin: 0;
+  width: min(480px, 100%);
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  background: var(--color-surface);
+  border-color: var(--color-border);
+}
+
+.db-search:focus-within {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+.db-main h2,
+.db-mode {
+  flex-wrap: wrap;
+}
+.db-mode button,
+.db-table-list button,
+.db-check {
+  min-height: 44px;
+}
+.db-editor label {
+  overflow-wrap: anywhere;
+}
+.admin-recent-list strong {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 400px) {
+  .db-pager {
+    padding-inline: 16px;
+  }
+  .db-editor {
+    padding: 12px;
+  }
+  .admin-recent-list > div {
+    flex-wrap: wrap;
+    padding-inline: 16px;
+    gap: 6px;
   }
 }

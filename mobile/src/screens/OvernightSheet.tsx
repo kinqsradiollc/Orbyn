@@ -1,15 +1,18 @@
-import React, { useEffect, useState } from "react";
-import { ScrollView, Text, View, Switch, TextInput } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { ScrollView, StyleSheet, Text, View, TextInput } from "react-native";
 import type { OvernightNight, OvernightRun } from "@orbyn/core";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { Button } from "../components/Button";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { client } from "../lib/api";
 import { errorText } from "../lib/errors";
-import { confirmAction } from "../lib/confirm";
+import { ActionSheet, MoreMenu } from "../components/MoreMenu";
+import { InlineDetails } from "../components/InlineDetails";
+import { Switch } from "../components/Switch";
+import { session } from "../lib/session";
 import { onLive } from "../lib/live";
 import { shared } from "../styles";
-import { colors } from "../theme";
+import { colors, themed } from "../theme";
 
 type Props = {
   nightId?: string;
@@ -22,34 +25,76 @@ type Props = {
 };
 /** Morning review on the phone, using the same decisions as web. */
 export function OvernightSheet(props: Props) {
+  return (
+    <OvernightSession
+      key={`${session.token}:${props.nightId ?? "latest"}`}
+      {...props}
+    />
+  );
+}
+function OvernightSession(props: Props) {
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const active = useRef(props.visible);
+  active.current = props.visible;
+  const operationLock = useRef(false);
+  const readTicket = useRef(0);
+  const owns = () => mounted.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      readTicket.current++;
+    };
+  }, []);
+  const [retry, setRetry] = useState(0);
+  const [stale, setStale] = useState(false);
+  const staleRef = useRef(false);
+  const [bulkPrompt, setBulkPrompt] = useState<{
+    night: OvernightNight;
+    action: "keep" | "undo";
+  } | null>(null);
   const [night, setNight] = useState<OvernightNight | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [loadError, setLoadError] = useState("");
   const load = async () => {
-    setNight(await client.latestAssistantNight(props.nightId));
+    const ticket = ++readTicket.current;
+    const value = await client.latestAssistantNight(props.nightId);
+    if (!owns() || ticket !== readTicket.current) return;
+    setNight(value);
     setLoading(false);
+    staleRef.current = false;
+    setStale(false);
+    setLoadError("");
   };
   useEffect(() => {
     if (!props.visible) return;
     let alive = true;
+    setLoading(!night);
     let pending: Promise<void> | null = null;
     let scheduled: ReturnType<typeof setTimeout>;
     const refresh = () => {
-      if (pending) return pending;
+      if (pending || operationLock.current) return pending;
+      const ticket = ++readTicket.current;
       pending = client
         .latestAssistantNight(props.nightId)
         .then(
           (value) => {
-            if (alive) {
+            if (alive && owns() && ticket === readTicket.current) {
+              staleRef.current = false;
+              setStale(false);
               setNight(value);
               setLoading(false);
               setLoadError("");
             }
           },
           (e) => {
-            if (alive) setLoadError(errorText(e));
+            if (alive && owns() && ticket === readTicket.current) {
+              setLoadError(errorText(e));
+              setLoading(false);
+            }
           },
         )
         .finally(() => {
@@ -67,84 +112,82 @@ export function OvernightSheet(props: Props) {
     const timer = setInterval(refresh, 15000);
     return () => {
       alive = false;
+      readTicket.current++;
       clearTimeout(scheduled);
       stop();
       clearInterval(timer);
     };
-  }, [props.visible, props.nightId]);
-  const act = async (operation: () => Promise<unknown>) => {
-    if (busy) return;
+  }, [props.visible, props.nightId, retry]);
+  const act = async (operation: () => Promise<unknown>): Promise<boolean> => {
+    if (!owns() || !active.current || operationLock.current || staleRef.current)
+      return false;
+    operationLock.current = true;
+    readTicket.current++;
     setBusy(true);
     setError("");
     try {
       await operation();
-      await load();
+      if (!owns()) return false;
+      staleRef.current = true;
+      setStale(true);
+      try {
+        await load();
+      } catch (e) {
+        if (owns())
+          setLoadError(`Action saved. Couldn't refresh: ${errorText(e)}`);
+      }
+      return true;
     } catch (e) {
-      setError(errorText(e));
+      if (owns()) setError(errorText(e));
+      return false;
     } finally {
-      setBusy(false);
+      operationLock.current = false;
+      if (owns()) setBusy(false);
     }
   };
   const bulk = (action: "keep" | "undo") => {
-    if (!night) return;
-    confirmAction(
-      action === "keep" ? "Keep all finished work?" : "Undo all finished work?",
-      action === "keep"
-        ? "Held changes will be applied. Runs still working or waiting for your answer stay open."
-        : "Held work will be declined and applied changes will be undone where they can still be restored. Active runs stay open.",
-      action === "keep" ? "Keep all" : "Undo all",
-      () =>
-        void act(() =>
-          client.reviewAssistantNight(
-            night.id,
-            action,
-            night.runs
-              .filter(
-                (run) =>
-                  run.kind !== "reflection" &&
-                  !run.restricted &&
-                  (action === "undo"
-                    ? run.state === "done" || run.state === "failed"
-                    : run.state === "done" && run.status !== "undone"),
-              )
-              .map((run) => ({ id: run.id, token: run.decision_token })),
-          ),
-        ),
-      action === "undo",
-    );
+    if (night && !busy && !stale) setBulkPrompt({ night, action });
   };
+  const locked = busy || stale || loading;
   return (
     <Sheet
       visible={props.visible}
       title="Overnight"
       onClose={props.onClose}
       onDismiss={props.onDismiss}
+      closeDisabled={busy}
     >
       <ScrollView contentContainerStyle={sheetStyles.body}>
         <ErrorBanner
-          error={error || loadError}
+          error={error}
           onDismiss={() => {
             setError("");
-            setLoadError("");
           }}
         />
+        {!!loadError && (
+          <View>
+            <ErrorBanner error={loadError} />
+            <Button
+              title="Refresh overnight"
+              disabled={busy}
+              onPress={() => setRetry((n) => n + 1)}
+            />
+          </View>
+        )}
         {loading ? (
-          <Text style={shared.small}>Loading your night…</Text>
-        ) : !night ? (
-          <View style={shared.card}>
+          <Text style={shared.small}>Loading overnight…</Text>
+        ) : !night && loadError ? null : !night ? (
+          <View style={s.section}>
             <Text style={shared.sectionTitle}>No night work yet</Text>
             <Text style={shared.small}>
-              Turn on night shift in Assistant settings, or hand over a task for
-              Tonight.
+              Enable night shift in Settings or send a task to Tonight.
             </Text>
           </View>
         ) : (
           <>
             <Text style={shared.sectionTitle}>{night.local_day}</Text>
             <Text style={shared.small}>
-              {night.status === "running"
-                ? "Your night is still in progress."
-                : "Here is what happened overnight."}
+              {night.status === "running" ? "In progress" : "Night summary"}
             </Text>
             {night.runs.some((run) => run.kind !== "reflection") && (
               <View
@@ -158,7 +201,7 @@ export function OvernightSheet(props: Props) {
                 <Button
                   title="Keep all"
                   disabled={
-                    busy ||
+                    locked ||
                     !night.runs.some(
                       (run) =>
                         run.kind !== "reflection" &&
@@ -173,7 +216,7 @@ export function OvernightSheet(props: Props) {
                   title="Undo all"
                   secondary
                   disabled={
-                    busy ||
+                    locked ||
                     !night.runs.some(
                       (run) =>
                         run.kind !== "reflection" &&
@@ -187,13 +230,15 @@ export function OvernightSheet(props: Props) {
               </View>
             )}
             {(night.page_runs ?? []).map((run) => (
-              <View key={run.id} style={shared.card}>
+              <View key={run.id} style={s.section}>
                 <Text style={shared.sectionTitle}>
                   Page update · {run.state}
                 </Text>
-                <Text style={shared.small}>
-                  {run.estimated_tokens} estimated tokens
-                </Text>
+                <InlineDetails title="Usage">
+                  <Text style={shared.small}>
+                    {run.estimated_tokens} estimated tokens
+                  </Text>
+                </InlineDetails>
                 <Button
                   title={
                     run.state === "waiting" ? "Review in page" : "Open page"
@@ -207,13 +252,13 @@ export function OvernightSheet(props: Props) {
               <RunCard
                 key={run.id}
                 run={run}
-                busy={busy}
+                busy={locked}
                 act={act}
                 {...props}
               />
             ))}
             {!!night.not_done.length && (
-              <View style={shared.card}>
+              <View style={s.section}>
                 <Text style={shared.sectionTitle}>Not done tonight</Text>
                 {night.not_done.map((entry, index) => (
                   <View key={index} style={{ marginVertical: 8 }}>
@@ -228,6 +273,50 @@ export function OvernightSheet(props: Props) {
           </>
         )}
       </ScrollView>
+      <ActionSheet
+        visible={!!bulkPrompt}
+        label="Review overnight"
+        title={
+          bulkPrompt?.action === "keep"
+            ? "Keep finished work?"
+            : "Undo finished work?"
+        }
+        message={
+          bulkPrompt?.action === "keep"
+            ? "Applies held changes. Active runs stay open."
+            : "Declines held work and restores applied changes where possible. Active runs stay open."
+        }
+        cancelLabel="Go back"
+        actions={[
+          {
+            label: bulkPrompt?.action === "keep" ? "Keep all" : "Undo all",
+            destructive: bulkPrompt?.action === "undo",
+            disabled: locked,
+            onPress: () => {
+              if (!bulkPrompt) return;
+              const { night: snapshot, action } = bulkPrompt;
+              void act(() =>
+                client.reviewAssistantNight(
+                  snapshot.id,
+                  action,
+                  snapshot.runs
+                    .filter(
+                      (run) =>
+                        run.kind !== "reflection" &&
+                        !run.restricted &&
+                        run.status !== "undone" &&
+                        (action === "undo"
+                          ? run.state === "done" || run.state === "failed"
+                          : run.state === "done"),
+                    )
+                    .map((run) => ({ id: run.id, token: run.decision_token })),
+                ),
+              );
+            },
+          },
+        ]}
+        onClose={() => setBulkPrompt(null)}
+      />
     </Sheet>
   );
 }
@@ -241,11 +330,20 @@ function RunCard({
 }: Props & {
   run: OvernightRun;
   busy: boolean;
-  act: (operation: () => Promise<unknown>) => Promise<void>;
+  act: (operation: () => Promise<unknown>) => Promise<boolean>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [answer, setAnswer] = useState("");
-  useEffect(() => setAnswer(""), [run.question?.text]);
+  const mounted = useRef(true);
+  const current = useRef({ run, busy, answer });
+  current.current = { run, busy, answer };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => setAnswer(""), [run.question?.id]);
   const choices = run.steps.length
     ? run.steps.map((step) => ({ key: step.id, title: step.title }))
     : (run.proposal?.changes ?? []).map((change) => ({
@@ -257,28 +355,48 @@ function RunCard({
   );
   useEffect(() => {
     setChosen(new Set(choices.map((choice) => choice.key)));
-  }, [run.proposal?.id]);
+  }, [run.proposal?.id, choices.map((choice) => choice.key).join("|")]);
+  const currentChosen = new Set(
+    choices
+      .filter((choice) => chosen.has(choice.key))
+      .map((choice) => choice.key),
+  );
   const pending = run.proposal?.status === "pending";
+  const signature = JSON.stringify([
+    run.proposal?.id,
+    run.decision_token,
+    choices,
+  ]);
+  const currentSignature = useRef(signature);
+  currentSignature.current = signature;
+  const [keepPrompt, setKeepPrompt] = useState<{
+    key: string;
+    signature: string;
+  } | null>(null);
+  const [undoPrompt, setUndoPrompt] = useState<string | null>(null);
+  useEffect(() => {
+    setKeepPrompt(null);
+    setUndoPrompt(null);
+  }, [signature]);
   const keepChange = (key: string) => {
-    const apply = () =>
+    if (
+      busy ||
+      run.restricted ||
+      run.state !== "done" ||
+      run.status === "undone"
+    )
+      return;
+    if (choices.length > 1) setKeepPrompt({ key, signature });
+    else
       void act(() =>
         client.keepAssistantNightRun(
           run.id,
           run.steps.length ? { steps: [key] } : { only: [Number(key)] },
         ),
       );
-    if (choices.length > 1)
-      confirmAction(
-        "Keep this change?",
-        "This approves only this change. The other held changes in this run will be left out.",
-        "Keep change",
-        apply,
-        false,
-      );
-    else apply();
   };
   return (
-    <View style={[shared.card, { marginBottom: 12 }]}>
+    <View style={s.section}>
       <Text style={shared.sectionTitle}>{run.title}</Text>
       <Text style={shared.small}>
         {run.state === "queued"
@@ -303,8 +421,7 @@ function RunCard({
         {run.summary || "Open the chat to see its progress."}
       </Text>
       {!!run.reflection_sources?.length && (
-        <View style={{ gap: 8, marginBottom: 12 }}>
-          <Text style={shared.label}>Sources</Text>
+        <InlineDetails title="Sources">
           {run.reflection_sources.map((source) => (
             <Button
               secondary
@@ -317,7 +434,7 @@ function RunCard({
               }
             />
           ))}
-        </View>
+        </InlineDetails>
       )}
       {run.approval && (
         <View style={{ gap: 8, marginBottom: 12 }}>
@@ -382,20 +499,35 @@ function RunCard({
           <Button
             title="Answer"
             disabled={busy || !answer.trim()}
-            onPress={() =>
-              void act(async () => {
-                await client.answerAssistantRun(
+            onPress={async () => {
+              const submitted = answer;
+              const questionId = run.question!.id;
+              const saved = await act(() =>
+                client.answerAssistantRun(
                   run.job_id,
-                  answer.trim(),
-                  run.question!.id,
-                );
+                  submitted.trim(),
+                  questionId,
+                ),
+              );
+              if (
+                saved &&
+                mounted.current &&
+                current.current.run.question?.id === questionId &&
+                current.current.answer === submitted
+              )
                 setAnswer("");
-              })
-            }
+            }}
           />
         </View>
       )}
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+      <View
+        style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
         {run.chat_id && (
           <Button
             title="Open chat"
@@ -405,7 +537,7 @@ function RunCard({
         )}
         {run.proposal && (
           <Button
-            title="Open Review"
+            title="Open review"
             secondary
             onPress={() => onOpenReview(run.proposal!.id)}
           />
@@ -414,7 +546,7 @@ function RunCard({
           <>
             <Button
               title={
-                pending && chosen.size < choices.length
+                pending && currentChosen.size < choices.length
                   ? "Keep selected"
                   : "Keep"
               }
@@ -423,33 +555,35 @@ function RunCard({
                 run.state !== "done" ||
                 run.restricted ||
                 run.status === "undone" ||
-                (pending && !chosen.size)
+                (pending && !currentChosen.size)
               }
               onPress={() =>
                 void act(() =>
                   client.keepAssistantNightRun(
                     run.id,
-                    pending && chosen.size < choices.length
+                    pending && currentChosen.size < choices.length
                       ? run.steps.length
-                        ? { steps: [...chosen] }
-                        : { only: [...chosen].map(Number) }
+                        ? { steps: [...currentChosen] }
+                        : { only: [...currentChosen].map(Number) }
                       : {},
                   ),
                 )
               }
             />
-            <Button
-              title="Undo"
-              secondary
-              disabled={
-                busy ||
-                !["done", "failed"].includes(run.state) ||
-                run.restricted ||
-                run.status === "undone"
-              }
-              onPress={() =>
-                void act(() => client.undoAssistantNightRun(run.id))
-              }
+            <MoreMenu
+              label="Run options"
+              disabled={busy}
+              actions={[
+                {
+                  label: "Undo work",
+                  destructive: true,
+                  disabled:
+                    !["done", "failed"].includes(run.state) ||
+                    run.restricted ||
+                    run.status === "undone",
+                  onPress: () => setUndoPrompt(signature),
+                },
+              ]}
             />
           </>
         )}
@@ -495,7 +629,12 @@ function RunCard({
                 <Button
                   title="Keep change"
                   secondary
-                  disabled={busy || run.state !== "done"}
+                  disabled={
+                    busy ||
+                    run.state !== "done" ||
+                    run.restricted ||
+                    run.status === "undone"
+                  }
                   onPress={() => keepChange(choice.key)}
                 />
               </View>
@@ -532,6 +671,75 @@ function RunCard({
             ))}
         </>
       )}
+      <ActionSheet
+        visible={undoPrompt !== null}
+        label="Undo work"
+        title="Undo this work?"
+        message="Held work is declined. Applied changes are restored where possible."
+        cancelLabel="Keep work"
+        actions={[
+          {
+            label: "Undo work",
+            destructive: true,
+            disabled: busy,
+            onPress: () => {
+              if (
+                mounted.current &&
+                !current.current.busy &&
+                undoPrompt === currentSignature.current
+              )
+                void act(() => client.undoAssistantNightRun(run.id));
+            },
+          },
+        ]}
+        onClose={() => setUndoPrompt(null)}
+      />
+      <ActionSheet
+        visible={keepPrompt !== null}
+        label="Keep change"
+        title="Keep only this change?"
+        message="Other held changes in this run will be left out."
+        cancelLabel="Go back"
+        actions={[
+          {
+            label: "Keep change",
+            disabled:
+              busy ||
+              run.restricted ||
+              run.state !== "done" ||
+              run.status === "undone",
+            onPress: () => {
+              if (
+                keepPrompt !== null &&
+                mounted.current &&
+                !current.current.busy &&
+                keepPrompt.signature === currentSignature.current &&
+                choices.some((choice) => choice.key === keepPrompt.key)
+              )
+                void act(() =>
+                  client.keepAssistantNightRun(
+                    run.id,
+                    run.steps.length
+                      ? { steps: [keepPrompt.key] }
+                      : { only: [Number(keepPrompt.key)] },
+                  ),
+                );
+            },
+          },
+        ]}
+        onClose={() => setKeepPrompt(null)}
+      />
     </View>
   );
 }
+
+const s = themed(() =>
+  StyleSheet.create({
+    section: {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+      paddingVertical: 12,
+      gap: 8,
+    },
+  }),
+);

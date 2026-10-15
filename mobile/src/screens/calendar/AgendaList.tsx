@@ -13,10 +13,11 @@ import { Icon } from "../../components/Icon";
 import { StatusPill } from "../../components/Pill";
 import { usePlanning } from "../../lib/planningContext";
 import { canJoin, rangeLabel } from "../../lib/planning";
-import { FadeIn, Pressable } from "../../motion";
+import { Pressable } from "../../motion";
 import { colors, fonts, radii, statusTones, themed } from "../../theme";
 import { shared } from "../../styles";
 import { covers, startOfDay, timeLabel } from "./dates";
+import { usePaneWidth } from "../../hooks/usePaneWidth";
 import { tap } from "../../lib/haptics";
 
 type Timed = { start_at: string; end_at: string | null; all_day?: boolean };
@@ -112,9 +113,8 @@ export function AgendaList({
         <View style={shared.emptyIcon}>
           <Icon name="calendar" size={24} color={colors.accent} />
         </View>
-        <Text style={shared.sectionTitle}>A clear stretch.</Text>
-        <Text style={[shared.subtitle, s.center]}>
-          Nothing planned for these two weeks.
+        <Text style={[shared.small, s.center]}>
+          Nothing scheduled in this range.
         </Text>
       </View>
     );
@@ -122,7 +122,7 @@ export function AgendaList({
   return (
     <>
       {filled.map(({ day, rows }) => (
-        <FadeIn key={day.toDateString()} style={s.day}>
+        <View key={day.toDateString()} style={s.day}>
           <View style={s.dayHead}>
             <Text style={s.dayTitle} accessibilityRole="header">
               {dayHeading(day)}
@@ -149,7 +149,7 @@ export function AgendaList({
               />
             ))}
           </View>
-        </FadeIn>
+        </View>
       ))}
     </>
   );
@@ -183,7 +183,10 @@ function AgendaRow({
   | "onJoin"
 >) {
   // "10:30 PM" at the user's text size; the column widens with it.
-  const timeWidth = TIME_WIDTH * Math.min(1.6, useWindowDimensions().fontScale);
+  const { width, onLayout } = usePaneWidth();
+  const { fontScale } = useWindowDimensions();
+  const compact = width < 420 || fontScale > 1.3;
+  const timeWidth = TIME_WIDTH * fontScale;
   const time = (x: Timed) =>
     wholeDay(x)
       ? "All day"
@@ -217,19 +220,20 @@ function AgendaRow({
       .join(" · ");
     onPress = () => onOpen(e.item_id, e);
     onLongPress = () => onEntryMenu(e);
-    extra = (
-      <>
-        {e.kind === "task" && <StatusPill status={e.status} />}
-        {canJoin(e, now) && (
-          <Button
-            title="Join"
-            icon="video"
-            style={s.join}
-            onPress={() => onJoin(e)}
-          />
-        )}
-      </>
-    );
+    extra =
+      e.kind === "task" || canJoin(e, now) ? (
+        <>
+          {e.kind === "task" && <StatusPill status={e.status} />}
+          {canJoin(e, now) && (
+            <Button
+              title="Join"
+              icon="video"
+              style={s.join}
+              onPress={() => onJoin(e)}
+            />
+          )}
+        </>
+      ) : null;
   } else if ("block" in r) {
     const b = r.block;
     color = listColor(b.list_id) ?? colors.accent;
@@ -259,7 +263,10 @@ function AgendaRow({
     onLongPress = () => onGhostMenu(g);
   }
   return (
-    <View style={[s.row, !first && s.divider]}>
+    <View
+      onLayout={onLayout}
+      style={[s.row, compact && s.rowCompact, !first && s.divider]}
+    >
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`${when}, ${title}, ${detail}`}
@@ -283,28 +290,26 @@ function AgendaRow({
               : { backgroundColor: color },
           ]}
         />
-        <Text style={[s.time, { width: timeWidth }]}>{when}</Text>
-        <View style={{ flex: 1 }}>
+        {!compact && <Text style={[s.time, { width: timeWidth }]}>{when}</Text>}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          {compact && <Text style={s.time}>{when}</Text>}
           <View style={s.titleRow}>
             {"external" in r && <Icon name="lock" size={10} color={color} />}
             {"ghost" in r && (
               <Icon name="sparkles" size={11} color={colors.accent} />
             )}
-            <Text
-              numberOfLines={1}
-              style={[s.title, done && s.doneText, { flexShrink: 1 }]}
-            >
+            <Text style={[s.title, done && s.doneText, { flexShrink: 1 }]}>
               {title}
             </Text>
           </View>
           {!!detail && (
-            <Text style={[shared.small, late && s.late]} numberOfLines={1}>
-              {detail}
-            </Text>
+            <Text style={[shared.small, late && s.late]}>{detail}</Text>
           )}
         </View>
       </Pressable>
-      {extra && <View style={s.extra}>{extra}</View>}
+      {extra && (
+        <View style={[s.extra, compact && s.extraCompact]}>{extra}</View>
+      )}
     </View>
   );
 }
@@ -319,10 +324,15 @@ const s = themed(() =>
       gap: 8,
       marginBottom: 8,
     },
-    dayTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+    dayTitle: {
+      flexShrink: 1,
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      color: colors.text,
+    },
     count: {
       backgroundColor: colors.surfaceMuted,
-      borderRadius: 6,
+      borderRadius: radii.check,
       paddingHorizontal: 7,
       paddingVertical: 2,
     },
@@ -339,12 +349,19 @@ const s = themed(() =>
       overflow: "hidden",
     },
     row: { flexDirection: "row", alignItems: "center", paddingRight: 10 },
+    rowCompact: {
+      flexDirection: "column",
+      alignItems: "stretch",
+      paddingRight: 0,
+    },
+    extraCompact: { paddingHorizontal: 12, paddingBottom: 10 },
     divider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
     rowMain: {
       flex: 1,
+      minWidth: 0,
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
@@ -354,7 +371,7 @@ const s = themed(() =>
       paddingRight: 6,
     },
     pressed: { backgroundColor: colors.surfaceMuted },
-    rail: { width: 4, alignSelf: "stretch", borderRadius: 2 },
+    rail: { width: 4, alignSelf: "stretch", borderRadius: radii.check },
     time: {
       fontFamily: fonts.medium,
       fontSize: 13,
@@ -364,7 +381,12 @@ const s = themed(() =>
     title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     doneText: { color: colors.faint, textDecorationLine: "line-through" },
     late: { fontFamily: fonts.semibold, color: colors.warningStrong },
-    extra: { flexDirection: "row", alignItems: "center", gap: 6 },
+    extra: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 6,
+    },
     join: { marginBottom: 0, minHeight: 44, paddingHorizontal: 12 },
   }),
 );

@@ -7,19 +7,22 @@ already meets them. Standards and research behind them are in [research](researc
 
 Use the shared scale by role at normal text settings:
 
-| Role | Current base size | Use |
-| --- | --- | --- |
-| Caption | 11 | Brief metadata/counts; essential instructions use body text |
-| Small | 13 | Secondary labels and compact chrome |
-| Body | 15 | Content, rows, descriptions |
-| Title | 18 | Card/section title |
-| Heading | 24 | Screen heading |
-| Display | 36 | Public landing hero or a deliberate summary number |
+| Role    | Current base size | Use                                                         |
+| ------- | ----------------- | ----------------------------------------------------------- |
+| Caption | 11                | Brief metadata/counts; essential instructions use body text |
+| Small   | 13                | Secondary labels and compact chrome                         |
+| Body    | 15                | Content, rows, descriptions                                 |
+| Title   | 18                | Card/section title                                          |
+| Heading | 24                | Screen heading                                              |
+| Display | 36                | Public landing hero or a deliberate summary number          |
 
+- Mobile work screens normally use an 18px title; 24px remains available for
+  document titles and deliberate page headings. Web phone input text uses its
+  separate 16px control role.
 - Use weight, spacing, and placement before adding another large heading. Reserve
   display text for the main marketing message; avoid it in settings and toolbars.
-- Web fields use `--control-fs` and height tokens; current coarse/narrow field
-  text is 18px. Do not enlarge every label/body paragraph to that field size.
+- Web fields use `--control-fs` and height tokens; coarse/narrow web field
+  text is 16px to avoid iOS focus zoom. Do not enlarge every label/body paragraph to that field size.
   Do not reduce fields below the existing token to compensate for poor layout.
 - Native uses `typeScale` and `fonts.*`; preserve system font scaling. Do not
   disable scaling or impose a blanket font-size cap to conceal overflow.
@@ -27,6 +30,17 @@ Use the shared scale by role at normal text settings:
   when accessibility text grows. Never shrink text until a failing row fits.
 - Keep contrast readable in both themes; low-emphasis text still needs contrast.
   The scale is a product convention, not proof of WCAG compliance.
+
+## Motion and appearance
+
+- Use neutral light/dark surfaces and the agreed restrained blue accent. Keep
+  status colors semantic and user-selected calendar/tag colors intact.
+- Routine screen/list content appears immediately. No ornamental stagger, hover
+  lift or press shrink. Keep useful loading/progress and brief state feedback.
+- Group settings as compact rows with separators; avoid raised cards inside cards.
+- Disclosure headings keep a neutral background on hover. A subtle icon change
+  can indicate the pointer; reserve filled states for actual selection and keep
+  a clear keyboard focus outline. Hover must not resemble an expanded or selected section.
 
 ## Layout, panels, and overlays
 
@@ -37,6 +51,9 @@ Use the shared scale by role at normal text settings:
   redundant card wrappers, accumulated gaps, and decorative padding before
   reducing readable text or touch targets. Never scale the entire desktop layout
   into a narrow window. Enlarged text may legitimately require taller rows.
+- When adding size containment, inspect descendant dialogs and fixed overlays.
+  Keep viewport overlays outside contained layout roots or use pane measurement;
+  verify the open dialog after navigation and panel changes.
 - Measure the main pane after navigation and secondary panels consume space.
   Breakpoints must work with sidebars expanded, collapsed, and open together.
 - If panes cannot fit, turn secondary navigation into a drawer or switch between
@@ -67,8 +84,10 @@ Use the shared scale by role at normal text settings:
   Check final styles with shared CSS loaded; a local rule can lose to a later
   generic rule. Source-only checks must not substitute for computed styles/pixels.
 - Keep adequate pointer/touch targets without inflating text or entire cards.
-  Native `controls.tap` is 44pt; compact controls keep a reachable hit area whose
-  expansion does not collide with neighboring targets.
+  Native `controls.tap` is 44pt. Reserve the target in layout, with a smaller
+  visual mark inside when appropriate. Use hit expansion only where surrounding
+  space prevents collisions; compact chips and adjacent actions must remain
+  separately reachable.
 
 ## Content and actions
 
@@ -90,7 +109,7 @@ Use the shared scale by role at normal text settings:
 ## AI interactions in Orbyn
 
 - Assistant is the conversational workspace. Character configuration belongs to
-  Background/Overnight agents, following the ADR; it must not block ordinary chat.
+  Background/Overnight agents, following the agreed task requirements; it must not block ordinary chat.
 - Background and Overnight have distinct identities, runs, activity, and outputs.
   Show actual Idle/Queued/Running/Waiting/Stopped/Failed states and last activity;
   animate only supported active states. Describe collaboration without implying
@@ -117,16 +136,16 @@ Select representative states for the agreed risk, not every axis automatically.
 User exclusions and `AGENT.md` take precedence; this is a menu of checks, not a
 new requirement for native builds, enlarged text or repeated visual sweeps:
 
-| Axis | Representative checks |
-| --- | --- |
-| Width/height | Web 320/390/768/1280; mobile browser 320/390; short window and landscape where relevant |
-| Containers | Expanded/collapsed main nav, secondary panel, nested picker/dialog, actual pane width |
-| Density/UX | Useful task space at 320×740; concise copy; clear first action; complete, cancel, recover and return without losing work |
-| Appearance | Light/Dark at normal settings; enlarged text/zoom only when included in the agreed check |
-| Content | Empty/populated, long/localized labels, large catalogs, selected/manual values |
-| Network/state | Loading, offline/error, retry, success, disabled, stale/revoked where relevant |
-| Interaction | Pointer, Tab/Shift+Tab, Escape, focus return, scroll-to-last-item, keyboard visible |
-| Platforms | Shared web/desktop browser and Expo web; installed desktop/iOS/Android only when explicitly requested |
+| Axis          | Representative checks                                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Width/height  | Web 320/390/768/1280; mobile browser 320/390; short window and landscape where relevant                                  |
+| Containers    | Expanded/collapsed main nav, secondary panel, nested picker/dialog, actual pane width                                    |
+| Density/UX    | Useful task space at 320×740; concise copy; clear first action; complete, cancel, recover and return without losing work |
+| Appearance    | Light/Dark at normal settings; enlarged text/zoom only when included in the agreed check                                 |
+| Content       | Empty/populated, long/localized labels, large catalogs, selected/manual values                                           |
+| Network/state | Loading, offline/error, retry, success, disabled, stale/revoked where relevant                                           |
+| Interaction   | Pointer, Tab/Shift+Tab, Escape, focus return, scroll-to-last-item, keyboard visible                                      |
+| Platforms     | Shared web/desktop browser and Expo web; installed desktop/iOS/Android only when explicitly requested                    |
 
 At 320 CSS px, ordinary horizontal prose must not need horizontal scrolling;
 if an accessibility resizing audit is requested, include its agreed zoom/text
@@ -143,3 +162,47 @@ free of unintended clipping/overlap, with supported feature parity preserved.
 Record excessive chrome, repeated explanations, and unnecessary steps as UX
 defects even when all boxes fit. Resize through intermediate widths and near
 breakpoints; passing a few fixed screenshots does not prove every size works.
+
+## Conversation workspace
+
+- Center the empty Chat/Work composer in the remaining pane. After a conversation
+  starts, dock it to that pane's bottom and scroll the transcript independently.
+- Keep Chat and Work at the same compact initial input height. Allow only a little
+  growth (currently four text lines), then scroll the input internally. Keep the
+  attachment, model and send controls outside that scrolling text region. Respect
+  text scaling and short-window constraints; do not expand the composer over replies.
+- Work selects a project inside the conversation workspace. Preserve saved session
+  history, project visibility, pinning and the existing sweep/pinned exemptions.
+- Paired panes have independent drafts, selection and scrolling. Keyboard commands
+  operate in the focused pane; dialogs and pickers temporarily own those commands.
+  At narrow widths, switch visible panes while preserving their mounted work.
+- Connections use compact identity/status rows. Open account and permission detail
+  in a focused surface; retain essential scope and consent at the decision point.
+
+Reference: the bounded 13 October inspection in
+`docs/reviews/chatgpt-reference-2026-10-13.md`. Its desktop observations inform these
+choices but do not prove Orbyn usability or long-list/mobile/split-pane behavior.
+The four-line input cap is the owner's Orbyn preference; the observed ChatGPT Work
+composer allowed more growth.
+
+## Working pane ownership
+
+Keep content lifetime separate from visible placement. Hidden working panes
+retain their drafts but yield focus and global shortcuts. Remember a connected,
+visible last-focused child for each pane; restore it on explicit pane switching,
+with a safe container fallback. Global chrome and temporary dialogs need explicit
+command ownership. Repeated search focuses its existing surface without clearing
+query or selection. Adapt tool groups to actual pane width, using container rules
+before adding measurement-driven priority collapse.
+
+## Selection and search recovery
+
+Keep chosen object IDs separate from their visible names and resolve them against
+current data. A typed ambiguous name requires an explicit choice; never select
+the first object silently. Show useful space/project context where names repeat.
+An explicit Personal choice must remain personal even if a team has that name.
+Clear choices when the typed filter no longer matches. Read failures need Retry
+and must not look like an empty result. Bind results to the current query and
+retain that query when opening a result fails. Validate search length visibly
+rather than searching a silently shortened prefix. Deferred menu actions belong
+to their opening/account and execute at most once; cancel timers on teardown.

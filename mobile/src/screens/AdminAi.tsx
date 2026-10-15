@@ -1,7 +1,10 @@
 import { AiModelControls } from "./AiModelControls";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { SemanticSetup } from "./SemanticSetup";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import { StyleSheet, Text, TextInput, View, ScrollView } from "react-native";
+import { Sheet } from "../components/Sheet";
+import { ModelPicker } from "../components/ModelPicker";
+import { session } from "../lib/session";
 import { Switch } from "../components/Switch";
 import {
   AI_PROVIDER_KINDS,
@@ -16,6 +19,7 @@ import {
 } from "@orbyn/core";
 import { Button } from "../components/Button";
 import { Field } from "../components/Field";
+import { InlineDetails } from "../components/InlineDetails";
 import { Disclosure } from "../components/Disclosure";
 import { Icon } from "../components/Icon";
 import { Pill } from "../components/Pill";
@@ -24,7 +28,7 @@ import { SmallAction } from "../components/SmallAction";
 import { MoreMenu } from "../components/MoreMenu";
 import { confirmAction } from "../lib/confirm";
 import { client } from "../lib/api";
-import { FadeIn, PressableScale, Pressable } from "../motion";
+import { Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -34,21 +38,20 @@ type FormState = { mode: "new" } | { mode: "edit"; provider: AiProvider };
 const KIND_LABELS = Object.fromEntries(
   AI_PROVIDER_KINDS.map((k) => [k, AI_PROVIDERS[k].label]),
 ) as Record<AiProviderKind, string>;
-const MAX_CHIPS = 40;
 
 const SOURCE: Record<
   AiSettings["source"],
   { label: string; tone: "accent" | "muted" | "warning"; body: string }
 > = {
   database: {
-    label: "Admin console",
+    label: "Configured",
     tone: "accent",
     body: "The assistant uses a provider configured here.",
   },
   none: {
-    label: "Not set up",
+    label: "Off",
     tone: "warning",
-    body: "The assistant is off. Add a provider below and choose Use for assistant.",
+    body: "Choose Use for assistant on a provider.",
   },
 };
 
@@ -58,45 +61,73 @@ const SOURCE: Record<
  * again; only a short hint comes back.
  */
 export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
+  const accountAtRender = session.token;
   const [data, setData] = useState<AiProvidersResponse | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
   const [failed, setFailed] = useState(false);
   const [nightBudget, setNightBudget] = useState("1000000");
-  useEffect(
-    () => setNightBudget(String(data?.settings.night_token_budget ?? 1000000)),
-    [data?.settings.night_token_budget],
-  );
+  const savedBudget = useRef("1000000");
+  useEffect(() => {
+    const next = String(data?.settings.night_token_budget ?? 1000000);
+    const previous = savedBudget.current;
+    savedBudget.current = next;
+    setNightBudget((current) => (current === previous ? next : current));
+  }, [data?.settings.night_token_budget]);
 
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const ownedAct: Act = (fn) =>
+    act(async () => {
+      if (!mounted.current || session.token !== accountAtRender) return;
+      await fn();
+    });
   const loadRequest = useRef(0);
   const load = useCallback(async () => {
     const request = ++loadRequest.current;
+    const account = session.token;
     setFailed(false);
     try {
       const next = await client.listAiProviders();
-      if (request !== loadRequest.current) return;
+      if (
+        request !== loadRequest.current ||
+        !mounted.current ||
+        account !== session.token
+      )
+        return;
       setData(next);
       setFailed(false);
     } catch (error) {
-      if (request !== loadRequest.current) return;
+      if (
+        request !== loadRequest.current ||
+        !mounted.current ||
+        account !== session.token
+      )
+        return;
       setFailed(true);
       throw error;
     }
   }, []);
   const firstLoad = () =>
-    act(async () => {
+    ownedAct(async () => {
       setFailed(false);
       await load();
     });
   const run = (fn: () => Promise<unknown>) =>
-    act(async () => {
+    ownedAct(async () => {
       try {
         await fn();
       } finally {
-        await load();
+        if (mounted.current && session.token === accountAtRender) await load();
       }
     });
   const setSettings = (settings: AiSettings) => {
+    if (!mounted.current || session.token !== accountAtRender) return;
     loadRequest.current++;
     setData((prev) => (prev ? { ...prev, settings } : prev));
   };
@@ -113,9 +144,6 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
     return failed ? (
       <View style={[shared.card, shared.empty]}>
         <Text style={shared.sectionTitle}>Couldn't load AI providers.</Text>
-        <Text style={[shared.subtitle, s.center, s.gapBelow]}>
-          Check the error above, then try again.
-        </Text>
         <Button
           secondary
           title="Try again"
@@ -129,27 +157,26 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
     );
   const { providers, settings } = data;
 
-  if (form)
-    return (
-      <ProviderForm
-        key={form.mode === "edit" ? form.provider.id : "new"}
-        provider={form.mode === "edit" ? form.provider : undefined}
-        busy={busy}
-        act={act}
-        onSaved={async (saved) => {
-          setForm(null);
-          setExpanded(saved.id);
-          await load();
-        }}
-        onCancel={() => setForm(null)}
-      />
-    );
-
   const active = providers.find((p) => p.id === settings.provider_id);
   const source = SOURCE[settings.source];
 
   return (
     <>
+      {form && (
+        <ProviderForm
+          key={form.mode === "edit" ? form.provider.id : "new"}
+          provider={form.mode === "edit" ? form.provider : undefined}
+          busy={busy}
+          act={ownedAct}
+          onSaved={async (saved) => {
+            setForm(null);
+            setExpanded(saved.id);
+            await load();
+          }}
+          onCancel={() => setForm(null)}
+        />
+      )}
+
       {failed && (
         <View style={shared.card} accessibilityLiveRegion="polite">
           <Text style={shared.body}>Couldn't refresh AI providers.</Text>
@@ -161,25 +188,25 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
           />
         </View>
       )}
-      <FadeIn style={shared.card}>
+      <View style={shared.card}>
         <View style={s.cardHead}>
           <Text style={[shared.sectionTitle, { flex: 1 }]}>Assistant</Text>
           <Pill label={source.label} tone={source.tone} />
         </View>
-        <Text style={[shared.body, s.gapBelow]}>{source.body}</Text>
+        {settings.source === "none" && (
+          <Text style={[shared.small, s.gapBelow]}>{source.body}</Text>
+        )}
         {(settings.provider_id || settings.model) && (
           <>
             <View style={s.kv}>
               <Text style={shared.small}>Provider</Text>
-              <Text style={s.kvValue} numberOfLines={1}>
+              <Text style={s.kvValue}>
                 {active ? `${active.name} · ${KIND_LABELS[active.kind]}` : "—"}
               </Text>
             </View>
             <View style={s.kv}>
               <Text style={shared.small}>Model</Text>
-              <Text style={s.kvValue} numberOfLines={1}>
-                {settings.model || "—"}
-              </Text>
+              <Text style={s.kvValue}>{settings.model || "—"}</Text>
             </View>
           </>
         )}
@@ -196,6 +223,7 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
               accessibilityLabel="Night-shift tokens per person"
               style={shared.input}
               keyboardType="number-pad"
+              editable={!busy}
               value={nightBudget}
               onChangeText={setNightBudget}
             />
@@ -214,7 +242,7 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
               Number(nightBudget) > 10000000
             }
             onPress={() =>
-              void act(async () => {
+              void ownedAct(async () => {
                 try {
                   await client.updateAiNightBudget({
                     expected_revision: settings.settings_revision!,
@@ -239,7 +267,7 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
                 "It stays off until you choose a provider again.",
                 "Turn off",
                 () =>
-                  act(async () =>
+                  ownedAct(async () =>
                     setSettings(
                       await client.updateAiSettings({ provider_id: null }),
                     ),
@@ -248,21 +276,21 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
             }
           />
         )}
-      </FadeIn>
+      </View>
 
       <View style={s.section}>
         <SemanticSetup
           settings={settings}
           providers={providers}
           busy={busy}
-          act={act}
+          act={ownedAct}
           onSettings={setSettings}
           onChanged={load}
         />
       </View>
 
       <View style={[s.cardHead, s.section]}>
-        <Text style={[shared.eyebrow, { flex: 1 }]}>PROVIDERS</Text>
+        <Text style={[shared.sectionTitle, { flex: 1 }]}>Providers</Text>
         <SmallAction
           label="Add provider"
           disabled={busy}
@@ -272,14 +300,14 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
       {providers.length ? (
         <View style={s.list}>
           {providers.map((p, n) => (
-            <FadeIn key={p.id} index={n + 2} style={n > 0 && s.divider}>
+            <View key={p.id} style={n > 0 && s.divider}>
               <ProviderRow
                 provider={p}
                 active={p.id === settings.provider_id}
                 activeModel={settings.model}
                 expanded={expanded === p.id}
                 busy={busy}
-                act={act}
+                act={ownedAct}
                 onToggle={() =>
                   setExpanded((cur) => (cur === p.id ? null : p.id))
                 }
@@ -287,7 +315,7 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
                   run(() => client.updateAiProvider(p.id, { enabled }))
                 }
                 onUse={(model) =>
-                  act(async () =>
+                  ownedAct(async () =>
                     setSettings(
                       await client.updateAiSettings({
                         provider_id: p.id,
@@ -314,14 +342,12 @@ export function AdminAi({ act, busy }: { act: Act; busy: boolean }) {
                   )
                 }
               />
-            </FadeIn>
+            </View>
           ))}
         </View>
       ) : (
         <View style={shared.card}>
-          <Text style={shared.small}>
-            Add a provider for chat or embeddings.
-          </Text>
+          <Text style={shared.small}>No providers yet.</Text>
         </View>
       )}
     </>
@@ -387,37 +413,26 @@ function ProviderRow({
   }, [p.updated_at, p.controls_revision]);
   const list = models ?? def.suggestedModels;
   const typed = model.trim();
-  const query = typed.toLowerCase();
-  const matches = query
-    ? list.filter((m) => m.toLowerCase().includes(query))
-    : list;
-  const shown = matches.slice(0, MAX_CHIPS);
 
   return (
     <View>
       <View style={s.rowTop}>
-        <PressableScale
+        <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded }}
           accessibilityLabel={`${p.name}, ${def.label}`}
           accessibilityHint={expanded ? "Hides actions" : "Shows actions"}
           onPress={onToggle}
-          scaleTo={0.99}
           style={s.rowMain}
         >
           <View style={s.rowTitle}>
-            <Text
-              style={[s.name, { flexShrink: 1 }]}
-              numberOfLines={expanded ? undefined : 2}
-            >
-              {p.name}
-            </Text>
+            <Text style={[s.name, { flexShrink: 1 }]}>{p.name}</Text>
             {active && <Pill label="Active" tone="accent" />}
           </View>
-          <Text style={shared.small} numberOfLines={1}>
+          <Text style={shared.small}>
             {def.label} · {p.has_key ? "Key saved" : "No key"}
           </Text>
-        </PressableScale>
+        </Pressable>
         <Switch
           value={p.enabled}
           disabled={busy}
@@ -441,12 +456,13 @@ function ProviderRow({
         />
       </View>
       {expanded && (
-        <FadeIn style={s.expand}>
+        <View style={s.expand}>
           <Text style={shared.label}>
             {p.kind === "azure" ? "Deployment name" : "Model"}
           </Text>
           <TextInput
             style={[shared.input, s.input]}
+            editable={!busy}
             value={model}
             onChangeText={setModel}
             placeholder={
@@ -459,52 +475,19 @@ function ProviderRow({
             autoCorrect={false}
             clearButtonMode="while-editing"
             accessibilityLabel="Model"
+            maxLength={200}
           />
           {models && !models.length && (
             <Text style={[shared.small, s.input]}>
               No models came back. Type one above.
             </Text>
           )}
-          {models && models.length > 0 && query && !matches.length && (
-            <Text style={[shared.small, s.chipCaption]}>
-              No matching models. You can keep the typed value.
-            </Text>
-          )}
-          {shown.length > 0 && (
-            <>
-              {!models && (
-                <Text style={[shared.small, s.chipCaption]}>
-                  {def.listsModels ? "Suggested" : "Suggested models"}
-                </Text>
-              )}
-              <View style={s.chips}>
-                {shown.map((m) => {
-                  const selected = m === typed;
-                  return (
-                    <Pressable
-                      key={m}
-                      accessibilityRole="radio"
-                      accessibilityState={{ checked: selected }}
-                      onPress={() => setModel(m)}
-                      style={[s.chip, selected && s.chipActive]}
-                    >
-                      <Text
-                        numberOfLines={1}
-                        style={[s.chipText, selected && s.chipTextActive]}
-                      >
-                        {m}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
-              {models && matches.length > shown.length && (
-                <Text style={[shared.small, s.chipCaption]}>
-                  Showing {shown.length} of {matches.length}. Type to filter.
-                </Text>
-              )}
-            </>
-          )}
+          <ModelPicker
+            values={list}
+            value={typed}
+            disabled={busy}
+            onChange={setModel}
+          />
           {test &&
             p.controls_revision &&
             test.provider_revision === p.controls_revision &&
@@ -547,7 +530,9 @@ function ProviderRow({
                 disabled={busy}
                 onPress={() =>
                   act(async () => {
+                    const account = session.token;
                     const current = () =>
+                      session.token === account &&
                       providerRevision.current === p.updated_at &&
                       providerGeneration.current === p.controls_revision;
                     setCatalogLoading(true);
@@ -575,6 +560,7 @@ function ProviderRow({
               onPress={() =>
                 act(async () => {
                   if (!typed || !p.controls_revision) return;
+                  const account = session.token;
                   setTest(null);
                   const result = await client.testAiProvider(
                     p.id,
@@ -582,6 +568,7 @@ function ProviderRow({
                     p.controls_revision,
                   );
                   if (
+                    session.token === account &&
                     providerRevision.current === p.updated_at &&
                     providerGeneration.current === p.controls_revision &&
                     result.provider_revision === p.controls_revision &&
@@ -613,7 +600,7 @@ function ProviderRow({
               Pick or type a model to use this provider for the assistant.
             </Text>
           )}
-        </FadeIn>
+        </View>
       )}
     </View>
   );
@@ -633,6 +620,18 @@ function ProviderForm({
   onCancel: () => void;
 }) {
   const editing = !!provider;
+  const pending = useRef(false);
+  const alive = useRef(true);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const working = busy || saving;
+
   const [kind, setKind] = useState<AiProviderKind>(provider?.kind ?? "openai");
   const def = AI_PROVIDERS[kind];
   const [name, setName] = useState(provider?.name ?? def.label);
@@ -663,30 +662,53 @@ function ProviderForm({
     (needsUrl && !baseUrl.trim()) ||
     (needsVersion && !apiVersion.trim());
 
-  const save = () =>
-    act(async () => {
-      const options = def.options.length
-        ? { apiVersion: apiVersion.trim() }
-        : undefined;
-      const key = apiKey.trim();
-      const saved = provider
-        ? await client.updateAiProvider(provider.id, {
-            name: name.trim(),
-            base_url: baseUrl.trim(),
-            options,
-            ...(removeKey ? { api_key: "" } : key ? { api_key: key } : {}),
-          })
-        : await client.createAiProvider({
-            kind,
-            name: name.trim(),
-            base_url: baseUrl.trim() || undefined,
-            options,
-            ...(key ? { api_key: key } : {}),
-          });
-      // Never keep a key around after it has been sent.
-      setApiKey("");
-      await onSaved(saved);
-    });
+  const save = async () => {
+    if (pending.current || busy || missing) return;
+    const account = session.token;
+    pending.current = true;
+    setSaving(true);
+    setSaveError("");
+    try {
+      await act(async () => {
+        try {
+          const options = def.options.length
+            ? { ...provider?.options, apiVersion: apiVersion.trim() }
+            : undefined;
+          const key = apiKey.trim();
+          const saved = provider
+            ? await client.updateAiProvider(provider.id, {
+                name: name.trim(),
+                expected_revision: provider.updated_at ?? undefined,
+                base_url: baseUrl.trim(),
+                options,
+                ...(removeKey ? { api_key: "" } : key ? { api_key: key } : {}),
+              })
+            : await client.createAiProvider({
+                kind,
+                name: name.trim(),
+                base_url: baseUrl.trim() || undefined,
+                options,
+                ...(key ? { api_key: key } : {}),
+              });
+          // Never keep a key around after it has been sent.
+          if (!alive.current || account !== session.token) return;
+          setApiKey("");
+          await onSaved(saved);
+        } catch (error) {
+          if (alive.current && account === session.token)
+            setSaveError(
+              error instanceof Error
+                ? error.message
+                : "Couldn’t save this provider. Try again.",
+            );
+          throw error;
+        }
+      });
+    } finally {
+      pending.current = false;
+      if (alive.current && account === session.token) setSaving(false);
+    }
+  };
 
   const prefixes = def.keyPrefixes ?? [];
   const keyPlaceholder =
@@ -707,123 +729,148 @@ function ProviderForm({
       : "";
 
   return (
-    <FadeIn style={shared.card}>
-      <Text style={[shared.sectionTitle, s.gapBelow]}>
-        {editing ? "Edit provider" : "Add provider"}
-      </Text>
-
-      <Text style={shared.label}>Provider</Text>
-      {editing ? (
-        <Text style={[shared.body, s.input]}>{def.label}</Text>
-      ) : (
-        <ProviderPicker value={kind} onChange={chooseKind} disabled={busy} />
-      )}
-      <Text style={[shared.small, s.hint]}>{def.hint}</Text>
-
-      <Text style={shared.label}>Name</Text>
-      <TextInput
-        style={[shared.input, s.input]}
-        value={name}
-        onChangeText={setName}
-        maxLength={80}
-        placeholder={def.label}
-        placeholderTextColor={colors.faint}
-        accessibilityLabel="Name"
-      />
-
-      <Text style={shared.label}>Base URL{needsUrl ? " (required)" : ""}</Text>
-      <TextInput
-        style={[shared.input, s.input]}
-        value={baseUrl}
-        onChangeText={setBaseUrl}
-        placeholder={
-          def.defaultBaseUrl ||
-          (kind === "azure"
-            ? "https://your-resource.openai.azure.com"
-            : "https://example.com/v1")
-        }
-        placeholderTextColor={colors.faint}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="url"
-        textContentType="URL"
-        accessibilityLabel="Base URL"
-      />
-
-      {def.options.map((o) => (
-        <View key={o.key}>
-          <Text style={shared.label}>
-            {o.label}
-            {o.required ? " (required)" : ""}
-          </Text>
-          <TextInput
-            style={[shared.input, s.input]}
-            value={apiVersion}
-            onChangeText={setApiVersion}
-            placeholder={o.placeholder}
-            placeholderTextColor={colors.faint}
-            autoCapitalize="none"
-            autoCorrect={false}
-            accessibilityLabel={o.label}
+    <Sheet
+      visible
+      title={editing ? "Edit provider" : "Add provider"}
+      onClose={onCancel}
+      closeDisabled={working}
+    >
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 16, gap: 8 }}
+      >
+        <Text style={shared.label}>Provider</Text>
+        {editing ? (
+          <Text style={[shared.body, s.input]}>{def.label}</Text>
+        ) : (
+          <ProviderPicker
+            value={kind}
+            onChange={chooseKind}
+            disabled={working}
           />
-        </View>
-      ))}
+        )}
+        <InlineDetails title="Provider details">
+          <Text style={shared.small}>{def.hint}</Text>
+        </InlineDetails>
 
-      <Text style={shared.label}>API key</Text>
-      <TextInput
-        style={[shared.input, s.input]}
-        value={apiKey}
-        onChangeText={(v) => {
-          setApiKey(v);
-          if (v) setRemoveKey(false);
-        }}
-        editable={!removeKey}
-        secureTextEntry
-        autoCorrect={false}
-        autoCapitalize="none"
-        autoComplete="off"
-        textContentType="none"
-        placeholder={removeKey ? "Saved key will be removed" : keyPlaceholder}
-        placeholderTextColor={colors.faint}
-        accessibilityLabel="API key"
-      />
-      {keyWarning ? (
-        <Text style={[shared.small, s.keyWarning]} accessibilityRole="alert">
-          {keyWarning}
+        <Text style={shared.label}>Name</Text>
+        <TextInput
+          style={[shared.input, s.input]}
+          editable={!working}
+          value={name}
+          onChangeText={setName}
+          maxLength={80}
+          placeholder={def.label}
+          placeholderTextColor={colors.faint}
+          accessibilityLabel="Name"
+        />
+
+        <Text style={shared.label}>
+          Base URL{needsUrl ? " (required)" : ""}
         </Text>
-      ) : null}
-      {editing && provider.has_key && (
-        <View style={s.keyRow}>
-          <Text style={[shared.small, { flex: 1 }]}>
-            {removeKey
-              ? "The saved key is removed when you save."
-              : `Saved key: ${provider.key_hint}`}
-          </Text>
-          <SmallAction
-            destructive={!removeKey}
-            label={removeKey ? "Keep saved key" : "Remove saved key"}
-            disabled={busy}
-            onPress={() => {
-              setApiKey("");
-              setRemoveKey((v) => !v);
-            }}
-          />
-        </View>
-      )}
+        <TextInput
+          style={[shared.input, s.input]}
+          editable={!working}
+          value={baseUrl}
+          onChangeText={setBaseUrl}
+          placeholder={
+            def.defaultBaseUrl ||
+            (kind === "azure"
+              ? "https://your-resource.openai.azure.com"
+              : "https://example.com/v1")
+          }
+          placeholderTextColor={colors.faint}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+          textContentType="URL"
+          accessibilityLabel="Base URL"
+          maxLength={500}
+        />
 
-      <Button
-        title={editing ? "Save changes" : "Add provider"}
-        disabled={busy || missing}
-        onPress={save}
-      />
-      <Button
-        secondary
-        title="Cancel"
-        disabled={busy}
-        style={{ marginBottom: 0 }}
-        onPress={onCancel}
-      />
-    </FadeIn>
+        {def.options.map((o) => (
+          <View key={o.key}>
+            <Text style={shared.label}>
+              {o.label}
+              {o.required ? " (required)" : ""}
+            </Text>
+            <TextInput
+              style={[shared.input, s.input]}
+              editable={!working}
+              value={apiVersion}
+              onChangeText={setApiVersion}
+              placeholder={o.placeholder}
+              placeholderTextColor={colors.faint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              accessibilityLabel={o.label}
+              maxLength={50}
+            />
+          </View>
+        ))}
+
+        <Text style={shared.label}>API key</Text>
+        <TextInput
+          style={[shared.input, s.input]}
+          value={apiKey}
+          onChangeText={(v) => {
+            setApiKey(v);
+            if (v) setRemoveKey(false);
+          }}
+          editable={!working && !removeKey}
+          secureTextEntry
+          autoCorrect={false}
+          autoCapitalize="none"
+          autoComplete="off"
+          textContentType="none"
+          placeholder={removeKey ? "Saved key will be removed" : keyPlaceholder}
+          placeholderTextColor={colors.faint}
+          accessibilityLabel="API key"
+          maxLength={4000}
+        />
+        {keyWarning ? (
+          <Text style={[shared.small, s.keyWarning]} accessibilityRole="alert">
+            {keyWarning}
+          </Text>
+        ) : null}
+        {editing && provider.has_key && (
+          <View style={s.keyRow}>
+            <Text style={[shared.small, { flex: 1 }]}>
+              {removeKey
+                ? "The saved key is removed when you save."
+                : "Key saved"}
+            </Text>
+            <SmallAction
+              destructive={!removeKey}
+              label={removeKey ? "Keep saved key" : "Remove saved key"}
+              disabled={working}
+              onPress={() => {
+                setApiKey("");
+                setRemoveKey((v) => !v);
+              }}
+            />
+          </View>
+        )}
+
+        {!!saveError && (
+          <Text accessibilityRole="alert" style={{ color: colors.danger }}>
+            {saveError}
+          </Text>
+        )}
+        <Button
+          title={saving ? "Saving…" : editing ? "Save changes" : "Add provider"}
+          disabled={working || missing}
+          onPress={save}
+        />
+        <Button
+          secondary
+          title="Cancel"
+          disabled={working}
+          style={{ marginBottom: 0 }}
+          onPress={onCancel}
+        />
+      </ScrollView>
+    </Sheet>
   );
 }
 
@@ -874,7 +921,13 @@ const s = themed(() =>
       paddingVertical: 12,
       paddingHorizontal: 16,
     },
-    rowMain: { flex: 1, minWidth: 0, gap: 2 },
+    rowMain: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 44,
+      justifyContent: "center",
+      gap: 2,
+    },
     rowTitle: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -885,26 +938,6 @@ const s = themed(() =>
     expand: { paddingHorizontal: 16, paddingBottom: 14 },
     input: { marginBottom: 12 },
     chipCaption: { marginBottom: 8 },
-    chips: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 },
-    chip: {
-      maxWidth: "100%",
-      borderRadius: radii.pill,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.surface,
-      paddingHorizontal: 11,
-      paddingVertical: 6,
-    },
-    chipActive: {
-      backgroundColor: colors.accentSoft,
-      borderColor: colors.softBorder,
-    },
-    chipText: {
-      fontFamily: fonts.medium,
-      fontSize: 13,
-      color: colors.textSoft,
-    },
-    chipTextActive: { color: colors.accent, fontFamily: fonts.semibold },
     testText: {
       fontFamily: fonts.medium,
       fontSize: 13,

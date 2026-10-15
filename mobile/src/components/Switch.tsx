@@ -1,5 +1,6 @@
 import React from "react";
 import { Switch as NativeSwitch, type SwitchProps } from "react-native";
+import { colors } from "../theme";
 import { tap } from "../lib/haptics";
 
 /**
@@ -9,6 +10,7 @@ import { tap } from "../lib/haptics";
 export function Switch({ onValueChange, ...props }: SwitchProps) {
   return (
     <NativeSwitch
+      trackColor={{ false: colors.border, true: colors.accent }}
       {...props}
       onValueChange={
         onValueChange

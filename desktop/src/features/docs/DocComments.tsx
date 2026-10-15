@@ -1,12 +1,18 @@
 import { watchDocRefresh } from "@orbyn/api-client";
 import { session } from "../../lib/session";
+import { usePaneLeaveGuard } from "../../app/page-commands";
 import { useConfirm } from "../../components/Confirm";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, MessageSquare, RotateCcw, Trash2 } from "lucide-react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
+import { MessageSquare } from "lucide-react";
 import {
   activityOriginLabel,
   anchorComments,
-  plainText,
   threadComments,
   type DocBlock,
   type DocComment,
@@ -14,6 +20,10 @@ import {
 import { client } from "../../lib/api";
 import type { Mark } from "./marks";
 import { MentionBox, stillNamed } from "./MentionBox";
+
+export function DocComments(props: Parameters<typeof DocCommentsBody>[0]) {
+  return <DocCommentsBody key={`${session.get()}:${props.docId}`} {...props} />;
+}
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -43,7 +53,7 @@ const GAP = 10;
  * deleted, gather at the top under their own heading: the words they were
  * written about are kept with them, so they still read.
  */
-export function DocComments({
+function DocCommentsBody({
   docId,
   blocks,
   tops,
@@ -54,8 +64,12 @@ export function DocComments({
   onActiveChange,
   onAnchors,
   report,
+  hidden = false,
+  beforeAnchorChange,
 }: {
   docId: string;
+  hidden?: boolean;
+  beforeAnchorChange?: MutableRefObject<(() => Promise<boolean>) | null>;
   blocks: DocBlock[];
   /** Where each named block sits, measured from the top of the page. */
   tops: Record<string, number>;
@@ -75,7 +89,7 @@ export function DocComments({
   onAnchors: (marks: Record<string, Mark[]>) => void;
   report: (e: unknown) => void;
 }) {
-  const { ask, tell } = useConfirm();
+  const { ask } = useConfirm();
   const [comments, setComments] = useState<DocComment[] | null>(null);
   const [draft, setDraft] = useState("");
   const [pageDraft, setPageDraft] = useState("");
@@ -89,7 +103,135 @@ export function DocComments({
   const [pageMentions, setPageMentions] = useState<string[]>([]);
   const [replyMentions, setReplyMentions] = useState<string[]>([]);
   const [showResolved, setShowResolved] = useState(false);
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  const owner = useRef(docId);
+  owner.current = docId;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const mutationCurrent = (account: string) =>
+    mounted.current && owner.current === docId && session.get() === account;
   const [busy, setBusy] = useState(false);
+  const drafts = useRef({ draft, pageDraft, reply });
+  drafts.current = { draft, pageDraft, reply };
+  const draftDecision = useRef(false);
+  usePaneLeaveGuard(async () => {
+    if (mutation.current || draftDecision.current) return false;
+    const before = drafts.current;
+    if (
+      !before.draft.trim() &&
+      !before.pageDraft.trim() &&
+      !before.reply?.text.trim()
+    )
+      return true;
+    const account = session.get();
+    draftDecision.current = true;
+    try {
+      if (
+        !(await ask({
+          title: "Discard unsent comments?",
+          body: "Your unsent comments and reply will be lost.",
+          confirmLabel: "Discard comments",
+          cancelLabel: "Keep editing",
+        }))
+      )
+        return false;
+      if (
+        !mutationCurrent(account) ||
+        drafts.current.draft !== before.draft ||
+        drafts.current.pageDraft !== before.pageDraft ||
+        drafts.current.reply !== before.reply
+      )
+        return false;
+      setDraft("");
+      setPageDraft("");
+      setReply(null);
+      namedDraft.current.clear();
+      namedPage.current.clear();
+      namedReply.current.clear();
+      setMentions([]);
+      setPageMentions([]);
+      setReplyMentions([]);
+      onPendingChange(null);
+      return true;
+    } finally {
+      draftDecision.current = false;
+    }
+  });
+  const changeReply = async (next: { id: string; text: string } | null) => {
+    if (mutation.current || draftDecision.current) return;
+    const previous = drafts.current.reply;
+    const account = session.get();
+    draftDecision.current = true;
+    try {
+      if (
+        previous?.text.trim() &&
+        !(await ask({
+          title: "Discard reply?",
+          body: "Your unsent reply will be lost.",
+          confirmLabel: "Discard reply",
+          cancelLabel: "Keep editing",
+        }))
+      )
+        return;
+      if (!mutationCurrent(account) || drafts.current.reply !== previous)
+        return;
+      namedReply.current.clear();
+      setReplyMentions([]);
+      setReply(next);
+    } finally {
+      draftDecision.current = false;
+    }
+  };
+
+  const prepareAnchorChange = async () => {
+    if (mutation.current || draftDecision.current) return false;
+    const previous = drafts.current.draft;
+    const account = session.get();
+    if (!previous.trim()) return mutationCurrent(account);
+    draftDecision.current = true;
+    try {
+      if (
+        !(await ask({
+          title: "Discard unsent comment?",
+          body: "Your comment on the selected text will be lost.",
+          confirmLabel: "Discard comment",
+          cancelLabel: "Keep editing",
+        }))
+      )
+        return false;
+      if (!mutationCurrent(account) || drafts.current.draft !== previous)
+        return false;
+      setDraft("");
+      namedDraft.current.clear();
+      setMentions([]);
+      return true;
+    } finally {
+      draftDecision.current = false;
+    }
+  };
+  const prepareAnchorRef = useRef(prepareAnchorChange);
+  prepareAnchorRef.current = prepareAnchorChange;
+  useEffect(() => {
+    if (!beforeAnchorChange) return;
+    const guard = () => prepareAnchorRef.current();
+    beforeAnchorChange.current = guard;
+    return () => {
+      if (beforeAnchorChange.current === guard)
+        beforeAnchorChange.current = null;
+    };
+  }, [beforeAnchorChange]);
+  const cancelAnchor = async () => {
+    const account = session.get();
+    if (await prepareAnchorChange()) {
+      if (mutationCurrent(account)) onPendingChange(null);
+    }
+  };
+
   /** Card tops, once measured; keyed the same as the groups below. */
   const [placed, setPlaced] = useState<Record<string, number>>({});
   /**
@@ -226,33 +368,50 @@ export function DocComments({
     anchor?: Parameters<typeof client.addDocComment>[2],
   ) => {
     const text = body.trim();
-    if (!text || busy) return;
+    if (!text || mutation.current || draftDecision.current) return;
+    mutation.current = true;
     setBusy(true);
+    const account = session.get();
     client
       .addDocComment(docId, text, anchor)
       .then((made) => {
+        if (!mutationCurrent(account)) return;
+        void load();
         setComments((list) => [
           ...(list ?? []).filter((row) => row.id !== made.id),
           made,
         ]);
-        if (made.parent_id) {
+        if (
+          made.parent_id &&
+          drafts.current.reply?.id === made.parent_id &&
+          drafts.current.reply.text.trim() === text
+        ) {
           setReply(null);
           namedReply.current.clear();
           setReplyMentions([]);
-        } else if (made.block_id) {
+        } else if (made.block_id && drafts.current.draft.trim() === text) {
           setDraft("");
           namedDraft.current.clear();
           setMentions([]);
           onPendingChange(null);
           onActiveChange(made.block_id);
-        } else {
+        } else if (
+          !made.parent_id &&
+          !made.block_id &&
+          drafts.current.pageDraft.trim() === text
+        ) {
           setPageDraft("");
           namedPage.current.clear();
           setPageMentions([]);
         }
       })
-      .catch(report)
-      .finally(() => setBusy(false));
+      .catch((error) => {
+        if (mutationCurrent(account)) reportRef.current(error);
+      })
+      .finally(() => {
+        mutation.current = false;
+        if (mutationCurrent(account)) setBusy(false);
+      });
   };
 
   /** Write the remark the reader has been composing about their selection. */
@@ -268,34 +427,62 @@ export function DocComments({
   };
 
   const setResolved = (c: DocComment, resolved: boolean) => {
+    if (mutation.current || draftDecision.current) return;
+    mutation.current = true;
     setBusy(true);
+    const account = session.get();
     client
       .resolveDocComment(docId, c.id, resolved)
-      .then(() => load())
-      .catch(report)
-      .finally(() => setBusy(false));
+      .then(() => {
+        if (mutationCurrent(account)) return load();
+      })
+      .catch((error) => {
+        if (mutationCurrent(account)) reportRef.current(error);
+      })
+      .finally(() => {
+        mutation.current = false;
+        if (mutationCurrent(account)) setBusy(false);
+      });
   };
 
   const remove = async (c: DocComment) => {
-    if (
-      !(await ask({
-        title: "Remove this comment?",
-        confirmLabel: "Remove",
-        destructive: true,
-      }))
-    )
-      return;
+    if (mutation.current || draftDecision.current) return;
+    mutation.current = true;
     setBusy(true);
-    client
-      .deleteDocComment(docId, c.id)
-      .then(() =>
-        setComments(
-          (list) =>
-            list?.filter((x) => x.id !== c.id && x.parent_id !== c.id) ?? list,
-        ),
+    const account = session.get();
+    try {
+      if (
+        !(await ask({
+          title: "Remove this comment?",
+          body:
+            drafts.current.reply?.id === c.id &&
+            drafts.current.reply.text.trim()
+              ? "Also removes its replies and discards your unsent reply."
+              : "Also removes its replies.",
+          confirmLabel: "Remove",
+          destructive: true,
+        }))
       )
-      .catch(report)
-      .finally(() => setBusy(false));
+        return;
+      if (!mutationCurrent(account)) return;
+      await client.deleteDocComment(docId, c.id);
+      if (!mutationCurrent(account)) return;
+      if (drafts.current.reply?.id === c.id) {
+        setReply(null);
+        namedReply.current.clear();
+        setReplyMentions([]);
+      }
+      void load();
+      setComments(
+        (list) =>
+          list?.filter((x) => x.id !== c.id && x.parent_id !== c.id) ?? list,
+      );
+    } catch (e) {
+      if (mutationCurrent(account)) reportRef.current(e);
+    } finally {
+      mutation.current = false;
+      if (mutationCurrent(account)) setBusy(false);
+    }
   };
 
   const remark = (c: DocComment) => (
@@ -311,26 +498,29 @@ export function DocComments({
             ? ` · ${activityOriginLabel({ via_agent: c.via_agent })}`
             : ""}
         </small>
-        <button
-          className="icon-button"
-          aria-label={
-            c.resolved_at ? "Bring this comment back" : "Resolve this comment"
-          }
-          disabled={busy}
-          onClick={() => setResolved(c, !c.resolved_at)}
-        >
-          {c.resolved_at ? <RotateCcw size={13} /> : <Check size={14} />}
-        </button>
-        {c.user_id === userId && (
-          <button
-            className="icon-button"
-            aria-label="Remove this comment"
-            disabled={busy}
-            onClick={() => remove(c)}
-          >
-            <Trash2 size={13} />
-          </button>
-        )}
+        <details className="doc-comment-actions">
+          <summary aria-label={`Comment options for ${c.author}`}>…</summary>
+          <div>
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => setResolved(c, !c.resolved_at)}
+            >
+              {c.resolved_at ? "Reopen" : "Resolve"}
+            </button>
+            {c.user_id === userId && (
+              <button
+                className="text-button is-danger"
+                disabled={busy}
+                onClick={() => {
+                  void remove(c);
+                }}
+              >
+                Remove
+              </button>
+            )}
+          </div>
+        </details>
       </header>
       <p>{said(c)}</p>
     </article>
@@ -363,18 +553,12 @@ export function DocComments({
   const thread = (t: { comment: DocComment; replies: DocComment[] }) => (
     <div key={t.comment.id} className="doc-thread">
       {t.comment.quote && (
-        <p
-          className={
-            "doc-card-quote" + (t.comment.detached ? " is-detached" : "")
-          }
-          title={
-            t.comment.detached
-              ? "These words have since gone from the page"
-              : undefined
-          }
-        >
-          “{plainText(t.comment.quote)}”
-        </p>
+        <details className="doc-comment-quote">
+          <summary>
+            {t.comment.detached ? "Removed text" : "Quoted text"}
+          </summary>
+          <pre>{t.comment.quote}</pre>
+        </details>
       )}
       {remark(t.comment)}
       {t.replies.map(remark)}
@@ -396,10 +580,16 @@ export function DocComments({
                 mentions: replyMentions,
               })
             }
-            onCancel={() => setReply(null)}
+            onCancel={() => {
+              void changeReply(null);
+            }}
           />
           <div className="doc-card-actions">
-            <button className="text-button" onClick={() => setReply(null)}>
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => void changeReply(null)}
+            >
               Cancel
             </button>
             <button
@@ -420,10 +610,9 @@ export function DocComments({
         !t.comment.resolved_at && (
           <button
             className="text-button doc-reply-open"
+            disabled={busy}
             onClick={() => {
-              namedReply.current.clear();
-              setReplyMentions([]);
-              setReply({ id: t.comment.id, text: "" });
+              void changeReply({ id: t.comment.id, text: "" });
             }}
           >
             Reply
@@ -435,13 +624,24 @@ export function DocComments({
 
   if (comments === null && !failed)
     return (
-      <div className="doc-margin" aria-label="Comments">
+      <div
+        className="doc-margin"
+        hidden={hidden}
+        style={hidden ? { display: "none" } : undefined}
+        aria-label="Comments"
+      >
         <p className="muted small">Loading…</p>
       </div>
     );
 
   return (
-    <div className="doc-margin" ref={railRef} aria-label="Comments">
+    <div
+      className="doc-margin"
+      ref={railRef}
+      hidden={hidden}
+      style={hidden ? { display: "none" } : undefined}
+      aria-label="Comments"
+    >
       {failed && (
         <p role="alert">
           Couldn’t refresh comments.{" "}
@@ -479,7 +679,10 @@ export function DocComments({
               {threadComments(list).map(thread)}
               {isPending && (
                 <div className="doc-thread">
-                  <p className="doc-card-quote">“{plainText(pending.quote)}”</p>
+                  <details className="doc-comment-quote">
+                    <summary>Selected text</summary>
+                    <pre>{pending.quote}</pre>
+                  </details>
                   <div className="is-composer">
                     <MentionBox
                       disabled={busy}
@@ -496,12 +699,15 @@ export function DocComments({
                           : "Comment on these words…"
                       }
                       onSubmit={addToSelection}
-                      onCancel={() => onPendingChange(null)}
+                      onCancel={() => {
+                        void cancelAnchor();
+                      }}
                     />
                     <div className="doc-card-actions">
                       <button
                         className="text-button"
-                        onClick={() => onPendingChange(null)}
+                        disabled={busy}
+                        onClick={() => void cancelAnchor()}
                       >
                         Cancel
                       </button>

@@ -1,13 +1,13 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { addDays, dateLabel, localDateKey, type TaskAsk } from "@orbyn/core";
-import { Chip, ChipRow } from "../Chip";
+import { dateLabel, localDateKey, type TaskAsk } from "@orbyn/core";
+import { DateField } from "../Field";
+import { Sheet, sheetStyles } from "../Sheet";
 import { Icon } from "../Icon";
 import { SmallAction } from "../SmallAction";
 import { client } from "../../lib/api";
 import { onLive } from "../../lib/live";
 import { deviceTimeZone } from "../../lib/planning";
-import { animateLayout } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import { errorText } from "../../lib/errors";
@@ -30,26 +30,31 @@ export function AskCard({
 }) {
   const zone = deviceTimeZone();
   const today = localDateKey(new Date(), zone);
-  const days = Array.from({ length: 14 }, (_, n) => addDays(today, n));
+  const mutation = useRef(false);
   const [mode, setMode] = useState<"idle" | "counter" | "decline">("idle");
   const [day, setDay] = useState<string | null>(null);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const act = async (fn: () => Promise<unknown>) => {
+    if (mutation.current || turn === "settled") return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
       await fn();
-      animateLayout();
       setMode("idle");
       onChanged();
     } catch (e) {
       setError(errorText(e));
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
+  useEffect(() => {
+    setMode("idle");
+  }, [ask.status]);
   const countered = ask.status === "countered";
   const asked = turn === "mine" && !countered;
   const text =
@@ -71,7 +76,7 @@ export function AskCard({
     <View style={[s.card, turn === "settled" && s.settled]}>
       <View style={s.textRow}>
         <Icon name="users" size={15} color={colors.accent} />
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
           <Text style={s.text}>{text}</Text>
           {!!quote && ask.status !== "declined" && (
             <Text style={shared.small}>“{quote}”</Text>
@@ -124,100 +129,124 @@ export function AskCard({
       {turn === "theirs" && !countered && (
         <View style={s.actions}>
           <SmallAction
-            label="Withdraw the ask"
+            label="Withdraw request"
             disabled={busy}
             onPress={() => void act(() => client.settleAsk(ask.id, "withdraw"))}
           />
         </View>
       )}
       {mode === "counter" && (
-        <View style={s.form}>
-          <Text style={shared.small}>I can do it by</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <ChipRow label="Day">
-              {days.map((d) => (
-                <Chip
-                  key={d}
-                  compact
-                  label={
-                    d === today
-                      ? "Today"
-                      : new Date(`${d}T12:00:00`).toLocaleDateString([], {
-                          weekday: "short",
-                          day: "numeric",
-                        })
+        <Sheet
+          visible
+          title="Suggest a date"
+          hideClose={busy}
+          onClose={() => {
+            if (!busy) setMode("idle");
+          }}
+        >
+          <ScrollView contentContainerStyle={sheetStyles.body}>
+            <View style={s.form}>
+              <DateField
+                value={day}
+                label="Suggested date"
+                disabled={busy}
+                minimumDate={new Date(`${today}T00:00:00`)}
+                onChange={setDay}
+              />
+              <TextInput
+                style={shared.input}
+                editable={!busy}
+                value={message}
+                onChangeText={setMessage}
+                maxLength={500}
+                placeholder="Reason (optional)"
+                placeholderTextColor={colors.faint}
+                accessibilityLabel="Why"
+              />
+              <View style={s.actions}>
+                <SmallAction
+                  label="Send suggestion"
+                  disabled={busy || !day}
+                  onPress={() =>
+                    void act(() =>
+                      client.replyToAsk(ask.id, {
+                        action: "counter",
+                        due_at: new Date(`${day}T17:00:00`).toISOString(),
+                        message: message.trim(),
+                      }),
+                    )
                   }
-                  selected={day === d}
-                  onPress={() => setDay(d)}
                 />
-              ))}
-            </ChipRow>
+                <SmallAction
+                  label="Cancel"
+                  disabled={busy}
+                  onPress={() => setMode("idle")}
+                />
+              </View>
+              {!!error && (
+                <Text style={s.bad} accessibilityRole="alert">
+                  {error}
+                </Text>
+              )}
+            </View>
           </ScrollView>
-          <TextInput
-            style={shared.input}
-            value={message}
-            onChangeText={setMessage}
-            maxLength={500}
-            placeholder="A word about why (optional)"
-            placeholderTextColor={colors.faint}
-            accessibilityLabel="Why"
-          />
-          <View style={s.actions}>
-            <SmallAction
-              label="Send suggestion"
-              disabled={busy || !day}
-              onPress={() =>
-                void act(() =>
-                  client.replyToAsk(ask.id, {
-                    action: "counter",
-                    due_at: new Date(`${day}T17:00:00`).toISOString(),
-                    message: message.trim(),
-                  }),
-                )
-              }
-            />
-            <SmallAction
-              label="Cancel"
-              disabled={false}
-              onPress={() => setMode("idle")}
-            />
-          </View>
-        </View>
+        </Sheet>
       )}
       {mode === "decline" && (
-        <View style={s.form}>
-          <TextInput
-            style={shared.input}
-            value={message}
-            onChangeText={setMessage}
-            maxLength={500}
-            placeholder="Why you can't — they'll see this"
-            placeholderTextColor={colors.faint}
-            accessibilityLabel="Why you can't"
-          />
-          <View style={s.actions}>
-            <SmallAction
-              label="Send"
-              destructive
-              disabled={busy || !message.trim()}
-              onPress={() =>
-                void act(() =>
-                  client.replyToAsk(ask.id, {
-                    action: "decline",
-                    message: message.trim(),
-                  }),
-                )
-              }
-            />
-            <SmallAction
-              label="Cancel"
-              disabled={false}
-              onPress={() => setMode("idle")}
-            />
-          </View>
-        </View>
+        <Sheet
+          visible
+          title="Decline request"
+          hideClose={busy}
+          onClose={() => {
+            if (!busy) setMode("idle");
+          }}
+        >
+          <ScrollView contentContainerStyle={sheetStyles.body}>
+            <View style={s.form}>
+              <TextInput
+                style={shared.input}
+                editable={!busy}
+                value={message}
+                onChangeText={setMessage}
+                maxLength={500}
+                placeholder="Reason · shared with requester"
+                placeholderTextColor={colors.faint}
+                accessibilityLabel="Why you can't"
+              />
+              <View style={s.actions}>
+                <SmallAction
+                  label="Send"
+                  destructive
+                  disabled={busy || !message.trim()}
+                  onPress={() =>
+                    void act(() =>
+                      client.replyToAsk(ask.id, {
+                        action: "decline",
+                        message: message.trim(),
+                      }),
+                    )
+                  }
+                />
+                <SmallAction
+                  label="Cancel"
+                  disabled={busy}
+                  onPress={() => setMode("idle")}
+                />
+              </View>
+              {!!error && (
+                <Text style={s.bad} accessibilityRole="alert">
+                  {error}
+                </Text>
+              )}
+            </View>
+          </ScrollView>
+        </Sheet>
       )}
-      {!!error && <Text style={[shared.small, s.bad]}>{error}</Text>}
+      {!!error && mode === "idle" && (
+        <Text accessibilityRole="alert" style={[shared.small, s.bad]}>
+          {error}
+        </Text>
+      )}
     </View>
   );
 }
@@ -232,8 +261,12 @@ const turnOf = (
       ? "theirs"
       : "settled";
 
+export function AskBox(props: Parameters<typeof AskBoxBody>[0]) {
+  return <AskBoxBody key={props.itemId} {...props} />;
+}
+
 /** The ask on one task, in its sheet. Nothing when there isn't one. */
-export function AskBox({
+function AskBoxBody({
   itemId,
   onChanged,
 }: {
@@ -241,21 +274,48 @@ export function AskBox({
   onChanged: () => void;
 }) {
   const [state, setState] = useState<{ ask: TaskAsk; turn: Turn } | null>(null);
-  const load = useCallback(() => {
-    client.listAsks().then(
-      (lists) => {
-        const ask = [...lists.to_me, ...lists.from_me, ...lists.recent].find(
-          (a) => a.item_id === itemId,
-        );
-        setState(ask ? { ask, turn: turnOf(ask, lists) } : null);
-      },
-      () => setState(null),
-    );
+  const [error, setError] = useState("");
+  const request = useRef(0);
+  const load = useCallback(async () => {
+    const version = ++request.current;
+    try {
+      const lists = await client.listAsks();
+      if (version !== request.current) return;
+      const ask = [...lists.to_me, ...lists.from_me, ...lists.recent].find(
+        (row) => row.item_id === itemId,
+      );
+      setState(ask ? { ask, turn: turnOf(ask, lists) } : null);
+      setError("");
+    } catch (reason) {
+      if (version === request.current) setError(errorText(reason));
+    }
   }, [itemId]);
-  useEffect(load, [load]);
+  useEffect(() => {
+    setState(null);
+    void load();
+    return () => {
+      request.current += 1;
+    };
+  }, [load]);
+  if (error)
+    return (
+      <View>
+        <Text style={s.bad} accessibilityRole="alert">
+          {error}
+        </Text>
+        <SmallAction
+          label="Retry"
+          disabled={false}
+          onPress={() => {
+            void load();
+          }}
+        />
+      </View>
+    );
   if (!state) return null;
   return (
     <AskCard
+      key={state.ask.id}
       ask={state.ask}
       turn={state.turn}
       onChanged={() => {
@@ -276,14 +336,47 @@ export function AsksList({
     to_me: TaskAsk[];
     from_me: TaskAsk[];
   } | null>(null);
-  const load = useCallback(() => {
-    client.listAsks().then(setLists, () => setLists(null));
+  const [error, setError] = useState("");
+  const request = useRef(0);
+  const load = useCallback(async () => {
+    const version = ++request.current;
+    try {
+      const rows = await client.listAsks();
+      if (version === request.current) {
+        setLists(rows);
+        setError("");
+      }
+    } catch (reason) {
+      if (version === request.current) setError(errorText(reason));
+    }
   }, []);
   useEffect(() => {
-    load();
-    return onLive((news) => news.kind === "changed" && load());
+    void load();
+    const unsubscribe = onLive((news) => {
+      if (news.kind === "changed") void load();
+    });
+    return () => {
+      request.current += 1;
+      unsubscribe();
+    };
   }, [load]);
-  if (!lists || (!lists.to_me.length && !lists.from_me.length)) return null;
+  if (error && !lists)
+    return (
+      <View>
+        <Text style={s.bad} accessibilityRole="alert">
+          {error}
+        </Text>
+        <SmallAction
+          label="Retry"
+          disabled={false}
+          onPress={() => {
+            void load();
+          }}
+        />
+      </View>
+    );
+  if (!lists || (!lists.to_me.length && !lists.from_me.length && !error))
+    return null;
   const group = (title: string, asks: TaskAsk[], turn: Turn) =>
     asks.length > 0 && (
       <View style={s.group}>
@@ -306,8 +399,22 @@ export function AsksList({
     );
   return (
     <View style={s.list}>
-      {group("WAITING FOR YOUR ANSWER", lists.to_me, "mine")}
-      {group("WAITING ON OTHERS", lists.from_me, "theirs")}
+      {!!error && (
+        <View>
+          <Text style={s.bad} accessibilityRole="alert">
+            {error}
+          </Text>
+          <SmallAction
+            label="Retry"
+            disabled={false}
+            onPress={() => {
+              void load();
+            }}
+          />
+        </View>
+      )}
+      {group("Waiting for you", lists.to_me, "mine")}
+      {group("Waiting on others", lists.from_me, "theirs")}
     </View>
   );
 }
@@ -328,13 +435,13 @@ const s = themed(() =>
       borderColor: colors.border,
     },
     textRow: { flexDirection: "row", gap: 8, alignItems: "flex-start" },
-    text: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    text: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     form: { gap: 8 },
     bad: { color: colors.danger },
     list: { gap: 14, marginBottom: 14 },
     group: { gap: 4 },
     item: { gap: 2 },
-    itemTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+    itemTitle: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
   }),
 );

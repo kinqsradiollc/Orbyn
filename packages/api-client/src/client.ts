@@ -390,6 +390,7 @@ import {
   type FocusSession,
   type FocusState,
   type FocusSummary,
+  type ActivitySummary,
   type MemberPresence,
   type PresenceHeartbeat,
   type PresenceSettings,
@@ -672,11 +673,28 @@ export class OrbynClient {
    * rather than as JSON. No caching and no retries: a download either
    * arrives or it is asked for again.
    */
-  async raw(path: string): Promise<Response> {
+  async raw(
+    path: string,
+    options: {
+      method?: "GET" | "POST";
+      body?: unknown;
+      signal?: AbortSignal;
+    } = {},
+  ): Promise<Response> {
     const token = await this.getToken();
     const response = await this.fetchImpl(this.baseUrl + path, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      signal: AbortSignal.timeout(this.timeoutMs),
+      method: options.method ?? "GET",
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options.body === undefined
+          ? {}
+          : { "content-type": "application/json" }),
+      },
+      body:
+        options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: options.signal
+        ? AbortSignal.any([options.signal, AbortSignal.timeout(this.timeoutMs)])
+        : AbortSignal.timeout(this.timeoutMs),
     });
     if (!response.ok) {
       const problem = await response
@@ -1859,11 +1877,17 @@ export class OrbynClient {
   }
   /** Your saved assistant chats, pinned first and then most recently used. */
   aiChats(
-    options: { search?: string; project_id?: string; limit?: number } = {},
+    options: {
+      search?: string;
+      project_id?: string;
+      limit?: number;
+      kind?: "all" | "chat" | "work";
+    } = {},
   ) {
     const query = new URLSearchParams();
     if (options.search) query.set("search", options.search);
     if (options.project_id) query.set("project_id", options.project_id);
+    if (options.kind) query.set("kind", options.kind);
     if (options.limit) query.set("limit", String(options.limit));
     const suffix = query.size ? `?${query.toString()}` : "";
     return this.request<AiChatSummary[]>(`/ai/chats${suffix}`);
@@ -2100,6 +2124,8 @@ export class OrbynClient {
       range_end: number;
       action: DocAiAction;
       instruction?: string;
+      version?: number;
+      quote?: string;
     },
   ) {
     return this.request<DocSuggestion>(`/docs/${docId}/assist`, {
@@ -2674,6 +2700,20 @@ export class OrbynClient {
     const disposition = response.headers.get("content-disposition") ?? "";
     const named = /filename="([^"]+)"/.exec(disposition)?.[1];
     return { blob: await response.blob(), name: named ?? `document.${format}` };
+  }
+
+  /** Compile an authorized document draft; source is retained by the owning editor. */
+  async compileDocLatex(
+    id: string,
+    input: { source: string; version: number },
+    signal?: AbortSignal,
+  ) {
+    const response = await this.raw(`/docs/${id}/latex/preview`, {
+      method: "POST",
+      body: input,
+      signal,
+    });
+    return response.blob();
   }
 
   // Documents
@@ -5295,6 +5335,9 @@ export class OrbynClient {
       "/focus/sessions",
       { method: "POST", body: input },
     );
+  }
+  activitySummary(days: 30 | 90 | 365 = 90) {
+    return this.request<ActivitySummary>(`/me/activity-summary?days=${days}`);
   }
   focusSummary(from: Date, to: Date) {
     const q = new URLSearchParams({

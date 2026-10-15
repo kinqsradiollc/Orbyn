@@ -41,6 +41,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const toast = useCallback((o: ToastOptions) => {
     count.current += 1;
+    setHeld(false);
     setShown({ ...o, key: count.current });
   }, []);
 
@@ -62,7 +63,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             onMouseEnter={() => setHeld(true)}
             onMouseLeave={() => setHeld(false)}
             onFocus={() => setHeld(true)}
-            onBlur={() => setHeld(false)}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget))
+                setHeld(false);
+            }}
           >
             <span className="toast-text">{shown.text}</span>
             {shown.action && (

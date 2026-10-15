@@ -91,7 +91,14 @@ export function LiveList({
   const [stamp, setStamp] = useState(0);
   const [picker, setPicker] = useState<DOMRect | null>(null);
   const [views, setViews] = useState<SavedView[]>([]);
+  const [viewsFailed, setViewsFailed] = useState(false);
+  const [viewsLoading, setViewsLoading] = useState(false);
+  const [viewsRetry, setViewsRetry] = useState(0);
+  const [pending, setPending] = useState<string | null>(null);
+  const writing = useRef(false);
   const key = JSON.stringify(spec);
+  const currentKey = useRef(key);
+  currentKey.current = key;
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -102,22 +109,51 @@ export function LiveList({
 
   useEffect(() => {
     if (!spec) return;
+    let live = true;
     setFailed(null);
+    setResult(null);
     const run =
       "id" in spec
         ? client.runView(spec.id, spec.limit)
         : client.runDefinition(spec.definition, spec.limit);
     run.then(
-      (r) => alive.current && setResult(r),
+      (r) => live && setResult(r),
       (e: { statusCode?: number }) =>
-        alive.current &&
+        live &&
         setFailed(
           e?.statusCode === 404
             ? "This list's view isn't shared with you, or was deleted."
             : "This list couldn't be read just now.",
         ),
     );
+    return () => {
+      live = false;
+    };
   }, [key, stamp]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!picker) return;
+    let live = true;
+    setViewsLoading(true);
+    setViewsFailed(false);
+    client.listViews().then(
+      (next) => {
+        if (live) {
+          setViews(next);
+          setViewsLoading(false);
+        }
+      },
+      () => {
+        if (live) {
+          setViewsFailed(true);
+          setViewsLoading(false);
+        }
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [!!picker, viewsRetry]);
 
   const title =
     spec && "id" in spec
@@ -134,7 +170,10 @@ export function LiveList({
    * and the planner reads its list afresh.
    */
   const tick = async (row: ViewRow) => {
-    if (!row.item) return;
+    if (!row.item || !row.can_write || writing.current) return;
+    writing.current = true;
+    setPending(row.id);
+    const owner = key;
     setNote(null);
     const status =
       row.status !== "done"
@@ -144,11 +183,16 @@ export function LiveList({
           : "todo";
     try {
       await client.postItemUpdate(row.id, { status });
-      page.onItemsChanged?.();
+      if (alive.current && owner === currentKey.current)
+        page.onItemsChanged?.();
     } catch {
-      setNote("That task couldn't be changed just now.");
+      if (alive.current && owner === currentKey.current)
+        setNote("Couldn’t change task. Try again.");
+    } finally {
+      writing.current = false;
+      if (alive.current) setPending(null);
     }
-    setStamp((n) => n + 1);
+    if (alive.current && owner === currentKey.current) setStamp((n) => n + 1);
   };
 
   // Days are read in the account's zone, as the server filtered them.
@@ -190,7 +234,6 @@ export function LiveList({
             title="Choose what this list shows"
             onClick={(e) => {
               setPicker(e.currentTarget.getBoundingClientRect());
-              client.listViews().then(setViews, () => setViews([]));
             }}
           >
             <Settings2 size={14} />
@@ -202,7 +245,14 @@ export function LiveList({
           This list's settings can't be read. Choose what it shows again.
         </p>
       ) : failed ? (
-        <p className="live-list-empty">{failed}</p>
+        <div className="live-list-edit">
+          <p className="live-list-empty" role="status">
+            {failed}
+          </p>
+          <button className="secondary" onClick={() => setStamp((n) => n + 1)}>
+            Retry list
+          </button>
+        </div>
       ) : !result ? (
         <p className="live-list-empty">Loading…</p>
       ) : !result.rows.length ? (
@@ -221,7 +271,7 @@ export function LiveList({
                     type="checkbox"
                     aria-label={`${row.status === "done" ? "Reopen" : "Finish"} ${row.title}`}
                     checked={row.status === "done"}
-                    disabled={!row.can_write}
+                    disabled={!row.can_write || pending !== null}
                     onChange={() => void tick(row)}
                   />
                 )}
@@ -245,7 +295,11 @@ export function LiveList({
           })}
         </ul>
       )}
-      {note && <small className="muted">{note}</small>}
+      {note && (
+        <small className="muted" role="status">
+          {note}
+        </small>
+      )}
       {result?.truncated && (
         <small className="muted">
           {spec && "id" in spec
@@ -260,6 +314,16 @@ export function LiveList({
           onClose={() => setPicker(null)}
         >
           <div className="popover-actions">
+            {viewsLoading && (
+              <p className="popover-note" role="status">
+                Loading views…
+              </p>
+            )}
+            {viewsFailed && (
+              <button onClick={() => setViewsRetry((n) => n + 1)}>
+                Retry saved views
+              </button>
+            )}
             {liveListChoices(projectId).map((c) => (
               <button
                 key={c.label}
@@ -271,20 +335,22 @@ export function LiveList({
                 {c.label}
               </button>
             ))}
-            {views.length > 0 && (
+            {!viewsLoading && !viewsFailed && views.length > 0 && (
               <small className="popover-note">Your saved views</small>
             )}
-            {views.map((v) => (
-              <button
-                key={v.id}
-                onClick={() => {
-                  setPicker(null);
-                  onChange(liveListText({ id: v.id }));
-                }}
-              >
-                {v.name}
-              </button>
-            ))}
+            {!viewsLoading &&
+              !viewsFailed &&
+              views.map((v) => (
+                <button
+                  key={v.id}
+                  onClick={() => {
+                    setPicker(null);
+                    onChange(liveListText({ id: v.id }));
+                  }}
+                >
+                  {v.name}
+                </button>
+              ))}
           </div>
         </Popover>
       )}

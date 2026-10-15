@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, FileText, ShieldCheck } from "lucide-react";
 import {
   MINIMUM_AGE,
@@ -7,6 +7,7 @@ import {
   type LegalSummary,
   type User,
 } from "@orbyn/core";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { AuthShell } from "../auth/AccountFlows";
 import { LegalText } from "./LegalText";
@@ -19,7 +20,15 @@ import { errorText } from "../../lib/errors";
  * whenever a new version is published. It also shows the usage-analytics
  * choice, so it's made knowingly rather than buried in Settings.
  */
-export function ConsentGate({
+export function ConsentGate(props: Parameters<typeof ConsentGateBody>[0]) {
+  return (
+    <ConsentGateBody
+      key={`${props.user.id}:${props.legal.terms_version}:${session.get()}`}
+      {...props}
+    />
+  );
+}
+function ConsentGateBody({
   user,
   legal,
   onAccepted,
@@ -37,47 +46,75 @@ export function ConsentGate({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const owner = session.get();
+  const mounted = useRef(true);
+  const current = () => mounted.current && session.get() === owner;
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [readingBusy, setReadingBusy] = useState(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
+  }, []);
   const read = async (doc: LegalDoc) => {
-    if (reading?.doc === doc) return setReading(null);
+    const epoch = ++request.current;
+    if (reading?.doc === doc) {
+      setReading(null);
+      setReadingBusy(false);
+      return;
+    }
+    setReading(null);
+    setReadingBusy(true);
+    setError("");
     try {
-      setReading(await client.legalDocument(doc));
+      const next = await client.legalDocument(doc);
+      if (current() && epoch === request.current) setReading(next);
     } catch (e) {
-      setError(errorText(e));
+      if (current() && epoch === request.current) setError(errorText(e));
+    } finally {
+      if (current() && epoch === request.current) setReadingBusy(false);
     }
   };
 
   const accept = async () => {
+    if (!agreed || mutation.current || !current()) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
       await client.acceptTerms(legal.terms_version);
+      if (!current()) return;
       if (analytics === !!user.analytics_opt_out)
         await client.setPrivacy({ analytics_opt_out: !analytics });
-      onAccepted();
+      if (current()) onAccepted();
     } catch (e) {
-      setError(errorText(e));
+      if (current()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (current()) setBusy(false);
     }
   };
 
   return (
     <AuthShell>
       <span className="eyebrow">
-        {updated ? "WE'VE UPDATED OUR TERMS" : "BEFORE YOU CONTINUE"}
+        {updated ? "Terms updated" : "Before you continue"}
       </span>
       <h2>
-        <ShieldCheck size={22} style={{ verticalAlign: "-3px" }} /> Your privacy
-        and our terms
+        <ShieldCheck size={22} style={{ verticalAlign: "-3px" }} /> Review terms
       </h2>
       <p>
         {updated
-          ? "The Terms of Service or Privacy Policy changed since you last agreed. Take a look, then carry on."
-          : "Please review how Orbyn works with your data and agree to the terms to keep using it."}
+          ? "Review the updated Terms and Privacy Policy to continue."
+          : "Review the Terms and Privacy Policy to continue."}
       </p>
       <div className="consent-docs">
         {(["terms", "privacy"] as const).map((doc) => (
           <button
+            disabled={busy}
             key={doc}
             type="button"
             className="secondary"
@@ -89,6 +126,11 @@ export function ConsentGate({
           </button>
         ))}
       </div>
+      {readingBusy && (
+        <p className="muted" role="status">
+          Loading document…
+        </p>
+      )}
       {reading && (
         <div className="consent-reader" tabIndex={0} aria-label={reading.title}>
           <LegalText body={reading.body} />
@@ -99,20 +141,19 @@ export function ConsentGate({
           type="checkbox"
           role="switch"
           className="ai-switch"
+          disabled={busy}
           checked={analytics}
           onChange={(e) => setAnalytics(e.target.checked)}
         />
         <span>
           Usage analytics
-          <small>
-            Count which features I use — never what I write — to help improve
-            Orbyn. You can change this any time in Settings → Privacy.
-          </small>
+          <small>Count feature use to improve Orbyn. Never your content.</small>
         </span>
       </label>
       <label className="check-line consent-agree">
         <input
           type="checkbox"
+          disabled={busy}
           checked={agreed}
           onChange={(e) => setAgreed(e.target.checked)}
         />
@@ -134,7 +175,7 @@ export function ConsentGate({
         {busy ? "One moment…" : "Agree and continue"}
         <ArrowRight size={17} />
       </button>
-      <button className="text-button" onClick={onLogout}>
+      <button className="text-button" disabled={busy} onClick={onLogout}>
         Sign out
       </button>
     </AuthShell>

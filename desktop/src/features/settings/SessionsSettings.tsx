@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LogOut, Monitor } from "lucide-react";
 import type { Session } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -46,17 +46,38 @@ const ago = (iso: string) => {
 /** Where the account is signed in, with per-device and bulk sign-out. */
 export function SessionsSettings({ report }: { report: (e: unknown) => void }) {
   const [sessions, setSessions] = useState<Session[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const mounted = useRef(false);
+  const request = useRef(0);
+  const reportRef = useRef(report);
+  reportRef.current = report;
   const action = useAction(report);
 
-  const load = () =>
-    client.listSessions().then(setSessions, (e) => {
-      setSessions([]);
-      report(e);
-    });
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(async () => {
+    const epoch = ++request.current;
+    setLoading(true);
+    setFailed(false);
+    try {
+      const value = await client.listSessions();
+      if (mounted.current && epoch === request.current) setSessions(value);
+    } catch (error) {
+      if (mounted.current && epoch === request.current) {
+        setFailed(true);
+        reportRef.current(error);
+      }
+    } finally {
+      if (mounted.current && epoch === request.current) setLoading(false);
+    }
   }, []);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
+  }, [load]);
 
   const revoke = (s: Session) =>
     void action.run(async () => {
@@ -79,11 +100,30 @@ export function SessionsSettings({ report }: { report: (e: unknown) => void }) {
     <>
       <hr />
       <h2>Signed-in devices</h2>
-      {sessions === null ? (
-        <p className="muted">Loading…</p>
+      {failed && (
+        <div>
+          <p className="error" role="alert">
+            Couldn't refresh signed-in devices.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            disabled={loading || action.pending}
+            onClick={() => void load()}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {sessions === null && !failed ? (
+        <p className="muted" role="status">
+          Loading…
+        </p>
+      ) : sessions?.length === 0 ? (
+        <p className="muted">No signed-in devices.</p>
       ) : (
         <ul className="settings-list">
-          {sessions.map((s) => (
+          {sessions?.map((s) => (
             <li key={s.id}>
               <Monitor size={16} aria-hidden="true" />
               <span className="settings-list-main">
@@ -96,7 +136,8 @@ export function SessionsSettings({ report }: { report: (e: unknown) => void }) {
               {!s.current && (
                 <button
                   className="link-button"
-                  disabled={action.pending}
+                  disabled={action.pending || loading || failed}
+                  aria-label={`Sign out ${deviceName(s.user_agent)}`}
                   onClick={() => revoke(s)}
                 >
                   Sign out
@@ -109,7 +150,7 @@ export function SessionsSettings({ report }: { report: (e: unknown) => void }) {
       {others > 0 && (
         <button
           className="secondary"
-          disabled={action.pending}
+          disabled={action.pending || loading || failed}
           onClick={revokeOthers}
         >
           <LogOut size={14} /> Sign out everywhere else

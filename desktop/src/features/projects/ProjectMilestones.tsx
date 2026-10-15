@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { Flag, Plus, X } from "lucide-react";
 import {
   MILESTONE_STATUS_LABELS,
@@ -42,7 +44,13 @@ type Draft = {
  * list (never dates on stages), each rolling up its tasks — how many are
  * done, and for your part, whether it's planned to finish by the day.
  */
-export function ProjectMilestones({
+export function ProjectMilestones(
+  props: Parameters<typeof ProjectMilestonesBody>[0],
+) {
+  return <ProjectMilestonesBody key={props.projectId} {...props} />;
+}
+
+function ProjectMilestonesBody({
   projectId,
   items,
   canWrite,
@@ -65,13 +73,27 @@ export function ProjectMilestones({
   const [draft, setDraft] = useState<Draft | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const load = () =>
-    client.projectMilestones(projectId).then(setList, (e) => {
-      setList([]);
-      report(e);
-    });
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [failed, setFailed] = useState(false);
+  const load = async () => {
+    const epoch = ++request.current;
+    setFailed(false);
+    try {
+      const next = await client.projectMilestones(projectId);
+      if (epoch === request.current) setList(next);
+    } catch (e) {
+      if (epoch === request.current) {
+        setFailed(true);
+        report(e);
+      }
+    }
+  };
   useEffect(() => {
     void load();
+    return () => {
+      request.current++;
+    };
     // Reloads with its project and whenever its tasks change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, refreshKey]);
@@ -79,7 +101,15 @@ export function ProjectMilestones({
   const tasks = items.filter((i) => i.kind === "task" && !isClosed(i.status));
 
   const save = async () => {
-    if (!draft || !draft.name.trim() || !draft.due_on) return;
+    if (
+      !canWrite ||
+      mutation.current ||
+      !draft ||
+      !draft.name.trim() ||
+      !draft.due_on
+    )
+      return;
+    mutation.current = true;
     setBusy(true);
     try {
       if (draft.id) {
@@ -107,40 +137,56 @@ export function ProjectMilestones({
     } catch (e) {
       report(e);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
 
   const remove = async (m: ProjectMilestone) => {
-    if (
-      !(await ask({
-        title: `Remove the milestone “${m.name}”?`,
-        body: "Its tasks stay in the project, with their deadlines as they are.",
-        confirmLabel: "Remove",
-        destructive: true,
-      }))
-    )
-      return;
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
+    setBusy(true);
     try {
-      await client.deleteMilestone(projectId, m.id);
-      setDraft(null);
-      await load();
-      onChanged();
-    } catch (e) {
-      report(e);
+      if (
+        !(await ask({
+          title: `Remove the milestone “${m.name}”?`,
+          body: "Its tasks stay in the project, with their deadlines as they are.",
+          confirmLabel: "Remove",
+          destructive: true,
+        }))
+      )
+        return;
+      try {
+        await client.deleteMilestone(projectId, m.id);
+        setDraft(null);
+        await load();
+        onChanged();
+      } catch (e) {
+        report(e);
+      }
+    } finally {
+      mutation.current = false;
+      setBusy(false);
     }
   };
 
   const markDone = async (m: ProjectMilestone, done: boolean) => {
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
+    setBusy(true);
     try {
       await client.updateMilestone(projectId, m.id, { done });
+      setDraft(null);
       await load();
     } catch (e) {
       report(e);
+    } finally {
+      mutation.current = false;
+      setBusy(false);
     }
   };
 
-  if (list === null || (!list.length && !canWrite)) return null;
+  if (list !== null && !list.length && !canWrite && !failed) return null;
   const today = localDateKey(
     new Date(),
     Intl.DateTimeFormat().resolvedOptions().timeZone,
@@ -166,10 +212,22 @@ export function ProjectMilestones({
           </button>
         )}
       </div>
-      {list.length === 0 ? (
-        <p className="muted">
-          Dated checkpoints show whether their tasks will finish on time.
+      {failed && (
+        <p role="status">
+          Milestones unavailable.{" "}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => void load()}
+          >
+            Retry
+          </button>
         </p>
+      )}
+      {list === null ? (
+        <p className="muted">{failed ? "" : "Loading milestones…"}</p>
+      ) : list.length === 0 ? (
+        <p className="muted">No milestones yet.</p>
       ) : (
         <ul className="milestone-list">
           {list.map((m) => (
@@ -216,126 +274,150 @@ export function ProjectMilestones({
         </ul>
       )}
       {draft && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setDraft(null);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setDraft(null);
-          }}
-        >
+        <MilestoneDialog busy={busy} onClose={() => setDraft(null)}>
           <form
             className="modal modal-small milestone-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="milestone-title"
             onSubmit={(e) => {
               e.preventDefault();
               void save();
             }}
           >
-            <div className="section-heading">
-              <h2 id="milestone-title">
-                {draft.id ? "Milestone" : "New milestone"}
-              </h2>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Close"
-                onClick={() => setDraft(null)}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <p className="muted modal-lead">
-              A dated checkpoint in its own list. It never changes a task's
-              deadline.
-            </p>
-            <label>
-              Name
-              <input
-                autoFocus
-                required
-                maxLength={120}
-                placeholder="Draft ready"
-                value={draft.name}
-                onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-              />
-            </label>
-            <label>
-              Date
-              <DateField
-                value={draft.due_on}
-                onChange={(e) => setDraft({ ...draft, due_on: e.target.value })}
-              />
-            </label>
-            {tasks.length > 0 && (
-              <fieldset className="milestone-tasks">
-                <legend>Its tasks</legend>
-                {tasks.map((t) => (
-                  <label key={t.id} className="check-line">
-                    <input
-                      type="checkbox"
-                      checked={draft.item_ids.includes(t.id)}
-                      onChange={(e) =>
-                        setDraft({
-                          ...draft,
-                          item_ids: e.target.checked
-                            ? [...draft.item_ids, t.id]
-                            : draft.item_ids.filter((id) => id !== t.id),
-                        })
-                      }
-                    />
-                    <span>{t.title}</span>
-                  </label>
-                ))}
-              </fieldset>
-            )}
-            {draft.id && (
-              <div className="milestone-more">
-                {(() => {
-                  const m = list.find((x) => x.id === draft.id);
-                  if (!m) return null;
-                  return (
-                    <>
-                      <button
-                        type="button"
-                        className="text-button"
-                        onClick={() => {
-                          setDraft(null);
-                          void markDone(m, !m.done_at);
-                        }}
-                      >
-                        {m.done_at ? "Not done yet" : "Mark done"}
-                      </button>
-                      <button
-                        type="button"
-                        className="text-button is-destructive"
-                        onClick={() => void remove(m)}
-                      >
-                        Remove milestone
-                      </button>
-                    </>
-                  );
-                })()}
+            <fieldset disabled={busy} className="milestone-fields">
+              <div className="section-heading">
+                <h2 id="milestone-title">
+                  {draft.id ? "Milestone" : "New milestone"}
+                </h2>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Close"
+                  onClick={() => setDraft(null)}
+                >
+                  <X size={20} />
+                </button>
               </div>
-            )}
-            <div className="confirm-actions">
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => setDraft(null)}
-              >
-                Cancel
-              </button>
-              <button type="submit" className="primary" disabled={busy}>
-                Save
-              </button>
-            </div>
+              <p className="muted modal-lead">Task deadlines stay unchanged.</p>
+              <label>
+                Name
+                <input
+                  autoFocus
+                  required
+                  maxLength={120}
+                  placeholder="Draft ready"
+                  value={draft.name}
+                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
+                />
+              </label>
+              <label>
+                Date
+                <DateField
+                  value={draft.due_on}
+                  onChange={(e) =>
+                    setDraft({ ...draft, due_on: e.target.value })
+                  }
+                />
+              </label>
+              {tasks.length > 0 && (
+                <fieldset className="milestone-tasks">
+                  <legend>Its tasks</legend>
+                  {tasks.map((t) => (
+                    <label key={t.id} className="check-line">
+                      <input
+                        type="checkbox"
+                        checked={draft.item_ids.includes(t.id)}
+                        onChange={(e) =>
+                          setDraft({
+                            ...draft,
+                            item_ids: e.target.checked
+                              ? [...draft.item_ids, t.id]
+                              : draft.item_ids.filter((id) => id !== t.id),
+                          })
+                        }
+                      />
+                      <span>{t.title}</span>
+                    </label>
+                  ))}
+                </fieldset>
+              )}
+              {draft.id && (
+                <div className="milestone-more">
+                  {(() => {
+                    const m = list?.find((x) => x.id === draft.id);
+                    if (!m) return null;
+                    return (
+                      <>
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => {
+                            void markDone(m, !m.done_at);
+                          }}
+                        >
+                          {m.done_at ? "Not done yet" : "Mark done"}
+                        </button>
+                        <button
+                          type="button"
+                          className="text-button is-destructive"
+                          onClick={() => void remove(m)}
+                        >
+                          Remove milestone
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+              <div className="confirm-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setDraft(null)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="primary" disabled={busy}>
+                  Save
+                </button>
+              </div>
+            </fieldset>
           </form>
-        </div>
+        </MilestoneDialog>
       )}
     </section>
+  );
+}
+
+function MilestoneDialog({
+  busy,
+  onClose,
+  children,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={focus.ref as React.RefObject<HTMLDialogElement>}
+      className="milestone-native-dialog"
+      aria-labelledby="milestone-title"
+      data-modal-owner={focus.id}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      {children}
+    </dialog>,
+    document.body,
   );
 }

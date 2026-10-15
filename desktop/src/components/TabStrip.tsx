@@ -1,7 +1,8 @@
-import { useRef, useState, type KeyboardEvent } from "react";
-import { Ellipsis, X, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Ellipsis, Plus, type LucideIcon } from "lucide-react";
 import {
   placeOf,
+  TAB_LIMIT,
   type TabAction,
   type TabPlace,
   type TabsState,
@@ -11,6 +12,9 @@ import { Popover } from "./Popover";
 import "./tab-strip.css";
 
 type Props = {
+  onSplit?: (place: TabPlace) => void;
+  idPrefix?: string;
+  panelId?: string;
   tabs: TabsState;
   /** Change the tabs (select, close, pin, move…). */
   onAction: (action: TabAction) => void;
@@ -24,7 +28,15 @@ type Props = {
  * icons. A tab's ⋯ or a right-click offers Pin, Close others and Close to
  * the right; tabs drag to a new order; the arrow keys move between them.
  */
-export function TabStrip({ tabs, onAction, titleOf, iconOf }: Props) {
+export function TabStrip({
+  tabs,
+  onSplit,
+  onAction,
+  titleOf,
+  iconOf,
+  idPrefix = "workspace",
+  panelId = "tab-panel",
+}: Props) {
   const [menu, setMenu] = useState<{ key: string; anchor: DOMRect } | null>(
     null,
   );
@@ -32,11 +44,25 @@ export function TabStrip({ tabs, onAction, titleOf, iconOf }: Props) {
   const [over, setOver] = useState<string | null>(null);
   const list = useRef<HTMLDivElement>(null);
   const only = tabs.tabs.length === 1;
+  const focusAfterClose = useRef<string | null>(null);
 
-  const focusTab = (key: string) =>
-    list.current
-      ?.querySelector<HTMLElement>(`[data-tab="${key}"] [role="tab"]`)
-      ?.focus();
+  const tabElement = (key: string) =>
+    Array.from(list.current?.querySelectorAll<HTMLElement>("[data-tab]") ?? [])
+      .find((element) => element.dataset.tab === key)
+      ?.querySelector<HTMLElement>('[role="tab"]');
+
+  const focusTab = (key: string) => tabElement(key)?.focus();
+
+  useEffect(() => {
+    tabElement(tabs.active)?.scrollIntoView?.({
+      block: "nearest",
+      inline: "nearest",
+    });
+    if (focusAfterClose.current) {
+      tabElement(focusAfterClose.current)?.focus();
+      focusAfterClose.current = null;
+    }
+  }, [tabs.active, tabs.tabs]);
 
   const onKey = (e: KeyboardEvent, tab: WorkspaceTab, at: number) => {
     const n = tabs.tabs.length;
@@ -49,9 +75,10 @@ export function TabStrip({ tabs, onAction, titleOf, iconOf }: Props) {
     else if (e.key === "ArrowLeft") go(at - 1);
     else if (e.key === "Home") go(0);
     else if (e.key === "End") go(n - 1);
-    else if (e.key === "Delete" && !only)
+    else if (e.key === "Delete" && !only) {
+      focusAfterClose.current = tabs.tabs[at + 1]?.key ?? tabs.tabs[at - 1].key;
       onAction({ type: "close", key: tab.key });
-    else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))
+    } else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10"))
       setMenu({
         key: tab.key,
         anchor: (e.currentTarget as HTMLElement).getBoundingClientRect(),
@@ -137,10 +164,11 @@ export function TabStrip({ tabs, onAction, titleOf, iconOf }: Props) {
                 type="button"
                 role="tab"
                 className="tab-main"
+                id={`${idPrefix}-tab-${tab.key}`}
                 aria-selected={active}
-                aria-controls={active ? "tab-panel" : undefined}
+                aria-controls={active ? panelId : undefined}
                 tabIndex={active ? 0 : -1}
-                aria-label={tab.pinned ? `${title} (pinned)` : undefined}
+                aria-label={tab.pinned ? `${title} (pinned)` : title}
                 title={title}
                 onClick={() => onAction({ type: "select", key: tab.key })}
                 onKeyDown={(e) => onKey(e, tab, at)}
@@ -156,6 +184,7 @@ export function TabStrip({ tabs, onAction, titleOf, iconOf }: Props) {
                     tabIndex={-1}
                     aria-label={`Options for ${title}`}
                     aria-haspopup="menu"
+                    aria-expanded={menu?.key === tab.key}
                     onClick={(e) =>
                       setMenu({
                         key: tab.key,
@@ -165,23 +194,31 @@ export function TabStrip({ tabs, onAction, titleOf, iconOf }: Props) {
                   >
                     <Ellipsis size={14} />
                   </button>
-                  {!only && (
-                    <button
-                      type="button"
-                      className="icon-button tab-close"
-                      tabIndex={-1}
-                      aria-label={`Close ${title}`}
-                      onClick={() => onAction({ type: "close", key: tab.key })}
-                    >
-                      <X size={14} />
-                    </button>
-                  )}
                 </>
               )}
             </div>
           );
         })}
       </div>
+      <button
+        type="button"
+        className="icon-button tab-new"
+        aria-label="New tab"
+        title={
+          tabs.tabs.length >= TAB_LIMIT
+            ? `Maximum ${TAB_LIMIT} tabs`
+            : "New tab"
+        }
+        disabled={tabs.tabs.length >= TAB_LIMIT}
+        onClick={() =>
+          onAction({
+            type: "open",
+            place: { view: "Overview", id: null, title: "" },
+          })
+        }
+      >
+        <Plus size={16} />
+      </button>
       {menu && menuTab && (
         <Popover
           anchor={menu.anchor}
@@ -199,6 +236,26 @@ export function TabStrip({ tabs, onAction, titleOf, iconOf }: Props) {
             >
               {menuTab.pinned ? "Unpin" : "Pin"}
             </button>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={tabs.tabs.length >= TAB_LIMIT}
+              onClick={() => act({ type: "open", place: placeOf(menuTab) })}
+            >
+              Open another tab here
+            </button>
+            {onSplit && (
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenu(null);
+                  onSplit(placeOf(menuTab));
+                }}
+              >
+                Open alongside
+              </button>
+            )}
             <button
               type="button"
               role="menuitem"

@@ -17,12 +17,15 @@ import {
 } from "@orbyn/core";
 import { Button } from "./Button";
 import { Chip, ChipRow } from "./Chip";
+import { ChoicePicker } from "./ChoicePicker";
+import { InlineDetails } from "./InlineDetails";
 import { ErrorBanner } from "./ErrorBanner";
 import { DateField, Field, TimeField } from "./Field";
 import { MoreMenu, type MoreAction } from "./MoreMenu";
 import { Sheet, sheetStyles } from "./Sheet";
 import { client } from "../lib/api";
-import { confirmAction } from "../lib/confirm";
+import { Alert } from "../lib/alert";
+import { session } from "../lib/session";
 import {
   CHANGE_KIND_LABELS,
   checkinStatusLabel,
@@ -78,7 +81,10 @@ const inAnHour = () => {
 };
 
 /** Goals, weekly check-ins and scheduled assistant runs on the phone. */
-export function AssistantUpcoming({
+export function AssistantUpcoming(props: Parameters<typeof UpcomingBody>[0]) {
+  return <UpcomingBody key={session.token} {...props} />;
+}
+function UpcomingBody({
   agentName,
   visible,
   onClose,
@@ -88,13 +94,31 @@ export function AssistantUpcoming({
   visible: boolean;
   onClose: () => void;
 }) {
+  const owner = session.token;
   const live = useRef(true);
-  useEffect(
-    () => () => {
+  const shown = useRef({ visible, epoch: 0 });
+  if (shown.current.visible !== visible) {
+    shown.current = { visible, epoch: shown.current.epoch + 1 };
+  }
+  const epoch = shown.current.epoch;
+  const current = () =>
+    live.current &&
+    shown.current.visible &&
+    shown.current.epoch === epoch &&
+    session.token === owner;
+  const sequence = useRef(0);
+  const mutation = useRef(false);
+  const refreshQueued = useRef(false);
+  const latestReload = useRef<() => Promise<void>>(async () => {});
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [historyFailed, setHistoryFailed] = useState<string[]>([]);
+  useEffect(() => {
+    live.current = true;
+    return () => {
       live.current = false;
-    },
-    [],
-  );
+      sequence.current++;
+    };
+  }, []);
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState<ApprovalScopes>({});
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -117,6 +141,8 @@ export function AssistantUpcoming({
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
+    const ticket = ++sequence.current;
+    const owned = () => current() && ticket === sequence.current;
     const [nextGoals, nextRoutines, nextProjects, nextDocs, prefs, scopes] =
       await Promise.all([
         client.listGoals(),
@@ -124,58 +150,117 @@ export function AssistantUpcoming({
         client.listProjects(),
         client.listDocs({ kind: "agent" }),
         client.getPlannerPrefs(),
-        client.assistantApprovalScopes().catch(() => ({}) as ApprovalScopes),
+        client.assistantApprovalScopes(),
       ]);
-    if (!live.current) return;
+    if (!owned()) return;
     setAllowed(scopes);
-    const zone = prefs.timezone || "UTC";
     setGoals(nextGoals);
     setRoutines(nextRoutines);
     setProjects(nextProjects);
     setAgentDocs(nextDocs);
-    setTimezone(zone);
-    // One goal's check-ins failing leaves the others (and the goal) shown.
+    setTimezone(prefs.timezone || "UTC");
     const results = await Promise.all(
-      nextGoals
-        .slice(0, 30)
-        .map(
-          async (goal) =>
-            [
-              goal.id,
-              await client.goalCheckins(goal.id).catch(() => []),
-            ] as const,
-        ),
+      nextGoals.slice(0, 30).map(async (goal) => {
+        try {
+          return {
+            id: goal.id,
+            history: await client.goalCheckins(goal.id),
+            failed: false,
+          };
+        } catch {
+          return { id: goal.id, history: [] as GoalCheckin[], failed: true };
+        }
+      }),
     );
-    if (live.current) setCheckins(Object.fromEntries(results));
+    if (!owned()) return;
+    setCheckins(
+      Object.fromEntries(
+        results.filter((r) => !r.failed).map((r) => [r.id, r.history]),
+      ),
+    );
+    setHistoryFailed(results.filter((r) => r.failed).map((r) => r.id));
+    setLoadFailed(false);
   };
-
-  useEffect(() => {
-    if (!visible) return;
+  const reload = async () => {
+    if (!current()) return;
+    if (mutation.current) {
+      refreshQueued.current = true;
+      return;
+    }
+    setLoading(true);
     setError("");
-    void load()
-      .catch(
-        () =>
-          live.current &&
-          setError("Upcoming goals and routines could not be loaded."),
-      )
-      .finally(() => live.current && setLoading(false));
+    const ticket = sequence.current + 1;
+    try {
+      await load();
+    } catch {
+      if (current() && ticket === sequence.current) {
+        setLoadFailed(true);
+        setError("Couldn't load upcoming work. Try again.");
+      }
+    } finally {
+      if (current() && ticket === sequence.current) setLoading(false);
+    }
+  };
+  latestReload.current = reload;
+  useEffect(() => {
+    if (visible) void reload();
+    return () => {
+      sequence.current++;
+    };
   }, [visible]);
-
-  const removeAllowed = async (kind: AssistantChangeKind) => {
-    const next = { ...allowed };
-    delete next[kind];
+  const run = async (fn: () => Promise<void>, message: string) => {
+    if (!current() || mutation.current) return;
+    mutation.current = true;
+    sequence.current++;
+    setLoading(false);
     setSaving(true);
     setError("");
     try {
-      const saved = await client.setAssistantApprovalScopes(next);
-      if (live.current) setAllowed(saved);
+      await fn();
     } catch {
-      if (live.current)
-        setError("That permission could not be removed. Try again.");
+      if (current()) setError(message);
     } finally {
-      if (live.current) setSaving(false);
+      mutation.current = false;
+      if (live.current && session.token === owner) {
+        setSaving(false);
+        if (refreshQueued.current) {
+          refreshQueued.current = false;
+          void latestReload.current();
+        }
+      }
     }
   };
+  const refreshSaved = async () => {
+    try {
+      await load();
+    } catch {
+      if (current()) {
+        setLoadFailed(true);
+        setError("Saved. Couldn't refresh upcoming work. Try again.");
+      }
+    }
+  };
+  const loadHistory = (goal: Goal) =>
+    run(async () => {
+      try {
+        const history = await client.goalCheckins(goal.id);
+        if (!current()) return;
+        setCheckins((all) => ({ ...all, [goal.id]: history }));
+        setHistoryFailed((ids) => ids.filter((id) => id !== goal.id));
+      } catch (e) {
+        if (current())
+          setHistoryFailed((ids) => [...new Set([...ids, goal.id])]);
+        throw e;
+      }
+    }, "Couldn't load that goal’s history. Try again.");
+  const removeAllowed = (kind: AssistantChangeKind) =>
+    run(async () => {
+      const next = { ...allowed };
+      delete next[kind];
+      const saved = await client.setAssistantApprovalScopes(next);
+      if (current()) setAllowed(saved);
+    }, "Couldn't remove that permission. Try again.");
+
   const allowedRows = (
     Object.entries(allowed) as [
       AssistantChangeKind,
@@ -190,6 +275,7 @@ export function AssistantUpcoming({
         : `For the routine “${routines.find((r) => r.id === rule?.id)?.instruction ?? "a routine"}”`;
 
   const openGoalForm = (goal: Goal | null) => {
+    if (saving || form || loadFailed) return;
     setGoalTitle(goal?.title ?? "");
     setGoalTarget(goal?.target ?? "");
     setGoalDate(goal?.target_date ?? null);
@@ -200,6 +286,7 @@ export function AssistantUpcoming({
   };
 
   const openRoutineForm = (routine: AgentRoutine | null) => {
+    if (saving || form || loadFailed) return;
     if (routine) {
       const next = new Date(routine.next_run_at);
       const day = localDateKey(next, routine.timezone);
@@ -223,10 +310,8 @@ export function AssistantUpcoming({
   };
 
   const saveGoal = async () => {
-    if (!goalTitle.trim() || saving || form?.kind !== "goal") return;
-    setSaving(true);
-    setError("");
-    try {
+    if (!goalTitle.trim() || form?.kind !== "goal") return;
+    await run(async () => {
       const input = {
         title: goalTitle.trim(),
         target: goalTarget,
@@ -236,27 +321,17 @@ export function AssistantUpcoming({
       };
       if (form.id) await client.updateGoal(form.id, input);
       else await client.createGoal(input);
+      if (!live.current || session.token !== owner) return;
       setForm(null);
-      await load();
-    } catch {
-      setError(
-        "The goal could not be saved. Check its project and Agent note, then try again.",
-      );
-    } finally {
-      setSaving(false);
-    }
+      if (current()) await refreshSaved();
+    }, "Couldn't save the goal. Check its project and plan note, then retry.");
   };
-
   const saveRoutine = async () => {
-    if (!routineText.trim() || saving || form?.kind !== "routine") return;
-    setSaving(true);
-    setError("");
-    try {
-      const zone = form.id
-        ? (routines.find((r) => r.id === form.id)?.timezone ?? timezone)
-        : timezone;
+    if (!routineText.trim() || form?.kind !== "routine") return;
+    await run(async () => {
+      const zone = routines.find((r) => r.id === form.id)?.timezone ?? timezone;
       const { rule, next } = nextRun(routineDay, routineTime, repeat, zone);
-      if (!next) throw new Error("No future run is available.");
+      if (!next) throw new Error("No future run available");
       if (form.id)
         await client.updateAgentRoutine(form.id, {
           instruction: routineText.trim(),
@@ -267,35 +342,21 @@ export function AssistantUpcoming({
         await client.createAgentRoutine({
           instruction: routineText.trim(),
           rrule: rule,
-          timezone,
+          timezone: zone,
           next_run_at: next.toISOString(),
         });
+      if (!live.current || session.token !== owner) return;
       setForm(null);
-      await load();
-    } catch {
-      setError(
-        "The routine could not be saved. Choose a future time and try again.",
-      );
-    } finally {
-      setSaving(false);
-    }
+      if (current()) await refreshSaved();
+    }, "Couldn't save the routine. Check its schedule, then retry.");
   };
-
-  const setGoalStatus = async (goal: Goal, status: Goal["status"]) => {
-    setSaving(true);
-    try {
+  const setGoalStatus = (goal: Goal, status: Goal["status"]) =>
+    run(async () => {
       await client.updateGoal(goal.id, { status });
-      await load();
-    } catch {
-      setError("The goal could not be updated.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggleRoutine = async (routine: AgentRoutine) => {
-    setSaving(true);
-    try {
+      if (current()) await refreshSaved();
+    }, "Couldn't update the goal. Try again.");
+  const toggleRoutine = (routine: AgentRoutine) =>
+    run(async () => {
       let next = new Date(routine.next_run_at);
       if (routine.paused && next <= new Date())
         next =
@@ -305,51 +366,34 @@ export function AssistantUpcoming({
         paused: !routine.paused,
         next_run_at: next.toISOString(),
       });
-      await load();
-    } catch {
-      setError("The routine could not be updated.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+      if (current()) await refreshSaved();
+    }, "Couldn't update the routine. Try again.");
+  const deleteItem = (kind: "goal" | "routine", id: string, name: string) =>
+    run(async () => {
+      const confirmed = await new Promise<boolean>((resolve) =>
+        Alert.alert(
+          kind === "goal" ? "Delete goal?" : "Delete routine?",
+          `${name} · ${kind === "goal" ? "Its progress history will be removed." : "Its upcoming runs will be removed."}`,
+          [
+            { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+            {
+              text: "Delete",
+              style: "destructive",
+              onPress: () => resolve(true),
+            },
+          ],
+          { cancelable: true, onDismiss: () => resolve(false) },
+        ),
+      );
+      if (!confirmed || !current()) return;
+      if (kind === "goal") await client.deleteGoal(id);
+      else await client.deleteAgentRoutine(id);
+      if (current()) await refreshSaved();
+    }, "Couldn't delete it. Try again.");
   const deleteGoal = (goal: Goal) =>
-    confirmAction(
-      "Delete this goal?",
-      "Its progress history will be removed.",
-      "Delete",
-      () =>
-        void (async () => {
-          setSaving(true);
-          try {
-            await client.deleteGoal(goal.id);
-            await load();
-          } catch {
-            setError("The goal could not be deleted.");
-          } finally {
-            setSaving(false);
-          }
-        })(),
-    );
-
+    void deleteItem("goal", goal.id, goal.title);
   const deleteRoutine = (routine: AgentRoutine) =>
-    confirmAction(
-      "Delete this routine?",
-      "Its upcoming runs will be removed.",
-      "Delete",
-      () =>
-        void (async () => {
-          setSaving(true);
-          try {
-            await client.deleteAgentRoutine(routine.id);
-            await load();
-          } catch {
-            setError("The routine could not be deleted.");
-          } finally {
-            setSaving(false);
-          }
-        })(),
-    );
+    void deleteItem("routine", routine.id, routine.instruction);
 
   const today = localDateKey(new Date(), timezone);
   const currentMonday = addDays(today, -((weekdayOf(today) + 6) % 7));
@@ -363,7 +407,7 @@ export function AssistantUpcoming({
       label: "Edit",
       icon: "fileText",
       onPress: () => openGoalForm(goal),
-      disabled: saving,
+      disabled: saving || loadFailed || !!form,
     },
     {
       label: goal.status === "paused" ? "Resume" : "Pause",
@@ -373,18 +417,19 @@ export function AssistantUpcoming({
           goal,
           goal.status === "paused" ? "active" : "paused",
         ),
-      disabled: saving,
+      disabled: saving || loadFailed || !!form,
     },
     {
       label: "Mark done",
       icon: "check",
       onPress: () => void setGoalStatus(goal, "done"),
-      disabled: saving || goal.status === "done",
+      disabled: saving || loadFailed || !!form || goal.status === "done",
     },
     {
       label: "Delete",
       icon: "trash",
       destructive: true,
+      disabled: saving || loadFailed || !!form,
       onPress: () => deleteGoal(goal),
     },
   ];
@@ -393,24 +438,36 @@ export function AssistantUpcoming({
       label: "Edit",
       icon: "fileText",
       onPress: () => openRoutineForm(routine),
-      disabled: saving,
+      disabled: saving || loadFailed || !!form,
     },
     {
       label: routine.paused ? "Resume" : "Pause",
       icon: routine.paused ? "play" : "pause",
       onPress: () => void toggleRoutine(routine),
-      disabled: saving,
+      disabled: saving || loadFailed || !!form,
     },
     {
       label: "Delete",
       icon: "trash",
       destructive: true,
+      disabled: saving || loadFailed || !!form,
       onPress: () => deleteRoutine(routine),
     },
   ];
 
   return (
-    <Sheet visible={visible} title="Goals and routines" onClose={onClose}>
+    <Sheet
+      visible={visible}
+      title={form ? `${form.id ? "Edit" : "New"} ${form.kind}` : "Upcoming"}
+      closeDisabled={saving}
+      onClose={() => {
+        if (saving) return;
+        if (form) {
+          setForm(null);
+          setError("");
+        } else onClose();
+      }}
+    >
       <ScrollView
         contentContainerStyle={sheetStyles.body}
         keyboardShouldPersistTaps="handled"
@@ -420,16 +477,14 @@ export function AssistantUpcoming({
         <View style={sheetStyles.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
           <Text style={[shared.small, s.intro]}>
-            {agentName} checks in on your goals each week and runs routines at
-            the times you set. Times are in {timezone}.
+            {agentName} · {timezone}
           </Text>
           {form?.kind === "goal" ? (
-            <View style={shared.card}>
-              <Text style={[shared.sectionTitle, s.formTitle]}>
-                {form.id ? "Edit goal" : "New goal"}
-              </Text>
+            <View>
               <Field label="Goal">
                 <TextInput
+                  editable={!saving}
+                  accessibilityLabel="Goal"
                   value={goalTitle}
                   onChangeText={setGoalTitle}
                   maxLength={120}
@@ -440,6 +495,8 @@ export function AssistantUpcoming({
               </Field>
               <Field label="What does done look like?">
                 <TextInput
+                  editable={!saving}
+                  accessibilityLabel="What does done look like?"
                   value={goalTarget}
                   onChangeText={setGoalTarget}
                   maxLength={2000}
@@ -449,6 +506,7 @@ export function AssistantUpcoming({
               </Field>
               <Field label="Target date">
                 <DateField
+                  disabled={saving}
                   label="Target date"
                   placeholder="No target date"
                   value={goalDate}
@@ -457,49 +515,40 @@ export function AssistantUpcoming({
                 />
               </Field>
               <Field label="Project">
-                <ChipRow label="Project">
-                  <Chip
-                    label="No project"
-                    selected={!goalProject}
-                    onPress={() => setGoalProject("")}
-                  />
-                  {projects.map((project) => (
-                    <Chip
-                      key={project.id}
-                      label={project.name}
-                      selected={goalProject === project.id}
-                      onPress={() => {
-                        setGoalProject(project.id);
-                        if (
-                          goalDoc &&
-                          !agentDocs.some(
-                            (doc) =>
-                              doc.id === goalDoc &&
-                              doc.project_id === project.id,
-                          )
-                        )
-                          setGoalDoc("");
-                      }}
-                    />
-                  ))}
-                </ChipRow>
+                <ChoicePicker
+                  label="Project"
+                  value={goalProject}
+                  disabled={saving}
+                  options={[
+                    { value: "", label: "No project" },
+                    ...projects.map((p) => ({ value: p.id, label: p.name })),
+                  ]}
+                  onChange={(id) => {
+                    setGoalProject(id);
+                    if (
+                      id &&
+                      !agentDocs.some(
+                        (d) => d.id === goalDoc && d.project_id === id,
+                      )
+                    )
+                      setGoalDoc("");
+                  }}
+                />
               </Field>
-              <Field label="Plan (an Agent note)">
-                <ChipRow label="Plan note">
-                  <Chip
-                    label="No plan note"
-                    selected={!goalDoc}
-                    onPress={() => setGoalDoc("")}
-                  />
-                  {goalPlanDocs.map((doc) => (
-                    <Chip
-                      key={doc.id}
-                      label={doc.title || "Untitled"}
-                      selected={goalDoc === doc.id}
-                      onPress={() => setGoalDoc(doc.id)}
-                    />
-                  ))}
-                </ChipRow>
+              <Field label="Plan note">
+                <ChoicePicker
+                  label="Plan note"
+                  value={goalDoc}
+                  disabled={saving}
+                  options={[
+                    { value: "", label: "No plan note" },
+                    ...goalPlanDocs.map((d) => ({
+                      value: d.id,
+                      label: d.title || "Untitled",
+                    })),
+                  ]}
+                  onChange={setGoalDoc}
+                />
               </Field>
               <View style={s.formActions}>
                 <Button
@@ -513,17 +562,19 @@ export function AssistantUpcoming({
                   secondary
                   disabled={saving}
                   style={s.formAction}
-                  onPress={() => setForm(null)}
+                  onPress={() => {
+                    setForm(null);
+                    setError("");
+                  }}
                 />
               </View>
             </View>
           ) : form?.kind === "routine" ? (
-            <View style={shared.card}>
-              <Text style={[shared.sectionTitle, s.formTitle]}>
-                {form.id ? "Edit routine" : "New routine"}
-              </Text>
+            <View>
               <Field label={`What should ${agentName} do?`}>
                 <TextInput
+                  editable={!saving}
+                  accessibilityLabel={`What should ${agentName} do?`}
                   value={routineText}
                   onChangeText={setRoutineText}
                   maxLength={4000}
@@ -535,6 +586,7 @@ export function AssistantUpcoming({
               </Field>
               <Field label={form.id ? "Next run" : "First run"}>
                 <DateField
+                  disabled={saving}
                   label={form.id ? "Next run" : "First run"}
                   value={routineDay}
                   onChange={(day) => day && setRoutineDay(day)}
@@ -543,6 +595,7 @@ export function AssistantUpcoming({
               </Field>
               <Field label="Time">
                 <TimeField
+                  disabled={saving}
                   label="Time"
                   value={routineTime}
                   onChange={setRoutineTime}
@@ -558,6 +611,7 @@ export function AssistantUpcoming({
                     ] as const
                   ).map(([value, label]) => (
                     <Chip
+                      disabled={saving}
                       key={value}
                       label={label}
                       selected={repeat === value}
@@ -578,7 +632,10 @@ export function AssistantUpcoming({
                   secondary
                   disabled={saving}
                   style={s.formAction}
-                  onPress={() => setForm(null)}
+                  onPress={() => {
+                    setForm(null);
+                    setError("");
+                  }}
                 />
               </View>
             </View>
@@ -586,6 +643,7 @@ export function AssistantUpcoming({
             <View style={s.formActions}>
               <Button
                 title="New goal"
+                disabled={loading || saving || loadFailed}
                 icon="plus"
                 secondary
                 style={s.formAction}
@@ -593,6 +651,7 @@ export function AssistantUpcoming({
               />
               <Button
                 title="New routine"
+                disabled={loading || saving || loadFailed}
                 icon="plus"
                 secondary
                 style={s.formAction}
@@ -601,125 +660,159 @@ export function AssistantUpcoming({
             </View>
           )}
 
-          <Text style={[shared.sectionTitle, s.section]}>Goals</Text>
-          {loading ? (
-            <Text style={shared.small}>Loading…</Text>
-          ) : activeGoals.length ? (
-            activeGoals.map((goal) => {
-              const history = checkins[goal.id] ?? [];
-              const latest = history[0];
-              const checkinDay =
-                latest?.week_of === currentMonday &&
-                ["done", "running"].includes(latest.status)
-                  ? addDays(currentMonday, 7)
-                  : currentMonday;
-              const summary = summaryOf(goal);
-              return (
-                <View key={goal.id} style={s.row}>
-                  <View style={s.flex}>
-                    <Text style={s.rowTitle} numberOfLines={1}>
-                      {goal.title}
-                    </Text>
-                    <Text style={shared.small} numberOfLines={2}>
-                      {goal.status === "paused"
-                        ? "Paused"
-                        : `Check-in ${dayLabel(checkinDay)}`}
-                      {goal.target_date
-                        ? ` · Target ${dayLabel(goal.target_date)}`
-                        : ""}
-                      {goal.project_name ? ` · ${goal.project_name}` : ""}
-                    </Text>
-                    {(!!summary || latest) && (
-                      <Text style={shared.small} numberOfLines={2}>
-                        {summary ||
-                          `Last check-in: ${checkinStatusLabel(latest!.status)}${latest!.summary ? ` · ${latest!.summary}` : ""}`}
-                      </Text>
-                    )}
-                  </View>
-                  <MoreMenu
-                    label={`Options for ${goal.title}`}
-                    title={goal.title}
-                    actions={goalActions(goal)}
-                    disabled={saving}
-                  />
-                </View>
-              );
-            })
-          ) : (
-            <Text style={shared.small}>No goals yet.</Text>
-          )}
-
-          <Text style={[shared.sectionTitle, s.section]}>Routines</Text>
-          {loading ? (
-            <Text style={shared.small}>Loading…</Text>
-          ) : routines.length ? (
-            routines.map((routine) => (
-              <View key={routine.id} style={s.row}>
-                <View style={s.flex}>
-                  <Text style={s.rowTitle} numberOfLines={1}>
-                    {routine.instruction}
-                  </Text>
-                  <Text style={shared.small} numberOfLines={2}>
-                    {routine.paused
-                      ? "Paused"
-                      : `Next ${new Date(routine.next_run_at).toLocaleString(
-                          [],
-                          {
-                            dateStyle: "medium",
-                            timeStyle: "short",
-                            timeZone: routine.timezone,
-                          },
-                        )}`}{" "}
-                    · {describeRrule(routine.rrule)}
-                  </Text>
-                  {typeof routine.last_result?.summary === "string" && (
-                    <Text style={shared.small} numberOfLines={2}>
-                      {routine.last_result.summary}
-                    </Text>
-                  )}
-                </View>
-                <MoreMenu
-                  label={`Options for ${routine.instruction}`}
-                  title={routine.instruction}
-                  actions={routineActions(routine)}
-                  disabled={saving}
-                />
-              </View>
-            ))
-          ) : (
-            <Text style={shared.small}>No routines yet.</Text>
-          )}
-
-          {allowedRows.length > 0 && (
+          {!form && (
             <>
-              <Text style={[shared.sectionTitle, s.section]}>
-                Allowed without asking
-              </Text>
-              {allowedRows.map(([kind, rule]) => (
-                <View key={kind} style={s.row}>
-                  <View style={s.flex}>
-                    <Text style={s.rowTitle} numberOfLines={1}>
-                      {CHANGE_KIND_LABELS[kind] ?? kind}
-                    </Text>
-                    <Text style={shared.small} numberOfLines={2}>
-                      {ruleLabel(rule)}
-                    </Text>
+              {loadFailed && (
+                <Button
+                  title="Retry"
+                  secondary
+                  disabled={loading || saving}
+                  onPress={() => void reload()}
+                />
+              )}
+              <Text style={[shared.sectionTitle, s.section]}>Goals</Text>
+              {loading ? (
+                <Text style={shared.small}>Loading…</Text>
+              ) : activeGoals.length ? (
+                activeGoals.map((goal) => {
+                  const history = checkins[goal.id] ?? [];
+                  const latest = history[0];
+                  const historyKnown = Object.hasOwn(checkins, goal.id);
+                  const checkinDay =
+                    latest?.week_of === currentMonday &&
+                    ["done", "running"].includes(latest.status)
+                      ? addDays(currentMonday, 7)
+                      : currentMonday;
+                  const summary = summaryOf(goal);
+                  return (
+                    <View key={goal.id} style={s.row}>
+                      <View style={s.flex}>
+                        <Text style={s.rowTitle}>{goal.title}</Text>
+                        <Text style={shared.small}>
+                          {goal.status === "paused"
+                            ? "Paused"
+                            : historyKnown
+                              ? `Check-in ${dayLabel(checkinDay)}`
+                              : historyFailed.includes(goal.id)
+                                ? "History unavailable"
+                                : "History not loaded"}
+                          {goal.target_date
+                            ? ` · Target ${dayLabel(goal.target_date)}`
+                            : ""}
+                          {goal.project_name ? ` · ${goal.project_name}` : ""}
+                        </Text>
+                        {!historyKnown && (
+                          <Button
+                            title={
+                              historyFailed.includes(goal.id)
+                                ? "Retry history"
+                                : "Load history"
+                            }
+                            secondary
+                            disabled={saving || loading || loadFailed}
+                            onPress={() => void loadHistory(goal)}
+                          />
+                        )}
+                        {latest && (
+                          <Text style={shared.small}>
+                            Last check-in: {checkinStatusLabel(latest.status)}
+                          </Text>
+                        )}
+                        {(summary || latest?.summary) && (
+                          <InlineDetails title="Progress details">
+                            {!!summary && (
+                              <Text style={shared.small}>{summary}</Text>
+                            )}
+                            {!!latest?.summary && (
+                              <Text style={shared.small}>{latest.summary}</Text>
+                            )}
+                          </InlineDetails>
+                        )}
+                      </View>
+                      <MoreMenu
+                        label={`Options for ${goal.title}`}
+                        title={goal.title}
+                        actions={goalActions(goal)}
+                        disabled={saving || loading || loadFailed}
+                      />
+                    </View>
+                  );
+                })
+              ) : (
+                !loadFailed && <Text style={shared.small}>No goals yet.</Text>
+              )}
+
+              <Text style={[shared.sectionTitle, s.section]}>Routines</Text>
+              {loading ? (
+                <Text style={shared.small}>Loading…</Text>
+              ) : routines.length ? (
+                routines.map((routine) => (
+                  <View key={routine.id} style={s.row}>
+                    <View style={s.flex}>
+                      <Text style={s.rowTitle}>{routine.instruction}</Text>
+                      <Text style={shared.small}>
+                        {routine.paused
+                          ? "Paused"
+                          : `Next ${new Date(
+                              routine.next_run_at,
+                            ).toLocaleString([], {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                              timeZone: routine.timezone,
+                            })}`}{" "}
+                        · {describeRrule(routine.rrule)}
+                      </Text>
+                      {typeof routine.last_result?.summary === "string" && (
+                        <InlineDetails title="Last run">
+                          <Text style={shared.small}>
+                            {routine.last_result.summary}
+                          </Text>
+                        </InlineDetails>
+                      )}
+                    </View>
+                    <MoreMenu
+                      label={`Options for ${routine.instruction}`}
+                      title={routine.instruction}
+                      actions={routineActions(routine)}
+                      disabled={saving || loading || loadFailed}
+                    />
                   </View>
-                  <MoreMenu
-                    label={`Options for ${CHANGE_KIND_LABELS[kind] ?? kind}`}
-                    title={CHANGE_KIND_LABELS[kind] ?? kind}
-                    disabled={saving}
-                    actions={[
-                      {
-                        label: "Ask me first again",
-                        icon: "trash",
-                        destructive: true,
-                        onPress: () => void removeAllowed(kind),
-                      },
-                    ]}
-                  />
-                </View>
-              ))}
+                ))
+              ) : (
+                !loadFailed && (
+                  <Text style={shared.small}>No routines yet.</Text>
+                )
+              )}
+
+              {allowedRows.length > 0 && (
+                <InlineDetails
+                  title={`Automatic permissions (${allowedRows.length})`}
+                >
+                  {allowedRows.map(([kind, rule]) => (
+                    <View key={kind} style={s.row}>
+                      <View style={s.flex}>
+                        <Text style={s.rowTitle}>
+                          {CHANGE_KIND_LABELS[kind] ?? kind}
+                        </Text>
+                        <Text style={shared.small}>{ruleLabel(rule)}</Text>
+                      </View>
+                      <MoreMenu
+                        label={`Options for ${CHANGE_KIND_LABELS[kind] ?? kind}`}
+                        title={CHANGE_KIND_LABELS[kind] ?? kind}
+                        disabled={saving || loading || loadFailed}
+                        actions={[
+                          {
+                            label: "Ask me first again",
+                            icon: "trash",
+                            destructive: true,
+                            onPress: () => void removeAllowed(kind),
+                          },
+                        ]}
+                      />
+                    </View>
+                  ))}
+                </InlineDetails>
+              )}
             </>
           )}
         </View>
@@ -731,11 +824,10 @@ export function AssistantUpcoming({
 const s = themed(() =>
   StyleSheet.create({
     intro: { marginBottom: 14 },
-    formTitle: { marginBottom: 14 },
     flex: { flex: 1, minWidth: 0, gap: 2 },
-    multiline: { minHeight: 78, textAlignVertical: "top" },
-    formActions: { flexDirection: "row", gap: 8 },
-    formAction: { flex: 1 },
+    multiline: { height: 96, maxHeight: 180, textAlignVertical: "top" },
+    formActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    formAction: { flexGrow: 1, flexBasis: 120 },
     section: { marginTop: 18, marginBottom: 4 },
     row: {
       flexDirection: "row",

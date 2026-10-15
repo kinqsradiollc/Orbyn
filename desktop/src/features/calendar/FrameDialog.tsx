@@ -1,9 +1,10 @@
 import { useConfirm } from "../../components/Confirm";
-import { useEffect, useState } from "react";
-import { Trash2, X } from "lucide-react";
-import type { Frame, Team } from "@orbyn/core";
+import { useEffect, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
+import { HttpError, type Frame, type Team } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { FrameForm } from "../settings/FrameForm";
+import { SettingsEditor } from "../settings/SettingsEditor";
 
 type Props = {
   frameId: string;
@@ -11,11 +12,10 @@ type Props = {
   report: (e: unknown) => void;
   onClose: () => void;
   onSaved: () => void;
-  /** The frame was deleted. */
   onDeleted: () => void;
 };
 
-/** The frame editor over the calendar, opened from a frame's band. */
+/** The calendar frame editor owns its reads, writes and dismissal. */
 export function FrameDialog({
   frameId,
   teams,
@@ -24,110 +24,107 @@ export function FrameDialog({
   onSaved,
   onDeleted,
 }: Props) {
-  const { ask, tell } = useConfirm();
-  /** Undefined while loading; null when the frame is gone. */
+  const { ask } = useConfirm();
   const [frame, setFrame] = useState<Frame | null | undefined>(undefined);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
   const [deleting, setDeleting] = useState(false);
-
+  const [editing, setEditing] = useState(false);
+  const deletingRef = useRef(false);
+  const mounted = useRef(true);
+  const busy = deleting || editing;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => {
     let alive = true;
+    setFrame(undefined);
+    setFailed(false);
     client.listFrames().then(
-      (all) => alive && setFrame(all.find((f) => f.id === frameId) ?? null),
-      (e) => {
+      (all) => {
+        if (alive) setFrame(all.find((f) => f.id === frameId) ?? null);
+      },
+      (error) => {
         if (!alive) return;
-        setFrame(null);
-        report(e);
+        setFailed(true);
+        if (error instanceof HttpError && error.statusCode === 401)
+          report(error);
       },
     );
     return () => {
       alive = false;
     };
-  }, [frameId, report]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [frameId, attempt]);
 
   const remove = async () => {
-    if (!frame) return;
-    if (
-      !(await ask({
-        title: `Delete the frame “${frame.name}”? Every day of it goes, not just this one.`,
-        confirmLabel: "Delete",
-        destructive: true,
-      }))
-    )
-      return;
-    setDeleting(true);
+    if (!frame || busy || deletingRef.current) return;
+    deletingRef.current = true;
     try {
+      if (
+        !(await ask({
+          title: `Delete “${frame.name}”?`,
+          body: "All occurrences of this frame are removed. Tasks are unchanged.",
+          confirmLabel: "Delete",
+          destructive: true,
+        })) ||
+        !mounted.current
+      )
+        return;
+      setDeleting(true);
       await client.deleteFrame(frame.id);
-      onDeleted();
-    } catch (e) {
-      report(e);
-      setDeleting(false);
+      if (mounted.current) onDeleted();
+    } catch (error) {
+      if (mounted.current) report(error);
+    } finally {
+      deletingRef.current = false;
+      if (mounted.current) setDeleting(false);
     }
   };
 
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <section
-        className="modal frame-dialog scale-in"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="frame-dialog-title"
-      >
-        <div className="section-heading">
-          <h2 id="frame-dialog-title">
-            {frame ? `Edit “${frame.name}”` : "Edit frame"}
-          </h2>
+    <SettingsEditor title="Edit frame" pending={busy} onClose={onClose}>
+      {failed ? (
+        <>
+          <p role="alert">Couldn't load the frame.</p>
           <button
-            className="icon-button"
-            aria-label="Close frame editor"
-            onClick={onClose}
+            className="secondary"
+            onClick={() => setAttempt((n) => n + 1)}
           >
-            <X size={20} />
+            Retry
           </button>
-        </div>
-        <div className="frame-dialog-body">
-          {frame === undefined ? (
-            <p className="muted">Loading the frame…</p>
-          ) : frame === null ? (
-            <p className="muted">This frame no longer exists.</p>
-          ) : (
-            <>
-              <FrameForm
-                frame={frame}
-                teams={teams}
-                report={report}
-                onSaved={onSaved}
-                onCancel={onClose}
-              />
-              <div className="button-row start">
-                <button
-                  type="button"
-                  className="danger"
-                  disabled={deleting}
-                  onClick={() => void remove()}
-                >
-                  <Trash2 size={16} /> {deleting ? "Deleting…" : "Delete frame"}
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-    </div>
+        </>
+      ) : frame === undefined ? (
+        <p className="muted">Loading frame…</p>
+      ) : frame === null ? (
+        <p className="muted">This frame no longer exists.</p>
+      ) : (
+        <>
+          <div className="button-row start">
+            <button
+              type="button"
+              className="icon-button"
+              disabled={busy}
+              aria-label={`Delete ${frame.name}`}
+              title="Delete frame"
+              onClick={() => void remove()}
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+          <FrameForm
+            key={frame.id}
+            frame={frame}
+            teams={teams}
+            report={report}
+            onPendingChange={setEditing}
+            onSaved={onSaved}
+            onCancel={onClose}
+          />
+        </>
+      )}
+    </SettingsEditor>
   );
 }

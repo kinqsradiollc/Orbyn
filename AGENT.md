@@ -38,5 +38,7 @@ needed for your role and task; linked rules apply to that work.
 | Services, privacy and deployment | [Operations](docs/agents/operations.md)                                                               |
 | Progress reporting               | [Tracker guide](docs/reviews/stage-tracker-guide.md)                                                  |
 
+Architecture decisions: [current and archived decisions](docs/adr/README.md).
+
 Keep task plans, active status and historical exceptions in task records, not in
 these universal rules. Direct user scope and pause instructions take precedence.

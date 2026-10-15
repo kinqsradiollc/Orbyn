@@ -6,7 +6,6 @@ import {
   Coffee,
   Pause,
   Play,
-  PartyPopper,
   SkipForward,
   X,
 } from "lucide-react";
@@ -22,10 +21,11 @@ import {
   type ItemStep,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { errorText, minutesLabel, nextUp } from "../../lib/planning";
 import { useFocusSession } from "./useFocusSession";
 import "./focus.css";
+import { useModalFocus } from "../../hooks/useModalFocus";
+import { session as authSession } from "../../lib/session";
 
 type Props = {
   item: Item;
@@ -53,7 +53,10 @@ const clock = (seconds: number) => {
  * break it asks for — or open, counting up until paused. Work minutes are
  * logged to the task either way. Render it keyed by the task id.
  */
-export function FocusMode({
+export function FocusMode(props: Props) {
+  return <FocusBody key={`${authSession.get()}:${props.item.id}`} {...props} />;
+}
+function FocusBody({
   item,
   items,
   canWrite,
@@ -62,21 +65,37 @@ export function FocusMode({
   onChanged,
   onError,
 }: Props) {
-  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [running, setRunning] = useState(false);
   const [, setTick] = useState(0);
   const [loggedNow, setLoggedNow] = useState(0);
   const [done, setDone] = useState(item.status === "done");
-  const [celebrate, setCelebrate] = useState(false);
+  const [readFailed, setReadFailed] = useState(false);
+  const [readRevision, setReadRevision] = useState(0);
   const [error, setError] = useState("");
-  const [pending, setPending] = useState(false);
+  const [operationPending, setPending] = useState(false);
+  const owner = authSession.get();
+  const alive = useRef(true);
+  const mutation = useRef(false);
+  const flushing = useRef<Promise<boolean> | null>(null);
+  const unsaved = useRef<Parameters<typeof client.saveFocusSession>[0] | null>(
+    null,
+  );
+  const currentOwner = useCallback(
+    () => alive.current && authSession.get() === owner,
+    [owner],
+  );
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   /** Seconds timed but not yet logged, and when the current run started. */
   const banked = useRef(0);
   const startedAt = useRef<number | null>(null);
   /** Seconds timed this session, for the clock. */
   const session = useRef(0);
-  const root = useRef<HTMLDivElement>(null);
   const startButton = useRef<HTMLButtonElement>(null);
   const latest = useRef({ onError });
   latest.current = { onError };
@@ -84,14 +103,19 @@ export function FocusMode({
     item,
     canWrite,
     onLogged: (d) => {
+      if (!currentOwner()) return;
       setDetail(d);
-      void onChanged();
+      void onChanged().catch((e) => {
+        if (currentOwner()) setError(errorText(e));
+      });
     },
     onError: (e) => {
+      if (!currentOwner()) return;
       setError(errorText(e));
       if ((e as HttpError).status === 401) onError(e);
     },
   });
+  const pending = operationPending || focus.saving;
   const [custom, setCustom] = useState(() => {
     const r = focus.rhythm.work ? focus.rhythm : focusRhythm("25-5")!;
     return { work: r.work, rest: r.short_break };
@@ -99,14 +123,22 @@ export function FocusMode({
 
   useEffect(() => {
     let alive = true;
+    setReadFailed(false);
     client.getItem(item.id).then(
-      (d) => alive && setDetail(d),
-      (e) => alive && latest.current.onError(e),
+      (d) => {
+        if (alive && currentOwner()) setDetail(d);
+      },
+      (e) => {
+        if (alive && currentOwner()) {
+          setReadFailed(true);
+          if ((e as HttpError).status === 401) latest.current.onError(e);
+        }
+      },
     );
     return () => {
       alive = false;
     };
-  }, [item.id]);
+  }, [item.id, readRevision, currentOwner]);
 
   useEffect(() => {
     if (!running) return;
@@ -119,39 +151,70 @@ export function FocusMode({
     startedAt.current ? (Date.now() - startedAt.current) / 1000 : 0;
 
   /** Stop the clock and log whole minutes (at least one). */
-  const flush = useCallback(async () => {
+  const flush = useCallback((): Promise<boolean> => {
+    if (flushing.current) return flushing.current;
+    if (!currentOwner()) return Promise.resolve(false);
     const run = runSeconds();
     banked.current += run;
     session.current += run;
     startedAt.current = null;
     setRunning(false);
-    const minutes = Math.floor(banked.current / 60);
-    if (minutes < 1 || !canWrite) return;
-    banked.current -= minutes * 60;
-    try {
-      const ended = Date.now();
-      const saved = await client.saveFocusSession({
-        id: crypto.randomUUID(),
-        item_id: item.id,
-        kind: "work",
-        started_at: new Date(ended - minutes * 60_000).toISOString(),
-        ended_at: new Date(ended).toISOString(),
-        planned_minutes: 0,
-        minutes: Math.min(minutes, 600),
-        completed: true,
+    const work = async () => {
+      while (currentOwner()) {
+        const minutes = Math.min(600, Math.floor(banked.current / 60));
+        if (!unsaved.current && (minutes < 1 || !canWrite)) return true;
+        if (!unsaved.current) {
+          const ended = Date.now();
+          unsaved.current = {
+            id: crypto.randomUUID(),
+            item_id: item.id,
+            kind: "work",
+            started_at: new Date(ended - minutes * 60_000).toISOString(),
+            ended_at: new Date(ended).toISOString(),
+            planned_minutes: 0,
+            minutes,
+            completed: true,
+          };
+        }
+        const snapshot = unsaved.current;
+        try {
+          const saved = await client.saveFocusSession(snapshot);
+          if (!currentOwner()) return false;
+          banked.current = Math.max(0, banked.current - snapshot.minutes * 60);
+          unsaved.current = null;
+          if (saved.item) setDetail(saved.item);
+          setLoggedNow((m) => m + snapshot.minutes);
+          refreshToday();
+        } catch (e) {
+          if (currentOwner()) {
+            setError(errorText(e));
+            if ((e as HttpError).status === 401) onError(e);
+          }
+          return false;
+        }
+      }
+      return false;
+    };
+    flushing.current = work()
+      .then(async (saved) => {
+        if (saved && currentOwner()) {
+          try {
+            await onChanged();
+          } catch (e) {
+            if (currentOwner()) setError(`Time saved. ${errorText(e)}`);
+          }
+        }
+        return saved;
+      })
+      .finally(() => {
+        flushing.current = null;
       });
-      if (saved.item) setDetail(saved.item);
-      setLoggedNow((m) => m + minutes);
-      refreshToday();
-      await onChanged();
-    } catch (e) {
-      banked.current += minutes * 60;
-      setError(errorText(e));
-      if ((e as HttpError).status === 401) onError(e);
-    }
-  }, [canWrite, item.id, onChanged, onError, refreshToday]);
+    return flushing.current;
+  }, [canWrite, item.id, onChanged, onError, refreshToday, currentOwner]);
 
   const start = () => {
+    if (mutation.current || flushing.current || !currentOwner() || !canWrite)
+      return;
     startedAt.current = Date.now();
     setRunning(true);
     setError("");
@@ -162,74 +225,76 @@ export function FocusMode({
   // keeps going and "Back to focus" in the app returns to it. Leaving a timer
   // that isn't running, or ending the session, stops it.
   const keepsRunning = focus.running && !!focus.state.ends_at;
+  const act = useCallback(
+    async (work: () => Promise<void>) => {
+      if (mutation.current || !currentOwner()) return;
+      mutation.current = true;
+      setPending(true);
+      setError("");
+      try {
+        await work();
+      } catch (e) {
+        if (currentOwner()) {
+          setError(errorText(e));
+          if ((e as HttpError).status === 401) onError(e);
+        }
+      } finally {
+        mutation.current = false;
+        if (currentOwner()) setPending(false);
+      }
+    },
+    [currentOwner, onError],
+  );
   const close = useCallback(() => {
-    if (keepsRunning) void flush().finally(onClose);
-    else void Promise.all([flush(), finish()]).finally(onClose);
-  }, [flush, finish, onClose, keepsRunning]);
-  const endSession = useCallback(() => {
-    void Promise.all([flush(), finish()]).finally(onClose);
-  }, [flush, finish, onClose]);
-
-  const switchTo = (next: Item) => {
-    void Promise.all([flush(), finish()]).finally(() => onSwitch(next));
-  };
-
-  const markDone = async () => {
-    setPending(true);
-    await Promise.all([flush(), finish()]);
-    try {
-      setDetail(await client.postItemUpdate(item.id, { status: "done" }));
+    void act(async () => {
+      if (!(await flush()) || !currentOwner()) return;
+      if (!keepsRunning) await finish();
+      if (currentOwner()) onClose();
+    });
+  }, [act, flush, finish, onClose, keepsRunning, currentOwner]);
+  const endSession = () =>
+    void act(async () => {
+      if (!(await flush()) || !currentOwner()) return;
+      await finish();
+      if (currentOwner()) onClose();
+    });
+  const switchTo = (next: Item) =>
+    void act(async () => {
+      if (!(await flush()) || !currentOwner()) return;
+      await finish();
+      if (currentOwner()) onSwitch(next);
+    });
+  const markDone = () =>
+    act(async () => {
+      if (!canWrite || !(await flush()) || !currentOwner()) return;
+      await finish();
+      if (!currentOwner()) return;
+      const saved = await client.postItemUpdate(item.id, { status: "done" });
+      if (!currentOwner()) return;
+      setDetail(saved);
       setDone(true);
-      setCelebrate(true);
-      setTimeout(() => setCelebrate(false), reduceMotion ? 2500 : 1800);
-      await onChanged();
-    } catch (e) {
-      setError(errorText(e));
-      if ((e as HttpError).status === 401) onError(e);
-    } finally {
-      setPending(false);
-    }
-  };
-
-  const toggleStep = async (s: ItemStep) => {
-    try {
-      setDetail(await client.updateStep(item.id, s.id, { done: !s.done }));
-      await onChanged();
-    } catch (e) {
-      setError(errorText(e));
-    }
-  };
-
-  // Focus the timer on open; Escape leaves; Tab stays inside.
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    startButton.current?.focus();
-    return () => opener?.focus?.();
-  }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        close();
+      try {
+        await onChanged();
+      } catch (e) {
+        if (currentOwner()) setError(`Task completed. ${errorText(e)}`);
       }
-      if (e.key !== "Tab" || !root.current) return;
-      const focusable = root.current.querySelectorAll<HTMLElement>(
-        "button:not(:disabled), a[href]",
-      );
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (!first || !last) return;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
+    });
+  const toggleStep = (step: ItemStep) =>
+    act(async () => {
+      if (!canWrite) return;
+      const saved = await client.updateStep(item.id, step.id, {
+        done: !step.done,
+      });
+      if (!currentOwner()) return;
+      setDetail(saved);
+      try {
+        await onChanged();
+      } catch (e) {
+        if (currentOwner()) setError(`Step saved. ${errorText(e)}`);
       }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [close]);
+    });
+
+  const modal = useModalFocus(close, pending);
 
   // Log what's on the clock if the page is closed mid-session.
   useEffect(() => {
@@ -250,15 +315,17 @@ export function FocusMode({
   const upcoming = nextUp(items, item.id, 4);
 
   return (
-    <div
-      ref={root}
+    <section
+      ref={modal.ref}
+      data-modal-focus={modal.id}
+      tabIndex={-1}
       className="focus-mode"
       role="dialog"
       aria-modal="true"
       aria-labelledby="focus-title"
     >
       <header className="focus-head">
-        <span className="eyebrow">FOCUS MODE</span>
+        <span className="eyebrow">Focus</span>
         <button
           className="icon-button"
           aria-label={
@@ -266,6 +333,7 @@ export function FocusMode({
               ? "Step away (the session keeps running)"
               : "Leave focus mode"
           }
+          disabled={pending}
           onClick={close}
         >
           <X size={22} />
@@ -294,7 +362,13 @@ export function FocusMode({
                     type="button"
                     aria-pressed={focus.rhythm.id === r.id}
                     className={focus.rhythm.id === r.id ? "active" : ""}
-                    disabled={focus.running || running}
+                    disabled={
+                      pending ||
+                      focus.saveFailed ||
+                      focus.running ||
+                      running ||
+                      focus.state.ran_ms > 0
+                    }
                     onClick={() => focus.chooseRhythm(r)}
                   >
                     {r.label}
@@ -306,7 +380,13 @@ export function FocusMode({
                   className={
                     focus.rhythm.id.startsWith("custom:") ? "active" : ""
                   }
-                  disabled={focus.running || running}
+                  disabled={
+                    pending ||
+                    focus.saveFailed ||
+                    focus.running ||
+                    running ||
+                    focus.state.ran_ms > 0
+                  }
                   onClick={() =>
                     focus.chooseRhythm(
                       focusRhythm(
@@ -329,6 +409,12 @@ export function FocusMode({
                     Work
                     <input
                       type="number"
+                      disabled={
+                        pending ||
+                        focus.saveFailed ||
+                        running ||
+                        focus.state.ran_ms > 0
+                      }
                       min={5}
                       max={180}
                       value={custom.work}
@@ -356,6 +442,12 @@ export function FocusMode({
                     Break
                     <input
                       type="number"
+                      disabled={
+                        pending ||
+                        focus.saveFailed ||
+                        running ||
+                        focus.state.ran_ms > 0
+                      }
                       min={1}
                       max={30}
                       value={custom.rest}
@@ -440,7 +532,7 @@ export function FocusMode({
                 <button
                   ref={startButton}
                   className="primary focus-start"
-                  disabled={done || !canWrite}
+                  disabled={pending || focus.saveFailed || done || !canWrite}
                   onClick={() =>
                     focus.running ? focus.pause() : focus.start()
                   }
@@ -463,12 +555,20 @@ export function FocusMode({
                   )}
                 </button>
                 {keepsRunning && (
-                  <button className="secondary" onClick={endSession}>
+                  <button
+                    className="secondary"
+                    disabled={pending}
+                    onClick={endSession}
+                  >
                     End session
                   </button>
                 )}
                 {focus.state.phase !== "work" && (
-                  <button className="secondary" onClick={focus.skip}>
+                  <button
+                    className="secondary"
+                    disabled={pending || focus.saveFailed}
+                    onClick={focus.skip}
+                  >
                     <SkipForward size={17} /> Skip break
                   </button>
                 )}
@@ -480,11 +580,24 @@ export function FocusMode({
                   <Check size={17} /> {done ? "Done" : "Mark done"}
                 </button>
               </div>
+              {focus.saveFailed && (
+                <div className="focus-controls">
+                  <span role="status">Focus time couldn’t save.</span>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={pending}
+                    onClick={focus.retrySave}
+                  >
+                    Retry save
+                  </button>
+                </div>
+              )}
               <small className="focus-hint">
                 {focus.today !== null && focus.today > 0
                   ? `${minutesLabel(focus.today)} focused today. `
                   : ""}
-                Work time is logged to this task as each session ends.
+                Work time saves when a session ends.
               </small>
               {focus.movedTo && (
                 <small className="focus-hint" role="status">
@@ -501,8 +614,14 @@ export function FocusMode({
                 <button
                   ref={startButton}
                   className="primary focus-start"
-                  disabled={done || !canWrite}
-                  onClick={() => (running ? void flush() : start())}
+                  disabled={pending || done || !canWrite}
+                  onClick={() =>
+                    running
+                      ? void act(async () => {
+                          await flush();
+                        })
+                      : start()
+                  }
                 >
                   {running ? (
                     <>
@@ -525,12 +644,18 @@ export function FocusMode({
               <small className="focus-hint">
                 {canWrite
                   ? "Pausing logs whole minutes to this task."
-                  : "View only — you can't log time on this task."}
+                  : "View only. Time logging is unavailable."}
                 {canWrite && focus.today !== null && focus.today > 0
                   ? ` ${minutesLabel(focus.today)} focused today.`
                   : ""}
               </small>
             </div>
+          )}
+
+          {done && (
+            <p className="focus-completion" role="status">
+              <Check size={18} aria-hidden="true" /> Task completed
+            </p>
           )}
 
           {error && (
@@ -543,7 +668,20 @@ export function FocusMode({
             <h2 id="focus-steps-title">
               <ListChecks size={16} aria-hidden="true" /> Checklist
             </h2>
-            {detail === null ? (
+            {readFailed ? (
+              <div className="focus-read-error">
+                <p className="drawer-hint" role="alert">
+                  Couldn't load the checklist.
+                </p>
+                <button
+                  className="secondary"
+                  disabled={pending}
+                  onClick={() => setReadRevision((n) => n + 1)}
+                >
+                  Retry
+                </button>
+              </div>
+            ) : detail === null ? (
               <p className="drawer-hint">Loading checklist…</p>
             ) : steps.length ? (
               <ul className="step-list">
@@ -554,7 +692,7 @@ export function FocusMode({
                       aria-checked={s.done}
                       aria-label={s.title}
                       className={"check " + (s.done ? "checked can-pop" : "")}
-                      disabled={!canWrite}
+                      disabled={pending || !canWrite}
                       onClick={() => void toggleStep(s)}
                     >
                       {s.done && <Check size={13} />}
@@ -564,9 +702,7 @@ export function FocusMode({
                 ))}
               </ul>
             ) : (
-              <p className="drawer-hint">
-                No checklist. Add steps from the task panel if it helps.
-              </p>
+              <p className="drawer-hint">No checklist steps.</p>
             )}
           </section>
         </main>
@@ -577,7 +713,7 @@ export function FocusMode({
             <ul>
               {upcoming.map((i) => (
                 <li key={i.id}>
-                  <button onClick={() => switchTo(i)}>
+                  <button disabled={pending} onClick={() => switchTo(i)}>
                     <span>
                       <strong>{i.title}</strong>
                       <small>
@@ -592,27 +728,10 @@ export function FocusMode({
               ))}
             </ul>
           ) : (
-            <p className="drawer-hint">Nothing else open. Enjoy the space.</p>
+            <p className="drawer-hint">No other open tasks.</p>
           )}
         </aside>
       </div>
-
-      {celebrate && (
-        <div className="focus-celebrate" role="status">
-          {!reduceMotion && (
-            <span className="focus-burst" aria-hidden="true">
-              {Array.from({ length: 12 }, (_, n) => (
-                <i key={n} style={{ "--n": n } as never} />
-              ))}
-            </span>
-          )}
-          <span className="focus-celebrate-card">
-            <PartyPopper size={28} aria-hidden="true" />
-            <strong>Nicely done.</strong>
-            <small>One less thing on your mind.</small>
-          </span>
-        </div>
-      )}
-    </div>
+    </section>
   );
 }

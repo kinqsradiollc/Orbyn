@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../../motion";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
@@ -40,8 +40,13 @@ export function WordPicker({
   onCancel: () => void;
 }) {
   const list = useMemo(() => words(source), [source]);
-  const [from, setFrom] = useState<number | null>(null);
-  const [to, setTo] = useState<number | null>(null);
+  const [selection, setSelection] = useState<{
+    source: string;
+    from: number | null;
+    to: number | null;
+  }>({ source, from: null, to: null });
+  const from = selection.source === source ? selection.from : null;
+  const to = selection.source === source ? selection.to : null;
 
   const low = from === null ? null : Math.min(from, to ?? from);
   const high = from === null ? null : Math.max(from, to ?? from);
@@ -50,13 +55,12 @@ export function WordPicker({
 
   const tap = (i: number) => {
     if (from === null || to !== null) {
-      setFrom(i);
-      setTo(null);
-    } else setTo(i);
+      setSelection({ source, from: i, to: null });
+    } else setSelection({ source, from, to: i });
   };
 
   const chosen =
-    low === null || high === null
+    low === null || high === null || !list[low] || !list[high]
       ? null
       : {
           start: list[low].start,
@@ -67,30 +71,39 @@ export function WordPicker({
   return (
     <View style={s.wrap}>
       <Text style={s.hint}>
-        {from === null || to !== null
-          ? "Tap the first word to comment on."
-          : "Now tap the last word."}
+        {from === null
+          ? "Choose the first word."
+          : to === null
+            ? "Choose the last word."
+            : "Selection ready"}
       </Text>
-      <View style={s.words}>
-        {list.map((w, i) => (
-          <Pressable
-            key={`${w.start}-${i}`}
-            onPress={() => tap(i)}
-            accessibilityRole="button"
-            accessibilityState={{ selected: inRange(i) }}
-            accessibilityLabel={`Word ${w.text}`}
-            style={({ pressed }) => [
-              s.word,
-              inRange(i) && s.wordOn,
-              pressed && s.wordPressed,
-            ]}
-          >
-            <Text style={[s.wordText, inRange(i) && s.wordTextOn]}>
-              {w.text}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <ScrollView
+        style={s.wordScroll}
+        keyboardShouldPersistTaps="handled"
+        nestedScrollEnabled
+      >
+        <View style={s.words}>
+          {list.map((w, i) => (
+            <Pressable
+              key={`${w.start}-${i}`}
+              onPress={() => tap(i)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: inRange(i) }}
+              accessibilityLabel={`Word ${w.text}`}
+              style={({ pressed }) => [
+                s.word,
+                inRange(i) && s.wordOn,
+                pressed && s.wordPressed,
+              ]}
+            >
+              <Text style={[s.wordText, inRange(i) && s.wordTextOn]}>
+                {w.text}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {!list.length && <Text style={s.hint}>No words to select</Text>}
+      </ScrollView>
       <View style={s.actions}>
         <SmallAction label="Cancel" disabled={false} onPress={onCancel} />
         {!!onAsk && (
@@ -100,10 +113,6 @@ export function WordPicker({
             onPress={() => chosen && onAsk(chosen)}
           />
         )}
-        {/* The label used to grow to "Comment on these words" the moment a
-            word was picked, which took the row to 373pt on a 375pt screen
-            and pushed Cancel off the left edge, reading "ncel". The chosen
-            words are lit up right above it; the button need not repeat them. */}
         <Button
           title="Comment"
           disabled={!chosen}
@@ -125,8 +134,14 @@ const s = themed(() =>
       borderColor: colors.border,
     },
     hint: { color: colors.muted, fontSize: 13 },
+    wordScroll: { maxHeight: 260, minWidth: 0 },
     words: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     word: {
+      minWidth: 44,
+      minHeight: 44,
+      maxWidth: "100%",
+      alignItems: "center",
+      justifyContent: "center",
       paddingVertical: 5,
       paddingHorizontal: 8,
       borderRadius: radii.input,
@@ -136,7 +151,7 @@ const s = themed(() =>
     },
     wordOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
     wordPressed: { opacity: 0.7 },
-    wordText: { color: colors.text, fontSize: 15 },
+    wordText: { color: colors.text, fontSize: 15, flexShrink: 1 },
     wordTextOn: { color: colors.accent, fontFamily: fonts.semibold },
     actions: {
       flexDirection: "row",

@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text } from "react-native";
 import { Pressable } from "../motion";
 import { Icon } from "./Icon";
 import { colors, fonts, radii, themed } from "../theme";
@@ -43,10 +43,7 @@ export function SyncBar({
         size={15}
         color={needs ? colors.danger : colors.accent}
       />
-      <Text style={[s.text, needs > 0 && s.needsText]} numberOfLines={1}>
-        {text}
-      </Text>
-      <View style={{ flex: 1 }} />
+      <Text style={[s.text, needs > 0 && s.needsText]}>{text}</Text>
       <Icon name="chevronRight" size={15} color={colors.muted} />
     </Pressable>
   );
@@ -58,7 +55,8 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      minHeight: 40,
+      minHeight: 44,
+      paddingVertical: 8,
       paddingHorizontal: 12,
       marginTop: 12,
       borderRadius: radii.input,
@@ -71,7 +69,8 @@ const s = themed(() =>
       fontFamily: fonts.semibold,
       fontSize: 13,
       color: colors.accent,
-      flexShrink: 1,
+      flex: 1,
+      minWidth: 0,
     },
     needsText: { color: colors.danger },
   }),

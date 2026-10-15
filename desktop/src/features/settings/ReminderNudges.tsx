@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReminderNudgeSettings } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { DateField } from "../../components/DateField";
@@ -11,11 +11,53 @@ export function ReminderNudges({
   report: (error: unknown) => void;
 }) {
   const [value, setValue] = useState<ReminderNudgeSettings | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const mounted = useRef(false);
   const action = useAction(report);
   useEffect(() => {
-    void client.reminderNudgeSettings().then(setValue, report);
-  }, [report]);
-  if (!value) return <p className="muted">Loading reminders…</p>;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    let live = true;
+    setFailed(false);
+    void client.reminderNudgeSettings().then(
+      (next) => {
+        if (live) setValue(next);
+      },
+      (error) => {
+        if (live) {
+          setFailed(true);
+          reportRef.current(error);
+        }
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [retry]);
+  if (!value)
+    return failed ? (
+      <div>
+        <p role="alert">Couldn't load reminders.</p>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setRetry((old) => old + 1)}
+        >
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p className="muted" role="status">
+        Loading reminders…
+      </p>
+    );
   return (
     <section className="agents-rules night-shift">
       <h3>Reminder nudges</h3>
@@ -27,7 +69,8 @@ export function ReminderNudges({
         onSubmit={(event) => {
           event.preventDefault();
           void action.run(async () => {
-            setValue(await client.updateReminderNudgeSettings(value));
+            const next = await client.updateReminderNudgeSettings(value);
+            if (mounted.current) setValue(next);
             return "Reminders saved.";
           });
         }}
@@ -37,10 +80,10 @@ export function ReminderNudges({
             <span>
               {
                 {
-                  enabled: "Send reminder nudges",
-                  chat: "Private Reminders chat",
+                  enabled: "Reminders",
+                  chat: "Private chat",
                   push: "Push notifications",
-                  email: "Email overdue work and underbooked deadlines",
+                  email: "Email",
                 }[key]
               }
             </span>
@@ -65,16 +108,21 @@ export function ReminderNudges({
               id={`nudge-${key}`}
               type="time"
               value={value[key]}
+              disabled={action.pending}
               onChange={(event) =>
                 setValue({ ...value, [key]: event.target.value })
               }
             />
           </div>
         ))}
-        <p className="muted">
-          Times use your planning time zone. Stop reminders for one thing from
-          its Reminders chat card.
-        </p>
+        <p className="muted">Quiet hours use your planning time zone.</p>
+        <details>
+          <summary>Reminder delivery</summary>
+          <p className="muted">
+            Email covers overdue work and underbooked deadlines. Stop reminders
+            for an item from its Reminders chat card.
+          </p>
+        </details>
         <div className="button-row start">
           <button className="primary" disabled={action.pending}>
             Save reminders

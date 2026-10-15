@@ -1,3 +1,4 @@
+import { rememberImportResult } from "../../lib/idempotency.js";
 import type { FastifyInstance } from "fastify";
 import {
   chatWebhookInput,
@@ -120,9 +121,17 @@ export async function userRoutes(app: FastifyInstance) {
   app.post("/me/import", async (r): Promise<ImportSummary> => {
     const u = await authenticate(r);
     const d = importInput.parse(r.body);
-    return transaction((db) =>
-      importData(db, { id: u.id, role: u.role }, d.format, d.data, d.dry_run),
-    );
+    return transaction(async (db) => {
+      const result = await importData(
+        db,
+        { id: u.id, role: u.role },
+        d.format,
+        d.data,
+        d.dry_run,
+      );
+      await rememberImportResult(r, db, result);
+      return result;
+    });
   });
 
   // Chat delivery: a Slack or Discord incoming webhook. The URL is a secret.

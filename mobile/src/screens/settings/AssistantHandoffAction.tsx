@@ -1,13 +1,23 @@
-import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  type TextStyle,
+} from "react-native";
 import type { AssistantHandoff } from "@orbyn/core";
+import { Sheet } from "../../components/Sheet";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
-import { colors, fonts, radii, themed } from "../../theme";
+import { inputFontSize, colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
+import { session } from "../../lib/session";
 
 /** A short task goes to the other agent only after its source is checked. */
-export function AssistantHandoffAction({
+function HandoffBody({
   jobId,
   title,
   lane,
@@ -29,6 +39,16 @@ export function AssistantHandoffAction({
   const [receipt, setReceipt] = useState<AssistantHandoff | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  const owner = session.token;
+  const owned = () => mounted.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const current = receipt ?? existing;
   const recipient = lane === "background" ? "Overnight" : "Background";
   useEffect(() => {
@@ -37,20 +57,39 @@ export function AssistantHandoffAction({
       ["completed", "failed", "cancelled"].includes(current.status)
     )
       return;
+    let active = true;
+    let reading = false;
     const timer = setInterval(() => {
+      if (reading || !owned()) return;
+      reading = true;
       void client
         .assistantHandoff(current.id)
-        .then(setReceipt)
-        .catch(() => setError("Couldn't refresh handoff."));
+        .then((next) => {
+          if (active && owned()) {
+            setReceipt(next);
+            setError("");
+          }
+        })
+        .catch(() => {
+          if (active && owned()) setError("Couldn't refresh handoff.");
+        })
+        .finally(() => {
+          reading = false;
+        });
     }, 10_000);
-    return () => clearInterval(timer);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
   }, [current?.id, current?.status]);
   const send = async () => {
-    if (!instruction.trim() || busy) return;
+    if (!instruction.trim() || pending.current || !owned()) return;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
       const source = await client.assistantHandoffSource(jobId);
+      if (!owned()) return;
       if (source.lane !== lane) throw new Error("Source lane changed");
       const next = await client.requestAssistantHandoff({
         producer_job_id: jobId,
@@ -59,12 +98,16 @@ export function AssistantHandoffAction({
         title: title.slice(0, 120) || "Follow-up",
         instruction: instruction.trim(),
       });
-      setReceipt(next);
-      setOpen(false);
+      if (owned()) {
+        setReceipt(next);
+        setOpen(false);
+      }
     } catch {
-      setError("Couldn't send this result. Refresh and try again.");
+      if (owned())
+        setError("Couldn't send this result. Refresh and try again.");
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (owned()) setBusy(false);
     }
   };
   return (
@@ -102,30 +145,56 @@ export function AssistantHandoffAction({
           )}
         </View>
       ) : open ? (
-        <>
-          <TextInput
-            accessibilityLabel={`Task for ${recipient}`}
-            placeholder={`Task for ${recipient}`}
-            value={instruction}
-            onChangeText={setInstruction}
-            multiline
-            maxLength={4000}
-            style={s.input}
-            editable={!busy}
-          />
-          <View style={s.actions}>
-            <SmallAction
-              label={busy ? "Sending…" : `Send to ${recipient}`}
-              disabled={busy || !instruction.trim()}
-              onPress={() => void send()}
+        <Sheet
+          visible
+          title={`Task for ${recipient}`}
+          closeDisabled={busy}
+          onClose={() => {
+            if (!pending.current) setOpen(false);
+          }}
+        >
+          <ScrollView
+            keyboardShouldPersistTaps="handled"
+            contentContainerStyle={{ padding: 16, gap: 12 }}
+          >
+            <Text style={shared.label}>Task</Text>
+            <TextInput
+              accessibilityLabel={`Task for ${recipient}`}
+              placeholder={`Task for ${recipient}`}
+              value={instruction}
+              onChangeText={setInstruction}
+              multiline
+              scrollEnabled
+              maxLength={4000}
+              style={[
+                s.input,
+                Platform.OS === "web" &&
+                  ({
+                    resize: "none",
+                    overflowY: "auto",
+                  } as unknown as TextStyle),
+              ]}
+              editable={!busy}
             />
-            <SmallAction
-              label="Cancel"
-              disabled={busy}
-              onPress={() => setOpen(false)}
-            />
-          </View>
-        </>
+            <View style={s.actions}>
+              <SmallAction
+                label={busy ? "Sending…" : `Send to ${recipient}`}
+                disabled={busy || !instruction.trim()}
+                onPress={() => void send()}
+              />
+              <SmallAction
+                label="Cancel"
+                disabled={busy}
+                onPress={() => setOpen(false)}
+              />
+            </View>
+            {!!error && (
+              <Text accessibilityRole="alert" style={s.error}>
+                {error}
+              </Text>
+            )}
+          </ScrollView>
+        </Sheet>
       ) : (
         <SmallAction
           label={`Hand off to ${recipient}`}
@@ -133,12 +202,23 @@ export function AssistantHandoffAction({
           onPress={() => setOpen(true)}
         />
       )}
-      {!!error && (
+      {!!error && !open && (
         <Text accessibilityRole="alert" style={s.error}>
           {error}
         </Text>
       )}
     </View>
+  );
+}
+
+export function AssistantHandoffAction(
+  props: React.ComponentProps<typeof HandoffBody>,
+) {
+  return (
+    <HandoffBody
+      key={`${session.token}:${props.jobId}:${props.lane}`}
+      {...props}
+    />
   );
 }
 
@@ -148,13 +228,14 @@ const s = themed(() =>
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     input: {
       minHeight: 64,
+      maxHeight: 140,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.input,
       padding: 10,
       color: colors.text,
       fontFamily: fonts.regular,
-      fontSize: 14,
+      fontSize: inputFontSize,
       textAlignVertical: "top",
     },
     error: { color: colors.danger, fontSize: 13 },

@@ -84,18 +84,24 @@ export function Timeline({
           const item = byId.get(bar.id);
           return (
             <div key={bar.id} className="timeline-row">
-              <span className="timeline-label" title={bar.title}>
+              <button
+                type="button"
+                className="timeline-label"
+                onClick={() => item && onOpenItem(item)}
+                aria-label={`${bar.title}${bar.stage ? `, ${bar.stage}` : ""}${bar.late ? ", overdue" : ""}`}
+                title={bar.title}
+              >
                 {bar.title}
-              </span>
+              </button>
               <span className="timeline-track">
-                <button
+                <span
+                  aria-hidden="true"
                   className={
                     "timeline-bar" +
                     (bar.done ? " is-done" : "") +
                     (bar.late ? " is-late" : "")
                   }
                   style={{ left: `${bar.left}%`, width: `${bar.width}%` }}
-                  onClick={() => item && onOpenItem(item)}
                   title={`${bar.title}${bar.stage ? ` · ${bar.stage}` : ""}`}
                 >
                   <span className="sr-only">
@@ -103,15 +109,15 @@ export function Timeline({
                     {bar.stage ? `, ${bar.stage}` : ""}
                     {bar.late ? ", overdue" : ""}
                   </span>
-                </button>
+                </span>
                 {ticks
                   .filter((tick) => tick.item_id === bar.id)
                   .map((tick) => (
-                    <button
+                    <span
+                      aria-hidden="true"
                       key={tick.id}
                       className="timeline-session"
                       style={{ left: `${tick.left}%`, width: `${tick.width}%` }}
-                      onClick={() => item && onOpenItem(item)}
                       title={`Scheduled session · ${new Date(tick.start_at).toLocaleString()}`}
                       aria-label={`Open ${bar.title} session on ${new Date(tick.start_at).toLocaleString()}`}
                     />
@@ -122,18 +128,23 @@ export function Timeline({
         })}
         {undatedWithSessions.map((item) => (
           <div key={item.id} className="timeline-row">
-            <span className="timeline-label" title={item.title}>
+            <button
+              type="button"
+              className="timeline-label"
+              onClick={() => onOpenItem(item)}
+              title={item.title}
+            >
               {item.title}
-            </span>
+            </button>
             <span className="timeline-track">
               {ticks
                 .filter((tick) => tick.item_id === item.id)
                 .map((tick) => (
-                  <button
+                  <span
+                    aria-hidden="true"
                     key={tick.id}
                     className="timeline-session"
                     style={{ left: `${tick.left}%`, width: `${tick.width}%` }}
-                    onClick={() => onOpenItem(item)}
                     title={`Scheduled session · ${new Date(tick.start_at).toLocaleString()}`}
                     aria-label={`Open ${item.title} session on ${new Date(tick.start_at).toLocaleString()}`}
                   />

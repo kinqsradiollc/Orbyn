@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Pressable } from "../../motion";
 import {
@@ -19,6 +19,8 @@ import {
   type Project,
   type Team,
 } from "@orbyn/core";
+import { BottomSheet } from "../../components/BottomSheet";
+import { InlineDetails } from "../../components/InlineDetails";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { Icon } from "../../components/Icon";
@@ -91,6 +93,10 @@ export function PageTemplatesPanel({
   onCreated: (doc: Doc, note: string, tasks: number) => void;
   onCancel: () => void;
 }) {
+  const mutation = useRef(false);
+  const request = useRef(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [templates, setTemplates] = useState<PageTemplate[] | null>(null);
   const [picked, setPicked] = useState<PageTemplate | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -109,43 +115,50 @@ export function PageTemplatesPanel({
   /** The notes the listed events have, which open instead of a new page. */
   const [notes, setNotes] = useState<EventNoteRef[]>([]);
 
-  const load = () =>
-    client.listPageTemplates().then(setTemplates, (e: Error) => {
-      setTemplates([]);
-      setError(errorText(e));
-    });
+  const load = async () => {
+    const epoch = ++request.current;
+    setLoadFailed(false);
+    setError("");
+    const today = localDateKey(new Date(), deviceTimeZone());
+    try {
+      const [nextTemplates, nextProjects, nextTeams, view] = await Promise.all([
+        client.listPageTemplates(),
+        client.listProjects(),
+        client.listTeams(),
+        client.calendar(
+          new Date(`${addDays(today, -3)}T00:00:00`).toISOString(),
+          new Date(`${addDays(today, 8)}T00:00:00`).toISOString(),
+        ),
+      ]);
+      const listed = view.entries
+        .filter((event) => event.kind === "event")
+        .sort((a, b) => a.start_at.localeCompare(b.start_at));
+      const nextNotes = listed.length
+        ? await client.eventNotes(listed.map((event) => event.item_id))
+        : [];
+      if (epoch !== request.current) return;
+      setTemplates(nextTemplates);
+      setProjects(
+        nextProjects.filter((project) => project.status === "active"),
+      );
+      setTeams(
+        nextTeams.filter((team) => hasTeamPermission(team.role, "items:write")),
+      );
+      setEvents(listed);
+      setNotes(nextNotes);
+      setLoaded(true);
+    } catch (reason) {
+      if (epoch === request.current) {
+        setLoadFailed(true);
+        setError(errorText(reason));
+      }
+    }
+  };
   useEffect(() => {
     void load();
-    client.listProjects().then(
-      (all) => setProjects(all.filter((p) => p.status === "active")),
-      () => setProjects([]),
-    );
-    client.listTeams().then(
-      (all) =>
-        setTeams(all.filter((t) => hasTeamPermission(t.role, "items:write"))),
-      () => setTeams([]),
-    );
-    const today = localDateKey(new Date(), deviceTimeZone());
-    client
-      .calendar(
-        new Date(`${addDays(today, -3)}T00:00:00`).toISOString(),
-        new Date(`${addDays(today, 8)}T00:00:00`).toISOString(),
-      )
-      .then(
-        (view) => {
-          const listed = view.entries
-            .filter((e) => e.kind === "event")
-            .sort((a, b) => a.start_at.localeCompare(b.start_at));
-          setEvents(listed);
-          // Which of these have a note, asked of these events alone.
-          if (listed.length)
-            client
-              .eventNotes(listed.map((e) => e.item_id))
-              .then(setNotes, () => setNotes([]));
-        },
-        () => setEvents([]),
-      );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      request.current++;
+    };
   }, []);
 
   const team = space || null;
@@ -226,7 +239,8 @@ export function PageTemplatesPanel({
   };
 
   const create = () => {
-    if (!picked) return;
+    if (!picked || !loaded || loadFailed || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     client
@@ -253,7 +267,10 @@ export function PageTemplatesPanel({
           ),
         (e: Error) => setError(errorText(e)),
       )
-      .finally(() => setBusy(false));
+      .finally(() => {
+        mutation.current = false;
+        setBusy(false);
+      });
   };
 
   const remove = (t: PageTemplate) =>
@@ -262,6 +279,8 @@ export function PageTemplatesPanel({
       "Pages made from it stay as they are.",
       "Delete",
       () => {
+        if (mutation.current || !t.can_edit) return;
+        mutation.current = true;
         setBusy(true);
         client
           .deletePageTemplate(t.id)
@@ -272,7 +291,10 @@ export function PageTemplatesPanel({
             },
             (e: Error) => setError(errorText(e)),
           )
-          .finally(() => setBusy(false));
+          .finally(() => {
+            mutation.current = false;
+            setBusy(false);
+          });
       },
     );
 
@@ -283,6 +305,7 @@ export function PageTemplatesPanel({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="All templates"
+            disabled={busy}
             hitSlop={10}
             onPress={() => setPicked(null)}
             style={s.back}
@@ -290,7 +313,7 @@ export function PageTemplatesPanel({
             <Icon name="chevronLeft" size={18} color={colors.muted} />
           </Pressable>
         )}
-        <Text style={s.title} accessibilityRole="header" numberOfLines={1}>
+        <Text style={s.title} accessibilityRole="header">
           {picked ? picked.name : "From a template"}
         </Text>
         {picked?.can_edit && (
@@ -306,30 +329,45 @@ export function PageTemplatesPanel({
             ]}
           />
         )}
-        <SmallAction label="Cancel" disabled={false} onPress={onCancel} />
+        <SmallAction label="Cancel" disabled={busy} onPress={onCancel} />
       </View>
-      {!!error && <Text style={s.error}>{error}</Text>}
+      {!!error && (
+        <Text style={s.error} accessibilityRole="alert">
+          {error}
+        </Text>
+      )}
+      {loadFailed && (
+        <SmallAction
+          label="Retry"
+          disabled={busy}
+          onPress={() => void load()}
+        />
+      )}
+      {!picked && loaded && templates?.length === 0 && (
+        <Text style={shared.small}>No templates yet.</Text>
+      )}
       {!picked ? (
         templates === null ? (
-          <Text style={shared.small}>Loading…</Text>
+          !loadFailed && <Text style={shared.small}>Loading…</Text>
         ) : (
           (
             [
-              ["personal", "YOURS"],
-              ["team", "YOUR TEAMS’"],
-              ["starter", "STARTERS"],
+              ["personal", "Yours"],
+              ["team", "Your teams"],
+              ["starter", "Starters"],
             ] as const
           ).map(([source, label]) => {
             const list = templates.filter((t) => t.source === source);
             if (!list.length) return null;
             return (
               <View key={source} style={s.group}>
-                <Text style={shared.eyebrow}>{label}</Text>
+                <Text style={s.name}>{label}</Text>
                 {list.map((t) => (
                   <Pressable
                     key={t.id}
                     accessibilityRole="button"
                     accessibilityLabel={t.name}
+                    disabled={busy || !loaded || loadFailed}
                     onPress={() => choose(t)}
                     style={({ pressed }) => [s.card, pressed && s.pressed]}
                   >
@@ -341,9 +379,7 @@ export function PageTemplatesPanel({
                     <View style={{ flex: 1 }}>
                       <Text style={s.name}>{t.name}</Text>
                       {!!t.description && (
-                        <Text style={shared.small} numberOfLines={2}>
-                          {t.description}
-                        </Text>
+                        <Text style={shared.small}>{t.description}</Text>
                       )}
                       {!!summary(t) && <Text style={s.meta}>{summary(t)}</Text>}
                     </View>
@@ -361,6 +397,7 @@ export function PageTemplatesPanel({
               <Text style={shared.label}>Title</Text>
               <TextInput
                 style={shared.input}
+                editable={!busy}
                 value={title}
                 maxLength={200}
                 onChangeText={(text) => {
@@ -376,12 +413,14 @@ export function PageTemplatesPanel({
               <Text style={shared.label}>Where</Text>
               <ChipRow label="Where">
                 <Chip
+                  disabled={busy}
                   label="Your pages"
                   selected={!space}
                   onPress={() => moveTo("")}
                 />
                 {teams.map((t) => (
                   <Chip
+                    disabled={busy}
                     key={t.id}
                     label={t.name}
                     selected={space === t.id}
@@ -393,25 +432,28 @@ export function PageTemplatesPanel({
           )}
           {!opens && (
             <View>
-              <Text style={shared.label}>Project</Text>
-              <ChipRow label="Project">
-                <Chip
-                  label="None"
-                  selected={!project}
-                  onPress={() => {
-                    setProjectId("");
-                    setMakeTasks(false);
-                  }}
-                />
-                {projects.filter(inSpace).map((p) => (
+              <InlineDetails title={`Project: ${project?.name ?? "None"}`}>
+                <ChipRow label="Project">
                   <Chip
-                    key={p.id}
-                    label={p.name}
-                    selected={projectId === p.id}
-                    onPress={() => setProjectId(p.id)}
+                    disabled={busy}
+                    label="None"
+                    selected={!project}
+                    onPress={() => {
+                      setProjectId("");
+                      setMakeTasks(false);
+                    }}
                   />
-                ))}
-              </ChipRow>
+                  {projects.filter(inSpace).map((p) => (
+                    <Chip
+                      disabled={busy}
+                      key={p.id}
+                      label={p.name}
+                      selected={projectId === p.id}
+                      onPress={() => setProjectId(p.id)}
+                    />
+                  ))}
+                </ChipRow>
+              </InlineDetails>
             </View>
           )}
           {usesEvent && (
@@ -419,21 +461,20 @@ export function PageTemplatesPanel({
               <Text style={shared.label}>Event</Text>
               <ChipRow label="Event">
                 <Chip
+                  disabled={busy}
                   label="None"
                   selected={!event}
                   onPress={() => setEventId("")}
                 />
-                {events
-                  .filter(inSpace)
-                  .slice(0, 12)
-                  .map((e) => (
-                    <Chip
-                      key={eventKey(e)}
-                      label={`${eventLabel(e)}${noted(e) ? " · has a note" : ""}`}
-                      selected={eventId === eventKey(e)}
-                      onPress={() => setEventId(eventKey(e))}
-                    />
-                  ))}
+                {events.filter(inSpace).map((e) => (
+                  <Chip
+                    disabled={busy}
+                    key={eventKey(e)}
+                    label={`${eventLabel(e)}${noted(e) ? " · has a note" : ""}`}
+                    selected={eventId === eventKey(e)}
+                    onPress={() => setEventId(eventKey(e))}
+                  />
+                ))}
               </ChipRow>
               {!!opens && (
                 <Text style={[shared.small, s.noted]}>
@@ -452,32 +493,36 @@ export function PageTemplatesPanel({
           )}
           {!opens && (
             <View>
-              <Text style={shared.label}>Folder</Text>
-              <ChipRow label="Folder">
-                <Chip
-                  label="Unfiled"
-                  selected={!folder}
-                  onPress={() => setFolder("")}
-                />
-                {folders
-                  .filter((f) => (f.team_id ?? "") === space)
-                  .map((f) => (
-                    <Chip
-                      key={f.id}
-                      label={f.name}
-                      selected={folder === f.id}
-                      onPress={() => setFolder(f.id)}
-                    />
-                  ))}
-              </ChipRow>
+              <InlineDetails
+                title={`Folder: ${folders.find((value) => value.id === folder)?.name ?? "Unfiled"}`}
+              >
+                <ChipRow label="Folder">
+                  <Chip
+                    disabled={busy}
+                    label="Unfiled"
+                    selected={!folder}
+                    onPress={() => setFolder("")}
+                  />
+                  {folders
+                    .filter((f) => (f.team_id ?? "") === space)
+                    .map((f) => (
+                      <Chip
+                        disabled={busy}
+                        key={f.id}
+                        label={f.name}
+                        selected={folder === f.id}
+                        onPress={() => setFolder(f.id)}
+                      />
+                    ))}
+                </ChipRow>
+              </InlineDetails>
             </View>
           )}
           {todos > 0 && !opens && (
             <View style={s.switchRow}>
               <View style={{ flex: 1 }}>
                 <Text style={s.name}>
-                  Make its {todos} to-do{todos === 1 ? "" : "s"}{" "}
-                  {todos === 1 ? "a task" : "tasks"}
+                  Create {todos} task{todos === 1 ? "" : "s"}
                 </Text>
                 <Text style={shared.small}>
                   {project
@@ -486,6 +531,7 @@ export function PageTemplatesPanel({
                 </Text>
               </View>
               <Switch
+                disabled={busy}
                 value={makeTasks}
                 onValueChange={setMakeTasks}
                 trackColor={{ true: colors.accent }}
@@ -495,16 +541,16 @@ export function PageTemplatesPanel({
           )}
           {opens ? (
             <Button
-              title={busy ? "Opening…" : "Open its note"}
+              title={busy ? "Opening…" : "Open note"}
               icon="fileText"
-              disabled={busy}
+              disabled={busy || !loaded || loadFailed}
               onPress={create}
             />
           ) : (
             <Button
               title={busy ? "Making…" : "Create page"}
               icon="plus"
-              disabled={busy}
+              disabled={busy || !loaded || loadFailed}
               onPress={create}
             />
           )}
@@ -518,7 +564,13 @@ export function PageTemplatesPanel({
  * Save the open page as a template, on the phone. A team page makes a
  * template for the team unless you keep it as your own.
  */
-export function SaveTemplatePanel({
+export function SaveTemplatePanel(
+  props: Parameters<typeof SaveTemplateBody>[0],
+) {
+  return <SaveTemplateBody key={props.doc.id} {...props} />;
+}
+
+function SaveTemplateBody({
   doc,
   canShare,
   onClose,
@@ -530,11 +582,14 @@ export function SaveTemplatePanel({
   onClose: () => void;
   onSaved: (t: PageTemplate) => void;
 }) {
+  const mutation = useRef(false);
   const [name, setName] = useState(doc.title || "");
   const [shareWithTeam, setShareWithTeam] = useState(canShare);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const save = () => {
+    if (mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     client
@@ -549,70 +604,89 @@ export function SaveTemplatePanel({
         },
         (e: Error) => setError(errorText(e)),
       )
-      .finally(() => setBusy(false));
+      .finally(() => {
+        mutation.current = false;
+        setBusy(false);
+      });
   };
   return (
-    <View style={s.savePanel}>
-      <Text style={s.name}>Save as template</Text>
-      <TextInput
-        style={shared.input}
-        value={name}
-        maxLength={120}
-        placeholder="Untitled"
-        placeholderTextColor={colors.faint}
-        onChangeText={setName}
-        accessibilityLabel="Template name"
-      />
-      <Text style={shared.small}>
-        Blanks like {"{date}"}, {"{title}"}, {"{project}"} and {"{event}"} in
-        the page fill themselves in each time it’s used.
-      </Text>
-      {!!doc.team_id && !canShare && (
-        <Text style={shared.small}>
-          It’s kept as your own template, since you can read{" "}
-          {doc.team_name ?? "this team"}’s pages but not add to them.
-        </Text>
-      )}
-      {!!doc.team_id && canShare && (
-        <View style={s.switchRow}>
-          <Text style={[s.name, { flex: 1 }]}>
-            Share with {doc.team_name ?? "the team"}
+    <BottomSheet
+      visible
+      title="Save as template"
+      onClose={() => {
+        if (!mutation.current) onClose();
+      }}
+    >
+      <View style={s.savePanel}>
+        <TextInput
+          style={shared.input}
+          editable={!busy}
+          value={name}
+          maxLength={120}
+          placeholder="Untitled"
+          placeholderTextColor={colors.faint}
+          onChangeText={setName}
+          accessibilityLabel="Template name"
+        />
+        <InlineDetails title="Template placeholders">
+          <Text style={shared.small}>
+            Use {"{date}"}, {"{title}"}, {"{project}"} or {"{event}"} for values
+            filled when creating a page.
           </Text>
-          <Switch
-            value={shareWithTeam}
-            onValueChange={setShareWithTeam}
-            trackColor={{ true: colors.accent }}
-            accessibilityLabel="Share with the team"
+        </InlineDetails>
+        {!!doc.team_id && !canShare && (
+          <Text style={shared.small}>
+            Saved to your templates. You have read-only access to{" "}
+            {doc.team_name ?? "this team"}.
+          </Text>
+        )}
+        {!!doc.team_id && canShare && (
+          <View style={s.switchRow}>
+            <Text style={[s.name, { flex: 1 }]}>
+              Share with {doc.team_name ?? "the team"}
+            </Text>
+            <Switch
+              disabled={busy}
+              value={shareWithTeam}
+              onValueChange={setShareWithTeam}
+              trackColor={{ true: colors.accent }}
+              accessibilityLabel="Share with the team"
+            />
+          </View>
+        )}
+        {!!error && <Text style={s.error}>{error}</Text>}
+        <View style={s.saveActions}>
+          <SmallAction label="Cancel" disabled={busy} onPress={onClose} />
+          <SmallAction
+            label={busy ? "Saving…" : "Save template"}
+            disabled={busy}
+            onPress={save}
           />
         </View>
-      )}
-      {!!error && <Text style={s.error}>{error}</Text>}
-      <View style={s.saveActions}>
-        <SmallAction label="Cancel" disabled={false} onPress={onClose} />
-        <SmallAction
-          label={busy ? "Saving…" : "Save template"}
-          disabled={busy}
-          onPress={save}
-        />
       </View>
-    </View>
+    </BottomSheet>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
     panel: { gap: 12 },
-    head: { flexDirection: "row", alignItems: "center", gap: 8 },
+    head: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
     back: {
-      width: 34,
-      height: 34,
+      width: 44,
+      height: 44,
       alignItems: "center",
       justifyContent: "center",
     },
     title: {
       flex: 1,
-      fontFamily: fonts.display,
-      fontSize: 18,
+      fontFamily: fonts.semibold,
+      fontSize: 15,
       color: colors.text,
     },
     group: { gap: 8, marginBottom: 6 },
@@ -630,7 +704,7 @@ const s = themed(() =>
     name: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     meta: {
       fontFamily: fonts.medium,
-      fontSize: 11,
+      fontSize: 13,
       color: colors.muted,
       marginTop: 2,
     },
@@ -640,12 +714,11 @@ const s = themed(() =>
     error: { color: colors.danger, fontSize: 13 },
     savePanel: {
       gap: 10,
-      padding: 14,
-      borderRadius: radii.card,
-      backgroundColor: colors.surfaceMuted,
+      paddingVertical: 8,
     },
     saveActions: {
       flexDirection: "row",
+      flexWrap: "wrap",
       justifyContent: "flex-end",
       gap: 8,
     },

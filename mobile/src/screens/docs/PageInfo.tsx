@@ -1,7 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { OriginalSection } from "./OriginalFile";
 import { Linking, StyleSheet, Text, View } from "react-native";
-import { Alert } from "../../lib/alert";
+import { session } from "../../lib/session";
+import { errorText } from "../../lib/errors";
+import { InlineDetails } from "../../components/InlineDetails";
+import { Segmented } from "../../components/Segmented";
 import { Pressable } from "../../motion";
 import {
   fileSize,
@@ -21,15 +24,16 @@ import {
 import { client } from "../../lib/api";
 import { ContentsList } from "./ContentsSheet";
 import { BottomSheet } from "../../components/BottomSheet";
-import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
-import { MoreMenu } from "../../components/MoreMenu";
+import { ActionSheet, MoreMenu } from "../../components/MoreMenu";
 import { PageFreshness } from "../../components/followthrough/PageFreshness";
 import { colors, fonts, radii, themed } from "../../theme";
 import { DocViewers } from "./DocViewers";
 import { PageTags } from "./PageTags";
 import { FieldsSection } from "../views/FieldsSection";
 import { AliasesField } from "./AliasesField";
+import { DocNavigationContext } from "./doc-navigation";
+import { openObject } from "./links";
 import { downloadFile } from "./RichBlocks";
 import { ConnectionsMap } from "./ConnectionsMap";
 
@@ -49,7 +53,10 @@ const KIND_NAMES: Record<Doc["kind"], string> = {
  * stack above the words live here, so the page starts with its title and
  * its text. Sections with nothing to say are left out.
  */
-export function PageInfo({
+export function PageInfo(props: React.ComponentProps<typeof PageInfoBody>) {
+  return <PageInfoBody key={`${session.token}:${props.doc.id}`} {...props} />;
+}
+function PageInfoBody({
   visible,
   doc,
   tags,
@@ -96,20 +103,76 @@ export function PageInfo({
   /** Changes when someone else sets a field on the page. */
   fieldsStamp?: number;
 }) {
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const owns = () => mounted.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const navigation = useContext(DocNavigationContext);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+  const nextAction = useRef<(() => void) | null>(null);
+  const [pendingActions, setPendingActions] = useState(0);
+  const pendingCount = useRef(0);
+  const handoff = (action: () => void) => {
+    if (
+      !owns() ||
+      !visibleRef.current ||
+      pendingCount.current ||
+      nextAction.current
+    )
+      return;
+    nextAction.current = action;
+    onClose();
+  };
+  const afterClose = () => {
+    const action = nextAction.current;
+    nextAction.current = null;
+    if (owns() && !visibleRef.current) action?.();
+  };
+  const actionPending = (pending: boolean) => {
+    if (!owns()) return;
+    pendingCount.current = Math.max(
+      0,
+      pendingCount.current + (pending ? 1 : -1),
+    );
+    setPendingActions(pendingCount.current);
+  };
+  const [infoError, setInfoError] = useState("");
+  const [infoLoading, setInfoLoading] = useState(false);
   // What it belongs to, its links and versions: read when Info opens.
   const [aliases, setAliases] = useState(doc.aliases ?? []);
+  const aliasDocId = useRef(doc.id);
+  aliasDocId.current = doc.id;
   useEffect(() => setAliases(doc.aliases ?? []), [doc.id, doc.aliases]);
-  const [info, setInfo] = useState<DocInfo | null>(null);
+  const [loaded, setLoaded] = useState<{
+    version: number;
+    info: DocInfo;
+  } | null>(null);
+  const info = loaded?.version === doc.version ? loaded.info : null;
   const [infoAsked, setInfoAsked] = useState(0);
-  const reportRef = useRef(report);
-  reportRef.current = report;
   useEffect(() => {
     if (!visible) return;
     let live = true;
-    client.docInfo(doc.id).then(
-      (next) => live && setInfo(next),
-      (e) => live && reportRef.current(e),
-    );
+    setInfoError("");
+    setInfoLoading(true);
+    client
+      .docInfo(doc.id)
+      .then(
+        (info) => {
+          if (live && owns()) setLoaded({ version: doc.version, info });
+        },
+        (e) => {
+          if (live && owns()) setInfoError(errorText(e));
+        },
+      )
+      .finally(() => {
+        if (live && owns()) setInfoLoading(false);
+      });
     return () => {
       live = false;
     };
@@ -124,23 +187,43 @@ export function PageInfo({
     .filter(Boolean)
     .join(" · ");
   return (
-    <BottomSheet visible={visible} title="Info" onClose={onClose}>
+    <BottomSheet
+      visible={visible}
+      title="Page details"
+      onClose={() => {
+        if (owns() && !pendingCount.current) onClose();
+      }}
+      closeDisabled={pendingActions > 0}
+      afterClose={afterClose}
+    >
       <View style={s.body}>
-        <Section label="How you’re working on this page">
-          <ChipRow label="How you're working on this page">
-            {modesFor(canWrite).map((m) => (
-              <Chip
-                key={m}
-                compact
-                label={MODE_LABELS[m].name}
-                selected={mode === m}
-                accessibilityHint={MODE_LABELS[m].blurb}
-                onPress={() => onMode(m)}
-              />
-            ))}
-          </ChipRow>
-          <Text style={s.small}>{MODE_LABELS[mode].blurb}</Text>
+        <Section label="Mode">
+          <Segmented
+            accessibilityLabel="Page mode"
+            options={modesFor(canWrite)}
+            labels={Object.fromEntries(
+              modesFor(canWrite).map((m) => [m, MODE_LABELS[m].name]),
+            )}
+            value={mode}
+            onChange={(value) => {
+              if (owns() && !pendingCount.current) onMode(value);
+            }}
+            disabled={pendingActions > 0}
+          />
         </Section>
+        {infoLoading && <Text style={s.small}>Loading page details…</Text>}
+        {!!infoError && (
+          <View>
+            <Text accessibilityRole="alert" style={s.error}>
+              {infoError}
+            </Text>
+            <SmallAction
+              label="Retry page details"
+              disabled={pendingActions > 0}
+              onPress={() => setInfoAsked((n) => n + 1)}
+            />
+          </View>
+        )}
         <Section label="Belongs to">
           <Text style={s.text}>{belongs}</Text>
         </Section>
@@ -152,125 +235,145 @@ export function PageInfo({
             canWrite={canWrite && !reading}
             onChange={onTags}
             report={report}
+            onBusyChange={actionPending}
           />
           {!tags.length && !(canWrite && !reading) && (
             <Text style={s.small}>No tags.</Text>
           )}
         </Section>
-        {(canWrite && !reading) || aliases.length ? (
-          <Section label="Also called">
-            <AliasesField
-              aliases={aliases}
-              canWrite={canWrite && !reading}
-              onSave={(next) =>
-                client.setDocAliases(doc.id, next).then(
-                  (r) => {
-                    setAliases(r.aliases);
+        <InlineDetails title="More page details" reveal={!!infoError}>
+          {(canWrite && !reading) || aliases.length ? (
+            <Section label="Also called">
+              <AliasesField
+                key={doc.id}
+                aliases={aliases}
+                canWrite={canWrite && !reading}
+                onSave={async (next) => {
+                  if (!owns() || !canWrite || reading)
+                    throw new Error("This page is view only.");
+                  actionPending(true);
+                  try {
+                    const r = await client.setDocAliases(doc.id, next);
+                    if (owns() && aliasDocId.current === doc.id)
+                      setAliases(r.aliases);
                     return r.aliases;
-                  },
-                  (e) => {
-                    report(e);
-                    return aliases;
-                  },
-                )
-              }
-            />
-          </Section>
-        ) : null}
-        {/* A file kept with "Keep the original": take it away or delete it. */}
-        <OriginalSection doc={doc} canWrite={canWrite} report={report} />
-        {visible && (
-          <FilesBlock
-            docId={doc.id}
+                  } finally {
+                    actionPending(false);
+                  }
+                }}
+              />
+            </Section>
+          ) : null}
+          {/* A file kept with "Keep the original": take it away or delete it. */}
+          <OriginalSection
+            doc={doc}
             canWrite={canWrite && !reading}
-            revision={doc.version}
             report={report}
+            onBusyChange={actionPending}
           />
-        )}
-        {!!info?.sources?.length && (
-          <SourcesBlock
-            docId={doc.id}
-            sources={info.sources}
-            canWrite={(info.can_write ?? canWrite) && !reading}
-            onRemoved={() => setInfoAsked((n) => n + 1)}
-            report={report}
-          />
-        )}
-        <FieldsBlock
-          docId={doc.id}
-          revision={`${doc.version}:${fieldsStamp ?? 0}`}
-          report={report}
-        />
-        {!!info?.linked_here && (
-          <Section label="Linked here">
-            <Pressable
-              accessibilityRole="button"
-              onPress={onShowLinked}
-              hitSlop={8}
-            >
-              <Text style={s.link}>
-                {info.linked_here === 1
-                  ? "1 place links here"
-                  : `${info.linked_here} places link here`}
-              </Text>
-            </Pressable>
-          </Section>
-        )}
-        {visible && (
-          <ConnectionsMap
-            kind="doc"
-            id={doc.id}
-            revision={doc.version}
-            report={report}
-          />
-        )}
-        {outline.length > 0 && onJump && (
-          <Section label="Contents">
-            <ContentsList
-              outline={outline}
-              current={current}
-              onJump={onJump}
-              starred={starredHeadings}
-              onStar={onStarHeading}
+          {visible && (
+            <FilesBlock
+              docId={doc.id}
+              canWrite={canWrite && !reading}
+              revision={doc.version}
+              report={report}
+              onBusyChange={actionPending}
             />
-          </Section>
-        )}
-        <Section label="This page">
-          <Text style={s.small}>{facts}</Text>
-          {/* Who else has it open, when anyone has. */}
-          <DocViewers docId={doc.id} register={false} />
-        </Section>
-        <Section label="Versions">
-          {info?.versions.recent.map((v) => (
-            <View key={v.version} style={s.version}>
-              <Text style={s.text}>{v.author ?? "Someone"}</Text>
-              <Text style={s.small}>{savedAgo(v.created_at)}</Text>
-            </View>
-          ))}
-          <View style={s.actions}>
-            <SmallAction
-              label={
-                info && info.versions.count > info.versions.recent.length
-                  ? `All ${info.versions.count} versions`
-                  : "Show history"
-              }
-              disabled={false}
-              onPress={onShowHistory}
-            />
-          </View>
-        </Section>
-        {doc.kind === "doc" && (
-          <Section label="Confirmed still true">
-            <PageFreshness
-              doc={{
-                ...doc,
-                reviewed_at: info?.reviewed_at ?? doc.reviewed_at,
+          )}
+          {!!info?.sources?.length && (
+            <SourcesBlock
+              docId={doc.id}
+              sources={info.sources}
+              canWrite={(info.can_write ?? canWrite) && !reading}
+              onRemoved={() => {
+                if (owns()) setInfoAsked((n) => n + 1);
               }}
-              canWrite={info?.can_write ?? canWrite}
-              always
+              onBusyChange={actionPending}
+              report={report}
             />
+          )}
+          <FieldsBlock
+            docId={doc.id}
+            revision={`${doc.version}:${fieldsStamp ?? 0}`}
+            report={report}
+          />
+          {!!info?.linked_here && onShowLinked && (
+            <Section label="Linked here">
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => handoff(onShowLinked)}
+                style={s.linkAction}
+              >
+                <Text style={s.link}>
+                  {info.linked_here === 1
+                    ? "1 place links here"
+                    : `${info.linked_here} places link here`}
+                </Text>
+              </Pressable>
+            </Section>
+          )}
+          {visible && (
+            <ConnectionsMap
+              kind="doc"
+              id={doc.id}
+              revision={doc.version}
+              report={report}
+              onOpen={(ref) =>
+                handoff(() => openObject(ref, undefined, navigation?.onAppLink))
+              }
+            />
+          )}
+          {outline.length > 0 && onJump && (
+            <Section label="Contents">
+              <ContentsList
+                outline={outline}
+                current={current}
+                onJump={(entry) => handoff(() => onJump(entry))}
+                starred={starredHeadings}
+                onStar={onStarHeading}
+              />
+            </Section>
+          )}
+          <Section label="This page">
+            <Text style={s.small}>{facts}</Text>
+            {/* Who else has it open, when anyone has. */}
+            <DocViewers docId={doc.id} register={false} />
           </Section>
-        )}
+          <Section label="Versions">
+            {info?.versions.recent.map((v) => (
+              <View key={v.version} style={s.version}>
+                <Text style={s.text}>{v.author ?? "Someone"}</Text>
+                <Text style={s.small}>{savedAgo(v.created_at)}</Text>
+              </View>
+            ))}
+            <View style={s.actions}>
+              <SmallAction
+                label={
+                  info && info.versions.count > info.versions.recent.length
+                    ? `All ${info.versions.count} versions`
+                    : "Show history"
+                }
+                disabled={false}
+                onPress={() => handoff(onShowHistory)}
+              />
+            </View>
+          </Section>
+          {doc.kind === "doc" && (
+            <Section label="Confirmed still true">
+              <PageFreshness
+                doc={{
+                  ...doc,
+                  reviewed_at: info?.reviewed_at ?? doc.reviewed_at,
+                }}
+                canWrite={info?.can_write ?? canWrite}
+                always
+              />
+            </Section>
+          )}
+          <InlineDetails title="About page modes">
+            <Text style={s.small}>{MODE_LABELS[mode].blurb}</Text>
+          </InlineDetails>
+        </InlineDetails>
       </View>
     </BottomSheet>
   );
@@ -285,77 +388,171 @@ function FilesBlock({
   docId,
   canWrite,
   revision,
-  report,
+  onBusyChange,
 }: {
   docId: string;
   canWrite: boolean;
   revision: number;
   report: (e: unknown) => void;
+  onBusyChange: (pending: boolean) => void;
 }) {
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const mutation = useRef(false);
+  const busyChanged = useRef(onBusyChange);
+  busyChanged.current = onBusyChange;
+  const ticket = useRef(0);
+  const permission = useRef(canWrite);
+  permission.current = canWrite;
+  const owns = () => mounted.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (mutation.current) {
+        mutation.current = false;
+        busyChanged.current(false);
+      }
+      ticket.current++;
+    };
+  }, []);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [readError, setReadError] = useState("");
+  const currentRevision = useRef(revision);
+  currentRevision.current = revision;
+  const [removePrompt, setRemovePrompt] = useState<PageFile | null>(null);
   const [files, setFiles] = useState<PageFile[]>([]);
   const [usage, setUsage] = useState<PageFilesUsage | null>(null);
   const [asked, setAsked] = useState(0);
-  const reportRef = useRef(report);
-  reportRef.current = report;
   useEffect(() => {
+    if (mutation.current) return;
     let live = true;
-    Promise.all([client.pageFiles(docId), client.filesUsage()]).then(
-      ([list, used]) => {
-        if (!live) return;
-        setFiles(list);
-        setUsage(used);
-      },
-      (e) => live && reportRef.current(e),
-    );
+    const request = ++ticket.current;
+    setLoading(true);
+    setReadError("");
+    Promise.all([client.pageFiles(docId), client.filesUsage()])
+      .then(
+        ([list, used]) => {
+          if (!live || !owns() || request !== ticket.current) return;
+          setFiles(list);
+          setUsage(used);
+        },
+        (e) => {
+          if (live && owns() && request === ticket.current)
+            setReadError(errorText(e));
+        },
+      )
+      .finally(() => {
+        if (live && owns() && request === ticket.current) setLoading(false);
+      });
     return () => {
       live = false;
     };
   }, [docId, revision, asked]);
-  // The space is always shown, so someone near the limit sees it on any page.
-  if (!files.length && !usage) return null;
-  const remove = (f: PageFile) =>
-    Alert.alert(
-      `Delete ${f.name} for good?`,
-      "It frees its space now. Any line on a page that shows it will say it's gone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: () =>
-            void client
-              .deletePageFile(f.id)
-              .then(() => setAsked((n) => n + 1), report),
-        },
-      ],
-    );
+  const remove = async (file: PageFile) => {
+    if (
+      !owns() ||
+      mutation.current ||
+      loading ||
+      !permission.current ||
+      file.doc_id !== docId
+    )
+      return;
+    mutation.current = true;
+    ticket.current++;
+    setBusy(true);
+    setError("");
+    busyChanged.current(true);
+    try {
+      await client.deletePageFile(file.id);
+      if (!owns()) return;
+      setFiles((all) => all.filter((f) => f.id !== file.id));
+      setUsage(null);
+      setAsked((n) => n + 1);
+    } catch (e) {
+      if (owns()) setError(errorText(e));
+    } finally {
+      mutation.current = false;
+      if (owns()) {
+        setBusy(false);
+        busyChanged.current(false);
+      }
+    }
+  };
+  const download = async (file: PageFile) => {
+    if (!owns() || mutation.current) return;
+    mutation.current = true;
+    const beganAtRevision = currentRevision.current;
+    setBusy(true);
+    setError("");
+    busyChanged.current(true);
+    try {
+      await downloadFile(file.id);
+    } catch (e) {
+      if (owns()) setError(errorText(e));
+    } finally {
+      mutation.current = false;
+      if (owns()) {
+        setBusy(false);
+        busyChanged.current(false);
+        if (currentRevision.current !== beganAtRevision) setAsked((n) => n + 1);
+      }
+    }
+  };
   const share = usage?.quota_bytes
     ? Math.min(100, (usage.used_bytes / usage.quota_bytes) * 100)
     : 0;
   return (
-    <Section label="Pictures and files">
+    <Section label="Files">
+      {loading && <Text style={s.small}>Loading files…</Text>}
+      {!!error && (
+        <Text accessibilityRole="alert" style={s.error}>
+          {error}
+        </Text>
+      )}
+      {!!readError && (
+        <View>
+          <Text accessibilityRole="alert" style={s.error}>
+            {readError}
+          </Text>
+          <SmallAction
+            label="Retry files"
+            disabled={busy || loading}
+            onPress={() => setAsked((n) => n + 1)}
+          />
+        </View>
+      )}
+      {!loading && !readError && !files.length && (
+        <Text style={s.small}>No files.</Text>
+      )}
       {files.map((f) => (
         <View key={f.id} style={s.fileRow}>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`Download ${f.name}`}
-            hitSlop={8}
+            disabled={busy}
             style={s.fileName}
-            onPress={() => void downloadFile(f.id).catch(report)}
+            onPress={() => void download(f)}
           >
-            <Text style={s.link} numberOfLines={1}>
-              {f.name}
-            </Text>
+            <Text style={s.link}>{f.name}</Text>
           </Pressable>
           <Text style={s.small}>{fileSize(f.bytes)}</Text>
           {/* Only the page a file was added to can delete it; a copy
               pasted here goes when its line does. */}
           {canWrite && f.doc_id === docId && (
-            <SmallAction
-              label="Delete"
-              destructive
-              disabled={false}
-              onPress={() => remove(f)}
+            <MoreMenu
+              label={`Options for ${f.name}`}
+              title={f.name}
+              disabled={busy || loading}
+              actions={[
+                {
+                  label: "Delete file",
+                  destructive: true,
+                  onPress: () => setRemovePrompt(f),
+                },
+              ]}
             />
           )}
         </View>
@@ -376,11 +573,34 @@ function FilesBlock({
           </View>
           <Text style={s.small}>
             {fileSize(usage.used_bytes)} of {fileSize(usage.quota_bytes)} used
-            across your pages. Removed pictures free space after 30 days; Trash
-            keeps files until emptied.
+            across your pages.
           </Text>
+          <InlineDetails title="File retention">
+            <Text style={s.small}>
+              Removed pictures free space after 30 days. Trash keeps files until
+              emptied.
+            </Text>
+          </InlineDetails>
         </View>
       )}
+      <ActionSheet
+        visible={!!removePrompt}
+        label="Delete file"
+        title={`Delete “${removePrompt?.name ?? "file"}”?`}
+        message="This permanently deletes the file. Pages using it will show it as missing."
+        cancelLabel="Keep file"
+        actions={[
+          {
+            label: "Delete file",
+            destructive: true,
+            disabled: busy || loading,
+            onPress: () => {
+              if (removePrompt) void remove(removePrompt);
+            },
+          },
+        ]}
+        onClose={() => setRemovePrompt(null)}
+      />
     </Section>
   );
 }
@@ -416,71 +636,139 @@ function SourcesBlock({
   canWrite,
   onRemoved,
   report,
+  onBusyChange,
 }: {
   docId: string;
   sources: PageSource[];
   canWrite: boolean;
   onRemoved: () => void;
   report: (e: unknown) => void;
+  onBusyChange: (pending: boolean) => void;
 }) {
-  // Taking a source off the page (H6b), behind its ⋯: the page's words
-  // stay, and the source stays for other pages that cite it.
-  const remove = (src: PageSource) =>
-    Alert.alert(
-      `Take ${src.title} off this page?`,
-      "The page's words stay. Other pages that cite it keep it.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove",
-          style: "destructive",
-          onPress: () =>
-            void client.removePageSource(docId, src.id).then(onRemoved, report),
-        },
-      ],
-    );
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true),
+    mutation = useRef(false);
+  const busyChanged = useRef(onBusyChange);
+  busyChanged.current = onBusyChange;
+  const permission = useRef(canWrite);
+  permission.current = canWrite;
+  const owns = () => mounted.current && session.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      if (mutation.current) {
+        mutation.current = false;
+        busyChanged.current(false);
+      }
+    };
+  }, []);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [removed, setRemoved] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!mutation.current) setRemoved(new Set());
+  }, [sources]);
+  const [prompt, setPrompt] = useState<PageSource | null>(null);
+  const remove = async (src: PageSource) => {
+    if (
+      !owns() ||
+      !permission.current ||
+      mutation.current ||
+      removed.has(src.id)
+    )
+      return;
+    mutation.current = true;
+    setBusy(true);
+    setError("");
+    busyChanged.current(true);
+    try {
+      await client.removePageSource(docId, src.id);
+      if (owns()) {
+        setRemoved((all) => new Set([...all, src.id]));
+        onRemoved();
+      }
+    } catch (e) {
+      if (owns()) setError(errorText(e));
+    } finally {
+      mutation.current = false;
+      if (owns()) {
+        setBusy(false);
+        busyChanged.current(false);
+      }
+    }
+  };
   return (
     <Section label="Sources">
-      {sources.map((src) => (
-        <View key={src.id} style={s.sourceRow}>
-          <View style={s.source}>
-            <Pressable
-              accessibilityRole="link"
-              accessibilityLabel={`Open ${src.title}`}
-              hitSlop={8}
-              onPress={() => void Linking.openURL(src.url)}
-            >
-              <Text style={s.link} numberOfLines={2}>
-                {src.title}
+      {!!error && (
+        <Text accessibilityRole="alert" style={s.error}>
+          {error}
+        </Text>
+      )}
+      {sources
+        .filter((src) => !removed.has(src.id))
+        .map((src) => (
+          <View key={src.id} style={s.sourceRow}>
+            <View style={s.source}>
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Open ${src.title}`}
+                style={s.linkAction}
+                disabled={busy}
+                onPress={() =>
+                  void Linking.openURL(src.url).catch((e) => {
+                    if (owns()) report(e);
+                  })
+                }
+              >
+                <Text style={s.link}>{src.title}</Text>
+              </Pressable>
+              <Text style={s.small}>
+                {[src.site, src.author, sourceReadLabel(src.accessed_on)]
+                  .filter(Boolean)
+                  .join(" · ")}
               </Text>
-            </Pressable>
-            <Text style={s.small} numberOfLines={1}>
-              {[src.site, src.author, sourceReadLabel(src.accessed_on)]
-                .filter(Boolean)
-                .join(" · ")}
-            </Text>
-            {!!src.quote && (
-              <Text style={s.quote} numberOfLines={3}>
-                {src.quote}
-              </Text>
+              {!!src.quote && (
+                <InlineDetails title="Quoted text">
+                  <Text style={s.quote}>{src.quote}</Text>
+                </InlineDetails>
+              )}
+            </View>
+            {canWrite && (
+              <MoreMenu
+                label={`Options for ${src.title}`}
+                title={src.title}
+                disabled={busy}
+                actions={[
+                  {
+                    label: "Remove from this page",
+                    icon: "trash",
+                    destructive: true,
+                    onPress: () => setPrompt(src),
+                  },
+                ]}
+              />
             )}
           </View>
-          {canWrite && (
-            <MoreMenu
-              label={`Options for ${src.title}`}
-              title={src.title}
-              actions={[
-                {
-                  label: "Remove from this page",
-                  icon: "trash",
-                  destructive: true,
-                  onPress: () => remove(src),
-                },
-              ]}
-            />
-          )}
-        </View>
-      ))}
+        ))}
+      <ActionSheet
+        visible={!!prompt}
+        label="Remove source"
+        title={`Remove “${prompt?.title ?? "source"}”?`}
+        message="The page text and citations on other pages stay."
+        cancelLabel="Keep source"
+        actions={[
+          {
+            label: "Remove source",
+            destructive: true,
+            disabled: busy,
+            onPress: () => {
+              if (prompt) void remove(prompt);
+            },
+          },
+        ]}
+        onClose={() => setPrompt(null)}
+      />
     </Section>
   );
 }
@@ -513,9 +801,16 @@ const s = themed(() =>
     },
     text: { fontFamily: fonts.regular, fontSize: 15, color: colors.text },
     small: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
-    actions: { flexDirection: "row", gap: 8 },
+    error: { fontFamily: fonts.regular, fontSize: 13, color: colors.danger },
+    linkAction: { minHeight: 44, justifyContent: "center" },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     link: { fontFamily: fonts.medium, fontSize: 15, color: colors.accent },
-    fileRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+    fileRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 10,
+    },
     sourceRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
     source: { flex: 1, minWidth: 0, gap: 2 },
     quote: {
@@ -527,7 +822,14 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.textSoft,
     },
-    fileName: { flex: 1, minWidth: 0 },
+    fileName: {
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 160,
+      minWidth: 0,
+      minHeight: 44,
+      justifyContent: "center",
+    },
     space: { gap: 6 },
     spaceBar: {
       height: 6,
@@ -543,6 +845,7 @@ const s = themed(() =>
     version: {
       flexDirection: "row",
       justifyContent: "space-between",
+      flexWrap: "wrap",
       gap: 8,
     },
   }),

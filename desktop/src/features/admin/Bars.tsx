@@ -1,3 +1,5 @@
+import { useElementWidth } from "../../hooks/useElementWidth";
+
 /**
  * A small column chart for the admin console: one column per period, an
  * optional second value drawn over the first in the danger colour (errors
@@ -18,9 +20,15 @@ export function Bars({
 }) {
   const max = Math.max(1, ...data.map((d) => d.value));
   const total = data.reduce((n, d) => n + d.value, 0);
-  const every = Math.max(1, Math.ceil(data.length / 8));
+  const { ref, width } = useElementWidth();
+  const labelCount = Math.max(1, Math.min(8, Math.floor(width / 72)));
+  const every = Math.max(1, Math.ceil(data.length / labelCount));
   return (
-    <figure className="bars" aria-label={`${label}: ${total} in total`}>
+    <figure
+      ref={ref}
+      className="bars"
+      aria-label={`${label}: ${total} in total`}
+    >
       <div className="bars-plot" style={{ height }}>
         <span className="bars-max" aria-hidden="true">
           {max.toLocaleString()}
@@ -54,6 +62,31 @@ export function Bars({
           <span key={d.key}>{n % every === 0 ? d.label : ""}</span>
         ))}
       </div>
+      <details className="bars-data">
+        <summary>Chart data</summary>
+        <div>
+          <table>
+            <thead>
+              <tr>
+                <th>Period</th>
+                <th>{label}</th>
+                {secondaryLabel && <th>{secondaryLabel}</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((entry) => (
+                <tr key={entry.key}>
+                  <th scope="row">{entry.label}</th>
+                  <td>{entry.value.toLocaleString()}</td>
+                  {secondaryLabel && (
+                    <td>{(entry.secondary ?? 0).toLocaleString()}</td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </figure>
   );
 }

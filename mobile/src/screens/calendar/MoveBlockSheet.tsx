@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import type { TimeBlock } from "@orbyn/core";
 import { Button } from "../../components/Button";
@@ -55,14 +55,21 @@ export function MoveBlockSheet({
   /** Save the new times; a thrown error shows in the sheet. */
   onSave: (start: Date, end: Date) => Promise<void>;
 }) {
+  const [pending, setPending] = useState(false);
   return (
-    <Sheet visible={!!block} title={title} onClose={onClose}>
+    <Sheet
+      visible={!!block}
+      title={title}
+      onClose={onClose}
+      closeDisabled={pending}
+    >
       {block && (
         <Body
-          key={block.id}
+          key={`${block.id}:${duplicate}`}
           block={block}
           duplicate={duplicate}
           onSave={onSave}
+          onBusyChange={setPending}
         />
       )}
     </Sheet>
@@ -73,9 +80,11 @@ function Body({
   block,
   duplicate,
   onSave,
+  onBusyChange,
 }: {
   block: MoveTarget;
   duplicate: boolean;
+  onBusyChange: (busy: boolean) => void;
   onSave: (start: Date, end: Date) => Promise<void>;
 }) {
   const was = Math.round(
@@ -87,6 +96,19 @@ function Body({
   const [lengthText, setLengthText] = useState(String(was));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const alive = useRef(true);
+  const saving = useRef(false);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      onBusyChange(false);
+    };
+  }, [onBusyChange]);
+  const setPending = (value: boolean) => {
+    setBusy(value);
+    onBusyChange(value);
+  };
   const typed = parseMinutes(lengthText);
   const length = duplicate || !timed ? was : (typed ?? 0);
   const lengthOk =
@@ -96,21 +118,30 @@ function Body({
     start.getTime() === Date.parse(block.start_at) && length === was;
 
   const pickDay = (day: string | null) => {
-    if (!day) return;
+    if (!day || saving.current) return;
     const [y, m, d] = day.split("-").map(Number);
     const next = new Date(start);
     next.setFullYear(y, m - 1, d);
     setStart(next);
   };
   const save = async () => {
-    setBusy(true);
+    if (
+      saving.current ||
+      !lengthOk ||
+      !Number.isFinite(start.getTime()) ||
+      !Number.isFinite(end.getTime())
+    )
+      return;
+    saving.current = true;
+    setPending(true);
     setError("");
     try {
       await onSave(start, end);
     } catch (e) {
-      setError(errorText(e));
+      if (alive.current) setError(errorText(e));
     } finally {
-      setBusy(false);
+      saving.current = false;
+      if (alive.current) setPending(false);
     }
   };
 
@@ -122,8 +153,9 @@ function Body({
     >
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
-        <Text style={[shared.subtitle, s.intro]}>
-          {block.title}. Now{" "}
+        <Text style={shared.sectionTitle}>{block.title}</Text>
+        <Text style={[shared.small, s.intro]}>
+          Current time ·{" "}
           {timed
             ? slotLabel(block.start_at, block.end_at)
             : `${shortDay(block.start_at)}, ${clockLabel(block.start_at)}`}
@@ -131,7 +163,12 @@ function Body({
         </Text>
         <View style={shared.card}>
           <Field label="Day">
-            <DateField label="Day" value={dayKey(start)} onChange={pickDay} />
+            <DateField
+              label="Day"
+              value={dayKey(start)}
+              onChange={pickDay}
+              disabled={busy}
+            />
           </Field>
           <Field
             label="Starts at"
@@ -139,22 +176,28 @@ function Body({
               !timed
                 ? undefined
                 : duplicate
-                  ? `The copy ends at ${clockLabel(end)}, the same ${minutesLabel(was)} as this session.`
+                  ? `Copy ends ${clockLabel(end)} · ${minutesLabel(was)}`
                   : lengthOk
                     ? `Ends at ${clockLabel(end)}.`
                     : undefined
             }
             style={duplicate || !timed ? s.last : undefined}
           >
-            <TimeField label="Start time" value={start} onChange={setStart} />
+            <TimeField
+              label="Start time"
+              value={start}
+              onChange={setStart}
+              disabled={busy}
+            />
           </Field>
           {timed && !duplicate && (
             <Field
               label="Length"
-              hint={`${MIN_LENGTH} to ${MAX_LENGTH} minutes.`}
+              hint={`${MIN_LENGTH}–${MAX_LENGTH} minutes`}
               style={s.last}
             >
               <NumberInput
+                editable={!busy}
                 value={lengthText}
                 onChangeText={setLengthText}
                 suffix="minutes"
@@ -176,7 +219,7 @@ function Body({
                 : "Moving…"
               : duplicate
                 ? "Duplicate here"
-                : "Move it here"
+                : "Move here"
           }
           icon="check"
           disabled={busy || !lengthOk || (!duplicate && unchanged)}
@@ -188,7 +231,7 @@ function Body({
 }
 
 const s = StyleSheet.create({
-  intro: { marginTop: 0, marginBottom: 18 },
+  intro: { marginTop: 4, marginBottom: 12 },
   last: { marginBottom: 0 },
   problem: { textAlign: "center", marginBottom: 10 },
 });

@@ -9,6 +9,14 @@ Make the next action understandable at a glance. Routine Orbyn screens must not
 read like product documentation or a generated essay. Use with the layout skill
 at `skills/orbyn-ui-design/SKILL.md`; follow the agreed task scope and `AGENT.md`.
 
+## Whole-product editing
+
+For an agreed full redesign, inventory every screen and shared surface before
+claiming coverage. Review headings, positions, helper copy, empty/error/loading
+states and selection labels in each family. Theme changes do not qualify content.
+Use grouped settings rows; optional explanations belong in named help, not repeated
+paragraphs under every switch. Preserve user-authored text and essential consequences.
+
 ## Decide what belongs on screen
 
 - Start with the person's task. Show its name, useful current value/state and

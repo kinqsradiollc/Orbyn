@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Switch } from "../../components/Switch";
 import type { LegalDoc, PrivacyView } from "@orbyn/core";
@@ -37,24 +37,58 @@ export function PrivacySection({
   act: (fn: () => Promise<void>) => Promise<void>;
   onDeleted: () => void;
 }) {
+  return (
+    <PrivacyBody
+      key={email}
+      email={email}
+      busy={busy}
+      act={act}
+      onDeleted={onDeleted}
+    />
+  );
+}
+
+function PrivacyBody({
+  email,
+  busy,
+  act,
+  onDeleted,
+}: {
+  email: string;
+  busy: boolean;
+  act: (fn: () => Promise<void>) => Promise<void>;
+  onDeleted: () => void;
+}) {
   const [view, setView] = useState<PrivacyView | null>(null);
   const [reading, setReading] = useState<LegalDoc | null>(null);
   const [security, setSecurity] = useState(false);
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [allHistory, setAllHistory] = useState(false);
+  const mounted = useRef(false);
+  const mutation = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
+    setFailed(false);
     client
       .privacy()
       .then((v) => alive && setView(v))
       .catch(() => {
-        // Shown as "Loading…"; the section still offers the documents.
+        if (alive) setFailed(true);
       });
     return () => {
       alive = false;
     };
-  }, []);
+  }, [retry]);
 
   const remove = () =>
     confirmAction(
@@ -63,12 +97,16 @@ export function PrivacySection({
       "Delete",
       () =>
         void act(async () => {
+          if (!mounted.current || mutation.current) return;
+          mutation.current = true;
           setError("");
           try {
             await client.deleteAccount({ password });
-            onDeleted();
+            if (mounted.current) onDeleted();
           } catch (e) {
-            setError(errorText(e));
+            if (mounted.current) setError(errorText(e));
+          } finally {
+            mutation.current = false;
           }
         }),
     );
@@ -78,11 +116,21 @@ export function PrivacySection({
       <SettingsSection title="Privacy">
         <Text style={shared.body}>
           {!view
-            ? "Loading…"
+            ? failed
+              ? "Couldn't load privacy settings."
+              : "Loading…"
             : view.terms_accepted_at
-              ? `You agreed to the Terms of Service and Privacy Policy (version ${view.terms_version}) on ${when(view.terms_accepted_at)}.`
+              ? `Terms and Privacy accepted · ${view.terms_version} · ${when(view.terms_accepted_at)}`
               : "You haven't agreed to the current terms yet."}
         </Text>
+        {failed && (
+          <Button
+            secondary
+            title="Retry privacy settings"
+            onPress={() => setRetry((value) => value + 1)}
+            disabled={busy}
+          />
+        )}
         <View style={s.docs}>
           <Button
             secondary
@@ -116,12 +164,21 @@ export function PrivacySection({
           </View>
           <Switch
             value={!!view && !view.analytics_opt_out}
-            disabled={!view || busy}
+            disabled={!view || busy || failed}
             trackColor={{ true: colors.accent }}
             accessibilityLabel="Usage analytics"
             onValueChange={(on) =>
               void act(async () => {
-                setView(await client.setPrivacy({ analytics_opt_out: !on }));
+                if (mutation.current) return;
+                mutation.current = true;
+                try {
+                  const next = await client.setPrivacy({
+                    analytics_opt_out: !on,
+                  });
+                  if (mounted.current) setView(next);
+                } finally {
+                  mutation.current = false;
+                }
               })
             }
           />
@@ -130,23 +187,31 @@ export function PrivacySection({
         {view && view.history.length > 0 && (
           <View style={s.history}>
             <Text style={shared.label}>Consent history</Text>
-            {view.history.slice(0, 8).map((h, i) => (
-              <View key={i} style={s.historyRow}>
-                <Text style={[shared.small, { flex: 1 }]}>
-                  {h.kind === "terms"
-                    ? `Agreed to the terms (${h.version})`
-                    : h.granted
-                      ? "Turned usage analytics on"
-                      : "Turned usage analytics off"}
-                </Text>
-                <Text style={shared.small}>{when(h.at)}</Text>
-              </View>
-            ))}
+            {(allHistory ? view.history : view.history.slice(0, 8)).map(
+              (h, i) => (
+                <View key={i} style={s.historyRow}>
+                  <Text style={[shared.small, { flex: 1 }]}>
+                    {h.kind === "terms"
+                      ? `Agreed to the terms (${h.version})`
+                      : h.granted
+                        ? "Turned usage analytics on"
+                        : "Turned usage analytics off"}
+                  </Text>
+                  <Text style={shared.small}>{when(h.at)}</Text>
+                </View>
+              ),
+            )}
+            {view.history.length > 8 && (
+              <Button
+                secondary
+                title={allHistory ? "Show recent consent" : "Show all consent"}
+                onPress={() => setAllHistory((value) => !value)}
+              />
+            )}
           </View>
         )}
         <Text style={[shared.small, { marginTop: 12 }]}>
-          To take a copy of everything, pages included, use Export everything in
-          Import & export.
+          Export your data in Import & export.
         </Text>
       </SettingsSection>
 
@@ -166,6 +231,7 @@ export function PrivacySection({
           autoCapitalize="none"
           autoComplete="current-password"
           textContentType="password"
+          editable={!busy}
           accessibilityLabel="Your password"
         />
         <ErrorBanner error={error} />
@@ -186,8 +252,8 @@ export function PrivacySection({
 
 const s = themed(() =>
   StyleSheet.create({
-    docs: { flexDirection: "row", gap: 10, marginTop: 12 },
-    doc: { flex: 1, marginBottom: 0 },
+    docs: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 12 },
+    doc: { flexGrow: 1, flexBasis: 120, marginBottom: 0 },
     row: {
       flexDirection: "row",
       alignItems: "center",
@@ -201,6 +267,6 @@ const s = themed(() =>
       marginBottom: 2,
     },
     history: { marginTop: 16, gap: 6 },
-    historyRow: { flexDirection: "row", gap: 12 },
+    historyRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   }),
 );

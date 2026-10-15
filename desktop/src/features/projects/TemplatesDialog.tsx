@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import {
   ArrowLeft,
   Check,
@@ -67,37 +69,45 @@ export function TemplatesDialog({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
-  const root = useRef<HTMLDivElement>(null);
+  const focus = useModalFocus(onClose, busy);
+  const mutation = useRef(false);
+  const request = useRef(0);
+  const [loadFailed, setLoadFailed] = useState(false);
   const writable = teams.filter((t) =>
     hasTeamPermission(t.role, "items:write"),
   );
 
-  const load = () =>
-    client.listTemplates().then(
-      (all) => {
-        setTemplates(all);
-        return all;
-      },
-      (e) => {
-        setTemplates([]);
+  const load = async () => {
+    const epoch = ++request.current;
+    setLoadFailed(false);
+    try {
+      const all = await client.listTemplates();
+      if (epoch !== request.current) return;
+      setTemplates(all);
+      return all;
+    } catch (e) {
+      if (epoch === request.current) {
+        setLoadFailed(true);
         setError(errorText(e));
-      },
-    );
+      }
+    }
+  };
   useEffect(() => {
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
     void load().then((all) => {
       const first = initialId && all?.find((t) => t.id === initialId);
       if (first) choose(first);
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    root.current?.querySelector<HTMLElement>("button")?.focus();
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    return () => {
+      request.current++;
+      dialog.close();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const run = async (fn: () => Promise<void>) => {
+    if (mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -105,6 +115,7 @@ export function TemplatesDialog({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -112,7 +123,7 @@ export function TemplatesDialog({
   const choose = (t: ProjectTemplate) => {
     setPicked(t);
     setTitle(t.name);
-    setTeamId(t.team_id ?? "");
+    setTeamId(writable.some((team) => team.id === t.team_id) ? t.team_id! : "");
     setRhythm("");
     setProposal(null);
     setNote("");
@@ -138,7 +149,7 @@ export function TemplatesDialog({
 
   const saveRhythm = () =>
     run(async () => {
-      if (!picked) return;
+      if (!picked || (picked.source !== "starter" && !picked.can_edit)) return;
       const rrule = rhythm.trim() ? rhythmFrom(rhythm) : null;
       if (rhythm.trim() && !rrule) {
         setError(
@@ -169,6 +180,7 @@ export function TemplatesDialog({
 
   const remove = (t: ProjectTemplate) =>
     void (async () => {
+      if (!t.can_edit || mutation.current) return;
       if (
         !(await ask({
           title: `Delete the template “${t.name}”?`,
@@ -192,197 +204,222 @@ export function TemplatesDialog({
     }))
     .filter((g) => g.list.length);
 
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      className="modal templates-dialog"
+      data-modal-owner={focus.id}
+      aria-labelledby="templates-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
     >
-      <section
-        ref={root}
-        className="modal templates-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="templates-title"
-      >
-        <div className="section-heading">
-          {picked && (
-            <button
-              className="icon-button"
-              aria-label="All templates"
-              onClick={() => {
-                setPicked(null);
-                setProposal(null);
-              }}
-            >
-              <ArrowLeft size={18} />
-            </button>
-          )}
-          <h2 id="templates-title">{picked ? picked.name : "Templates"}</h2>
-          <button className="icon-button" aria-label="Close" onClick={onClose}>
-            <X size={20} />
+      <div className="section-heading">
+        {picked && (
+          <button
+            className="icon-button"
+            disabled={busy}
+            aria-label="All templates"
+            onClick={() => {
+              setPicked(null);
+              setProposal(null);
+            }}
+          >
+            <ArrowLeft size={18} />
           </button>
-        </div>
-        <div className="templates-body">
-          {error && (
-            <div className="error" role="alert">
-              {error}
-            </div>
-          )}
-          {!picked ? (
-            templates === null ? (
-              <p className="muted">Loading…</p>
-            ) : (
-              groups.map((g) => (
-                <section key={g.source} className="templates-group">
-                  <h3>
-                    {g.source === "starter"
-                      ? "Starters"
-                      : g.source === "team"
-                        ? "Your teams'"
-                        : "Yours"}
-                  </h3>
-                  <ul className="templates-list">
-                    {g.list.map((t) => (
-                      <li key={t.id}>
-                        <button
-                          className="template-card"
-                          onClick={() => choose(t)}
-                        >
-                          <LayoutTemplate size={16} aria-hidden="true" />
-                          <span>
-                            <strong>{t.name}</strong>
-                            <small>
-                              {t.description || `${t.tasks.length} tasks`}
-                            </small>
-                            <small className="template-meta">
-                              {t.tasks.length} tasks
-                              {t.team_name ? ` · ${t.team_name}` : ""}
-                              {t.rrule ? ` · ${describeRrule(t.rrule)}` : ""}
-                            </small>
-                          </span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              ))
-            )
-          ) : proposal?.project ? (
-            <>
-              <p className="muted">
-                Nothing is made until you approve. The schedule uses your
-                calendar as it is now.
-              </p>
-              <ProjectDraftReview project={proposal.project} />
-              {proposal.project.page && (
-                <p className="template-page-note">
-                  With a page: <strong>{proposal.project.page.title}</strong>
-                </p>
-              )}
-              <div className="confirm-actions">
-                <button
-                  className="ghost"
-                  disabled={busy}
-                  onClick={() => setProposal(null)}
-                >
-                  Back
-                </button>
-                <button className="primary" disabled={busy} onClick={approve}>
-                  <Check size={15} /> Make the project
-                </button>
-              </div>
-            </>
+        )}
+        <h2 id="templates-title">{picked ? picked.name : "Templates"}</h2>
+        <button
+          className="icon-button"
+          disabled={busy}
+          aria-label="Close"
+          onClick={onClose}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <div className="templates-body">
+        {error && (
+          <div className="error" role="alert">
+            {error}
+          </div>
+        )}
+        {loadFailed && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => void load()}
+          >
+            Retry
+          </button>
+        )}
+        {!loadFailed && templates?.length === 0 && (
+          <p className="muted">No templates yet.</p>
+        )}
+        {!picked ? (
+          templates === null ? (
+            <p className="muted">Loading…</p>
           ) : (
-            <>
-              <p className="muted">
-                {picked.description}{" "}
-                <span className="template-source">
-                  {SOURCE_LABEL[picked.source]}
-                </span>
+            groups.map((g) => (
+              <section key={g.source} className="templates-group">
+                <h3>
+                  {g.source === "starter"
+                    ? "Starters"
+                    : g.source === "team"
+                      ? "Your teams'"
+                      : "Yours"}
+                </h3>
+                <ul className="templates-list">
+                  {g.list.map((t) => (
+                    <li key={t.id}>
+                      <button
+                        className="template-card"
+                        onClick={() => choose(t)}
+                      >
+                        <LayoutTemplate size={16} aria-hidden="true" />
+                        <span>
+                          <strong>{t.name}</strong>
+                          <small>
+                            {t.description || `${t.tasks.length} tasks`}
+                          </small>
+                          <small className="template-meta">
+                            {t.tasks.length} tasks
+                            {t.team_name ? ` · ${t.team_name}` : ""}
+                            {t.rrule ? ` · ${describeRrule(t.rrule)}` : ""}
+                          </small>
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))
+          )
+        ) : proposal?.project ? (
+          <>
+            <p className="muted">
+              Nothing is made until you approve. The schedule uses your calendar
+              as it is now.
+            </p>
+            <ProjectDraftReview project={proposal.project} />
+            {proposal.project.page && (
+              <p className="template-page-note">
+                With a page: <strong>{proposal.project.page.title}</strong>
               </p>
-              <ol className="template-tasks">
-                {picked.tasks.map((t) => (
-                  <li key={t.id}>
-                    <span>{t.title}</span>
-                    <small className="muted">
-                      Day {t.due_in_days + 1} · {t.estimate_minutes} min
-                      {t.target_value != null
-                        ? ` · target ${t.target_value}${t.value_unit ? " " + t.value_unit : ""}`
-                        : ""}
-                    </small>
-                  </li>
-                ))}
-              </ol>
+            )}
+            <div className="confirm-actions">
+              <button
+                className="ghost"
+                disabled={busy}
+                onClick={() => setProposal(null)}
+              >
+                Back
+              </button>
+              <button className="primary" disabled={busy} onClick={approve}>
+                <Check size={15} /> Make the project
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="muted">
+              {picked.description}{" "}
+              <span className="template-source">
+                {SOURCE_LABEL[picked.source]}
+              </span>
+            </p>
+            <ol className="template-tasks">
+              {picked.tasks.map((t) => (
+                <li key={t.id}>
+                  <span>{t.title}</span>
+                  <small className="muted">
+                    Day {t.due_in_days + 1} · {t.estimate_minutes} min
+                    {t.target_value != null
+                      ? ` · target ${t.target_value}${t.value_unit ? " " + t.value_unit : ""}`
+                      : ""}
+                  </small>
+                </li>
+              ))}
+            </ol>
+            <label>
+              Project name
+              <input
+                disabled={busy}
+                value={title}
+                maxLength={120}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </label>
+            {writable.length > 0 && (
               <label>
-                Project name
-                <input
-                  value={title}
-                  maxLength={120}
-                  onChange={(e) => setTitle(e.target.value)}
-                />
+                For
+                <Select
+                  disabled={busy}
+                  value={teamId}
+                  onChange={(e) => setTeamId(e.target.value)}
+                >
+                  <option value="">Just me</option>
+                  {writable.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </Select>
               </label>
-              {writable.length > 0 && (
-                <label>
-                  For
-                  <Select
-                    value={teamId}
-                    onChange={(e) => setTeamId(e.target.value)}
-                  >
-                    <option value="">Just me</option>
-                    {writable.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name}
-                      </option>
-                    ))}
-                  </Select>
-                </label>
-              )}
-              <div className="confirm-actions">
-                <button className="primary" disabled={busy} onClick={review}>
-                  Review the plan
-                </button>
-              </div>
+            )}
+            <div className="confirm-actions">
+              <button className="primary" disabled={busy} onClick={review}>
+                Review the plan
+              </button>
+            </div>
 
-              {(picked.source === "starter" || picked.can_edit) && (
-                <div className="template-rhythm">
-                  <h3>
-                    <Repeat size={14} aria-hidden="true" /> Start itself
-                  </h3>
-                  <p className="muted">
-                    {picked.rrule
-                      ? `${describeRrule(picked.rrule)}. You're asked to review each one; nothing is made on its own.`
-                      : "On a rhythm, you're asked to review the next one when it's due."}
-                  </p>
-                  <div className="template-rhythm-row">
-                    <input
-                      aria-label="Rhythm, in words"
-                      placeholder={
-                        picked.rrule
-                          ? "A new rhythm, or empty to stop"
-                          : "every other Friday"
-                      }
-                      value={rhythm}
-                      onChange={(e) => setRhythm(e.target.value)}
-                    />
-                    <button
-                      className="secondary"
-                      disabled={busy}
-                      onClick={saveRhythm}
-                    >
-                      {picked.source === "starter" ? "Save a copy" : "Save"}
-                    </button>
-                  </div>
-                  {rhythm.trim() && (
-                    <small className="muted">
-                      {rhythmFrom(rhythm)
-                        ? describeRrule(rhythmFrom(rhythm))
-                        : "Not a rhythm yet"}
-                    </small>
-                  )}
-                  {note && <small className="template-note">{note}</small>}
+            {(picked.source === "starter" || picked.can_edit) && (
+              <details className="template-rhythm">
+                <summary>
+                  <Repeat size={14} aria-hidden="true" /> Repeat project
+                </summary>
+                <p className="muted">
+                  {picked.rrule
+                    ? `${describeRrule(picked.rrule)}. You're asked to review each one; nothing is made on its own.`
+                    : "On a rhythm, you're asked to review the next one when it's due."}
+                </p>
+                <div className="template-rhythm-row">
+                  <input
+                    disabled={busy}
+                    aria-label="Rhythm, in words"
+                    placeholder={
+                      picked.rrule
+                        ? "A new rhythm, or empty to stop"
+                        : "every other Friday"
+                    }
+                    value={rhythm}
+                    onChange={(e) => setRhythm(e.target.value)}
+                  />
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={saveRhythm}
+                  >
+                    {picked.source === "starter" ? "Save a copy" : "Save"}
+                  </button>
                 </div>
-              )}
-              {picked.can_edit && (
+                {rhythm.trim() && (
+                  <small className="muted">
+                    {rhythmFrom(rhythm)
+                      ? describeRrule(rhythmFrom(rhythm))
+                      : "Not a rhythm yet"}
+                  </small>
+                )}
+                {note && <small className="template-note">{note}</small>}
+              </details>
+            )}
+            {picked.can_edit && (
+              <details>
+                <summary>More options</summary>
                 <button
                   className="text-button template-delete"
                   disabled={busy}
@@ -390,11 +427,12 @@ export function TemplatesDialog({
                 >
                   <Trash2 size={14} /> Delete template
                 </button>
-              )}
-            </>
-          )}
-        </div>
-      </section>
-    </div>
+              </details>
+            )}
+          </>
+        )}
+      </div>
+    </dialog>,
+    document.body,
   );
 }

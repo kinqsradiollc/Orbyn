@@ -11,7 +11,7 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
     >
       <h3>Morning summary</h3>
       <p className="muted">
-        Uses your ChatGPT plan. Keep Orbyn desktop online for morning summaries.
+        Uses your ChatGPT plan while the connected device is available.
       </p>
       {!data && !error && <p role="status">Loading summary settings…</p>}
       {data && (
@@ -49,7 +49,6 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
           )}
           {canEnable && data.permission.enabled && (
             <small className="field-hint">
-              {data.catalog?.preference.model} ·{" "}
               {data.choice.fallback_to_default
                 ? "Orbyn fallback"
                 : "No fallback"}

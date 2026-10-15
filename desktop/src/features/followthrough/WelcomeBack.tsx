@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Hand } from "lucide-react";
 import type { ReentryBrief, ReentryLine } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -27,8 +27,21 @@ export function WelcomeBack({
   onOpenAsks: () => void;
 }) {
   const [brief, setBrief] = useState<ReentryBrief | null>(null);
+  const [expanded, setExpanded] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const dismissing = useRef(false);
   useEffect(() => {
-    client.reentry().then(setBrief, () => setBrief(null));
+    let alive = true;
+    client.reentry().then(
+      (value) => {
+        if (alive) setBrief(value);
+      },
+      () => {},
+    );
+    return () => {
+      alive = false;
+    };
   }, []);
   if (!brief) return null;
   const sections = SECTIONS.map((s) => ({
@@ -36,8 +49,18 @@ export function WelcomeBack({
     lines: brief[s.key] as ReentryLine[],
   })).filter((s) => s.lines.length);
   const dismiss = () => {
-    setBrief(null);
-    void client.dismissReentry().catch(() => {});
+    if (dismissing.current) return;
+    dismissing.current = true;
+    setBusy(true);
+    setError("");
+    void client.dismissReentry().then(
+      () => setBrief(null),
+      () => {
+        dismissing.current = false;
+        setBusy(false);
+        setError("Could not dismiss. Try again.");
+      },
+    );
   };
   const open = (l: ReentryLine) =>
     l.ask_id
@@ -54,12 +77,10 @@ export function WelcomeBack({
         <div>
           <h2 id="welcome-back-title">Welcome back</h2>
           <p className="muted">
-            You were away {brief.days_away}{" "}
-            {brief.days_away === 1 ? "day" : "days"}.
-            {sections.length ? " Here's what happened." : " Nothing needs you."}
+            {brief.days_away} {brief.days_away === 1 ? "day" : "days"} away
           </p>
         </div>
-        <button className="secondary" onClick={dismiss}>
+        <button className="secondary" disabled={busy} onClick={dismiss}>
           Got it
         </button>
       </header>
@@ -71,7 +92,7 @@ export function WelcomeBack({
                 {s.label} <span className="muted">{s.lines.length}</span>
               </h3>
               <ul>
-                {s.lines.slice(0, 3).map((l, n) => (
+                {(expanded ? s.lines : s.lines.slice(0, 3)).map((l, n) => (
                   <li key={n}>
                     <button
                       className="welcome-line"
@@ -87,6 +108,20 @@ export function WelcomeBack({
             </div>
           ))}
         </div>
+      )}
+      {sections.some((section) => section.lines.length > 3) && (
+        <button
+          className="text-button"
+          disabled={busy}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? "Show less" : "Show all updates"}
+        </button>
+      )}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
       )}
     </section>
   );

@@ -1,5 +1,5 @@
 import { StyleSheet } from "react-native";
-import { colors, fonts, radii, themed } from "./theme";
+import { colors, fonts, inputFontSize, radii, themed } from "./theme";
 
 /** Typography and surfaces shared by several screens and components. */
 export const shared = themed(() =>
@@ -14,15 +14,14 @@ export const shared = themed(() =>
     eyebrow: {
       fontFamily: fonts.semibold,
       fontSize: 11,
-      letterSpacing: 1.6,
       color: colors.muted,
       marginBottom: 8,
     },
     title: {
-      fontFamily: fonts.display,
-      fontSize: 24,
-      lineHeight: 34,
-      letterSpacing: -0.9,
+      fontFamily: fonts.bold,
+      fontSize: 18,
+      lineHeight: 26,
+      letterSpacing: -0.2,
       color: colors.text,
     },
     subtitle: {
@@ -33,9 +32,9 @@ export const shared = themed(() =>
       marginTop: 6,
     },
     sectionTitle: {
-      fontFamily: fonts.display,
-      fontSize: 18,
-      letterSpacing: -0.3,
+      fontFamily: fonts.semibold,
+      fontSize: 15,
+      lineHeight: 21,
       color: colors.text,
     },
     body: {
@@ -61,34 +60,35 @@ export const shared = themed(() =>
       borderRadius: radii.card,
       borderWidth: 1,
       borderColor: colors.border,
-      padding: 18,
-      marginBottom: 16,
+      padding: 14,
+      marginBottom: 12,
     },
     softCard: {
       backgroundColor: colors.soft,
       borderRadius: radii.card,
       borderWidth: 1,
       borderColor: colors.softBorder,
-      padding: 20,
-      marginBottom: 16,
+      padding: 14,
+      marginBottom: 12,
     },
     input: {
+      minWidth: 0,
       fontFamily: fonts.regular,
-      minHeight: 50,
+      minHeight: 44,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
-      paddingHorizontal: 15,
-      paddingVertical: 13,
+      paddingHorizontal: 12,
+      paddingVertical: 10,
       borderRadius: radii.input,
-      fontSize: 15,
+      fontSize: inputFontSize,
       color: colors.text,
     },
     empty: { alignItems: "center", paddingVertical: 30, paddingHorizontal: 12 },
     emptyIcon: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: 40,
+      height: 40,
+      borderRadius: radii.pill,
       backgroundColor: colors.accentSoft,
       alignItems: "center",
       justifyContent: "center",

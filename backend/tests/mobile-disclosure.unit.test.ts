@@ -50,10 +50,9 @@ test("mobile disclosure body leaves room beneath the heading focus outline", () 
   );
   assert.equal(styles.body.paddingHorizontal, 16);
   assert.equal(styles.body.paddingBottom, 16);
-  assert.equal(
-    styles.heading.minHeight,
-    76,
-    "retain the disclosure touch target",
+  assert.ok(
+    styles.heading.minHeight >= 44 && styles.heading.minHeight <= 56,
+    "retain a reachable touch target without oversized section chrome",
   );
   assert.equal(
     styles.hidden.display,

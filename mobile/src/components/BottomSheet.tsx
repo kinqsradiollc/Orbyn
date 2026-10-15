@@ -9,7 +9,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Pressable } from "../motion";
+import { Pressable, useReducedMotion } from "../motion";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ToastHost } from "./Toast";
 import { useSwipeDown } from "../hooks/useSwipeDown";
@@ -28,6 +28,7 @@ export function BottomSheet({
   title,
   label,
   onClose,
+  closeDisabled = false,
   afterClose,
   footer,
   children,
@@ -37,13 +38,19 @@ export function BottomSheet({
   /** What the sheet is, for screen readers, when it has no title. */
   label?: string;
   onClose: () => void;
+  /** Keep a pending operation in its owning sheet. */
+  closeDisabled?: boolean;
   afterClose?: () => void;
   /** Kept below the scrolling part: the sheet's one main button. */
   footer?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const insets = useSafeAreaInsets();
-  const swipe = useSwipeDown(visible, onClose);
+  const reducedMotion = useReducedMotion();
+  const close = () => {
+    if (!closeDisabled) onClose();
+  };
+  const swipe = useSwipeDown(visible && !closeDisabled, close);
   const after = useRef(afterClose);
   after.current = afterClose;
   // Only iOS reports the dismissal; elsewhere the sheet is gone at once.
@@ -56,8 +63,8 @@ export function BottomSheet({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      animationType={Platform.OS === "web" || reducedMotion ? "none" : "slide"}
+      onRequestClose={close}
       onDismiss={Platform.OS === "ios" ? () => after.current?.() : undefined}
     >
       <KeyboardAvoidingView
@@ -69,7 +76,8 @@ export function BottomSheet({
           style={s.backdrop}
           accessibilityRole="button"
           accessibilityLabel="Close"
-          onPress={onClose}
+          disabled={closeDisabled}
+          onPress={close}
         />
         <Animated.View
           style={[

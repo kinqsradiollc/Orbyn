@@ -23,13 +23,22 @@ export async function exportRenderedPdf(
   return exportRenderedDocument(html, request, reply, "pdf");
 }
 
+export async function compileLatexPdf(
+  source: string,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<Buffer> {
+  return exportRenderedDocument(source, request, reply, "latex");
+}
+
 async function exportRenderedDocument(
   html: string,
   request: FastifyRequest,
   reply: FastifyReply,
-  format: "pdf" | "html",
+  format: "pdf" | "html" | "latex",
 ): Promise<Buffer> {
-  if (!env.DOC_PDF_URL || env.DOC_PDF_KEY.length < 32)
+  const url = format === "latex" ? env.DOC_LATEX_URL : env.DOC_PDF_URL;
+  if (!url || env.DOC_PDF_KEY.length < 32)
     fail(503, "Document PDF rendering is not configured.");
   if (Buffer.byteLength(html) > 20 * 1024 * 1024)
     fail(413, "This document is too large to print.");
@@ -40,16 +49,22 @@ async function exportRenderedDocument(
   const timer = setTimeout(abort, 35_000);
   try {
     const response = await fetch(
-      `${env.DOC_PDF_URL.replace(/\/$/, "")}/render${format === "html" ? "/html" : ""}`,
+      `${url.replace(/\/$/, "")}/render${format === "html" ? "/html" : ""}`,
       {
         method: "POST",
-        headers: pdfRequestHeaders(
-          html,
-          env.DOC_PDF_KEY,
-          Date.now(),
-          undefined,
-          format,
-        ),
+        headers: {
+          ...pdfRequestHeaders(
+            html,
+            env.DOC_PDF_KEY,
+            Date.now(),
+            undefined,
+            format,
+          ),
+          "content-type":
+            format === "latex"
+              ? "text/plain; charset=utf-8"
+              : "text/html; charset=utf-8",
+        },
         body: html,
         redirect: "error",
         signal: controller.signal,
@@ -59,7 +74,7 @@ async function exportRenderedDocument(
       !response.ok ||
       !response.headers
         .get("content-type")
-        ?.startsWith(format === "pdf" ? "application/pdf" : "text/html") ||
+        ?.startsWith(format !== "html" ? "application/pdf" : "text/html") ||
       !response.body
     )
       throw new Error("PDF renderer failed.");
@@ -71,7 +86,7 @@ async function exportRenderedDocument(
         const next = await reader.read();
         if (next.done) break;
         bytes += next.value.byteLength;
-        if (bytes > (format === "pdf" ? 24 : 20) * 1024 * 1024)
+        if (bytes > (format !== "html" ? 24 : 20) * 1024 * 1024)
           throw new Error("PDF result is too large.");
         chunks.push(Buffer.from(next.value));
       }
@@ -80,7 +95,7 @@ async function exportRenderedDocument(
     }
     const pdf = Buffer.concat(chunks, bytes);
     if (
-      format === "pdf"
+      format !== "html"
         ? pdf.subarray(0, 5).toString() !== "%PDF-"
         : !/^<!doctype html>/i.test(pdf.toString("utf8")) ||
           !pdf.toString("utf8").includes('http-equiv="Content-Security-Policy"')
@@ -88,7 +103,12 @@ async function exportRenderedDocument(
       throw new Error("Invalid document result.");
     return pdf;
   } catch {
-    fail(503, "Document rendering is unavailable. Try again shortly.");
+    fail(
+      503,
+      format === "latex"
+        ? "Couldn’t compile LaTeX. Check the source or try again shortly."
+        : "Document rendering is unavailable. Try again shortly.",
+    );
   } finally {
     clearTimeout(timer);
     request.raw.removeListener("aborted", abort);

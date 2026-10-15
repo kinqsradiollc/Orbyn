@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { ProjectChats } from "./ProjectChats";
 import { onLive } from "../../lib/live";
 import {
   Linking,
@@ -45,11 +46,14 @@ import { showToast } from "../../components/Toast";
 import { ProjectMilestones } from "./ProjectMilestones";
 import { copyLink, shareLink } from "../../lib/share";
 import { SmallAction } from "../../components/SmallAction";
-import { confirmAction } from "../../lib/confirm";
+import { InlineDetails } from "../../components/InlineDetails";
 import { Icon } from "../../components/Icon";
 import { ProposalReview } from "../../components/ProposalReview";
 import { Sheet, sheetStyles } from "../../components/Sheet";
 import { client } from "../../lib/api";
+import * as Crypto from "expo-crypto";
+import { session } from "../../lib/session";
+import { ChoicePicker } from "../../components/ChoicePicker";
 import { useRun } from "../../hooks/useRun";
 import { ProjectNotes } from "./ProjectNotes";
 import { TemplatesPanel } from "./TemplatesPanel";
@@ -58,7 +62,7 @@ import { ProjectRecords } from "./ProjectRecords";
 import { ProjectTimeMachine } from "./ProjectTimeMachine";
 import { useImports } from "./Uploads";
 import { PromiseTracker } from "./PromiseTracker";
-import { colors, fonts, radii, themed } from "../../theme";
+import { colors, fonts, inputFontSize, radii, themed } from "../../theme";
 import { errorText } from "../../lib/errors";
 import { tap } from "../../lib/haptics";
 import { LinkedHere } from "./links";
@@ -97,7 +101,35 @@ const dueLabel = (iso: string | null) =>
  * in each. Moving a task between stages stays on the desktop, where there is
  * room for a board.
  */
-export function ProjectsSheet({
+export function ProjectsSheet(
+  props: React.ComponentProps<typeof ProjectsBody>,
+) {
+  return (
+    <ProjectsBody key={`${session.token}:${props.userId ?? ""}`} {...props} />
+  );
+}
+/** Related resources follow the content owner, even before effects settle. */
+function useProjectState<T>(id: string | undefined, initial: T) {
+  const empty = useRef(initial).current;
+  const latest = useRef(id);
+  latest.current = id;
+  const [receipt, setReceipt] = useState({ id, value: empty });
+  const value = receipt.id === id ? receipt.value : empty;
+  const setValue: React.Dispatch<React.SetStateAction<T>> = (next) => {
+    if (latest.current !== id) return;
+    setReceipt((previous) => ({
+      id,
+      value:
+        typeof next === "function"
+          ? (next as (value: T) => T)(
+              previous.id === id ? previous.value : empty,
+            )
+          : next,
+    }));
+  };
+  return [value, setValue] as const;
+}
+function ProjectsBody({
   visible,
   items,
   teams = [],
@@ -110,10 +142,11 @@ export function ProjectsSheet({
   userId,
   onClose,
   onDismiss,
-  onOpenItem,
-  onOpenNote,
-  onOpenPlanner,
-  onAskProject,
+  beforeLeave,
+  onOpenItem: openItem,
+  onOpenNote: openNote,
+  onOpenPlanner: openPlanner,
+  onAskProject: askProject,
   onItemsChanged,
   startNew = false,
   openProject = null,
@@ -138,12 +171,13 @@ export function ProjectsSheet({
   canWriteIn: (teamId: string | null) => boolean;
   userId?: string;
   onClose: () => void;
+  beforeLeave?: React.MutableRefObject<(() => Promise<boolean>) | null>;
   onDismiss?: () => void;
   onOpenItem?: (item: Item) => void;
   /** Opens one of a project's notes, in the page editor. */
   onOpenNote?: (docId: string, blockId?: string | null) => void;
   onOpenPlanner: (plan: Plan, title: string) => void;
-  onAskProject?: (project: Project, question?: string) => void;
+  onAskProject?: (project: Project, question?: string, chatId?: string) => void;
   /** Called when a task moved, so the planner's lists catch up. */
   onItemsChanged?: () => void;
 }) {
@@ -152,6 +186,8 @@ export function ProjectsSheet({
   const [libraryQuery, setLibraryQuery] = useState("");
   const visibleProjects = searchProjects(projects ?? [], libraryQuery);
   const [open, setOpen] = useState<Project | null>(null);
+  const [chatsOpen, setChatsOpen] = useState(false);
+  useEffect(() => setChatsOpen(false), [open?.id, visible]);
   /** A project card held down: its menu (MOB-07). */
   const [heldProject, setHeldProject] = useState<Project | null>(null);
   // Opened: it leads the search's recent list, and ⌘K's on the web.
@@ -187,17 +223,74 @@ export function ProjectsSheet({
       live = false;
     };
   }, []);
-  const [planning, setPlanning] = useState<ProjectPlanning | null>(null);
-  const [sessions, setSessions] = useState<ProjectSession[]>([]);
-  const [homeNotes, setHomeNotes] = useState<DocSummary[]>([]);
-  const [homeRecords, setHomeRecords] = useState<WorkRecord[]>([]);
-  const [homeLinks, setHomeLinks] = useState<ProjectLink[]>([]);
+  const [planning, setPlanning] = useProjectState<ProjectPlanning | null>(
+    open?.id,
+    null,
+  );
+  type Resource = "planning" | "sessions" | "home" | "history";
+  type Phase = "idle" | "loading" | "ready" | "failed";
+  const [readPhase, setReadPhase] = useProjectState<Record<Resource, Phase>>(
+    open?.id,
+    { planning: "idle", sessions: "idle", home: "idle", history: "idle" },
+  );
+  const [readRetry, setReadRetry] = useProjectState<Record<Resource, number>>(
+    open?.id,
+    { planning: 0, sessions: 0, home: 0, history: 0 },
+  );
+  const markRead = (kind: Resource, phase: Phase) =>
+    setReadPhase((previous) => ({ ...previous, [kind]: phase }));
+  const resourceState = (kind: Resource) => {
+    const label = {
+      planning: "project planning",
+      sessions: "sessions",
+      home: "pages, files and links",
+      history: "project history",
+    }[kind];
+    if (readPhase[kind] === "ready") return null;
+    if (readPhase[kind] === "failed")
+      return (
+        <View>
+          <Text accessibilityRole="alert" style={styles.meta}>
+            Couldn’t load {label}.
+          </Text>
+          <Button
+            title={`Retry ${label}`}
+            secondary
+            disabled={busy}
+            onPress={() =>
+              setReadRetry((previous) => ({
+                ...previous,
+                [kind]: previous[kind] + 1,
+              }))
+            }
+          />
+        </View>
+      );
+    return <Text style={styles.meta}>Loading {label}…</Text>;
+  };
+  const [sessions, setSessions] = useProjectState<ProjectSession[]>(
+    open?.id,
+    [],
+  );
+  const [homeNotes, setHomeNotes] = useProjectState<DocSummary[]>(open?.id, []);
+  const [homeRecords, setHomeRecords] = useProjectState<WorkRecord[]>(
+    open?.id,
+    [],
+  );
+  const [homeLinks, setHomeLinks] = useProjectState<ProjectLink[]>(
+    open?.id,
+    [],
+  );
   const [linkUrl, setLinkUrl] = useState("");
   const [linkTitle, setLinkTitle] = useState("");
   const [addingLink, setAddingLink] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchRecords, setSearchRecords] = useState<SearchHit[]>([]);
+  const [searchState, setSearchState] = useState<
+    "idle" | "loading" | "ready" | "failed"
+  >("idle");
+  const [searchRetry, setSearchRetry] = useState(0);
   useEffect(() => {
     setSearchQuery("");
     setSearchHits([]);
@@ -225,22 +318,220 @@ export function ProjectsSheet({
   }, [openTemplate, visible]);
   useEffect(() => {
     if (!visible || !initialProjectId) return;
+    const request = ++navigationRead.current;
+    let live = true;
     void client.getProject(initialProjectId).then(
       (project) => {
+        if (!live || !owns() || request !== navigationRead.current) return;
         setSection(initialSection ?? "home");
         setFocusSourceId(initialSourceId);
         setOpen(project);
         onInitialProjectShown?.();
       },
-      (e) => setError(errorText(e)),
+      (e) => {
+        if (live && owns() && request === navigationRead.current)
+          setError(errorText(e));
+      },
     );
+    return () => {
+      live = false;
+    };
   }, [visible, initialProjectId, initialSection, initialSourceId]);
   const [projectPrompt, setProjectPrompt] = useState("");
   const [projectProposal, setProjectProposal] = useState<Proposal | null>(null);
   const [proposalState, setProposalState] = useState<"pending" | "applied">(
     "pending",
   );
-  const { busy, error, setError, run } = useRun();
+  const { busy, error, setError, run: execute } = useRun();
+  const mounted = useRef(false);
+  const owner = useRef(session.token);
+  const shown = useRef(visible);
+  shown.current = visible;
+  const activeProject = useRef(open?.id);
+  activeProject.current = open?.id;
+  const lock = useRef(false);
+  const fieldState = useRef<{
+    id: string | undefined;
+    dirty: boolean;
+    pending: boolean;
+  }>({ id: undefined, dirty: false, pending: false });
+  const [fieldStateShown, setFieldStateShown] = useState(fieldState.current);
+  const [fieldDiscard, setFieldDiscard] = useState(0);
+  const fieldsPending =
+    fieldStateShown.id === open?.id && fieldStateShown.pending;
+  const fieldsDirty = () =>
+    fieldState.current.id === open?.id && fieldState.current.dirty;
+  const checkFields = () => {
+    if (fieldState.current.id === open?.id && fieldState.current.pending) {
+      setError("Finish or cancel the field edit before leaving.");
+      return false;
+    }
+    return true;
+  };
+  const navigationRead = useRef(0);
+  const projectRead = useRef(0);
+  const requests = useRef(new Map<string, string>());
+  const briefReceipts = useRef(
+    new Map<string, Awaited<ReturnType<typeof client.createDoc>>>(),
+  );
+  const owns = () =>
+    mounted.current && shown.current && owner.current === session.token;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      navigationRead.current++;
+      projectRead.current++;
+    };
+  }, []);
+  const run = async <T,>(
+    operation: () => Promise<T>,
+  ): Promise<T | undefined> => {
+    if (lock.current || !owns()) return undefined;
+    lock.current = true;
+    navigationRead.current++;
+    try {
+      return await execute(operation);
+    } finally {
+      lock.current = false;
+    }
+  };
+  const [projectConfirm, setProjectConfirm] = useState<{
+    projectId: string | undefined;
+    title: string;
+    message: string;
+    label: string;
+    destructive: boolean;
+    action: () => void;
+  } | null>(null);
+  const confirmAction = (
+    title: string,
+    message: string,
+    label: string,
+    action: () => void,
+    destructive = true,
+  ) => {
+    if (owns() && !lock.current)
+      setProjectConfirm({
+        projectId: open?.id,
+        title,
+        message,
+        label,
+        destructive,
+        action,
+      });
+  };
+  const departureWait = useRef<((allowed: boolean) => void) | null>(null);
+  const [leave, setLeave] = useState<{
+    projectId: string | undefined;
+    next: () => void;
+    fieldsOnly?: boolean;
+  } | null>(null);
+  const hasDraft = () =>
+    fieldsDirty() ||
+    (draft !== null && draft !== (open?.name ?? "")) ||
+    !!newSummary.trim() ||
+    !!newDue ||
+    !!newTeam ||
+    (summaryDraft !== null && summaryDraft !== open?.summary) ||
+    !!stageDraft?.name.trim() ||
+    !!linkUrl.trim() ||
+    !!linkTitle.trim() ||
+    (aiDraftOpen &&
+      proposalState !== "applied" &&
+      (!!projectPrompt.trim() || !!projectProposal));
+  const depart = (next: () => void) => {
+    if (lock.current || !owns() || !checkFields() || departureWait.current)
+      return;
+    if (hasDraft()) setLeave({ projectId: open?.id, next });
+    else next();
+  };
+  const prepareDeparture = useRef<() => Promise<boolean>>(async () => false);
+  prepareDeparture.current = async () => {
+    if (
+      lock.current ||
+      !owns() ||
+      !checkFields() ||
+      leave ||
+      departureWait.current
+    )
+      return false;
+    if (!hasDraft()) return true;
+    return new Promise<boolean>((resolve) => {
+      departureWait.current = resolve;
+      setLeave({
+        projectId: open?.id,
+        next: () => {
+          departureWait.current = null;
+          resolve(true);
+        },
+      });
+    });
+  };
+  useEffect(() => {
+    if (!beforeLeave || !visible) return;
+    const projectId = open?.id;
+    const guard = () =>
+      activeProject.current === projectId
+        ? prepareDeparture.current()
+        : Promise.resolve(false);
+    beforeLeave.current = guard;
+    return () => {
+      if (beforeLeave.current === guard) beforeLeave.current = null;
+      departureWait.current?.(false);
+      departureWait.current = null;
+    };
+  }, [beforeLeave, visible, open?.id]);
+  const changeSection = (next: typeof section) => {
+    if (
+      section === next ||
+      lock.current ||
+      !owns() ||
+      !checkFields() ||
+      departureWait.current
+    )
+      return;
+    if (fieldsDirty())
+      setLeave({
+        projectId: open?.id,
+        fieldsOnly: true,
+        next: () => setSection(next),
+      });
+    else setSection(next);
+  };
+  const onOpenItem = openItem
+    ? (item: Item) => {
+        if (owns() && !lock.current) depart(() => openItem(item));
+      }
+    : undefined;
+  const onOpenNote = openNote
+    ? (id: string, blockId?: string | null, confirmed = false) => {
+        if (!owns() || (lock.current && !confirmed)) return;
+        if (confirmed) {
+          if (!checkFields() || fieldsDirty()) {
+            setError("Save or discard field changes before opening the page.");
+            return;
+          }
+          openNote(id, blockId);
+        } else depart(() => openNote(id, blockId));
+      }
+    : undefined;
+  const onOpenPlanner = (plan: Plan, title: string, confirmed = false) => {
+    if (!owns() || (lock.current && !confirmed)) return;
+    if (confirmed) {
+      if (!checkFields() || fieldsDirty()) {
+        setError("Save or discard field changes before opening the planner.");
+        return;
+      }
+      openPlanner(plan, title);
+    } else depart(() => openPlanner(plan, title));
+  };
+  const onAskProject = askProject
+    ? (project: Project, question?: string, chatId?: string) => {
+        if (owns() && !lock.current)
+          depart(() => askProject(project, question, chatId));
+      }
+    : undefined;
   const projectImports = useImports(
     setError,
     () => {
@@ -258,18 +549,25 @@ export function ProjectsSheet({
     if (!visible || !open || section !== "history") return;
     let active = true;
     setActivity(null);
+    markRead("history", "loading");
     void client
       .projectActivity(open.id)
       .then((rows) => {
-        if (active) setActivity(rows);
+        if (active && owns()) {
+          setActivity(rows);
+          markRead("history", "ready");
+        }
       })
       .catch((e: Error) => {
-        if (active) setError(errorText(e));
+        if (active && owns()) {
+          markRead("history", "failed");
+          setError(errorText(e));
+        }
       });
     return () => {
       active = false;
     };
-  }, [visible, open?.id, section, setError]);
+  }, [visible, open?.id, section, readRetry.history, setError]);
 
   useEffect(() => {
     if (!visible || !open) return;
@@ -304,39 +602,54 @@ export function ProjectsSheet({
     if (!visible || !open) return;
     let active = true;
     setPlanning(null);
+    markRead("planning", "loading");
     void client.projectPlanning(open.id).then(
       (summary) => {
-        if (active) setPlanning(summary);
+        if (active && owns()) {
+          setPlanning(summary);
+          markRead("planning", "ready");
+        }
       },
       (reason: Error) => {
-        if (active) setError(errorText(reason));
+        if (active && owns()) {
+          markRead("planning", "failed");
+          setError(errorText(reason));
+        }
       },
     );
     return () => {
       active = false;
     };
-  }, [visible, open?.id, open?.deadline, items, setError]);
+  }, [visible, open?.id, open?.deadline, items, readRetry.planning, setError]);
 
   useEffect(() => {
     if (!visible || !open || (section !== "timeline" && section !== "home"))
       return;
     let active = true;
+    markRead("sessions", "loading");
     void client.projectSessions(open.id).then(
       (rows) => {
-        if (active) setSessions(rows);
+        if (active && owns()) {
+          setSessions(rows);
+          markRead("sessions", "ready");
+        }
       },
       (reason: Error) => {
-        if (active) setError(errorText(reason));
+        if (active && owns()) {
+          markRead("sessions", "failed");
+          setError(errorText(reason));
+        }
       },
     );
     return () => {
       active = false;
     };
-  }, [visible, open?.id, section, items, setError]);
+  }, [visible, open?.id, section, items, readRetry.sessions, setError]);
 
   useEffect(() => {
     if (!visible || !open || section !== "home") return;
     let active = true;
+    markRead("home", "loading");
     setHomeNotes([]);
     setHomeRecords([]);
     setHomeLinks([]);
@@ -346,36 +659,43 @@ export function ProjectsSheet({
       client.listProjectLinks(open.id),
     ]).then(
       ([notes, records, links]) => {
-        if (active) {
+        if (active && owns()) {
+          markRead("home", "ready");
           setHomeNotes(notes);
           setHomeRecords(records);
           setHomeLinks(links);
         }
       },
       (reason: Error) => {
-        if (active) setError(errorText(reason));
+        if (active && owns()) {
+          markRead("home", "failed");
+          setError(errorText(reason));
+        }
       },
     );
     return () => {
       active = false;
     };
-  }, [visible, open?.id, section, setError]);
+  }, [visible, open?.id, section, readRetry.home, setError]);
 
   useEffect(() => {
     const q = searchQuery.trim();
     if (!visible || !open || q.length < 2) {
       setSearchHits([]);
       setSearchRecords([]);
+      setSearchState("idle");
       return;
     }
     setSearchHits([]);
     setSearchRecords([]);
+    setSearchState("loading");
     let active = true;
     const timer = setTimeout(() => {
       // One server search: pages, tasks and the project's decisions.
       void client.search(q, { project: open.id, limit: 30 }).then(
         (hits) => {
-          if (!active) return;
+          if (!active || !owns()) return;
+          setSearchState("ready");
           setSearchHits(hits.filter((hit) => hit.type !== "record"));
           setSearchRecords(
             hits.filter(
@@ -384,7 +704,10 @@ export function ProjectsSheet({
           );
         },
         (reason: Error) => {
-          if (active) setError(errorText(reason));
+          if (active && owns()) {
+            setSearchState("failed");
+            setError(errorText(reason));
+          }
         },
       );
     }, 180);
@@ -392,7 +715,7 @@ export function ProjectsSheet({
       active = false;
       clearTimeout(timer);
     };
-  }, [visible, open?.id, searchQuery, setError]);
+  }, [visible, open?.id, searchQuery, searchRetry, setError]);
 
   /** True when the list could not be read, which is not the same as empty. */
   const [failed, setFailed] = useState(false);
@@ -411,42 +734,86 @@ export function ProjectsSheet({
 
   /** Save a patch to the open project and keep the list in step. */
   const save = (patch: Parameters<typeof client.updateProject>[1]) =>
-    void run(async () => {
+    run(async () => {
       if (!open || !canWriteIn(open.team_id)) return;
-      setOpen(await client.updateProject(open.id, patch));
+      const projectId = open.id;
+      const saved = await client.updateProject(projectId, patch);
+      if (!owns() || activeProject.current !== projectId) return;
+      setOpen(saved);
       await reload();
+      return saved;
     });
 
   const createProjectPage = (asBrief: boolean) =>
     void run(async () => {
       if (!open || !onOpenNote || !canWriteIn(open.team_id)) return;
-      const doc = await client.createDoc({
+      const input = {
         title: asBrief ? `${open.name} brief` : "",
-        kind: "note",
+        kind: "note" as const,
         project_id: open.id,
         team_id: open.team_id,
-        content: [{ type: "paragraph", text: "" }],
-      });
+        content: [{ type: "paragraph" as const, text: "" }],
+      };
+      const requestKey = JSON.stringify(["project-page", input]);
+      let requestId = requests.current.get(requestKey);
+      if (!requestId) {
+        requestId = Crypto.randomUUID();
+        requests.current.set(requestKey, requestId);
+      }
+      const doc =
+        (asBrief ? briefReceipts.current.get(open.id) : null) ??
+        (await client.once(requestId, () => client.createDoc(input)));
+      if (asBrief) briefReceipts.current.set(open.id, doc);
+      else requests.current.delete(requestKey);
+      if (!owns() || activeProject.current !== open.id) return;
+      const summary: DocSummary = { ...doc, preview: "" };
+      setHomeNotes((rows) => [
+        summary,
+        ...rows.filter((row) => row.id !== doc.id),
+      ]);
       if (asBrief) {
-        setOpen(await client.updateProject(open.id, { doc_id: doc.id }));
+        const saved = await client.updateProject(open.id, { doc_id: doc.id });
+        if (!owns() || activeProject.current !== open.id) return;
+        setOpen(saved);
+        briefReceipts.current.delete(open.id);
+        requests.current.delete(requestKey);
         await reload();
       } else {
         setHomeNotes(await client.listDocs({ project: open.id }));
       }
-      onOpenNote(doc.id);
+      if (owns()) onOpenNote(doc.id, null, true);
     });
 
   const saveProjectLink = () =>
     void run(async () => {
       if (!open || !canWriteIn(open.team_id) || !linkUrl.trim()) return;
-      await client.addProjectLink(open.id, {
-        url: linkUrl.trim(),
-        title: linkTitle.trim(),
-      });
-      setHomeLinks(await client.listProjectLinks(open.id));
-      setLinkUrl("");
-      setLinkTitle("");
+      const projectId = open.id;
+      const url = linkUrl,
+        title = linkTitle;
+      const input = { url: url.trim(), title: title.trim() };
+      const key = JSON.stringify([projectId, input]);
+      let requestId = requests.current.get(key);
+      if (!requestId) {
+        requestId = Crypto.randomUUID();
+        requests.current.set(key, requestId);
+      }
+      const saved = await client.once(requestId, () =>
+        client.addProjectLink(projectId, input),
+      );
+      if (!owns() || activeProject.current !== projectId) return;
+      setHomeLinks((rows) => [
+        ...rows.filter((row) => row.id !== saved.id),
+        saved,
+      ]);
+      setLinkUrl((value) => (value === url ? "" : value));
+      setLinkTitle((value) => (value === title ? "" : value));
       setAddingLink(false);
+      try {
+        const rows = await client.listProjectLinks(projectId);
+        if (owns() && activeProject.current === projectId) setHomeLinks(rows);
+      } catch {
+        if (owns()) setError("Link saved. Couldn’t refresh project links.");
+      }
     });
 
   const removeProjectLink = (linkId: string) =>
@@ -519,7 +886,7 @@ export function ProjectsSheet({
   ];
   const openSearchHit = (hit: SearchHit) => {
     if (hit.type === "doc") onOpenNote?.(hit.id, hit.block_id);
-    else if (hit.type === "record") setSection("decisions");
+    else if (hit.type === "record") changeSection("decisions");
     else {
       const item = items.find((task) => task.id === hit.id);
       if (item) onOpenItem?.(item);
@@ -562,15 +929,20 @@ export function ProjectsSheet({
   /** Add a stage, or rename the one being edited. */
   const saveStage = () => {
     const name = (stageDraft?.name ?? "").trim();
-    if (!open || !name) return setStageDraft(null);
+    if (!open || !stageDraft) return;
+    if (!name) return setError("Give the stage a name.");
     const id = stageDraft?.id ?? null;
-    save({
+    void save({
       stages:
         id === null
           ? [...stagesOf(open), { name }]
           : stagesOf(open).map((st) => (st.id === id ? { ...st, name } : st)),
+    }).then((saved) => {
+      if (saved && owns())
+        setStageDraft((value) =>
+          value?.id === id && value.name.trim() === name ? null : value,
+        );
     });
-    setStageDraft(null);
   };
 
   const removeStage = (stage: { id: string; name: string }) => {
@@ -613,18 +985,22 @@ export function ProjectsSheet({
    * "no projects yet" when the network hiccuped tells someone their work
    * has gone.
    */
-  const reload = () =>
-    client.listProjects().then(
-      (list) => {
-        setProjects(list);
-        setFailed(false);
-      },
-      (e: Error) => {
-        setProjects(null);
+  const reload = async () => {
+    const request = ++projectRead.current;
+    try {
+      const list = await client.listProjects();
+      if (!owns() || request !== projectRead.current) return false;
+      setProjects(list);
+      setFailed(false);
+      return true;
+    } catch (e) {
+      if (owns() && request === projectRead.current) {
         setFailed(true);
         setError(errorText(e));
-      },
-    );
+      }
+      return false;
+    }
+  };
 
   // Projects changed elsewhere (another device, a teammate, a connected
   // agent) while this is open: read them again, once for a burst.
@@ -655,7 +1031,11 @@ export function ProjectsSheet({
     const name = (draft ?? "").trim();
     if (!name) return;
     void run(async () => {
-      const made = await client.createProject({
+      if (newTeam && !canWriteIn(newTeam)) {
+        setError("Choose a space you can edit.");
+        return;
+      }
+      const input = {
         name,
         summary: newSummary.trim(),
         team_id: newTeam,
@@ -663,14 +1043,25 @@ export function ProjectsSheet({
         deadline: newDue
           ? projectDeadlineAt(newDue, null, deviceTimeZone())
           : null,
-      });
+      };
+      const key = JSON.stringify(input);
+      let requestId = requests.current.get(key);
+      if (!requestId) {
+        requestId = Crypto.randomUUID();
+        requests.current.set(key, requestId);
+      }
+      const made = await client.once(requestId, () =>
+        client.createProject(input),
+      );
+      if (!owns()) return;
+      setOpen(made);
+      setSection("home");
       setDraft(null);
       setNewSummary("");
       setNewTeam(null);
       setNewDue(null);
-      await reload();
-      setOpen(made);
-      setSection("home");
+      if (!(await reload()) && owns())
+        setError("Project created. Couldn’t refresh projects.");
     });
   };
 
@@ -681,6 +1072,7 @@ export function ProjectsSheet({
     <View style={styles.newForm}>
       <TextInput
         style={styles.nameInput}
+        editable={!busy}
         value={draft ?? ""}
         autoFocus
         maxLength={120}
@@ -691,6 +1083,7 @@ export function ProjectsSheet({
       />
       <TextInput
         style={[styles.nameInput, styles.summaryInput]}
+        editable={!busy}
         value={newSummary}
         multiline
         maxLength={2000}
@@ -699,25 +1092,22 @@ export function ProjectsSheet({
         accessibilityLabel="What the project is for"
         onChangeText={setNewSummary}
       />
-      {writableTeams.length > 0 && (
-        <ChipRow label="Whose project">
-          <Chip
-            label="Just me"
-            selected={newTeam === null}
-            onPress={() => setNewTeam(null)}
-          />
-          {writableTeams.map((t) => (
-            <Chip
-              key={t.id}
-              label={t.name}
-              selected={newTeam === t.id}
-              onPress={() => setNewTeam(t.id)}
-            />
-          ))}
-        </ChipRow>
-      )}
+      <ChoicePicker
+        label="Project space"
+        value={newTeam ?? "personal"}
+        disabled={busy}
+        options={[
+          { value: "personal", label: "Personal" },
+          ...writableTeams.map((team) => ({
+            value: team.id,
+            label: team.name,
+          })),
+        ]}
+        onChange={(value) => setNewTeam(value === "personal" ? null : value)}
+      />
       <DateField
         label="Deadline"
+        disabled={busy}
         value={newDue}
         clearable
         placeholder="No deadline (optional)"
@@ -729,7 +1119,14 @@ export function ProjectsSheet({
           secondary
           disabled={busy}
           style={styles.createHalf}
-          onPress={() => setDraft(null)}
+          onPress={() =>
+            depart(() => {
+              setDraft(null);
+              setNewSummary("");
+              setNewTeam(null);
+              setNewDue(null);
+            })
+          }
         />
         <Button
           title="Create project"
@@ -765,11 +1162,12 @@ export function ProjectsSheet({
   };
 
   const applyAiDraft = (giveTasksDeadlines = true) => {
-    if (!projectProposal || busy) return;
+    if (!projectProposal || proposalState === "applied" || busy) return;
     void run(async () => {
       const { project_id } = await client.applyProposal(projectProposal.id, {
         give_tasks_deadlines: giveTasksDeadlines,
       });
+      if (!owns()) return;
       setProposalState("applied");
       await reload();
       onItemsChanged?.();
@@ -777,7 +1175,7 @@ export function ProjectsSheet({
       const made = project_id
         ? await client.getProject(project_id).catch(() => null)
         : null;
-      if (made) setOpen(made);
+      if (made && owns()) setOpen(made);
     });
   };
 
@@ -787,6 +1185,7 @@ export function ProjectsSheet({
       return setDraft(null);
     void run(async () => {
       const saved = await client.updateProject(open.id, { name });
+      if (!owns() || activeProject.current !== open.id) return;
       setOpen(saved);
       setDraft(null);
       await reload();
@@ -802,10 +1201,12 @@ export function ProjectsSheet({
       : p.user_id === userId;
 
   const keepOut = (off: boolean) => {
-    if (!open) return;
+    if (!open || !canManageAi(open)) return;
     const go = () =>
       void run(async () => {
-        setOpen(await client.setProjectAssistant(open.id, off));
+        const saved = await client.setProjectAssistant(open.id, off);
+        if (!owns() || activeProject.current !== open.id) return;
+        setOpen(saved);
         await reload();
       });
     if (!off) return go();
@@ -827,6 +1228,7 @@ export function ProjectsSheet({
       () =>
         void run(async () => {
           await client.deleteProject(open.id);
+          if (!owns() || activeProject.current !== open.id) return;
           setOpen(null);
           await reload();
         }),
@@ -876,32 +1278,26 @@ export function ProjectsSheet({
   // One full-width way in, and the two quicker starts side by side: the
   // same on an empty list as above a full one.
   const createButtons = (
-    <View style={styles.createActions}>
+    <View style={styles.createMore}>
       <Button
         title="New project"
         icon="plus"
         disabled={busy}
-        style={styles.createButtonFull}
+        style={styles.createHalf}
         onPress={() => setDraft("")}
       />
-      <View style={styles.createMore}>
-        <Button
-          title="Draft with AI"
-          secondary
-          icon="sparkles"
-          disabled={busy}
-          style={styles.createHalf}
-          onPress={startAiDraft}
-        />
-        <Button
-          title="Template"
-          secondary
-          icon="layoutGrid"
-          disabled={busy}
-          style={styles.createHalf}
-          onPress={() => setTemplatesOpen(true)}
-        />
-      </View>
+      <MoreMenu
+        label="New project options"
+        disabled={busy}
+        actions={[
+          { label: "Draft with AI", icon: "sparkles", onPress: startAiDraft },
+          {
+            label: "Use a template",
+            icon: "layoutGrid",
+            onPress: () => setTemplatesOpen(true),
+          },
+        ]}
+      />
     </View>
   );
   return (
@@ -909,25 +1305,49 @@ export function ProjectsSheet({
       visible={visible}
       title={
         open
-          ? open.name
-          : aiDraftOpen
-            ? "Draft a project"
-            : templatesOpen
-              ? "Templates"
-              : "Projects"
+          ? "Project"
+          : draft !== null
+            ? "New project"
+            : aiDraftOpen
+              ? "Draft a project"
+              : templatesOpen
+                ? "Templates"
+                : "Projects"
       }
-      onClose={onClose}
+      guardedClose
+      closeDisabled={busy || fieldsPending}
+      onClose={() => depart(onClose)}
       onBack={
         open
-          ? () => setOpen(null)
+          ? () =>
+              depart(() => {
+                setOpen(null);
+                setDraft(null);
+                setSummaryDraft(null);
+                setStageDraft(null);
+                setAddingLink(false);
+                setLinkUrl("");
+                setLinkTitle("");
+              })
           : aiDraftOpen
-            ? () => setAiDraftOpen(false)
+            ? () => depart(() => setAiDraftOpen(false))
             : templatesOpen
               ? () => setTemplatesOpen(false)
               : undefined
       }
       onDismiss={onDismiss}
     >
+      {chatsOpen && open && onAskProject && (
+        <ProjectChats
+          key={open.id}
+          projectId={open.id}
+          onClose={() => setChatsOpen(false)}
+          onOpen={(id) => {
+            setChatsOpen(false);
+            onAskProject(open, undefined, id);
+          }}
+        />
+      )}
       <ScrollView
         contentContainerStyle={sheet.body}
         keyboardShouldPersistTaps="handled"
@@ -935,7 +1355,15 @@ export function ProjectsSheet({
       >
         <View style={sheet.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
-          {!open && !aiDraftOpen && !templatesOpen && (
+          {failed && projects !== null && !open && draft === null && (
+            <Button
+              title="Retry projects"
+              secondary
+              disabled={busy}
+              onPress={() => void reload()}
+            />
+          )}
+          {!open && !aiDraftOpen && !templatesOpen && draft === null && (
             <PromiseTracker
               userId={userId}
               canWriteIn={canWriteIn}
@@ -968,10 +1396,9 @@ export function ProjectsSheet({
                   <Icon name="sparkles" size={19} color={colors.accent} />
                 </View>
                 <View style={styles.aiHeadingText}>
-                  <Text style={styles.aiTitle}>Shape your project</Text>
+                  <Text style={styles.aiTitle}>Project brief</Text>
                   <Text style={styles.aiDescription}>
-                    Describe the goal and any deadline. Review the tasks and
-                    schedule before creating it.
+                    Review the draft before creating tasks.
                   </Text>
                 </View>
               </View>
@@ -979,12 +1406,13 @@ export function ProjectsSheet({
                 <>
                   <TextInput
                     style={styles.promptInput}
+                    editable={!busy}
                     value={projectPrompt}
                     onChangeText={setProjectPrompt}
                     multiline
                     autoFocus
                     maxLength={4000}
-                    placeholder="What are you working toward?"
+                    placeholder="Goal, deadline and requirements"
                     placeholderTextColor={colors.faint}
                     textAlignVertical="top"
                     accessibilityLabel="Describe your project"
@@ -1004,7 +1432,9 @@ export function ProjectsSheet({
                     busy={busy}
                     state={proposalState}
                     onApprove={applyAiDraft}
-                    onDiscard={() => setProjectProposal(null)}
+                    onDiscard={() => {
+                      if (!lock.current && owns()) setProjectProposal(null);
+                    }}
                   />
                   {proposalState === "applied" && (
                     <Button
@@ -1119,6 +1549,7 @@ export function ProjectsSheet({
               ) : (
                 <TextInput
                   style={styles.nameInput}
+                  editable={!busy}
                   value={draft}
                   autoFocus
                   maxLength={120}
@@ -1139,14 +1570,13 @@ export function ProjectsSheet({
                   />
                 </View>
               )}
-              {!!open.summary && (
-                <Text style={styles.summary}>{open.summary}</Text>
-              )}
+
               {summaryDraft !== null && (
                 <View style={styles.homeSection}>
                   <Text style={styles.reentryTitle}>Summary & brief</Text>
                   <TextInput
                     style={styles.summaryInput}
+                    editable={!busy}
                     value={summaryDraft}
                     multiline
                     maxLength={2000}
@@ -1159,8 +1589,15 @@ export function ProjectsSheet({
                       label="Save"
                       disabled={busy}
                       onPress={() => {
-                        save({ summary: summaryDraft.trim() });
-                        setSummaryDraft(null);
+                        const snapshot = summaryDraft;
+                        void save({ summary: snapshot.trim() }).then(
+                          (saved) => {
+                            if (saved && owns())
+                              setSummaryDraft((value) =>
+                                value === snapshot ? null : value,
+                              );
+                          },
+                        );
                       }}
                     />
                     <SmallAction
@@ -1183,6 +1620,7 @@ export function ProjectsSheet({
                 {open.done_count} of {open.task_count} done ·{" "}
                 {dueLabel(open.deadline)}
               </Text>
+              {resourceState("planning")}
               {planning && open.task_count > 0 && open.status === "active" && (
                 <View style={styles.planning}>
                   {(() => {
@@ -1290,9 +1728,14 @@ export function ProjectsSheet({
                                   deviceTimeZone(),
                                   claimed,
                                 );
+                                if (
+                                  !owns() ||
+                                  activeProject.current !== open.id
+                                )
+                                  return;
                                 setClaiming([]);
                                 if (claimed.length) onItemsChanged?.();
-                                onOpenPlanner(plan, `Plan ${open.name}`);
+                                onOpenPlanner(plan, `Plan ${open.name}`, true);
                               })
                             }
                           />
@@ -1322,7 +1765,7 @@ export function ProjectsSheet({
                   <SmallAction
                     label="View history"
                     disabled={busy}
-                    onPress={() => setSection("history")}
+                    onPress={() => changeSection("history")}
                   />
                   {onAskProject && assistant.enabled && reentry.total >= 2 && (
                     <View>
@@ -1352,45 +1795,57 @@ export function ProjectsSheet({
                   )}
                 </View>
               )}
-              {/* The desktop has a date field beside the progress bar; the
+              <InlineDetails title="Project details">
+                <Text style={styles.meta}>
+                  {open.deadline ? deadlineDay(open.deadline) : "No deadline"}
+                </Text>
+                <Text style={styles.meta}>
+                  {open.team_name ||
+                    (open.team_id
+                      ? teams.find((team) => team.id === open.team_id)?.name ||
+                        "Shared"
+                      : "Personal")}
+                </Text>
+                {/* The desktop has a date field beside the progress bar; the
                   phone only ever said what the deadline was. */}
-              {canWriteIn(open.team_id) && (
-                <>
-                  <DateField
-                    label="Deadline"
-                    clearable
-                    placeholder="No deadline"
-                    value={openDeadline?.day ?? null}
-                    onChange={(day) =>
-                      save({
-                        deadline: changeProjectDeadline(
-                          open.deadline,
-                          { day },
-                          deviceTimeZone(),
-                        ),
-                      })
-                    }
-                  />
-                  {/* 5 pm unless another time is picked. */}
-                  {openDeadline && (
-                    <ClockField
-                      label="Deadline time"
-                      value={openDeadline.clock}
+                {canWriteIn(open.team_id) && (
+                  <>
+                    <DateField
+                      label="Deadline"
                       disabled={busy}
-                      onChange={(clock) =>
+                      clearable
+                      placeholder="No deadline"
+                      value={openDeadline?.day ?? null}
+                      onChange={(day) =>
                         save({
                           deadline: changeProjectDeadline(
                             open.deadline,
-                            { clock },
+                            { day },
                             deviceTimeZone(),
                           ),
                         })
                       }
                     />
-                  )}
-                </>
-              )}
-
+                    {/* 5 pm unless another time is picked. */}
+                    {openDeadline && (
+                      <ClockField
+                        label="Deadline time"
+                        value={openDeadline.clock}
+                        disabled={busy}
+                        onChange={(clock) =>
+                          save({
+                            deadline: changeProjectDeadline(
+                              open.deadline,
+                              { clock },
+                              deviceTimeZone(),
+                            ),
+                          })
+                        }
+                      />
+                    )}
+                  </>
+                )}
+              </InlineDetails>
               <TextInput
                 style={styles.searchInput}
                 value={searchQuery}
@@ -1405,7 +1860,23 @@ export function ProjectsSheet({
               />
               {searchQuery.trim().length >= 2 && (
                 <View style={styles.searchResults}>
-                  {searchResults.length === 0 && (
+                  {searchState === "loading" && (
+                    <Text style={styles.meta}>Searching…</Text>
+                  )}
+                  {searchState === "failed" && (
+                    <View>
+                      <Text style={styles.meta}>
+                        Couldn’t search this project.
+                      </Text>
+                      <Button
+                        title="Retry search"
+                        secondary
+                        disabled={busy}
+                        onPress={() => setSearchRetry((value) => value + 1)}
+                      />
+                    </View>
+                  )}
+                  {searchState === "ready" && searchResults.length === 0 && (
                     <Text style={styles.meta}>No matches in this project.</Text>
                   )}
                   {searchTasks.length > 0 && (
@@ -1455,7 +1926,7 @@ export function ProjectsSheet({
                     : section
                 }
                 onChange={(next) =>
-                  setSection(next === "more" ? "decisions" : next)
+                  changeSection(next === "more" ? "decisions" : next)
                 }
               />
               {(section === "decisions" || section === "history") && (
@@ -1464,22 +1935,31 @@ export function ProjectsSheet({
                     compact
                     label="Decisions"
                     selected={section === "decisions"}
-                    onPress={() => setSection("decisions")}
+                    onPress={() => changeSection("decisions")}
                   />
                   <Chip
                     compact
                     label="History"
                     selected={section === "history"}
-                    onPress={() => setSection("history")}
+                    onPress={() => changeSection("history")}
                   />
                 </ChipRow>
               )}
               {onAskProject && !open.assistant_off && (
-                <SmallAction
-                  label={`Ask about ${open.name}`}
-                  disabled={busy}
-                  onPress={() => onAskProject(open)}
-                />
+                <View
+                  style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}
+                >
+                  <SmallAction
+                    label="New chat"
+                    disabled={busy}
+                    onPress={() => onAskProject(open)}
+                  />
+                  <SmallAction
+                    label="Chats"
+                    disabled={busy}
+                    onPress={() => setChatsOpen(true)}
+                  />
+                </View>
               )}
               {open.assistant_off && (
                 <Text style={styles.meta}>
@@ -1488,6 +1968,8 @@ export function ProjectsSheet({
               )}
               {section === "home" && (
                 <View style={styles.home}>
+                  {resourceState("home")}
+                  {resourceState("sessions")}
                   <ProjectMilestones
                     projectId={open.id}
                     items={items.filter((i) => i.project_id === open.id)}
@@ -1512,7 +1994,7 @@ export function ProjectsSheet({
                       <SmallAction
                         label="All tasks"
                         disabled={busy}
-                        onPress={() => setSection("tasks")}
+                        onPress={() => changeSection("tasks")}
                       />
                     </View>
                   )}
@@ -1602,6 +2084,7 @@ export function ProjectsSheet({
                         <View style={styles.homeSection}>
                           <TextInput
                             style={styles.nameInput}
+                            editable={!busy}
                             value={linkUrl}
                             onChangeText={setLinkUrl}
                             placeholder="https://…"
@@ -1613,6 +2096,7 @@ export function ProjectsSheet({
                           />
                           <TextInput
                             style={styles.nameInput}
+                            editable={!busy}
                             value={linkTitle}
                             onChangeText={setLinkTitle}
                             placeholder="Title (optional)"
@@ -1654,7 +2138,7 @@ export function ProjectsSheet({
                         <SmallAction
                           label="All pages & files"
                           disabled={busy}
-                          onPress={() => setSection("notes")}
+                          onPress={() => changeSection("notes")}
                         />
                       )}
                       {canWriteIn(open.team_id) && !!onOpenNote && (
@@ -1695,7 +2179,7 @@ export function ProjectsSheet({
                       <SmallAction
                         label="All decisions"
                         disabled={busy}
-                        onPress={() => setSection("decisions")}
+                        onPress={() => changeSection("decisions")}
                       />
                     </View>
                   )}
@@ -1705,26 +2189,39 @@ export function ProjectsSheet({
                     <View style={styles.homeSection}>
                       <Text style={styles.reentryTitle}>Also called</Text>
                       <AliasesField
+                        key={open.id}
                         aliases={open.aliases ?? []}
-                        canWrite={canWriteIn(open.team_id)}
+                        canWrite={canWriteIn(open.team_id) && !busy}
                         placeholder="Add another name, like COMP3100"
                         onSave={(aliases) =>
-                          client.updateProject(open.id, { aliases }).then(
-                            (next) => {
-                              setOpen(next);
+                          client
+                            .updateProject(open.id, { aliases })
+                            .then((next) => {
+                              if (owns())
+                                setOpen((current) =>
+                                  current?.id === next.id ? next : current,
+                                );
                               return next.aliases ?? aliases;
-                            },
-                            (e) => {
-                              setError(errorText(e as Error));
-                              return open.aliases ?? [];
-                            },
-                          )
+                            })
                         }
                       />
                     </View>
                   )}
                   {/* Your own fields on the project (ORG-02). */}
                   <FieldsSection
+                    key={`${open.id}:${fieldDiscard}`}
+                    onDraftState={(value) => {
+                      if (!owns() || activeProject.current !== open.id) return;
+                      const next = { id: open.id, ...value };
+                      fieldState.current = next;
+                      setFieldStateShown((previous) =>
+                        previous.id === next.id &&
+                        previous.dirty === next.dirty &&
+                        previous.pending === next.pending
+                          ? previous
+                          : next,
+                      );
+                    }}
                     target="project"
                     targetId={open.id}
                     revision={open.updated_at}
@@ -1752,13 +2249,17 @@ export function ProjectsSheet({
                 </View>
               )}
               {section === "timeline" && (
-                <ProjectTimeline
-                  project={open}
-                  tasks={items.filter((i) => i.project_id === open.id)}
-                  sessions={sessions}
-                  onOpenItem={(item) => onOpenItem?.(item)}
-                />
+                <View>{resourceState("sessions")}</View>
               )}
+              {section === "timeline" &&
+                (readPhase.sessions === "ready" || sessions.length > 0) && (
+                  <ProjectTimeline
+                    project={open}
+                    tasks={items.filter((i) => i.project_id === open.id)}
+                    sessions={sessions}
+                    onOpenItem={(item) => onOpenItem?.(item)}
+                  />
+                )}
 
               {section === "decisions" && (
                 <ProjectRecords
@@ -1779,7 +2280,7 @@ export function ProjectsSheet({
                   </Text>
                   <ProjectTimeMachine projectId={open.id} />
                   {activity === null ? (
-                    <Text style={styles.meta}>Loading project history…</Text>
+                    resourceState("history")
                   ) : activity.length === 0 ? (
                     <Text style={styles.meta}>
                       Changes will appear here as work on this project evolves.
@@ -1871,6 +2372,7 @@ export function ProjectsSheet({
                           {stageDraft?.id && stageDraft.id === stage.id ? (
                             <TextInput
                               style={styles.nameInput}
+                              editable={!busy}
                               value={stageDraft.name}
                               autoFocus
                               maxLength={80}
@@ -2047,6 +2549,7 @@ export function ProjectsSheet({
                     (stageDraft && stageDraft.id === null ? (
                       <TextInput
                         style={styles.nameInput}
+                        editable={!busy}
                         value={stageDraft.name}
                         autoFocus
                         maxLength={80}
@@ -2071,11 +2574,11 @@ export function ProjectsSheet({
                 </>
               )}
             </View>
-          ) : failed ? (
+          ) : draft !== null ? (
+            newProjectForm
+          ) : failed && projects === null ? (
             <View style={styles.list}>
-              <Text style={styles.empty}>
-                Your projects could not be reached. They are still there.
-              </Text>
+              <Text style={styles.empty}>Couldn’t load projects.</Text>
               <Button
                 title="Try again"
                 secondary
@@ -2129,6 +2632,8 @@ export function ProjectsSheet({
                 <Pressable
                   key={p.id}
                   accessibilityRole="button"
+                  disabled={busy}
+                  accessibilityState={{ disabled: busy }}
                   accessibilityLabel={`Open project ${p.name}`}
                   style={({ pressed }) => [
                     styles.card,
@@ -2188,6 +2693,92 @@ export function ProjectsSheet({
           )}
         </View>
       </ScrollView>
+      <ActionSheet
+        visible={!!leave}
+        label="Unsaved project changes"
+        title={
+          leave?.fieldsOnly ? "Discard field changes?" : "Discard changes?"
+        }
+        message={
+          leave?.fieldsOnly
+            ? "Your unsaved field changes will be lost."
+            : "Your edits haven't been saved."
+        }
+        cancelLabel="Keep editing"
+        onClose={(selection) => {
+          if (selection !== "selected") {
+            departureWait.current?.(false);
+            departureWait.current = null;
+          }
+          setLeave(null);
+        }}
+        actions={[
+          {
+            label: "Discard changes",
+            destructive: true,
+            disabled: busy || fieldsPending,
+            onPress: () => {
+              if (
+                leave &&
+                owns() &&
+                !lock.current &&
+                checkFields() &&
+                activeProject.current === leave.projectId
+              ) {
+                fieldState.current = {
+                  id: open?.id,
+                  dirty: false,
+                  pending: false,
+                };
+                setFieldStateShown(fieldState.current);
+                setFieldDiscard((value) => value + 1);
+                if (!leave.fieldsOnly) {
+                  setDraft(null);
+                  setNewSummary("");
+                  setNewDue(null);
+                  setNewTeam(null);
+                  setSummaryDraft(null);
+                  setStageDraft(null);
+                  setLinkUrl("");
+                  setLinkTitle("");
+                  setProjectPrompt("");
+                  setProjectProposal(null);
+                }
+                leave.next();
+              } else {
+                departureWait.current?.(false);
+                departureWait.current = null;
+              }
+            },
+          },
+        ]}
+      />
+      <ActionSheet
+        visible={!!projectConfirm}
+        label={projectConfirm?.title ?? "Project action"}
+        title={projectConfirm?.title}
+        message={projectConfirm?.message}
+        onClose={() => setProjectConfirm(null)}
+        actions={
+          projectConfirm
+            ? [
+                {
+                  label: projectConfirm.label,
+                  destructive: projectConfirm.destructive,
+                  disabled: busy,
+                  onPress: () => {
+                    if (
+                      owns() &&
+                      !lock.current &&
+                      activeProject.current === projectConfirm.projectId
+                    )
+                      projectConfirm.action();
+                  },
+                },
+              ]
+            : []
+        }
+      />
       {/* A project card held down (MOB-07). */}
       <ActionSheet
         visible={!!heldProject}
@@ -2267,15 +2858,20 @@ const styles = themed(() =>
     list: { gap: 10 },
     createActions: { gap: 8 },
     newForm: { gap: 12 },
-    summaryInput: { minHeight: 76, paddingTop: 12, textAlignVertical: "top" },
-    createMore: { flexDirection: "row", gap: 8 },
+    summaryInput: {
+      minHeight: 76,
+      maxHeight: 180,
+      paddingTop: 12,
+      textAlignVertical: "top",
+    },
+    createMore: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     // The container's gap spaces these; the button's own margin would double it.
     createButtonFull: { marginBottom: 0 },
-    createHalf: { flex: 1, minWidth: 0, marginBottom: 0 },
+    createHalf: { flexGrow: 1, flexBasis: 120, minWidth: 0, marginBottom: 0 },
     emptyActions: { alignSelf: "stretch", marginTop: 8 },
     aiDraft: { gap: 16 },
     aiHeading: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
-    aiHeadingText: { flex: 1, gap: 4 },
+    aiHeadingText: { flex: 1, minWidth: 0, gap: 4 },
     aiIcon: {
       width: 42,
       height: 42,
@@ -2284,7 +2880,7 @@ const styles = themed(() =>
       justifyContent: "center",
       backgroundColor: colors.accentSoft,
     },
-    aiTitle: { fontFamily: fonts.display, fontSize: 24, color: colors.text },
+    aiTitle: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },
     aiDescription: {
       fontFamily: fonts.regular,
       fontSize: 15,
@@ -2292,7 +2888,8 @@ const styles = themed(() =>
       color: colors.muted,
     },
     promptInput: {
-      minHeight: 128,
+      minHeight: 100,
+      maxHeight: 220,
       padding: 16,
       borderWidth: 1,
       borderColor: colors.border,
@@ -2300,7 +2897,7 @@ const styles = themed(() =>
       backgroundColor: colors.surface,
       color: colors.text,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: inputFontSize,
       lineHeight: 22,
     },
     emptyProject: {
@@ -2323,9 +2920,9 @@ const styles = themed(() =>
       backgroundColor: colors.accentSoft,
     },
     emptyTitle: {
-      fontFamily: fonts.display,
-      fontSize: 24,
-      lineHeight: 29,
+      fontFamily: fonts.bold,
+      fontSize: 18,
+      lineHeight: 26,
       textAlign: "center",
       color: colors.text,
     },
@@ -2337,12 +2934,12 @@ const styles = themed(() =>
       color: colors.muted,
     },
     card: {
-      gap: 8,
-      padding: 18,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.card,
-      backgroundColor: colors.surface,
+      gap: 6,
+      minHeight: 44,
+      paddingVertical: 12,
+      paddingHorizontal: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
     moveButton: {
       minWidth: 44,
@@ -2371,11 +2968,15 @@ const styles = themed(() =>
     },
     bar: {
       height: 6,
-      borderRadius: 3,
+      borderRadius: radii.pill,
       backgroundColor: colors.soft,
       overflow: "hidden",
     },
-    barFill: { height: 6, backgroundColor: colors.accent, borderRadius: 3 },
+    barFill: {
+      height: 6,
+      backgroundColor: colors.accent,
+      borderRadius: radii.pill,
+    },
     meta: { color: colors.muted, fontSize: 13 },
     home: { gap: 12 },
     searchInput: {
@@ -2387,7 +2988,7 @@ const styles = themed(() =>
       backgroundColor: colors.surface,
       color: colors.text,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: inputFontSize,
     },
     searchResults: { gap: 10 },
     searchHit: { gap: 3, paddingVertical: 7 },
@@ -2401,7 +3002,7 @@ const styles = themed(() =>
       backgroundColor: colors.surface,
     },
     linkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    linkBody: { flex: 1 },
+    linkBody: { flex: 1, minWidth: 0 },
     reentry: {
       gap: 7,
       padding: 14,
@@ -2432,7 +3033,7 @@ const styles = themed(() =>
     newRow: { gap: 8 },
     nameInput: {
       color: colors.text,
-      fontSize: 15,
+      fontSize: inputFontSize,
       fontFamily: fonts.semibold,
       borderWidth: 1,
       borderColor: colors.border,

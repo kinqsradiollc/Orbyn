@@ -1,8 +1,11 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Copy, Plus, Scissors, Trash2 } from "lucide-react";
 import { savedAgo, type ClipKey } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { useConfirm } from "../../components/Confirm";
+import { OutcomeNote, useAction } from "../../components/Outcome";
+import { useSettingsRead } from "./useSettingsRead";
+import { copyText } from "../../lib/planning";
 import { SettingsSection } from "./SettingsSection";
 
 /**
@@ -15,43 +18,46 @@ import { SettingsSection } from "./SettingsSection";
  */
 export function ClipperSettings({ report }: { report: (e: unknown) => void }) {
   const { ask } = useConfirm();
-  const [keys, setKeys] = useState<ClipKey[] | null>(null);
+  const reading = useSettingsRead(() => client.listClipKeys(), report);
+  const keys = reading.data;
+  const [query, setQuery] = useState("");
+  const visibleKeys = keys?.filter((key) =>
+    key.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
+  );
   const [made, setMade] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const action = useAction(report);
+  const busy = action.pending;
   const [copied, setCopied] = useState(false);
-  const load = () => client.listClipKeys().then(setKeys, report);
-  useEffect(() => {
-    void load();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  const make = () => {
-    setBusy(true);
-    client
-      .createClipKey("Orbyn Clipper")
-      .then((r) => {
-        setMade(r.key);
-        setCopied(false);
-        void load();
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
-  const remove = async (k: ClipKey) => {
-    if (
-      !(await ask({
-        title: "Remove this Clipper key?",
-        body: "The browser using it stops saving clips until you connect it again.",
-        confirmLabel: "Remove",
-        destructive: true,
-      }))
-    )
-      return;
-    client.deleteClipKey(k.id).then(() => void load(), report);
-  };
+  const load = reading.reload;
+  const make = () =>
+    void action.run(async () => {
+      const result = await client.createClipKey("Orbyn Clipper");
+      if (!reading.current()) return;
+      setMade(result.key);
+      setCopied(false);
+      await load();
+    });
+  const remove = (key: ClipKey) =>
+    void action.run(async () => {
+      if (
+        !(await ask({
+          title: "Remove Clipper key?",
+          body: `${key.name}\nThe browser using it stops saving clips.`,
+          confirmLabel: "Remove",
+          destructive: true,
+        })) ||
+        !reading.current()
+      )
+        return;
+      await client.deleteClipKey(key.id);
+      await load();
+      return "Clipper key removed.";
+    });
   return (
     <SettingsSection className="card settings-card">
       <h2>Orbyn Clipper</h2>
       <p className="muted">
-        Save pages from your browser. A Clipper key cannot read your pages.
+        Save browser pages with a key that cannot read your pages.
       </p>
       {made && (
         <div className="clip-key-made" role="status">
@@ -59,20 +65,49 @@ export function ClipperSettings({ report }: { report: (e: unknown) => void }) {
           <code>{made}</code>
           <button
             className="text-button"
+            disabled={busy}
             onClick={() =>
-              void navigator.clipboard.writeText(made).then(
-                () => setCopied(true),
-                () => setCopied(false),
-              )
+              void action.run(async () => {
+                const ok = await copyText(made);
+                if (!reading.current()) return;
+                setCopied(ok);
+                if (!ok)
+                  throw new Error("Couldn't copy. Select the key to copy it.");
+              })
             }
           >
             <Copy size={14} /> {copied ? "Copied" : "Copy"}
           </button>
         </div>
       )}
+      {reading.failed && (
+        <p className="connection-recovery" role="alert">
+          Couldn't load Clipper keys.{" "}
+          <button
+            className="text-button"
+            disabled={reading.loading}
+            onClick={() => void load()}
+          >
+            Retry keys
+          </button>
+        </p>
+      )}
+      {keys === null && !reading.failed && (
+        <p className="muted">Loading keys…</p>
+      )}
+      {keys?.length === 0 && <p className="muted">No Clipper keys yet.</p>}
       {keys && keys.length > 0 && (
-        <ul className="clip-keys">
-          {keys.map((k) => (
+        <input
+          type="search"
+          aria-label="Search Clipper keys"
+          placeholder="Search keys"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+      )}
+      {keys && keys.length > 0 && (
+        <ul className="clip-keys connection-collection">
+          {visibleKeys?.map((k) => (
             <li key={k.id}>
               <Scissors size={14} aria-hidden="true" />
               <span>
@@ -87,6 +122,7 @@ export function ClipperSettings({ report }: { report: (e: unknown) => void }) {
                 className="icon-button"
                 aria-label={`Remove ${k.name} ····${k.hint}`}
                 title="Remove"
+                disabled={busy}
                 onClick={() => void remove(k)}
               >
                 <Trash2 size={14} />
@@ -95,9 +131,13 @@ export function ClipperSettings({ report }: { report: (e: unknown) => void }) {
           ))}
         </ul>
       )}
+      {keys?.length && visibleKeys?.length === 0 ? (
+        <p className="muted">No matching keys.</p>
+      ) : null}
       <button className="secondary" disabled={busy} onClick={make}>
-        <Plus size={14} /> New Clipper key
+        <Plus size={14} /> {busy ? "Updating…" : "New Clipper key"}
       </button>
+      <OutcomeNote outcome={action.outcome} />
     </SettingsSection>
   );
 }

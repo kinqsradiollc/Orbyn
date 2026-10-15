@@ -8,18 +8,33 @@ Detailed qualification and historical failures remain in
 
 ## Current delivery
 
-**The agreed implementation, integration and safe cleanup delivery is complete
-under the owner-revised scope.** C1–C6 and U1 are accepted; final integration
-passed Test → Review in round **1/3** and candidate `c1aedfb9` is verified on
-remote main. The closing documentation receipt includes the final Tester,
-Reviewer and tracker records. See [final reconciliation](final-integration-2026-10-12.md).
+The previous owner-revised ADR 001/002 delivery is complete: C1–C6 and its U1
+checkpoint were accepted under their recorded scopes, and final integration was
+reviewed and pushed at `c1aedfb9`; the closing receipt is `c7b3bdb7` on remote
+main. Its deployment and listed follow-ups remain user-owned, deferred or
+unverified, not passes. See [final reconciliation](final-integration-2026-10-12.md).
 
-Production deployment remains user-owned and unverified. Hosted ChatGPT sign-in,
-live cache/embedding and Slack/Teams measurements, C4 browser follow-ups and
-other recorded host/native limits remain deferred or unverified, not passes.
-There is no next required implementation stage in this agreed delivery.
+**Current phase: ADR 003 — Product UI/UX redesign.** The owner set this as a new
+delivery scope on 12 October. Baseline `c7b3bdb7`; phase **implementation**;
+review round **0/3**; no candidate frozen. Track current area state in the
+[redesign delivery ledger](ui-ux-redesign.md), with scope in
+[ADR 003](../adr/003-product-ui-ux-redesign.md) and the human entry point in
+[the ADR index](../adr/README.md). Stage Tracker owns only these summary records;
+do not edit the Builder-owned ADR or implementation ledger while implementation
+proceeds. The owner requires every layout, style, position, copy and interaction
+to be assessed across the full surface inventory. Source changes are uncommitted
+in the active `c6-next` worktree at baseline `c7b3bdb7`. Implemented work so far
+includes the neutral/blue foundation, grouped Settings, actual-pane responsive
+sizing across several panes, compact type, broader foreground contrast and mobile
+web input sizing. The owner flagged the **Your agents** surface as still visually
+large and intimidating on a dark surface; Builder's first UI priority is compact
+list/navigation, restrained character presentation and a clear action hierarchy.
+The full layout/content audit remains unfinished, not accepted. No candidate,
+final Visual Check or merge exists; no production deployment is claimed. The
+sequence is finish all surface families → freeze → Tester → Reviewer → one final
+web and Expo web Visual Check → fix scoped findings → integrate.
 
-## Historical checkpoint entries
+## Previous delivery — historical checkpoint entries
 
 **C1, C2/M1 and C3 complete under their user-approved scopes.** C2/M1 passed
 Test → Review in round **1/3** and was merged and pushed to `main` at
@@ -54,7 +69,7 @@ the legacy Today **Load today** state transition described below.
 
 **Current C6 scope update — 11 October:** owner-approved direction replaces
 the two-permanent-endpoint design with one canonical `/mcp` connection for tools,
-optional previews and Docs, recorded in [ADR 002](../adr/002-unified-mcp-integration.md).
+optional previews and Docs, recorded in [ADR 002](../adr/archive/002-unified-mcp-integration.md).
 Docs proposals are reviewable proposals, not direct writes. The documentation and
 environment-comment checkpoint is pushed at `e5bdc161`; runtime migration remains
 pending, so C6 implementation continues under the new scope. Keep separate
@@ -713,7 +728,7 @@ migration. See the [round-2 findings](c6-unified-mcp-review-r2.md), [baseline
 Tester report](c6-unified-mcp-tester-r2-bc43d9d5-2026-10-11.md), and [correction
 Tester report](c6-unified-mcp-tester-r2-8f99272c-2026-10-11.md).
 Implementation details and qualification scope are in the [unified MCP
-handoff](c6-unified-mcp-implementation.md) and [ADR 002](../adr/002-unified-mcp-integration.md).
+handoff](c6-unified-mcp-implementation.md) and [ADR 002](../adr/archive/002-unified-mcp-integration.md).
 
 The candidate consolidates tools and optional result/Docs previews on `/mcp`,
 adds bounded Markdown/Mermaid rendering and revision-aware document edit

@@ -424,7 +424,7 @@ are preserved, Docker is unchanged, user deploys manually, cleanup remains later
 | 5     | Providers/agents C1-C6/M1 | Routing/catalog/plugin/separate runtimes/reflection/channels checkpoints merged | Governing budget/collaboration/publication audit; real account/tenant/host acceptance   |
 | 6     | Production and cleanup    | Qualified main checkpoints pushed; user work preserved                          | User deployment confirmation; final integration and relevant cleanup audit              |
 
-The current pipeline is in [ADR001](../adr/001-devday-agent-platform.md) and
+The current pipeline is in [ADR001](../adr/archive/001-devday-agent-platform.md) and
 [the live handoff](task.md). Older checkpoint maps below are historical.
 
 ## Completed draft result qualification — 2 October 2026

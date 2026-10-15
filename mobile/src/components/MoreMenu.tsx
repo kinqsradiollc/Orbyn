@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Modal,
@@ -8,14 +8,17 @@ import {
   Text,
   View,
 } from "react-native";
-import { Pressable } from "../motion";
+import { Pressable, useReducedMotion } from "../motion";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { session } from "../lib/session";
 import { Icon, type IconName } from "./Icon";
 import { useSwipeDown } from "../hooks/useSwipeDown";
 import { colors, controls, fonts, radii, themed, tint } from "../theme";
 
 export type MoreAction = {
   label: string;
+  /** Stable identity when different choices share a label. */
+  id?: string;
   onPress: () => void;
   /** A line icon before the verb (the + sheet, a row's long-press menu). */
   icon?: IconName;
@@ -50,7 +53,6 @@ export function MoreMenu({
         accessibilityRole="button"
         accessibilityLabel={label}
         disabled={disabled}
-        hitSlop={8}
         onPress={() => setOpen(true)}
         style={({ pressed }) => [
           s.trigger,
@@ -93,14 +95,36 @@ export function ActionSheet({
   /** Shown at the top, muted: the thing the actions are for. */
   title?: string;
   actions: MoreAction[];
-  onClose: () => void;
+  /** Selected actions close before their deferred callback runs. */
+  onClose: (selection?: "selected") => void;
   /** A clearer dismissal verb for confirmation sheets, e.g. Keep task. */
   cancelLabel?: string;
   /** Full explanation for a confirmation, wrapped within the scrolling sheet. */
   message?: string;
 }) {
   const insets = useSafeAreaInsets();
-  const chosen = useRef<(() => void) | null>(null);
+  const reducedMotion = useReducedMotion();
+  const chosen = useRef<{ run: () => void; owner: string } | null>(null);
+  const mounted = useRef(true);
+  const committed = useRef(false);
+  const owner = useRef(session.token);
+  const fallback = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      chosen.current = null;
+      if (fallback.current !== null) clearTimeout(fallback.current);
+    };
+  }, []);
+  useEffect(() => {
+    if (!visible) return;
+    owner.current = session.token;
+    committed.current = false;
+    chosen.current = null;
+    if (fallback.current !== null) clearTimeout(fallback.current);
+    fallback.current = null;
+  }, [visible]);
   const shown = [
     ...actions.filter((a) => !a.destructive),
     ...actions.filter((a) => a.destructive),
@@ -108,15 +132,17 @@ export function ActionSheet({
   const run = () => {
     const next = chosen.current;
     chosen.current = null;
-    next?.();
+    if (fallback.current !== null) clearTimeout(fallback.current);
+    fallback.current = null;
+    if (mounted.current && next?.owner === session.token) next.run();
   };
   const swipe = useSwipeDown(visible, onClose);
   return (
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
-      onRequestClose={onClose}
+      animationType={Platform.OS === "web" || reducedMotion ? "none" : "slide"}
+      onRequestClose={() => onClose()}
       onDismiss={Platform.OS === "ios" ? run : undefined}
     >
       <View style={s.fill}>
@@ -125,7 +151,7 @@ export function ActionSheet({
           style={s.backdrop}
           accessibilityRole="button"
           accessibilityLabel="Close menu"
-          onPress={onClose}
+          onPress={() => onClose()}
         />
         <Animated.View
           style={[
@@ -139,26 +165,30 @@ export function ActionSheet({
         >
           <View {...swipe.handlers} style={s.grab}>
             <View style={s.handle} />
-            {!!title && (
-              <Text style={s.title} numberOfLines={2}>
-                {title}
-              </Text>
-            )}
           </View>
           <ScrollView style={s.actionList} keyboardShouldPersistTaps="handled">
+            {!!title && <Text style={s.title}>{title}</Text>}
             {!!message && <Text style={s.message}>{message}</Text>}
             {shown.map((a) => (
               <Pressable
-                key={a.label}
+                key={a.id ?? a.label}
                 accessibilityRole="menuitem"
                 disabled={a.disabled}
                 onPress={() => {
-                  chosen.current = a.onPress;
-                  onClose();
+                  if (
+                    !mounted.current ||
+                    committed.current ||
+                    owner.current !== session.token ||
+                    a.disabled
+                  )
+                    return;
+                  committed.current = true;
+                  chosen.current = { run: a.onPress, owner: owner.current };
+                  onClose("selected");
                   // Only iOS waits for the menu to go before the next thing,
                   // and not for ever should the dismissal go unreported.
                   if (Platform.OS !== "ios") run();
-                  else setTimeout(run, 600);
+                  else fallback.current = setTimeout(run, 600);
                 }}
                 style={({ pressed }) => [
                   s.item,
@@ -186,7 +216,7 @@ export function ActionSheet({
           </ScrollView>
           <Pressable
             accessibilityRole="button"
-            onPress={onClose}
+            onPress={() => onClose()}
             style={({ pressed }) => [
               s.item,
               s.cancelRow,
@@ -204,8 +234,8 @@ export function ActionSheet({
 const s = themed(() =>
   StyleSheet.create({
     trigger: {
-      width: 34,
-      height: 34,
+      width: controls.tap,
+      height: controls.tap,
       borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",

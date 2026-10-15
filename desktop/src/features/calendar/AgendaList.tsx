@@ -1,7 +1,6 @@
 import { Lock, Timer, Users, Video } from "lucide-react";
 import {
   dayHeading,
-  emptyDay,
   sameDay,
   sessionLine,
   type CalendarEntry,
@@ -10,7 +9,6 @@ import {
 } from "@orbyn/core";
 import { usePlanning } from "../../app/planning";
 import { joinable, spanLabel } from "../../lib/planning";
-import { stagger } from "../../lib/motion";
 import { StatusPill } from "../../components/StatusPill";
 import { timeLabel } from "./dates";
 import { listLook } from "./MonthView";
@@ -77,8 +75,7 @@ export function AgendaList({
     return (
       <div className="agenda-list">
         <div className="agenda-empty">
-          <strong>{emptyDay.title}</strong>
-          <p>Nothing planned for the next two weeks.</p>
+          <p>No planned items for these dates.</p>
         </div>
       </div>
     );
@@ -91,15 +88,11 @@ export function AgendaList({
             {dayHeading(day)}
             <span>{rows.length}</span>
           </h3>
-          {rows.map((r, n) => {
+          {rows.map((r) => {
             if ("external" in r) {
               const x = r.external;
               return (
-                <div
-                  key={r.key}
-                  className="agenda-row fade-up stagger"
-                  style={stagger(n)}
-                >
+                <div key={r.key} className="agenda-row">
                   <button
                     className="calendar-agenda-item is-external has-list"
                     style={{ "--list": x.color } as never}
@@ -127,11 +120,7 @@ export function AgendaList({
             if ("entry" in r) {
               const look = listLook(r.entry.list_id, listById, r.entry.color);
               return (
-                <div
-                  key={r.key}
-                  className="agenda-row fade-up stagger"
-                  style={stagger(n)}
-                >
+                <div key={r.key} className="agenda-row">
                   <button
                     className={
                       "calendar-agenda-item " +
@@ -182,11 +171,7 @@ export function AgendaList({
               );
             }
             return (
-              <div
-                key={r.key}
-                className="agenda-row fade-up stagger"
-                style={stagger(n)}
-              >
+              <div key={r.key} className="agenda-row">
                 <button
                   className="calendar-agenda-item is-block"
                   aria-haspopup="dialog"

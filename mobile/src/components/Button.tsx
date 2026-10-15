@@ -27,7 +27,7 @@ export function Button({
     ? colors.danger
     : secondary
       ? colors.accent
-      : colors.white;
+      : colors.onAccent;
   return (
     <PressableScale
       accessibilityRole="button"

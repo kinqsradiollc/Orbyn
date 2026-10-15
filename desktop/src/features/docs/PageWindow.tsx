@@ -26,25 +26,43 @@ export function PageWindow({
   onItemsChanged: () => void;
   report: (e: unknown) => void;
 }) {
+  const [retry, setRetry] = useState(0);
+  const [failed, setFailed] = useState(false);
   const [doc, setDoc] = useState<Doc | null | "gone">(null);
   useEffect(() => {
     let live = true;
+    setDoc(null);
+    setFailed(false);
     client.getDocForEditor(docId).then(
       (d) => {
         if (!live) return;
         setDoc(d);
         document.title = `${d.title || "Untitled"} · Orbyn`;
       },
-      () => live && setDoc("gone"),
+      () => {
+        if (live) setFailed(true);
+      },
     );
     return () => {
       live = false;
     };
-  }, [docId]);
+  }, [docId, retry]);
   return (
     <main className="page-window">
-      {doc === null ? (
-        <p className="muted">Opening the page…</p>
+      {failed ? (
+        <div role="alert">
+          <p>Couldn't open this page.</p>
+          <button
+            className="secondary"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      ) : doc === null ? (
+        <p className="muted" role="status">
+          Opening page…
+        </p>
       ) : doc === "gone" ? (
         <EmptyState
           icon={FileText}

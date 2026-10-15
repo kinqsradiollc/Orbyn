@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Platform,
   StyleSheet,
@@ -19,6 +19,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { confirmAction } from "../../lib/confirm";
+import { BottomSheet } from "../../components/BottomSheet";
 import { Icon } from "../../components/Icon";
 import { Pill, type PillTone } from "../../components/Pill";
 import { SmallAction } from "../../components/SmallAction";
@@ -59,7 +60,13 @@ type Draft = {
  * your part, whether it's planned to finish by the day. Never dates on
  * stages, and never a task's deadline.
  */
-export function ProjectMilestones({
+export function ProjectMilestones(
+  props: Parameters<typeof ProjectMilestonesBody>[0],
+) {
+  return <ProjectMilestonesBody key={props.projectId} {...props} />;
+}
+
+function ProjectMilestonesBody({
   projectId,
   items,
   canWrite,
@@ -78,13 +85,44 @@ export function ProjectMilestones({
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
 
-  const load = () =>
-    client.projectMilestones(projectId).then(setList, (e) => {
-      setList([]);
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [failed, setFailed] = useState(false);
+  const load = async () => {
+    const epoch = ++request.current;
+    setFailed(false);
+    try {
+      const next = await client.projectMilestones(projectId);
+      if (epoch === request.current) setList(next);
+    } catch (e) {
+      if (epoch === request.current) {
+        setFailed(true);
+        onError(e);
+      }
+    }
+  };
+  const act = async (work: () => Promise<unknown>) => {
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
+    setBusy(true);
+    try {
+      await work();
+      setDraft(null);
+      setPicking(false);
+      await load();
+      onChanged?.();
+    } catch (e) {
       onError(e);
-    });
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+    }
+  };
   useEffect(() => {
     void load();
+    return () => {
+      request.current++;
+    };
     // Reloads with its project.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
@@ -96,7 +134,8 @@ export function ProjectMilestones({
   );
 
   const save = async () => {
-    if (!draft || !draft.name.trim()) return;
+    if (!canWrite || mutation.current || !draft || !draft.name.trim()) return;
+    mutation.current = true;
     setBusy(true);
     try {
       if (draft.id) {
@@ -124,6 +163,7 @@ export function ProjectMilestones({
     } catch (e) {
       onError(e);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -133,18 +173,10 @@ export function ProjectMilestones({
       `Remove “${m.name}”?`,
       "Its tasks stay in the project, with their deadlines as they are.",
       "Remove",
-      () =>
-        void client
-          .deleteMilestone(projectId, m.id)
-          .then(async () => {
-            setDraft(null);
-            await load();
-            onChanged?.();
-          })
-          .catch(onError),
+      () => void act(() => client.deleteMilestone(projectId, m.id)),
     );
 
-  if (list === null || (!list.length && !canWrite)) return null;
+  if (list !== null && !list.length && !canWrite && !failed) return null;
   return (
     <View style={s.section}>
       <View style={s.head}>
@@ -164,17 +196,28 @@ export function ProjectMilestones({
           />
         )}
       </View>
-      {!list.length && !draft && (
-        <Text style={shared.small}>
-          Dated checkpoints show whether their tasks will finish on time.
-        </Text>
+      {failed && (
+        <>
+          <Text style={shared.small}>Milestones unavailable.</Text>
+          <SmallAction
+            label="Retry"
+            disabled={busy}
+            onPress={() => void load()}
+          />
+        </>
       )}
-      {list.map((m) => (
+      {list === null && !failed && (
+        <Text style={shared.small}>Loading milestones…</Text>
+      )}
+      {list !== null && !list.length && !draft && (
+        <Text style={shared.small}>No milestones yet.</Text>
+      )}
+      {list?.map((m) => (
         <Pressable
           key={m.id}
           accessibilityRole={canWrite ? "button" : undefined}
           accessibilityLabel={`${m.name}, ${dayLabel(m.due_on)}, ${MILESTONE_STATUS_LABELS[m.status]}`}
-          disabled={!canWrite}
+          disabled={!canWrite || busy}
           onPress={() =>
             setDraft({
               id: m.id,
@@ -205,111 +248,119 @@ export function ProjectMilestones({
         </Pressable>
       ))}
       {draft && (
-        <View style={s.form}>
-          <TextInput
-            style={shared.input}
-            value={draft.name}
-            autoFocus
-            maxLength={120}
-            placeholder="Draft ready"
-            placeholderTextColor={colors.faint}
-            accessibilityLabel="Milestone name"
-            onChangeText={(name) => setDraft({ ...draft, name })}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`Date, ${dayLabel(draft.due_on)}`}
-            onPress={() => setPicking((p) => !p)}
-            style={s.dateButton}
-          >
-            <Icon name="calendar" size={15} color={colors.accent} />
-            <Text style={s.dateText}>{dayLabel(draft.due_on)}</Text>
-          </Pressable>
-          {picking && (
-            <DateTimeControl
-              value={new Date(`${draft.due_on}T12:00:00`)}
-              mode="date"
-              display={Platform.OS === "ios" ? "inline" : "default"}
-              accentColor={colors.accent}
-              textColor={colors.text}
-              onChange={(event, date) => {
-                if (Platform.OS !== "ios") setPicking(false);
-                if (event.type === "dismissed" || !date) return;
-                setDraft({ ...draft, due_on: keyOf(date) });
-              }}
+        <BottomSheet
+          visible
+          title={draft.id ? "Milestone" : "New milestone"}
+          onClose={() => {
+            if (!busy) {
+              setDraft(null);
+              setPicking(false);
+            }
+          }}
+        >
+          <View style={s.form}>
+            <TextInput
+              editable={!busy}
+              style={shared.input}
+              value={draft.name}
+              autoFocus
+              maxLength={120}
+              placeholder="Draft ready"
+              placeholderTextColor={colors.faint}
+              accessibilityLabel="Milestone name"
+              onChangeText={(name) => setDraft({ ...draft, name })}
             />
-          )}
-          {tasks.length > 0 && (
-            <View style={s.tasks}>
-              <Text style={shared.label}>Its tasks</Text>
-              {tasks.map((t) => (
-                <View key={t.id} style={s.taskRow}>
-                  <Text style={s.taskTitle} numberOfLines={1}>
-                    {t.title}
-                  </Text>
-                  <Switch
-                    trackColor={{ true: colors.accent }}
-                    accessibilityLabel={`${t.title} in this milestone`}
-                    value={draft.item_ids.includes(t.id)}
-                    onValueChange={(on) =>
-                      setDraft({
-                        ...draft,
-                        item_ids: on
-                          ? [...draft.item_ids, t.id]
-                          : draft.item_ids.filter((id) => id !== t.id),
-                      })
-                    }
-                  />
-                </View>
-              ))}
-            </View>
-          )}
-          <Text style={shared.small}>It never changes a task's deadline.</Text>
-          <View style={s.actions}>
-            <SmallAction
-              label="Save"
-              disabled={busy || !draft.name.trim()}
-              onPress={() => void save()}
-            />
-            <SmallAction
-              label="Cancel"
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Date, ${dayLabel(draft.due_on)}`}
               disabled={busy}
-              onPress={() => {
-                setDraft(null);
-                setPicking(false);
-              }}
-            />
-            {draft.id &&
-              (() => {
-                const m = list.find((x) => x.id === draft.id);
-                return m ? (
-                  <>
-                    <SmallAction
-                      label={m.done_at ? "Not done yet" : "Mark done"}
+              onPress={() => setPicking((p) => !p)}
+              style={s.dateButton}
+            >
+              <Icon name="calendar" size={15} color={colors.accent} />
+              <Text style={s.dateText}>{dayLabel(draft.due_on)}</Text>
+            </Pressable>
+            {picking && (
+              <DateTimeControl
+                value={new Date(`${draft.due_on}T12:00:00`)}
+                mode="date"
+                display={Platform.OS === "ios" ? "inline" : "default"}
+                accentColor={colors.accent}
+                textColor={colors.text}
+                onChange={(event, date) => {
+                  if (Platform.OS !== "ios") setPicking(false);
+                  if (busy || event.type === "dismissed" || !date) return;
+                  setDraft({ ...draft, due_on: keyOf(date) });
+                }}
+              />
+            )}
+            {tasks.length > 0 && (
+              <View style={s.tasks}>
+                <Text style={shared.label}>Its tasks</Text>
+                {tasks.map((t) => (
+                  <View key={t.id} style={s.taskRow}>
+                    <Text style={s.taskTitle}>{t.title}</Text>
+                    <Switch
                       disabled={busy}
-                      onPress={() =>
-                        void client
-                          .updateMilestone(projectId, m.id, {
-                            done: !m.done_at,
-                          })
-                          .then(async () => {
-                            setDraft(null);
-                            await load();
-                          })
-                          .catch(onError)
+                      trackColor={{ true: colors.accent }}
+                      accessibilityLabel={`${t.title} in this milestone`}
+                      value={draft.item_ids.includes(t.id)}
+                      onValueChange={(on) =>
+                        setDraft({
+                          ...draft,
+                          item_ids: on
+                            ? [...draft.item_ids, t.id]
+                            : draft.item_ids.filter((id) => id !== t.id),
+                        })
                       }
                     />
-                    <SmallAction
-                      label="Remove"
-                      destructive
-                      disabled={busy}
-                      onPress={() => remove(m)}
-                    />
-                  </>
-                ) : null;
-              })()}
+                  </View>
+                ))}
+              </View>
+            )}
+            <Text style={shared.small}>Task deadlines stay unchanged.</Text>
+            <View style={s.actions}>
+              <SmallAction
+                label="Save"
+                disabled={busy || !draft.name.trim()}
+                onPress={() => void save()}
+              />
+              <SmallAction
+                label="Cancel"
+                disabled={busy}
+                onPress={() => {
+                  setDraft(null);
+                  setPicking(false);
+                }}
+              />
+              {draft.id &&
+                (() => {
+                  const m = list?.find((x) => x.id === draft.id);
+                  return m ? (
+                    <>
+                      <SmallAction
+                        label={m.done_at ? "Not done yet" : "Mark done"}
+                        disabled={busy}
+                        onPress={() =>
+                          void act(() =>
+                            client.updateMilestone(projectId, m.id, {
+                              done: !m.done_at,
+                            }),
+                          )
+                        }
+                      />
+                      <SmallAction
+                        label="Remove"
+                        destructive
+                        disabled={busy}
+                        onPress={() => remove(m)}
+                      />
+                    </>
+                  ) : null;
+                })()}
+            </View>
           </View>
-        </View>
+        </BottomSheet>
       )}
     </View>
   );
@@ -329,11 +380,18 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      flexWrap: "wrap",
       gap: 8,
     },
     heading: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
-    row: { flexDirection: "row", alignItems: "center", gap: 10, minHeight: 44 },
-    main: { flex: 1, gap: 2 },
+    row: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 10,
+      minHeight: 44,
+    },
+    main: { flex: 1, flexBasis: 160, minWidth: 0, gap: 2 },
     name: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     form: { gap: 10 },
     dateButton: {
@@ -342,7 +400,7 @@ const s = themed(() =>
       gap: 8,
       alignSelf: "flex-start",
       paddingHorizontal: 12,
-      minHeight: 36,
+      minHeight: 44,
       borderRadius: radii.pill,
       backgroundColor: colors.accentSoft,
     },
@@ -357,7 +415,7 @@ const s = themed(() =>
       alignItems: "center",
       justifyContent: "space-between",
       gap: 10,
-      minHeight: 40,
+      minHeight: 44,
     },
     taskTitle: {
       flex: 1,

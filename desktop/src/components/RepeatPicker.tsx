@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Select } from "../components/Select";
 import { describeRrule } from "@orbyn/core";
 import {
@@ -13,6 +14,8 @@ type Props = {
   onChange: (next: RepeatDraft) => void;
   /** Repeating items need a date; say so when there isn't one. */
   hasDate: boolean;
+  originalRule?: string | null;
+  onProblem?: (problem: string | null) => void;
 };
 
 const OPTIONS: { id: RepeatFreq; label: string }[] = [
@@ -32,10 +35,34 @@ const UNITS: Partial<Record<RepeatFreq, string>> = {
 };
 
 /** How an item repeats: frequency, every N, weekdays, and when it ends. */
-export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
+export function RepeatPicker({
+  value: d,
+  onChange,
+  hasDate,
+  originalRule,
+  onProblem,
+}: Props) {
   const set = (patch: Partial<RepeatDraft>) => onChange({ ...d, ...patch });
   const unit = UNITS[d.freq];
-  const rule = rruleFromDraft(d);
+  const [intervalText, setIntervalText] = useState(String(d.interval));
+  const [countText, setCountText] = useState(String(d.count));
+  useEffect(() => setIntervalText(String(d.interval)), [d.interval]);
+  useEffect(() => setCountText(String(d.count)), [d.count]);
+  const valid = (text: string, max: number) =>
+    !!text.trim() &&
+    Number.isInteger(Number(text)) &&
+    Number(text) >= 1 &&
+    Number(text) <= max;
+  const problem =
+    unit && !valid(intervalText, 99)
+      ? "Use a whole repeat interval from 1 to 99."
+      : d.freq !== "none" && d.ends === "count" && !valid(countText, 999)
+        ? "Use a whole repeat count from 1 to 999."
+        : null;
+  useEffect(() => {
+    onProblem?.(problem);
+  }, [problem, onProblem]);
+  const rule = originalRule ?? rruleFromDraft(d);
   return (
     <fieldset className="repeat-picker">
       <legend>Repeat</legend>
@@ -60,8 +87,19 @@ export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
               type="number"
               min={1}
               max={99}
-              value={d.interval}
-              onChange={(e) => set({ interval: Number(e.target.value) || 1 })}
+              required
+              step={1}
+              value={intervalText}
+              onChange={(event) => {
+                const text = event.target.value;
+                setIntervalText(text);
+                onProblem?.(
+                  valid(text, 99)
+                    ? null
+                    : "Use a whole repeat interval from 1 to 99.",
+                );
+                if (valid(text, 99)) set({ interval: Number(text) });
+              }}
             />
             {d.interval === 1 ? unit.slice(0, -1) : unit}
           </label>
@@ -76,6 +114,7 @@ export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
                 key={name}
                 type="button"
                 aria-pressed={on}
+                disabled={on && d.byDay.length === 1}
                 className={on ? "active" : ""}
                 onClick={() => {
                   const next = on
@@ -112,8 +151,19 @@ export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
                 type="number"
                 min={1}
                 max={999}
-                value={d.count}
-                onChange={(e) => set({ count: Number(e.target.value) || 1 })}
+                required
+                step={1}
+                value={countText}
+                onChange={(event) => {
+                  const text = event.target.value;
+                  setCountText(text);
+                  onProblem?.(
+                    valid(text, 999)
+                      ? null
+                      : "Use a whole repeat count from 1 to 999.",
+                  );
+                  if (valid(text, 999)) set({ count: Number(text) });
+                }}
               />
             </label>
           )}
@@ -130,10 +180,15 @@ export function RepeatPicker({ value: d, onChange, hasDate }: Props) {
           )}
         </div>
       )}
+      {!!problem && (
+        <small className="field-hint" role="alert">
+          {problem}
+        </small>
+      )}
       {rule && (
         <small className="field-hint">
           {describeRrule(rule)}
-          {!hasDate && " · Add a date so it knows when to start."}
+          {!hasDate && " · Add a start date."}
         </small>
       )}
     </fieldset>

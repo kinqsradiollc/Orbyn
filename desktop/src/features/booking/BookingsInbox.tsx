@@ -1,6 +1,5 @@
 import { Select } from "../../components/Select";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { CalendarCheck, Download, Plus, Search } from "lucide-react";
 import type {
   Booking,
@@ -133,7 +132,7 @@ export function BookingsInbox({
   }, [filterKey, reloads]);
 
   const loadMore = () => {
-    if (!rows) return;
+    if (!rows || loadingMore) return;
     const key = filterKey;
     setLoadingMore(true);
     client
@@ -149,6 +148,7 @@ export function BookingsInbox({
   };
 
   const exportCsv = async () => {
+    if (exporting) return;
     setExporting(true);
     try {
       downloadText("bookings.csv", await client.exportBookingsCsv(params));
@@ -181,14 +181,14 @@ export function BookingsInbox({
       <div className="section-heading booking-inbox-head">
         <div
           className="segmented booking-views"
-          role="tablist"
+          role="group"
           aria-label="Bookings to show"
         >
           {VIEWS.map((v) => (
             <button
               key={v.id}
-              role="tab"
-              aria-selected={view === v.id}
+              type="button"
+              aria-pressed={view === v.id}
               className={view === v.id ? "active" : ""}
               onClick={() => onView(v.id)}
             >
@@ -342,19 +342,16 @@ export function BookingsInbox({
         </>
       )}
 
-      {/* The drawer sits on the body so the card's motion can't move it. */}
-      {openId &&
-        createPortal(
-          <BookingDrawer
-            key={openId}
-            id={openId}
-            pages={pages}
-            report={report}
-            onClose={close}
-            onChanged={changed}
-          />,
-          document.body,
-        )}
+      {openId && (
+        <BookingDrawer
+          key={openId}
+          id={openId}
+          pages={pages}
+          report={report}
+          onClose={close}
+          onChanged={changed}
+        />
+      )}
     </section>
   );
 }

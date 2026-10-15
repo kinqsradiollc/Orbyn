@@ -5,10 +5,12 @@ export function DayPicker({
   value,
   onChange,
   label,
+  disabled = false,
 }: {
   value: number[];
   onChange: (days: number[]) => void;
   label: string;
+  disabled?: boolean;
 }) {
   return (
     <div className="day-toggles" role="group" aria-label={label}>
@@ -19,6 +21,18 @@ export function DayPicker({
             key={name}
             type="button"
             aria-pressed={on}
+            aria-label={
+              [
+                "Sunday",
+                "Monday",
+                "Tuesday",
+                "Wednesday",
+                "Thursday",
+                "Friday",
+                "Saturday",
+              ][day]
+            }
+            disabled={disabled}
             className={on ? "active" : ""}
             onClick={() =>
               onChange(

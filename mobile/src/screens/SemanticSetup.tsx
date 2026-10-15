@@ -5,6 +5,7 @@ import { Segmented } from "../components/Segmented";
 import { client } from "../lib/api";
 import { Button } from "../components/Button";
 import { Disclosure } from "../components/Disclosure";
+import { InlineDetails } from "../components/InlineDetails";
 import { Icon } from "../components/Icon";
 import { colors, fonts, themed } from "../theme";
 import { shared } from "../styles";
@@ -51,9 +52,9 @@ export function SemanticSetup({
   );
   const selected = eligible.find((provider) => provider.id === providerId);
   const consentText =
-    "I understand that the words of every page (except projects and teams kept out of the assistant) are sent to " +
+    "I agree to send workspace page text to " +
     (selected?.name ?? "the selected embedding provider") +
-    " to be measured.";
+    " for search indexing, excluding projects and teams kept out of the assistant.";
   const discovery = useEmbeddingModelCatalog(selected);
   const [catalogSearch, setCatalogSearch] = useState("");
   useEffect(() => {
@@ -73,20 +74,18 @@ export function SemanticSetup({
     {
       done: settings.semantic_possible,
       text: settings.semantic_possible
-        ? "The database can store measurements."
-        : "Database measurements are unavailable.",
+        ? "Database ready"
+        : "Database unavailable",
     },
     {
       done: !!settings.measure_running,
       text: settings.measure_running
-        ? "The measuring service is running."
-        : "The measuring service is offline.",
+        ? "Indexing service ready"
+        : "Indexing service offline",
     },
     {
       done: !!selected,
-      text: selected
-        ? "An independent embedding provider is selected."
-        : "Select an embedding provider.",
+      text: selected ? "Provider selected" : "Select an embedding provider.",
     },
   ];
   const ready = !!selected?.embedding_revision && steps.every((x) => x.done);
@@ -132,10 +131,6 @@ export function SemanticSetup({
           Provider changed. Validate one before indexing resumes.
         </Text>
       )}
-      <Text style={shared.small}>
-        Finds pages by meaning. When enabled, all non-excluded pages are sent to
-        the selected provider for indexing.
-      </Text>
       <View style={s.steps}>
         {steps.map((x) => (
           <View key={x.text} style={s.step}>
@@ -181,15 +176,17 @@ export function SemanticSetup({
             disabled={busy}
             onPress={() => void act(onChanged)}
           />
-          <Text style={shared.body}>
-            Measuring with {settings.embedding_model}
-            {providerName ? ` on ${providerName}` : ""}.{" "}
-            {settings.embedding_dimensions
-              ? `${settings.embedding_dimensions} dimensions verified.`
-              : ""}
-            {settings.embedding_search_strategy === "exact" &&
-              " Exact vector search."}
-          </Text>
+          <InlineDetails title="Index configuration">
+            <Text style={shared.small}>
+              Measuring with {settings.embedding_model}
+              {providerName ? ` on ${providerName}` : ""}.{" "}
+              {settings.embedding_dimensions
+                ? `${settings.embedding_dimensions} dimensions verified.`
+                : ""}
+              {settings.embedding_search_strategy === "exact" &&
+                " Exact vector search."}
+            </Text>
+          </InlineDetails>
           <Button
             secondary
             title="Turn off and forget the measurements"
@@ -221,6 +218,7 @@ export function SemanticSetup({
               can remain off.
             </Text>
           )}
+          <Text style={shared.label}>Embedding model</Text>
           <TextInput
             style={shared.input}
             value={model}
@@ -228,20 +226,16 @@ export function SemanticSetup({
               !busy && !!selected?.enabled && !!selected.embedding_revision
             }
             maxLength={200}
-            placeholder="Model that measures text"
+            placeholder="text-embedding-3-small"
             placeholderTextColor={colors.faint}
-            accessibilityLabel="Model that measures text"
+            accessibilityLabel="Embedding model"
             onChangeText={(next) => {
               setModel(next);
               setAccept(false);
             }}
           />
           <Button
-            title={
-              discovery.loading
-                ? "Loading models…"
-                : "Load embedding model catalog"
-            }
+            title={discovery.loading ? "Loading models…" : "Load models"}
             disabled={
               busy ||
               discovery.loading ||
@@ -269,6 +263,7 @@ export function SemanticSetup({
                   <TextInput
                     style={shared.input}
                     value={catalogSearch}
+                    editable={!busy}
                     onChangeText={setCatalogSearch}
                     placeholder="Search catalog models"
                     placeholderTextColor={colors.faint}
@@ -318,13 +313,13 @@ export function SemanticSetup({
             <Switch
               trackColor={{ true: colors.accent }}
               accessibilityLabel={consentText}
-              disabled={!ready}
+              disabled={busy || !ready}
               value={accept}
               onValueChange={setAccept}
             />
           </View>
           <Button
-            title="Validate and turn on search by meaning"
+            title="Validate and enable"
             disabled={busy || !ready || !accept || !model.trim()}
             onPress={() => void change(true)}
           />

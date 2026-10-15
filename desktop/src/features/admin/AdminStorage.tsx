@@ -205,8 +205,8 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
               <HardDrive size={16} /> Files on the server
             </h3>
             <p className="muted">
-              Pending uploads are deleted after import or within a day. Admins
-              can delete them, but cannot open them.
+              Uploads expire after import or within a day. Admins can delete
+              files, not open them.
             </p>
           </div>
           <div className="storage-actions">
@@ -222,7 +222,7 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
               disabled={busy}
               onClick={() => void sweep()}
             >
-              <Brush size={14} /> Run sweep now
+              <Brush size={14} /> Sweep now
             </button>
           </div>
         </div>
@@ -232,7 +232,7 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
           </p>
         )}
         {data.stored.length === 0 ? (
-          <p className="muted storage-empty">No files are stored right now.</p>
+          <p className="muted storage-empty">No stored uploads.</p>
         ) : (
           <ul className="storage-files">
             {data.stored.map((f) => (
@@ -247,8 +247,10 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
                 <span className="storage-main">
                   <strong>{f.file_name}</strong>
                   <small>
-                    {f.owner_name} ({f.owner_email}) · {bytes(f.bytes)} ·{" "}
-                    {f.status} · uploaded {ago(f.uploaded_at)} · deleted within{" "}
+                    {f.owner_name} · {bytes(f.bytes)} · {f.status}
+                  </small>
+                  <small>
+                    {f.owner_email} · uploaded {ago(f.uploaded_at)} · expires in{" "}
                     {within(f.deletes_at)}
                   </small>
                 </span>
@@ -267,7 +269,7 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
 
       {data.queue.reasons.length > 0 && (
         <section className="card storage-section">
-          <h3>Why imports failed today</h3>
+          <h3>Import failures today</h3>
           <ul className="storage-reasons">
             {data.queue.reasons.map((r) => (
               <li key={r.error}>
@@ -279,8 +281,8 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
         </section>
       )}
 
-      <section className="card storage-section">
-        <h3>Imports in the last 30 days</h3>
+      <details className="card storage-section storage-history">
+        <summary>Import history · 30 days</summary>
         {data.history.length === 0 ? (
           <p className="muted storage-empty">No imports yet.</p>
         ) : (
@@ -306,11 +308,15 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
                     <td>
                       {h.engines.map((e) => ENGINE[e] ?? e).join(", ") || "—"}
                     </td>
-                    <td
-                      className={h.status === "failed" ? "storage-bad" : ""}
-                      title={h.error ?? undefined}
-                    >
-                      {h.status}
+                    <td className={h.status === "failed" ? "storage-bad" : ""}>
+                      {h.error ? (
+                        <details className="storage-error-detail">
+                          <summary>{h.status}</summary>
+                          <p>{h.error}</p>
+                        </details>
+                      ) : (
+                        h.status
+                      )}
                     </td>
                     <td>{h.seconds === null ? "—" : `${h.seconds} s`}</td>
                     <td>{ago(h.created_at)}</td>
@@ -320,7 +326,7 @@ export function AdminStorage({ report }: { report: (e: unknown) => void }) {
             </table>
           </div>
         )}
-      </section>
+      </details>
     </div>
   );
 }

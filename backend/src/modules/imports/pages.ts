@@ -1,3 +1,4 @@
+import { rememberImportResult } from "../../lib/idempotency.js";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import {
@@ -178,10 +179,12 @@ export async function pageImportRoutes(app: FastifyInstance) {
               ],
             );
         }
-        return {
+        const result = {
           ...summary,
           folder_id: folderIds.get(plan.folders[0]) ?? null,
         };
+        await rememberImportResult(r, db, result);
+        return result;
       });
     },
   );

@@ -1,11 +1,11 @@
 /* Projects: cards for the overview, stage columns for one project.
-   Every colour comes from the existing theme tokens — no new palette. */
+   Colors come from shared semantic theme tokens. */
 
 .projects-view,
 .project-detail {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 18px;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -14,10 +14,6 @@
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   align-items: start;
   gap: 14px;
-}
-.projects-view {
-  container-type: inline-size;
-  container-name: projects;
 }
 .project-home-section {
   display: grid;
@@ -220,11 +216,9 @@
     gap: 12px;
   }
 }
-@container projects (max-width: 600px) {
-  .project-card {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-  }
+.projects-view.is-compact .project-card {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
 }
 .project-card:hover {
   border-color: var(--color-borderHover);
@@ -969,7 +963,9 @@
 }
 .project-record-form textarea {
   min-height: 74px;
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
 }
 .promise-tracker {
   border: 1px solid var(--color-border);
@@ -1497,7 +1493,7 @@
 }
 .new-project-body {
   display: grid;
-  gap: 18px;
+  gap: 14px;
 }
 .new-project-body {
   gap: 0;
@@ -1617,4 +1613,372 @@
 .project-look-icon {
   flex: none;
   color: var(--color-textSoft);
+}
+
+/* Project secondary panels follow their available pane width. */
+.project-notes-head,
+.project-milestones-head {
+  flex-wrap: wrap;
+}
+.project-notes-head h3,
+.project-record-kind {
+  text-transform: none;
+  letter-spacing: normal;
+}
+.project-note strong,
+.project-snapshot,
+.milestone-main,
+.milestone-tasks .check-line span {
+  overflow-wrap: anywhere;
+}
+.project-note {
+  min-height: 44px;
+}
+.project-note span {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+.project-home-section .milestone-row {
+  grid-template-columns: 16px minmax(0, 1fr);
+}
+.milestone-row .plan-chip {
+  grid-column: 2;
+  justify-self: start;
+}
+.milestone-name,
+.milestone-more button,
+.milestone-tasks .check-line {
+  min-height: 44px;
+}
+.milestone-native-dialog {
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+}
+.milestone-native-dialog::backdrop {
+  background: var(--color-backdrop, rgb(0 0 0 / 0.4));
+}
+.milestone-native-dialog .modal {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  box-sizing: border-box;
+}
+.milestone-fields {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  margin: 0;
+  min-width: 0;
+}
+.milestone-fields .section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.milestone-fields h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.milestone-fields label {
+  min-width: 0;
+}
+
+.timeline {
+  container-type: inline-size;
+  container-name: project-timeline;
+}
+.timeline-label {
+  min-height: 44px;
+  background: none;
+  border: 0;
+  padding: 4px 0;
+  text-align: left;
+  font: inherit;
+  font-size: 13px;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.timeline-bar,
+.timeline-session {
+  cursor: default;
+}
+@container project-timeline (max-width: 420px) {
+  .timeline-rows {
+    --label: 100px;
+    padding: 8px;
+  }
+  .timeline-marks {
+    left: calc(8px + var(--label) + 10px);
+    right: 8px;
+  }
+}
+
+.project-record-dialog {
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text);
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  box-sizing: border-box;
+}
+.project-record-dialog::backdrop {
+  background: var(--color-backdrop, rgb(0 0 0 / 0.4));
+}
+.project-record-dialog h2 {
+  margin: 0 0 14px;
+  font-size: 18px;
+}
+.project-record-fields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.project-record-dialog input,
+.project-record-dialog textarea {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.project-record-list strong,
+.project-record-list p,
+.project-record-meta,
+.project-record-source {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.project-record-source,
+.project-record-actions button {
+  min-height: 44px;
+}
+.project-record-dialog .project-record-form-bottom {
+  display: flex;
+  flex-wrap: wrap;
+}
+.project-record-dialog .project-record-form-bottom > * {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+/* Template editors fit the viewport while their contents follow the pane. */
+dialog.templates-dialog {
+  width: min(620px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  margin: auto;
+  padding: 0;
+  box-sizing: border-box;
+}
+dialog.templates-dialog::backdrop {
+  background: var(--color-backdrop, rgb(0 0 0 / 0.4));
+}
+.templates-dialog .section-heading {
+  padding: 14px 16px;
+}
+.templates-body {
+  padding: 0 16px 16px;
+}
+.templates-group h3 {
+  font-size: 13px;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.templates-dialog h2,
+.template-card strong,
+.template-card small,
+.template-tasks li,
+.template-page-note {
+  overflow-wrap: anywhere;
+}
+.templates-dialog summary {
+  min-height: 44px;
+  cursor: pointer;
+}
+.template-rhythm {
+  display: block;
+}
+.template-rhythm > * + * {
+  margin-top: 8px;
+}
+.template-rhythm-row {
+  flex-wrap: wrap;
+}
+.template-rhythm-row input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+.promise-tracker-row > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.promise-tracker-actions button {
+  min-height: 44px;
+}
+
+/* Project navigation follows the actual content pane, including side previews. */
+.project-detail,
+.projects-view {
+  container-type: inline-size;
+  container-name: project-pane;
+}
+.project-mode-picker {
+  display: none;
+}
+.project-header h2 {
+  font-size: 20px;
+  overflow-wrap: anywhere;
+}
+.project-header p,
+.project-home-section .muted,
+.project-card-top strong,
+.project-card small,
+.stage-task > span:last-child,
+.pboard-head strong,
+.project-search-results .muted {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+}
+.project-planning p,
+.project-reentry,
+.project-history-title,
+.project-history-diff {
+  overflow-wrap: anywhere;
+}
+.project-planning-head p {
+  flex: 1 1 240px;
+  min-width: 0;
+  font-size: 13px;
+}
+.project-deadline {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+.project-history-title,
+.project-history-heading {
+  flex-wrap: wrap;
+}
+.project-manage-menu {
+  max-width: calc(100vw - 32px);
+  max-height: min(480px, 70dvh);
+  overflow: auto;
+}
+.project-manage-menu button,
+.pboard-toggle button,
+.stage-name,
+.stage-task,
+.stage-move .select-control,
+.project-home-actions > button,
+.project-home-section .text-button,
+.project-history-entry > .text-button {
+  min-height: 44px;
+}
+.pboard-card:not([draggable="true"]) {
+  cursor: pointer;
+}
+@container project-pane (max-width: 700px) {
+  .project-mode-picker {
+    display: block;
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+  .pboard-toggle {
+    display: none;
+  }
+  .project-card,
+  .project-meta,
+  .stage-tasks li {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .stage-move {
+    max-width: 100%;
+    width: 100%;
+  }
+  .project-header h2 {
+    font-size: 18px;
+  }
+  .project-bar-top > .text-button {
+    white-space: normal;
+  }
+  .project-header,
+  .stage,
+  .project-history,
+  .project-home-section {
+    padding: 14px;
+  }
+  .project-cover {
+    margin-inline: -14px;
+  }
+}
+.project-chat-history {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.project-chat-history .settings-list-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.project-chat-open {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.project-chat-history .icon-button {
+  flex-shrink: 0;
+}
+
+.new-project-form-fields {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+}
+.new-project-form-fields textarea {
+  resize: none;
+  max-height: 180px;
+  overflow: auto;
+}
+.new-project-form-fields > details > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.new-project-stages li span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.new-project-stages li .icon-button {
+  min-height: 44px;
+  min-width: 44px;
+}
+.new-project-body .segmented {
+  flex-wrap: wrap;
+}
+.new-project-error {
+  overflow-wrap: anywhere;
 }

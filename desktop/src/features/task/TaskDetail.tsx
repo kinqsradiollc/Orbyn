@@ -2,6 +2,7 @@ import { Select } from "../../components/Select";
 import { Popover } from "../../components/Popover";
 import { useConfirm } from "../../components/Confirm";
 import { hasHigherDialog } from "../../lib/dialogLayers";
+import { createPortal } from "react-dom";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   Ban,
@@ -56,7 +57,6 @@ import { ProofSection } from "../followthrough/ProofSection";
 import { MeetingOutcome } from "../followthrough/MeetingOutcome";
 import "../followthrough/followthrough.css";
 import { celebrate } from "../../lib/celebrate";
-import { stagger } from "../../lib/motion";
 import { progressOf, timeAgo } from "../../lib/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
@@ -162,12 +162,29 @@ export function TaskDetail({
   const [error, setError] = useState("");
   const [newStep, setNewStep] = useState("");
   const [renaming, setRenaming] = useState<string | null>(null);
+  const renameCancelled = useRef(false);
+  const [stepOptions, setStepOptions] = useState<{
+    id: string;
+    anchor: DOMRect;
+  } | null>(null);
   const [body, setBody] = useState("");
   const [nextStatus, setNextStatus] = useState<Status | "">("");
   const [draft, setDraft] = useState<number | null>(null);
   const [optionsAt, setOptionsAt] = useState<DOMRect | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const panel = useRef<HTMLElement>(null);
+  const mounted = useRef(true);
+  const writing = useRef(false);
+  const detailRead = useRef(0);
+  const [readError, setReadError] = useState("");
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      detailRead.current += 1;
+    };
+  }, []);
   const closeButton = useRef<HTMLButtonElement>(null);
   const latest = useRef({ onError });
   latest.current = { onError };
@@ -185,18 +202,22 @@ export function TaskDetail({
   ].join("|");
   useEffect(() => {
     let alive = true;
+    const request = ++detailRead.current;
+    setReadError("");
     client.getItem(item.id).then(
-      (d) => alive && setDetail(d),
+      (d) => {
+        if (alive && request === detailRead.current) setDetail(d);
+      },
       (e) => {
-        if (!alive) return;
-        setError(errorText(e));
-        latest.current.onError(e);
+        if (!alive || request !== detailRead.current) return;
+        setReadError(errorText(e));
+        if ((e as HttpError).status === 401) latest.current.onError(e);
       },
     );
     return () => {
       alive = false;
     };
-  }, [reloadKey, item.id]);
+  }, [reloadKey, item.id, retry]);
 
   // Opened on one class of a repeating event: that class opens its own
   // note, so a note the series keeps for every class is pointed to here.
@@ -221,26 +242,69 @@ export function TaskDetail({
       alive = false;
     };
   }, [item.id, item.team_id, noteKind, occurrence]);
+  const [contextRetry, setContextRetry] = useState(0);
+  const [contextLoading, setContextLoading] = useState(true);
+  const [contextError, setContextError] = useState("");
+  const contextRead = useRef(0);
   useEffect(() => {
     if (item.kind !== "task") return;
     let alive = true;
-    void client.itemContext(item.id).then(
-      (value) => alive && setContext(value),
-      (e) => alive && latest.current.onError(e),
-    );
-    if (canWrite)
-      void client.listProjects().then(
-        (all) =>
-          alive &&
-          setProjects(
-            all.filter((p) => (p.team_id ?? null) === (item.team_id ?? null)),
+    const request = ++contextRead.current;
+    setContextLoading(true);
+    setContextError("");
+    void Promise.allSettled([
+      client.itemContext(item.id),
+      canWrite ? client.listProjects() : Promise.resolve([] as Project[]),
+    ]).then(([links, catalog]) => {
+      if (!alive || request !== contextRead.current) return;
+      if (links.status === "fulfilled") setContext(links.value);
+      if (catalog.status === "fulfilled")
+        setProjects(
+          catalog.value.filter(
+            (project) => (project.team_id ?? null) === (item.team_id ?? null),
           ),
-        (e) => alive && latest.current.onError(e),
+        );
+      const failures = [links, catalog].filter(
+        (result) => result.status === "rejected",
       );
+      if (failures.length) {
+        setContextError("Couldn't load project and pages. Try again.");
+        for (const failure of failures)
+          if (
+            failure.status === "rejected" &&
+            (failure.reason as HttpError).status === 401
+          )
+            latest.current.onError(failure.reason);
+      }
+      setContextLoading(false);
+    });
     return () => {
       alive = false;
     };
-  }, [item.id, item.kind, item.team_id, item.version, canWrite]);
+  }, [item.id, item.kind, item.team_id, item.version, canWrite, contextRetry]);
+
+  const moveToProject = async (input: {
+    project_id: string | null;
+    stage_id?: string | null;
+  }) => {
+    contextRead.current += 1;
+    try {
+      const confirmed = await client.setItemProject(item.id, input);
+      if (!mounted.current) return;
+      setDetail((was) =>
+        was
+          ? {
+              ...was,
+              ...confirmed.item,
+              attendees: was.attendees,
+              links: was.links,
+            }
+          : was,
+      );
+    } finally {
+      if (mounted.current) setContextRetry((n) => n + 1);
+    }
+  };
 
   /** A dialog in the Sessions section is open: it handles Escape. */
   const [scheduling, setScheduling] = useState(false);
@@ -260,21 +324,35 @@ export function TaskDetail({
         team_id: item.team_id ?? null,
         list_id: item.list_id ?? null,
       });
-      setNewSubtask("");
+      if (mounted.current) setNewSubtask("");
     });
   };
   /** Add a subtask, then reload the list and the planner. */
   const blockAction = async (fn: () => Promise<unknown>) => {
+    if (writing.current || !canWrite) return false;
+    writing.current = true;
+    detailRead.current += 1;
     setBlockPending(true);
     setError("");
     try {
       await fn();
-      await onChanged();
+      if (!mounted.current) return true;
+      try {
+        await onChanged();
+      } catch (e) {
+        if (mounted.current)
+          setError(`Saved. Couldn't refresh the planner. ${errorText(e)}`);
+      }
+      return true;
     } catch (e) {
-      setError(errorText(e));
-      if ((e as HttpError).status === 401) onError(e);
+      if (mounted.current) {
+        setError(errorText(e));
+        if ((e as HttpError).status === 401) onError(e);
+      }
+      return false;
     } finally {
-      setBlockPending(false);
+      writing.current = false;
+      if (mounted.current) setBlockPending(false);
     }
   };
 
@@ -284,7 +362,36 @@ export function TaskDetail({
     closeButton.current?.focus();
     return () => {
       clearTimeout(timer.current);
-      opener?.focus?.();
+      queueMicrotask(() => {
+        if (
+          opener?.isConnected &&
+          !opener.closest("[inert], [hidden]") &&
+          opener.getClientRects().length
+        )
+          opener.focus({ preventScroll: true });
+        else
+          document
+            .querySelector<HTMLElement>(".command-trigger:not([disabled])")
+            ?.focus();
+      });
+    };
+  }, []);
+
+  useEffect(() => {
+    const backgrounds = Array.from(
+      document.querySelectorAll<HTMLElement>(".shell, .sidebar"),
+    );
+    const previous = backgrounds.map((node) => ({ node, inert: node.inert }));
+    previous.forEach(({ node }) => {
+      node.inert = true;
+    });
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      previous.forEach(({ node, inert }) => {
+        node.inert = inert;
+      });
+      document.body.style.overflow = overflow;
     };
   }, []);
 
@@ -300,16 +407,20 @@ export function TaskDetail({
       )
         return;
       if (e.key === "Escape") {
-        if (renaming) return;
+        if (renaming || writing.current) return;
         e.preventDefault();
         onClose();
       }
       if (e.key !== "Tab" || !panel.current) return;
       const focusable = panel.current.querySelectorAll<HTMLElement>(
-        'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
+        'button:not(:disabled), input:not(:disabled), textarea:not(:disabled), a[href], summary, select:not(:disabled), [tabindex]:not([tabindex="-1"])',
       );
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const visible = Array.from(focusable).filter(
+        (node) =>
+          node.getClientRects().length && !node.closest("[hidden], [inert]"),
+      );
+      const first = visible[0];
+      const last = visible.at(-1);
       if (!first || !last) return;
       if (e.shiftKey && document.activeElement === first) {
         e.preventDefault();
@@ -354,25 +465,40 @@ export function TaskDetail({
 
   /** Run a change, keep the fresh detail, then refresh the planner. */
   const run = async (fn: () => Promise<ItemDetail>) => {
+    if (writing.current || !canWrite || !detail || readError) return false;
+    writing.current = true;
+    const request = ++detailRead.current;
     setPending(true);
     setError("");
     try {
       const before = (detail ?? item).status;
       const next = await fn();
+      if (!mounted.current) return true;
       setDetail(next);
-      // A status change, an update or the last checklist step can finish it.
       if (next.status === "done" && before !== "done") celebrate();
-      await onChanged();
+      try {
+        await onChanged();
+      } catch (e) {
+        if (mounted.current)
+          setError(`Saved. Couldn't refresh the planner. ${errorText(e)}`);
+      }
       return true;
     } catch (e) {
+      if (!mounted.current) return false;
       setError(errorText(e));
       if ((e as HttpError).status === 401) onError(e);
-      // A 409 means the server state moved on (e.g. steps were added): reload.
       if ((e as HttpError).status === 409)
-        client.getItem(item.id).then(setDetail, () => undefined);
+        void client.getItem(item.id).then(
+          (next) => {
+            if (mounted.current && request === detailRead.current)
+              setDetail(next);
+          },
+          () => undefined,
+        );
       return false;
     } finally {
-      setPending(false);
+      writing.current = false;
+      if (mounted.current) setPending(false);
     }
   };
 
@@ -389,7 +515,9 @@ export function TaskDetail({
     }
     setDraft(value);
     void run(() => client.postItemUpdate(item.id, { progress: value })).then(
-      () => setDraft(null),
+      (saved) => {
+        if (saved && mounted.current) setDraft(null);
+      },
     );
   };
 
@@ -414,11 +542,21 @@ export function TaskDetail({
   const toggleStep = (s: ItemStep) =>
     void run(() => client.updateStep(item.id, s.id, { done: !s.done }));
 
-  const renameStep = (s: ItemStep, title: string) => {
-    setRenaming(null);
+  const renameStep = (step: ItemStep, title: string) => {
+    if (renameCancelled.current) {
+      renameCancelled.current = false;
+      return;
+    }
     const next = title.trim();
-    if (!next || next === s.title) return;
-    void run(() => client.updateStep(item.id, s.id, { title: next }));
+    if (!next || next === step.title) {
+      setRenaming(null);
+      return;
+    }
+    void run(() => client.updateStep(item.id, step.id, { title: next })).then(
+      (saved) => {
+        if (saved && mounted.current) setRenaming(null);
+      },
+    );
   };
 
   const deleteStep = (s: ItemStep) =>
@@ -440,13 +578,17 @@ export function TaskDetail({
     });
   };
 
-  const locked = !canWrite || pending;
+  const chosenStep = stepOptions
+    ? steps.find((step) => step.id === stepOptions.id)
+    : undefined;
+  const locked = !canWrite || pending || blockPending || !detail || !!readError;
 
-  return (
+  return createPortal(
     <div
       className="drawer-backdrop"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !writing.current && !scheduling)
+          onClose();
       }}
     >
       <aside
@@ -455,7 +597,7 @@ export function TaskDetail({
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-drawer-title"
-        aria-busy={pending}
+        aria-busy={pending || blockPending}
       >
         <header className="drawer-head">
           <div className="drawer-kicker">
@@ -499,7 +641,7 @@ export function TaskDetail({
                   className="icon-button drawer-share"
                   aria-label="Task options"
                   aria-expanded={!!optionsAt}
-                  disabled={pending}
+                  disabled={locked}
                   onClick={(e) =>
                     setOptionsAt(e.currentTarget.getBoundingClientRect())
                   }
@@ -511,6 +653,7 @@ export function TaskDetail({
               ref={closeButton}
               className="icon-button drawer-close"
               aria-label="Close task panel"
+              disabled={pending || blockPending}
               onClick={onClose}
             >
               <X size={20} />
@@ -525,6 +668,22 @@ export function TaskDetail({
             </button>
           )}
           <h2 id="task-drawer-title">{current.title}</h2>
+        </header>
+
+        <div className="drawer-body">
+          {readError && (
+            <div className="error" role="alert">
+              {readError}
+              <button
+                type="button"
+                className="text-button"
+                disabled={pending || blockPending}
+                onClick={() => setRetry((n) => n + 1)}
+              >
+                Retry task
+              </button>
+            </div>
+          )}
           {current.kind === "task" && onAskTask && (
             <button className="text-button" onClick={() => onAskTask(current)}>
               <Sparkles size={14} aria-hidden="true" /> Ask about this task
@@ -590,10 +749,26 @@ export function TaskDetail({
           </div>
           <ItemFacts item={current} className="drawer-planning" />
           {current.kind === "task" && (
-            <section className="drawer-section" aria-label="Task connections">
-              <div className="drawer-section-head">
-                <h3>Project and pages</h3>
-              </div>
+            <details className="drawer-section task-connections">
+              <summary>Project and pages</summary>
+              {contextLoading && (
+                <p className="drawer-hint" role="status">
+                  Loading connections…
+                </p>
+              )}
+              {contextError && (
+                <p className="error" role="alert">
+                  {contextError}
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={pending || blockPending}
+                    onClick={() => setContextRetry((n) => n + 1)}
+                  >
+                    Retry connections
+                  </button>
+                </p>
+              )}
               {context?.project && onOpenProject && (
                 <button
                   className="link-button"
@@ -607,15 +782,11 @@ export function TaskDetail({
                   <Select
                     value={current.project_id ?? ""}
                     aria-label="File task in project"
-                    disabled={pending}
+                    disabled={locked || contextLoading || !!contextError}
                     onChange={(e) =>
-                      void blockAction(async () => {
-                        await client.setItemProject(current.id, {
-                          project_id: e.target.value || null,
-                        });
-                        setDetail(await client.getItem(current.id));
-                        setContext(await client.itemContext(current.id));
-                      })
+                      void blockAction(() =>
+                        moveToProject({ project_id: e.target.value || null }),
+                      )
                     }
                   >
                     <option value="">No project</option>
@@ -629,16 +800,14 @@ export function TaskDetail({
                     <Select
                       value={current.stage_id ?? ""}
                       aria-label="Project stage"
-                      disabled={pending}
+                      disabled={locked || contextLoading || !!contextError}
                       onChange={(e) =>
-                        void blockAction(async () => {
-                          await client.setItemProject(current.id, {
+                        void blockAction(() =>
+                          moveToProject({
                             project_id: context.project!.id,
                             stage_id: e.target.value || null,
-                          });
-                          setDetail(await client.getItem(current.id));
-                          setContext(await client.itemContext(current.id));
-                        })
+                          }),
+                        )
                       }
                     >
                       <option value="">No stage</option>
@@ -659,12 +828,15 @@ export function TaskDetail({
                   <button
                     className="link-button"
                     onClick={() =>
-                      void client
-                        .getDoc(context.came_from!.doc_id)
-                        .then(
-                          (doc) => onOpenDoc(doc, context.came_from!.block_id),
-                          onError,
-                        )
+                      void client.getDoc(context.came_from!.doc_id).then(
+                        (doc) => {
+                          if (mounted.current)
+                            onOpenDoc(doc, context.came_from!.block_id);
+                        },
+                        (error) => {
+                          if (mounted.current) onError(error);
+                        },
+                      )
                     }
                   >
                     {context.came_from.title}
@@ -682,9 +854,14 @@ export function TaskDetail({
                       key={p.id}
                       className="link-button"
                       onClick={() =>
-                        void client
-                          .getDoc(p.id)
-                          .then((doc) => onOpenDoc(doc, p.block_id), onError)
+                        void client.getDoc(p.id).then(
+                          (doc) => {
+                            if (mounted.current) onOpenDoc(doc, p.block_id);
+                          },
+                          (error) => {
+                            if (mounted.current) onError(error);
+                          },
+                        )
                       }
                     >
                       {p.title}
@@ -695,20 +872,20 @@ export function TaskDetail({
               {canWrite && onOpenDoc && (
                 <button
                   className="link-button"
-                  disabled={pending}
+                  disabled={locked}
                   onClick={() =>
                     void blockAction(async () => {
                       const doc = await client.createDoc(
                         pageAboutTask(current),
                       );
-                      onOpenDoc(doc);
+                      if (mounted.current) onOpenDoc(doc);
                     })
                   }
                 >
                   New page about this task
                 </button>
               )}
-            </section>
+            </details>
           )}
           {canWrite ? (
             <div
@@ -722,7 +899,7 @@ export function TaskDetail({
                   role="radio"
                   aria-checked={current.status === s}
                   className={`tone-${s} ${current.status === s ? "active" : ""}`}
-                  disabled={pending}
+                  disabled={locked}
                   onClick={() => setStatus(s)}
                 >
                   <i aria-hidden="true" />
@@ -739,9 +916,6 @@ export function TaskDetail({
               </p>
             </div>
           )}
-        </header>
-
-        <div className="drawer-body">
           {error && (
             <div className="error" role="alert">
               {error}
@@ -797,7 +971,7 @@ export function TaskDetail({
                   step={5}
                   list="progress-snaps"
                   value={progress}
-                  disabled={pending || current.status === "done"}
+                  disabled={locked || current.status === "done"}
                   aria-valuetext={`${progress}%`}
                   onChange={(e) => slide(Number(e.target.value))}
                 />
@@ -812,7 +986,7 @@ export function TaskDetail({
                       key={v}
                       type="button"
                       className={progress === v ? "active" : ""}
-                      disabled={pending || current.status === "done"}
+                      disabled={locked || current.status === "done"}
                       onClick={() => commitProgress(v)}
                     >
                       {v}%
@@ -924,6 +1098,7 @@ export function TaskDetail({
                       maxLength={200}
                       placeholder="Add a subtask…"
                       value={newSubtask}
+                      disabled={pending || blockPending}
                       onChange={(e) => setNewSubtask(e.target.value)}
                     />
                     <button
@@ -953,16 +1128,12 @@ export function TaskDetail({
                 </span>
               )}
             </div>
-            {detail === null && !error ? (
+            {readError ? null : detail === null ? (
               <p className="drawer-hint">Loading checklist…</p>
             ) : steps.length ? (
               <ul className="step-list">
-                {steps.map((s, n) => (
-                  <li
-                    key={s.id}
-                    className={"step fade-up stagger " + (s.done ? "done" : "")}
-                    style={stagger(n)}
-                  >
+                {steps.map((s) => (
+                  <li key={s.id} className={"step " + (s.done ? "done" : "")}>
                     <button
                       role="checkbox"
                       aria-checked={s.done}
@@ -989,50 +1160,37 @@ export function TaskDetail({
                           if (e.key === "Escape") {
                             e.preventDefault();
                             e.stopPropagation();
+                            renameCancelled.current = true;
                             setRenaming(null);
                           }
                         }}
                       />
-                    ) : canWrite ? (
-                      <button
-                        className="step-title"
-                        title="Rename step"
-                        disabled={pending}
-                        onClick={() => setRenaming(s.id)}
-                      >
-                        {s.title}
-                      </button>
                     ) : (
                       <span className="step-title">{s.title}</span>
                     )}
                     {canWrite && renaming !== s.id && (
-                      <span className="step-actions">
-                        <button
-                          className="icon-button"
-                          aria-label={`Rename step ${s.title}`}
-                          disabled={pending}
-                          onClick={() => setRenaming(s.id)}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          className="icon-button"
-                          aria-label={`Delete step ${s.title}`}
-                          disabled={pending}
-                          onClick={() => deleteStep(s)}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </span>
+                      <button
+                        type="button"
+                        className="icon-button step-actions"
+                        aria-label={`Options for ${s.title}`}
+                        aria-haspopup="dialog"
+                        disabled={locked}
+                        onClick={(event) =>
+                          setStepOptions({
+                            id: s.id,
+                            anchor: event.currentTarget.getBoundingClientRect(),
+                          })
+                        }
+                      >
+                        <MoreHorizontal size={16} />
+                      </button>
                     )}
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="drawer-hint">
-                {canWrite
-                  ? "Break it into small steps — progress then updates as you tick them off."
-                  : "No checklist for this task."}
+                {canWrite ? "No steps yet." : "No checklist for this task."}
               </p>
             )}
             {canWrite && (
@@ -1042,11 +1200,12 @@ export function TaskDetail({
                   placeholder="Add a step…"
                   maxLength={200}
                   value={newStep}
+                  disabled={locked}
                   onChange={(e) => setNewStep(e.target.value)}
                 />
                 <button
                   className="secondary"
-                  disabled={pending || !newStep.trim()}
+                  disabled={locked || !newStep.trim()}
                 >
                   <Plus size={15} /> Add
                 </button>
@@ -1072,8 +1231,9 @@ export function TaskDetail({
                   id="update-body"
                   rows={2}
                   maxLength={2000}
-                  placeholder="How is it going? Share progress, a blocker or a win…"
+                  placeholder="Write an update…"
                   value={body}
+                  disabled={locked}
                   onChange={(e) => setBody(e.target.value)}
                 />
                 <div className="update-composer-row">
@@ -1081,6 +1241,7 @@ export function TaskDetail({
                     <span className="sr-only">Change status</span>
                     <Select
                       value={nextStatus}
+                      disabled={locked}
                       onChange={(e) =>
                         setNextStatus(e.target.value as Status | "")
                       }
@@ -1097,7 +1258,7 @@ export function TaskDetail({
                   </label>
                   <button
                     className="primary"
-                    disabled={pending || (!body.trim() && !nextStatus)}
+                    disabled={locked || (!body.trim() && !nextStatus)}
                   >
                     {pending ? "Posting…" : "Post update"}
                   </button>
@@ -1106,12 +1267,8 @@ export function TaskDetail({
             )}
             {updates.length ? (
               <ol className="timeline">
-                {updates.map((u, n) => (
-                  <li
-                    key={u.id}
-                    className="timeline-entry fade-up stagger"
-                    style={stagger(n)}
-                  >
+                {updates.map((u) => (
+                  <li key={u.id} className="timeline-entry">
                     <span className="timeline-avatar" aria-hidden="true">
                       {u.author_name.trim()[0]?.toUpperCase() ?? "?"}
                     </span>
@@ -1150,13 +1307,7 @@ export function TaskDetail({
                 ))}
               </ol>
             ) : (
-              detail && (
-                <p className="drawer-hint">
-                  No updates yet.{" "}
-                  {canWrite &&
-                    "A quick note helps everyone see where this stands."}
-                </p>
-              )
+              detail && <p className="drawer-hint">No updates yet.</p>
             )}
           </section>
         </div>
@@ -1180,6 +1331,37 @@ export function TaskDetail({
           </button>
         </div>
       </aside>
+      {stepOptions && chosenStep && canWrite && (
+        <Popover
+          anchor={stepOptions.anchor}
+          label={`Options for ${chosenStep.title}`}
+          onClose={() => setStepOptions(null)}
+        >
+          <div className="popover-actions">
+            <button
+              className="popover-action"
+              disabled={locked}
+              onClick={() => {
+                renameCancelled.current = false;
+                setRenaming(chosenStep.id);
+                setStepOptions(null);
+              }}
+            >
+              <Pencil size={15} /> Rename step
+            </button>
+            <button
+              className="popover-action danger"
+              disabled={locked}
+              onClick={() => {
+                setStepOptions(null);
+                deleteStep(chosenStep);
+              }}
+            >
+              <Trash2 size={15} /> Delete step
+            </button>
+          </div>
+        </Popover>
+      )}
       {optionsAt &&
         canWrite &&
         current.kind === "task" &&
@@ -1192,7 +1374,7 @@ export function TaskDetail({
             <div className="popover-actions">
               <button
                 className="popover-action danger"
-                disabled={pending}
+                disabled={locked}
                 onClick={async () => {
                   setOptionsAt(null);
                   if (
@@ -1208,6 +1390,7 @@ export function TaskDetail({
             </div>
           </Popover>
         )}
-    </div>
+    </div>,
+    document.body,
   );
 }

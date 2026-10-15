@@ -56,7 +56,7 @@ export function AssistantAgents({
         <h2 id="assistant-agents-title">Your agents</h2>
         <button
           className="icon-button"
-          aria-label="Close agent profiles"
+          aria-label="Close agent activity"
           onClick={onClose}
         >
           <X size={18} />
@@ -67,7 +67,7 @@ export function AssistantAgents({
           <p role="alert">Agent status could not be refreshed. Try again.</p>
         )}
         {!snapshot.data && !snapshot.error && (
-          <p role="status">Loading agent profiles…</p>
+          <p role="status">Loading activity…</p>
         )}
         {snapshot.data?.profiles.map((profile) => (
           <section
@@ -89,7 +89,7 @@ export function AssistantAgents({
                       ? "waiting"
                       : "ready"
                 }
-                size={56}
+                size={32}
               />
               <div>
                 <h3>
@@ -119,11 +119,6 @@ export function AssistantAgents({
                 </p>
               </div>
             </header>
-            {profile.last_activity_at && (
-              <p className="muted">
-                Last work {new Date(profile.last_activity_at).toLocaleString()}
-              </p>
-            )}
             {!profile.runtime.reporting && (
               <p className="muted" role="status">
                 Worker not responding
@@ -167,6 +162,14 @@ export function AssistantAgents({
                 {profile.budget.estimated_tokens.toLocaleString()}/
                 {profile.budget.limit_tokens.toLocaleString()} tokens
               </p>
+            )}
+            {profile.last_activity_at && (
+              <details>
+                <summary>Last activity</summary>
+                <p className="muted">
+                  {new Date(profile.last_activity_at).toLocaleString()}
+                </p>
+              </details>
             )}
             {(profile.recent_activity.length > 0 ||
               profile.outputs.length > 0) && (

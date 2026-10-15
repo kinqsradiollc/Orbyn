@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { ProjectCheckpoint, ProjectSnapshot } from "@orbyn/core";
 import { Button } from "../../components/Button";
@@ -8,7 +8,10 @@ import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
 
 /** Browse read-only planning snapshots without crowding the project timeline. */
-export function ProjectTimeMachine({ projectId }: { projectId: string }) {
+export function ProjectTimeMachine(props: { projectId: string }) {
+  return <ProjectTimeMachineBody key={props.projectId} {...props} />;
+}
+function ProjectTimeMachineBody({ projectId }: { projectId: string }) {
   const [open, setOpen] = useState(false);
   const [checkpoints, setCheckpoints] = useState<ProjectCheckpoint[]>([]);
   const [visibleCount, setVisibleCount] = useState(5);
@@ -16,10 +19,20 @@ export function ProjectTimeMachine({ projectId }: { projectId: string }) {
   const [snapshot, setSnapshot] = useState<ProjectSnapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [failedRequest, setFailedRequest] = useState<
+    "catalog" | "snapshot" | "earlier"
+  >("catalog");
 
+  const request = useRef(0);
+  const [retry, setRetry] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [selected, setSelected] = useState("");
+  const pending = useRef(false);
   useEffect(() => {
     let active = true;
-    setOpen(false);
+    setError("");
+    setReady(false);
+    setBusy(true);
     setSnapshot(null);
     setCheckpoints([]);
     setVisibleCount(5);
@@ -28,59 +41,99 @@ export function ProjectTimeMachine({ projectId }: { projectId: string }) {
         if (!active) return;
         setCheckpoints(rows);
         setMore(rows.length === 100);
+        setReady(true);
+        setBusy(false);
       },
       (reason: Error) => {
-        if (active) setError(reason.message);
+        if (active) {
+          setFailedRequest("catalog");
+          setError(reason.message);
+          setBusy(false);
+        }
       },
     );
     return () => {
       active = false;
+      request.current++;
     };
-  }, [projectId]);
+  }, [projectId, retry]);
 
   const show = async (order: string) => {
+    if (pending.current || !ready) return;
+    const epoch = ++request.current;
+    setSelected(order);
+    setSnapshot(null);
     setBusy(true);
     setError("");
     try {
-      setSnapshot(await client.projectSnapshot(projectId, order));
+      const next = await client.projectSnapshot(projectId, order);
+      if (epoch === request.current) setSnapshot(next);
     } catch (reason) {
-      setError((reason as Error).message || "Could not load past state.");
+      if (epoch === request.current) {
+        setFailedRequest("snapshot");
+        setError((reason as Error).message || "Could not load past state.");
+      }
     } finally {
-      setBusy(false);
+      if (epoch === request.current) setBusy(false);
     }
   };
 
   const showMore = async () => {
+    if (busy || pending.current || !ready) return;
     if (visibleCount < checkpoints.length) {
       setVisibleCount((count) => count + 10);
       return;
     }
     const cursor = checkpoints.at(-1)?.event_order;
     if (!cursor || !more) return;
+    pending.current = true;
+    const epoch = request.current;
     setBusy(true);
     setError("");
     try {
       const older = await client.projectCheckpoints(projectId, cursor);
+      if (epoch !== request.current) return;
       setCheckpoints((current) => [...current, ...older]);
       setVisibleCount((count) => count + 10);
       setMore(older.length === 100);
     } catch (reason) {
-      setError((reason as Error).message || "Could not load earlier changes.");
+      if (epoch === request.current) {
+        setFailedRequest("earlier");
+        setError(
+          (reason as Error).message || "Could not load earlier changes.",
+        );
+      }
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (epoch === request.current) setBusy(false);
     }
   };
 
   return (
     <View style={styles.root}>
       <Button
-        title={open ? "Hide past state" : "See project at a past change"}
+        title={open ? "Hide past state" : "Past state"}
         secondary
         onPress={() => setOpen(!open)}
       />
       {open && (
         <View style={styles.body}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
+          {!!error && (
+            <SmallAction
+              label="Retry"
+              disabled={busy}
+              onPress={() => {
+                if (failedRequest === "catalog") setRetry((value) => value + 1);
+                else if (failedRequest === "snapshot" && selected)
+                  void show(selected);
+                else void showMore();
+              }}
+            />
+          )}
+          {ready && !checkpoints.length && (
+            <Text style={styles.meta}>No past changes yet.</Text>
+          )}
           <Text style={styles.hint}>
             Read-only planning state. Note contents are not shown.
           </Text>
@@ -99,7 +152,7 @@ export function ProjectTimeMachine({ projectId }: { projectId: string }) {
               />
             </View>
           ))}
-          {(visibleCount < checkpoints.length || more) && (
+          {ready && (visibleCount < checkpoints.length || more) && (
             <SmallAction
               label="Earlier changes"
               disabled={busy}
@@ -178,8 +231,13 @@ const styles = themed(() =>
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
-    rowText: { flex: 1, gap: 3 },
-    title: { color: colors.text, fontFamily: fonts.regular, lineHeight: 20 },
+    rowText: { flex: 1, minWidth: 0, gap: 3 },
+    title: {
+      color: colors.text,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 20,
+    },
     meta: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13 },
     snapshot: {
       gap: 9,
@@ -189,7 +247,7 @@ const styles = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
-    snapshotTitle: { color: colors.text, fontFamily: fonts.bold, fontSize: 18 },
+    snapshotTitle: { color: colors.text, fontFamily: fonts.bold, fontSize: 15 },
     group: { gap: 5 },
     heading: { color: colors.text, fontFamily: fonts.bold },
   }),

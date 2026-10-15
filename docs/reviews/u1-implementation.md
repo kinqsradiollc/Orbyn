@@ -1,3 +1,7 @@
+> Historical accepted U1 delivery. The owner requested a new full redesign on
+> 12 October 2026: [ADR 003](../adr/003-product-ui-ux-redesign.md) and
+> [current redesign ledger](ui-ux-redesign.md). This receipt does not qualify that new scope.
+
 # U1 implementation and acceptance
 
 Started 12 October 2026 at main `9d786412`. Builder checkout:

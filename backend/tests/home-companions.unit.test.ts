@@ -41,6 +41,12 @@ function fixture(mobile: boolean) {
     React.createElement("div", null, children);
   const modules: Record<string, unknown> = {
     react: hooks,
+    "lucide-react": {
+      Clock: container,
+      Sparkles: container,
+      ChevronRight: container,
+    },
+    "./Icon": { Icon: container },
     "@orbyn/core": core,
     "react-native": { Text: container, View: container },
     "../../lib/api": {
@@ -138,21 +144,32 @@ function action(node: React.ReactNode): (() => void) | undefined {
     onPress?: () => void;
     children?: React.ReactNode;
   };
-  return (
-    props.onClick ??
-    props.onPress ??
-    React.Children.toArray(props.children).map(action).find(Boolean)
-  );
+  const children = React.Children.toArray(props.children);
+  const named =
+    props.children === "Browse characters" ||
+    children.some(
+      (child) =>
+        React.isValidElement(child) &&
+        (child.props as { children: unknown }).children === "Browse characters",
+    );
+  if (named && (props.onClick || props.onPress))
+    return props.onClick ?? props.onPress;
+  return children.map(action).find(Boolean);
 }
 function profileAction(node: React.ReactNode): (() => void) | undefined {
   if (!React.isValidElement(node)) return;
   const props = node.props as {
     title?: string;
+    className?: string;
+    accessibilityLabel?: string;
     onClick?: () => void;
     onPress?: () => void;
     children?: React.ReactNode;
   };
-  if (props.title === "Activity" || props.children === "Activity")
+  if (
+    props.className === "home-agent-row" ||
+    props.accessibilityLabel === "Open Background work"
+  )
     return props.onClick ?? props.onPress;
   return React.Children.toArray(props.children)
     .map(profileAction)
@@ -186,18 +203,17 @@ for (const mobile of [false, true]) {
   test(`${platform} Home omits duplicate default roles and retains custom identity roles`, async () => {
     const view = fixture(mobile);
     const defaultTree = renderToStaticMarkup(view.first);
-    // The fixture Character renders its accessible name once; the visible
-    // heading adds one more. There must not be a third identical role subtitle.
-    assert.equal((defaultTree.match(/Background/g) ?? []).length, 2);
-    assert.equal((defaultTree.match(/Overnight/g) ?? []).length, 2);
+    // Compact rows use decorative icons; each visible role appears once.
+    assert.equal((defaultTree.match(/Background/g) ?? []).length, 1);
+    assert.equal((defaultTree.match(/Overnight/g) ?? []).length, 1);
     await view.resolve({ name: "Background" });
     assert.equal(
       (renderToStaticMarkup(view.render()).match(/Background/g) ?? []).length,
-      2,
+      1,
     );
     view.update({ name: "Garden" });
     const customized = renderToStaticMarkup(view.render());
-    assert.equal((customized.match(/Garden/g) ?? []).length, 2);
+    assert.equal((customized.match(/Garden/g) ?? []).length, 1);
     assert.equal((customized.match(/Background/g) ?? []).length, 1);
     view.cleanup();
   });
@@ -258,7 +274,8 @@ for (const mobile of [false, true]) {
   test(`${platform} Home browses every preset without changing settings`, () => {
     const view = fixture(mobile);
     assert.doesNotMatch(renderToStaticMarkup(view.first), /Cozy bunny/);
-    action(view.first)!();
+    guideAction(view.first)!();
+    action(view.render())!();
     const html = renderToStaticMarkup(view.render());
     for (const preset of core.CHARACTER_PRESETS)
       assert.ok(html.includes(preset.name), preset.name);

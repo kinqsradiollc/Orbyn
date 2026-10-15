@@ -14,7 +14,7 @@
   overflow-y: auto;
   max-height: calc(100dvh - 140px);
   display: grid;
-  gap: 24px;
+  gap: 16px;
 }
 .page-maintenance section,
 .page-maintenance fieldset {
@@ -42,7 +42,9 @@
 .page-maintenance textarea {
   min-height: 88px;
   width: 100%;
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
 }
 .page-maintenance-blocks {
   display: grid;
@@ -55,6 +57,7 @@
   align-items: flex-start;
   gap: 10px;
   padding: 8px;
+  min-height: 44px;
   border-radius: var(--radius-sm);
 }
 .page-maintenance-blocks span,
@@ -104,4 +107,45 @@
 .page-maintenance button[aria-pressed="true"] {
   border-color: var(--color-accent);
   color: var(--color-accent);
+}
+
+.page-maintenance label.switch-line {
+  display: flex;
+  align-items: flex-start;
+}
+.page-maintenance label.switch-line > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.page-maintenance-row {
+  flex-wrap: wrap;
+}
+
+.page-maintenance-row > span {
+  flex: 1 1 220px;
+}
+.page-maintenance details summary {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.page-maintenance details button {
+  min-height: 44px;
+}
+.page-maintenance-run strong,
+.page-maintenance-run small,
+.page-maintenance-run p {
+  overflow-wrap: anywhere;
+}
+.page-maintenance-blocks input {
+  flex: none;
+}
+@media (max-width: 420px) {
+  .page-maintenance {
+    width: calc(100vw - 24px);
+    padding: 16px;
+  }
 }

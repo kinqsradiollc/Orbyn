@@ -35,6 +35,21 @@ and the distinction between external guidance and local choices are in
   inference; Connected agents/MCP grant access to Orbyn. Background and Overnight
   are separate work surfaces. Avoid a shared ambiguous "Connect AI" action.
 
+## Focused editors and modal ownership
+
+- The active editor owns keyboard focus and restores its connected opener on close.
+  Tab cycles through visible controls; Escape closes only the top layer.
+- Floating selectors/date pickers must declare their editor owner. Their focus and
+  Escape handling remain local; never trap a picker back into its parent form.
+- Pending saves prevent duplicate submission and accidental dismissal. Keep drafts
+  mounted behind optional sections; reveal invalid hidden fields before focusing them.
+- Use `useModalFocus` for custom web editor overlays where appropriate. Native
+  dialogs require compatible portal placement; do not substitute them blindly.
+- Links, chat handoffs and other-pane navigation can also leave an unsaved editor.
+  Apply its departure guard before handing over; a confirmed write can hand off
+  its saved receipt without presenting another creation action.
+
+
 ## Forms, state, and recovery
 
 - Prefer safe defaults and suitable input types; keep labels visible. Validate
@@ -42,9 +57,16 @@ and the distinction between external guidance and local choices are in
 - Distinguish invalid input from unavailable service, revoked access, missing
   permission, or provider outage. Explain the relevant next action briefly;
   do not ask a person to edit a correct field to solve a server problem.
+- Bind related-resource state to its current document/project identity. On a
+  content change, previous results must not appear under the new owner while
+  effects or reads settle; distinguish loading/failure from confirmed emptiness.
 - Show pending feedback when an action begins, prevent accidental duplicate
   submission, and make the saved/result state observable. A toast alone must not
   conceal a persistent failure or replace the current connection/run status.
+- Approval reviews keep recipients, dates and destructive consequences visible.
+  Long authored text can use a named disclosure with complete before/after values;
+  bound scrolling must remain keyboard reachable. Freeze approval options while
+  their write is pending, and retain a confirmed receipt before opening its result.
 - A retry retains work and cannot silently change the provider, recipient, model,
   or authority. If the consequence changes, require the appropriate fresh choice.
 - Cancel, Back, Close, Undo, and disconnect must have predictable effects. Preserve
@@ -82,3 +104,17 @@ give exact steps for a known defect's recheck. Agent walkthroughs are expert QA,
 not evidence from representative human participants. Where user testing is done,
 record completion, errors, assistance, and time without claiming a universal
 usability score. Do not collect new analytics or personal data implicitly.
+
+
+## Add rows and confirmed receipts
+
+- Before saving a form, account for text still in an Add row (links, invitees,
+  alerts, tags). Add it explicitly or explain which unfinished entry to add or
+  clear. Never silently leave typed data out of the saved artifact.
+- Bind creation/apply receipts to the account and exact proposal or object. Keep
+  the receipt before opening its destination or refreshing a list. A failed
+  follow-up must say the item was saved and offer the follow-up action; it must
+  not invite another creation as if the first write failed.
+- A counted preview needs a visible route to all of its content. Label a plain
+  text disclosure as text; do not imply it proves rich-format or attachment
+  rendering. Sharing destinations must be identifiable before commitment.

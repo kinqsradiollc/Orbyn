@@ -1,9 +1,5 @@
 import { Check, X, Undo2 } from "lucide-react";
-import {
-  activityOriginLabel,
-  plainText,
-  type DocSuggestion,
-} from "@orbyn/core";
+import { activityOriginLabel, type DocSuggestion } from "@orbyn/core";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -28,6 +24,8 @@ export function DocSuggestions({
   busy,
   onDecide,
   onWithdraw,
+  onDecideAll,
+  sourceBlockIds,
 }: {
   suggestions: DocSuggestion[];
   /** Only someone who may change the page can take a proposal into it. */
@@ -36,6 +34,8 @@ export function DocSuggestions({
   busy: boolean;
   onDecide: (s: DocSuggestion, take: boolean) => void;
   onWithdraw: (s: DocSuggestion) => void;
+  onDecideAll?: (suggestions: DocSuggestion[], take: boolean) => void;
+  sourceBlockIds?: ReadonlySet<string>;
 }) {
   const open = suggestions.filter((s) => s.status === "open");
   if (!open.length) return null;
@@ -45,21 +45,21 @@ export function DocSuggestions({
       <h3>
         {open.length} proposed change{open.length === 1 ? "" : "s"}
       </h3>
-      {canDecide && live.length > 1 && (
+      {canDecide && onDecideAll && live.length > 1 && (
         <div className="doc-suggest-all">
           <button
             className="text-button"
             disabled={busy}
-            onClick={() => live.forEach((s) => onDecide(s, true))}
+            onClick={() => onDecideAll?.(live, true)}
           >
-            <Check size={13} aria-hidden="true" /> Take all
+            <Check size={13} aria-hidden="true" /> Accept all
           </button>
           <button
             className="text-button"
             disabled={busy}
-            onClick={() => live.forEach((s) => onDecide(s, false))}
+            onClick={() => onDecideAll?.(live, false)}
           >
-            <X size={13} aria-hidden="true" /> Leave all
+            <X size={13} aria-hidden="true" /> Reject all
           </button>
         </div>
       )}
@@ -77,14 +77,33 @@ export function DocSuggestions({
                 : ""}
             </small>
           </header>
-          <p className="doc-suggest-change">
-            {!!s.quote && <del>{plainText(s.quote)}</del>}
-            {!!s.text && <ins>{plainText(s.text)}</ins>}
-          </p>
+          <details className="doc-suggest-details" open={open.length === 1}>
+            <summary>Review change</summary>
+            <div
+              className={
+                "doc-suggest-change" +
+                (sourceBlockIds?.has(s.block_id) ? " is-source" : "")
+              }
+            >
+              {!!s.quote && (
+                <div>
+                  <span className="muted">Before</span>
+                  <pre>{s.quote}</pre>
+                </div>
+              )}
+              {!!s.text && (
+                <div>
+                  <span className="muted">After</span>
+                  <pre>{s.text}</pre>
+                </div>
+              )}
+              {!s.text && <p className="muted">Remove selected text</p>}
+            </div>
+          </details>
           {!!s.note && <p className="doc-suggest-note">{s.note}</p>}
           {s.detached ? (
             <p className="doc-suggest-stale">
-              The words this was about have gone. Nothing to apply it to.
+              The original text was removed. This change cannot be applied.
             </p>
           ) : (
             <div className="doc-card-actions">
@@ -104,14 +123,14 @@ export function DocSuggestions({
                     disabled={busy}
                     onClick={() => onDecide(s, false)}
                   >
-                    <X size={13} aria-hidden="true" /> Leave
+                    <X size={13} aria-hidden="true" /> Reject
                   </button>
                   <button
                     className="primary"
                     disabled={busy}
                     onClick={() => onDecide(s, true)}
                   >
-                    <Check size={13} aria-hidden="true" /> Take
+                    <Check size={13} aria-hidden="true" /> Accept
                   </button>
                 </>
               )}

@@ -29,7 +29,7 @@ const viewport = () => {
 export function settingsHasOverlay(root: HTMLElement): boolean {
   return Array.from(
     document.querySelectorAll<HTMLElement>(
-      '.popover, [role="listbox"], [role="dialog"], [aria-modal="true"], .command-backdrop',
+      '.popover, [role="listbox"], [role="dialog"], [aria-modal="true"], dialog[open], .command-backdrop',
     ),
   ).some((element) => {
     if (
@@ -40,6 +40,7 @@ export function settingsHasOverlay(root: HTMLElement): boolean {
       getComputedStyle(element).visibility === "hidden"
     )
       return false;
+    if (element.matches("dialog:modal")) return true;
     const surface =
       element.closest<HTMLElement>(
         ".modal-backdrop, .popover, .command-backdrop",
@@ -187,6 +188,7 @@ export function SettingsModal({
       if (!root.contains(event.target as Node) && !settingsHasOverlay(root))
         first().focus({ preventScroll: true });
     };
+    let blockedFrame: number | null = null;
     const blocked = (event: Event) => {
       const marker = event.target as HTMLElement;
       setNotice(
@@ -199,7 +201,10 @@ export function SettingsModal({
           '.settings-section-head[aria-expanded="false"]',
         )
         ?.click();
-      requestAnimationFrame(() => {
+      if (blockedFrame !== null) cancelAnimationFrame(blockedFrame);
+      blockedFrame = requestAnimationFrame(() => {
+        blockedFrame = null;
+        if (!marker.isConnected) return;
         marker.scrollIntoView({ block: "center" });
         marker.querySelector<HTMLElement>("button")?.focus();
       });
@@ -216,6 +221,7 @@ export function SettingsModal({
       document.removeEventListener("focusin", focus);
       root.removeEventListener("orbyn-settings-exit-blocked", blocked);
       observer.disconnect();
+      if (blockedFrame !== null) cancelAnimationFrame(blockedFrame);
       document.body.style.overflow = overflow;
       if (app) {
         app.inert = inert;

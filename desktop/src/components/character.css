@@ -18,14 +18,15 @@
   display: grid;
   gap: 14px;
   margin-block: 16px;
+  min-width: 0;
+  container: character-editor / inline-size;
 }
 .character-preview {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 16px;
-  background: var(--color-surfaceMuted);
-  border-radius: var(--radius-md);
+  padding-block: 8px;
+  flex-wrap: wrap;
 }
 .character-preview p {
   margin: 4px 0 0;
@@ -33,7 +34,7 @@
 }
 .character-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
   gap: 12px;
 }
 .character-fields label {
@@ -64,12 +65,13 @@
   justify-content: center;
   margin: 24px 0 8px;
 }
-@media (max-width: 420px) {
-  .character-fields {
-    grid-template-columns: 1fr;
-  }
+@container character-editor (max-width: 28rem) {
   .character-preview {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .character-preview > .orbyn-character {
+    align-self: center;
   }
 }
 
@@ -91,7 +93,9 @@
 }
 
 .character-preview-caption {
+  flex: 1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .character-starters {
   display: flex;
@@ -114,6 +118,7 @@
 .character-preset span {
   white-space: normal;
   text-align: center;
+  overflow-wrap: anywhere;
 }
 .character-editor-actions {
   display: flex;
@@ -131,6 +136,9 @@
 .character-tabs button {
   flex: 1;
   min-width: 64px;
+  min-height: 44px;
+  white-space: normal;
+  overflow-wrap: anywhere;
   padding: 8px;
   border: 0;
   border-radius: var(--radius-sm);

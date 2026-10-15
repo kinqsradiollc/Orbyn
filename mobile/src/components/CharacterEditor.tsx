@@ -1,5 +1,11 @@
 import React, { useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import {
   CHARACTER_SECTIONS,
   CHARACTER_PRESETS,
@@ -10,6 +16,7 @@ import {
   type CharacterAppearance,
   type CharacterState,
 } from "@orbyn/core";
+import { usePaneWidth } from "../hooks/usePaneWidth";
 import { Segmented } from "./Segmented";
 import { Character } from "./Character";
 import { Button } from "./Button";
@@ -30,28 +37,29 @@ export function CharacterEditor({
   name: string;
   disabled?: boolean;
 }) {
+  const pane = usePaneWidth();
+  const { fontScale } = useWindowDimensions();
+  const stacked = pane.width < 480 * Math.max(1, fontScale);
   const [greeting, setGreeting] = useState(0);
   const [state, setState] = useState<CharacterState>("ready");
   const [section, setSection] = useState<string>("shape");
   const current = CHARACTER_SECTIONS.find((item) => item.id === section)!;
   return (
-    <View style={s.editor}>
-      <View style={s.preview}>
+    <View style={s.editor} onLayout={pane.onLayout}>
+      <View style={[s.preview, stacked && s.stacked]}>
         <Character
           appearance={value}
           state={state}
-          size={144}
+          size={128}
           greeting={greeting}
           name={name || "Orbyn"}
           preview
         />
         <View style={s.caption}>
           <Text style={s.name}>{name.trim() || "Orbyn"}</Text>
-          <Text style={shared.small}>
-            {value.presence === "hidden"
-              ? "Hidden in chat. Preview only."
-              : "Make a little companion that's yours."}
-          </Text>
+          {value.presence === "hidden" && (
+            <Text style={shared.small}>Hidden in chat.</Text>
+          )}
           <Button
             title="Say hello"
             secondary
@@ -63,7 +71,7 @@ export function CharacterEditor({
       </View>
       <ScrollView
         horizontal
-        showsHorizontalScrollIndicator={false}
+        showsHorizontalScrollIndicator
         contentContainerStyle={s.presets}
         accessibilityLabel="Character presets"
       >
@@ -149,10 +157,6 @@ export function CharacterEditor({
           />
         </Field>
       )}
-      <Text style={shared.small}>
-        Mix hats, eyewear, outfits and more. Save to use your look across
-        devices.
-      </Text>
     </View>
   );
 }
@@ -163,11 +167,10 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
-      padding: 12,
-      borderRadius: radii.card,
-      backgroundColor: colors.surfaceMuted,
+      paddingVertical: 8,
     },
-    caption: { flex: 1, gap: 4 },
+    stacked: { flexDirection: "column", alignItems: "stretch" },
+    caption: { flex: 1, minWidth: 0, gap: 4 },
     name: { fontFamily: fonts.semibold, fontSize: 18, color: colors.text },
     presets: { gap: 8, paddingVertical: 4 },
     preset: {

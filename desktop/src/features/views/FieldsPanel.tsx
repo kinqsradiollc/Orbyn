@@ -1,3 +1,5 @@
+import { session } from "../../lib/session";
+import { usePaneLeaveGuard } from "../../app/page-commands";
 import { useEffect, useRef, useState } from "react";
 import { MoreHorizontal, Plus } from "lucide-react";
 import {
@@ -10,10 +12,10 @@ import {
   type TargetFields,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
-import { Popover } from "../../components/Popover";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { FieldInput } from "./FieldInput";
+import { SettingsEditor } from "../settings/SettingsEditor";
 import "./views.css";
 
 /**
@@ -23,7 +25,15 @@ import "./views.css";
  * renames it, changes its choices, shows it on the calendar or removes it
  * from the ⋯ beside it.
  */
-export function FieldsPanel({
+export function FieldsPanel(props: Parameters<typeof FieldsPanelBody>[0]) {
+  return (
+    <FieldsPanelBody
+      key={`${session.get()}:${props.target}:${props.targetId}`}
+      {...props}
+    />
+  );
+}
+function FieldsPanelBody({
   target,
   targetId,
   revision,
@@ -45,45 +55,93 @@ export function FieldsPanel({
 }) {
   const [data, setData] = useState<TargetFields | null>(null);
   const [adding, setAdding] = useState(false);
-  const [menu, setMenu] = useState<{
-    field: CustomField;
-    anchor: DOMRect;
-  } | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const owner = useRef({ target, targetId });
+  owner.current = { target, targetId };
+  const read = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      read.current += 1;
+    };
+  }, []);
+
+  const [menu, setMenu] = useState<CustomField | null>(null);
   const reportRef = useRef(report);
   reportRef.current = report;
   const { ask } = useConfirm();
 
-  const load = () =>
-    client.targetFields(target, targetId).then(setData, (e) => {
-      reportRef.current(e);
-    });
+  const load = async () => {
+    const request = ++read.current;
+    setLoadFailed(false);
+    try {
+      const next = await client.targetFields(target, targetId);
+      if (mounted.current && request === read.current) setData(next);
+    } catch (e) {
+      if (mounted.current && request === read.current) {
+        setLoadFailed(true);
+        reportRef.current(e);
+      }
+    }
+  };
   useEffect(() => {
-    setData(null);
     void load();
-  }, [target, targetId, revision]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      read.current += 1;
+    };
+  }, [target, targetId, revision, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!data) return null;
+  usePaneLeaveGuard(async () => !adding && !menu);
+
+  if (!data)
+    return loadFailed ? (
+      <button className="secondary" onClick={() => setRetry((n) => n + 1)}>
+        Retry fields
+      </button>
+    ) : (
+      <p className="muted" role="status">
+        Loading fields…
+      </p>
+    );
   if (!data.fields.length && !data.can_write) return null;
 
-  const save = (field: CustomField, value: FieldValue) => {
-    setData((d) =>
-      d ? { ...d, values: { ...d.values, [field.id]: value } } : d,
-    );
-    client.setFieldValue(field.id, target, targetId, value).then(
-      (saved) => {
+  const save = async (field: CustomField, value: FieldValue) => {
+    if (!data.can_write) return false;
+    const current = owner.current;
+    const owns = () =>
+      mounted.current &&
+      current.target === owner.current.target &&
+      current.targetId === owner.current.targetId;
+    try {
+      const saved = await client.setFieldValue(
+        field.id,
+        target,
+        targetId,
+        value,
+      );
+      if (owns()) {
         setData((d) =>
           d ? { ...d, values: { ...d.values, [field.id]: saved.value } } : d,
         );
         onChanged?.();
-      },
-      (e) => {
-        report(e);
-        void load();
-      },
-    );
+      }
+      return true;
+    } catch (e) {
+      if (owns()) report(e);
+      return false;
+    }
   };
 
   const remove = async (field: CustomField) => {
+    if (!field.can_manage) return;
+    const current = owner.current;
+    const owns = () =>
+      mounted.current &&
+      current.target === owner.current.target &&
+      current.targetId === owner.current.targetId;
     setMenu(null);
     const ok = await ask({
       title: `Remove ${field.name}?`,
@@ -93,22 +151,46 @@ export function FieldsPanel({
       confirmLabel: "Remove field",
       destructive: true,
     });
-    if (!ok) return;
-    client.deleteField(field.id).then(() => {
-      void load();
-      onChanged?.();
-    }, report);
+    if (!ok || !owns()) return;
+    client.deleteField(field.id).then(
+      () => {
+        if (!owns()) return;
+        void load();
+        onChanged?.();
+      },
+      (e) => {
+        if (owns()) report(e);
+      },
+    );
   };
 
-  const change = (
+  const change = async (
     field: CustomField,
     input: Parameters<typeof client.updateField>[1],
   ) => {
-    setMenu(null);
-    client.updateField(field.id, input).then(() => {
-      void load();
-      onChanged?.();
-    }, report);
+    if (!field.can_manage) return false;
+    const current = owner.current;
+    try {
+      await client.updateField(field.id, input);
+      if (
+        mounted.current &&
+        current.target === owner.current.target &&
+        current.targetId === owner.current.targetId
+      ) {
+        setMenu(null);
+        void load();
+        onChanged?.();
+      }
+      return true;
+    } catch (e) {
+      if (
+        mounted.current &&
+        current.target === owner.current.target &&
+        current.targetId === owner.current.targetId
+      )
+        report(e);
+      return false;
+    }
   };
 
   return (
@@ -121,6 +203,7 @@ export function FieldsPanel({
               <dt title={FIELD_TYPE_LABELS[field.type]}>{field.name}</dt>
               <dd>
                 <FieldInput
+                  key={`${target}:${targetId}:${field.id}`}
                   field={field}
                   value={data.values[field.id]}
                   people={data.people}
@@ -132,12 +215,7 @@ export function FieldsPanel({
                     className="icon-button field-more"
                     aria-label={`${field.name} options`}
                     title="Field options"
-                    onClick={(e) =>
-                      setMenu({
-                        field,
-                        anchor: e.currentTarget.getBoundingClientRect(),
-                      })
-                    }
+                    onClick={() => setMenu(field)}
                   >
                     <MoreHorizontal size={14} />
                   </button>
@@ -150,6 +228,7 @@ export function FieldsPanel({
       {data.can_write &&
         (adding ? (
           <NewField
+            key={`${target}:${targetId}`}
             target={target}
             teamId={data.team_id}
             onCancel={() => setAdding(false)}
@@ -166,33 +245,25 @@ export function FieldsPanel({
           </button>
         ))}
       {menu && (
-        <Popover
-          anchor={menu.anchor}
-          label={`${menu.field.name} options`}
+        <FieldOptions
+          field={menu}
           onClose={() => setMenu(null)}
-        >
-          <FieldOptions
-            field={menu.field}
-            onRename={(name) => change(menu.field, { name })}
-            onChoices={(options) => change(menu.field, { options })}
-            onCalendar={(on_calendar) => change(menu.field, { on_calendar })}
-            onRemove={() => void remove(menu.field)}
-          />
-        </Popover>
+          onSave={(input) => change(menu, input)}
+          onRemove={() => void remove(menu)}
+        />
       )}
     </section>
   );
 }
 
-const choicesOf = (text: string) =>
-  [
-    ...new Set(
-      text
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    ),
-  ].slice(0, 30);
+const choicesOf = (text: string) => [
+  ...new Set(
+    text
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ),
+];
 
 /** Making a field: its name, its type, choices for a choice field. */
 function NewField({
@@ -213,159 +284,259 @@ function NewField({
   const [choices, setChoices] = useState("");
   const [onCalendar, setOnCalendar] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const writing = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const options = type === "select" ? choicesOf(choices) : [];
-  const ready = name.trim() && (type !== "select" || options.length > 0);
+  const ready =
+    name.trim() &&
+    (type !== "select" || (options.length > 0 && options.length <= 30));
   return (
-    <form
-      className="new-field"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!ready || busy) return;
-        setBusy(true);
-        client
-          .createField({
-            name: name.trim(),
-            type,
-            applies_to: target,
-            team_id: teamId,
-            options,
-            on_calendar: type === "date" && onCalendar,
-          })
-          .then(onMade, (err) => {
-            setBusy(false);
-            report(err);
-          });
+    <SettingsEditor
+      title="Add field"
+      pending={busy}
+      onClose={() => {
+        if (!writing.current) onCancel();
       }}
     >
-      <input
-        autoFocus
-        aria-label="Field name"
-        placeholder="Name, like Essay due"
-        value={name}
-        maxLength={60}
-        onChange={(e) => setName(e.target.value)}
-      />
-      <Select
-        aria-label="Field type"
-        value={type}
-        onChange={(e) => setType(e.target.value as FieldType)}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <form
+        className="new-field"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!ready || writing.current) return;
+          writing.current = true;
+          setError("");
+          setBusy(true);
+          client
+            .createField({
+              name: name.trim(),
+              type,
+              applies_to: target,
+              team_id: teamId,
+              options,
+              on_calendar: type === "date" && onCalendar,
+            })
+            .then(
+              () => {
+                if (mounted.current) onMade();
+              },
+              (err) => {
+                if (mounted.current) {
+                  setError(
+                    err instanceof Error
+                      ? err.message
+                      : "Couldn’t add field. Try again.",
+                  );
+                  report(err);
+                }
+              },
+            )
+            .finally(() => {
+              writing.current = false;
+              if (mounted.current) setBusy(false);
+            });
+        }}
       >
-        {FIELD_TYPES.map((t) => (
-          <option key={t} value={t}>
-            {FIELD_TYPE_LABELS[t]}
-          </option>
-        ))}
-      </Select>
-      {type === "select" && (
-        <input
-          aria-label="Choices"
-          placeholder="Choices, separated by commas"
-          value={choices}
-          onChange={(e) => setChoices(e.target.value)}
-        />
-      )}
-      {type === "date" && (
-        <label className="field-check">
-          <input
-            type="checkbox"
-            checked={onCalendar}
-            onChange={(e) => setOnCalendar(e.target.checked)}
-          />
-          Show on the calendar as a deadline
-        </label>
-      )}
-      <small className="muted">
-        {teamId
-          ? `Every ${target} in this team gets it.`
-          : `Every one of your own ${target}s gets it.`}
-      </small>
-      <div className="new-field-actions">
-        <button type="button" className="secondary" onClick={onCancel}>
-          Cancel
-        </button>
-        <button type="submit" className="primary" disabled={!ready || busy}>
-          Add field
-        </button>
-      </div>
-    </form>
+        <fieldset disabled={busy} className="new-view-fields">
+          <label>
+            Name
+            <input
+              autoFocus
+              aria-label="Field name"
+              placeholder="Name, like Essay due"
+              value={name}
+              maxLength={60}
+              onChange={(e) => setName(e.target.value)}
+            />
+          </label>
+          <label>
+            Type
+            <Select
+              aria-label="Field type"
+              value={type}
+              onChange={(e) => setType(e.target.value as FieldType)}
+            >
+              {FIELD_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {FIELD_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </Select>
+          </label>
+          {type === "select" && (
+            <label>
+              Choices
+              <input
+                aria-label="Choices"
+                placeholder="Up to 30 choices, separated by commas"
+                value={choices}
+                onChange={(e) => setChoices(e.target.value)}
+              />
+            </label>
+          )}
+          {type === "date" && (
+            <label className="field-check">
+              <input
+                type="checkbox"
+                checked={onCalendar}
+                onChange={(e) => setOnCalendar(e.target.checked)}
+              />
+              Show deadlines on Calendar
+            </label>
+          )}
+          <small className="muted">
+            {teamId
+              ? `Available on all ${target}s in this team.`
+              : `Available on all your personal ${target}s.`}
+          </small>
+        </fieldset>
+        <div className="new-field-actions">
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+          <button type="submit" className="primary" disabled={!ready || busy}>
+            {busy ? "Adding…" : "Add field"}
+          </button>
+        </div>
+      </form>
+    </SettingsEditor>
   );
 }
 
-/** A field's ⋯: rename, its choices, the calendar switch, remove. */
+/** A focused field editor retains the submitted values when a write fails. */
 function FieldOptions({
   field,
-  onRename,
-  onChoices,
-  onCalendar,
+  onClose,
+  onSave,
   onRemove,
 }: {
   field: CustomField;
-  onRename: (name: string) => void;
-  onChoices: (options: string[]) => void;
-  onCalendar: (on: boolean) => void;
+  onClose: () => void;
+  onSave: (input: Parameters<typeof client.updateField>[1]) => Promise<boolean>;
   onRemove: () => void;
 }) {
   const [name, setName] = useState(field.name);
   const [choices, setChoices] = useState(field.options.join(", "));
+  const [onCalendar, setOnCalendar] = useState(field.on_calendar);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const writing = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const options = choicesOf(choices);
+  const valid =
+    !!name.trim() &&
+    (field.type !== "select" || (options.length > 0 && options.length <= 30));
+  const changed =
+    name.trim() !== field.name ||
+    (field.type === "select" &&
+      options.join(", ") !== field.options.join(", ")) ||
+    (field.type === "date" && onCalendar !== field.on_calendar);
   return (
-    <div className="field-options">
-      <label>
-        <span>Name</span>
-        <input
-          value={name}
-          maxLength={60}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== "Enter") return;
-            e.preventDefault();
-            if (name.trim() && name.trim() !== field.name)
-              onRename(name.trim());
-          }}
-        />
-      </label>
-      {name.trim() && name.trim() !== field.name && (
-        <button className="secondary" onClick={() => onRename(name.trim())}>
-          Rename
-        </button>
-      )}
-      {field.type === "select" && (
-        <>
+    <SettingsEditor
+      title="Edit field"
+      pending={busy}
+      onClose={() => {
+        if (!writing.current) onClose();
+      }}
+    >
+      <form
+        className="new-view-body"
+        onSubmit={async (event) => {
+          event.preventDefault();
+          if (!valid || !changed || writing.current) return;
+          writing.current = true;
+          setBusy(true);
+          setFailed(false);
+          try {
+            const saved = await onSave({
+              name: name.trim(),
+              ...(field.type === "select" ? { options } : {}),
+              ...(field.type === "date" ? { on_calendar: onCalendar } : {}),
+            });
+            if (mounted.current && !saved) setFailed(true);
+          } catch {
+            if (mounted.current) setFailed(true);
+          } finally {
+            writing.current = false;
+            if (mounted.current) setBusy(false);
+          }
+        }}
+      >
+        {failed && (
+          <p className="error" role="status">
+            Couldn’t save field. Try again.
+          </p>
+        )}
+        <fieldset disabled={busy} className="new-view-fields">
           <label>
-            <span>Choices</span>
+            Name
             <input
-              value={choices}
-              onChange={(e) => setChoices(e.target.value)}
+              autoFocus
+              value={name}
+              maxLength={60}
+              onChange={(event) => setName(event.target.value)}
             />
           </label>
-          <small className="muted">
-            A choice taken away is cleared where it was picked.
-          </small>
-          {choicesOf(choices).join(", ") !== field.options.join(", ") &&
-            choicesOf(choices).length > 0 && (
-              <button
-                className="secondary"
-                onClick={() => onChoices(choicesOf(choices))}
-              >
-                Save choices
-              </button>
-            )}
-        </>
-      )}
-      {field.type === "date" && (
-        <label className="field-check">
-          <input
-            type="checkbox"
-            role="switch"
-            className="ai-switch"
-            checked={field.on_calendar}
-            onChange={(e) => onCalendar(e.target.checked)}
-          />
-          Show on the calendar as a deadline
-        </label>
-      )}
-      <button className="danger-text" onClick={onRemove}>
-        Remove field
-      </button>
-    </div>
+          {field.type === "select" && (
+            <label>
+              Choices
+              <input
+                value={choices}
+                onChange={(event) => setChoices(event.target.value)}
+              />
+              <small className="muted">
+                Up to 30, separated by commas. Removed choices clear their saved
+                values.
+              </small>
+            </label>
+          )}
+          {field.type === "date" && (
+            <label className="field-check">
+              <input
+                type="checkbox"
+                checked={onCalendar}
+                onChange={(event) => setOnCalendar(event.target.checked)}
+              />
+              Show deadlines on Calendar
+            </label>
+          )}
+        </fieldset>
+        <div className="new-field-actions">
+          <button
+            type="button"
+            className="danger-text"
+            disabled={busy}
+            onClick={onRemove}
+          >
+            Remove field
+          </button>
+          <button className="primary" disabled={busy || !valid || !changed}>
+            {busy ? "Saving…" : "Save field"}
+          </button>
+        </div>
+      </form>
+    </SettingsEditor>
   );
 }

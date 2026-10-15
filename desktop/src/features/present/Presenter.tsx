@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
 import { listLayout, pageSlides, slideStep, type DocBlock } from "@orbyn/core";
 import { BlockView } from "../docs/DocBlocks";
@@ -22,24 +23,37 @@ export function Presenter({
 }) {
   const slides = pageSlides(title, blocks);
   const [at, setAt] = useState(0);
-  const root = useRef<HTMLDivElement>(null);
+  const focus = useModalFocus(onClose);
+  const root = focus.ref;
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
 
   useEffect(() => {
-    const el = root.current;
+    const el = root.current as HTMLDialogElement | null;
+    el?.showModal();
     const opener = document.activeElement as HTMLElement | null;
     el?.focus();
     // Full screen where the browser allows it; the overlay works either way.
     el?.requestFullscreen?.().catch(() => {});
     return () => {
-      if (document.fullscreenElement) void document.exitFullscreen?.();
+      if (document.fullscreenElement === el)
+        void document.exitFullscreen?.().catch(() => {});
+      el?.close();
       opener?.focus?.();
     };
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      if (e.key === " " && (e.target as HTMLElement)?.closest("button, a"))
+        return;
+      if (
+        (e.target as HTMLElement)?.closest(
+          "input, textarea, [contenteditable=true]",
+        )
+      )
+        return;
       if (e.key === "Escape") {
         e.preventDefault();
         closeRef.current();
@@ -57,8 +71,13 @@ export function Presenter({
   const slide = slides[Math.min(at, slides.length - 1)];
   const layout = listLayout(slide.blocks);
   return createPortal(
-    <div
-      ref={root}
+    <dialog
+      ref={root as React.RefObject<HTMLDialogElement>}
+      data-modal-focus={focus.id}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
       className="presenter"
       role="dialog"
       aria-modal="true"
@@ -118,7 +137,7 @@ export function Presenter({
           <ChevronRight size={20} />
         </button>
       </nav>
-    </div>,
+    </dialog>,
     document.body,
   );
 }

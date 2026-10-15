@@ -35,18 +35,14 @@ export function CharacterEditor({
         <Character
           appearance={value}
           state={state}
-          size={164}
+          size={128}
           greeting={greeting}
           name={name || "Orbyn"}
           preview
         />
         <div className="character-preview-caption">
           <strong>{name.trim() || "Orbyn"}</strong>
-          <p>
-            {value.presence === "hidden"
-              ? "Hidden in chat. Preview only."
-              : "Make a little companion that's yours."}
-          </p>
+          {value.presence === "hidden" && <p>Hidden in chat.</p>}
           <button
             type="button"
             className="secondary"
@@ -157,10 +153,6 @@ export function CharacterEditor({
           </label>
         )}
       </div>
-      <p className="character-editor-note">
-        Mix hats, eyewear, outfits and more. Save to use your look across
-        devices.
-      </p>
     </div>
   );
 }

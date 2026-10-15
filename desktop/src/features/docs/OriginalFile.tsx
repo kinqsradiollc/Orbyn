@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileDown } from "lucide-react";
 import { fileSizeLabel, type Doc, type OriginalsOverview } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -18,7 +18,11 @@ export function saveBlob(blob: Blob, name: string) {
  * The file an imported page came from, when it was kept: download it, or
  * delete it and keep only the page. Shown at the end of the page.
  */
-export function OriginalLine({
+export function OriginalLine(props: Parameters<typeof OriginalLineBody>[0]) {
+  return <OriginalLineBody key={props.doc.id} {...props} />;
+}
+
+function OriginalLineBody({
   doc,
   canWrite,
   onDeleted,
@@ -30,58 +34,75 @@ export function OriginalLine({
   report: (e: unknown) => void;
 }) {
   const { ask } = useConfirm();
+  const mutation = useRef(false);
   const [busy, setBusy] = useState(false);
   const [gone, setGone] = useState<string | null>(null);
   const original = doc.original;
   if (!original || gone === doc.id) return null;
   return (
-    <p className="doc-original">
+    <div className="doc-original">
       <FileDown size={14} aria-hidden="true" />
       <span>
-        Original kept: {original.file_name} ·{" "}
-        {fileSizeLabel(Number(original.bytes))}
+        Original: {original.file_name} · {fileSizeLabel(Number(original.bytes))}
       </span>
       <button
         type="button"
         className="text-button"
         disabled={busy}
         onClick={() => {
+          if (mutation.current) return;
+          mutation.current = true;
           setBusy(true);
           void client
             .downloadOriginal(doc.id)
             .then(({ blob, name }) => saveBlob(blob, name), report)
-            .finally(() => setBusy(false));
+            .finally(() => {
+              mutation.current = false;
+              setBusy(false);
+            });
         }}
       >
         Download
       </button>
       {canWrite && (
-        <button
-          type="button"
-          className="text-button is-quiet"
-          disabled={busy}
-          onClick={() =>
-            void ask({
-              title: `Delete the original “${original.file_name}”?`,
-              body: "The page stays as it is. The file can't be brought back.",
-              confirmLabel: "Delete original",
-              destructive: true,
-            }).then(async (yes) => {
-              if (!yes) return;
-              try {
-                await client.deleteOriginal(doc.id);
-                setGone(doc.id);
-                onDeleted?.();
-              } catch (e) {
-                report(e);
-              }
-            })
-          }
-        >
-          Delete original
-        </button>
+        <details className="original-actions">
+          <summary>More actions</summary>
+          <button
+            type="button"
+            className="text-button is-quiet"
+            disabled={busy}
+            onClick={() => {
+              if (mutation.current) return;
+              mutation.current = true;
+              setBusy(true);
+              void (async () => {
+                try {
+                  if (
+                    !(await ask({
+                      title: "Delete original file?",
+                      body: `Deletes “${original.file_name}” permanently. The page stays.`,
+                      confirmLabel: "Delete original",
+                      destructive: true,
+                    }))
+                  )
+                    return;
+                  await client.deleteOriginal(doc.id);
+                  setGone(doc.id);
+                  onDeleted?.();
+                } catch (error) {
+                  report(error);
+                } finally {
+                  mutation.current = false;
+                  setBusy(false);
+                }
+              })();
+            }}
+          >
+            Delete original
+          </button>
+        </details>
       )}
-    </p>
+    </div>
   );
 }
 
@@ -95,10 +116,36 @@ export function KeepOriginalsSwitch({
   report: (e: unknown) => void;
 }) {
   const [state, setState] = useState<OriginalsOverview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const mutation = useRef(false);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
-    client.originals().then(setState, () => setState(null));
-  }, []);
-  if (!state) return null;
+    let alive = true;
+    setFailed(false);
+    client.originals().then(
+      (value) => {
+        if (alive) setState(value);
+      },
+      () => {
+        if (alive) setFailed(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [retry]);
+  if (!state)
+    return (
+      <p className="muted">
+        {failed ? "Could not load file storage." : "Loading file storage…"}
+        {failed && (
+          <button className="text-button" onClick={() => setRetry(retry + 1)}>
+            Retry
+          </button>
+        )}
+      </p>
+    );
   const pct = state.quota_bytes
     ? Math.min(100, Math.round((state.used_bytes / state.quota_bytes) * 100))
     : 100;
@@ -109,20 +156,30 @@ export function KeepOriginalsSwitch({
         role="switch"
         className="ai-switch"
         checked={state.keep}
+        disabled={busy}
         onChange={(e) => {
+          if (mutation.current) return;
+          mutation.current = true;
+          setBusy(true);
           const keep = e.target.checked;
           setState({ ...state, keep });
-          client.setKeepOriginals(keep).catch((err) => {
-            setState({ ...state, keep: !keep });
-            report(err);
-          });
+          client
+            .setKeepOriginals(keep)
+            .catch((err) => {
+              setState({ ...state, keep: !keep });
+              report(err);
+            })
+            .finally(() => {
+              mutation.current = false;
+              setBusy(false);
+            });
         }}
       />
       <span>
         Keep the original
         <small>
-          New imports keep their file beside the page, encrypted, until you
-          delete it. {fileSizeLabel(state.used_bytes)} of{" "}
+          Keeps encrypted files with new imports.{" "}
+          {fileSizeLabel(state.used_bytes)} of{" "}
           {fileSizeLabel(state.quota_bytes)} used ({pct}%).
         </small>
       </span>

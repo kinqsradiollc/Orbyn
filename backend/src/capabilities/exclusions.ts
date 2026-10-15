@@ -614,6 +614,7 @@ export const EXCLUDED: Record<string, ExclusionReason> = {
   "PUT /me/chat": "credentials",
   "POST /me/chat/test": "credentials",
   "POST /me/consent": "account",
+  "GET /me/activity-summary": "account",
   "GET /me/export": "account",
   "GET /me/export.zip": "account",
   "GET /ai/capabilities": "hosted_ai",

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { BookOpen, CalendarPlus, Sprout, User, Users } from "lucide-react";
 import {
   defaultStarter,
@@ -12,6 +12,8 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
+import { useModalFocus } from "../../hooks/useModalFocus";
+import { session } from "../../lib/session";
 import "./firstrun.css";
 
 const PURPOSE_ICONS = { study: BookOpen, team: Users, personal: User } as const;
@@ -44,34 +46,58 @@ export function FirstRun({
     heading.current?.focus();
   }, [step]);
 
-  const skip = async () => {
-    setBusy(true);
-    try {
-      onDone(await client.skipFirstRun(), null);
-    } catch (e) {
-      setError(errorText(e));
-      setBusy(false);
-    }
-  };
-  const connect = async () => {
-    const url = calendarUrl.trim();
-    if (!url) return setStep(2);
+  const account = session.get();
+  const latest = useRef({ account, userId: user.id });
+  latest.current = { account, userId: user.id };
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  const connectedUrl = useRef("");
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  // Escape must not permanently dismiss setup. Only “Not now” does that.
+  const modal = useModalFocus(() => {}, busy);
+  const run = async (fn: (current: () => boolean) => Promise<void>) => {
+    const userId = user.id;
+    const current = () =>
+      mounted.current &&
+      session.get() === account &&
+      latest.current.account === account &&
+      latest.current.userId === userId;
+    if (pending.current || !current()) return;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
-      await client.createCalendarSubscription({ url, name: "My calendar" });
-      setCalendarNote("Connected. Its events show on your calendar.");
-      setStep(2);
+      await fn(current);
     } catch (e) {
-      setError(errorText(e));
+      if (current()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (current()) setBusy(false);
     }
   };
-  const finish = async () => {
-    setBusy(true);
-    setError("");
-    try {
+  const skip = () =>
+    run(async (current) => {
+      const person = await client.skipFirstRun();
+      if (current()) onDone(person, null);
+    });
+  const connect = () =>
+    run(async (current) => {
+      const url = calendarUrl.trim();
+      if (url && connectedUrl.current !== url) {
+        await client.createCalendarSubscription({ url, name: "My calendar" });
+        if (!current()) return;
+        connectedUrl.current = url;
+        setCalendarNote("Calendar connected.");
+      }
+      if (current()) setStep(2);
+    });
+  const finish = () =>
+    run(async (current) => {
       const made = await client.finishFirstRun({
         purpose,
         starter,
@@ -79,18 +105,50 @@ export function FirstRun({
           ? { team_name: teamName.trim() }
           : {}),
       });
-      onDone(made.user, made);
-    } catch (e) {
-      setError(errorText(e));
-      setBusy(false);
-    }
-  };
+      if (current()) onDone(made.user, made);
+    });
 
+  const moveChoice = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (
+      ![
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "ArrowDown",
+        "Home",
+        "End",
+      ].includes(event.key)
+    )
+      return;
+    const buttons = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        'button[role="radio"]:not(:disabled)',
+      ),
+    );
+    if (!buttons.length) return;
+    const index = buttons.indexOf(event.target as HTMLButtonElement);
+    if (index < 0) return;
+    event.preventDefault();
+    const next =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? buttons.length - 1
+          : (index +
+              (["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1) +
+              buttons.length) %
+            buttons.length;
+    buttons[next].click();
+    buttons[next].focus();
+  };
   const first = user.name.split(" ")[0];
   return (
     <div className="modal-backdrop first-run-backdrop">
       <section
-        className="modal first-run scale-in"
+        ref={modal.ref}
+        data-modal-owner={modal.id}
+        tabIndex={-1}
+        className="modal first-run"
         role="dialog"
         aria-modal="true"
         aria-labelledby="first-run-title"
@@ -101,14 +159,12 @@ export function FirstRun({
         {step === 0 && (
           <>
             <h2 id="first-run-title" ref={heading} tabIndex={-1}>
-              Welcome{first ? `, ${first}` : ""}. What's Orbyn for?
+              Choose a starting point
             </h2>
-            <p className="muted">
-              Orbyn sets up a first project to match. Everything stays open to
-              you, whichever you pick.
-            </p>
+            <p className="muted">Start with a project, or skip setup.</p>
             <div
               className="first-run-choices"
+              onKeyDown={moveChoice}
               role="radiogroup"
               aria-label="What Orbyn is for"
             >
@@ -118,8 +174,10 @@ export function FirstRun({
                   <button
                     key={p}
                     type="button"
+                    disabled={busy}
                     role="radio"
                     aria-checked={purpose === p}
+                    tabIndex={purpose === p ? 0 : -1}
                     className={
                       "first-run-choice" + (purpose === p ? " is-on" : "")
                     }
@@ -140,15 +198,15 @@ export function FirstRun({
         {step === 1 && (
           <>
             <h2 id="first-run-title" ref={heading} tabIndex={-1}>
-              Connect a calendar (optional)
+              Add a calendar
             </h2>
             <p className="muted">
-              Paste a private .ics calendar link. Its events appear beside your
-              plans. Add more later in Settings.
+              Add a private .ics link to show its events alongside your plans.
             </p>
             <label className="first-run-field">
               Calendar address
               <input
+                disabled={busy}
                 type="url"
                 inputMode="url"
                 value={calendarUrl}
@@ -166,6 +224,7 @@ export function FirstRun({
             {calendarNote && <p className="first-run-ok">{calendarNote}</p>}
             <div
               className="first-run-choices is-list"
+              onKeyDown={moveChoice}
               role="radiogroup"
               aria-label="Starter"
             >
@@ -173,8 +232,10 @@ export function FirstRun({
                 <button
                   key={s.id}
                   type="button"
+                  disabled={busy}
                   role="radio"
                   aria-checked={starter === s.id}
+                  tabIndex={starter === s.id ? 0 : -1}
                   className={
                     "first-run-choice" + (starter === s.id ? " is-on" : "")
                   }
@@ -190,6 +251,7 @@ export function FirstRun({
               <label className="first-run-field">
                 The team's name
                 <input
+                  disabled={busy}
                   value={teamName}
                   maxLength={80}
                   placeholder={`${first || "My"}'s team`}
@@ -223,7 +285,11 @@ export function FirstRun({
               </button>
             )}
             {step === 0 && (
-              <button className="primary" onClick={() => setStep(1)}>
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() => setStep(1)}
+              >
                 Next
               </button>
             )}
@@ -243,7 +309,7 @@ export function FirstRun({
                 disabled={busy}
                 onClick={() => void finish()}
               >
-                {starter === "none" ? "Start" : "Make it"}
+                {starter === "none" ? "Start" : "Create starter"}
               </button>
             )}
           </span>

@@ -1,9 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { hasTeamPermission, type Team, type WorkRecord } from "@orbyn/core";
 import { client } from "../../lib/api";
 
 /** Open commitments across projects, including those awaiting a response. */
-export function PromiseTracker({
+export function PromiseTracker(
+  props: Parameters<typeof PromiseTrackerBody>[0],
+) {
+  return <PromiseTrackerBody key={props.userId} {...props} />;
+}
+function PromiseTrackerBody({
   userId,
   teams,
   onProject,
@@ -17,18 +22,37 @@ export function PromiseTracker({
   const [rows, setRows] = useState<WorkRecord[] | null>(null);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const load = () =>
-    client
-      .listWorkRecords({ kind: "promise", limit: 200 })
-      .then(setRows)
-      .catch(report);
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [failed, setFailed] = useState(false);
+  const load = async () => {
+    const epoch = ++request.current;
+    setFailed(false);
+    try {
+      const next = await client.listWorkRecords({
+        kind: "promise",
+        limit: 200,
+      });
+      if (epoch === request.current) setRows(next);
+    } catch (error) {
+      if (epoch === request.current) {
+        setFailed(true);
+        report(error);
+      }
+    }
+  };
   useEffect(() => {
     void load();
+    return () => {
+      request.current++;
+    };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const active =
     rows?.filter((row) => row.status === "open" || row.status === "proposed") ??
     [];
-  const act = async (action: () => Promise<unknown>) => {
+  const act = async (action: () => Promise<unknown>, allowed: boolean) => {
+    if (!allowed || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       await action();
@@ -36,6 +60,7 @@ export function PromiseTracker({
     } catch (error) {
       report(error);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -48,13 +73,30 @@ export function PromiseTracker({
       >
         <strong>Promises</strong>
         <span className="muted">
-          {rows === null ? "Loading…" : `${active.length} needing attention`}
+          {failed
+            ? "Unavailable"
+            : rows === null
+              ? "Loading…"
+              : `${active.length} needing attention`}
         </span>
         <span aria-hidden="true">{open ? "−" : "+"}</span>
       </button>
       {open && (
         <div className="promise-tracker-body">
-          {!active.length && (
+          {failed && (
+            <p role="status">
+              Promises unavailable.{" "}
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={() => void load()}
+              >
+                Retry
+              </button>
+            </p>
+          )}
+          {rows !== null && !active.length && (
             <p className="muted">No open promises right now.</p>
           )}
           {active.map((record) => {
@@ -103,8 +145,10 @@ export function PromiseTracker({
                           className="secondary"
                           disabled={busy}
                           onClick={() =>
-                            void act(() =>
-                              client.respondWorkRecord(record.id, "accept"),
+                            void act(
+                              () =>
+                                client.respondWorkRecord(record.id, "accept"),
+                              record.owner_id === userId,
                             )
                           }
                         >
@@ -114,8 +158,10 @@ export function PromiseTracker({
                           className="text-button"
                           disabled={busy}
                           onClick={() =>
-                            void act(() =>
-                              client.respondWorkRecord(record.id, "decline"),
+                            void act(
+                              () =>
+                                client.respondWorkRecord(record.id, "decline"),
+                              record.owner_id === userId,
                             )
                           }
                         >
@@ -128,11 +174,13 @@ export function PromiseTracker({
                       className="secondary"
                       disabled={busy}
                       onClick={() =>
-                        void act(() =>
-                          client.updateWorkRecord(record.id, {
-                            version: record.version,
-                            status: "done",
-                          }),
+                        void act(
+                          () =>
+                            client.updateWorkRecord(record.id, {
+                              version: record.version,
+                              status: "done",
+                            }),
+                          canWrite,
                         )
                       }
                     >

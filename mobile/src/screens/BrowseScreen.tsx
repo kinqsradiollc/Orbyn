@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   arrangeEntries,
@@ -10,7 +10,7 @@ import {
   type User,
 } from "@orbyn/core";
 import { CONCEPT_ICON, Icon, type IconName } from "../components/Icon";
-import { FadeIn, Pressable } from "../motion";
+import { Pressable } from "../motion";
 import { shared } from "../styles";
 import { colors, fonts, themed } from "../theme";
 
@@ -53,7 +53,7 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
         to: "search",
         icon: "search",
         title: "Search & do",
-        detail: "Pages, tasks and projects, and anything Orbyn can do",
+        detail: "Find pages, tasks and projects",
       },
       {
         to: "projects",
@@ -65,43 +65,43 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
         to: "docs",
         icon: CONCEPT_ICON.page,
         title: "Docs",
-        detail: "Notes, briefs and meeting notes",
+        detail: "Your pages",
       },
       {
         to: "memory",
         icon: "sparkles",
         title: "Memory",
-        detail: "What your agent has learned, with its sources",
+        detail: "Saved memory and sources",
       },
       {
         to: "agent",
         icon: "fileText",
         title: "Agent notes",
-        detail: "Briefs and other notes your agent makes",
+        detail: "Notes from your assistant",
       },
       {
         to: "views",
         icon: "table",
         title: "Views",
-        detail: "Saved filters as lists, tables, boards and calendars",
+        detail: "Saved lists, boards and calendars",
       },
       {
         to: "study",
         icon: CONCEPT_ICON.study,
         title: "Study",
-        detail: "Flashcards from your pages, planned around exams",
+        detail: "Flashcards and study plans",
       },
       {
         to: "lists",
         icon: "listChecks",
         title: "Lists",
-        detail: "Somewhere for each kind of task",
+        detail: "Your task lists",
       },
       {
         to: "progress",
         icon: "check",
         title: "Done this week",
-        detail: "What got finished, with the proof",
+        detail: "Completed work",
       },
     ],
   },
@@ -129,19 +129,19 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
         to: "teams",
         icon: "users",
         title: "Teams",
-        detail: "The people you plan with",
+        detail: "Your teams",
       },
       {
         to: "changes",
         icon: "activity",
         title: "Recent changes",
-        detail: "Who changed which team page or task",
+        detail: "Team page and task activity",
       },
       {
         to: "booking",
         icon: "calendarCheck",
         title: "Booking",
-        detail: "Let people find a time with you",
+        detail: "Shared availability",
       },
       {
         to: "admin",
@@ -159,13 +159,13 @@ export const GROUPS: { label: string; rows: Row[] }[] = [
         to: "settings",
         icon: "settings",
         title: "Settings",
-        detail: "Your space, just the way you like it",
+        detail: "Account and preferences",
       },
       {
         to: "whatsnew",
         icon: "sparkles",
         title: "What's new",
-        detail: "What changed in Orbyn lately",
+        detail: "Recent updates",
       },
     ],
   },
@@ -202,91 +202,120 @@ export function BrowseScreen({
   /** The one Arrange list (NAV-08), shared with the web's sidebar. */
   arrangement?: SidebarArrangement;
 }) {
+  const [allStarred, setAllStarred] = useState(false);
+  const [allViews, setAllViews] = useState(false);
   const admin = hasSystemPermission(user?.role, "admin:access");
   const hidden = (title: string) =>
     !ALWAYS_ROWS.includes(title) && !!arrangement?.hidden.includes(title);
   return (
     <>
       {starred.length > 0 && onOpenStarred && !hidden("Starred") && (
-        <FadeIn>
-          <View style={shared.card}>
+        <View>
+          <View style={s.group}>
             <Text style={shared.eyebrow}>STARRED</Text>
             <View style={s.rows}>
-              {starred.slice(0, 8).map((item, index) => (
-                <Pressable
-                  key={`${item.kind}:${item.id}:${item.block_id}`}
-                  accessibilityRole="button"
-                  accessibilityLabel={item.title}
-                  accessibilityHint={item.hint ?? undefined}
-                  onPress={() => onOpenStarred(item)}
-                  style={({ pressed }) => [
-                    s.row,
-                    index > 0 && s.rowDivider,
-                    pressed && s.pressed,
-                  ]}
-                >
-                  <View style={s.iconTile}>
-                    <Icon
-                      name={STAR_ICONS[item.kind]}
-                      size={19}
-                      color={colors.accent}
-                    />
-                  </View>
-                  <View style={s.text}>
-                    <Text
-                      style={[s.title, item.closed && s.closed]}
-                      numberOfLines={1}
-                    >
-                      {item.title}
-                    </Text>
-                    {item.hint ? (
-                      <Text style={s.detail} numberOfLines={1}>
-                        {item.hint}
+              {(allStarred ? starred : starred.slice(0, 8)).map(
+                (item, index) => (
+                  <Pressable
+                    key={`${item.kind}:${item.id}:${item.block_id}`}
+                    accessibilityRole="button"
+                    accessibilityLabel={item.title}
+                    accessibilityHint={item.hint ?? undefined}
+                    onPress={() => onOpenStarred(item)}
+                    style={({ pressed }) => [
+                      s.row,
+                      index > 0 && s.rowDivider,
+                      pressed && s.pressed,
+                    ]}
+                  >
+                    <View style={s.iconTile}>
+                      <Icon
+                        name={STAR_ICONS[item.kind]}
+                        size={19}
+                        color={colors.accent}
+                      />
+                    </View>
+                    <View style={s.text}>
+                      <Text style={[s.title, item.closed && s.closed]}>
+                        {item.title}
                       </Text>
-                    ) : null}
-                  </View>
-                  <Icon name="chevronRight" size={16} color={colors.faint} />
-                </Pressable>
-              ))}
+                      {item.hint ? (
+                        <Text style={s.detail}>{item.hint}</Text>
+                      ) : null}
+                    </View>
+                    <Icon name="chevronRight" size={16} color={colors.faint} />
+                  </Pressable>
+                ),
+              )}
             </View>
+            {starred.length > 8 && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: allStarred }}
+                onPress={() => setAllStarred((v) => !v)}
+                style={s.more}
+              >
+                <Text style={s.moreText}>
+                  {allStarred
+                    ? "Show fewer"
+                    : `Show all starred (${starred.length})`}
+                </Text>
+              </Pressable>
+            )}
           </View>
-        </FadeIn>
+        </View>
       )}
       {pinnedViews.length > 0 && onOpenView && (
-        <FadeIn>
-          <View style={shared.card}>
+        <View>
+          <View style={s.group}>
             <Text style={shared.eyebrow}>PINNED VIEWS</Text>
             <View style={s.rows}>
-              {pinnedViews.map((v, index) => (
-                <Pressable
-                  key={v.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={v.name}
-                  onPress={() => onOpenView(v.id)}
-                  style={({ pressed }) => [
-                    s.row,
-                    index > 0 && s.rowDivider,
-                    pressed && s.pressed,
-                  ]}
-                >
-                  <View style={s.iconTile}>
-                    <Icon name="table" size={19} color={colors.accent} />
-                  </View>
-                  <View style={s.text}>
-                    <Text style={s.title}>{v.name}</Text>
-                    <Text style={s.detail}>
-                      {VIEW_SOURCE_LABELS[v.source]}
-                      {v.team_name ? ` · ${v.team_name}` : ""}
-                    </Text>
-                  </View>
-                  <Icon name="chevronRight" size={16} color={colors.faint} />
-                </Pressable>
-              ))}
+              {(allViews ? pinnedViews : pinnedViews.slice(0, 8)).map(
+                (v, index) => (
+                  <Pressable
+                    key={v.id}
+                    accessibilityRole="button"
+                    accessibilityLabel={v.name}
+                    onPress={() => onOpenView(v.id)}
+                    style={({ pressed }) => [
+                      s.row,
+                      index > 0 && s.rowDivider,
+                      pressed && s.pressed,
+                    ]}
+                  >
+                    <View style={s.iconTile}>
+                      <Icon name="table" size={19} color={colors.accent} />
+                    </View>
+                    <View style={s.text}>
+                      <Text style={s.title}>{v.name}</Text>
+                      <Text style={s.detail}>
+                        {VIEW_SOURCE_LABELS[v.source]}
+                        {v.team_name ? ` · ${v.team_name}` : ""}
+                      </Text>
+                    </View>
+                    <Icon name="chevronRight" size={16} color={colors.faint} />
+                  </Pressable>
+                ),
+              )}
             </View>
+            {pinnedViews.length > 8 && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ expanded: allViews }}
+                onPress={() => setAllViews((v) => !v)}
+                style={s.more}
+              >
+                <Text style={s.moreText}>
+                  {allViews
+                    ? "Show fewer"
+                    : `Show all pinned views (${pinnedViews.length})`}
+                </Text>
+              </Pressable>
+            )}
           </View>
-        </FadeIn>
+        </View>
       )}
-      {GROUPS.map((group, n) => {
+      {GROUPS.map((group) => {
         const rows = arrangeEntries(
           group.rows.filter((r) => !r.adminOnly || admin),
           (r) => r.title,
@@ -294,8 +323,8 @@ export function BrowseScreen({
         ).filter((r) => !hidden(r.title));
         if (!rows.length) return null;
         return (
-          <FadeIn key={group.label} delay={n * 40}>
-            <View style={shared.card}>
+          <View key={group.label}>
+            <View style={s.group}>
               <Text style={shared.eyebrow}>{group.label}</Text>
               <View style={s.rows}>
                 {rows.map((row, index) => (
@@ -316,14 +345,13 @@ export function BrowseScreen({
                     </View>
                     <View style={s.text}>
                       <Text style={s.title}>{row.title}</Text>
-                      <Text style={s.detail}>{row.detail}</Text>
                     </View>
                     <Icon name="chevronRight" size={16} color={colors.faint} />
                   </Pressable>
                 ))}
               </View>
             </View>
-          </FadeIn>
+          </View>
         );
       })}
     </>
@@ -332,29 +360,30 @@ export function BrowseScreen({
 
 const s = themed(() =>
   StyleSheet.create({
+    group: { marginBottom: 16 },
+    more: { minHeight: 44, justifyContent: "center", paddingVertical: 8 },
+    moreText: { fontFamily: fonts.medium, fontSize: 13, color: colors.accent },
     rows: { marginTop: 4 },
     // A row is a destination, so it is a target a thumb can find.
     row: {
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      minHeight: 66,
-      paddingVertical: 10,
+      minHeight: 52,
+      paddingVertical: 8,
     },
     rowDivider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
     iconTile: {
-      width: 40,
-      height: 40,
+      width: 32,
+      height: 32,
       alignItems: "center",
       justifyContent: "center",
-      borderRadius: 12,
-      backgroundColor: colors.accentSoft,
     },
-    pressed: { opacity: 0.6 },
-    text: { flex: 1, gap: 2 },
+    pressed: { backgroundColor: colors.surfaceMuted },
+    text: { flex: 1, minWidth: 0, gap: 2 },
     title: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
     detail: { color: colors.muted, fontSize: 13, lineHeight: 19 },
     closed: { color: colors.muted, textDecorationLine: "line-through" },

@@ -26,7 +26,6 @@ import {
 import { StatusPill } from "../../components/StatusPill";
 import { ProgressBar } from "../../components/ProgressBar";
 import { ItemFacts } from "../../components/ItemFacts";
-import { stagger } from "../../lib/motion";
 import { isOverdue, progressOf, stepsLabel } from "../../lib/tasks";
 import { CARD_MIME, carries, edgeScroll, startDrag } from "../../lib/drag";
 
@@ -101,7 +100,14 @@ export function TaskBoard({
     try {
       const { id, from } = JSON.parse(raw) as { id: string; from: string };
       const item = byId.get(id);
-      if (item && from !== to) onMove(item, from, to);
+      if (
+        !busy &&
+        item &&
+        canWrite(item) &&
+        from !== to &&
+        targets.some((target) => target.key === to)
+      )
+        onMove(item, from, to);
     } catch {
       // Something else was dropped here: nothing to move.
     }
@@ -147,7 +153,7 @@ export function TaskBoard({
             }
             aria-labelledby={titleId}
             onDragOver={(e) => {
-              if (!carries(e, CARD_MIME)) return;
+              if (busy || !carries(e, CARD_MIME)) return;
               e.preventDefault();
               e.dataTransfer.dropEffect = "move";
               if (over !== column.key) setOver(column.key);
@@ -214,6 +220,7 @@ export function TaskBoard({
                   className="icon-button board-add"
                   aria-label={`New task in ${column.title}`}
                   title={`New task in ${column.title}`}
+                  disabled={busy}
                   onClick={() => onAdd(column.key)}
                 >
                   <Plus size={14} aria-hidden="true" />
@@ -233,12 +240,8 @@ export function TaskBoard({
             )}
             {!isFolded &&
               isReview &&
-              reviewCards.map((p, n) => (
-                <article
-                  key={p.id}
-                  className="board-card fade-up stagger"
-                  style={stagger(n)}
-                >
+              reviewCards.map((p) => (
+                <article key={p.id} className="board-card">
                   <button
                     className="board-card-main"
                     onClick={() => onOpenReview?.(p.id)}
@@ -260,17 +263,16 @@ export function TaskBoard({
                 </article>
               ))}
             {!isFolded &&
-              column.items.map((i, n) => {
+              column.items.map((i) => {
                 const steps = stepsLabel(i);
                 const writable = canWrite(i);
                 return (
                   <article
                     key={i.id}
                     className={
-                      "board-card fade-up stagger" +
+                      "board-card" +
                       (dragging?.id === i.id ? " is-dragging" : "")
                     }
-                    style={stagger(n)}
                     draggable={writable && !busy}
                     onDragStart={(e) => {
                       startDrag(e, { kind: "task", id: i.id, title: i.title });

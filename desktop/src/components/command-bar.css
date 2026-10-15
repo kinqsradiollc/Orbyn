@@ -25,13 +25,14 @@
 }
 .command-pin {
   flex: none;
-  width: 24px;
-  height: 24px;
+  width: 44px;
+  height: 44px;
   opacity: 0;
 }
 .command-list li[role="option"]:hover .command-pin,
 .command-list li[role="option"].active .command-pin,
-.command-pin.is-on {
+.command-pin.is-on,
+.command-pin:focus-visible {
   opacity: 1;
 }
 .command-pick-empty {
@@ -47,4 +48,38 @@
   .command-summary.is-keys {
     display: none;
   }
+}
+
+.command-help {
+  padding: 0 18px;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.command-help summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+}
+.command-help p {
+  margin: 0 0 8px;
+}
+.command-list .command-label {
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.command-list li[role="option"] {
+  flex-wrap: wrap;
+}
+.command-list small {
+  white-space: normal;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.command-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 18px;
 }

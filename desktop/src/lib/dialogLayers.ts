@@ -13,7 +13,7 @@ function layer(node: HTMLElement) {
 
 /** Only a modal painted above this panel owns its keyboard interaction. */
 export function hasHigherDialog(root: HTMLElement | null) {
-  if (!root) return true;
+  if (!root || root.closest("[inert], [hidden]")) return true;
   const own = layer(root);
   return Array.from(
     document.querySelectorAll<HTMLElement>('[aria-modal="true"]'),

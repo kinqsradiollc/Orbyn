@@ -1,8 +1,17 @@
-import { useEffect, useState, type DragEvent } from "react";
+import { useElementWidth } from "../../hooks/useElementWidth";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useId,
+  useState,
+  type DragEvent,
+} from "react";
 import { onLive } from "../../lib/live";
 import {
   FileText,
   FolderInput,
+  MoreHorizontal,
   Check,
   Folder as FolderIcon,
   FolderPlus,
@@ -65,6 +74,8 @@ import {
   type TreeMoveTo,
 } from "./DocsTree";
 import "./docs.css";
+import { session } from "../../lib/session";
+import { OutcomeNote, useAction } from "../../components/Outcome";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -75,21 +86,8 @@ const when = (iso: string) => {
     : date.toLocaleDateString([], { month: "short", day: "numeric" });
 };
 
-/** A starter document, so a new note is never a blank wall. */
-export function DocsView({
-  report,
-  onItemsChanged,
-  userId,
-  canWriteDoc,
-  teamNameFor,
-  initialDoc,
-  initialBlockId,
-  onInitialDocShown,
-  onOpenProject,
-  openTemplates,
-  incomingFiles,
-  fixedKind,
-}: {
+/** Library/editor integration shared by pages, notes and agent memory. */
+type DocsViewProps = {
   /** Files opened with Orbyn on the desktop (CAP-11), to import. */
   incomingFiles?: { files: File[]; seq: number } | null;
   /** A separate Memory or Agent notes library. */
@@ -107,7 +105,74 @@ export function DocsView({
   onOpenProject?: (id: string) => void;
   /** Changes to open "New page from template" (from ⌘K). */
   openTemplates?: number;
-}) {
+};
+
+export function DocsView(props: DocsViewProps) {
+  return <DocsBody key={`${session.get()}:${props.userId ?? ""}`} {...props} />;
+}
+function DocsBody({
+  report: reportError,
+  onItemsChanged,
+  userId,
+  canWriteDoc,
+  teamNameFor,
+  initialDoc,
+  initialBlockId,
+  onInitialDocShown,
+  onOpenProject,
+  openTemplates,
+  incomingFiles,
+  fixedKind,
+}: DocsViewProps) {
+  const { ref: paneRef, width: paneWidth } = useElementWidth();
+  const libraryId = useId();
+  const paneElement = useRef<HTMLDivElement | null>(null);
+  const setPane = useCallback(
+    (element: HTMLDivElement | null) => {
+      paneElement.current = element;
+      paneRef(element);
+    },
+    [paneRef],
+  );
+  const rowId = (id: string) => `${libraryId}-doc-row-${id}`;
+  const libraryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(
+    () => () => {
+      libraryTimers.current.forEach(clearTimeout);
+    },
+    [],
+  );
+
+  const owner = session.get();
+  const alive = useRef(true);
+  const libraryRead = useRef(0);
+  const archiveRead = useRef(0);
+  const trashRead = useRef(0);
+  const navigation = useRef(0);
+  const currentOwner = useCallback(
+    () => alive.current && session.get() === owner,
+    [owner],
+  );
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const report = (error: unknown) => {
+    if (currentOwner()) reportError(error);
+  };
+  const action = useAction(report);
+  const busy = action.pending;
+  const [libraryError, setLibraryError] = useState("");
+  const [archiveFailed, setArchiveFailed] = useState(false);
+  const [trashFailed, setTrashFailed] = useState(false);
+  const [tagsStatus, setTagsStatus] = useState<"loading" | "ready" | "failed">(
+    "loading",
+  );
+  const [tagsRevision, setTagsRevision] = useState(0);
+  const [tagQuery, setTagQuery] = useState("");
+
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   /** Memory and Agent notes, for their folders in the library's tree. */
   const [memoryDocs, setMemoryDocs] = useState<DocSummary[]>([]);
@@ -147,6 +212,7 @@ export function DocsView({
   /** The page "Show in library" points at, marked for a moment. */
   const [flash, setFlash] = useState<string | null>(null);
   const [moveQuery, setMoveQuery] = useState("");
+  const [libraryMenu, setLibraryMenu] = useState<DOMRect | null>(null);
 
   const { ask } = useConfirm();
   const toast = useToast();
@@ -164,28 +230,54 @@ export function DocsView({
   const [allTags, setAllTags] = useState<Tag[]>([]);
   useEffect(() => {
     if (!tagging) return;
-    client.listTags().then(setAllTags, () => setAllTags([]));
-  }, [tagging]);
-  const [personalProjects, setPersonalProjects] = useState<Project[]>([]);
-  useEffect(() => {
-    if (!filing?.doc.in_uploads || filing.doc.team_id) {
-      setPersonalProjects([]);
-      return;
-    }
     let active = true;
-    void client.listProjects().then(
-      (projects) => {
-        if (active)
-          setPersonalProjects(projects.filter((project) => !project.team_id));
+    setTagsStatus("loading");
+    client.listTags().then(
+      (tags) => {
+        if (active && currentOwner()) {
+          setAllTags(tags);
+          setTagsStatus("ready");
+        }
       },
-      (error) => {
-        if (active) report(error);
+      () => {
+        if (active && currentOwner()) setTagsStatus("failed");
       },
     );
     return () => {
       active = false;
     };
-  }, [filing?.doc.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [tagging, tagsRevision, currentOwner]);
+  const [personalProjects, setPersonalProjects] = useState<Project[]>([]);
+  const [projectsStatus, setProjectsStatus] = useState<
+    "loading" | "ready" | "failed"
+  >("loading");
+  const [projectsRevision, setProjectsRevision] = useState(0);
+  useEffect(() => {
+    if (!filing?.doc.in_uploads || filing.doc.team_id || filing.many) {
+      setPersonalProjects([]);
+      setProjectsStatus("ready");
+      return;
+    }
+    let active = true;
+    setProjectsStatus("loading");
+    void client.listProjects().then(
+      (projects) => {
+        if (active && currentOwner()) {
+          setPersonalProjects(projects.filter((project) => !project.team_id));
+          setProjectsStatus("ready");
+        }
+      },
+      (error) => {
+        if (active && currentOwner()) {
+          setProjectsStatus("failed");
+          report(error);
+        }
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [filing?.doc.id, filing?.many, projectsRevision]); // eslint-disable-line react-hooks/exhaustive-deps
   const [naming, setNaming] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [failed, setFailed] = useState(false);
@@ -216,133 +308,156 @@ export function DocsView({
   /** Pages nobody has changed or confirmed in months. */
   const [fading, setFading] = useState<Set<string>>(new Set());
   const [fadingOnly, setFadingOnly] = useState(false);
-  useEffect(() => {
-    client.fadingDocs().then(
-      (list) => setFading(new Set(list.map((d) => d.id))),
-      () => {},
-    );
-  }, []);
-  const [busy, setBusy] = useState(false);
+  const mutate = (work: () => Promise<string | void>) =>
+    action.run(async () => {
+      if (!currentOwner()) return;
+      ++libraryRead.current;
+      const outcome = await work();
+      if (!currentOwner()) return;
+      ++libraryRead.current;
+      return outcome;
+    });
+  const afterSave = async (message: string) => {
+    const refreshed = await load();
+    return refreshed ? message : `${message} Couldn't refresh the library.`;
+  };
 
-  const loadArchived = () =>
-    client
-      .listDocs({ archived: "only", ...(fixedKind ? { kind: fixedKind } : {}) })
-      .then(setArchivedDocs, (e) => {
-        setArchivedDocs([]);
-        report(e);
+  const loadArchived = async () => {
+    const read = ++archiveRead.current;
+    setArchiveFailed(false);
+    try {
+      const rows = await client.listDocs({
+        archived: "only",
+        ...(fixedKind ? { kind: fixedKind } : {}),
       });
+      if (currentOwner() && read === archiveRead.current) setArchivedDocs(rows);
+    } catch (e) {
+      if (currentOwner() && read === archiveRead.current) {
+        setArchiveFailed(true);
+        report(e);
+      }
+    }
+  };
   /** Archive a folder (its pages leave lists and search), or bring it back. */
-  const archiveFolder = (folder: Folder, archived: boolean) => {
-    setBusy(true);
-    client
-      .archiveFolder(folder.id, archived)
-      .then((saved) => {
-        setFolders((all) =>
-          all.map((f) =>
-            f.id === folder.id ? { ...f, archived_at: saved.archived_at } : f,
-          ),
-        );
-        if (archived) select(null);
-        else void loadArchived();
-        void load();
-        toast({
-          text: archived
-            ? `Archived ${folder.name} and its pages. Find them under Archived.`
-            : `${folder.name} is back`,
-        });
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
+  const archiveFolder = (folder: Folder, archived: boolean) =>
+    void mutate(async () => {
+      const saved = await client.archiveFolder(folder.id, archived);
+      if (!currentOwner()) return;
+      setFolders((all) =>
+        all.map((f) =>
+          f.id === folder.id ? { ...f, archived_at: saved.archived_at } : f,
+        ),
+      );
+      if (archived) select(null);
+      else await loadArchived();
+      return afterSave(archived ? "Folder archived." : "Folder restored.");
+    });
   /** Bring one archived page back into the library. */
-  const unarchive = (doc: DocSummary) => {
-    setBusy(true);
-    client
-      .archiveDoc(doc.id, false)
-      .then(() => {
-        setArchivedDocs((all) => all?.filter((d) => d.id !== doc.id) ?? all);
-        void load();
-        toast({ text: `“${doc.title || "Untitled"}” is back in the library` });
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
+  const unarchive = (doc: DocSummary) =>
+    void mutate(async () => {
+      if (canWriteDoc && !canWriteDoc(doc.team_id)) return;
+      await client.archiveDoc(doc.id, false);
+      if (!currentOwner()) return;
+      setArchivedDocs((all) => all?.filter((d) => d.id !== doc.id) ?? all);
+      return afterSave("Page restored.");
+    });
   /** Move, archive or tag the picked pages at once (ORG-03). */
-  const bulk = async (change: {
+  const bulk = (change: {
     folder_id?: string | null;
     archived?: boolean;
     tag_id?: string;
-  }) => {
-    const ids = [...picked];
-    if (!ids.length) return;
-    setBusy(true);
-    try {
-      const done = await client.bulkDocs({ ids, ...change });
-      setPicked(new Set());
+  }) =>
+    mutate(async () => {
+      const ids = [...picked];
+      if (!ids.length) return;
+      const result = await client.bulkDocs({ ids, ...change });
+      if (!currentOwner()) return;
+      // Confirmed rows leave the selection; rejected rows remain available to inspect.
+      setPicked(new Set(result.skipped.map((row) => row.id)));
       setFiling(null);
       setTagging(null);
-      await load();
-      const n = done.done.length;
-      const what =
-        change.archived !== undefined
-          ? change.archived
-            ? "Archived"
-            : "Brought back"
-          : change.tag_id
+      const verb =
+        change.archived === undefined
+          ? change.tag_id
             ? "Tagged"
-            : "Moved";
-      toast({
-        text:
-          `${what} ${n} page${n === 1 ? "" : "s"}` +
-          (done.skipped.length
-            ? `. ${done.skipped.length} couldn't be changed by you.`
-            : ""),
-        tone: done.skipped.length ? "warn" : undefined,
-        action:
-          change.archived && n
-            ? {
-                label: "Undo",
-                run: () =>
-                  void client
-                    .bulkDocs({ ids: done.done, archived: false })
-                    .then(() => void load(), report),
-              }
-            : undefined,
-      });
+            : "Moved"
+          : change.archived
+            ? "Archived"
+            : "Restored";
+      const message = `${verb} ${result.done.length} pages.${result.skipped.length ? ` ${result.skipped.length} couldn't be changed.` : ""}`;
+      if (change.archived && result.done.length)
+        toast({
+          text: `${result.done.length} pages archived.`,
+          action: {
+            label: "Undo",
+            run: () => {
+              if (!currentOwner()) return;
+              void mutate(async () => {
+                await client.bulkDocs({ ids: result.done, archived: false });
+                if (currentOwner()) return afterSave("Pages restored.");
+              });
+            },
+          },
+        });
+      return afterSave(message);
+    });
+  const loadTrash = async () => {
+    const read = ++trashRead.current;
+    setTrashFailed(false);
+    try {
+      const rows = await client.listTrash();
+      if (currentOwner() && read === trashRead.current) setTrash(rows);
     } catch (e) {
-      report(e);
-    } finally {
-      setBusy(false);
+      if (currentOwner() && read === trashRead.current) {
+        setTrashFailed(true);
+        report(e);
+      }
     }
   };
-  const loadTrash = () =>
-    client.listTrash().then(setTrash, (e) => {
-      setTrash([]);
-      report(e);
-    });
-
-  const load = () => {
-    void client.listFolders().then(setFolders, () => setFolders([]));
-    void client.listTrash().then(setTrash, () => {});
-    void client.listFavourites().then(setStars, () => setStars([]));
-    if (!fixedKind) {
-      void client
-        .listDocs({ kind: "memory" })
-        .then(setMemoryDocs, () => setMemoryDocs([]));
-      void client
-        .listDocs({ kind: "agent" })
-        .then(setAgentDocs, () => setAgentDocs([]));
+  const load = async () => {
+    const read = ++libraryRead.current;
+    const results = await Promise.allSettled([
+      client.listDocs(fixedKind ? { kind: fixedKind } : {}),
+      client.listFolders(),
+      client.listFavourites(),
+      client.fadingDocs(),
+      fixedKind
+        ? Promise.resolve([] as DocSummary[])
+        : client.listDocs({ kind: "memory" }),
+      fixedKind
+        ? Promise.resolve([] as DocSummary[])
+        : client.listDocs({ kind: "agent" }),
+    ]);
+    if (!currentOwner() || read !== libraryRead.current) return false;
+    const [pages, folderRows, favourites, outdated, memory, agents] = results;
+    if (pages.status === "fulfilled") {
+      setDocs(pages.value);
+      setFailed(false);
+    } else {
+      setFailed(true);
+      report(pages.reason);
     }
-    return client.listDocs(fixedKind ? { kind: fixedKind } : {}).then(
-      (rows) => {
-        setDocs(rows);
-        setFailed(false);
-      },
-      (e) => {
-        setFailed(true);
-        report(e);
-      },
+    if (folderRows.status === "fulfilled") setFolders(folderRows.value);
+    if (favourites.status === "fulfilled") setStars(favourites.value);
+    if (outdated.status === "fulfilled")
+      setFading(new Set(outdated.value.map((d) => d.id)));
+    if (memory.status === "fulfilled") setMemoryDocs(memory.value);
+    if (agents.status === "fulfilled") setAgentDocs(agents.value);
+    const names = [
+      "pages",
+      "folders",
+      "favorites",
+      "outdated pages",
+      "Memory",
+      "agent notes",
+    ];
+    const failures = results.flatMap((result, index) =>
+      result.status === "rejected" ? [names[index]] : [],
     );
+    setLibraryError(
+      failures.length ? `Couldn't refresh ${failures.join(", ")}.` : "",
+    );
+    return failures.length === 0;
   };
 
   const imports = useImports(report, () => void load());
@@ -351,38 +466,41 @@ export function DocsView({
     void imports.importFiles(files);
   };
 
-  const newFolder = () => {
-    const name = folderName.trim();
-    if (!name) return;
-    setBusy(true);
-    client
-      .createFolder({ name })
-      .then((f) => {
-        setFolders((all) => [...all, f]);
-        setNaming(false);
-        setFolderName("");
-        setFolderFilter(f.id);
-        setKindFilter(null);
-        setFavoritesOnly(false);
-        setOpen(null);
-        setNavigationOpen(false);
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
-
-  const toggleStar = (doc: DocSummary, starred: boolean) => {
-    // Show the change at once; the server call is a formality.
-    setStars((all) =>
-      starred
-        ? [...all, { kind: "doc", target_id: doc.id, created_at: "" }]
-        : all.filter((f) => !(f.kind === "doc" && f.target_id === doc.id)),
-    );
-    client.setFavourite("doc", doc.id, starred).then(announceStars, (e) => {
-      report(e);
-      void client.listFavourites().then(setStars, report);
+  const newFolder = () =>
+    void mutate(async () => {
+      const name = folderName.trim();
+      if (!name) return;
+      const folder = await client.createFolder({ name });
+      if (!currentOwner()) return;
+      setFolders((all) => [...all, folder]);
+      setNaming(false);
+      setFolderName("");
+      setFolderFilter(folder.id);
+      setKindFilter(null);
+      setFavoritesOnly(false);
+      setOpen(null);
+      setNavigationOpen(false);
+      return "Folder created.";
     });
-  };
+  const toggleStar = (doc: DocSummary, starred: boolean) =>
+    void mutate(async () => {
+      await client.setFavourite("doc", doc.id, starred);
+      if (!currentOwner()) return;
+      setStars((all) =>
+        starred
+          ? [
+              ...all.filter(
+                (f) => !(f.kind === "doc" && f.target_id === doc.id),
+              ),
+              { kind: "doc", target_id: doc.id, created_at: "" },
+            ]
+          : all.filter((f) => !(f.kind === "doc" && f.target_id === doc.id)),
+      );
+      announceStars();
+      return starred
+        ? "Page added to favorites."
+        : "Page removed from favorites.";
+    });
 
   useEffect(() => {
     void load();
@@ -406,6 +524,7 @@ export function DocsView({
   }, [fixedKind]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    navigation.current++;
     setKindFilter(fixedKind ?? null);
     setFolderFilter(null);
     setFavoritesOnly(false);
@@ -427,37 +546,36 @@ export function DocsView({
   // Opening a note from its event hands the document straight to the editor.
   useEffect(() => {
     if (!initialDoc) return;
+    navigation.current++;
     setOpen(initialDoc);
     setTargetBlock(initialBlockId ?? null);
     onInitialDocShown?.();
   }, [initialDoc]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const create = (kind: DocKind = fixedKind ?? "doc") => {
-    setBusy(true);
-    const input = {
-      title: "",
-      kind,
-      folder_id: folderFilter === "none" ? null : folderFilter,
-    };
-    const created =
-      kind === "doc"
-        ? client.createDocForEditor(input, {
-            format: 2,
-            nodes: [{ kind: "block", block: { type: "paragraph", text: "" } }],
-          })
-        : client.createDoc({
-            ...input,
-            content: [{ type: "paragraph", text: "" }],
-          });
-    created
-      .then((doc) => {
-        setOpen(doc);
-        void load();
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
-
+  const create = (kind: DocKind = fixedKind ?? "doc") =>
+    void mutate(async () => {
+      const destination = ++navigation.current;
+      const input = {
+        title: "",
+        kind,
+        folder_id: folderFilter === "none" ? null : folderFilter,
+      };
+      const doc =
+        kind === "doc"
+          ? await client.createDocForEditor(input, {
+              format: 2,
+              nodes: [
+                { kind: "block", block: { type: "paragraph", text: "" } },
+              ],
+            })
+          : await client.createDoc({
+              ...input,
+              content: [{ type: "paragraph", text: "" }],
+            });
+      if (!currentOwner()) return;
+      if (destination === navigation.current) setOpen(doc);
+      return afterSave("Page created.");
+    });
   const editor = open ? (
     <DocEditor
       key={open.id}
@@ -472,10 +590,13 @@ export function DocsView({
       }
       onItemsChanged={onItemsChanged}
       onBack={() => {
+        if (!currentOwner()) return;
+        navigation.current++;
         setOpen(null);
         void load();
       }}
       onChanged={(saved) => {
+        if (!currentOwner()) return;
         setOpen((current) => (current?.id === saved.id ? saved : current));
         setDocs(
           (current) =>
@@ -487,11 +608,15 @@ export function DocsView({
         );
       }}
       onDeleted={(id) => {
-        setOpen(null);
+        if (!currentOwner()) return;
+        navigation.current++;
+        setOpen((current) => (current?.id === id ? null : current));
         setDocs((current) => current?.filter((d) => d.id !== id) ?? current);
         void load();
       }}
       onUndoDelete={(back) => {
+        if (!currentOwner()) return;
+        navigation.current++;
         // Undo from the toast: the page comes back open, where it was.
         setOpen(back);
         void load();
@@ -503,53 +628,63 @@ export function DocsView({
         else select(here.folder_id ?? "none");
         setNavigationOpen(true);
         setFlash(here.id);
-        window.setTimeout(() => {
-          document
-            .getElementById(`doc-row-${here.id}`)
-            ?.scrollIntoView({ block: "center", behavior: "smooth" });
-        }, 60);
-        window.setTimeout(() => setFlash(null), 2000);
+        libraryTimers.current.forEach(clearTimeout);
+        const destination = navigation.current;
+        libraryTimers.current = [
+          setTimeout(() => {
+            if (!currentOwner() || destination !== navigation.current) return;
+            const row = paneElement.current?.querySelector<HTMLElement>(
+              `[id="${CSS.escape(rowId(here.id))}"]`,
+            );
+            row?.scrollIntoView({ block: "center", behavior: "auto" });
+          }, 60),
+          setTimeout(() => {
+            if (currentOwner() && destination === navigation.current)
+              setFlash(null);
+          }, 2000),
+        ];
       }}
     />
   ) : null;
 
   /** Bring a page back from Trash, and say where it went. */
-  const restore = (page: TrashedDoc) => {
-    setBusy(true);
-    client
-      .restoreDoc(page.id)
-      .then((back) => {
-        setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all);
-        void load();
-        toast({
-          text: `Restored “${back.title || "Untitled"}”`,
-          action: { label: "Open", run: () => setOpen(back) },
-        });
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
-
-  /** Delete a page in Trash for good, after asking: this one can't be undone. */
-  const destroy = async (page: TrashedDoc) => {
-    if (
-      !(await ask({
-        title: `Delete “${page.title || "Untitled"}” for good?`,
-        body: "Its history and comments go with it. This can't be undone.",
-        confirmLabel: "Delete for good",
-        destructive: true,
-      }))
-    )
-      return;
-    setBusy(true);
-    client
-      .deleteDocForever(page.id)
-      .then(() =>
-        setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all),
+  const restore = (page: TrashedDoc) =>
+    void mutate(async () => {
+      const restored = await client.restoreDoc(page.id);
+      if (!currentOwner()) return;
+      setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all);
+      toast({
+        text: "Page restored.",
+        action: {
+          label: "Open",
+          run: () => {
+            if (currentOwner()) {
+              navigation.current++;
+              setOpen(restored);
+            }
+          },
+        },
+      });
+      return afterSave("Page restored.");
+    });
+  /** Permanent deletion holds one operation through confirmation and receipt. */
+  const destroy = (page: TrashedDoc) =>
+    mutate(async () => {
+      if (
+        !(await ask({
+          title: "Delete page permanently?",
+          body: `${page.title || "Untitled"} · Its history and comments are also deleted.`,
+          confirmLabel: "Delete permanently",
+          destructive: true,
+        })) ||
+        !currentOwner()
       )
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
+        return;
+      await client.deleteDocForever(page.id);
+      if (!currentOwner()) return;
+      setTrash((all) => all?.filter((d) => d.id !== page.id) ?? all);
+      return "Page permanently deleted.";
+    });
 
   const starred = favouriteSet(stars);
   const uploadCount =
@@ -669,6 +804,7 @@ export function DocsView({
     trashed = false,
     archived = false,
   ) => {
+    navigation.current++;
     setTrashOnly(trashed);
     if (trashed) void loadTrash();
     setArchivedOnly(archived);
@@ -686,24 +822,23 @@ export function DocsView({
     setNavigationOpen(false);
   };
   const openPage = (id: string) => {
-    setBusy(true);
-    client
-      .getDocForEditor(id)
-      .then((doc) => {
-        setOpen(doc);
-        setNavigationOpen(false);
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
+    if (busy) return;
+    const destination = ++navigation.current;
+    void action.run(async () => {
+      const doc = await client.getDocForEditor(id);
+      if (!currentOwner() || destination !== navigation.current) return;
+      setOpen(doc);
+      setNavigationOpen(false);
+    });
   };
-  const fileIn = async (doc: DocSummary, folderId: string) => {
-    setBusy(true);
-    try {
-      // To the folder's top level: out of any page it was inside (W5).
+  const fileIn = (doc: DocSummary, folderId: string) =>
+    mutate(async () => {
+      if (canWriteDoc && !canWriteDoc(doc.team_id)) return;
       const saved = await client.moveDoc(doc.id, {
         parent_id: null,
         folder_id: folderId || null,
       });
+      if (!currentOwner()) return;
       setFiling(null);
       setDocs(
         (all) =>
@@ -719,28 +854,23 @@ export function DocsView({
               : d,
           ) ?? all,
       );
-    } catch (e) {
-      report(e);
-    } finally {
-      setBusy(false);
-    }
-  };
-  const fileInProject = async (doc: DocSummary, projectId: string) => {
-    setBusy(true);
-    try {
-      const full = await client.getDoc(doc.id);
-      await client.updateDoc(doc.id, {
+      return afterSave("Page moved.");
+    });
+  const fileInProject = (doc: DocSummary, projectId: string) =>
+    mutate(async () => {
+      if (canWriteDoc && !canWriteDoc(doc.team_id)) return;
+      const full = await client.getDocForEditor(doc.id);
+      if (!currentOwner()) return;
+      await client.updateDocForEditor(doc.id, {
         version: full.version,
+        document: full.document ?? { format: 1, blocks: full.content },
         project_id: projectId,
       });
+      if (!currentOwner()) return;
       setFiling(null);
-      await load();
-    } catch (error) {
-      report(error);
-    } finally {
-      setBusy(false);
-    }
-  };
+      return afterSave("Page moved to project.");
+    });
+
   /**
    * A page dropped on a folder (or Unfiled) is filed there (ORG-06); the
    * folder button on each row does the same without a mouse.
@@ -822,71 +952,65 @@ export function DocsView({
   const writable = (doc: DocSummary) =>
     !canWriteDoc || canWriteDoc(doc.team_id);
   /** Move a page in the tree, then read the library again. */
-  const moveInTree = (doc: DocSummary, to: TreeMoveTo) => {
-    setBusy(true);
-    setTreeMoving(null);
-    client
-      .moveDoc(doc.id, to)
-      .then((saved) => {
-        if (saved.parent_id) tree.show(saved.parent_id);
-        return load();
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
-  /** Rename a page from the tree, in place. */
-  const renameInTree = (doc: DocSummary, title: string) => {
-    setBusy(true);
-    client
-      .getDoc(doc.id)
-      .then((full) =>
-        client.updateDoc(doc.id, { title, version: full.version }),
-      )
-      .then((saved) => {
-        setDocs(
-          (all) =>
-            all?.map((d) => (d.id === doc.id ? { ...d, title } : d)) ?? all,
-        );
-        // The open page takes the new name (and version) afresh.
-        if (open?.id === saved.id) {
-          setOpen(null);
-          window.setTimeout(() => setOpen(saved), 0);
-        }
-        return load();
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
-  /** A new page inside a page, opened to write in. */
-  const newInside = (parent: DocSummary) => {
-    setBusy(true);
-    const kind: "memory" | "agent" | "doc" =
-      parent.kind === "memory" || parent.kind === "agent" ? parent.kind : "doc";
-    const input = {
-      title: "",
-      kind,
-      team_id: parent.team_id,
-      parent_id: parent.id,
-    };
-    const created =
-      kind === "doc"
-        ? client.createDocForEditor(input, {
-            format: 2,
-            nodes: [{ kind: "block", block: { type: "paragraph", text: "" } }],
-          })
-        : client.createDoc({
-            ...input,
-            content: [{ type: "paragraph", text: "" }],
-          });
-    created
-      .then((doc) => {
-        tree.show(parent.id);
-        setOpen(doc);
-        void load();
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
-  };
+  const moveInTree = (doc: DocSummary, to: TreeMoveTo) =>
+    void mutate(async () => {
+      if (!writable(doc)) return;
+      const saved = await client.moveDoc(doc.id, to);
+      if (!currentOwner()) return;
+      setTreeMoving(null);
+      if (saved.parent_id) tree.show(saved.parent_id);
+      return afterSave("Page moved.");
+    });
+  const renameInTree = (doc: DocSummary, title: string) =>
+    mutate(async () => {
+      if (!writable(doc)) return;
+      const full = await client.getDocForEditor(doc.id);
+      if (!currentOwner()) return;
+      const saved = await client.updateDocForEditor(doc.id, {
+        title,
+        document: full.document ?? { format: 1, blocks: full.content },
+        version: full.version,
+      });
+      if (!currentOwner()) return;
+      setDocs(
+        (all) =>
+          all?.map((d) => (d.id === doc.id ? { ...d, title } : d)) ?? all,
+      );
+      setOpen((current) => (current?.id === saved.id ? saved : current));
+      return afterSave("Page renamed.");
+    });
+  const newInside = (parent: DocSummary) =>
+    void mutate(async () => {
+      if (!writable(parent)) return;
+      const destination = ++navigation.current;
+      const kind: "memory" | "agent" | "doc" =
+        parent.kind === "memory" || parent.kind === "agent"
+          ? parent.kind
+          : "doc";
+      const input = {
+        title: "",
+        kind,
+        team_id: parent.team_id,
+        parent_id: parent.id,
+      };
+      const doc =
+        kind === "doc"
+          ? await client.createDocForEditor(input, {
+              format: 2,
+              nodes: [
+                { kind: "block", block: { type: "paragraph", text: "" } },
+              ],
+            })
+          : await client.createDoc({
+              ...input,
+              content: [{ type: "paragraph", text: "" }],
+            });
+      if (!currentOwner()) return;
+      tree.show(parent.id);
+      if (destination === navigation.current) setOpen(doc);
+      return afterSave("Page created.");
+    });
+
   const treePages = (pages: DocSummary[]) => (
     <TreePages
       pages={pages}
@@ -949,8 +1073,10 @@ export function DocsView({
 
   return (
     <div
+      ref={setPane}
       className={
         "docs-workspace" +
+        (paneWidth > 0 && paneWidth < 900 ? " is-compact" : "") +
         (libraryHidden ? " is-library-hidden" : "") +
         (dropping ? " is-dropping" : "")
       }
@@ -974,13 +1100,13 @@ export function DocsView({
       {dropping && (
         <div className="docs-drop" aria-hidden="true">
           <strong>Drop to import</strong>
-          <span>PDF, Word or a photo of notes becomes a page in Uploads.</span>
+          <span>PDF, Word or photos</span>
         </div>
       )}
       <button
         className="text-button docs-nav-toggle"
         aria-expanded={navigationOpen}
-        aria-controls="docs-navigation"
+        aria-controls={`${libraryId}-navigation`}
         onClick={() => setNavigationOpen(!navigationOpen)}
       >
         <PanelLeft size={18} />{" "}
@@ -989,7 +1115,7 @@ export function DocsView({
           : `Browse ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`}
       </button>
       <nav
-        id="docs-navigation"
+        id={`${libraryId}-navigation`}
         aria-label="Document library"
         className={"docs-navigation" + (navigationOpen ? " is-open" : "")}
       >
@@ -1129,7 +1255,11 @@ export function DocsView({
               <button
                 aria-label="New folder"
                 aria-expanded={naming}
-                onClick={() => setNaming(!naming)}
+                disabled={busy}
+                onClick={() => {
+                  action.setOutcome(null);
+                  setNaming(!naming);
+                }}
               >
                 <FolderPlus size={16} />
               </button>
@@ -1145,6 +1275,7 @@ export function DocsView({
                 <input
                   aria-label="Folder name"
                   placeholder="Folder name"
+                  disabled={busy}
                   value={folderName}
                   maxLength={60}
                   autoFocus
@@ -1154,10 +1285,15 @@ export function DocsView({
                   <button type="submit" disabled={busy || !folderName.trim()}>
                     Create
                   </button>
-                  <button type="button" onClick={() => setNaming(false)}>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => setNaming(false)}
+                  >
                     Cancel
                   </button>
                 </div>
+                <OutcomeNote outcome={action.outcome} />
               </form>
             )}
             {folders
@@ -1272,80 +1408,64 @@ export function DocsView({
             <PanelLeftOpen size={16} /> Show library
           </button>
         )}
+        {!naming && !filing && !tagging && (
+          <OutcomeNote outcome={action.outcome} />
+        )}
+        {libraryError && (
+          <div className="docs-library-feedback">
+            <p role="alert">{libraryError}</p>
+            <button
+              className="text-button"
+              disabled={busy}
+              onClick={() => void load()}
+            >
+              Retry library
+            </button>
+          </div>
+        )}
         {editor ?? (
           <div className="docs-view">
             <div className="docs-head">
               <h1 className="docs-count docs-library-title">{location}</h1>
               <div className="docs-head-actions">
-                {openFolder && (
+                <button
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => create(fixedKind ?? "doc")}
+                >
+                  <Plus size={15} />{" "}
+                  {fixedKind === "memory"
+                    ? "New Memory note"
+                    : fixedKind === "agent"
+                      ? "New Agent note"
+                      : "New page"}
+                </button>
+                {!fixedKind && (
                   <button
-                    className="text-button"
+                    className="icon-button"
+                    disabled={busy}
+                    aria-label="Library options"
                     aria-haspopup="dialog"
-                    onClick={() => setPublishingFolder(openFolder)}
-                    title="Put this folder's pages on the web"
+                    aria-expanded={!!libraryMenu}
+                    onClick={(event) =>
+                      setLibraryMenu(
+                        event.currentTarget.getBoundingClientRect(),
+                      )
+                    }
                   >
-                    <Globe size={15} /> Publish folder
+                    <MoreHorizontal size={18} />
                   </button>
-                )}
-                {openFolder && (
-                  <button
-                    className="text-button"
-                    disabled={busy}
-                    onClick={() => archiveFolder(openFolder, true)}
-                    title="Keep this folder and its pages out of the library and search"
-                  >
-                    <Archive size={15} /> Archive folder
-                  </button>
-                )}
-                {fixedKind ? (
-                  <button
-                    className="primary"
-                    disabled={busy}
-                    onClick={() => create(fixedKind)}
-                  >
-                    <Plus size={15} />
-                    {fixedKind === "memory"
-                      ? "New Memory note"
-                      : "New Agent note"}
-                  </button>
-                ) : (
-                  <>
-                    <ImportButton onFiles={importFiles} busy={imports.busy} />
-                    <button
-                      className="text-button"
-                      disabled={busy}
-                      onClick={() => create("note")}
-                    >
-                      <Plus size={15} /> New note
-                    </button>
-                    <button
-                      className="text-button"
-                      disabled={busy}
-                      onClick={() => setTemplating(true)}
-                    >
-                      <LayoutTemplate size={15} /> From template
-                    </button>
-                    <button
-                      className="primary"
-                      disabled={busy}
-                      onClick={() => create("doc")}
-                    >
-                      <Plus size={15} /> New page
-                    </button>
-                  </>
                 )}
               </div>
             </div>
             {trashOnly && (
               <p className="docs-trash-note">
-                Pages you delete wait here for {TRASH_DAYS} days, then they’re
-                deleted for good.
+                Deleted pages are kept for {TRASH_DAYS} days.
               </p>
             )}
             {archivedOnly && (
               <p className="docs-trash-note">
-                Archived pages and links remain. Restore them to return them to
-                the library and search.
+                Restore pages to return them to the library.
               </p>
             )}
             {!uploadsOnly && !trashOnly && !archivedOnly && (
@@ -1384,7 +1504,18 @@ export function DocsView({
               </div>
             )}
             {archivedOnly ? (
-              archivedDocs === null ? (
+              archiveFailed ? (
+                <div>
+                  <p role="alert">Couldn't load archived pages.</p>
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void loadArchived()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : archivedDocs === null ? (
                 <p className="muted">Loading…</p>
               ) : archivedDocs.length === 0 &&
                 !folders.some((f) => f.archived_at) ? (
@@ -1425,7 +1556,7 @@ export function DocsView({
                         className={
                           "doc-row" + (flash === doc.id ? " is-flash" : "")
                         }
-                        id={`doc-row-${doc.id}`}
+                        id={rowId(doc.id)}
                         disabled={busy}
                         onClick={() => openPage(doc.id)}
                       >
@@ -1459,7 +1590,18 @@ export function DocsView({
                 </ul>
               )
             ) : trashOnly ? (
-              trash === null ? (
+              trashFailed ? (
+                <div>
+                  <p role="alert">Couldn't load Trash.</p>
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => void loadTrash()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : trash === null ? (
                 <p className="muted">Loading…</p>
               ) : trash.length === 0 ? (
                 <EmptyState
@@ -1512,6 +1654,9 @@ export function DocsView({
             ) : uploadsOnly ? (
               <UploadsPanel
                 jobs={imports.jobs}
+                loading={imports.loading}
+                loadError={imports.loadError}
+                onRetry={() => void imports.refresh()}
                 docs={docs ?? []}
                 busy={imports.busy}
                 onOpen={openPage}
@@ -1547,10 +1692,10 @@ export function DocsView({
                   query || tagFilter
                     ? "Try another word or tag."
                     : fixedKind === "memory"
-                      ? "What your assistant learns about you is kept here, with where it came from. You can add or change a note any time."
+                      ? "Notes your assistant remembers. You can edit them."
                       : fixedKind === "agent"
-                        ? "Briefs and other notes your agent makes are kept here."
-                        : "Keep notes, briefs and working out next to your tasks."
+                        ? "Briefs and notes from your agents."
+                        : "Create a page or import a file."
                 }
               >
                 {!(query || tagFilter) && (
@@ -1626,6 +1771,7 @@ export function DocsView({
                       className="icon-button"
                       aria-label="Clear the picked pages"
                       title="Clear"
+                      disabled={busy}
                       onClick={() => setPicked(new Set())}
                     >
                       <X size={15} />
@@ -1651,6 +1797,7 @@ export function DocsView({
                               <input
                                 type="checkbox"
                                 aria-label={`Pick ${doc.title || "Untitled"}`}
+                                disabled={busy}
                                 checked={picked.has(doc.id)}
                                 onChange={() => {}}
                                 onClick={(e) => pick(doc, e.shiftKey)}
@@ -1661,7 +1808,7 @@ export function DocsView({
                             className={
                               "doc-row" + (flash === doc.id ? " is-flash" : "")
                             }
-                            id={`doc-row-${doc.id}`}
+                            id={rowId(doc.id)}
                             disabled={busy}
                             onClick={(e) =>
                               e.shiftKey || picked.size
@@ -1743,6 +1890,7 @@ export function DocsView({
                             aria-pressed={starred.has(
                               favouriteKey("doc", doc.id),
                             )}
+                            disabled={busy}
                             onClick={() =>
                               toggleStar(
                                 doc,
@@ -1769,14 +1917,76 @@ export function DocsView({
           </div>
         )}
       </section>
+      {libraryMenu && (
+        <Popover
+          label="Library options"
+          anchor={libraryMenu}
+          onClose={() => {
+            if (!busy) setLibraryMenu(null);
+          }}
+        >
+          <div className="popover-actions">
+            <button
+              disabled={busy}
+              onClick={() => {
+                setLibraryMenu(null);
+                create("note");
+              }}
+            >
+              <Plus size={15} /> New note
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => {
+                setLibraryMenu(null);
+                setTemplating(true);
+              }}
+            >
+              <LayoutTemplate size={15} /> From template
+            </button>
+            <ImportButton
+              busy={busy || imports.busy}
+              onFiles={(files) => {
+                setLibraryMenu(null);
+                importFiles(files);
+              }}
+            />
+            {openFolder && (
+              <>
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    setLibraryMenu(null);
+                    setPublishingFolder(openFolder);
+                  }}
+                >
+                  <Globe size={15} /> Publish folder
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={() => {
+                    setLibraryMenu(null);
+                    archiveFolder(openFolder, true);
+                  }}
+                >
+                  <Archive size={15} /> Archive folder
+                </button>
+              </>
+            )}
+          </div>
+        </Popover>
+      )}
       {filing && (
         <Popover
           label="Move to folder"
           anchor={filing.anchor}
-          onClose={() => setFiling(null)}
+          onClose={() => {
+            if (!busy) setFiling(null);
+          }}
           width={280}
         >
           <div className="docs-move-menu">
+            <OutcomeNote outcome={action.outcome} />
             <strong>Move to folder</strong>
             <p>
               {filing.many
@@ -1787,11 +1997,12 @@ export function DocsView({
               className="docs-move-search"
               aria-label="Find a folder"
               placeholder="Find a folder…"
+              disabled={busy}
               value={moveQuery}
               autoFocus
               onChange={(e) => setMoveQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key !== "Enter") return;
+                if (e.key !== "Enter" || busy) return;
                 const first = movable[0];
                 if (!first) return;
                 e.preventDefault();
@@ -1820,7 +2031,30 @@ export function DocsView({
             {!movable.length && (
               <p className="muted">No folder is called that.</p>
             )}
-            {personalProjects.length > 0 &&
+            {filing.doc.in_uploads &&
+              !filing.doc.team_id &&
+              !filing.many &&
+              projectsStatus === "loading" && (
+                <p className="muted">Loading projects…</p>
+              )}
+            {filing.doc.in_uploads &&
+              !filing.doc.team_id &&
+              !filing.many &&
+              projectsStatus === "failed" && (
+                <div>
+                  <p role="alert">Couldn't load projects.</p>
+                  <button
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => setProjectsRevision((n) => n + 1)}
+                  >
+                    Retry projects
+                  </button>
+                </div>
+              )}
+            {projectsStatus === "ready" &&
+              !filing.many &&
+              personalProjects.length > 0 &&
               filing.doc.in_uploads &&
               !filing.doc.team_id && (
                 <>
@@ -1849,27 +2083,66 @@ export function DocsView({
           anchor={treeMoving.anchor}
           busy={busy}
           onPick={(to) => moveInTree(treeMoving.doc, to)}
-          onClose={() => setTreeMoving(null)}
+          onClose={() => {
+            if (!busy) setTreeMoving(null);
+          }}
         />
       )}
       {tagging && (
         <Popover
           label="Tag the picked pages"
           anchor={tagging}
-          onClose={() => setTagging(null)}
+          onClose={() => {
+            if (!busy) setTagging(null);
+          }}
           width={260}
         >
           <div className="docs-move-menu">
+            <OutcomeNote outcome={action.outcome} />
             <strong>Add a tag</strong>
             <p>
               {picked.size} page{picked.size === 1 ? "" : "s"}
             </p>
-            {allTags.length === 0 && (
+            <input
+              disabled={busy}
+              aria-label="Find a tag"
+              placeholder="Find a tag"
+              value={tagQuery}
+              onChange={(e) => setTagQuery(e.target.value)}
+            />
+            {tagsStatus === "failed" && (
+              <div>
+                <p role="alert">Couldn't load tags.</p>
+                <button
+                  className="text-button"
+                  disabled={busy}
+                  onClick={() => setTagsRevision((n) => n + 1)}
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            {tagsStatus === "loading" && <p className="muted">Loading tags…</p>}
+            {tagsStatus === "ready" && allTags.length === 0 && (
               <p className="muted">
                 No tags yet. Add one to a page from its Info first.
               </p>
             )}
-            {allTags.map((t) => (
+            {tagsStatus === "ready" &&
+              tagQuery.trim() &&
+              !allTags.some((tag) =>
+                tag.name
+                  .toLocaleLowerCase()
+                  .includes(tagQuery.trim().toLocaleLowerCase()),
+              ) && <p className="muted">No matching tags.</p>}
+            {(tagsStatus === "ready"
+              ? allTags.filter((t) =>
+                  t.name
+                    .toLocaleLowerCase()
+                    .includes(tagQuery.trim().toLocaleLowerCase()),
+                )
+              : []
+            ).map((t) => (
               <button
                 key={t.id}
                 className="doc-menu-item"

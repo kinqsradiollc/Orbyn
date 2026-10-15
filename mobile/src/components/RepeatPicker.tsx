@@ -123,6 +123,7 @@ export function RepeatPicker({
   const unsupported = !!rrule && !parseRrule(rrule);
 
   const update = (patch: Partial<typeof state>) => {
+    if (disabled) return;
     const next = { ...state, ...patch };
     setState(next);
     onProblem?.(
@@ -238,6 +239,7 @@ export function RepeatPicker({
             <View style={s.gapSmall}>
               <DateField
                 label="Last day"
+                disabled={disabled}
                 value={state.until}
                 minimumDate={dueAt ? new Date(dueAt) : undefined}
                 onChange={(until) => update({ until })}

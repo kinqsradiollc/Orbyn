@@ -1,9 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Pressable } from "../../motion";
 import { MAX_ALIASES } from "@orbyn/core";
 import { Icon } from "../../components/Icon";
-import { colors, controls, fonts, radii, themed } from "../../theme";
+import { errorText } from "../../lib/errors";
+import {
+  inputFontSize,
+  colors,
+  controls,
+  fonts,
+  radii,
+  themed,
+} from "../../theme";
 
 /**
  * "Also called" (LNK-03) on the phone: other names a page or project goes
@@ -24,19 +32,43 @@ export function AliasesField({
   const [list, setList] = useState(aliases);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const pending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   useEffect(() => setList(aliases), [aliases]);
-  const save = (next: string[]) => {
+  const save = async (next: string[], added?: string) => {
+    if (pending.current || !canWrite) return;
+    pending.current = true;
     setBusy(true);
-    void onSave(next)
-      .then((kept) => setList(kept))
-      .finally(() => setBusy(false));
+    setError("");
+    try {
+      const kept = await onSave(next);
+      if (!mounted.current) return;
+      setList(kept);
+      if (added) setTyped((draft) => (draft.trim() === added ? "" : draft));
+    } catch (failure) {
+      if (mounted.current) setError(errorText(failure));
+    } finally {
+      pending.current = false;
+      if (mounted.current) setBusy(false);
+    }
   };
   const add = () => {
     const name = typed.trim();
-    setTyped("");
-    if (!name || list.some((x) => x.toLowerCase() === name.toLowerCase()))
+    if (
+      pending.current ||
+      list.length >= MAX_ALIASES ||
+      !name ||
+      list.some((x) => x.toLowerCase() === name.toLowerCase())
+    )
       return;
-    save([...list, name]);
+    void save([...list, name], name);
   };
   if (!canWrite && !list.length) return null;
   return (
@@ -51,8 +83,8 @@ export function AliasesField({
                   accessibilityRole="button"
                   accessibilityLabel={`Remove ${a}`}
                   disabled={busy}
-                  hitSlop={10}
-                  onPress={() => save(list.filter((x) => x !== a))}
+                  onPress={() => void save(list.filter((x) => x !== a))}
+                  style={s.remove}
                 >
                   <Icon name="x" size={13} color={colors.muted} />
                 </Pressable>
@@ -62,19 +94,38 @@ export function AliasesField({
         </View>
       )}
       {canWrite && list.length < MAX_ALIASES && (
-        <TextInput
-          value={typed}
-          onChangeText={setTyped}
-          onSubmitEditing={add}
-          onEndEditing={add}
-          returnKeyType="done"
-          editable={!busy}
-          maxLength={80}
-          placeholder={list.length ? "Add another" : placeholder}
-          placeholderTextColor={colors.faint}
-          accessibilityLabel="Add another name"
-          style={s.input}
-        />
+        <View style={s.entry}>
+          <TextInput
+            value={typed}
+            onChangeText={setTyped}
+            onSubmitEditing={add}
+            returnKeyType="done"
+            editable={!busy}
+            maxLength={80}
+            placeholder={list.length ? "Add another" : placeholder}
+            placeholderTextColor={colors.faint}
+            accessibilityLabel="Add another name"
+            style={s.input}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add another name"
+            disabled={busy || !typed.trim()}
+            onPress={add}
+            style={s.remove}
+          >
+            <Icon
+              name="plus"
+              size={18}
+              color={busy || !typed.trim() ? colors.faint : colors.accent}
+            />
+          </Pressable>
+        </View>
+      )}
+      {!!error && (
+        <Text accessibilityRole="alert" style={s.error}>
+          {error}
+        </Text>
       )}
     </View>
   );
@@ -83,6 +134,7 @@ export function AliasesField({
 const s = themed(() =>
   StyleSheet.create({
     field: { gap: 8 },
+    entry: { flexDirection: "row", alignItems: "center", gap: 6 },
     chips: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     chip: {
       flexDirection: "row",
@@ -92,13 +144,24 @@ const s = themed(() =>
       paddingHorizontal: 10,
       borderRadius: radii.pill,
       backgroundColor: colors.surfaceMuted,
+      maxWidth: "100%",
     },
     chipText: {
+      flexShrink: 1,
       color: colors.textSoft,
       fontFamily: fonts.medium,
       fontSize: 13,
     },
+    remove: {
+      minWidth: controls.tap,
+      minHeight: controls.tap,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    error: { color: colors.danger, fontSize: 13 },
     input: {
+      flex: 1,
+      minWidth: 0,
       minHeight: controls.tap,
       paddingHorizontal: 12,
       borderRadius: radii.input,
@@ -106,7 +169,7 @@ const s = themed(() =>
       borderColor: colors.border,
       color: colors.text,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: inputFontSize,
     },
   }),
 );

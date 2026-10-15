@@ -54,6 +54,7 @@ export function Segmented<T extends string>({
               badge > 0 ? `${label ?? option}, ${badge}` : undefined
             }
             disabled={disabled}
+            hitSlop={{ top: 3, bottom: 3 }}
             onPress={() => onChange(option)}
             style={[s.segment, flowing && s.chip, active && s.segmentActive]}
           >
@@ -129,18 +130,19 @@ const s = themed(() =>
     capitalize: { textTransform: "capitalize" },
     segmentTextActive: { color: colors.accent },
     badge: {
+      flexShrink: 0,
       minWidth: 20,
       height: 20,
-      borderRadius: 10,
+      borderRadius: radii.pill,
       paddingHorizontal: 6,
-      backgroundColor: colors.highText,
+      backgroundColor: colors.highBg,
       alignItems: "center",
       justifyContent: "center",
     },
     badgeText: {
       fontFamily: fonts.semibold,
       fontSize: 11,
-      color: colors.white,
+      color: colors.highText,
     },
   }),
 );

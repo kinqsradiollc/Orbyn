@@ -24,8 +24,11 @@ import { client } from "../lib/api";
  */
 export type Prefs = {
   prefs: AccountPrefs;
+  ready: boolean;
+  failed: boolean;
+  reload: () => void;
   /** Save the sidebar, shortcuts or Home's layout (each replaced whole). */
-  save: (input: SaveInput) => void;
+  save: (input: SaveInput) => Promise<boolean>;
   /** How one place was left: a task list, the calendar. */
   viewChoice: (place: string) => ViewChoice | undefined;
   setViewChoice: (place: string, choice: ViewChoice | null) => void;
@@ -37,7 +40,10 @@ type SaveInput = Partial<Pick<AccountPrefs, "sidebar" | "shortcuts" | "home">>;
 const noop = () => {};
 export const PrefsContext = createContext<Prefs>({
   prefs: EMPTY_PREFS,
-  save: noop,
+  ready: false,
+  failed: false,
+  reload: noop,
+  save: async () => false,
   viewChoice: () => undefined,
   setViewChoice: noop,
 });
@@ -50,57 +56,172 @@ export function useAccountPrefs(
   report: (e: unknown) => void,
 ): Prefs {
   const [prefs, setPrefs] = useState<AccountPrefs>(EMPTY_PREFS);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const readReady = useRef(false);
+  const lifetime = useRef(0);
   const reportRef = useRef(report);
   reportRef.current = report;
-  useEffect(() => {
-    if (!token) {
-      setPrefs(EMPTY_PREFS);
-      return;
-    }
-    let live = true;
-    client.getPrefs().then(
-      (p) => live && setPrefs(p),
-      () => {
-        // The app works with its own defaults until the next sign-in.
-      },
-    );
-    return () => {
-      live = false;
-    };
-  }, [token]);
-
-  const save = useCallback((input: SaveInput) => {
-    setPrefs((p) => ({ ...p, ...input }));
-    client.savePrefs(input).then(setPrefs, (e) => reportRef.current(e));
-  }, []);
-
+  const binding = useRef(token);
+  binding.current = token;
+  const revision = useRef(0);
+  const confirmed = useRef<AccountPrefs>(EMPTY_PREFS);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
   const pending = useRef<Record<string, ViewChoice | null>>({});
   const timer = useRef<number | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    lifetime.current++;
+    readReady.current = false;
+    setReady(false);
+    setFailed(false);
+    revision.current++;
+    confirmed.current = EMPTY_PREFS;
+    setPrefs(EMPTY_PREFS);
+    pending.current = {};
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = null;
+    let live = true;
+    const before = revision.current;
+    const initial = token
+      ? client.getPrefs().then(
+          (value) => {
+            if (live && binding.current === token) {
+              confirmed.current = value;
+              readReady.current = true;
+              setReady(true);
+              if (revision.current === before) setPrefs(value);
+            }
+          },
+          (error) => {
+            if (live && binding.current === token) {
+              setFailed(true);
+              reportRef.current(error);
+            }
+          },
+        )
+      : Promise.resolve();
+    queue.current = initial;
+    return () => {
+      live = false;
+      mounted.current = false;
+      lifetime.current++;
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = null;
+      pending.current = {};
+    };
+  }, [token, retry]);
+
+  // A debounced view choice must survive an unrelated preference response.
+  const reconcile = (value: AccountPrefs) => {
+    const views = { ...value.views };
+    for (const [place, choice] of Object.entries(pending.current)) {
+      if (choice) views[place] = choice;
+      else delete views[place];
+    }
+    return { ...value, views };
+  };
+
+  const persist = useCallback(
+    (input: Parameters<typeof client.savePrefs>[0], version: number) => {
+      const account = binding.current;
+      const epoch = lifetime.current;
+      const write = queue.current.then(async () => {
+        if (
+          !account ||
+          !mounted.current ||
+          binding.current !== account ||
+          lifetime.current !== epoch ||
+          !readReady.current
+        )
+          return false;
+        try {
+          const value = await client.savePrefs(input);
+          if (
+            !mounted.current ||
+            binding.current !== account ||
+            lifetime.current !== epoch
+          )
+            return false;
+          confirmed.current = value;
+          if (revision.current === version) setPrefs(reconcile(value));
+          return true;
+        } catch (error) {
+          if (
+            mounted.current &&
+            binding.current === account &&
+            lifetime.current === epoch
+          ) {
+            if (revision.current === version)
+              setPrefs(reconcile(confirmed.current));
+            reportRef.current(error);
+          }
+          return false;
+        }
+      });
+      queue.current = write;
+      return write;
+    },
+    [],
+  );
+  const save = useCallback(
+    (input: SaveInput) => {
+      if (!readReady.current) {
+        reportRef.current(
+          new Error("Preferences aren't ready. Reload them before saving."),
+        );
+        return Promise.resolve(false);
+      }
+      const version = ++revision.current;
+      setPrefs((value) => ({ ...value, ...input }));
+      const views = pending.current;
+      pending.current = {};
+      if (timer.current) window.clearTimeout(timer.current);
+      timer.current = null;
+      return persist(
+        Object.keys(views).length ? { ...input, views } : input,
+        version,
+      );
+    },
+    [persist],
+  );
+
   const setViewChoice = useCallback(
     (place: string, choice: ViewChoice | null) => {
-      setPrefs((p) => {
-        const views = { ...p.views };
+      if (!readReady.current) return;
+      revision.current++;
+      setPrefs((value) => {
+        const views = { ...value.views };
         if (choice) views[place] = choice;
         else delete views[place];
-        return { ...p, views };
+        return { ...value, views };
       });
       pending.current[place] = choice;
       if (timer.current) window.clearTimeout(timer.current);
       timer.current = window.setTimeout(() => {
+        timer.current = null;
         const views = pending.current;
         pending.current = {};
-        client.savePrefs({ views }).catch(() => {
-          // A view choice not saved is kept for this visit; nothing to say.
-        });
+        void persist({ views }, ++revision.current);
       }, 800);
     },
-    [],
+    [persist],
   );
   const viewChoice = useCallback(
     (place: string) => prefs.views[place],
     [prefs.views],
   );
-  return { prefs, save, viewChoice, setViewChoice };
+  return {
+    prefs,
+    ready,
+    failed,
+    reload: () => setRetry((value) => value + 1),
+    save,
+    viewChoice,
+    setViewChoice,
+  };
 }
 
 // ----------------------------------------------------------- the stars ---
@@ -119,11 +240,15 @@ export function useStarred(token: string | null): StarredItem[] {
       return;
     }
     let live = true;
-    const load = () =>
-      client.listStarred().then(
-        (list) => live && setStarred(list),
+    let request = 0;
+    setStarred([]);
+    const load = () => {
+      const epoch = ++request;
+      return client.listStarred().then(
+        (list) => live && epoch === request && setStarred(list),
         () => {},
       );
+    };
     void load();
     window.addEventListener(STARS_CHANGED, load);
     return () => {

@@ -28,6 +28,7 @@ function renderer(
   const dom = {
     focus: () => focuses++,
     querySelector: () => null,
+    closest: () => null,
     getBoundingClientRect: () =>
       geometry ?? { left: 0, top: 0, bottom: 40, width: 300 },
     offsetHeight: geometry?.height ?? 100,

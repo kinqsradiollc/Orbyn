@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import {
   Modal,
+  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -46,7 +47,7 @@ export function PresentSheet({
   return (
     <Modal
       visible={visible}
-      animationType="fade"
+      animationType="none"
       supportedOrientations={["portrait", "landscape"]}
       onRequestClose={onClose}
       presentationStyle="fullScreen"
@@ -73,23 +74,9 @@ export function PresentSheet({
           </Pressable>
         </View>
         <View style={s.stage}>
-          <Pressable
-            quiet
-            style={s.half}
-            accessibilityRole="button"
-            accessibilityLabel="Previous slide"
-            onPress={back}
-          />
-          <Pressable
-            quiet
-            style={[s.half, s.right]}
-            accessibilityRole="button"
-            accessibilityLabel="Next slide"
-            onPress={next}
-          />
-          <View
-            style={[s.slide, wide && s.slideWide]}
-            pointerEvents="none"
+          <ScrollView
+            key={at}
+            contentContainerStyle={[s.slide, wide && s.slideWide]}
             accessibilityLiveRegion="polite"
           >
             {slide.title ? (
@@ -103,7 +90,7 @@ export function PresentSheet({
                 wide={wide}
               />
             ))}
-          </View>
+          </ScrollView>
         </View>
         <View style={s.nav}>
           <Pressable
@@ -190,8 +177,8 @@ const s = themed(() =>
     },
     count: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
     close: {
-      width: 40,
-      height: 40,
+      width: 44,
+      height: 44,
       alignItems: "center",
       justifyContent: "center",
       borderRadius: radii.pill,
@@ -199,7 +186,13 @@ const s = themed(() =>
     stage: { flex: 1, justifyContent: "center" },
     half: { position: "absolute", top: 0, bottom: 0, left: 0, width: "50%" },
     right: { left: "50%" },
-    slide: { paddingHorizontal: 24, gap: 14 },
+    slide: {
+      paddingHorizontal: 20,
+      paddingVertical: 16,
+      flexGrow: 1,
+      justifyContent: "center",
+      gap: 14,
+    },
     slideWide: { paddingHorizontal: 64 },
     title: { fontFamily: fonts.display, fontSize: 24, color: colors.text },
     titleWide: { fontSize: 36 },

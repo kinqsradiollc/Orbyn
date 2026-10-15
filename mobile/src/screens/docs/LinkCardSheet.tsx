@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../../motion";
 import {
@@ -10,7 +10,7 @@ import {
   type ObjectRef,
 } from "@orbyn/core";
 import { BottomSheet } from "../../components/BottomSheet";
-import { DateTimeControl } from "../../components/DateTimeControl";
+import { DateField } from "../../components/Field";
 import { Icon } from "../../components/Icon";
 import { ProgressBar } from "../../components/ProgressBar";
 import { client } from "../../lib/api";
@@ -46,7 +46,16 @@ const duration = (minutes: number) => {
   return [h ? `${h}h` : "", m ? `${m}m` : ""].filter(Boolean).join(" ");
 };
 
-export function LinkCardSheet({
+export function LinkCardSheet(props: Parameters<typeof LinkCardBody>[0]) {
+  return (
+    <LinkCardBody
+      key={`${props.target?.kind}:${props.target?.id}:${props.target?.block ?? ""}`}
+      {...props}
+    />
+  );
+}
+
+function LinkCardBody({
   target,
   onClose,
   onChanged,
@@ -59,6 +68,11 @@ export function LinkCardSheet({
   onChanged: () => void;
   report: (e: unknown) => void;
 }) {
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const [failed, setFailed] = useState(false);
   const [card, setCard] = useState<LinkCard | null>(null);
   const [picking, setPicking] = useState(false);
   const [note, setNote] = useState("");
@@ -71,21 +85,32 @@ export function LinkCardSheet({
       target.kind === "project")
       ? target.kind
       : null;
-  const load = () => {
+  const load = useCallback(() => {
     if (!target || !kind) return;
-    client
-      .linkCard({ kind, id: target.id, block: target.block })
-      .then(setCard, report);
-  };
+    const epoch = ++request.current;
+    setFailed(false);
+    void client.linkCard({ kind, id: target.id, block: target.block }).then(
+      (next) => {
+        if (epoch === request.current) setCard(next);
+      },
+      (reason) => {
+        if (epoch === request.current) {
+          setFailed(true);
+          reportRef.current(reason);
+        }
+      },
+    );
+  }, [kind, target?.id, target?.block]);
   useEffect(() => {
-    setCard(null);
-    setPicking(false);
-    setNote("");
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target?.kind, target?.id, target?.block]);
+    return () => {
+      request.current++;
+    };
+  }, [load]);
 
   const run = (work: () => Promise<unknown>, said?: string) => {
+    if (mutation.current || !card || card.state !== "ok") return;
+    mutation.current = true;
     setBusy(true);
     setNote("");
     void work()
@@ -99,7 +124,10 @@ export function LinkCardSheet({
         if (message) setNote(message);
         else report(e);
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        mutation.current = false;
+        setBusy(false);
+      });
   };
   const tick = () =>
     card &&
@@ -187,17 +215,14 @@ export function LinkCardSheet({
     <BottomSheet
       visible={!!target && !!kind}
       label="Link"
-      onClose={onClose}
+      onClose={() => {
+        if (!mutation.current) onClose();
+      }}
       footer={
         card?.state === "ok" ? (
           <View style={s.actions}>
             {card.kind === "task" && card.can_write && (
               <>
-                <Action
-                  label={card.done ? "Untick" : "Tick"}
-                  disabled={busy}
-                  onPress={tick}
-                />
                 <Action
                   label="Reschedule"
                   on={picking}
@@ -213,18 +238,25 @@ export function LinkCardSheet({
                 onPress={openNote}
               />
             )}
-            <Action label="Open" primary onPress={open} />
+            <Action label="Open" primary disabled={busy} onPress={open} />
           </View>
         ) : undefined
       }
     >
       {!card ? (
-        <Text style={s.muted}>Loading…</Text>
+        failed ? (
+          <View accessibilityRole="alert">
+            <Text style={s.muted}>Couldn't load this link.</Text>
+            <Action label="Retry" onPress={load} />
+          </View>
+        ) : (
+          <Text style={s.muted}>Loading…</Text>
+        )
       ) : card.state !== "ok" ? (
         <Text style={s.muted}>
           {card.state === "deleted"
             ? `“${card.title}” is in Trash.`
-            : "This isn't there, or isn't yours to open."}
+            : "This item is unavailable."}
         </Text>
       ) : (
         <View style={s.body}>
@@ -234,7 +266,7 @@ export function LinkCardSheet({
                 accessibilityRole="checkbox"
                 accessibilityState={{
                   checked: !!card.done,
-                  disabled: !card.can_write,
+                  disabled: !card.can_write || busy,
                 }}
                 accessibilityLabel={card.done ? "Mark not done" : "Mark done"}
                 disabled={!card.can_write || busy}
@@ -243,7 +275,7 @@ export function LinkCardSheet({
                 style={[s.check, card.done && s.checkDone]}
               >
                 {card.done && (
-                  <Icon name="check" size={14} color={colors.white} />
+                  <Icon name="check" size={14} color={colors.onAccent} />
                 )}
               </Pressable>
             ) : (
@@ -281,40 +313,46 @@ export function LinkCardSheet({
             />
           )}
           {card.kind === "doc" && !!card.preview && (
-            <Text style={s.preview} numberOfLines={4}>
-              {card.preview}
-            </Text>
+            <Text style={s.preview}>{card.preview}</Text>
           )}
           {card.repeats && card.kind === "task" && (
-            <Text style={s.muted}>
-              A repeating task's dates change from the task itself.
-            </Text>
+            <Text style={s.muted}>Edit repeating dates in the task.</Text>
           )}
           {picking && (
             <View style={s.move}>
               <View style={s.chips}>
-                <Action label="Today" onPress={() => moveTo(today)} />
+                <Action
+                  label="Today"
+                  disabled={busy}
+                  onPress={() => moveTo(today)}
+                />
                 <Action
                   label="Tomorrow"
+                  disabled={busy}
                   onPress={() => moveTo(addDays(today, 1))}
                 />
                 <Action
                   label="Next week"
+                  disabled={busy}
                   onPress={() => moveTo(addDays(today, 7))}
                 />
               </View>
-              <DateTimeControl
-                mode="date"
-                value={card.due_at ? new Date(card.due_at) : new Date()}
-                onChange={(_e, date) => {
-                  // The picker shows the device's days; the day picked
-                  // is then moved to in your account's time zone.
-                  if (date) moveTo(localDateKey(date, deviceTimeZone()));
+              <DateField
+                label="New deadline"
+                value={
+                  card.due_at ? localDateKey(new Date(card.due_at), zone) : ""
+                }
+                disabled={busy}
+                onChange={(day) => {
+                  if (day) moveTo(day);
                 }}
               />
             </View>
           )}
           {!!note && <Text style={s.note}>{note}</Text>}
+          {failed && (
+            <Action label="Retry details" disabled={busy} onPress={load} />
+          )}
         </View>
       )}
     </BottomSheet>
@@ -361,10 +399,10 @@ const s = themed(() =>
       flex: 1,
       color: colors.text,
       fontFamily: fonts.semibold,
-      fontSize: 18,
+      fontSize: 15,
     },
     done: { color: colors.muted, textDecorationLine: "line-through" },
-    row: { color: colors.textSoft, fontSize: 15, lineHeight: 22 },
+    row: { color: colors.textSoft, fontSize: 13, lineHeight: 19 },
     preview: { color: colors.muted, fontSize: 13, lineHeight: 19 },
     muted: { color: colors.muted, fontSize: 13, lineHeight: 19 },
     note: { color: colors.textSoft, fontSize: 13 },
@@ -380,14 +418,17 @@ const s = themed(() =>
       justifyContent: "center",
     },
     checkDone: { backgroundColor: colors.accent, borderColor: colors.accent },
-    actions: { flexDirection: "row", gap: 8 },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     action: {
-      flex: 1,
+      flexGrow: 1,
+      flexBasis: 100,
+      minWidth: 0,
       minHeight: controls.tap,
       alignItems: "center",
       justifyContent: "center",
       paddingHorizontal: 12,
-      borderRadius: radii.pill,
+      paddingVertical: 6,
+      borderRadius: radii.input,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
@@ -399,7 +440,12 @@ const s = themed(() =>
     pressed: { backgroundColor: colors.surfaceMuted },
     primary: { backgroundColor: colors.accent, borderColor: colors.accent },
     primaryPressed: { backgroundColor: colors.accentPressed },
-    actionText: { color: colors.text, fontFamily: fonts.medium, fontSize: 13 },
-    primaryText: { color: colors.white },
+    actionText: {
+      color: colors.text,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      textAlign: "center",
+    },
+    primaryText: { color: colors.onAccent },
   }),
 );

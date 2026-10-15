@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Pressable } from "../../motion";
 import type { CalendarSearchResult } from "@orbyn/core";
+import { Button } from "../../components/Button";
+import { InlineDetails } from "../../components/InlineDetails";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Icon } from "../../components/Icon";
 import { Sheet, sheetStyles } from "../../components/Sheet";
@@ -41,16 +43,18 @@ function Body({ onPick }: { onPick: (day: Date) => void }) {
   const [results, setResults] = useState<CalendarSearchResult[] | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     const words = q.trim();
+    setResults(null);
+    setError("");
+    setLoading(words.length >= 2);
     if (words.length < 2) {
-      setResults(null);
       return;
     }
     let alive = true;
     const timer = setTimeout(() => {
-      setLoading(true);
       client
         .searchCalendar(words)
         .then((found) => {
@@ -65,7 +69,7 @@ function Body({ onPick }: { onPick: (day: Date) => void }) {
       alive = false;
       clearTimeout(timer);
     };
-  }, [q]);
+  }, [q, attempt]);
 
   const now = Date.now();
   return (
@@ -90,20 +94,33 @@ function Body({ onPick }: { onPick: (day: Date) => void }) {
             autoCorrect={false}
             returnKeyType="search"
             clearButtonMode="while-editing"
-            placeholder="Dentist, standup, Cafe Roma…"
+            placeholder="Search events"
             placeholderTextColor={colors.faint}
             accessibilityLabel="Search events"
           />
         </View>
         <Text style={[shared.small, s.hint]}>
           {q.trim().length < 2
-            ? "Searches titles, notes and places in your calendar and the calendars you subscribe to, a year either way."
+            ? "Enter at least 2 characters."
             : loading
               ? "Searching…"
               : results
                 ? `${results.length === 100 ? "The first 100" : results.length} found.`
                 : ""}
         </Text>
+        {!!error && (
+          <Button
+            secondary
+            title="Retry"
+            onPress={() => setAttempt((n) => n + 1)}
+          />
+        )}
+        <InlineDetails title="Search scope">
+          <Text style={shared.small}>
+            Titles, notes and places in your events, dated tasks and subscribed
+            calendars, within one year of today.
+          </Text>
+        </InlineDetails>
         {results && results.length === 0 && !loading && (
           <Text style={shared.small}>No events match.</Text>
         )}
@@ -131,23 +148,16 @@ function Body({ onPick }: { onPick: (day: Date) => void }) {
                     pressed && { backgroundColor: colors.surfaceMuted },
                   ]}
                 >
-                  <View style={s.when}>
+                  <View style={s.content}>
+                    <Text style={s.title}>{r.title}</Text>
                     <Text style={[s.day, past && s.past]}>
-                      {shortDay(r.start_at)}
-                    </Text>
-                    <Text style={shared.small}>{when}</Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.title} numberOfLines={2}>
-                      {r.title}
+                      {shortDay(r.start_at)} · {when}
                     </Text>
                     <View style={s.meta}>
                       {external && (
-                        <Icon name="lock" size={10} color={r.color} />
+                        <Icon name="lock" size={12} color={r.color} />
                       )}
-                      <Text style={shared.small} numberOfLines={1}>
-                        {detail}
-                      </Text>
+                      <Text style={[shared.small, s.detail]}>{detail}</Text>
                     </View>
                   </View>
                   <Icon name="chevronRight" size={16} color={colors.faint} />
@@ -185,7 +195,8 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
-    when: { width: 92 },
+    content: { flex: 1, minWidth: 0, gap: 4 },
+    detail: { flex: 1, minWidth: 0 },
     day: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
     past: { color: colors.muted },
     title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },

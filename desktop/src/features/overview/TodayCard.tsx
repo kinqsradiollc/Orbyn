@@ -227,11 +227,7 @@ export function TodayCard({
         </div>
       </div>
       {empty ? (
-        <EmptyState
-          icon={Sun}
-          title="A little breathing room."
-          body="Nothing planned or due today."
-        >
+        <EmptyState icon={Sun} title="Nothing planned or due today">
           <button className="text-button" onClick={onPlanDay}>
             Plan my day <ArrowRight size={14} />
           </button>

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../motion";
 import {
@@ -35,15 +35,30 @@ export function FocusElsewhere({
   hidden: boolean;
   onOpen: (item: Item) => void;
 }) {
+  const request = useRef(0);
+  const mounted = useRef(false);
   const [current, setCurrent] = useState<FocusCurrent | null>(null);
   const load = useCallback(() => {
-    client.currentFocus().then(setCurrent, () => {});
+    if (!mounted.current) return;
+    const version = ++request.current;
+    client.currentFocus().then(
+      (next) => {
+        if (mounted.current && version === request.current) setCurrent(next);
+      },
+      () => {},
+    );
   }, []);
   useEffect(() => {
+    mounted.current = true;
     load();
-    return onLive((news) => {
+    const unsubscribe = onLive((news) => {
       if (news.kind === "focus") load();
     });
+    return () => {
+      mounted.current = false;
+      request.current++;
+      unsubscribe();
+    };
   }, [load]);
   // Leaving focus may have paused, finished or kept the session.
   useEffect(() => {
@@ -63,15 +78,13 @@ export function FocusElsewhere({
   return (
     <View style={s.bar} accessibilityRole="summary">
       <Icon name="clock" size={15} color={colors.accent} />
-      <View style={{ flex: 1 }}>
-        <Text style={s.title} numberOfLines={1}>
+      <View style={{ flexGrow: 1, flexBasis: 160, minWidth: 0 }}>
+        <Text style={s.title}>
           {here ? what : `${what} on ${current.device ?? "another device"}`} ·{" "}
           {left}
         </Text>
         {!!current.state.item_title && (
-          <Text style={s.detail} numberOfLines={1}>
-            {current.state.item_title}
-          </Text>
+          <Text style={s.detail}>{current.state.item_title}</Text>
         )}
       </View>
       {item && (
@@ -91,7 +104,11 @@ export function FocusElsewhere({
         accessibilityRole="button"
         accessibilityLabel="Hide for now"
         hitSlop={10}
-        onPress={() => setCurrent(null)}
+        style={s.close}
+        onPress={() => {
+          request.current++;
+          setCurrent(null);
+        }}
       >
         <Icon name="x" size={15} color={colors.muted} />
       </Pressable>
@@ -103,6 +120,7 @@ const s = themed(() =>
   StyleSheet.create({
     bar: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 10,
       minHeight: 44,
@@ -116,7 +134,18 @@ const s = themed(() =>
     },
     title: { fontFamily: fonts.semibold, fontSize: 13, color: colors.accent },
     detail: { fontFamily: fonts.medium, fontSize: 13, color: colors.textSoft },
-    action: { paddingHorizontal: 6, paddingVertical: 4 },
+    action: {
+      minHeight: 44,
+      justifyContent: "center",
+      paddingHorizontal: 6,
+      paddingVertical: 8,
+    },
+    close: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
     actionText: {
       fontFamily: fonts.semibold,
       fontSize: 13,

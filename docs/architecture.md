@@ -16,19 +16,19 @@ database or to AI providers directly; everything goes through the gateway.
 One backend image runs each service with a different command. They scale independently and can
 live on different machines; see [scalability.md](scalability.md).
 
-| Service     | Entry point             | Owns                                                                                                                                                  |
-| ----------- | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api`       | `services/api.ts`       | Auth, profile, items, steps and updates, teams, admin console, devices                                                                                |
-| `ai`        | `services/ai.ts`        | Assistant chat, proposals, AI provider settings (`/ai/*`)                                                                                             |
-| `realtime`  | `services/realtime.ts`  | Long-lived streams: live news (`/events`) and live documents                                                                                          |
-| `mcp`       | `services/mcp.ts`       | Outside AI agents over MCP (`/mcp`, stateless, per-connection limits); see [mcp.md](mcp.md)                                                           |
-| `plugin`    | `services/plugin.ts`   | Separate plugin protocol/UI, scoped OAuth grants and consented managed/BYO inference worker; private Compose service exposed through gateway port 8082 |
-| `status`    | `services/status.ts`    | Probes every service every 30 s and serves the public `GET /status` report                                                                            |
-| `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page; checks the server clock against outside time every 10 min (`lib/clock.ts`)           |
-| `files`     | `services/files.ts`     | File store: imports (signed one-time uploads, encrypted, deleted within 24 h) and pictures and files in pages (encrypted, kept with the page)         |
-| `converter` | `services/converter.ts` | Turns imported PDFs, Word files and photos into pages; heartbeat for status                                                                           |
-| `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                                                                        |
-| `migrate`   | `migrate.ts`            | Applies `migrations/*.sql` in order under an advisory lock, then exits                                                                                |
+| Service     | Entry point             | Owns                                                                                                                                                                            |
+| ----------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`       | `services/api.ts`       | Auth, profile, items, steps and updates, teams, admin console, devices                                                                                                          |
+| `ai`        | `services/ai.ts`        | Assistant chat, proposals, AI provider settings (`/ai/*`)                                                                                                                       |
+| `realtime`  | `services/realtime.ts`  | Long-lived streams: live news (`/events`) and live documents                                                                                                                    |
+| `mcp`       | `services/mcp.ts`       | Outside AI agents over MCP (`/mcp`, stateless, per-connection limits); see [mcp.md](mcp.md)                                                                                     |
+| `plugin`    | `services/plugin.ts`    | Separate plugin protocol/UI, scoped OAuth grants and consented managed/BYO inference worker; private Compose service exposed through gateway port 8082                          |
+| `status`    | `services/status.ts`    | Probes every service every 30 s and serves the public `GET /status` report                                                                                                      |
+| `notifier`  | `services/notifier.ts`  | Reminder scheduling and delivery; heartbeat for the status page; checks the server clock against outside time every 10 min (`lib/clock.ts`)                                     |
+| `files`     | `services/files.ts`     | File store: imports (signed one-time uploads, encrypted, deleted within 24 h) and pictures and files in pages (encrypted, kept with the page)                                   |
+| `converter` | `services/converter.ts` | Turns imported PDFs, Word files and photos into pages; heartbeat for status                                                                                                     |
+| `ocr`       | `ocr/server.py`         | Unlimited-OCR on CPU for scanned pages (Compose profile `ocr`, off by default)                                                                                                  |
+| `migrate`   | `migrate.ts`            | Applies `migrations/*.sql` in order under an advisory lock, then exits                                                                                                          |
 | gateway     | `gateway/` (nginx)      | Routes `/ai/*` to ai, `/events*` to realtime, `/status` to status, `/files/{u,p,r}/*` to files, `/mcp` to mcp, rest to api; port 8082 routes separate MCP and plugin recipients |
 
 `server.ts` runs every module in one process for local development and tests.
@@ -37,22 +37,22 @@ with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 
 ## Backend (`backend/src`)
 
-| Path                       | Responsibility                                                                  |
-| -------------------------- | ------------------------------------------------------------------------------- |
-| `config/env.ts`            | Loads `.env` and validates configuration with zod                               |
-| `db/pool.ts`               | Primary and optional read-replica pools, `reader()`, `transaction()`            |
-| `modules/<name>/`          | One folder per area (auth, items, teams, admin, ai, status, notifications, ...) |
-| `modules/items/`           | `mutate()`, the single write path with optimistic locking, plus progress        |
-| `modules/ai/`              | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes  |
-| `capabilities/`            | What outside agents can do: the registry, `policy.ts` (Principal), refs, format |
-| `modules/mcp-server/`      | The MCP protocol (official SDK v2), agent sign-in, limits, activity log         |
-| `modules/plugin/`        | Plugin-specific authority, host UI/resources, provider permission and inference jobs |
-| `modules/agents/`          | Agent keys, Connected agents, activity, admin switches, team agent policy       |
-| `modules/developers/`      | The public MCP developer page data and `/.well-known/security.txt`              |
-| `lib/visibility.ts`        | The one rule for what a person (or a narrowed connection) can see               |
-| `modules/links/privacy.ts` | Link words a reader may see: hides the titles of links they can't open (D3aF)   |
-| `worker/`                  | Reminder scheduler, planner upkeep and notices, delivery lanes                  |
-| `app.ts`                   | Which modules each service mounts (`serviceModules`)                            |
+| Path                       | Responsibility                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------ |
+| `config/env.ts`            | Loads `.env` and validates configuration with zod                                    |
+| `db/pool.ts`               | Primary and optional read-replica pools, `reader()`, `transaction()`                 |
+| `modules/<name>/`          | One folder per area (auth, items, teams, admin, ai, status, notifications, ...)      |
+| `modules/items/`           | `mutate()`, the single write path with optimistic locking, plus progress             |
+| `modules/ai/`              | Provider adapters (OpenAI, Anthropic, Azure formats), resolution, admin routes       |
+| `capabilities/`            | What outside agents can do: the registry, `policy.ts` (Principal), refs, format      |
+| `modules/mcp-server/`      | The MCP protocol (official SDK v2), agent sign-in, limits, activity log              |
+| `modules/plugin/`          | Plugin-specific authority, host UI/resources, provider permission and inference jobs |
+| `modules/agents/`          | Agent keys, Connected agents, activity, admin switches, team agent policy            |
+| `modules/developers/`      | The public MCP developer page data and `/.well-known/security.txt`                   |
+| `lib/visibility.ts`        | The one rule for what a person (or a narrowed connection) can see                    |
+| `modules/links/privacy.ts` | Link words a reader may see: hides the titles of links they can't open (D3aF)        |
+| `worker/`                  | Reminder scheduler, planner upkeep and notices, delivery lanes                       |
+| `app.ts`                   | Which modules each service mounts (`serviceModules`)                                 |
 
 ### Outside agents (MCP)
 
@@ -724,20 +724,27 @@ capture a task hands-free with no native extension. The link parser (`parseAddDe
 
 The mobile app shares its look with the web app so both read as one product:
 
-- **Tokens.** `src/theme/index.ts` mirrors the desktop palette in `desktop/src/styles/global.css`
-  (accent `#376c51`, text `#27382f`, muted `#849089`, border `#e8ece9`, background `#f7f8fa`) plus
-  the priority pill colours.
-- **Type.** DM Sans for interface text and Manrope for headings and the wordmark, loaded with
-  `expo-font` from `@expo-google-fonts/*` in `src/app/App.tsx`.
-- **Icons and logo.** `src/components/Icon.tsx` draws the same lucide icons the desktop uses with
-  `react-native-svg`; only the shapes the app needs are included rather than the whole icon pack.
-  `src/components/Brand.tsx` is the Orbit mark, the "orbyn" wordmark, and the green dot, matching
-  the desktop `.brand`.
-- **Motion.** `motion` and `staggerDelay` in `packages/core/src/presentation.ts` define one set of
-  durations, stagger, travel distance, press scale, and easing curves. The web app exposes them as
-  CSS variables and keyframes in `desktop/src/styles/motion.css`; the mobile app uses them with
-  React Native's `Animated` and `LayoutAnimation`, with no extra animation library. Both apps turn
-  animation off when the user has asked their system for reduced motion.
+- **Tokens.** `packages/core/src/presentation.ts` owns shared light semantic colors.
+  `desktop/src/styles/theme.css` and `mobile/src/theme/palette.ts` provide dark
+  roles and client-specific tokens. The current redesign uses neutral surfaces
+  and a blue accent; custom list, tag and calendar colors stay user-owned.
+  Primary foregrounds use `--color-onAccent` / `colors.onAccent` in both themes.
+- **Type.** DM Sans handles interface text; Manrope remains for the brand and
+  deliberate display content. Shared text roles are 11/13/15/18/24/36; routine
+  mobile headings use 18. Mobile web fields use `inputFontSize` (16px); native
+  fields retain 15 and user text scaling. Shared controls retain reachable targets.
+- **Icons and logo.** `src/components/Icon.tsx` draws the same lucide shapes as
+  web with `react-native-svg`; `Brand.tsx` retains Orbyn's Orbit and wordmark.
+- **Motion.** Core tokens keep durations consistent. Routine content appears
+  immediately without stagger, hover lift or press shrink. Useful progress and
+  brief state feedback remain; both clients respect reduced motion.
+- **Responsive panes.** Web's `useElementWidth` and mobile's `usePaneWidth`
+  measure the work area after navigation and split panels. Collapse secondary
+  panes before squeezing the main task. Fixed dialogs remain viewport-owned.
+- **Settings.** Web uses its owned modal and compact category picker; mobile uses
+  a sheet. Grouped rows and named optional help keep controls easy to scan.
+  The current delivery and qualification are recorded in
+  [ADR 003](adr/003-product-ui-ux-redesign.md).
 - **Full screen.** The app draws edge to edge. The header extends under the status bar, the tab bar
   under the home indicator, and each applies safe-area insets itself. Landscape and iPad
   multitasking are enabled in `app.json`; content is capped at 720 points wide and centred on large

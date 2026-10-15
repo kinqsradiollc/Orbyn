@@ -644,3 +644,78 @@ test("passkey naming cancellation does not register or announce a saved credenti
     if (name !== null) assert.deepEqual(registrations, [[response, name]]);
   }
 });
+
+test("editor focus owns only its controls and pickers, respects higher dialogs and restores the opener", () => {
+  const { JSDOM } = createRequire(
+    new URL("../../mobile/package.json", import.meta.url),
+  )("jsdom");
+  for (const busy of [false, true]) {
+    const dom = new JSDOM(
+      '<button id="opener">Open</button><section id="editor" tabindex="-1"><button id="first">First</button><button id="last">Last</button></section><div data-modal-owner="editor"><button id="picker">Picker</button></div><button id="outside">Outside</button>',
+    );
+    const doc = dom.window.document;
+    const root = doc.getElementById("editor");
+    dom.window.HTMLElement.prototype.getClientRects = () => [{}];
+    doc.getElementById("opener").focus();
+    let cleanup: () => void = () => {},
+      refs = 0,
+      higher = false,
+      closed = 0;
+    const exports: any = {};
+    runInNewContext(compile("../../desktop/src/hooks/useModalFocus.ts"), {
+      exports,
+      document: doc,
+      HTMLElement: dom.window.HTMLElement,
+      require: (name: string) => {
+        if (name === "react")
+          return {
+            useId: () => "editor",
+            useRef: (initial: unknown) => ({
+              current: refs++ === 0 ? root : initial,
+            }),
+            useEffect: (effect: () => () => void) => {
+              cleanup = effect();
+            },
+          };
+        assert.equal(name, "../lib/dialogLayers");
+        return { hasHigherDialog: () => higher };
+      },
+    });
+    exports.useModalFocus(() => closed++, busy);
+    assert.equal(doc.activeElement.id, "first");
+    const key = (value: string, shiftKey = false) =>
+      doc.activeElement.dispatchEvent(
+        new dom.window.KeyboardEvent("keydown", {
+          key: value,
+          shiftKey,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    doc.getElementById("last").focus();
+    key("Tab");
+    assert.equal(doc.activeElement.id, "first");
+    key("Tab", true);
+    assert.equal(doc.activeElement.id, "last");
+    doc.getElementById("outside").focus();
+    assert.equal(doc.activeElement.id, "first");
+    doc.getElementById("picker").focus();
+    assert.equal(doc.activeElement.id, "picker");
+    key("Escape");
+    assert.equal(closed, 0, "picker owns its own dismissal");
+    higher = true;
+    doc.getElementById("outside").focus();
+    key("Escape");
+    assert.equal(closed, 0);
+    assert.equal(doc.activeElement.id, "outside");
+    higher = false;
+    doc.getElementById("first").focus();
+    key("Escape");
+    assert.equal(closed, busy ? 0 : 1);
+    cleanup();
+    assert.equal(doc.activeElement.id, "opener");
+    doc.getElementById("outside").focus();
+    assert.equal(doc.activeElement.id, "outside");
+    dom.window.close();
+  }
+});

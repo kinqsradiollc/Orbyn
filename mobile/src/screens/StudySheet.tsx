@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   PanResponder,
   ScrollView,
@@ -28,6 +28,7 @@ import { Chip, ChipRow } from "../components/Chip";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
+import { InlineDetails } from "../components/InlineDetails";
 import { EmptyState } from "../components/EmptyState";
 import * as Haptics from "expo-haptics";
 import { client } from "../lib/api";
@@ -35,7 +36,7 @@ import { useImports } from "./docs/Uploads";
 import { ImageBlock } from "./docs/RichBlocks";
 import { confirmAction } from "../lib/confirm";
 import { deviceTimeZone } from "../lib/planning";
-import { animateLayout, Pressable } from "../motion";
+import { Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -91,13 +92,42 @@ export function StudySheet({
 }) {
   const [mode, setMode] = useState<Mode>({ kind: "home" });
   const [data, setData] = useState<StudyOverview | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
-
-  const load = useCallback(
-    () => client.study().then(setData, (e: Error) => setError(errorText(e))),
+  const writing = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const setWriting = (pending: boolean) => {
+    writing.current = pending;
+    setBusy(pending);
+  };
+  const visibleNow = useRef(visible);
+  visibleNow.current = visible;
+  const overviewRead = useRef(0);
+  const pageRead = useRef(0);
+  useEffect(
+    () => () => {
+      overviewRead.current += 1;
+      pageRead.current += 1;
+    },
     [],
   );
+  const load = useCallback(() => {
+    const request = ++overviewRead.current;
+    setLoadFailed(false);
+    return client.study().then(
+      (next) => {
+        if (visibleNow.current && request === overviewRead.current)
+          setData(next);
+      },
+      (e: Error) => {
+        if (visibleNow.current && request === overviewRead.current) {
+          setError(errorText(e));
+          setLoadFailed(true);
+        }
+      },
+    );
+  }, []);
   useEffect(() => {
     if (visible) {
       setMode(
@@ -114,10 +144,24 @@ export function StudySheet({
     }
   }, [visible, load, suggestFrom]);
 
-  const openPage = (docId: string) =>
-    void client
-      .getDoc(docId)
-      .then(onOpenPage, (e: Error) => setError(errorText(e)));
+  const openPage = (docId: string) => {
+    if (writing.current) return;
+    const request = ++pageRead.current;
+    void client.getDoc(docId).then(
+      (doc) => {
+        if (visibleNow.current && request === pageRead.current) onOpenPage(doc);
+      },
+      (e: Error) => {
+        if (visibleNow.current && request === pageRead.current)
+          setError(errorText(e));
+      },
+    );
+  };
+
+  useEffect(() => {
+    pageRead.current += 1;
+    if (!visible) overviewRead.current += 1;
+  }, [visible, mode.kind]);
 
   const title =
     mode.kind === "review"
@@ -133,18 +177,28 @@ export function StudySheet({
             : "Study";
 
   const home = () => {
-    animateLayout();
+    setError("");
     setMode({ kind: "home" });
     void load();
   };
 
+  if (!visible) return null;
   return (
     <Sheet
       visible={visible}
       title={title}
-      onClose={onClose}
+      onClose={() => {
+        if (!writing.current) onClose();
+      }}
       onDismiss={onDismiss}
-      onBack={mode.kind === "home" ? undefined : home}
+      closeDisabled={busy}
+      onBack={
+        mode.kind === "home"
+          ? undefined
+          : () => {
+              if (!writing.current) home();
+            }
+      }
     >
       <ScrollView
         contentContainerStyle={sheetStyles.body}
@@ -167,6 +221,7 @@ export function StudySheet({
               docId={mode.docId}
               title={mode.title}
               max={mode.max}
+              onBusy={setWriting}
               onError={setError}
               onDone={(n) => {
                 setNote(
@@ -180,6 +235,7 @@ export function StudySheet({
           ) : mode.kind === "plan" ? (
             <Plan
               exam={mode.exam}
+              onBusy={setWriting}
               onError={setError}
               onDone={(applied) => {
                 if (applied) {
@@ -194,9 +250,15 @@ export function StudySheet({
               decks={data?.decks.map((d) => d.doc_id) ?? []}
               onError={setError}
               onPick={(docId, t) => {
-                animateLayout();
+                setError("");
                 setMode({ kind: "suggest", docId, title: t });
               }}
+            />
+          ) : loadFailed && !data ? (
+            <SmallAction
+              label="Retry study"
+              disabled={busy}
+              onPress={() => void load()}
             />
           ) : !data ? (
             <Text style={shared.small}>Loading your cards…</Text>
@@ -206,15 +268,19 @@ export function StudySheet({
               note={note}
               onError={setError}
               onChanged={setData}
+              onBusy={setWriting}
               onMode={(m) => {
-                animateLayout();
+                if (writing.current) return;
                 setNote("");
                 setMode(m);
               }}
               onOpenPage={openPage}
-              onNewPage={() =>
-                void client
-                  .createDoc({
+              onNewPage={async () => {
+                if (writing.current) return;
+                setWriting(true);
+                setError("");
+                try {
+                  const doc = await client.createDoc({
                     title: "Study notes",
                     kind: "note",
                     content: [
@@ -228,9 +294,14 @@ export function StudySheet({
                         text: "What does CAP stand for? :: Consistency, availability, partition tolerance",
                       },
                     ],
-                  })
-                  .then(onOpenPage, (e: Error) => setError(errorText(e)))
-              }
+                  });
+                  if (visibleNow.current) onOpenPage(doc);
+                } catch (e) {
+                  if (visibleNow.current) setError(errorText(e));
+                } finally {
+                  setWriting(false);
+                }
+              }}
             />
           )}
         </View>
@@ -247,6 +318,7 @@ function Home({
   onMode,
   onOpenPage,
   onNewPage,
+  onBusy,
 }: {
   data: StudyOverview;
   note: string;
@@ -255,8 +327,22 @@ function Home({
   onMode: (m: Mode) => void;
   onOpenPage: (docId: string) => void;
   onNewPage: () => void;
+  onBusy: (busy: boolean) => void;
 }) {
   const [choosing, setChoosing] = useState<string | null>(null);
+  const [selectedPages, setSelectedPages] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [habitAdded, setHabitAdded] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const editExam = data.exams.find((exam) => exam.key === choosing);
   const toReview = data.due_today + data.new_cards;
   // Importing from Study: a finished upload offers "Make cards" right here.
   const imports = useImports(onError, () => onChanged(data));
@@ -270,53 +356,81 @@ function Home({
     )
     .slice(0, 3);
 
-  const attach = (exam: StudyExam, ids: string[]) =>
-    void client
-      .setExamDecks({
+  const attach = async (exam: StudyExam, ids: string[]) => {
+    if (mutation.current) return;
+    mutation.current = true;
+    setSaving(true);
+    setSaveError("");
+    onBusy(true);
+    try {
+      const next = await client.setExamDecks({
         key: exam.key,
         title: exam.title,
         starts_at: exam.starts_at,
         doc_ids: ids,
-      })
-      .then(onChanged, (e: Error) => onError(errorText(e)));
+      });
+      if (mounted.current) {
+        onChanged(next);
+        setChoosing(null);
+      }
+    } catch (e) {
+      if (mounted.current) setSaveError(errorText(e));
+    } finally {
+      mutation.current = false;
+      onBusy(false);
+      if (mounted.current) setSaving(false);
+    }
+  };
 
   const totalCards = data.decks.reduce((n, d) => n + d.cards, 0);
   const forecast = data.forecast ?? [];
   const peak = Math.max(1, ...forecast.map((f) => f.due));
-  const habit = () =>
+  const habit = () => {
+    if (mutation.current) return;
     confirmAction(
-      "Make a daily review a habit?",
-      "Orbyn sets aside 15 minutes a day for reviewing cards.",
-      "Add the habit",
-      () =>
-        void client
-          .createHabit({
+      "Add a daily review habit?",
+      "Set aside 15 minutes each day.",
+      "Add habit",
+      async () => {
+        if (mutation.current || !mounted.current) return;
+        mutation.current = true;
+        setSaving(true);
+        onBusy(true);
+        onError("");
+        try {
+          await client.createHabit({
             name: "Review cards",
             cadence: 1,
             period: "day",
             duration_minutes: 15,
-          })
-          .then(
-            () => onError(""),
-            (e: Error) => onError(errorText(e)),
-          ),
+          });
+          if (mounted.current) setHabitAdded(true);
+        } catch (e) {
+          if (mounted.current) onError(errorText(e));
+        } finally {
+          mutation.current = false;
+          onBusy(false);
+          if (mounted.current) setSaving(false);
+        }
+      },
     );
+  };
 
   return (
     <>
       <View style={shared.card}>
-        <Text style={s.kicker}>TODAY</Text>
+        <Text style={s.kicker}>Today</Text>
         <Text style={s.heroCount}>
           {toReview
             ? `${toReview} card${toReview === 1 ? "" : "s"} to review`
-            : "You're all caught up"}
+            : "No cards due"}
         </Text>
         <Text style={shared.small}>
           {toReview
             ? `${data.due_today} due · ${data.new_cards} new · about ${Math.max(1, Math.round((toReview * 8) / 60))} min`
             : totalCards
-              ? "Cards come back when they're about to slip. Study ahead, or quiz yourself."
-              : "Add cards from a page, or start a study page below."}
+              ? "Study ahead or start a quiz."
+              : "Add cards from a page."}
         </Text>
         {toReview > 0 ? (
           <Button
@@ -397,8 +511,8 @@ function Home({
             onPress={() => onMode({ kind: "pick" })}
           />
           <SmallAction
-            label="Make it a daily habit"
-            disabled={false}
+            label={habitAdded ? "Habit added" : "Add daily habit"}
+            disabled={saving || habitAdded}
             onPress={habit}
           />
         </View>
@@ -407,7 +521,7 @@ function Home({
 
       {data.exams.length > 0 && (
         <>
-          <Text style={[shared.eyebrow, s.eyebrow]}>EXAMS COMING UP</Text>
+          <Text style={[shared.eyebrow, s.eyebrow]}>Upcoming exams</Text>
           {data.exams.map((exam) => (
             <View key={exam.key} style={shared.card}>
               <View style={s.examHead}>
@@ -444,48 +558,26 @@ function Home({
                   />
                 </View>
               )}
-              {choosing === exam.key ? (
-                <View style={s.gapTop}>
-                  <Text style={shared.label}>Pages to revise</Text>
-                  <ChipRow label="Pages to revise for this exam" multi>
-                    {data.decks.map((d) => (
-                      <Chip
-                        key={d.doc_id}
-                        multi
-                        label={d.title}
-                        selected={exam.doc_ids.includes(d.doc_id)}
-                        onPress={() =>
-                          attach(
-                            exam,
-                            exam.doc_ids.includes(d.doc_id)
-                              ? exam.doc_ids.filter((x) => x !== d.doc_id)
-                              : [...exam.doc_ids, d.doc_id],
-                          )
-                        }
-                      />
-                    ))}
-                  </ChipRow>
-                </View>
-              ) : (
-                <Text style={[shared.small, s.gapTop]}>
-                  {exam.doc_ids.length
-                    ? exam.doc_ids
-                        .map(
-                          (id) =>
-                            data.decks.find((d) => d.doc_id === id)?.title ??
-                            "Page",
-                        )
-                        .join(", ")
-                    : "No pages attached yet."}
-                </Text>
-              )}
+              <Text style={[shared.small, s.gapTop]}>
+                {exam.doc_ids.length
+                  ? exam.doc_ids
+                      .map(
+                        (id) =>
+                          data.decks.find((d) => d.doc_id === id)?.title ??
+                          "Page",
+                      )
+                      .join(", ")
+                  : "No pages attached"}
+              </Text>
               <View style={s.row}>
                 <SmallAction
-                  label={choosing === exam.key ? "Done" : "Choose pages"}
-                  disabled={false}
-                  onPress={() =>
-                    setChoosing(choosing === exam.key ? null : exam.key)
-                  }
+                  label="Choose pages"
+                  disabled={saving}
+                  onPress={() => {
+                    setSelectedPages([...exam.doc_ids]);
+                    setSaveError("");
+                    setChoosing(exam.key);
+                  }}
                 />
                 <SmallAction
                   label="Plan revision"
@@ -535,7 +627,7 @@ function Home({
       ) : (
         <>
           <Text style={[shared.eyebrow, s.eyebrow]}>
-            PAGES WITH CARDS · {data.decks.length}
+            Pages with cards · {data.decks.length}
           </Text>
           <View style={shared.card}>
             {[...data.decks]
@@ -565,10 +657,8 @@ function Home({
                         accessibilityLabel={`Open ${d.title}`}
                         onPress={() => onOpenPage(d.doc_id)}
                       >
-                        <Text style={s.title} numberOfLines={1}>
-                          {d.title}
-                        </Text>
-                        <Text style={shared.small} numberOfLines={1}>
+                        <Text style={s.title}>{d.title}</Text>
+                        <Text style={shared.small}>
                           {d.cards} card{d.cards === 1 ? "" : "s"}
                           {d.imported_from ? ` · from ${d.imported_from}` : ""}
                         </Text>
@@ -632,13 +722,11 @@ function Home({
 
       {readyImports.length > 0 && (
         <>
-          <Text style={[shared.eyebrow, s.eyebrow]}>FROM YOUR UPLOADS</Text>
+          <Text style={[shared.eyebrow, s.eyebrow]}>Recent uploads</Text>
           <View style={shared.card}>
             {readyImports.map((j, n) => (
               <View key={j.id} style={[s.deckRow, n > 0 && s.divider]}>
-                <Text style={[shared.body, s.flex]} numberOfLines={2}>
-                  {j.file_name}
-                </Text>
+                <Text style={[shared.body, s.flex]}>{j.file_name}</Text>
                 <SmallAction
                   label="Make cards"
                   disabled={false}
@@ -658,7 +746,7 @@ function Home({
 
       {data.weak.length > 0 && (
         <>
-          <Text style={[shared.eyebrow, s.eyebrow]}>KEEPS GETTING WRONG</Text>
+          <Text style={[shared.eyebrow, s.eyebrow]}>Needs practice</Text>
           <View style={shared.card}>
             {data.weak.map((w, n) => (
               <View key={w.id} style={[s.weak, n > 0 && s.divider]}>
@@ -674,6 +762,49 @@ function Home({
           </View>
         </>
       )}
+      <Sheet
+        visible={!!editExam}
+        title="Pages to revise"
+        closeDisabled={saving}
+        onClose={() => {
+          if (!mutation.current) setChoosing(null);
+        }}
+      >
+        <ScrollView contentContainerStyle={sheetStyles.body}>
+          <View style={sheetStyles.column}>
+            <ErrorBanner error={saveError} onDismiss={() => setSaveError("")} />
+            {editExam && <Text style={s.title}>{editExam.title}</Text>}
+            {!data.decks.length && (
+              <Text style={shared.body}>No pages with cards yet</Text>
+            )}
+            {data.decks.map((deck) => (
+              <View key={deck.doc_id} style={s.session}>
+                <Text style={[shared.body, s.flex]}>{deck.title}</Text>
+                <Switch
+                  value={selectedPages.includes(deck.doc_id)}
+                  disabled={saving}
+                  trackColor={{ true: colors.accent }}
+                  accessibilityLabel={`Revise ${deck.title}`}
+                  onValueChange={(keep) =>
+                    setSelectedPages((ids) =>
+                      keep
+                        ? [...ids, deck.doc_id]
+                        : ids.filter((id) => id !== deck.doc_id),
+                    )
+                  }
+                />
+              </View>
+            ))}
+            <Button
+              title={saving ? "Saving…" : "Save pages"}
+              disabled={saving || !editExam}
+              onPress={() => {
+                if (editExam) void attach(editExam, selectedPages);
+              }}
+            />
+          </View>
+        </ScrollView>
+      </Sheet>
     </>
   );
 }
@@ -693,9 +824,20 @@ function Picker({
 }) {
   const [pages, setPages] = useState<DocSummary[] | null>(null);
   const [q, setQ] = useState("");
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [limit, setLimit] = useState(60);
   useEffect(() => {
-    client.listDocs().then(
+    setLimit(60);
+  }, [q]);
+  useEffect(() => {
+    let alive = true;
+    setPages(null);
+    setFailed(false);
+    onError("");
+    void client.listDocs().then(
       (all) =>
+        alive &&
         setPages(
           all
             .filter((d) => d.kind !== "agenda")
@@ -706,20 +848,22 @@ function Picker({
             ),
         ),
       (e: Error) => {
+        if (!alive) return;
         onError(errorText(e));
-        setPages([]);
+        setFailed(true);
       },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      alive = false;
+    };
+  }, [retry]); // eslint-disable-line react-hooks/exhaustive-deps
   const shown = (pages ?? []).filter((p) =>
     `${p.title} ${p.preview}`.toLowerCase().includes(q.trim().toLowerCase()),
   );
   return (
     <>
       <Text style={shared.small}>
-        The assistant suggests cards only from what the page says, and you
-        choose which to keep.
+        Review suggested cards before adding them.
       </Text>
       <TextInput
         style={[shared.input, s.gapTop]}
@@ -730,12 +874,20 @@ function Picker({
         accessibilityLabel="Search your pages"
       />
       <View style={[shared.card, s.gapTop]}>
-        {pages === null ? (
+        {failed ? (
+          <Button
+            title="Retry pages"
+            secondary
+            onPress={() => setRetry((n) => n + 1)}
+          />
+        ) : pages === null ? (
           <Text style={shared.small}>Loading your pages…</Text>
         ) : shown.length === 0 ? (
-          <Text style={shared.small}>No pages match.</Text>
+          <Text style={shared.small}>
+            {pages.length ? "No pages match." : "No pages yet."}
+          </Text>
         ) : (
-          shown.slice(0, 60).map((p, n) => (
+          shown.slice(0, limit).map((p, n) => (
             <Pressable
               key={p.id}
               accessibilityRole="button"
@@ -746,9 +898,7 @@ function Picker({
                 pressed && { opacity: 0.6 },
               ]}
             >
-              <Text style={s.title} numberOfLines={1}>
-                {p.title || "Untitled"}
-              </Text>
+              <Text style={s.title}>{p.title || "Untitled"}</Text>
               <Text style={shared.small} numberOfLines={1}>
                 {[
                   p.imported_from ? "Imported" : null,
@@ -762,10 +912,20 @@ function Picker({
           ))
         )}
       </View>
-      <Text style={[shared.small, s.gapTop]}>
-        Writing your own: {"“Question\u00a0::\u00a0Answer”"} makes a card,{" "}
-        {"“A\u00a0:::\u00a0B”"} asks both ways, and {"“{{word}}”"} hides a word.
-      </Text>
+      {!failed && shown.length > limit && (
+        <Button
+          title="Show more pages"
+          secondary
+          onPress={() => setLimit((n) => n + 60)}
+        />
+      )}
+      <InlineDetails title="Write cards in a page">
+        <Text style={[shared.small, s.gapTop]}>
+          Writing your own: {"“Question\u00a0::\u00a0Answer”"} makes a card,{" "}
+          {"“A\u00a0:::\u00a0B”"} asks both ways, and {"“{{word}}”"} hides a
+          word.
+        </Text>
+      </InlineDetails>
     </>
   );
 }
@@ -808,23 +968,51 @@ function Review({
   } | null>(null);
   const [explained, setExplained] = useState("");
   const [busy, setBusy] = useState(false);
+  const operation = useRef(false);
+  const mounted = useRef(true);
+  const generation = useRef(0);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
-    client
-      .studyQueue({ docId, limit: quiz ? 15 : 100, ahead })
-      .then(setQueue, (e: Error) => {
-        onError(errorText(e));
-        setQueue([]);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
   }, []);
+  useEffect(() => {
+    const request = ++generation.current;
+    setQueue(null);
+    setShown(false);
+    setReviewed(0);
+    setAnswer("");
+    setGrade(null);
+    setExplained("");
+    setLoadFailed(false);
+    onError("");
+    client.studyQueue({ docId, limit: quiz ? 15 : 100, ahead }).then(
+      (cards) => {
+        if (request === generation.current) setQueue(cards);
+      },
+      (e: Error) => {
+        if (request !== generation.current) return;
+        onError(errorText(e));
+        setLoadFailed(true);
+      },
+    );
+    return () => {
+      generation.current += 1;
+    };
+  }, [docId, quiz, ahead, retry]); // eslint-disable-line react-hooks/exhaustive-deps
   const card = queue?.[0];
   const rate = async (rating: Rating) => {
-    if (!card || busy) return;
+    if (!card || operation.current) return;
+    operation.current = true;
+    const request = generation.current;
     setBusy(true);
     try {
       const next = await client.reviewCard(card.id, rating);
+      if (request !== generation.current) return;
       setReviewed((n) => n + 1);
-      animateLayout();
       setQueue((q) => {
         const rest = (q ?? []).slice(1);
         return rating === "again" && !quiz ? [...rest, next] : rest;
@@ -834,9 +1022,53 @@ function Review({
       setGrade(null);
       setExplained("");
     } catch (e) {
-      onError(errorText(e));
+      if (request === generation.current) onError(errorText(e));
     } finally {
-      setBusy(false);
+      operation.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  };
+
+  const check = async () => {
+    if (!card || !answer.trim() || operation.current) return;
+    operation.current = true;
+    const request = generation.current;
+    setBusy(true);
+    onError("");
+    try {
+      const result = await client.gradeAnswer(card.id, answer);
+      if (request !== generation.current) return;
+      setGrade(result);
+      setShown(true);
+    } catch (error) {
+      if (request === generation.current) onError(errorText(error));
+    } finally {
+      operation.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  };
+
+  const explain = async () => {
+    if (!card || operation.current) return;
+    operation.current = true;
+    const request = generation.current;
+    setBusy(true);
+    onError("");
+    try {
+      const result = await client.explainCard(card.id);
+      if (request === generation.current)
+        setExplained(
+          result.explanation +
+            (result.beyond_notes ? " (Goes beyond your notes.)" : "") +
+            (result.provider
+              ? `\n${aiFeatureProviderLabel(result.provider)}`
+              : ""),
+        );
+    } catch (error) {
+      if (request === generation.current) onError(errorText(error));
+    } finally {
+      operation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -844,7 +1076,9 @@ function Review({
   const [drag, setDrag] = useState(0);
   const swipe = PanResponder.create({
     onMoveShouldSetPanResponder: (_e, g) =>
-      Math.abs(g.dx) > 12 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      !operation.current &&
+      Math.abs(g.dx) > 12 &&
+      Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
     onPanResponderMove: (_e, g) => setDrag(g.dx),
     onPanResponderRelease: (_e, g) => {
       setDrag(0);
@@ -858,7 +1092,15 @@ function Review({
   });
   const total = reviewed + (queue?.length ?? 0);
 
-  if (!queue) return <Text style={shared.small}>Getting your cards…</Text>;
+  if (loadFailed)
+    return (
+      <Button
+        title="Retry cards"
+        secondary
+        onPress={() => setRetry((n) => n + 1)}
+      />
+    );
+  if (!queue) return <Text style={shared.small}>Loading cards…</Text>;
   if (!card)
     return (
       <View style={shared.card}>
@@ -866,10 +1108,6 @@ function Review({
           {reviewed
             ? `Done. ${reviewed} card${reviewed === 1 ? "" : "s"} reviewed.`
             : "Nothing to review right now."}
-        </Text>
-        <Text style={shared.small}>
-          Each card comes back when it's about to slip. The better you knew it,
-          the longer the wait.
         </Text>
         <Button
           title="Back to Study"
@@ -881,7 +1119,7 @@ function Review({
   return (
     <>
       <View style={s.reviewHead}>
-        <Text style={[shared.small, s.flex]} numberOfLines={1}>
+        <Text style={[shared.small, s.flex]}>
           {quiz ? "Quiz" : "Review"} · {title}
         </Text>
         <Text style={s.count}>
@@ -901,7 +1139,7 @@ function Review({
           shared.card,
           s.flash,
           shown && {
-            transform: [{ translateX: drag }, { rotate: `${drag / 40}deg` }],
+            transform: [{ translateX: drag }],
           },
         ]}
         {...(shown && !quiz ? swipe.panHandlers : {})}
@@ -912,9 +1150,7 @@ function Review({
             onPress={() => onOpenPage(card.doc_id)}
             style={s.source}
           >
-            <Text style={s.sourceText} numberOfLines={1}>
-              {card.doc_title}
-            </Text>
+            <Text style={s.sourceText}>{card.doc_title}</Text>
           </Pressable>
           {card.reps === 0 && <Text style={s.pill}>New</Text>}
         </View>
@@ -942,7 +1178,7 @@ function Review({
                 onPress={() => onOpenPage(card.source!.doc_id)}
                 style={[s.source, s.fromLine]}
               >
-                <Text style={s.sourceText} numberOfLines={1}>
+                <Text style={s.sourceText}>
                   from: {card.source.doc_title}
                   {card.source.text ? ` › ${card.source.text}` : ""}
                 </Text>
@@ -956,6 +1192,7 @@ function Review({
           <TextInput
             style={[shared.input, s.answerInput]}
             value={answer}
+            editable={!busy}
             onChangeText={setAnswer}
             multiline
             placeholder="Type your answer…"
@@ -965,22 +1202,13 @@ function Review({
           <View style={s.row}>
             <SmallAction
               label="I don't know"
-              disabled={false}
+              disabled={busy}
               onPress={() => setShown(true)}
             />
             <SmallAction
               label={busy ? "Checking…" : "Check"}
               disabled={busy || !answer.trim()}
-              onPress={() => {
-                setBusy(true);
-                client
-                  .gradeAnswer(card.id, answer)
-                  .then(setGrade, (e: Error) => onError(errorText(e)))
-                  .finally(() => {
-                    setBusy(false);
-                    setShown(true);
-                  });
-              }}
+              onPress={() => void check()}
             />
           </View>
         </>
@@ -1040,19 +1268,7 @@ function Review({
           <SmallAction
             label="Explain this"
             disabled={busy}
-            onPress={() =>
-              void client.explainCard(card.id).then(
-                (r) =>
-                  setExplained(
-                    r.explanation +
-                      (r.beyond_notes ? " (Goes beyond your notes.)" : "") +
-                      (r.provider
-                        ? `\n${aiFeatureProviderLabel(r.provider)}`
-                        : ""),
-                  ),
-                (e: Error) => onError(errorText(e)),
-              )
-            }
+            onPress={() => void explain()}
           />
         )}
         <SmallAction
@@ -1071,6 +1287,7 @@ function Suggest({
   max,
   onError,
   onDone,
+  onBusy,
 }: {
   docId: string;
   title: string;
@@ -1078,25 +1295,45 @@ function Suggest({
   max?: number;
   onError: (m: string) => void;
   onDone: (added: number) => void;
+  onBusy: (busy: boolean) => void;
 }) {
   const [providerLabel, setProviderLabel] = useState("");
   const [cards, setCards] = useState<
     (SuggestedCard & { keep: boolean })[] | null
   >(null);
   const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const writing = useRef(false);
+  const mounted = useRef(true);
   useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    setCards(null);
+    setFailed(false);
+    onError("");
     client.suggestCards(docId, max).then(
       (r) => {
+        if (!alive) return;
         setProviderLabel(r.provider ? aiFeatureProviderLabel(r.provider) : "");
         setCards(r.cards.map((c) => ({ ...c, keep: true })));
       },
       (e: Error) => {
+        if (!alive) return;
         onError(errorText(e));
-        setCards([]);
+        setFailed(true);
       },
     );
+    return () => {
+      alive = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [docId]);
+  }, [docId, max, retry]);
   const kept = (cards ?? []).filter(
     (c) => c.keep && c.question.trim() && c.answer.trim(),
   );
@@ -1107,13 +1344,20 @@ function Suggest({
     setCards(
       (cs) => cs?.map((c, n) => (n === i ? { ...c, ...patch } : c)) ?? cs,
     );
+  if (failed)
+    return (
+      <SmallAction
+        label="Retry suggested cards"
+        disabled={false}
+        onPress={() => setRetry((n) => n + 1)}
+      />
+    );
   if (!cards) return <Text style={shared.small}>Reading “{title}”…</Text>;
   return (
     <>
       {providerLabel && <Text style={shared.small}>{providerLabel}</Text>}
       <Text style={shared.small}>
-        Suggested from “{title}” only. Untick any you don't want and fix the
-        wording before adding.
+        Review cards from “{title}” before adding.
       </Text>
       {cards.length === 0 && (
         <Text style={[shared.body, s.gapTop]}>
@@ -1125,6 +1369,7 @@ function Suggest({
           <View style={s.suggestHead}>
             <Text style={shared.label}>Card {i + 1}</Text>
             <Switch
+              disabled={saving}
               value={c.keep}
               trackColor={{ true: colors.accent }}
               accessibilityLabel={`Keep card ${i + 1}`}
@@ -1133,12 +1378,16 @@ function Suggest({
           </View>
           <TextInput
             style={shared.input}
+            multiline
+            editable={!saving}
             value={c.question}
             onChangeText={(question) => update(i, { question })}
             accessibilityLabel={`Question ${i + 1}`}
           />
           <TextInput
             style={[shared.input, s.gapTopSmall]}
+            multiline
+            editable={!saving}
             value={c.answer}
             onChangeText={(answer) => update(i, { answer })}
             accessibilityLabel={`Answer ${i + 1}`}
@@ -1154,26 +1403,30 @@ function Suggest({
         title={
           saving
             ? "Adding…"
-            : `Add ${kept.length} card${kept.length === 1 ? "" : "s"} to the page`
+            : `Add ${kept.length} card${kept.length === 1 ? "" : "s"}`
         }
         disabled={saving || !kept.length}
-        onPress={() => {
+        onPress={async () => {
+          if (writing.current || !kept.length) return;
+          writing.current = true;
+          onBusy(true);
           setSaving(true);
-          client
-            .getDoc(docId)
-            .then((doc) =>
-              client.updateDoc(docId, {
-                version: doc.version,
-                content: withCards(doc.content, kept),
-              }),
-            )
-            .then(
-              () => onDone(kept.length),
-              (e: Error) => {
-                onError(errorText(e));
-                setSaving(false);
-              },
-            );
+          onError("");
+          const selected = kept.map((card) => ({ ...card }));
+          try {
+            const doc = await client.getDoc(docId);
+            await client.updateDoc(docId, {
+              version: doc.version,
+              content: withCards(doc.content, selected),
+            });
+            if (mounted.current) onDone(selected.length);
+          } catch (e) {
+            if (mounted.current) onError(errorText(e));
+          } finally {
+            writing.current = false;
+            onBusy(false);
+            if (mounted.current) setSaving(false);
+          }
         }}
       />
     </>
@@ -1184,22 +1437,51 @@ function Plan({
   exam,
   onError,
   onDone,
+  onBusy,
 }: {
   exam: StudyExam;
   onError: (m: string) => void;
   onDone: (applied: boolean) => void;
+  onBusy: (busy: boolean) => void;
 }) {
   const [minutes, setMinutes] = useState(30);
   const [plan, setPlan] = useState<RevisionPlan | null>(null);
   const [off, setOff] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const writing = useRef(false);
+  const mounted = useRef(true);
   useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    let alive = true;
     setPlan(null);
+    setOff(new Set());
+    setFailed(false);
+    onError("");
     client
       .planRevision({ key: exam.key, minutes, timezone: deviceTimeZone() })
-      .then(setPlan, (e: Error) => onError(errorText(e)));
+      .then(
+        (next) => {
+          if (alive) setPlan(next);
+        },
+        (e) => {
+          if (alive) {
+            setFailed(true);
+            onError(errorText(e));
+          }
+        },
+      );
+    return () => {
+      alive = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [exam.key, minutes]);
+  }, [exam.key, minutes, retry]);
   const chosen = (plan?.sessions ?? []).filter((x) => !off.has(x.start_at));
   const time = (iso: string) =>
     new Date(iso).toLocaleTimeString("en-GB", {
@@ -1209,21 +1491,25 @@ function Plan({
   return (
     <>
       <Text style={s.title}>{exam.title}</Text>
-      <Text style={shared.small}>
-        One session each free day, longer near the exam. Review before adding
-        anything.
-      </Text>
+      <Text style={shared.small}>Review sessions before adding.</Text>
       <ChipRow label="Session length" style={s.gapTop}>
         {[20, 30, 45, 60].map((m) => (
           <Chip
             key={m}
             label={`${m} min`}
+            disabled={saving}
             selected={minutes === m}
             onPress={() => setMinutes(m)}
           />
         ))}
       </ChipRow>
-      {!plan ? (
+      {failed ? (
+        <SmallAction
+          label="Retry revision plan"
+          disabled={false}
+          onPress={() => setRetry((n) => n + 1)}
+        />
+      ) : !plan ? (
         <Text style={[shared.small, s.gapTop]}>Finding free time…</Text>
       ) : (
         <View style={[shared.card, s.gapTop]}>
@@ -1243,6 +1529,7 @@ function Plan({
                 · {time(x.start_at)}–{time(x.end_at)}
               </Text>
               <Switch
+                disabled={saving}
                 value={!off.has(x.start_at)}
                 trackColor={{ true: colors.accent }}
                 accessibilityLabel={`Keep the session on ${x.start_at}`}
@@ -1272,15 +1559,22 @@ function Plan({
             : `Add ${chosen.length} session${chosen.length === 1 ? "" : "s"}`
         }
         disabled={saving || !chosen.length}
-        onPress={() => {
+        onPress={async () => {
+          if (writing.current || !chosen.length || !plan || failed) return;
+          writing.current = true;
+          onBusy(true);
           setSaving(true);
-          client.applyRevision({ key: exam.key, sessions: chosen }).then(
-            () => onDone(true),
-            (e: Error) => {
-              onError(errorText(e));
-              setSaving(false);
-            },
-          );
+          onError("");
+          try {
+            await client.applyRevision({ key: exam.key, sessions: chosen });
+            if (mounted.current) onDone(true);
+          } catch (e) {
+            if (mounted.current) onError(errorText(e));
+          } finally {
+            writing.current = false;
+            onBusy(false);
+            if (mounted.current) setSaving(false);
+          }
         }}
       />
     </>
@@ -1289,7 +1583,12 @@ function Plan({
 
 const s = themed(() =>
   StyleSheet.create({
-    twoButtons: { flexDirection: "row", gap: 8, marginTop: 12 },
+    twoButtons: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginTop: 12,
+    },
     forecast: {
       flexDirection: "row",
       gap: 6,
@@ -1301,7 +1600,7 @@ const s = themed(() =>
     forecastTrack: { flex: 1, width: "70%", justifyContent: "flex-end" },
     forecastBar: {
       width: "100%",
-      borderRadius: 5,
+      borderRadius: radii.check,
       backgroundColor: colors.accentSoft,
       borderWidth: 1,
       borderColor: colors.accent,
@@ -1321,7 +1620,7 @@ const s = themed(() =>
     ring: {
       width: 44,
       height: 44,
-      borderRadius: 22,
+      borderRadius: radii.pill,
       borderWidth: 3,
       borderColor: colors.accentSoft,
       alignItems: "center",
@@ -1345,24 +1644,26 @@ const s = themed(() =>
       color: colors.muted,
     },
     heroCount: {
-      fontFamily: fonts.display,
-      fontSize: 24,
-      lineHeight: 30,
+      fontFamily: fonts.semibold,
+      fontSize: 18,
+      lineHeight: 24,
       color: colors.text,
       marginTop: 4,
       marginBottom: 2,
     },
-    tiles: { flexDirection: "row", gap: 10, marginTop: 14 },
+    tiles: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginTop: 14 },
     stat: {
-      flex: 1,
+      flexGrow: 1,
+      flexBasis: 110,
+      minWidth: 0,
       gap: 2,
       padding: 12,
       borderRadius: radii.input,
       backgroundColor: colors.surfaceMuted,
     },
     statValue: {
-      fontFamily: fonts.display,
-      fontSize: 24,
+      fontFamily: fonts.semibold,
+      fontSize: 18,
       color: colors.text,
     },
     note: { fontFamily: fonts.medium, fontSize: 13, color: colors.accent },
@@ -1370,6 +1671,7 @@ const s = themed(() =>
     center: { textAlign: "center", marginTop: 10, marginBottom: 2 },
     after: {
       flexDirection: "row",
+      flexWrap: "wrap",
       justifyContent: "center",
       gap: 8,
       marginTop: 8,
@@ -1464,7 +1766,7 @@ const s = themed(() =>
     },
     bar: {
       height: 6,
-      borderRadius: 3,
+      borderRadius: radii.check,
       backgroundColor: colors.surfaceMuted,
       overflow: "hidden",
       marginTop: 10,
@@ -1473,7 +1775,7 @@ const s = themed(() =>
     barFill: {
       height: "100%",
       backgroundColor: colors.accent,
-      borderRadius: 3,
+      borderRadius: radii.check,
     },
     flash: { gap: 4, minHeight: 220 },
     question: {

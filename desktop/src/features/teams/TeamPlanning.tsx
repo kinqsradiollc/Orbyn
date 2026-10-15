@@ -1,5 +1,5 @@
 import { Select } from "../../components/Select";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CalendarPlus,
   ChevronLeft,
@@ -18,6 +18,7 @@ import {
   type TeamDetail,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { useRemote } from "../../hooks/useRemote";
 import { usePlanning } from "../../app/planning";
 import { OutcomeNote, useAction } from "../../components/Outcome";
@@ -69,19 +70,37 @@ export function TeamPlanning({
 }: Props) {
   const { prefs, savePrefs } = usePlanning();
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const [budgetBusy, setBudgetBusy] = useState(false);
+  const budgetLock = useRef(false);
+  const changeWeek = (offset: number) => {
+    if (!budgetLock.current)
+      setWeekStart((current) => addDays(current, offset));
+  };
   const days = Array.from({ length: 7 }, (_, n) => addDays(weekStart, n));
   const from = weekStart.toISOString();
   const to = addDays(weekStart, 7).toISOString();
-  const availability = useRemote(
-    () => client.teamAvailability(team.id, from, to),
-    [team.id, from],
+  const [readRevision, setReadRevision] = useState(0);
+  const availabilityRead = useRemote(
+    () =>
+      client.teamAvailability(team.id, from, to).then(
+        (rows) => ({ from, rows, failed: false }),
+        () => ({ from, rows: null, failed: true }),
+      ),
+    [team.id, from, readRevision],
     report,
   );
-  const workload = useRemote(
-    () => client.teamWorkload(team.id, from, to),
-    [team.id, from],
+  const workloadRead = useRemote(
+    () =>
+      client.teamWorkload(team.id, from, to).then(
+        (rows) => ({ from, rows, failed: false }),
+        () => ({ from, rows: null, failed: true }),
+      ),
+    [team.id, from, readRevision],
     report,
   );
+  const availability =
+    availabilityRead?.from === from ? availabilityRead.rows : null;
+  const workload = workloadRead?.from === from ? workloadRead.rows : null;
   const analytics = useRemote(
     () =>
       canManage ? client.teamAnalytics(team.id, 30) : Promise.resolve(null),
@@ -114,7 +133,8 @@ export function TeamPlanning({
           <button
             className="icon-button"
             aria-label="Previous week"
-            onClick={() => setWeekStart(addDays(weekStart, -7))}
+            disabled={budgetBusy}
+            onClick={() => changeWeek(-7)}
           >
             <ChevronLeft size={17} />
           </button>
@@ -122,20 +142,30 @@ export function TeamPlanning({
           <button
             className="icon-button"
             aria-label="Next week"
-            onClick={() => setWeekStart(addDays(weekStart, 7))}
+            disabled={budgetBusy}
+            onClick={() => changeWeek(7)}
           >
             <ChevronRight size={17} />
           </button>
         </div>
       </div>
 
-      <section className="team-block" aria-labelledby="avail-title">
-        <h4 id="avail-title">Availability</h4>
+      <details className="team-block team-planning-details">
+        <summary>Availability</summary>
         <p className="muted team-block-lead">
-          Shaded bars are working hours; dark marks are busy. Event details are
-          never shared.
+          Work hours and busy times only. Event details stay private.
         </p>
-        {!availability ? (
+        {availabilityRead?.from === from && availabilityRead.failed ? (
+          <p role="alert">
+            Availability couldn’t be loaded.{" "}
+            <button
+              className="text-button"
+              onClick={() => setReadRevision((value) => value + 1)}
+            >
+              Retry
+            </button>
+          </p>
+        ) : !availability ? (
           <p className="muted team-block-lead">Loading availability…</p>
         ) : (
           <div className="table-wrap">
@@ -241,7 +271,7 @@ export function TeamPlanning({
           </div>
         )}
         <OutcomeNote outcome={pin.outcome} />
-      </section>
+      </details>
 
       <section className="team-block" aria-labelledby="capacity-title">
         <h4 id="capacity-title">Who has room</h4>
@@ -249,6 +279,7 @@ export function TeamPlanning({
           Available time after commitments. Task details stay private.
         </p>
         <TeamCapacity
+          key={`${team.id}:${from}`}
           teamId={team.id}
           weekStart={weekStart}
           canWrite={canWrite}
@@ -260,6 +291,10 @@ export function TeamPlanning({
       <section className="team-block" aria-labelledby="attention-title">
         <h4 id="attention-title">Meeting budget</h4>
         <TeamAttention
+          onBusyChange={(pending) => {
+            budgetLock.current = pending;
+            setBudgetBusy(pending);
+          }}
           teamId={team.id}
           weekStart={weekStart}
           canManage={canManage}
@@ -269,7 +304,17 @@ export function TeamPlanning({
 
       <section className="team-block" aria-labelledby="load-title">
         <h4 id="load-title">Workload</h4>
-        {!workload ? (
+        {workloadRead?.from === from && workloadRead.failed ? (
+          <p role="alert">
+            Workload couldn’t be loaded.{" "}
+            <button
+              className="text-button"
+              onClick={() => setReadRevision((value) => value + 1)}
+            >
+              Retry
+            </button>
+          </p>
+        ) : !workload ? (
           <p className="muted team-block-lead">Loading workload…</p>
         ) : (
           <div className="table-wrap">
@@ -336,8 +381,8 @@ export function TeamPlanning({
         )}
         {workload && <AtRiskList workload={workload} />}
         {analytics && analytics.total_planned_minutes > 0 && (
-          <div className="team-analytics">
-            <h3 className="team-block-title">Sessions · last 30 days</h3>
+          <details className="team-analytics team-planning-details">
+            <summary>Sessions · last 30 days</summary>
             <ul className="team-analytics-list">
               {analytics.members
                 .filter((m) => m.planned_minutes > 0 || m.completed > 0)
@@ -351,7 +396,7 @@ export function TeamPlanning({
                   </li>
                 ))}
             </ul>
-          </div>
+          </details>
         )}
       </section>
 
@@ -378,13 +423,34 @@ function FindATime({
     team.members.map((m) => m.user_id),
   );
   const [duration, setDuration] = useState(30);
-  const [slots, setSlots] = useState<MeetingSlot[] | null>(null);
+  const queryKey = JSON.stringify([
+    team.id,
+    duration,
+    picked,
+    team.members.map((m) => m.user_id),
+  ]);
+  const query = useRef(queryKey);
+  query.current = queryKey;
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const [result, setResult] = useState<{
+    key: string;
+    slots: MeetingSlot[];
+  } | null>(null);
+  const slots = result?.key === queryKey ? result.slots : null;
   const action = useAction(report);
   const everyone = team.members.every((m) => picked.includes(m.user_id));
   const tooMany = !everyone && picked.length > MAX_PEOPLE;
 
   const find = () =>
     void action.run(async () => {
+      const key = queryKey;
+      const account = session.get();
       const now = new Date();
       now.setMinutes(Math.ceil(now.getMinutes() / 15) * 15, 0, 0);
       const found = await client.suggestMeetingTimes(team.id, {
@@ -395,13 +461,15 @@ function FindATime({
         // wouldn't fit in the address).
         ...(everyone ? {} : { user_ids: picked }),
       });
-      setSlots(found);
+      if (!alive.current || session.get() !== account || query.current !== key)
+        return;
+      setResult({ key, slots: found });
       if (!found.length) return "No shared free time in the next 7 days.";
     });
 
   return (
-    <section className="team-block" aria-labelledby="find-title">
-      <h4 id="find-title">Find a time</h4>
+    <details className="team-block team-planning-details">
+      <summary>Find meeting times</summary>
       <fieldset className="check-group">
         <legend>Who needs to be there</legend>
         <div className="check-grid">
@@ -504,6 +572,6 @@ function FindATime({
           ))}
         </ul>
       )}
-    </section>
+    </details>
   );
 }

@@ -1,8 +1,16 @@
-import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  Platform,
+  type TextStyle,
+} from "react-native";
 import { Pressable } from "../../motion";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
-import { colors, fonts, radii, themed } from "../../theme";
+import { inputFontSize, colors, fonts, radii, themed } from "../../theme";
 
 export type Person = { id: string; name: string; email: string };
 
@@ -37,14 +45,45 @@ export function MentionInput({
   editable?: boolean;
   accessibilityLabel: string;
 }) {
+  const accountAtRender = session.token;
   const [people, setPeople] = useState<Person[] | null>(null);
   const [query, setQuery] = useState<string | null>(null);
-
-  // The list is fetched once, the first time anyone reaches for it.
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [selected, setSelected] = useState(0);
+  const input = useRef<TextInput>(null);
+  const loadedOwner = useRef<{ id: string; account: string } | null>(null);
   useEffect(() => {
-    if (query === null || people !== null) return;
-    client.docPeople(docId).then(setPeople, () => setPeople([]));
-  }, [query, people, docId]);
+    loadedOwner.current = null;
+    setPeople(null);
+    setFailed(false);
+    setQuery(null);
+  }, [docId, accountAtRender]);
+
+  const needsPeople = query !== null;
+  useEffect(() => {
+    if (!editable || query === null || people !== null) return;
+    let alive = true;
+    const account = session.token;
+    setFailed(false);
+    client.docPeople(docId).then(
+      (list) => {
+        if (alive && session.token === account) {
+          loadedOwner.current = { id: docId, account };
+          setPeople(list);
+        }
+      },
+      () => {
+        if (alive && session.token === account) setFailed(true);
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [editable, needsPeople, people, docId, retry, accountAtRender]);
+  useEffect(() => {
+    setSelected(0);
+  }, [query]);
 
   /**
    * The name being typed after an `@`, or null when there isn't one.
@@ -63,25 +102,64 @@ export function MentionInput({
     setQuery(word);
   };
 
-  const matches = (people ?? [])
+  const matches = (
+    loadedOwner.current?.id === docId &&
+    loadedOwner.current.account === session.token
+      ? (people ?? [])
+      : []
+  )
     .filter((p) =>
       query ? p.name.toLowerCase().includes(query.toLowerCase()) : true,
     )
     .slice(0, 5);
 
   const choose = (person: Person) => {
+    if (
+      !editable ||
+      query === null ||
+      !matches.some((match) => match.id === person.id)
+    )
+      return;
     const mark = value.lastIndexOf("@");
     const next = `${value.slice(0, mark)}@${person.name} `;
     named.set(person.id, person.name);
     onChangeText(next);
     setQuery(null);
     onNamed(stillNamed(next, named));
+    input.current?.focus();
   };
 
   return (
     <View>
       <TextInput
-        style={s.input}
+        ref={input}
+        style={[
+          s.input,
+          Platform.OS === "web" &&
+            ({ resize: "none", overflowY: "auto" } as unknown as TextStyle),
+        ]}
+        scrollEnabled
+        onKeyPress={(event) => {
+          if (!editable || query === null) return;
+          const key = event.nativeEvent.key;
+          if (key === "Escape") {
+            event.preventDefault();
+            setQuery(null);
+          } else if (
+            matches.length &&
+            (key === "ArrowDown" || key === "ArrowUp")
+          ) {
+            event.preventDefault();
+            setSelected(
+              (at) =>
+                (at + (key === "ArrowDown" ? 1 : matches.length - 1)) %
+                matches.length,
+            );
+          } else if (matches.length && key === "Enter") {
+            event.preventDefault();
+            choose(matches[Math.min(selected, matches.length - 1)]);
+          }
+        }}
         value={value}
         placeholder={placeholder}
         placeholderTextColor={colors.faint}
@@ -96,15 +174,30 @@ export function MentionInput({
           onNamed(stillNamed(text, named));
         }}
       />
+      {editable && query !== null && failed && (
+        <View style={s.list}>
+          <Text style={s.email}>Couldn’t load people.</Text>
+          <Pressable
+            accessibilityRole="button"
+            style={s.row}
+            onPress={() => setRetry((value) => value + 1)}
+          >
+            <Text style={s.name}>Retry</Text>
+          </Pressable>
+        </View>
+      )}
       {editable && query !== null && matches.length > 0 && (
         <View style={s.list} accessibilityRole="menu">
-          {matches.map((person) => (
+          {matches.map((person, index) => (
             <Pressable
               key={person.id}
               accessibilityRole="menuitem"
               accessibilityLabel={`Name ${person.name}`}
               onPress={() => choose(person)}
-              style={({ pressed }) => [s.row, pressed && s.rowPressed]}
+              style={({ pressed }) => [
+                s.row,
+                (pressed || index === selected) && s.rowPressed,
+              ]}
             >
               <Text style={s.name}>{person.name}</Text>
               <Text style={s.email}>{person.email}</Text>
@@ -129,8 +222,9 @@ const s = themed(() =>
   StyleSheet.create({
     input: {
       color: colors.text,
-      fontSize: 15,
+      fontSize: inputFontSize,
       minHeight: 56,
+      maxHeight: 160,
       textAlignVertical: "top",
       borderWidth: 1,
       borderColor: colors.border,
@@ -148,7 +242,7 @@ const s = themed(() =>
       backgroundColor: colors.surface,
       overflow: "hidden",
     },
-    row: { paddingHorizontal: 10, paddingVertical: 8, gap: 1 },
+    row: { minHeight: 44, paddingHorizontal: 10, paddingVertical: 8, gap: 1 },
     rowPressed: { backgroundColor: colors.surfaceMuted },
     name: { color: colors.text, fontSize: 15, fontFamily: fonts.semibold },
     email: { color: colors.muted, fontSize: 13 },

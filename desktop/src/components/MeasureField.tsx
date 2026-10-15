@@ -83,7 +83,7 @@ export function MeasureField({
       </div>
       <small className="muted">
         {pct === null
-          ? "For a key result: progress follows the number."
+          ? "Progress follows the target."
           : `${measureLabel(numbers)} · ${pct}%`}
       </small>
     </fieldset>

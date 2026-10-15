@@ -114,7 +114,7 @@ export async function readChatgptCatalogLocked(
   if (requireInference && !snapshot?.capabilities.includes("plan_inference_v1"))
     fail(
       503,
-      "Update the Orbyn desktop app and refresh its ChatGPT connection before using it as a provider.",
+      "Update Orbyn on the connected device and refresh its ChatGPT connection.",
     );
   if (
     requireOutputLimits &&
@@ -122,7 +122,7 @@ export async function readChatgptCatalogLocked(
   )
     fail(
       503,
-      "Update the Orbyn desktop app before running budgeted ChatGPT work.",
+      "Update Orbyn on the connected device before running budgeted ChatGPT work.",
     );
   // Evaluate freshness after every row lock, with the database's current clock.
   const fresh = (

@@ -3,7 +3,6 @@
 
 /* Free events don't block time: lighter, with a dashed outline. */
 .cal-entry.is-free {
-  opacity: 0.72;
   outline: 1px dashed var(--bar-edge, var(--border));
   outline-offset: -1px;
 }
@@ -20,7 +19,5 @@
 .sub-url {
   display: block;
   max-width: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }

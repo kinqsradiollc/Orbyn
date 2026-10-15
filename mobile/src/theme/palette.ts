@@ -7,6 +7,8 @@ import { colors as base } from "@orbyn/core";
 export type Palette = { [K in keyof typeof base]: string } & {
   /** Outline of a checkbox that isn't ticked yet. */
   checkBorder: string;
+  /** Foreground for a primary accent fill. */
+  onAccent: string;
   /** Amber for warnings, maintenance and slow services. */
   warning: string;
   warningSoft: string;
@@ -23,53 +25,55 @@ export type Palette = { [K in keyof typeof base]: string } & {
 
 export const light: Palette = {
   ...base,
-  checkBorder: "#cfd7ce",
-  warning: "#a3742b",
+  onAccent: "#ffffff",
+  checkBorder: "#d4d4d8",
+  warning: "#916322",
   warningSoft: "#fbf3e2",
   warningBorder: "#f0e2c2",
   warningLine: "#f1e2bf",
   warningStrong: "#9a5b12",
   amber: "#d49a3a",
-  unread: "#f6f9f4",
-  shadow: "#1d2b23",
+  unread: "#eff6ff",
+  shadow: "#000000",
 };
 
 /**
- * The same roles on a deep green-grey ground. The accent stays dark enough
- * for white text on buttons and light enough to read on the page.
+ * The same roles on neutral dark surfaces. Primary fills use onAccent;
+ * accent labels remain readable without requiring white button text.
  */
 export const dark: Palette = {
-  background: "#111513",
-  surface: "#191e1b",
-  surfaceMuted: "#212723",
-  border: "#2b332e",
-  divider: "#232a26",
-  text: "#e4ebe6",
-  textSoft: "#b6c1ba",
-  muted: "#8a968f",
-  faint: "#5f6a64",
-  accent: "#3f8f66",
-  accentPressed: "#357a57",
-  accentSoft: "#1d3327",
-  dot: "#6f8f63",
-  soft: "#18261e",
-  softBorder: "#26382d",
-  danger: "#e0775a",
-  dangerSoft: "#3a221c",
-  highBg: "#3a281f",
-  highText: "#e3a583",
-  mediumBg: "#1e2a22",
-  mediumText: "#93b395",
-  lowBg: "#232823",
-  lowText: "#9ba68f",
+  background: "#171717",
+  surface: "#202020",
+  surfaceMuted: "#292929",
+  border: "#383838",
+  divider: "#303030",
+  text: "#f4f4f5",
+  textSoft: "#d4d4d8",
+  muted: "#a1a1aa",
+  faint: "#999999",
+  accent: "#93c5fd",
+  onAccent: "#17233a",
+  accentPressed: "#bfdbfe",
+  accentSoft: "#213047",
+  dot: "#60a5fa",
+  soft: "#292929",
+  softBorder: "#383838",
+  danger: "#fda29b",
+  dangerSoft: "#402522",
+  highBg: "#402522",
+  highText: "#fda29b",
+  mediumBg: "#213047",
+  mediumText: "#93c5fd",
+  lowBg: "#292929",
+  lowText: "#d4d4d8",
   white: "#ffffff",
-  checkBorder: "#4a544e",
+  checkBorder: "#737373",
   warning: "#e0b060",
   warningSoft: "#352a17",
   warningBorder: "#4d3c1d",
   warningLine: "#4d3c1d",
   warningStrong: "#e0b060",
   amber: "#d9a445",
-  unread: "#18221c",
+  unread: "#213047",
   shadow: "#000000",
 };

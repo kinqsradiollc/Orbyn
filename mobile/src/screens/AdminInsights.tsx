@@ -18,8 +18,10 @@ import {
   type SweepView,
 } from "@orbyn/core";
 import { Chip, ChipRow } from "../components/Chip";
+import { InlineDetails } from "../components/InlineDetails";
 import { Icon } from "../components/Icon";
 import { Segmented } from "../components/Segmented";
+import { MoreMenu } from "../components/MoreMenu";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { saveFile } from "../lib/download";
@@ -58,32 +60,46 @@ export function MiniBars({
 }) {
   const max = Math.max(1, ...data.map((d) => d.value));
   return (
-    <View
-      style={[s.bars, { height }]}
-      accessibilityLabel={`${data.reduce((n, d) => n + d.value, 0)} in total`}
-    >
-      {data.map((d) => (
-        <View key={d.key} style={s.barCol}>
-          <View
-            style={[
-              s.bar,
-              { height: `${Math.max(2, (d.value / max) * 100)}%` },
-            ]}
-          >
-            {!!d.secondary && (
-              <View
-                style={[
-                  s.barErr,
-                  {
-                    height: `${Math.min(100, (d.secondary / Math.max(1, d.value)) * 100)}%`,
-                  },
-                ]}
-              />
-            )}
+    <>
+      <View
+        style={[s.bars, { height }]}
+        accessibilityLabel={`${data.reduce((n, d) => n + d.value, 0)} in total`}
+      >
+        {data.map((d) => (
+          <View key={d.key} style={s.barCol}>
+            <View
+              style={[
+                s.bar,
+                { height: `${Math.max(2, (d.value / max) * 100)}%` },
+              ]}
+            >
+              {!!d.secondary && (
+                <View
+                  style={[
+                    s.barErr,
+                    {
+                      height: `${Math.min(100, (d.secondary / Math.max(1, d.value)) * 100)}%`,
+                    },
+                  ]}
+                />
+              )}
+            </View>
           </View>
+        ))}
+      </View>
+      <InlineDetails title="Chart data">
+        <View style={{ gap: 6 }}>
+          {data.map((entry) => (
+            <Text key={entry.key} style={shared.small}>
+              {entry.key}: {entry.value.toLocaleString()}
+              {entry.secondary !== undefined
+                ? ` · ${entry.secondary.toLocaleString()} errors`
+                : ""}
+            </Text>
+          ))}
         </View>
-      ))}
-    </View>
+      </InlineDetails>
+    </>
   );
 }
 
@@ -135,6 +151,15 @@ export function AdminRequests({ act, busy }: { act: Act; busy: boolean }) {
         value={hours}
         onChange={setHours}
       />
+      {!summary && <Text style={shared.small}>Loading service activity…</Text>}
+      {summary && (
+        <Text style={shared.small}>
+          Logs kept for seven days.
+          {summary.sample < 1
+            ? ` ${Math.round(summary.sample * 100)}% of ordinary requests; all errors and slow requests.`
+            : ""}
+        </Text>
+      )}
       {summary?.services.map((sv) => {
         const rate = sv.requests ? sv.server_errors / sv.requests : 0;
         return (
@@ -183,39 +208,50 @@ export function AdminRequests({ act, busy }: { act: Act; busy: boolean }) {
         </View>
       )}
 
-      <Text style={[shared.eyebrow, s.eyebrow]}>REQUEST LOG</Text>
-      <TextInput
-        style={shared.input}
-        value={route}
-        onChangeText={setRoute}
-        placeholder="Route, e.g. /items"
-        placeholderTextColor={colors.faint}
-        autoCapitalize="none"
-        autoCorrect={false}
-        accessibilityLabel="Filter by route"
-      />
-      <ChipRow label="Filter the log">
-        <Chip
-          label="All"
-          selected={!status && !slow}
-          onPress={() => {
-            setStatus("");
-            setSlow(false);
-          }}
+      <Text style={s.title}>Request log</Text>
+      <InlineDetails
+        title={status || slow || route.trim() ? "Filters · active" : "Filters"}
+      >
+        <TextInput
+          style={shared.input}
+          value={route}
+          onChangeText={setRoute}
+          placeholder="Route, e.g. /items"
+          placeholderTextColor={colors.faint}
+          autoCapitalize="none"
+          autoCorrect={false}
+          accessibilityLabel="Filter by route"
         />
-        <Chip
-          label="Refused (4xx)"
-          selected={status === "4xx"}
-          onPress={() => setStatus(status === "4xx" ? "" : "4xx")}
-        />
-        <Chip
-          label="Failed (5xx)"
-          selected={status === "5xx"}
-          onPress={() => setStatus(status === "5xx" ? "" : "5xx")}
-        />
-        <Chip label="Slow" selected={slow} onPress={() => setSlow(!slow)} />
-      </ChipRow>
+        <ChipRow label="Filter the log">
+          <Chip
+            label="All"
+            selected={!status && !slow && !route.trim()}
+            onPress={() => {
+              setStatus("");
+              setSlow(false);
+              setRoute("");
+            }}
+          />
+          <Chip
+            label="Refused (4xx)"
+            selected={status === "4xx"}
+            onPress={() => setStatus(status === "4xx" ? "" : "4xx")}
+          />
+          <Chip
+            label="Failed (5xx)"
+            selected={status === "5xx"}
+            onPress={() => setStatus(status === "5xx" ? "" : "5xx")}
+          />
+          <Chip
+            label="Slow"
+            multi
+            selected={slow}
+            onPress={() => setSlow(!slow)}
+          />
+        </ChipRow>
+      </InlineDetails>
       <View style={s.list}>
+        {!rows && <Text style={[shared.small, s.pad]}>Loading requests…</Text>}
         {rows?.length === 0 && (
           <Text style={[shared.small, s.pad]}>No requests match.</Text>
         )}
@@ -232,7 +268,7 @@ export function AdminRequests({ act, busy }: { act: Act; busy: boolean }) {
             ]}
           >
             <View style={s.rowBetween}>
-              <Text style={s.code} numberOfLines={1}>
+              <Text style={s.code}>
                 {r.method} {r.route}
               </Text>
               <Text
@@ -248,7 +284,7 @@ export function AdminRequests({ act, busy }: { act: Act; busy: boolean }) {
                 {r.status}
               </Text>
             </View>
-            <Text style={shared.small} numberOfLines={1}>
+            <Text style={shared.small}>
               {when(r.at)} · {ms(r.duration_ms)} ·{" "}
               {SERVICE[r.service] ?? r.service}
               {r.user_email ? ` · ${r.user_email}` : ""}
@@ -329,7 +365,7 @@ export function AdminAnalyticsView({ act }: { act: Act }) {
         onChange={setDays}
       />
       <View style={s.tiles}>
-        {tiles.map(([label, value]) => (
+        {tiles.slice(0, 4).map(([label, value]) => (
           <View key={label} style={s.tile}>
             <Text style={s.tileValue}>
               {value === undefined ? "–" : value.toLocaleString()}
@@ -338,10 +374,24 @@ export function AdminAnalyticsView({ act }: { act: Act }) {
           </View>
         ))}
       </View>
-      {chart("Active people", (d) => d.active_users)}
-      {chart("Items created", (d) => d.items_created)}
-      {chart("Tasks finished", (d) => d.tasks_done)}
-      {chart("Assistant requests", (d) => d.ai_requests)}
+      <InlineDetails title="More metrics">
+        <View style={s.tiles}>
+          {tiles.slice(4).map(([label, value]) => (
+            <View key={label} style={s.tile}>
+              <Text style={s.tileValue}>
+                {value === undefined ? "–" : value.toLocaleString()}
+              </Text>
+              <Text style={shared.small}>{label}</Text>
+            </View>
+          ))}
+        </View>
+      </InlineDetails>
+      <InlineDetails title="Activity trends">
+        {chart("Active people", (d) => d.active_users)}
+        {chart("Items created", (d) => d.items_created)}
+        {chart("Tasks finished", (d) => d.tasks_done)}
+        {chart("Assistant requests", (d) => d.ai_requests)}
+      </InlineDetails>
       {data && data.most_active.length > 0 && (
         <View style={s.list}>
           <Text style={[shared.eyebrow, s.pad]}>MOST ACTIVE</Text>
@@ -421,6 +471,7 @@ export function AdminAccount({
               <View style={s.stack}>
                 <TextInput
                   style={shared.input}
+                  editable={!busy}
                   value={editing.name}
                   onChangeText={(name) => setEditing({ ...editing, name })}
                   accessibilityLabel="Name"
@@ -428,6 +479,7 @@ export function AdminAccount({
                 />
                 <TextInput
                   style={shared.input}
+                  editable={!busy}
                   value={editing.email}
                   onChangeText={(email) => setEditing({ ...editing, email })}
                   accessibilityLabel="Email"
@@ -478,10 +530,86 @@ export function AdminAccount({
                     {d.name}
                     {self ? " (you)" : ""}
                   </Text>
-                  <SmallAction
-                    label="Edit"
+                  <MoreMenu
+                    label="Account options"
+                    title={d.name}
                     disabled={busy}
-                    onPress={() => setEditing({ name: d.name, email: d.email })}
+                    actions={[
+                      {
+                        label: "Edit profile",
+                        onPress: () =>
+                          setEditing({ name: d.name, email: d.email }),
+                      },
+                      {
+                        label: "Sign out everywhere",
+                        disabled: self || !d.sessions.length,
+                        destructive: true,
+                        onPress: () =>
+                          confirmAction(
+                            `Sign ${d.email} out on every device?`,
+                            "They can sign back in with their password.",
+                            "Sign out",
+                            () => then(() => client.adminSignOutUser(d.id)),
+                          ),
+                      },
+                      {
+                        label: "Password reset link",
+                        disabled: d.disabled,
+                        onPress: () =>
+                          confirmAction(
+                            `Make a reset link for ${d.email}?`,
+                            "Works once, for an hour.",
+                            "Make link",
+                            () =>
+                              then(async () =>
+                                setLink(
+                                  (await client.adminResetLink(d.id)).link,
+                                ),
+                              ),
+                            false,
+                          ),
+                      },
+                      {
+                        label: "Export their data",
+                        onPress: () =>
+                          confirmAction(
+                            `Export ${d.email}'s data?`,
+                            "Exports their account as JSON and records it in the audit log.",
+                            "Export",
+                            () =>
+                              then(async () =>
+                                saveFile(
+                                  `orbyn-export-${d.email}.json`,
+                                  JSON.stringify(
+                                    await client.adminExportUser(d.id),
+                                    null,
+                                    2,
+                                  ),
+                                  "application/json",
+                                ),
+                              ),
+                            false,
+                          ),
+                      },
+                      ...(d.two_factor
+                        ? [
+                            {
+                              label: "Turn off two-step",
+                              destructive: true,
+                              onPress: () =>
+                                confirmAction(
+                                  `Turn off two-step for ${d.email}?`,
+                                  "Their password alone will sign them in. Verify their identity first.",
+                                  "Turn off",
+                                  () =>
+                                    then(() =>
+                                      client.adminResetTwoFactor(d.id),
+                                    ),
+                                ),
+                            },
+                          ]
+                        : []),
+                    ]}
                   />
                 </View>
                 <Text style={shared.small}>
@@ -511,75 +639,7 @@ export function AdminAccount({
             </View>
           </View>
 
-          <View style={[shared.card, s.flat]}>
-            <Text style={s.title}>Account actions</Text>
-            <View style={s.actions}>
-              <SmallAction
-                label="Sign out everywhere"
-                disabled={busy || self || !d.sessions.length}
-                onPress={() =>
-                  confirmAction(
-                    `Sign ${d.email} out on every device?`,
-                    "They can sign straight back in with their password.",
-                    "Sign out",
-                    () => then(() => client.adminSignOutUser(d.id)),
-                  )
-                }
-              />
-              <SmallAction
-                label="Password reset link"
-                disabled={busy || d.disabled}
-                onPress={() =>
-                  confirmAction(
-                    `Make a reset link for ${d.email}?`,
-                    "It works once, for an hour.",
-                    "Make link",
-                    () =>
-                      then(async () =>
-                        setLink((await client.adminResetLink(d.id)).link),
-                      ),
-                  )
-                }
-              />
-              <SmallAction
-                label="Export their data"
-                disabled={busy}
-                onPress={() =>
-                  confirmAction(
-                    `Export ${d.email}'s data?`,
-                    "Everything in their account, as a JSON file. This is recorded in the audit log.",
-                    "Export",
-                    () =>
-                      then(async () =>
-                        saveFile(
-                          `orbyn-export-${d.email}.json`,
-                          JSON.stringify(
-                            await client.adminExportUser(d.id),
-                            null,
-                            2,
-                          ),
-                          "application/json",
-                        ),
-                      ),
-                  )
-                }
-              />
-              {d.two_factor && (
-                <SmallAction
-                  label="Turn off two-step"
-                  destructive
-                  disabled={busy}
-                  onPress={() =>
-                    confirmAction(
-                      `Turn off two-step for ${d.email}?`,
-                      "Only once you're sure it's really them.",
-                      "Turn off",
-                      () => then(() => client.adminResetTwoFactor(d.id)),
-                    )
-                  }
-                />
-              )}
-            </View>
+          <View>
             {link && (
               <View style={s.linkBox}>
                 <Text style={[shared.small, s.linkText]} selectable>
@@ -611,7 +671,7 @@ export function AdminAccount({
                 style={[s.logRow, s.rowBetween, n > 0 && s.divided]}
               >
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={s.title} numberOfLines={1}>
+                  <Text style={s.title}>
                     {ss.user_agent || "Unknown device"}
                   </Text>
                   <Text style={shared.small}>
@@ -649,10 +709,8 @@ export function AdminAccount({
                 style={[s.logRow, s.rowBetween, n > 0 && s.divided]}
               >
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={s.title} numberOfLines={1}>
-                    {k.name}
-                  </Text>
-                  <Text style={shared.small} numberOfLines={1}>
+                  <Text style={s.title}>{k.name}</Text>
+                  <Text style={shared.small}>
                     {k.prefix}… ·{" "}
                     {k.last_used_at
                       ? `last used ${when(k.last_used_at)}`
@@ -696,10 +754,8 @@ export function AdminAccount({
                   style={[s.logRow, s.rowBetween, n > 0 && s.divided]}
                 >
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={s.title} numberOfLines={1}>
-                      {title}
-                    </Text>
-                    <Text style={shared.small} numberOfLines={2}>
+                    <Text style={s.title}>{title}</Text>
+                    <Text style={shared.small}>
                       {g.client_host ? `${g.client_host} · ` : ""}
                       {AGENT_ACCESS_LABELS[g.access].name} · connected{" "}
                       {when(g.created_at)} ·{" "}
@@ -766,9 +822,13 @@ export function RetentionCard({ act, busy }: { act: Act; busy: boolean }) {
     void act(async () => show(await client.adminSweep()));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  if (!view) return null;
+  if (!view)
+    return <Text style={shared.small}>Loading retention settings…</Text>;
   const changed = view.rules.filter(
     (r) => r.configurable && String(r.days ?? 0) !== draft[r.key],
+  );
+  const invalidDays = changed.some(
+    (r) => !/^\d+$/.test(draft[r.key] ?? "") || Number(draft[r.key]) > 3650,
   );
   return (
     <View style={[shared.card, s.flat]}>
@@ -777,39 +837,69 @@ export function RetentionCard({ act, busy }: { act: Act; busy: boolean }) {
         Records past their keep time are cleared every hour. 0 keeps forever.
         {view.last ? ` Last swept ${when(view.last.at)}.` : ""}
       </Text>
-      {view.rules
-        .filter((r) => r.configurable)
-        .map((r) => (
-          <View key={r.key} style={s.retRow}>
-            <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={s.title}>{r.label}</Text>
+      {view.rules.map((r) => (
+        <View key={r.key} style={s.retRow}>
+          <View style={{ flexGrow: 1, flexBasis: 160, minWidth: 0 }}>
+            <Text style={s.title}>{r.label}</Text>
+            <Text style={shared.small}>
+              {r.rows.toLocaleString()} {r.rows === 1 ? "row" : "rows"} ·{" "}
+              {r.size}
+            </Text>
+            <InlineDetails title="About these records">
+              <Text style={shared.small}>{r.detail}</Text>
+            </InlineDetails>
+            {view.last?.errors[r.key] ? (
+              <InlineDetails title="Sweep error">
+                <Text
+                  selectable
+                  style={[shared.small, { color: colors.danger }]}
+                >
+                  {view.last.errors[r.key]}
+                </Text>
+              </InlineDetails>
+            ) : (
+              view.last?.removed[r.key] !== undefined && (
+                <Text style={shared.small}>
+                  {view.last.removed[r.key].toLocaleString()} removed
+                </Text>
+              )
+            )}
+          </View>
+          {r.configurable ? (
+            <View style={s.retControls}>
+              <TextInput
+                style={[shared.input, s.days]}
+                value={draft[r.key]}
+                editable={!busy}
+                onChangeText={(value) => setDraft({ ...draft, [r.key]: value })}
+                keyboardType="number-pad"
+                accessibilityLabel={`Days to keep ${r.label}`}
+              />
               <Text style={shared.small}>
-                {r.rows.toLocaleString()} {r.rows === 1 ? "row" : "rows"} ·{" "}
-                {r.size}
+                {Number(draft[r.key]) === 0 ? "forever" : "days"}
               </Text>
             </View>
-            <TextInput
-              style={[shared.input, s.days]}
-              value={draft[r.key]}
-              onChangeText={(v) =>
-                setDraft({ ...draft, [r.key]: v.replace(/\D/g, "") })
-              }
-              keyboardType="number-pad"
-              accessibilityLabel={`Days to keep ${r.label}`}
-            />
-            <Text style={[shared.small, s.daysUnit]}>
-              {Number(draft[r.key]) === 0 ? "forever" : "days"}
-            </Text>
-          </View>
-        ))}
+          ) : (
+            <Text style={shared.small}>Until expired</Text>
+          )}
+        </View>
+      ))}
+      {invalidDays && (
+        <Text
+          accessibilityRole="alert"
+          style={[shared.small, { color: colors.danger }]}
+        >
+          Use whole days from 0 to 3650.
+        </Text>
+      )}
       <View style={s.actions}>
         <SmallAction
           label="Save"
-          disabled={busy || !changed.length}
+          disabled={busy || !changed.length || invalidDays}
           onPress={() =>
             confirmAction(
               "Save how long records are kept?",
-              "Anything older than a shorter keep time is removed at the next sweep.",
+              "Older records past a shortened keep time are permanently removed at the next sweep.",
               "Save",
               () =>
                 void act(async () =>
@@ -827,7 +917,14 @@ export function RetentionCard({ act, busy }: { act: Act; busy: boolean }) {
         <SmallAction
           label="Sweep now"
           disabled={busy}
-          onPress={() => void act(async () => show(await client.runSweep()))}
+          onPress={() =>
+            confirmAction(
+              "Sweep now?",
+              "Permanently removes expired records. This cannot be undone.",
+              "Sweep now",
+              () => void act(async () => show(await client.runSweep())),
+            )
+          }
         />
       </View>
     </View>
@@ -868,10 +965,18 @@ export function AnnouncementCard({ act, busy }: { act: Act; busy: boolean }) {
     <View style={[shared.card, s.flat]}>
       <Text style={s.title}>Announcement</Text>
       <Text style={shared.small}>
-        Shown at the top of every app until removed.
+        Shown across Orbyn. People can dismiss it.
       </Text>
+      {live && (
+        <Text style={shared.small}>
+          {live.until
+            ? `Showing until ${when(live.until)}`
+            : "Showing until removed"}
+        </Text>
+      )}
       <TextInput
         style={[shared.input, s.multiline]}
+        editable={!busy}
         value={message}
         onChangeText={setMessage}
         placeholder="Planned update tonight at 10pm."
@@ -883,11 +988,13 @@ export function AnnouncementCard({ act, busy }: { act: Act; busy: boolean }) {
       <ChipRow label="Tone">
         <Chip
           label="Information"
+          disabled={busy}
           selected={tone === "info"}
           onPress={() => setTone("info")}
         />
         <Chip
           label="Heads-up"
+          disabled={busy}
           selected={tone === "warning"}
           onPress={() => setTone("warning")}
         />
@@ -943,8 +1050,13 @@ export function AnnouncementBanner() {
       </Text>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Dismiss"
-        hitSlop={10}
+        accessibilityLabel="Dismiss announcement"
+        style={{
+          minWidth: 44,
+          minHeight: 44,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
         onPress={() => setHidden(notice.updated_at)}
       >
         <Icon name="x" size={15} color={colors.muted} />
@@ -960,6 +1072,7 @@ const s = themed(() =>
     flat: { marginBottom: 0 },
     rowBetween: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       justifyContent: "space-between",
       gap: 8,
@@ -987,7 +1100,7 @@ const s = themed(() =>
     },
     pillBad: { backgroundColor: colors.dangerSoft, color: colors.danger },
     facts: { flexDirection: "row", flexWrap: "wrap", gap: 12, marginTop: 10 },
-    fact: { width: "46%", gap: 2 },
+    fact: { flexGrow: 1, flexBasis: 120, minWidth: 0, gap: 2 },
     factLabel: { color: colors.muted, fontFamily: fonts.regular, fontSize: 11 },
     factValue: { color: colors.text, fontFamily: fonts.semibold, fontSize: 15 },
     bars: {
@@ -1001,8 +1114,8 @@ const s = themed(() =>
     barCol: { flex: 1, height: "100%", justifyContent: "flex-end" },
     bar: {
       justifyContent: "flex-end",
-      borderTopLeftRadius: 3,
-      borderTopRightRadius: 3,
+      borderTopLeftRadius: radii.check,
+      borderTopRightRadius: radii.check,
       backgroundColor: colors.accent,
       opacity: 0.8,
       overflow: "hidden",
@@ -1028,7 +1141,7 @@ const s = themed(() =>
     detail: { marginTop: 4 },
     tiles: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     tile: {
-      width: "48%",
+      flexBasis: 140,
       flexGrow: 1,
       gap: 2,
       padding: 12,
@@ -1051,15 +1164,17 @@ const s = themed(() =>
       borderColor: colors.warningBorder,
     },
     linkText: { color: colors.text },
+    retControls: { flexDirection: "row", alignItems: "center", gap: 8 },
     retRow: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 8,
       paddingVertical: 8,
       borderTopWidth: 1,
       borderTopColor: colors.divider,
     },
-    days: { width: 72, minHeight: 38, textAlign: "right", paddingVertical: 6 },
+    days: { width: 84, minHeight: 44, textAlign: "right", paddingVertical: 6 },
     daysUnit: { width: 48 },
     multiline: { minHeight: 72, paddingTop: 10, marginTop: 10 },
     banner: {

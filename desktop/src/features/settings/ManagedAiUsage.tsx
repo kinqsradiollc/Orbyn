@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { aiUsageSummary, type ManagedAiUsageSummary } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { session } from "../../lib/session";
 import { errorText } from "../../lib/errors";
 /** On-demand owner metrics; account/token changes discard pending responses. */
 export function ManagedAiUsage({ userId }: { userId: string }) {
+  const id = useId();
   const token = session.get();
   const identity = `${userId}:${token ?? ""}`;
   const [open, setOpen] = useState<string | null>(null);
@@ -38,14 +39,19 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
         className="link-button"
         disabled={!userId || !token}
         aria-expanded={expanded}
+        aria-controls={id}
         onClick={() => setOpen(expanded ? null : identity)}
       >
-        Workspace usage
+        {expanded ? "Hide workspace usage" : "Workspace usage"}
       </button>
       {expanded && (
-        <div role="status">
-          {!current && <p>Loading usage…</p>}
-          {current?.error && <p>{current.error}</p>}
+        <div id={id}>
+          {!current && <p role="status">Loading usage…</p>}
+          {current?.error && (
+            <p className="error" role="alert">
+              {current.error}
+            </p>
+          )}
           {current?.data && (
             <>
               <p>
@@ -63,9 +69,10 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
           )}
           <button
             className="link-button"
+            disabled={!current}
             onClick={() => setReload((v) => v + 1)}
           >
-            Refresh usage
+            {current?.error ? "Retry usage" : "Refresh usage"}
           </button>
         </div>
       )}

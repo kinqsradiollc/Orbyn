@@ -86,13 +86,13 @@ export function SidePeek({
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   const [overlay, setOverlay] = useState(
-    () => !window.matchMedia("(min-width: 1100px)").matches,
+    () => !window.matchMedia("(min-width: 1360px)").matches,
   );
   const root = useRef<HTMLElement>(null);
   const opener = useRef(document.activeElement as HTMLElement | null);
   const close = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    const query = window.matchMedia("(min-width: 1100px)");
+    const query = window.matchMedia("(min-width: 1360px)");
     const update = () => setOverlay(!query.matches);
     query.addEventListener("change", update);
     update();
@@ -238,7 +238,7 @@ export function SidePeek({
         ref={root}
         role={overlay ? "dialog" : "complementary"}
         aria-modal={overlay || undefined}
-        className="side-peek fade-in"
+        className="side-peek"
         aria-label={`${noun} beside: ${title}`}
       >
         <header className="peek-head">
@@ -290,7 +290,7 @@ export function SidePeek({
                 className="secondary"
                 onClick={() => setRetry((value) => value + 1)}
               >
-                Try again
+                Retry
               </button>
             </>
           ) : !loaded ? (
@@ -311,7 +311,12 @@ export function SidePeek({
                     ) : (
                       <Circle size={14} aria-hidden="true" />
                     )}
-                    {loaded.item.status === "done" ? "Done" : "Not done"}
+                    {loaded.item.status === "todo"
+                      ? "To do"
+                      : loaded.item.status === "in_progress"
+                        ? "In progress"
+                        : loaded.item.status.charAt(0).toUpperCase() +
+                          loaded.item.status.slice(1)}
                     {loaded.item.due_at &&
                       ` · ${loaded.item.kind === "event" ? "Starts" : "Due"} ${formatDateTime(loaded.item.due_at)}`}
                   </p>

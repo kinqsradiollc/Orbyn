@@ -53,8 +53,15 @@ const s = StyleSheet.create({
     paddingHorizontal: 9,
     paddingVertical: 3,
     alignSelf: "center",
+    maxWidth: "100%",
+    minWidth: 0,
   },
   status: { flexDirection: "row", alignItems: "center", gap: 5 },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  text: { fontFamily: fonts.semibold, fontSize: 11 },
+  dot: { width: 6, height: 6, borderRadius: radii.pill },
+  text: {
+    flexShrink: 1,
+    minWidth: 0,
+    fontFamily: fonts.semibold,
+    fontSize: 11,
+  },
 });

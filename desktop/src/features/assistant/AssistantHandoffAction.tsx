@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import type { AssistantHandoff } from "@orbyn/core";
 import { client } from "../../lib/api";
 import "./assistant-agents.css";
@@ -103,36 +105,48 @@ export function AssistantHandoffAction({
           )}
         </div>
       ) : open ? (
-        <div className="assistant-handoff-form">
-          <label>
-            Task for {recipient}
-            <textarea
-              rows={2}
-              maxLength={4000}
-              value={instruction}
-              onChange={(event) => setInstruction(event.target.value)}
-              placeholder="What should it do next?"
-            />
-          </label>
-          <div>
-            <button
-              type="button"
-              className="primary"
-              disabled={busy || !instruction.trim()}
-              onClick={() => void send()}
-            >
-              {busy ? "Sending…" : `Send to ${recipient}`}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy}
-              onClick={() => setOpen(false)}
-            >
-              Cancel
-            </button>
+        <HandoffDialog
+          recipient={recipient}
+          busy={busy}
+          onClose={() => setOpen(false)}
+        >
+          <div className="assistant-handoff-form">
+            <label>
+              Task for {recipient}
+              <textarea
+                rows={2}
+                maxLength={4000}
+                value={instruction}
+                disabled={busy}
+                onChange={(event) => setInstruction(event.target.value)}
+                placeholder="What should it do next?"
+              />
+            </label>
+            <div>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || !instruction.trim()}
+                onClick={() => void send()}
+              >
+                {busy ? "Sending…" : `Send to ${recipient}`}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() => setOpen(false)}
+              >
+                Cancel
+              </button>
+            </div>
+            {error && (
+              <p role="alert" className="error">
+                {error}
+              </p>
+            )}
           </div>
-        </div>
+        </HandoffDialog>
       ) : (
         <button
           type="button"
@@ -142,11 +156,48 @@ export function AssistantHandoffAction({
           Hand off to {recipient}
         </button>
       )}
-      {error && (
+      {error && !open && (
         <span role="alert" className="error">
           {error}
         </span>
       )}
     </div>
+  );
+}
+
+function HandoffDialog({
+  recipient,
+  busy,
+  onClose,
+  children,
+}: {
+  recipient: string;
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const node = focus.ref.current as HTMLDialogElement;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      className="modal assistant-handoff-dialog"
+      data-modal-focus={focus.id}
+      aria-label={`Task for ${recipient}`}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <h2>Task for {recipient}</h2>
+      {children}
+    </dialog>,
+    document.body,
   );
 }

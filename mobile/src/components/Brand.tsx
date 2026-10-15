@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { Icon } from "./Icon";
 import { colors, fonts, themed } from "../theme";
 
-/** The Orbyn wordmark, matching the desktop `.brand`: orbit icon, "orbyn", green dot. */
+/** The Orbyn wordmark, matching the desktop `.brand`: orbit icon, "orbyn", brand dot. */
 export function Brand({ size = 26 }: { size?: number }) {
   return (
     <View

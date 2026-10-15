@@ -33,11 +33,13 @@ import {
   type TimeBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
+import { DeadlineDropDialog } from "./DeadlineDropDialog";
 import { celebrate } from "../../lib/celebrate";
 import { isTyping } from "../../lib/keys";
 import { usePlanning } from "../../app/planning";
 import { usePrefs } from "../../app/prefs";
-import { useMediaQuery } from "../../hooks/useMediaQuery";
+import { useElementWidth } from "../../hooks/useElementWidth";
 import { errorText, fromDayKey } from "../../lib/planning";
 import { localDay } from "../../lib/drag";
 import {
@@ -115,6 +117,8 @@ type Props = {
   onModeChange: (mode: CalendarMode) => void;
   /** Keyboard shortcuts are off while a dialog or panel is open. */
   shortcuts: boolean;
+  /** Rechecked at key time so only the focused workspace handles navigation. */
+  ownsShortcuts?: () => boolean;
   revision: number;
   report: (e: unknown) => void;
   /** Refresh the planner (tasks) after a change. */
@@ -210,7 +214,13 @@ const occurrenceOf = (e: CalendarEntry): OccurrenceRef | undefined =>
  * time picked by clicking the grid, else the selected day), P planner,
  * 1–9 sets, 0 all, Esc drops the picked time.
  */
-export function CalendarView({
+export function CalendarView(props: Props) {
+  return (
+    <CalendarBody key={`${session.get()}:${props.userId ?? ""}`} {...props} />
+  );
+}
+
+function CalendarBody({
   items,
   teams,
   canWrite,
@@ -222,6 +232,7 @@ export function CalendarView({
   mode,
   onModeChange,
   shortcuts,
+  ownsShortcuts,
   revision,
   report,
   onChanged,
@@ -230,11 +241,14 @@ export function CalendarView({
   onNewEvent,
   userId,
 }: Props) {
+  const accountAtRender = session.get();
   const { ask, tell } = useConfirm();
   const planning = usePlanning();
   const prefs = planning.prefs;
-  const narrow = useMediaQuery("(max-width: 900px)");
-  const phone = useMediaQuery("(max-width: 520px)");
+  const { ref: pageRef, width: pageWidth } = useElementWidth();
+  const availableWidth = pageWidth || window.innerWidth;
+  const narrow = availableWidth <= 900;
+  const phone = availableWidth <= 520;
   const span = phone ? 1 : narrow ? 3 : 7;
   const weekStart = span === 7 ? startOfWeek(date) : startOfDay(date);
   const weekDays = Array.from({ length: span }, (_, n) =>
@@ -254,7 +268,7 @@ export function CalendarView({
     return { from, to: addDays(from, mode === "day" ? 1 : AGENDA_DAYS) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, dayKeyStr, span]);
-  const { data, reload, setData } = useCalendarData(
+  const { data, loading, failed, reload, setData } = useCalendarData(
     range.from,
     range.to,
     revision,
@@ -289,19 +303,42 @@ export function CalendarView({
   const derived = (data?.derived ?? []).filter((d) => shownIds.has(d.item_id));
   const frames = data?.frames ?? [];
   // Date fields shown on the calendar as deadlines (DATA-07).
-  const [fieldDates, setFieldDates] = useState<FieldDate[]>([]);
+  const [fieldDatesRetry, setFieldDatesRetry] = useState(0);
   const fromKey = dayKeyOf(range.from);
   const toKey = dayKeyOf(range.to);
+  const fieldRange = `${accountAtRender}:${fromKey}:${toKey}`;
+  const latestFieldRange = useRef(fieldRange);
+  latestFieldRange.current = fieldRange;
+  const [fieldReceipt, setFieldReceipt] = useState<{
+    range: string;
+    dates: FieldDate[];
+    failed: boolean;
+  } | null>(null);
+  const fieldDates =
+    fieldReceipt?.range === fieldRange ? fieldReceipt.dates : [];
+  const fieldDatesFailed =
+    fieldReceipt?.range === fieldRange && fieldReceipt.failed;
   useEffect(() => {
     let live = true;
+    const current = () =>
+      live &&
+      session.get() === accountAtRender &&
+      latestFieldRange.current === fieldRange;
+    setFieldReceipt({ range: fieldRange, dates: [], failed: false });
     client.fieldDates(fromKey, toKey).then(
-      (dates) => live && setFieldDates(dates),
-      () => live && setFieldDates([]),
+      (dates) => {
+        if (current())
+          setFieldReceipt({ range: fieldRange, dates, failed: false });
+      },
+      () => {
+        if (current())
+          setFieldReceipt({ range: fieldRange, dates: [], failed: true });
+      },
     );
     return () => {
       live = false;
     };
-  }, [fromKey, toKey, revision]);
+  }, [fromKey, toKey, revision, fieldDatesRetry, accountAtRender, fieldRange]);
   // A set picks subscribed calendars too; older sets show all of them.
   const external = [
     ...(data?.external ?? []).filter(
@@ -387,23 +424,134 @@ export function CalendarView({
   /** A late-session warning with its choices ("Keep it", "Find time before"). */
   const [note, setNote] = useState<Note | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
+  const [timeSaveBusy, setTimeSaveBusy] = useState(false);
+  const [timeSaveError, setTimeSaveError] = useState("");
+  const timeSavePending = useRef(false);
+  const mutationPending = useRef(false);
+  const [changing, setChanging] = useState(false);
+  const undoQueue = useRef<Array<() => void>>([]);
+  const undoAfterSave = (action: () => void) => {
+    if (!currentOwner()) return;
+    if (mutationPending.current || timeSavePending.current)
+      undoQueue.current.push(action);
+    else action();
+  };
+  const resumeUndo = () => {
+    if (!currentOwner()) {
+      undoQueue.current = [];
+      return;
+    }
+    const action = undoQueue.current.shift();
+    if (action) queueMicrotask(() => undoAfterSave(action));
+  };
+  const beginWrite = () => {
+    if (!currentOwner() || mutationPending.current || timeSavePending.current)
+      return false;
+    mutationPending.current = true;
+    setChanging(true);
+    return true;
+  };
+  const endWrite = () => {
+    mutationPending.current = false;
+    if (currentOwner()) setChanging(false);
+    resumeUndo();
+  };
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    setTimeSaveError("");
+  }, [dialog]);
+  const currentOwner = () =>
+    mounted.current && session.get() === accountAtRender;
+  const saveDialogTime = async (start: Date, end: Date) => {
+    if (!currentOwner()) return;
+    if (
+      timeSavePending.current ||
+      mutationPending.current ||
+      !dialog ||
+      (dialog.kind !== "schedule" && dialog.kind !== "move")
+    )
+      return;
+    const target = dialog;
+    const account = accountAtRender;
+    const current = () => mounted.current && account === session.get();
+    timeSavePending.current = true;
+    setTimeSaveBusy(true);
+    setTimeSaveError("");
+    try {
+      const block =
+        target.kind === "schedule"
+          ? await client.createBlock({
+              item_id: target.item.id,
+              start_at: start.toISOString(),
+              end_at: end.toISOString(),
+            })
+          : await client.updateBlock(target.block.id, {
+              start_at: start.toISOString(),
+              end_at: end.toISOString(),
+            });
+      if (!current()) return;
+      setDialog(null);
+      warnIfLate(block);
+      await reload();
+    } catch (e) {
+      if (current()) setTimeSaveError(errorText(e));
+    } finally {
+      timeSavePending.current = false;
+      if (current()) setTimeSaveBusy(false);
+      resumeUndo();
+    }
+  };
 
   const resolve = async (id: string) =>
     itemMap.get(id) ?? (await client.getItem(id));
-  const withItem = (id: string, fn: (item: Item) => void) =>
-    void resolve(id).then(fn, report);
+  const itemOpenRequest = useRef(0);
+  const withItem = (id: string, fn: (item: Item) => void) => {
+    if (!currentOwner()) return;
+    const request = ++itemOpenRequest.current;
+    const account = accountAtRender;
+    const current = () =>
+      mounted.current &&
+      request === itemOpenRequest.current &&
+      account === session.get();
+    void resolve(id).then(
+      (item) => {
+        if (current()) fn(item);
+      },
+      (error) => {
+        if (current()) report(error);
+      },
+    );
+  };
 
   const changed = async () => {
+    if (!currentOwner()) return;
     await reload();
-    await onChanged();
+    if (!currentOwner()) return;
+    try {
+      await onChanged();
+    } catch (e) {
+      if (currentOwner()) report(e);
+    }
   };
   const mutate = async (fn: () => Promise<unknown>) => {
+    if (!beginWrite()) return;
     try {
-      await fn();
-    } catch (e) {
-      report(e);
+      if (!currentOwner()) return;
+      try {
+        await fn();
+      } catch (e) {
+        if (currentOwner()) report(e);
+      }
+      if (currentOwner()) await reload();
+    } finally {
+      endWrite();
     }
-    await reload();
   };
 
   /** "Moved to Wed 30 Sep, 4:00 pm." */
@@ -418,6 +566,7 @@ export function CalendarView({
    * it there or move it to free time before the deadline. Never refused.
    */
   const warnIfLate = (block: TimeBlock) => {
+    if (!currentOwner()) return;
     const text = lateSessionWarning(block);
     if (!text) return;
     setNote({
@@ -435,33 +584,44 @@ export function CalendarView({
 
   /** Move a session to the next free time that ends by its deadline. */
   const moveBeforeDeadline = async (block: TimeBlock) => {
+    if (!beginWrite()) return;
     try {
-      const moved = await client.rescheduleBlock(block.id, {
-        before_deadline: true,
-      });
-      setNote(null);
-      toast({
-        text: `Moved to ${movedTo(moved.start_at)}, before the deadline.`,
-        action: {
-          label: "Undo",
-          run: () =>
-            void mutate(() =>
-              client.updateBlock(block.id, {
-                start_at: block.start_at,
-                end_at: block.end_at,
-              }),
-            ),
-        },
-      });
-    } catch (e) {
-      if ((e as HttpError).status === 401) report(e);
-      else toast({ tone: "warn", text: errorText(e) });
+      if (!currentOwner()) return;
+      try {
+        const moved = await client.rescheduleBlock(block.id, {
+          before_deadline: true,
+        });
+        if (!currentOwner()) return;
+        setNote(null);
+        toast({
+          text: `Moved to ${movedTo(moved.start_at)}, before the deadline.`,
+          action: {
+            label: "Undo",
+            run: () =>
+              undoAfterSave(
+                () =>
+                  void mutate(() =>
+                    client.updateBlock(block.id, {
+                      start_at: block.start_at,
+                      end_at: block.end_at,
+                    }),
+                  ),
+              ),
+          },
+        });
+      } catch (e) {
+        if (!currentOwner()) return;
+        if ((e as HttpError).status === 401) report(e);
+        else toast({ tone: "warn", text: errorText(e) });
+      }
+      if (currentOwner()) await reload();
+    } finally {
+      endWrite();
     }
-    await reload();
   };
 
   const createBlock = (item: Item, start: Date, end?: Date) => {
-    if (item.kind !== "task") return;
+    if (item.kind !== "task" || !canWrite(item)) return;
     const minutes = Math.min(item.estimate_minutes ?? 30, 1440);
     void mutate(async () =>
       warnIfLate(
@@ -481,27 +641,37 @@ export function CalendarView({
    * free working time. A day with none says so, and the task stays put.
    */
   const planOnDay = (itemId: string, day: Date) => {
+    if (!currentOwner()) return;
     const item = itemMap.get(itemId);
-    if (!item || item.kind !== "task") return;
+    if (!item || item.kind !== "task" || !canWrite(item) || !beginWrite())
+      return;
     void (async () => {
       try {
-        const block = await client.createBlockOnDay({
-          item_id: item.id,
-          day: localDay(day),
-        });
-        if (lateSessionWarning(block)) warnIfLate(block);
-        else
-          toast({
-            text: `Planned “${item.title}” for ${movedTo(block.start_at)}.`,
+        try {
+          const block = await client.createBlockOnDay({
+            item_id: item.id,
+            day: localDay(day),
           });
-      } catch (e) {
-        toast({ tone: "warn", text: errorText(e) });
+          if (!currentOwner()) return;
+          if (lateSessionWarning(block)) warnIfLate(block);
+          else
+            toast({
+              text: `Planned “${item.title}” for ${movedTo(block.start_at)}.`,
+            });
+        } catch (e) {
+          if (!currentOwner()) return;
+          toast({ tone: "warn", text: errorText(e) });
+        }
+        if (currentOwner()) await reload();
+      } finally {
+        endWrite();
       }
-      await reload();
     })();
   };
 
   const changeBlock = (block: TimeBlock, start: Date, end: Date) => {
+    if (!currentOwner() || mutationPending.current || timeSavePending.current)
+      return;
     // Show the new time right away; the reload confirms it.
     setData(
       (d) =>
@@ -533,35 +703,52 @@ export function CalendarView({
    * that ends by its deadline when there is one.
    */
   const reschedule = async (block: TimeBlock) => {
+    if (!beginWrite()) return;
     try {
-      const moved = await client.rescheduleBlock(block.id);
-      if (lateSessionWarning(moved)) warnIfLate(moved);
-      else toast({ text: `Moved to ${movedTo(moved.start_at)}.` });
-    } catch (e) {
-      report(e);
+      if (!currentOwner()) return;
+      try {
+        const moved = await client.rescheduleBlock(block.id);
+        if (!currentOwner()) return;
+        if (lateSessionWarning(moved)) warnIfLate(moved);
+        else toast({ text: `Moved to ${movedTo(moved.start_at)}.` });
+      } catch (e) {
+        if (!currentOwner()) return;
+        report(e);
+      }
+      if (currentOwner()) await reload();
+    } finally {
+      endWrite();
     }
-    await reload();
   };
   /** Another block for the same task: at `start`, or the next free time. */
   const duplicate = async (block: TimeBlock, start?: Date) => {
+    if (!beginWrite()) return;
     try {
-      const copy = await client.duplicateBlock(
-        block.id,
-        start ? { start_at: start.toISOString() } : {},
-      );
-      if (lateSessionWarning(copy)) warnIfLate(copy);
-      else if (!start) toast({ text: `Copied to ${movedTo(copy.start_at)}.` });
-    } catch (e) {
-      report(e);
+      if (!currentOwner()) return;
+      try {
+        const copy = await client.duplicateBlock(
+          block.id,
+          start ? { start_at: start.toISOString() } : {},
+        );
+        if (!currentOwner()) return;
+        if (lateSessionWarning(copy)) warnIfLate(copy);
+        else if (!start)
+          toast({ text: `Copied to ${movedTo(copy.start_at)}.` });
+      } catch (e) {
+        if (!currentOwner()) return;
+        report(e);
+      }
+      if (currentOwner()) await reload();
+    } finally {
+      endWrite();
     }
-    await reload();
   };
 
   // ---- dragging events and timed tasks ----
   /** Not view-only ones; repeating ones ask which occurrences to move. */
   const canDragEntry = (e: CalendarEntry) => {
     const item = itemMap.get(e.item_id);
-    return !item || canWrite(item);
+    return !changing && !timeSaveBusy && (!item || canWrite(item));
   };
   /** A dragged repeating entry waiting for "this one / following / all". */
   const [scopeAsk, setScopeAsk] = useState<{
@@ -596,96 +783,123 @@ export function CalendarView({
     resized: boolean,
     scope?: EditScope,
   ) => {
-    const startIso = start.toISOString();
-    // A task without an end keeps none; moving only changes its due time.
-    const endIso = entry.end_at || resized ? end.toISOString() : null;
-    const key = entryKey(entry);
-    setData(
-      (d) =>
-        d && {
-          ...d,
-          entries: d.entries.map((x) =>
-            entryKey(x) === key
-              ? { ...x, start_at: startIso, end_at: endIso }
-              : x,
-          ),
-        },
-    );
+    if (!beginWrite()) return;
     try {
-      const known = itemMap.get(entry.item_id);
-      const item =
-        known && known.version >= entry.version
-          ? known
-          : await client.getItem(entry.item_id);
-      // The full body, as the editor sends it; planning and event fields
-      // left out keep their saved values.
-      // "All" moves the whole series by the same amount; "this" and
-      // "following" take the occurrence's new times.
-      const whole = scope === "all" && !!item.due_at;
-      const dueIso = whole
-        ? new Date(
-            Date.parse(item.due_at!) +
-              (start.getTime() - Date.parse(entry.start_at)),
-          ).toISOString()
-        : startIso;
-      const dueEnd =
-        whole && endIso
-          ? new Date(
-              Date.parse(dueIso) + (end.getTime() - start.getTime()),
-            ).toISOString()
-          : endIso;
-      await client.updateItem(
-        item.id,
-        {
-          title: item.title,
-          notes: item.notes ?? "",
-          kind: item.kind,
-          status: item.status,
-          priority: item.priority,
-          due_at: dueIso,
-          end_at: dueEnd,
-          team_id: item.team_id ?? null,
-          version: item.version,
-        },
-        entry.occurrence && scope
-          ? { scope, occurrence: entry.occurrence }
-          : {},
+      if (!currentOwner()) return;
+      const startIso = start.toISOString();
+      // A task without an end keeps none; moving only changes its due time.
+      const endIso = entry.end_at || resized ? end.toISOString() : null;
+      const key = entryKey(entry);
+      setData(
+        (d) =>
+          d && {
+            ...d,
+            entries: d.entries.map((x) =>
+              entryKey(x) === key
+                ? { ...x, start_at: startIso, end_at: endIso }
+                : x,
+            ),
+          },
       );
-      await onChanged();
-    } catch (e) {
-      if ((e as HttpError).status === 401) report(e);
-      else
-        toast({
-          tone: "warn",
-          text:
-            (e as HttpError).status === 409
-              ? `“${entry.title}” was changed somewhere else, so it stayed put. It now shows the latest; try again.`
-              : `Couldn't move “${entry.title}”. ${errorText(e)}`,
-        });
+      try {
+        const known = itemMap.get(entry.item_id);
+        const item =
+          known && known.version >= entry.version
+            ? known
+            : await client.getItem(entry.item_id);
+        if (!currentOwner()) return;
+        if (!canWrite(item)) throw new Error("You can’t change this item.");
+        // The full body, as the editor sends it; planning and event fields
+        // left out keep their saved values.
+        // "All" moves the whole series by the same amount; "this" and
+        // "following" take the occurrence's new times.
+        const whole = scope === "all" && !!item.due_at;
+        const dueIso = whole
+          ? new Date(
+              Date.parse(item.due_at!) +
+                (start.getTime() - Date.parse(entry.start_at)),
+            ).toISOString()
+          : startIso;
+        const dueEnd =
+          whole && endIso
+            ? new Date(
+                Date.parse(dueIso) + (end.getTime() - start.getTime()),
+              ).toISOString()
+            : endIso;
+        await client.updateItem(
+          item.id,
+          {
+            title: item.title,
+            notes: item.notes ?? "",
+            kind: item.kind,
+            status: item.status,
+            priority: item.priority,
+            due_at: dueIso,
+            end_at: dueEnd,
+            team_id: item.team_id ?? null,
+            version: item.version,
+          },
+          entry.occurrence && scope
+            ? { scope, occurrence: entry.occurrence }
+            : {},
+        );
+        if (currentOwner()) await onChanged();
+      } catch (e) {
+        if (!currentOwner()) return;
+        if ((e as HttpError).status === 401) report(e);
+        else
+          toast({
+            tone: "warn",
+            text:
+              (e as HttpError).status === 409
+                ? `“${entry.title}” was changed somewhere else, so it stayed put. It now shows the latest; try again.`
+                : `Couldn't move “${entry.title}”. ${errorText(e)}`,
+          });
+      }
+      if (currentOwner()) await reload();
+    } finally {
+      endWrite();
     }
-    await reload();
   };
 
   // ---- frames ----
   const unskipFrame = async (f: FrameOccurrence) => {
+    if (!beginWrite()) return;
     try {
-      await client.unskipFrame(f.frame_id, f.date);
-    } catch (e) {
-      report(e);
+      if (!currentOwner()) return;
+      try {
+        await client.unskipFrame(f.frame_id, f.date);
+      } catch (e) {
+        if (!currentOwner()) return;
+        report(e);
+      }
+      if (currentOwner()) await reload();
+    } finally {
+      endWrite();
     }
-    await reload();
   };
   const skipFrame = async (f: FrameOccurrence) => {
+    if (!beginWrite()) return;
     try {
-      await client.skipFrame(f.frame_id, f.date);
-      toast({
-        text: `Skipped ${f.name} on ${shortDay(f.start_at)}.`,
-        action: { label: "Undo", run: () => void unskipFrame(f) },
-      });
-    } catch (e) {
-      report(e);
+      if (!currentOwner()) return;
+      try {
+        await client.skipFrame(f.frame_id, f.date);
+        if (!currentOwner()) return;
+        toast({
+          text: `Skipped ${f.name} on ${shortDay(f.start_at)}.`,
+          action: {
+            label: "Undo",
+            run: () => undoAfterSave(() => void unskipFrame(f)),
+          },
+        });
+      } catch (e) {
+        if (!currentOwner()) return;
+        report(e);
+      }
+      if (currentOwner()) await reload();
+    } finally {
+      endWrite();
     }
-    await reload();
   };
 
   const step = (dir: -1 | 1) => {
@@ -740,32 +954,59 @@ export function CalendarView({
       end_at: new Date(start.getTime() + 60 * 60_000).toISOString(),
     });
   };
+  // A confirmed completion cannot be applied again through an old calendar row.
+  const completedVersions = useRef(new Map<string, number>());
   const complete = async (itemId: string, repeating = false) => {
+    if (!beginWrite()) return;
     try {
-      const next = await client.postItemUpdate(itemId, { status: "done" });
-      celebrate();
-      // A repeating task moves on to its next occurrence instead of closing.
-      if (repeating && next.status !== "done" && next.due_at)
-        toast({ text: `Done — next on ${dateLabel(next.due_at)}.` });
-    } catch (e) {
-      report(e);
+      if (!currentOwner()) return;
+      try {
+        const item = await resolve(itemId);
+        if (!currentOwner() || !canWrite(item)) return;
+        const next = await client.postItemUpdate(itemId, { status: "done" });
+        if (!currentOwner()) return;
+        completedVersions.current.set(itemId, next.version);
+        celebrate();
+        // A repeating task moves on to its next occurrence instead of closing.
+        if (repeating && next.status !== "done" && next.due_at)
+          toast({ text: `Done — next on ${dateLabel(next.due_at)}.` });
+      } catch (e) {
+        if (!currentOwner()) return;
+        report(e);
+      }
+      await changed();
+    } finally {
+      endWrite();
     }
-    await changed();
   };
   /** A cancelled task back to "to do". */
   const reopen = async (itemId: string) => {
+    if (!beginWrite()) return;
     try {
-      await client.postItemUpdate(itemId, { status: "todo" });
-    } catch (e) {
-      report(e);
+      if (!currentOwner()) return;
+      try {
+        const item = await resolve(itemId);
+        if (!currentOwner() || !canWrite(item)) return;
+        await client.postItemUpdate(itemId, { status: "todo" });
+      } catch (e) {
+        if (!currentOwner()) return;
+        report(e);
+      }
+      await changed();
+    } finally {
+      endWrite();
     }
-    await changed();
   };
   /** Open tasks you can change; for a repeating one, only its current occurrence. */
   const canComplete = (e: CalendarEntry) => {
-    if (e.kind !== "task" || isClosed(e.status)) return false;
+    if (
+      e.kind !== "task" ||
+      isClosed(e.status) ||
+      e.version < (completedVersions.current.get(e.item_id) ?? 0)
+    )
+      return false;
     const item = itemMap.get(e.item_id);
-    if (item && !canWrite(item)) return false;
+    if (item && (!canWrite(item) || isClosed(item.status))) return false;
     if (!e.occurrence) return true;
     return !!item?.due_at && Date.parse(item.due_at) === Date.parse(e.start_at);
   };
@@ -778,6 +1019,8 @@ export function CalendarView({
     onModeChange,
     togglePlanner,
     sets,
+    chooseSet,
+    ownsShortcuts,
     newEvent,
     slot,
   });
@@ -787,6 +1030,8 @@ export function CalendarView({
     onModeChange,
     togglePlanner,
     sets,
+    chooseSet,
+    ownsShortcuts,
     newEvent,
     slot,
   };
@@ -800,13 +1045,22 @@ export function CalendarView({
   useEffect(() => {
     if (blocked) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.defaultPrevented || isTyping(e)) return;
+      if (
+        e.defaultPrevented ||
+        isTyping(e) ||
+        latest.current.ownsShortcuts?.() === false ||
+        document.querySelector(
+          'dialog[open], [aria-modal="true"], .popover, .select-list.is-floating',
+        )
+      )
+        return;
       const {
         step,
         onDateChange,
         onModeChange,
         togglePlanner,
         sets,
+        chooseSet,
         newEvent,
         slot,
       } = latest.current;
@@ -887,7 +1141,15 @@ export function CalendarView({
   const menuItem = menuEntry ? itemMap.get(menuEntry.item_id) : undefined;
 
   return (
-    <div className={"calendar-page" + (showSide ? " with-side" : "")}>
+    <div
+      ref={pageRef}
+      aria-busy={changing || timeSaveBusy || loading}
+      className={
+        "calendar-page" +
+        (showSide ? " with-side" : "") +
+        (availableWidth <= 1250 ? " is-stacked" : "")
+      }
+    >
       <section className="card calendar" aria-label="Calendar">
         <div className="calendar-toolbar">
           <div className="calendar-nav">
@@ -940,11 +1202,10 @@ export function CalendarView({
                 title="Calendar set (number keys)"
                 onChange={(e) => chooseSet(e.target.value)}
               >
-                <option value="">Everything (0)</option>
-                {sets.map((s, n) => (
+                <option value="">Everything</option>
+                {sets.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name}
-                    {n < 9 ? ` (${n + 1})` : ""}
                   </option>
                 ))}
               </Select>
@@ -1014,7 +1275,12 @@ export function CalendarView({
           >
             <span>{note.text}</span>
             {note.actions.map((a) => (
-              <button key={a.label} className="text-button" onClick={a.run}>
+              <button
+                key={a.label}
+                className="text-button"
+                disabled={changing || timeSaveBusy}
+                onClick={a.run}
+              >
                 {a.label}
               </button>
             ))}
@@ -1028,6 +1294,34 @@ export function CalendarView({
           </div>
         )}
 
+        {changing ? (
+          <small className="calendar-load-status" role="status">
+            Saving calendar…
+          </small>
+        ) : failed ? (
+          <div className="calendar-note is-warn" role="alert">
+            <span>Couldn't load the calendar.</span>
+            <button className="text-button" onClick={() => void reload()}>
+              Retry
+            </button>
+          </div>
+        ) : loading ? (
+          <small className="calendar-load-status" role="status">
+            Loading calendar…
+          </small>
+        ) : null}
+
+        {fieldDatesFailed && (
+          <div className="calendar-note is-warn" role="alert">
+            <span>Page and project dates couldn’t load.</span>
+            <button
+              className="text-button"
+              onClick={() => setFieldDatesRetry((v) => v + 1)}
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {gridMode && (
           <TeammatesLegend shown={mates.shown} onClear={mates.clear} />
         )}
@@ -1169,8 +1463,10 @@ export function CalendarView({
         <EntryMenu
           entry={menu.entry}
           anchor={menu.anchor}
-          canWrite={menuItem ? canWrite(menuItem) : true}
-          canComplete={canComplete(menu.entry)}
+          canWrite={
+            !changing && !timeSaveBusy && (menuItem ? canWrite(menuItem) : true)
+          }
+          canComplete={!changing && canComplete(menu.entry)}
           onReopen={() => void reopen(menu.entry.item_id)}
           onClose={() => setMenu(null)}
           onOpen={() =>
@@ -1203,7 +1499,7 @@ export function CalendarView({
                 menu.entry.item_id,
                 menu.entry.occurrence!,
               );
-              await onChanged();
+              if (currentOwner()) await onChanged();
             })
           }
         />
@@ -1212,7 +1508,11 @@ export function CalendarView({
         <BlockMenu
           block={menu.block}
           anchor={menu.anchor}
-          canWrite={menuBlockItem ? canWrite(menuBlockItem) : true}
+          canWrite={
+            !changing &&
+            !timeSaveBusy &&
+            (menuBlockItem ? canWrite(menuBlockItem) : true)
+          }
           onClose={() => setMenu(null)}
           onOpen={() => withItem(menu.block.item_id, onOpen)}
           onFocus={() => withItem(menu.block.item_id, onFocus)}
@@ -1222,9 +1522,11 @@ export function CalendarView({
           onChangeTime={() => setDialog({ kind: "move", block: menu.block })}
           onFindTime={() => void moveBeforeDeadline(menu.block)}
           onDelete={async () => {
+            if (!currentOwner()) return;
             if (
               await ask({
-                title: `Delete this session for “${menu.block.title}”?`,
+                title: "Delete session?",
+                body: menu.block.title,
                 confirmLabel: "Delete",
                 destructive: true,
               })
@@ -1264,11 +1566,12 @@ export function CalendarView({
           subject={dialog.item.title}
           start={nextQuarter(date)}
           minutes={Math.min(dialog.item.estimate_minutes ?? 30, 1440)}
-          onClose={() => setDialog(null)}
-          onSave={(start, end) => {
-            createBlock(dialog.item, start, end);
-            setDialog(null);
+          busy={timeSaveBusy}
+          error={timeSaveError}
+          onClose={() => {
+            if (!timeSavePending.current) setDialog(null);
           }}
+          onSave={(start, end) => void saveDialogTime(start, end)}
         />
       )}
       {dialog?.kind === "move" && (
@@ -1281,11 +1584,12 @@ export function CalendarView({
               Date.parse(dialog.block.start_at)) /
               60_000,
           )}
-          onClose={() => setDialog(null)}
-          onSave={(start, end) => {
-            changeBlock(dialog.block, start, end);
-            setDialog(null);
+          busy={timeSaveBusy}
+          error={timeSaveError}
+          onClose={() => {
+            if (!timeSavePending.current) setDialog(null);
           }}
+          onSave={(start, end) => void saveDialogTime(start, end)}
         />
       )}
       {dialog?.kind === "sets" && (
@@ -1295,7 +1599,9 @@ export function CalendarView({
           lists={planning.lists}
           onClose={() => setDialog(null)}
           onSave={async (next) => {
+            if (!currentOwner()) return;
             await planning.savePrefs({ calendar_sets: next });
+            if (!currentOwner()) return;
             if (setId && !next.some((s) => s.id === setId)) chooseSet("");
           }}
         />
@@ -1313,80 +1619,24 @@ export function CalendarView({
         />
       )}
       {deadlineDrop && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setDeadlineDrop(null);
+        <DeadlineDropDialog
+          title={deadlineDrop.entry.title}
+          start={deadlineDrop.start}
+          onClose={() => setDeadlineDrop(null)}
+          onPlan={() => {
+            const drop = deadlineDrop;
+            setDeadlineDrop(null);
+            withItem(drop.entry.item_id, (item) =>
+              createBlock(item, drop.start),
+            );
           }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setDeadlineDrop(null);
+          onMove={() => {
+            const drop = deadlineDrop;
+            setDeadlineDrop(null);
+            if (drop.entry.occurrence) setScopeAsk({ ...drop, resized: false });
+            else void saveMove(drop.entry, drop.start, drop.end, false);
           }}
-        >
-          <section
-            className="modal modal-small"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="deadline-drop-title"
-          >
-            <div className="section-heading">
-              <h2 id="deadline-drop-title">{deadlineDrop.entry.title}</h2>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Cancel"
-                onClick={() => setDeadlineDrop(null)}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <p className="muted modal-lead">
-              What should happen at {deadlineDrop.start.toLocaleString()}?
-            </p>
-            <div className="scope-options">
-              <button
-                type="button"
-                className="primary"
-                autoFocus
-                onClick={() => {
-                  const drop = deadlineDrop;
-                  setDeadlineDrop(null);
-                  withItem(drop.entry.item_id, (item) =>
-                    createBlock(item, drop.start),
-                  );
-                }}
-              >
-                Plan a session here
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => {
-                  const drop = deadlineDrop;
-                  setDeadlineDrop(null);
-                  if (drop.entry.occurrence)
-                    setScopeAsk({ ...drop, resized: false });
-                  else void saveMove(drop.entry, drop.start, drop.end, false);
-                }}
-              >
-                Move the deadline to{" "}
-                {deadlineDrop.start.toLocaleString([], {
-                  weekday: "short",
-                  day: "numeric",
-                  month: "short",
-                  hour: "numeric",
-                  minute: "2-digit",
-                })}
-              </button>
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => setDeadlineDrop(null)}
-              >
-                Cancel
-              </button>
-            </div>
-          </section>
-        </div>
+        />
       )}
       {dialog?.kind === "frame" && (
         <FrameDialog

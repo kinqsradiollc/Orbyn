@@ -6,6 +6,8 @@ import {
   type ConnectionMap,
   type ConnectionNode,
 } from "@orbyn/core";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { client } from "../../lib/api";
 import { openObject, peekObject } from "../docs/DocLinks";
 import "./connections.css";
@@ -45,38 +47,42 @@ export function ConnectionsMap({
   const [depth, setDepth] = useState<1 | 2>(1);
   const [map, setMap] = useState<ConnectionMap | null>(null);
   const [big, setBig] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   const reportRef = useRef(report);
   reportRef.current = report;
   useEffect(() => {
     let live = true;
+    setMap(null);
+    setFailed(false);
+    setBig(false);
     client.connectionMap(kind, id, depth).then(
       (m) => live && setMap(m),
       (e) => {
         if (!live) return;
-        setMap({ nodes: [], edges: [], truncated: false });
+        setFailed(true);
         reportRef.current(e);
       },
     );
     return () => {
       live = false;
     };
-  }, [kind, id, depth, revision]);
+  }, [kind, id, depth, revision, retry]);
 
-  const neighbours = (map?.nodes.length ?? 1) - 1;
+  const neighbours = Math.max(0, (map?.nodes.length ?? 1) - 1);
   return (
     <section className={`${className} connections`}>
       <div className="connections-head">
         <h3>Connections</h3>
         <div
           className="connections-depth"
-          role="radiogroup"
+          role="group"
           aria-label="How far out"
         >
           {([1, 2] as const).map((d) => (
             <button
               key={d}
-              role="radio"
-              aria-checked={depth === d}
+              aria-pressed={depth === d}
               className={depth === d ? "is-on" : ""}
               onClick={() => setDepth(d)}
             >
@@ -95,48 +101,96 @@ export function ConnectionsMap({
           </button>
         )}
       </div>
-      {map === null ? (
-        <p className="connections-note">Drawing the map…</p>
+      {failed ? (
+        <p className="connections-note" role="alert">
+          Could not load connections.{" "}
+          <button className="text-button" onClick={() => setRetry(retry + 1)}>
+            Retry
+          </button>
+        </p>
+      ) : map === null ? (
+        <p className="connections-note">Loading connections…</p>
       ) : neighbours === 0 ? (
         <p className="connections-note">
-          <Share2 size={13} aria-hidden="true" /> Nothing is linked here yet.
-          Type [[ in a page to link one thing to another.
+          <Share2 size={13} aria-hidden="true" /> No connections yet.
         </p>
       ) : (
-        <MapDrawing map={map} size={260} />
+        <>
+          <MapDrawing map={map} size={260} />
+          <ConnectionList map={map} />
+        </>
       )}
       {map?.truncated && (
         <p className="connections-note">
-          Showing the closest {map.nodes.length - 1}. There's more further out.
+          Showing {map.nodes.length - 1} closest connections.
         </p>
       )}
       {big && map && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(e) => e.target === e.currentTarget && setBig(false)}
-        >
-          <section
-            className="modal connections-dialog scale-in"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Connections"
-          >
-            <div className="section-heading">
-              <h2>Connections</h2>
-              <button
-                className="icon-button"
-                aria-label="Close"
-                onClick={() => setBig(false)}
-                autoFocus
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <MapDrawing map={map} size={560} />
-          </section>
-        </div>
+        <ConnectionsDialog map={map} onClose={() => setBig(false)} />
       )}
     </section>
+  );
+}
+
+function ConnectionList({ map }: { map: ConnectionMap }) {
+  return (
+    <details className="connections-list">
+      <summary>Browse connections</summary>
+      {map.nodes
+        .filter((node) => node.depth > 0)
+        .map((node) => (
+          <button
+            key={node.key}
+            className="connection-list-row"
+            onClick={() => openObject({ kind: node.kind, id: node.id })}
+          >
+            <span>{node.title}</span>
+            <small>
+              {KIND_WORDS[node.kind]}
+              {node.closed ? " · Closed" : ""}
+            </small>
+          </button>
+        ))}
+    </details>
+  );
+}
+
+function ConnectionsDialog({
+  map,
+  onClose,
+}: {
+  map: ConnectionMap;
+  onClose: () => void;
+}) {
+  const focus = useModalFocus(onClose);
+  useEffect(() => {
+    const node = focus.ref.current as HTMLDialogElement;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      data-modal-focus={focus.id}
+      className="modal connections-dialog"
+      aria-labelledby="connections-dialog-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+    >
+      <div className="section-heading">
+        <h2 id="connections-dialog-title">Connections</h2>
+        <button className="icon-button" aria-label="Close" onClick={onClose}>
+          <X size={18} />
+        </button>
+      </div>
+      <MapDrawing map={map} size={560} />
+      <ConnectionList map={map} />
+    </dialog>,
+    document.body,
   );
 }
 
@@ -195,7 +249,7 @@ function MapDrawing({ map, size }: { map: ConnectionMap; size: number }) {
             aria-label={
               n.depth === 0
                 ? undefined
-                : `${KIND_WORDS[n.kind]}: ${n.title}. Opens beside.`
+                : `${KIND_WORDS[n.kind]}: ${n.title}. Enter opens; Space previews.`
             }
             onClick={(e) => open(n, !(e.metaKey || e.ctrlKey))}
             onKeyDown={(e) => {

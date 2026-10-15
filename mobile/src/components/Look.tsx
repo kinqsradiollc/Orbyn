@@ -3,6 +3,7 @@ import { Image, StyleSheet, Text, type TextStyle } from "react-native";
 import { parseLookIcon } from "@orbyn/core";
 import { fileLink } from "../screens/docs/RichBlocks";
 import { colors } from "../theme";
+import { session } from "../lib/session";
 import { Icon, type IconName } from "./Icon";
 
 /**
@@ -50,19 +51,30 @@ export function CoverImage({
   height: number;
   style?: object;
 }) {
-  const [url, setUrl] = useState<string | null>(null);
+  const owner = session.token;
+  const [image, setImage] = useState<{
+    owner: string;
+    id: string;
+    url: string;
+  } | null>(null);
   useEffect(() => {
-    setUrl(null);
+    setImage(null);
     if (!fileId) return;
     let live = true;
     fileLink(fileId).then(
-      (l) => live && setUrl(l.url),
-      () => live && setUrl(null),
+      (l) => {
+        if (live && session.token === owner)
+          setImage({ owner, id: fileId, url: l.url });
+      },
+      () => {
+        if (live && session.token === owner) setImage(null);
+      },
     );
     return () => {
       live = false;
     };
-  }, [fileId]);
+  }, [fileId, owner]);
+  const url = image?.owner === owner && image.id === fileId ? image.url : null;
   if (!fileId || !url) return null;
   return (
     <Image

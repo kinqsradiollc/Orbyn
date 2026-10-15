@@ -20,9 +20,9 @@ export type CellEdit =
 /** What the app does with a task's change (saves it and refreshes). */
 export type TaskActions = {
   /** Tick or untick, with the app's usual celebration and undo. */
-  onToggle: (item: Item) => void;
-  onSetStatus: (item: Item, status: Status) => void;
-  onChangeItem: (item: Item, change: Partial<ItemInput>) => void;
+  onToggle: (item: Item) => Promise<boolean>;
+  onSetStatus: (item: Item, status: Status) => Promise<boolean>;
+  onChangeItem: (item: Item, change: Partial<ItemInput>) => Promise<boolean>;
 };
 
 /**
@@ -36,69 +36,77 @@ export async function applyEdit(
   item: Item | undefined,
   actions: TaskActions,
   timeZone: string,
-): Promise<void> {
+): Promise<boolean> {
+  if (!row.can_write) throw new Error("This item is view only.");
   if ("field" in edit) {
+    if (row.kind === "task")
+      throw new Error("Custom fields are available on pages and projects.");
     await client.setFieldValue(
       edit.field,
       row.kind === "project" ? "project" : "page",
       row.id,
       edit.value,
     );
-    return;
+    return true;
   }
   if (row.kind === "task") {
-    if (!item) return;
+    if (!item) throw new Error("Reload this task before editing.");
     if (edit.column === "done") return actions.onToggle(item);
     const value = "value" in edit ? edit.value : null;
     switch (edit.column) {
       case "title":
-        if (value) actions.onChangeItem(item, { title: value });
-        return;
+        if (value) return actions.onChangeItem(item, { title: value });
+        throw new Error("Choose a value before saving.");
       case "status":
-        if (value) actions.onSetStatus(item, value as Status);
-        return;
+        if (value) return actions.onSetStatus(item, value as Status);
+        throw new Error("Choose a value before saving.");
       case "priority":
         if (value)
-          actions.onChangeItem(item, {
+          return actions.onChangeItem(item, {
             priority: value as ItemInput["priority"],
           });
-        return;
+        throw new Error("Choose a priority.");
       case "estimate": {
         const minutes = value ? parseMinutes(value) : null;
         if (value && minutes === null)
           throw new Error("Write the estimate in minutes, like 90 or 1h 30.");
-        actions.onChangeItem(item, {
-          estimate_minutes: minutes ? Math.min(minutes, 10080) : null,
+        if (minutes !== null && minutes > 10080)
+          throw new Error("Use an estimate of 10080 minutes or less.");
+        return actions.onChangeItem(item, {
+          estimate_minutes: minutes || null,
         });
-        return;
       }
       case "due": {
         const moved = viewDueChange(item, value, timeZone);
         if (!moved.ok) throw new Error(moved.reason);
-        actions.onChangeItem(item, moved.change);
-        return;
+        return actions.onChangeItem(item, moved.change);
       }
     }
-    return;
+    throw new Error("This field cannot be edited here.");
   }
   const value = "value" in edit ? edit.value : null;
   if (row.kind === "page") {
-    if (edit.column === "title" && value && row.version)
-      await client.updateDoc(row.id, { title: value, version: row.version });
-    return;
+    if (edit.column !== "title")
+      throw new Error("This field cannot be edited here.");
+    if (!value) throw new Error("Enter a title.");
+    if (!row.version) throw new Error("Reload this page before editing.");
+    await client.updateDoc(row.id, { title: value, version: row.version });
+    return true;
   }
   switch (edit.column) {
     case "title":
-      if (value) await client.updateProject(row.id, { name: value });
-      return;
+      if (!value) throw new Error("Enter a name.");
+      await client.updateProject(row.id, { name: value });
+      return true;
     case "status":
-      if (value)
-        await client.updateProject(row.id, { status: value as ProjectStatus });
-      return;
+      if (!value) throw new Error("Choose a status.");
+      await client.updateProject(row.id, { status: value as ProjectStatus });
+      return true;
     case "due":
       await client.updateProject(row.id, {
         deadline: changeProjectDeadline(row.due_at, { day: value }, timeZone),
       });
-      return;
+      return true;
   }
+  throw new Error("This field cannot be edited here.");
 }

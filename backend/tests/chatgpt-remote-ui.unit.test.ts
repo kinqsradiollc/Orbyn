@@ -307,6 +307,7 @@ function view(
             ]),
           ),
         };
+      if (id === "../../lib/alert") return { Alert: { alert: () => {} } };
       if (id.endsWith("/motion")) return { Pressable: "Pressable" };
       if (id.endsWith("/Select")) return { Select: "Select" };
       if (id.endsWith("/SmallAction")) return { SmallAction: "SmallAction" };
@@ -499,7 +500,7 @@ for (const app of ["desktop", "mobile"] as const) {
 test("native Connect invokes local sign-in and resumes the app-owned executor without desktop handoff", async () => {
   const f = view("mobile", viewState());
   const action = elements(f.render()).find(
-    (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+    (n) => n.type === "SmallAction" && n.props.label === "Connect ChatGPT",
   );
   assert.ok(action);
   assert.equal(action.props.disabled, false);
@@ -518,7 +519,7 @@ test("failed or cancelled native reconnect restores the previous executor withou
   for (const outcome of ["cancel", "failure"] as const) {
     const f = view("mobile", viewState(), outcome);
     const action = elements(f.render()).find(
-      (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+      (n) => n.type === "SmallAction" && n.props.label === "Connect ChatGPT",
     );
     action.props.onPress();
     await new Promise((resolve) => setImmediate(resolve));
@@ -530,8 +531,7 @@ test("failed or cancelled native reconnect restores the previous executor withou
     ]);
     assert.equal(
       elements(f.render()).find(
-        (n) =>
-          n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+        (n) => n.type === "SmallAction" && n.props.label === "Connect ChatGPT",
       ).props.disabled,
       false,
     );
@@ -639,7 +639,7 @@ test("native Settings shows ended-session recovery with Connect and Disconnect a
   assert.ok(
     tree.some((n) => String(n.props.children).includes("session has ended")),
   );
-  for (const label of ["Connect to ChatGPT", "Disconnect this device"]) {
+  for (const label of ["Connect ChatGPT", "Disconnect this device"]) {
     const action = tree.find(
       (n) => n.type === "SmallAction" && n.props.label === label,
     );
@@ -654,7 +654,7 @@ test("native Settings never starts OAuth when protected migration fails", async 
     },
   });
   const action = elements(f.render()).find(
-    (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+    (n) => n.type === "SmallAction" && n.props.label === "Connect ChatGPT",
   );
   action.props.onPress();
   await new Promise((resolve) => setImmediate(resolve));
@@ -670,7 +670,7 @@ test("native Settings does not authorize or restart an old owner after migration
   });
   const f = view("mobile", viewState(), "success", { prepare: () => pending });
   const action = elements(f.render()).find(
-    (n) => n.type === "SmallAction" && n.props.label === "Connect to ChatGPT",
+    (n) => n.type === "SmallAction" && n.props.label === "Connect ChatGPT",
   );
   action.props.onPress();
   action.props.onPress();

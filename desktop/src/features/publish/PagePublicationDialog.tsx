@@ -52,7 +52,12 @@ export function PagePublicationDialog({
     >
       <header className="section-heading">
         <h2 id="publication-title">Share page</h2>
-        <button disabled={s.busy} aria-label="Close sharing" onClick={onClose}>
+        <button
+          className="icon-button"
+          disabled={s.busy}
+          aria-label="Close sharing"
+          onClick={onClose}
+        >
           ×
         </button>
       </header>
@@ -121,8 +126,7 @@ export function PagePublicationDialog({
                         }
                       />
                       <span>
-                        {index + 1}.{" "}
-                        {blockText(block).slice(0, 100) || block.type}
+                        {index + 1}. {blockText(block) || block.type}
                       </span>
                     </label>
                   ),

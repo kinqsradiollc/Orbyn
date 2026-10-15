@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { Star } from "lucide-react";
+import { useEffect, useState } from "react";
+import { MoreHorizontal, Star } from "lucide-react";
 import type { OutlineEntry } from "@orbyn/core";
+import { Popover } from "../../components/Popover";
 
 /**
  * A page's headings as its contents (NAV-03): click one to jump there. On
@@ -30,6 +31,11 @@ export function DocOutline({
   label?: string;
   className?: string;
 }) {
+  const [moving, setMoving] = useState<{
+    entry: OutlineEntry;
+    anchor: DOMRect;
+  } | null>(null);
+  useEffect(() => setMoving(null), [outline]);
   const [dragging, setDragging] = useState<number | null>(null);
   const [over, setOver] = useState<number | null>(null);
   if (!outline.length) return null;
@@ -79,6 +85,22 @@ export function DocOutline({
             >
               {entry.text}
             </button>
+            {onMoveSection && outline.length > 1 && (
+              <button
+                type="button"
+                className="doc-outline-move"
+                aria-label={`Move section ${entry.text}`}
+                aria-haspopup="dialog"
+                onClick={(event) =>
+                  setMoving({
+                    entry,
+                    anchor: event.currentTarget.getBoundingClientRect(),
+                  })
+                }
+              >
+                <MoreHorizontal size={14} aria-hidden="true" />
+              </button>
+            )}
             {onStar && (
               <button
                 type="button"
@@ -106,6 +128,33 @@ export function DocOutline({
           </li>
         ))}
       </ol>
+      {moving && onMoveSection && (
+        <Popover
+          label="Move section"
+          anchor={moving.anchor}
+          onClose={() => setMoving(null)}
+          width={300}
+        >
+          <div className="doc-menu">
+            <p className="doc-menu-label">Move before</p>
+            {outline
+              .filter((entry) => entry !== moving.entry)
+              .map((entry) => (
+                <button
+                  type="button"
+                  className="doc-menu-item"
+                  key={entry.index}
+                  onClick={() => {
+                    onMoveSection(moving.entry, entry);
+                    setMoving(null);
+                  }}
+                >
+                  {entry.text}
+                </button>
+              ))}
+          </div>
+        </Popover>
+      )}
     </nav>
   );
 }

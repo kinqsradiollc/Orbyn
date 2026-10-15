@@ -17,6 +17,7 @@ type Props = {
   slots: BusyInterval[];
   loading: boolean;
   error?: string;
+  onRetry?: () => void;
   /** The picked start, highlighted, when picking doesn't move on at once. */
   selected?: string | null;
   onPick: (slot: BusyInterval) => void;
@@ -35,6 +36,7 @@ export function SlotPicker({
   slots,
   loading,
   error = "",
+  onRetry,
   selected,
   onPick,
   exclude,
@@ -52,7 +54,9 @@ export function SlotPicker({
   }
   const strip = Array.from({ length: 7 }, (_, n) => addDays(date, n));
   const shownDay =
-    day && byDay.has(day) ? day : (strip.find((k) => byDay.has(k)) ?? null);
+    day && strip.includes(day) && byDay.has(day)
+      ? day
+      : (strip.find((k) => byDay.has(k)) ?? null);
   const times = shownDay ? (byDay.get(shownDay) ?? []) : [];
   const pickDay = (k: string) => {
     setOwnDay(k);
@@ -60,13 +64,13 @@ export function SlotPicker({
   };
 
   return (
-    <div className="booking-picker">
+    <div className="booking-picker" aria-busy={loading}>
       <div className="date-strip-head">
         <button
           type="button"
           className="icon-button"
           aria-label="Earlier days"
-          disabled={date <= today}
+          disabled={loading || date <= today}
           onClick={() =>
             onDateChange(addDays(date, -7) < today ? today : addDays(date, -7))
           }
@@ -81,6 +85,7 @@ export function SlotPicker({
           type="button"
           className="icon-button"
           aria-label="Later days"
+          disabled={loading}
           onClick={() => onDateChange(addDays(date, 7))}
         >
           <ChevronRight size={18} />
@@ -95,7 +100,7 @@ export function SlotPicker({
               type="button"
               aria-pressed={shownDay === k}
               className={shownDay === k ? "active" : ""}
-              disabled={!count}
+              disabled={loading || Boolean(error) || !count}
               aria-label={`${keyLabel(k, { weekday: "long", month: "long", day: "numeric" })}, ${count} ${count === 1 ? "time" : "times"}`}
               onClick={() => pickDay(k)}
             >
@@ -110,9 +115,21 @@ export function SlotPicker({
       ) : error ? (
         <div className="error" role="alert">
           {error}
+          {onRetry && (
+            <button type="button" className="text-button" onClick={onRetry}>
+              Retry
+            </button>
+          )}
         </div>
       ) : times.length ? (
-        <ul className="time-grid" aria-label="Free times">
+        <ul
+          className="time-grid"
+          aria-label={
+            shownDay
+              ? `Free times on ${keyLabel(shownDay, { weekday: "long", month: "long", day: "numeric" })}`
+              : "Free times"
+          }
+        >
           {times.map((s) => (
             <li key={s.start_at}>
               <button

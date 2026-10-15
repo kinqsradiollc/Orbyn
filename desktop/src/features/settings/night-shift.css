@@ -10,6 +10,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   min-height: 44px;
   font-size: 13px;
@@ -28,4 +29,28 @@
 }
 .night-shift .muted {
   margin: 0;
+}
+
+.night-shift .night-shift-form-fields {
+  border: 0;
+  padding: 0;
+  gap: 16px;
+}
+
+.night-shift form {
+  min-width: 0;
+}
+.night-shift label.settings-field > span {
+  min-width: 0;
+  flex: 1 1 160px;
+  overflow-wrap: anywhere;
+}
+.night-shift legend {
+  font-size: 13px;
+  font-weight: 500;
+}
+.night-shift .select,
+.night-shift .date-field {
+  min-width: 0;
+  max-width: 100%;
 }

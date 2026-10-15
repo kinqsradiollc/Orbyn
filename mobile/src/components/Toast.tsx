@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { TOAST_MS } from "@orbyn/core";
-import { FadeIn, Pressable } from "../motion";
+import { Pressable } from "../motion";
 import { Icon } from "./Icon";
 import { colors, fonts, radii, themed } from "../theme";
 
@@ -78,7 +78,7 @@ export function ToastHost() {
   if (!toast || hosts[hosts.length - 1] !== id) return null;
   return (
     <View pointerEvents="box-none" style={[s.region, { top: insets.top + 8 }]}>
-      <FadeIn key={toast.key} from="down" style={s.toast}>
+      <View key={toast.key} style={s.toast}>
         <Text style={s.text} accessibilityRole="alert">
           {toast.text}
         </Text>
@@ -105,7 +105,7 @@ export function ToastHost() {
         >
           <Icon name="x" size={14} color={colors.muted} />
         </Pressable>
-      </FadeIn>
+      </View>
     </View>
   );
 }
@@ -123,6 +123,7 @@ const s = themed(() =>
       width: "100%",
       maxWidth: 480,
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 8,
       minHeight: 48,
@@ -141,13 +142,15 @@ const s = themed(() =>
     },
     text: {
       flex: 1,
+      flexBasis: 160,
+      minWidth: 0,
       color: colors.text,
       fontFamily: fonts.medium,
       fontSize: 13,
       lineHeight: 18,
     },
     action: {
-      minHeight: 34,
+      minHeight: 44,
       paddingHorizontal: 10,
       borderRadius: radii.input,
       justifyContent: "center",
@@ -158,8 +161,8 @@ const s = themed(() =>
       fontSize: 13,
     },
     close: {
-      width: 34,
-      height: 34,
+      width: 44,
+      height: 44,
       borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",

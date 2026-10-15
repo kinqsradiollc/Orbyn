@@ -1453,6 +1453,7 @@ export const FRONTMATTER_LANG = "orbyn-frontmatter";
 
 /** A human label for preserved source, without exposing internal language names. */
 export function docCodeLabel(lang: string): string {
+  if (lang === "latex-document") return "LaTeX document";
   return lang === FRONTMATTER_LANG
     ? "Page metadata"
     : lang

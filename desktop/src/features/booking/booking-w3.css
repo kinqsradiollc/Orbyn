@@ -117,7 +117,7 @@
 /* A profile page's booking pages. */
 .profile-pages {
   display: grid;
-  gap: 8px;
+  gap: 0;
   margin: 16px 0 0;
   padding: 0;
   list-style: none;
@@ -126,14 +126,15 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  min-height: 44px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color-border);
+  overflow-wrap: anywhere;
   color: inherit;
   text-decoration: none;
 }
 .profile-pages a:hover {
-  border-color: var(--green);
+  color: var(--color-accent);
 }
 .profile-pages a > span {
   display: flex;
@@ -148,4 +149,52 @@
 }
 .embed-code {
   overflow-wrap: anywhere;
+}
+
+.profile-pages li:last-child a {
+  border-bottom: 0;
+}
+.profile-pages a > svg,
+.profile-pages .list-dot {
+  flex-shrink: 0;
+}
+.profile-pages small {
+  white-space: pre-wrap;
+}
+
+.invite-editor {
+  width: min(840px, calc(100vw - 24px));
+  padding: 0;
+}
+.invite-editor .settings-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+}
+
+.wp-grid-detail > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.wp-grid-detail[open] > summary {
+  margin-bottom: 8px;
+}
+.wp-add > label {
+  flex: 1 1 100px;
+  min-width: 0;
+  font-size: 13px;
+}
+.wp-add input {
+  width: 100%;
+  min-width: 0;
+}
+.wp-list .chip {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.wp-list .icon-button {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
 }

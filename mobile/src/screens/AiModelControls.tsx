@@ -56,7 +56,9 @@ export function AiModelControls({
   return (
     <Disclosure
       title="Model controls"
-      detail={model.trim() || "Choose a model first"}
+      detail={
+        error ? "Needs attention" : model.trim() || "Choose a model first"
+      }
     >
       <Text style={shared.label}>Reasoning effort</Text>
       <Segmented

@@ -99,7 +99,7 @@
   color: var(--color-text);
   background: var(--color-surface);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--control-fs);
 }
 .ai-history-list {
   flex: 1;
@@ -141,6 +141,7 @@
 }
 .ai-history-chat-title {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 5px;
   min-width: 0;
@@ -149,17 +150,15 @@
 }
 .ai-history-chat-title > span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .ai-history-chat-title > svg {
   flex: none;
 }
 .ai-history-open small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-size: 11px;
   color: var(--color-textSoft);
 }
@@ -186,10 +185,10 @@
 }
 .ai-scope {
   margin-right: auto;
-  max-width: min(60vw, 360px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  max-width: min(100%, 360px);
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 .ai-upcoming-trigger[aria-expanded="true"] {
   background: var(--color-surfaceMuted);
@@ -207,13 +206,14 @@
   padding: 8px max(var(--ai-inset), calc((100% - var(--ai-column)) / 2)) 36px;
   scrollbar-gutter: stable both-edges;
 }
-/* Empty: the greeting sits about 40% of the way down, the composer directly
-   under it, the suggestions under that, and the note at the very bottom. */
+/* Empty conversations keep the greeting in the available writing area;
+   the composer stays in its bottom dock. */
 .ai-chat.is-empty .ai-thread {
-  flex: 0 1 44%;
+  flex: 0 1 auto;
+  margin-top: auto;
   justify-content: flex-end;
-  overflow: hidden;
-  padding-bottom: 28px;
+  overflow-y: auto;
+  padding-bottom: 24px;
 }
 .ai-greeting {
   font-family: "Manrope", sans-serif;
@@ -224,14 +224,15 @@
   text-align: center;
   margin: 0;
   flex-shrink: 0;
-  animation: motion-fade-up var(--motion-slow) var(--ease-out) backwards;
+  animation: none;
 }
 
-/* Suggestions under the composer: plain rows, an icon and one line each. */
+/* Optional starting requests sit above the composer and wrap to pane width. */
 .ai-suggestions {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
   text-align: left;
 }
 .ai-suggestions button {
@@ -241,12 +242,12 @@
   gap: 14px;
   text-align: left;
   min-width: 0;
-  min-height: 60px;
-  padding: 0 16px;
+  min-height: 44px;
+  padding: 8px 12px;
   line-height: 1.4;
   border: 0;
   border-radius: var(--radius-lg);
-  background: #fff;
+  background: var(--color-surfaceMuted);
   cursor: pointer;
   transition:
     border-color var(--motion-fast) var(--ease-out),
@@ -255,8 +256,8 @@
     transform var(--motion-fast) var(--ease-out);
 }
 .ai-suggestions button:hover:not(:disabled) {
-  border-color: #cfe0d4;
-  background: #f6f9f5;
+  border-color: var(--color-border);
+  background: var(--color-sunken);
 }
 .ai-suggestions button:disabled {
   opacity: 0.5;
@@ -266,13 +267,11 @@
   font-size: 15px;
   color: var(--color-text);
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .ai-suggestions svg {
   flex-shrink: 0;
-  color: var(--green);
+  color: var(--color-textSoft);
 }
 /* Messages. */
 .ai-row {
@@ -289,7 +288,7 @@
 }
 /* New messages rise in: the assistant's from the left, yours from the right. */
 .ai-row {
-  animation: motion-slide-from-left var(--motion-base) var(--ease-out) backwards;
+  animation: none;
 }
 .ai-row-user {
   animation-name: motion-slide-from-right;
@@ -321,7 +320,7 @@
   padding: 2px 0;
 }
 .ai-bubble-bot {
-  background: #f6f8f6;
+  background: var(--color-sunken);
   border: 1px solid var(--border);
   border-top-left-radius: 5px;
   flex: 0 1 auto;
@@ -377,7 +376,7 @@
   flex-shrink: 0;
   color: var(--color-textSoft);
   font-size: 13px;
-  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
+  animation: none;
 }
 .ai-run-status > span {
   flex: 1;
@@ -422,23 +421,18 @@
   gap: 8px;
   margin-top: 12px;
 }
-.ai-actions {
-  transition: opacity var(--motion-base) var(--ease-out);
-}
 .ai-actions.is-discarded {
   opacity: 0.5;
 }
 .ai-decide {
-  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
+  animation: none;
 }
 .ai-action {
   display: flex;
   gap: 10px;
   align-items: flex-start;
-  background: #fff;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 12px 14px;
+  border-top: 1px solid var(--color-divider);
+  padding: 12px 0;
 }
 .ai-action-body {
   display: flex;
@@ -451,7 +445,7 @@
 }
 .ai-op {
   flex-shrink: 0;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
   border-radius: var(--radius-pill);
   padding: 3px 9px;
@@ -520,7 +514,7 @@
   gap: 6px;
 }
 .ai-status {
-  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
+  animation: none;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -541,7 +535,7 @@
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 10px;
   width: calc(100% - var(--ai-inset) * 2);
   max-width: var(--ai-column);
   align-self: center;
@@ -575,7 +569,7 @@
   border-color: #b9d0c0;
 }
 /* One line at rest; AssistantView grows it with its text up to the
-   max-height (about eight lines), then it scrolls inside. */
+   max-height (four lines), then it scrolls inside. */
 .ai-composer textarea {
   display: block;
   flex: 1;
@@ -588,7 +582,7 @@
   line-height: 1.5;
   padding: 8px 6px;
   min-height: calc(1.5em + 16px);
-  max-height: calc(1.5em * 8 + 16px);
+  max-height: calc(1.5em * 4 + 16px);
   overflow-y: hidden;
   background: transparent;
   color: var(--color-text);
@@ -659,19 +653,12 @@
   outline-offset: 2px;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .ai-send:active:not(:disabled),
-  .ai-tool:active:not(:disabled),
-  .ai-suggestions button:active:not(:disabled) {
-    transform: scale(var(--motion-press-scale));
-  }
-}
 @media (hover: hover) {
   .ai-send:hover:not(:disabled) {
-    background-color: #2b583f;
+    background-color: var(--color-accentText);
   }
   .ai-suggestions button:hover:not(:disabled) {
-    box-shadow: 0 6px 18px #1c31240d;
+    background-color: var(--color-sunken);
   }
 }
 
@@ -723,8 +710,8 @@
     gap: 12px;
   }
   .ai-suggestions button {
-    min-height: 52px;
-    padding: 0 12px;
+    min-height: 44px;
+    padding: 8px 12px;
   }
   .ai-note {
     padding: 4px var(--ai-inset) 8px;
@@ -752,7 +739,7 @@
 .ai-summary code {
   padding: 1px 5px;
   border-radius: var(--radius-xs);
-  background: #f1f3ef;
+  background: var(--color-chip);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 13px;
 }
@@ -765,7 +752,7 @@
   margin: 4px 0 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: #fff;
+  background: var(--color-surface);
 }
 .ai-table-wrap:last-child {
   margin-bottom: 0;
@@ -799,12 +786,12 @@
   color: var(--color-textSoft);
 }
 .ai-table tbody tr:nth-child(even) {
-  background: #f6f8f6;
+  background: var(--color-sunken);
 }
 
 /* Quick replies under the newest answer; tapping one sends it. */
 .ai-follow-ups {
-  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
+  animation: none;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -812,7 +799,10 @@
 }
 .ai-follow-ups button {
   border: 1px solid var(--border);
-  background: #fff;
+  background: var(--color-surface);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
   color: var(--green);
   border-radius: var(--radius-pill);
   padding: 10px 16px;
@@ -829,24 +819,19 @@
     transform var(--motion-fast) var(--ease-out);
 }
 .ai-follow-ups button:hover:not(:disabled) {
-  border-color: #cfe0d4;
-  background: #f6f9f5;
+  border-color: var(--color-border);
+  background: var(--color-sunken);
 }
 .ai-follow-ups button:disabled {
   opacity: 0.5;
   cursor: default;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .ai-follow-ups button:active:not(:disabled) {
-    transform: scale(var(--motion-press-scale));
-  }
 }
 
 /* Short windows and landscape phones: the greeting sits higher, the rows
    are tighter, and the field grows less before it scrolls. */
 @media (max-height: 700px) {
   .ai-chat.is-empty .ai-thread {
-    flex-basis: 34%;
+    flex-basis: 0;
     padding-bottom: 18px;
   }
   .ai-chat-head {
@@ -862,7 +847,7 @@
     min-height: 46px;
   }
   .ai-composer textarea {
-    max-height: calc(1.5em * 5 + 16px);
+    max-height: calc(1.5em * 4 + 16px);
   }
   .ai-note {
     padding-top: 4px;
@@ -885,15 +870,16 @@
 }
 .ai-sources-label {
   color: var(--color-muted);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 13px;
 }
 .ai-source {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  max-width: 220px;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 32px;
+  box-sizing: border-box;
   padding: 3px 8px;
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-pill);
@@ -902,9 +888,9 @@
   font: inherit;
   font-size: 13px;
   cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  white-space: normal;
+  text-align: left;
 }
 .ai-source:hover:not(:disabled) {
   color: var(--color-text);
@@ -1010,6 +996,7 @@
 .ai-saved-open {
   flex: 1;
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 10px;
   min-width: 0;
@@ -1021,9 +1008,9 @@
   font-size: 13px;
 }
 .ai-saved-open span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  flex: 1 1 160px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .ai-saved-open small {
   flex-shrink: 0;
@@ -1078,8 +1065,7 @@
   flex-direction: column;
   border-left: 1px solid var(--border);
   background: var(--color-surface);
-  animation: motion-slide-from-right var(--motion-base) var(--ease-out)
-    backwards;
+  animation: none;
 }
 .ai-upcoming-head {
   display: flex;
@@ -1223,7 +1209,15 @@
 }
 .ai-changes-links .link-button {
   font-size: 13px;
-  padding: 0;
+  min-height: 44px;
+  padding: 4px 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.ai-changes > .link-button {
+  justify-self: start;
+  min-height: 44px;
 }
 
 /* Conversation surfaces retain the shared message styling. */
@@ -1255,7 +1249,7 @@
   color: var(--color-muted);
 }
 .ai-chat.is-empty .ai-thread {
-  flex: 0 1 38%;
+  flex: 0 1 auto;
   justify-content: flex-end;
   overflow-y: auto;
   padding-top: 16px;
@@ -1290,7 +1284,7 @@
   gap: 16px;
 }
 .ai-bubble-user {
-  background: var(--color-accentSoft);
+  background: var(--color-surfaceMuted);
   color: var(--color-text);
   border-radius: var(--radius-lg);
 }
@@ -1334,10 +1328,8 @@
     padding: 16px;
   }
   .ai-scope {
-    position: absolute;
-    bottom: 0;
-    left: var(--ai-inset);
-    max-width: calc(100% - var(--ai-inset) * 2);
+    flex: 1 1 100%;
+    max-width: 100%;
   }
 }
 
@@ -1377,16 +1369,33 @@
 
 /* Interactive chat has a quiet workspace header; characters belong to agent profiles. */
 .ai-chat-label {
+  flex: 1 1 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--color-textSoft);
   margin-right: auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .ai-chat-head {
   justify-content: flex-start;
+  flex-wrap: wrap;
   align-items: center;
   min-height: 52px;
   padding: 6px var(--ai-inset);
+}
+.ai-chat-head > button {
+  flex-shrink: 0;
+}
+.ai-chat-head > .ai-scope {
+  flex-shrink: 1;
+}
+@media (pointer: coarse) {
+  .ai-source,
+  .ai-saved-open,
+  .ai-follow-ups button {
+    min-height: 44px;
+  }
 }
 .ai-intro {
   padding: 16px 0;
@@ -1398,4 +1407,203 @@
   font-size: 24px;
   font-weight: 500;
   color: var(--color-text);
+}
+
+/* Conversation uses a bounded readable column and an unobtrusive composer. */
+.ai-thread {
+  scrollbar-gutter: stable;
+}
+.ai-intro h2 {
+  font-size: 18px;
+  letter-spacing: -0.2px;
+}
+.ai-reply {
+  background: transparent;
+  border: 0;
+  padding: 4px 0;
+}
+.ai-reply p,
+.ai-reply li {
+  line-height: 1.6;
+}
+.ai-composer {
+  border-radius: var(--radius-lg);
+  background: var(--color-surfaceMuted);
+}
+.ai-chat-head {
+  border-bottom-color: var(--color-divider);
+}
+
+.ai-row,
+.ai-row-user {
+  animation: none;
+}
+@media (max-width: 640px), (pointer: coarse) {
+  .ai-composer textarea {
+    font-size: var(--control-fs);
+  }
+}
+
+/* Optional generated detail follows the schedule without adding another card. */
+.ai-upcoming-details {
+  min-width: 0;
+  font-size: 13px;
+}
+.ai-upcoming-details summary {
+  cursor: pointer;
+  color: var(--color-accent);
+  min-height: 32px;
+  display: list-item;
+  padding: 6px 0;
+}
+.ai-upcoming-details p {
+  margin: 6px 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.ai-upcoming-section-head {
+  flex-wrap: wrap;
+}
+@media (pointer: coarse), (max-width: 600px) {
+  .ai-upcoming-details summary {
+    min-height: 44px;
+    padding: 12px 0;
+  }
+  .ai-upcoming-pair {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ai-agent-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+/* New conversations start in the centre; active conversations keep the dock. */
+.ai-chat.is-empty .ai-dock {
+  margin-bottom: auto;
+}
+.ai-chat.is-empty .ai-suggestions {
+  order: 1;
+}
+.ai-chat.is-empty .ai-note {
+  margin-top: 0;
+}
+.ai-work-context {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  order: 1;
+  min-width: 0;
+}
+.ai-work-context > .select-wrap {
+  max-width: 100%;
+}
+.ai-chat.is-work.is-empty .ai-suggestions {
+  order: 2;
+}
+.ai-mode-switch {
+  display: flex;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  background: var(--color-surfaceMuted);
+  border-radius: var(--radius-pill);
+}
+.ai-mode-switch button {
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-pill);
+  min-height: 36px;
+  padding: 6px 12px;
+  font-size: 13px;
+}
+.ai-mode-switch button[aria-pressed="true"] {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+.ai-chat.is-compact .ai-chat-head {
+  flex-wrap: wrap;
+}
+@media (pointer: coarse) {
+  .ai-mode-switch button {
+    min-height: 44px;
+  }
+}
+
+/* Scheduled work stays readable within either the right pane or its editor. */
+.ai-upcoming-section-head {
+  flex-wrap: wrap;
+}
+.ai-upcoming-body .settings-list-main strong {
+  overflow-wrap: anywhere;
+}
+.ai-upcoming-body .settings-list-main .text-button {
+  align-self: flex-start;
+}
+.ai-upcoming-form textarea {
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.ai-draft-full {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.6;
+  padding-block: 8px;
+}
+.ai-draft > details > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.ai-draft > details > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.ai-drafts > .ai-draft {
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  border-radius: 0;
+  background: transparent;
+  padding: 12px 0;
+}
+
+/* Optional provenance and full authored note text, without filling the reply. */
+.ai-source-details > summary,
+.ai-note-details > summary {
+  min-height: 44px;
+  align-content: center;
+  cursor: pointer;
+  color: var(--color-textSoft);
+  font-size: 13px;
+}
+.ai-note-details {
+  flex-basis: 100%;
+  min-width: 0;
+}
+.ai-note-text {
+  max-height: 240px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  color: var(--color-textSoft);
+  padding-block: 8px;
+}
+
+.ai-note-text:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }

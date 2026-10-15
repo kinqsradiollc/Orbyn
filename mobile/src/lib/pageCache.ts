@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { session } from "./session";
 import {
   cachedPage,
   decodePageCache,
@@ -20,12 +21,19 @@ const KEY = "orbyn-page-cache-v1";
 
 let pages: CachedPage[] | null = null;
 let loading: Promise<CachedPage[]> | null = null;
+let generation = 0;
+let clearing: Promise<void> | null = null;
 
 async function load(): Promise<CachedPage[]> {
+  if (clearing) {
+    await clearing;
+    return load();
+  }
   if (pages) return pages;
+  const epoch = generation;
   loading ??= AsyncStorage.getItem(KEY)
-    .then((raw) => (pages = decodePageCache(raw)))
-    .catch(() => (pages = []));
+    .then((raw) => (epoch === generation ? (pages = decodePageCache(raw)) : []))
+    .catch(() => (epoch === generation ? (pages = []) : []));
   return loading;
 }
 
@@ -40,25 +48,41 @@ const save = () => void saveStrict().catch(() => {});
 
 /** A page was opened or saved: keep it, newest first. */
 export async function rememberPage(doc: Doc) {
-  pages = keepPage(await load(), doc);
+  const epoch = generation,
+    account = session.token;
+  const previous = await load();
+  if (!account || account !== session.token || epoch !== generation) return;
+  pages = keepPage(previous, doc);
   save();
 }
 
 /** A recovery copy with an awaited storage receipt for guarded editor exit. */
-export async function rememberPageDurable(doc: Doc) {
-  pages = keepPage(await load(), doc);
+export async function rememberPageDurable(doc: Doc, account = session.token) {
+  const epoch = generation;
+  const previous = await load();
+  if (!account || session.token !== account || epoch !== generation)
+    return false;
+  pages = keepPage(previous, doc);
   await saveStrict();
+  return session.token === account && epoch === generation;
 }
 
 /** A page went to Trash or is no longer shared: stop keeping it. */
 export async function forgetPage(id: string) {
-  pages = dropPage(await load(), id);
+  const epoch = generation,
+    account = session.token;
+  const previous = await load();
+  if (account !== session.token || epoch !== generation) return;
+  pages = dropPage(previous, id);
   save();
 }
 
 /** The teams were read again: drop pages from teams the person has left. */
 export async function forgetLostTeams(teamIds: string[]) {
+  const epoch = generation,
+    account = session.token;
   const before = await load();
+  if (account !== session.token || epoch !== generation) return;
   const after = keepTeamPages(before, teamIds);
   if (after.length === before.length) return;
   pages = after;
@@ -87,9 +111,18 @@ export async function keptPages(): Promise<Doc[]> {
 }
 
 /** Signing out: nothing of this account stays on the phone. */
-export async function clearPageCache() {
+export function clearPageCache(): Promise<void> {
+  generation++;
   pages = [];
   loading = null;
-  await writeTail;
-  await AsyncStorage.removeItem(KEY).catch(() => {});
+  const previous = clearing;
+  const work = (async () => {
+    await previous;
+    await writeTail;
+    await AsyncStorage.removeItem(KEY).catch(() => {});
+  })();
+  clearing = work;
+  return work.finally(() => {
+    if (clearing === work) clearing = null;
+  });
 }

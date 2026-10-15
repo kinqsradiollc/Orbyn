@@ -15,10 +15,10 @@
   right: 2px;
   z-index: 2;
   padding: 2px 6px;
-  border: 1.5px solid var(--green);
+  border: 1.5px solid var(--color-accent);
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--color-accentSoft) 70%, transparent);
-  color: var(--green);
+  color: var(--color-accent);
   font-size: 11px;
   font-weight: 650;
   overflow: hidden;
@@ -39,7 +39,7 @@
   position: absolute;
   z-index: 3;
   width: 4px;
-  border-radius: 2px;
+  border-radius: var(--radius-xs);
   pointer-events: none;
 }
 .mates-legend {
@@ -64,7 +64,7 @@
   flex: none;
   width: 10px;
   height: 10px;
-  border-radius: 3px;
+  border-radius: var(--radius-xs);
 }
 .mates-legend .text-button {
   padding: 0;
@@ -108,4 +108,22 @@
   .month-side {
     border-left: 0;
   }
+}
+
+/* Full teammate names remain readable in the picker and compact legend. */
+.mates-list .popover-check {
+  min-height: 44px;
+}
+.mates-list .popover-check > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.mates-legend-item {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.mates-legend .text-button {
+  min-height: 44px;
+  padding: 0 8px;
 }

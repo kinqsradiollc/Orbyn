@@ -17,7 +17,7 @@ export function pdfRequestHeaders(
   key: string,
   now = Date.now(),
   nonce: string = randomUUID(),
-  format: "pdf" | "html" = "pdf",
+  format: "pdf" | "html" | "latex" = "pdf",
 ) {
   const stamp = String(now);
   const digest = createHash("sha256").update(html).digest("hex");
@@ -40,12 +40,14 @@ export function buildPdfService({
   limit = 2,
   render = renderPdfSnapshot,
   renderHtml = renderHtmlSnapshot,
+  sourceKind = "html",
 }: {
   key: string;
   executable: string;
   limit?: number;
   render?: typeof renderPdfSnapshot;
   renderHtml?: typeof renderHtmlSnapshot;
+  sourceKind?: "html" | "latex";
 }) {
   if (
     key.length < 32 ||
@@ -88,7 +90,12 @@ export function buildPdfService({
       return reply
         .code(401)
         .send({ message: "PDF request authentication failed." });
-    const format = request.routeOptions.url === "/render/html" ? "html" : "pdf";
+    const format =
+      sourceKind === "latex"
+        ? "latex"
+        : request.routeOptions.url === "/render/html"
+          ? "html"
+          : "pdf";
     const expected = createHmac("sha256", key)
       .update(`orbyn-document-${format}-v1\n${stamp}\n${nonce}\n${digest}`)
       .digest("base64url");
@@ -122,12 +129,14 @@ export function buildPdfService({
     if (!started.has(request)) release(request);
   });
   app.addContentTypeParser(
-    "text/html",
+    sourceKind === "latex" ? "text/plain" : "text/html",
     { parseAs: "string", bodyLimit: MAX_HTML },
     (_r, body, done) => done(null, body),
   );
   app.get("/health", async () => ({ ok: true }));
-  for (const format of ["pdf", "html"] as const) {
+  for (const format of (sourceKind === "latex" ? ["pdf"] : ["pdf", "html"]) as (
+    "pdf" | "html"
+  )[]) {
     app.post(
       format === "pdf" ? "/render" : "/render/html",
       async (request, reply) => {
@@ -172,7 +181,9 @@ export function buildPdfService({
           if (controller.signal.aborted) return reply.hijack();
           return reply.code(503).send({
             message:
-              "Document PDF rendering is unavailable. Try again shortly.",
+              sourceKind === "latex"
+                ? "Couldn’t compile LaTeX. Check the source and try again."
+                : "Document PDF rendering is unavailable. Try again shortly.",
           });
         } finally {
           started.delete(request);

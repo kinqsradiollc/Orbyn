@@ -6,7 +6,8 @@ import { AccessibilityInfo } from "react-native";
  * Module-level so every animation can read it synchronously on first render
  * (no flash of motion before the async lookup resolves on later mounts).
  */
-let reduced = false;
+// Begin without motion until the asynchronous system preference is known.
+let reduced = true;
 const listeners = new Set<(value: boolean) => void>();
 
 const set = (value: boolean) => {

@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Text, View, Switch } from "react-native";
+import { Text, View } from "react-native";
 import type { AiProviderChoice } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { session } from "../../lib/session";
 import { errorText } from "../../lib/errors";
+import { Chip, ChipRow } from "../../components/Chip";
 import { SmallAction } from "../../components/SmallAction";
 import { shared } from "../../styles";
-import { colors } from "../../theme";
+import { Switch } from "../../components/Switch";
 export function AiProviderChoiceControls({
   userId,
   selection,
@@ -130,30 +131,36 @@ export function AiProviderChoiceControls({
   return (
     <View style={{ gap: 10 }}>
       <Text style={shared.label}>Provider</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 10 }}>
-        <SmallAction
-          label={
-            choice?.primary === "default"
-              ? "Orbyn default · selected"
-              : "Orbyn default"
-          }
+      {!choice && !error && (
+        <Text accessibilityRole="text" style={shared.small}>
+          Loading provider…
+        </Text>
+      )}
+      {busy && (
+        <Text accessibilityRole="text" style={shared.small}>
+          Saving provider…
+        </Text>
+      )}
+      <ChipRow label="AI provider">
+        <Chip
+          label="Orbyn default"
+          selected={choice?.primary === "default"}
           disabled={busy || !choice}
           onPress={() => void save("default", false)}
         />
-        <SmallAction
+        <Chip
+          selected={choice?.primary === "chatgpt" && inspectedIsSaved}
           label={
-            choice?.primary === "chatgpt" && inspectedIsSaved
-              ? "ChatGPT · selected"
-              : choice?.primary === "chatgpt" && selection
-                ? "Use this ChatGPT device"
-                : "ChatGPT"
+            choice?.primary === "chatgpt" && selection && !inspectedIsSaved
+              ? "Use this device"
+              : "ChatGPT"
           }
           disabled={busy || !choice || !selection}
           onPress={() =>
             void save("chatgpt", choice?.fallback_to_default ?? false)
           }
         />
-      </View>
+      </ChipRow>
       {!selection && (
         <Text style={shared.small}>
           Connect ChatGPT on a device and choose a model.
@@ -168,13 +175,11 @@ export function AiProviderChoiceControls({
       )}
       {choice?.primary === "chatgpt" && (
         <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <Text style={[shared.body, { flex: 1 }]}>
-            Use Orbyn if ChatGPT is unavailable
-          </Text>
+          <Text style={[shared.body, { flex: 1 }]}>Use Orbyn as fallback</Text>
           <Switch
             value={choice.fallback_to_default}
             disabled={busy || !savedSelection}
-            trackColor={{ true: colors.accent }}
+            accessibilityLabel="Use Orbyn as fallback"
             onValueChange={(value) =>
               void save("chatgpt", value, savedSelection)
             }
@@ -183,8 +188,8 @@ export function AiProviderChoiceControls({
       )}
       {choice?.primary === "chatgpt" && (
         <Text style={shared.small}>
-          Uses the workspace provider. Interrupted or uncertain results are not
-          retried.
+          Uses the workspace provider only when ChatGPT is unavailable.
+          Interrupted requests aren’t retried.
         </Text>
       )}
       {error && (

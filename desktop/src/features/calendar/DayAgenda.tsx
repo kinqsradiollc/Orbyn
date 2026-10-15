@@ -1,8 +1,7 @@
 import { Fragment } from "react";
 import { Users } from "lucide-react";
-import { dayHeading, emptyDay, type Item } from "@orbyn/core";
+import { dayHeading, type Item } from "@orbyn/core";
 import { usePlanning } from "../../app/planning";
-import { stagger } from "../../lib/motion";
 import { progressOf } from "../../lib/tasks";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
@@ -24,17 +23,16 @@ export function DayAgenda({ day, items, onOpen }: Props) {
   return (
     <section className="calendar-agenda" aria-live="polite">
       <Fragment key={day.toDateString()}>
-        <h3 className="fade-in">
+        <h3>
           {dayHeading(day)}
           <span>{items.length}</span>
         </h3>
         {items.length === 0 ? (
-          <div className="agenda-empty fade-in">
-            <strong>{emptyDay.title}</strong>
-            <p>{emptyDay.body}</p>
+          <div className="agenda-empty">
+            <p>No planned items for this day.</p>
           </div>
         ) : (
-          items.map((i, n) => {
+          items.map((i) => {
             const continued =
               firstDay(i).getTime() <
               new Date(
@@ -47,11 +45,11 @@ export function DayAgenda({ day, items, onOpen }: Props) {
               <button
                 key={i.id}
                 className={
-                  "calendar-agenda-item fade-up stagger " +
+                  "calendar-agenda-item " +
                   (i.status === "done" ? "done" : "") +
                   look.className
                 }
-                style={{ ...stagger(n), ...look.style }}
+                style={look.style}
                 onClick={(e) =>
                   onOpen(i, e.currentTarget.getBoundingClientRect())
                 }

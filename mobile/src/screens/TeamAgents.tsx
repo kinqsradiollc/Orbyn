@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   TEAM_AGENT_ACCESS,
@@ -6,7 +6,11 @@ import {
   type TeamAgentAccess,
   type TeamAgentsView,
 } from "@orbyn/core";
+import { InlineDetails } from "../components/InlineDetails";
 import { Segmented } from "../components/Segmented";
+import { Button } from "../components/Button";
+import { session } from "../lib/session";
+import { errorText } from "../lib/errors";
 import { client } from "../lib/api";
 import { timeAgo } from "../lib/progress";
 import { colors, fonts, radii, themed } from "../theme";
@@ -38,48 +42,105 @@ export function TeamAgents({
   act: Act;
 }) {
   const [data, setData] = useState<TeamAgentsView | null>(null);
-  const load = useCallback(
-    () => act(async () => setData(await client.teamAgents(teamId))),
-    [act, teamId],
-  );
-  useEffect(() => {
-    void load();
-    // Once per team; `act` is recreated every render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const alive = useRef(true);
+  const owner = useRef(session.token).current;
+  const request = useRef(0);
+  const current = () => alive.current && session.token === owner;
+  const load = useCallback(async () => {
+    const ticket = ++request.current;
+    setLoading(true);
+    setError("");
+    try {
+      const next = await client.teamAgents(teamId);
+      if (current() && ticket === request.current) setData(next);
+    } catch (e) {
+      if (current() && ticket === request.current) setError(errorText(e));
+    } finally {
+      if (current() && ticket === request.current) setLoading(false);
+    }
   }, [teamId]);
-
-  if (!data) return null;
+  useEffect(() => {
+    alive.current = true;
+    setData(null);
+    void load();
+    return () => {
+      alive.current = false;
+      request.current++;
+    };
+  }, [load]);
+  if (!data)
+    return (
+      <View style={s.wrap}>
+        <Text style={shared.small}>{error || "Loading agent access…"}</Text>
+        {!!error && (
+          <Button secondary title="Retry" onPress={() => void load()} />
+        )}
+      </View>
+    );
   const label = TEAM_AGENT_ACCESS_LABELS[data.agent_access];
   const change = (agent_access: TeamAgentAccess) => {
-    if (agent_access === data.agent_access) return;
+    if (
+      !canManage ||
+      busy ||
+      loading ||
+      !current() ||
+      agent_access === data.agent_access
+    )
+      return;
     void act(async () => {
       await client.setTeamAgentAccess(teamId, agent_access);
-      setData(await client.teamAgents(teamId));
+      if (!current()) return;
+      request.current++;
+      setData((previous) =>
+        previous ? { ...previous, agent_access } : previous,
+      );
+      await load();
     });
   };
 
   return (
     <View style={s.wrap}>
       <Text style={shared.sectionTitle}>Outside agents</Text>
+      {!!error && (
+        <View>
+          <Text accessibilityRole="alert" style={shared.small}>
+            {error}
+          </Text>
+          <Button
+            secondary
+            title="Retry"
+            disabled={busy || loading}
+            onPress={() => void load()}
+          />
+        </View>
+      )}
       {canManage && (
         <Segmented
           accessibilityLabel={`Outside agents in ${teamName}`}
           options={TEAM_AGENT_ACCESS}
           labels={NAMES}
           wrap
-          disabled={busy}
+          disabled={busy || loading || !!error}
           value={data.agent_access}
           onChange={change}
         />
       )}
       <Text style={[shared.small, s.lead]}>
         {canManage ? "" : `${label.name}. `}
-        {label.blurb} AI agents members connect (like Claude or ChatGPT) never
-        see more than their person.
-        {data.first_used_at
-          ? ` An agent first used ${teamName} ${timeAgo(data.first_used_at)}.`
-          : ""}
+        {label.blurb}
       </Text>
+      <InlineDetails title="Agent access details">
+        <Text style={shared.small}>
+          Agents never see more than the member who connected them.
+        </Text>
+        {data.first_used_at && (
+          <Text style={shared.small}>
+            First used {timeAgo(data.first_used_at)}.
+          </Text>
+        )}
+      </InlineDetails>
       {data.connections &&
         (data.connections.length ? (
           <View style={s.list}>
@@ -89,14 +150,10 @@ export function TeamAgents({
                 style={[s.row, n > 0 && s.divider]}
               >
                 <View style={{ flex: 1, minWidth: 0 }}>
-                  <Text style={s.member} numberOfLines={1}>
-                    {c.member}
-                  </Text>
-                  <Text style={shared.small} numberOfLines={1}>
-                    {c.app}
-                  </Text>
+                  <Text style={s.member}>{c.member}</Text>
+                  <Text style={shared.small}>{c.app}</Text>
                 </View>
-                <Text style={shared.small}>
+                <Text style={[shared.small, { flexShrink: 1 }]}>
                   {c.last_used_at
                     ? `Used ${timeAgo(c.last_used_at)}`
                     : "Not used yet"}
@@ -106,7 +163,7 @@ export function TeamAgents({
           </View>
         ) : (
           <Text style={[shared.small, s.lead]}>
-            No member has connected an agent that can reach this team.
+            No connected agents can access this team.
           </Text>
         ))}
     </View>

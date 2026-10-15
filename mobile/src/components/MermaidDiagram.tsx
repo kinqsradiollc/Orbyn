@@ -10,6 +10,7 @@ import {
 import { ScrollView, Text, View, useWindowDimensions } from "react-native";
 import { diagramKind, MERMAID_MAX_SVG, parseFlowchart } from "@orbyn/core";
 import { DiagramSurface } from "./DiagramSurface";
+import { InlineDetails } from "./InlineDetails";
 import { colors, fonts, radii, themed } from "../theme";
 import { Pressable } from "../motion";
 import { saveFile } from "../lib/download";
@@ -39,6 +40,19 @@ export function MermaidDiagram({ text }: { text: string }) {
     height?: number;
   } | null>(null);
   const [exportError, setExportError] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const exportLock = useRef(false);
+  const mounted = useRef(false);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    setExportError("");
+  }, [text]);
   const palette = JSON.stringify({
     background: colors.surface,
     primaryColor: colors.surface,
@@ -65,10 +79,12 @@ export function MermaidDiagram({ text }: { text: string }) {
         actualSize,
         viewportWidth: viewportWidth || undefined,
       }),
-    [instance, text, palette, zoom, actualSize, viewportWidth],
+    [instance, text, palette, zoom, actualSize, viewportWidth, retry],
   );
   const id = JSON.parse(request).id as string;
   const current = result?.id === id ? result : null;
+  const latestRequest = useRef(id);
+  latestRequest.current = id;
   useEffect(() => {
     const timeout = setTimeout(() => {
       setResult((previous) =>
@@ -77,7 +93,7 @@ export function MermaidDiagram({ text }: { text: string }) {
           : {
               id,
               error:
-                "The diagram preview did not respond. Its source is available below.",
+                "Couldn’t load the preview. Retry or read the source below.",
             },
       );
     }, 30_000);
@@ -125,100 +141,120 @@ export function MermaidDiagram({ text }: { text: string }) {
         <Text style={s.label}>{diagramKind(text)} diagram</Text>
         <Pressable
           accessibilityRole="button"
+          accessibilityState={{ expanded: sourceOpen || !!current?.error }}
           onPress={() => setSourceOpen(!sourceOpen)}
           style={s.button}
         >
           <Text style={s.action}>Source</Text>
         </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Zoom out diagram"
-          onPress={() => setZoom((v) => Math.max(0.5, v - 0.25))}
-          style={s.button}
-        >
-          <Text style={s.action}>−</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Zoom in diagram"
-          onPress={() => setZoom((v) => Math.min(3, v + 0.25))}
-          style={s.button}
-        >
-          <Text style={s.action}>+</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Fit diagram to width"
-          onPress={() => {
-            setActualSize(false);
-            setZoom(1);
-          }}
-          style={s.button}
-        >
-          <Text style={s.action}>Fit</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Show diagram at actual size"
-          accessibilityState={{ selected: actualSize }}
-          onPress={() => {
-            setActualSize(true);
-            setZoom(1);
-          }}
-          style={s.button}
-        >
-          <Text style={s.action}>Actual size</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          disabled={!current?.svg}
-          onPress={() => {
-            setExportError("");
-            if (current?.svg)
-              void saveFile("diagram.svg", current.svg, "image/svg+xml").catch(
-                () =>
-                  setExportError(
-                    "The diagram could not be exported. Try again.",
-                  ),
-              );
-          }}
-          style={s.button}
-        >
-          <Text style={s.action}>Export SVG</Text>
-        </Pressable>
       </View>
-      {(actualSize || zoom > 1 || (current?.height ?? 0) > canvasLimit) && (
+      <InlineDetails title="Diagram controls">
         <View style={s.toolbar}>
-          <Text style={s.label}>Move diagram</Text>
-          {[
-            { label: "left", mark: "←", x: -160, y: 0 },
-            { label: "right", mark: "→", x: 160, y: 0 },
-            { label: "up", mark: "↑", x: 0, y: -160 },
-            { label: "down", mark: "↓", x: 0, y: 160 },
-          ].map((direction) => (
-            <Pressable
-              key={direction.label}
-              accessibilityRole="button"
-              accessibilityLabel={`Pan diagram ${direction.label}`}
-              disabled={!current?.svg}
-              style={s.button}
-              onPress={() =>
-                setPanRequest(
-                  JSON.stringify({
-                    type: "orbyn-diagram-pan",
-                    id,
-                    sequence: ++panSequence.current,
-                    x: direction.x,
-                    y: direction.y,
-                  }),
-                )
-              }
-            >
-              <Text style={s.action}>{direction.mark}</Text>
-            </Pressable>
-          ))}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Zoom out diagram"
+            accessibilityState={{ disabled: zoom <= 0.5 }}
+            disabled={zoom <= 0.5}
+            onPress={() => setZoom((v) => Math.max(0.5, v - 0.25))}
+            style={s.button}
+          >
+            <Text style={s.action}>−</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Zoom in diagram"
+            accessibilityState={{ disabled: zoom >= 3 }}
+            disabled={zoom >= 3}
+            onPress={() => setZoom((v) => Math.min(3, v + 0.25))}
+            style={s.button}
+          >
+            <Text style={s.action}>+</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Fit diagram to width"
+            onPress={() => {
+              setActualSize(false);
+              setZoom(1);
+            }}
+            style={s.button}
+          >
+            <Text style={s.action}>Fit</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Show diagram at actual size"
+            accessibilityState={{ selected: actualSize }}
+            onPress={() => {
+              setActualSize(true);
+              setZoom(1);
+            }}
+            style={s.button}
+          >
+            <Text style={s.action}>Actual size</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            disabled={!current?.svg || exporting}
+            accessibilityState={{
+              disabled: !current?.svg || exporting,
+              busy: exporting,
+            }}
+            onPress={() => {
+              if (!current?.svg || exportLock.current) return;
+              exportLock.current = true;
+              setExportError("");
+              setExporting(true);
+              void saveFile("diagram.svg", current.svg, "image/svg+xml")
+                .catch(() => {
+                  if (mounted.current && latestRequest.current === id)
+                    setExportError("Couldn’t export the diagram. Try again.");
+                })
+                .finally(() => {
+                  exportLock.current = false;
+                  if (mounted.current) setExporting(false);
+                });
+            }}
+            style={s.button}
+          >
+            <Text style={s.action}>
+              {exporting ? "Exporting…" : "Export SVG"}
+            </Text>
+          </Pressable>
         </View>
-      )}
+        {(actualSize || zoom > 1 || (current?.height ?? 0) > canvasLimit) && (
+          <View style={s.toolbar}>
+            <Text style={s.label}>Move diagram</Text>
+            {[
+              { label: "left", mark: "←", x: -160, y: 0 },
+              { label: "right", mark: "→", x: 160, y: 0 },
+              { label: "up", mark: "↑", x: 0, y: -160 },
+              { label: "down", mark: "↓", x: 0, y: 160 },
+            ].map((direction) => (
+              <Pressable
+                key={direction.label}
+                accessibilityRole="button"
+                accessibilityLabel={`Pan diagram ${direction.label}`}
+                disabled={!current?.svg}
+                style={s.button}
+                onPress={() =>
+                  setPanRequest(
+                    JSON.stringify({
+                      type: "orbyn-diagram-pan",
+                      id,
+                      sequence: ++panSequence.current,
+                      x: direction.x,
+                      y: direction.y,
+                    }),
+                  )
+                }
+              >
+                <Text style={s.action}>{direction.mark}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+      </InlineDetails>
       <DiagramSurface
         request={request}
         panRequest={panRequest}
@@ -226,13 +262,28 @@ export function MermaidDiagram({ text }: { text: string }) {
         onResult={receive}
       />
       {!current && <Text style={s.note}>Drawing diagram…</Text>}
-      {!!current?.error && <Text style={s.note}>{current.error}</Text>}
+      {!!current?.error && (
+        <View style={s.toolbar}>
+          <Text accessibilityRole="alert" style={s.note}>
+            {current.error}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            style={s.button}
+            onPress={() => setRetry((value) => value + 1)}
+          >
+            <Text style={s.action}>Retry preview</Text>
+          </Pressable>
+        </View>
+      )}
       {!!exportError && <Text style={s.note}>{exportError}</Text>}
       {(sourceOpen || current?.error) && (
-        <ScrollView horizontal style={s.source}>
-          <Text selectable style={s.sourceText}>
-            {text}
-          </Text>
+        <ScrollView style={s.source} nestedScrollEnabled>
+          <ScrollView horizontal contentContainerStyle={s.sourceBody}>
+            <Text selectable style={s.sourceText}>
+              {text}
+            </Text>
+          </ScrollView>
         </ScrollView>
       )}
       {links.map((node) => (
@@ -271,14 +322,22 @@ const s = themed(() => ({
     fontSize: 13,
     marginRight: 8,
   },
-  button: { paddingHorizontal: 10, paddingVertical: 8, minHeight: 34 },
+  button: {
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    minHeight: 44,
+    minWidth: 44,
+    justifyContent: "center" as const,
+  },
   action: { color: colors.accent, fontFamily: fonts.regular, fontSize: 13 },
   note: {
+    flexShrink: 1,
     color: colors.textSoft,
     fontFamily: fonts.regular,
     fontSize: 13,
     padding: 8,
   },
-  source: { backgroundColor: colors.surfaceMuted, padding: 8 },
+  source: { backgroundColor: colors.surfaceMuted, maxHeight: 220 },
+  sourceBody: { padding: 8 },
   sourceText: { color: colors.text, fontFamily: fonts.mono, fontSize: 13 },
 }));

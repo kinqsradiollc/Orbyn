@@ -176,13 +176,13 @@ export function AiProviderChoiceControls({
               void save("chatgpt", e.target.checked, savedSelection)
             }
           />
-          Use Orbyn if ChatGPT is unavailable
+          Use Orbyn as fallback
         </label>
       )}
       {choice?.primary === "chatgpt" && (
         <small className="field-hint">
-          Uses the workspace provider. Interrupted or uncertain results are not
-          retried.
+          When unavailable, use the workspace provider. Uncertain results are
+          never retried.
         </small>
       )}
       {error && <p role="alert">{error}</p>}

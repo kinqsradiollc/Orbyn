@@ -1,12 +1,6 @@
-import React, { useEffect, useState } from "react";
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-  useWindowDimensions,
-} from "react-native";
+import { usePaneWidth } from "../hooks/usePaneWidth";
+import React, { useEffect, useRef, useState } from "react";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   ITEM_SORTS,
   dueDayAt,
@@ -46,6 +40,9 @@ import {
   type User,
   type ViewChoice,
 } from "@orbyn/core";
+import { BottomSheet } from "../components/BottomSheet";
+import { Button } from "../components/Button";
+import { session } from "../lib/session";
 import { Chip, ChipRow } from "../components/Chip";
 import { Icon } from "../components/Icon";
 import {
@@ -72,7 +69,7 @@ import { tap } from "../lib/haptics";
 import { usePlanning } from "../lib/planningContext";
 import { usePlanned } from "../lib/plannedContext";
 import { isOverdue } from "../lib/progress";
-import { animateLayout, PressableScale } from "../motion";
+import { Pressable } from "../motion";
 import { colors, fonts, radii, spacing, themed, statusTones } from "../theme";
 import { shared } from "../styles";
 
@@ -280,7 +277,7 @@ function sorter(sort: ItemSort, rank: (a: Item, b: Item) => number) {
  * status tabs and filters for due date, priority, list, tag, size and
  * assignee; the list view groups by list, tag or size.
  */
-export function TasksScreen({
+function TasksScreenBody({
   items,
   search,
   onSearch,
@@ -327,6 +324,13 @@ export function TasksScreen({
   }));
   const [open, setOpen] = useState<Key | "pins" | "sort" | null>(null);
   const [showTools, setShowTools] = useState(false);
+  const [choiceQuery, setChoiceQuery] = useState("");
+  const afterTools = useRef<{ owner: string; run: () => void } | null>(null);
+  useEffect(() => setChoiceQuery(""), [open]);
+  const closeToolsThen = (run: () => void) => {
+    afterTools.current = { owner: session.token, run };
+    setShowTools(false);
+  };
   const [pins, setPins] = useState<Pin[]>(savedPins);
   const [sort, setSort] = useState<ItemSort>(savedSort);
   const [layout, setLayout] = useState<Layout>(savedLayout);
@@ -368,53 +372,79 @@ export function TasksScreen({
     null,
   );
   const [moveNote, setMoveNote] = useState("");
-  // Project names, for grouping by project (loaded only then).
+  const [moveQuery, setMoveQuery] = useState("");
+  useEffect(() => setMoveQuery(""), [picked?.item.id]);
+  const owner = session.token;
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [detailsRetry, setDetailsRetry] = useState(0);
+  const [projectError, setProjectError] = useState(false);
+  const needsProjects = shownGroup === "project";
   useEffect(() => {
-    if (filters.group !== "project" || projects.length) return;
+    if (!needsProjects) return;
     let live = true;
-    client
-      .listProjects()
-      .then(
-        (all) => live && setProjects(all.map(({ id, name }) => ({ id, name }))),
-      )
-      .catch(() => {});
+    setProjectError(false);
+    client.listProjects().then(
+      (all) => {
+        if (live && session.token === owner)
+          setProjects(all.map(({ id, name }) => ({ id, name })));
+      },
+      () => {
+        if (live && session.token === owner) {
+          setProjects([]);
+          setProjectError(true);
+        }
+      },
+    );
     return () => {
       live = false;
     };
-  }, [filters.group, projects.length]);
-  // "Who's on it" (W2): your agent's name, connected agents' recent work,
-  // what waits in Review, and the quick filters.
-  const owners = (layout === "board" ? boardGroup : filters.group) === "owner";
+  }, [needsProjects, owner, detailsRetry]);
+  const owners = shownGroup === "owner";
   const [boardFilter, setBoardFilter] = useState<BoardFilter>("all");
   const [agentName, setAgentName] = useState("Orbyn");
   const [agentWork, setAgentWork] = useState<
     { grant_id: string; name: string; item_ids: string[] }[]
   >([]);
   const [reviewCards, setReviewCards] = useState<ReviewItem[]>([]);
+  const [ownersLoading, setOwnersLoading] = useState(false);
+  const [ownersError, setOwnersError] = useState(false);
   const itemsKey = items
     .map((i) => `${i.id}:${i.version}:${i.agent_state ?? ""}`)
     .join();
   useEffect(() => {
     if (!owners) return;
     let live = true;
-    client
-      .agentSettings()
-      .then((a) => live && setAgentName(a.name || "Orbyn"))
-      .catch(() => {});
-    client
-      .agentWork()
-      .then((work) => live && setAgentWork(work))
-      .catch(() => {});
-    client
-      .reviewInbox()
-      .then((inbox) => live && setReviewCards(inbox.pending))
-      .catch(() => {});
+    setOwnersLoading(true);
+    setOwnersError(false);
+    const current = () => live && session.token === owner;
+    void Promise.all([
+      client.agentSettings(),
+      client.agentWork(),
+      client.reviewInbox(),
+    ])
+      .then(
+        ([settings, work, inbox]) => {
+          if (!current()) return;
+          setAgentName(settings.name || "Orbyn");
+          setAgentWork(work);
+          setReviewCards(inbox.pending);
+        },
+        () => {
+          if (!current()) return;
+          setAgentWork([]);
+          setReviewCards([]);
+          setOwnersError(true);
+        },
+      )
+      .finally(() => {
+        if (current()) setOwnersLoading(false);
+      });
     return () => {
       live = false;
     };
-  }, [owners, itemsKey]);
-  const twoColumns = useWindowDimensions().width >= BOARD_WIDE;
+  }, [owners, itemsKey, owner, detailsRetry]);
+  const { width: paneWidth, onLayout: measurePane } = usePaneWidth();
+  const twoColumns = paneWidth >= BOARD_WIDE;
   const now = new Date();
   /**
    * Whether the day a task is due by (`dueDayAt`: an all-day task's last
@@ -488,14 +518,12 @@ export function TasksScreen({
         Number(isClosed(a.status)) - Number(isClosed(b.status)) || order(a, b),
     );
   const chooseSort = (next: ItemSort) => {
-    animateLayout();
     setSort(next);
     setOpen(null);
     saveLocal(SORT_KEY, next);
     keep({ sort: next });
   };
   const chooseLayout = (next: Layout) => {
-    animateLayout();
     setLayout(next);
     saveLocal(LAYOUT_KEY, next);
     keep({ layout: next });
@@ -554,19 +582,31 @@ export function TasksScreen({
   };
   const valueOf = (key: Key) =>
     key === "group" && layout === "board" ? boardGroup : filters[key];
+  const choiceOptions =
+    open === "sort"
+      ? ITEM_SORTS.map((value) => ({ value, label: SORT_LABELS[value] }))
+      : open && open !== "pins"
+        ? options[open]
+        : [];
+  const choiceMatches = choiceOptions.filter((option) =>
+    option.label
+      .toLocaleLowerCase()
+      .includes(choiceQuery.trim().toLocaleLowerCase()),
+  );
   const current = (key: Key) =>
     options[key].find((o) => o.value === valueOf(key))?.label ?? "Any";
   const active = keys.filter((k) => k !== "group" && filters[k] !== "any");
   const set = (key: Key, value: string) => {
-    animateLayout();
     if (key === "group" && layout === "board") {
       if (!isBoardGroup(value)) return;
       setBoardGroup(value);
       setPicked(null);
+      setOpen(null);
       saveLocal(BOARD_GROUP_KEY, value);
       return;
     }
     setFilters((f) => ({ ...f, [key]: value }));
+    setOpen(null);
     if (key === "group") {
       saveLocal(GROUP_KEY, value);
       keep({ group: value });
@@ -599,7 +639,6 @@ export function TasksScreen({
   );
   const rest = visible.filter((i) => !pinned.has(i.id));
   const togglePin = (p: Pin) => {
-    animateLayout();
     const next = pins.includes(p)
       ? pins.filter((x) => x !== p)
       : PINS.filter((x) => x === p || pins.includes(x));
@@ -643,46 +682,55 @@ export function TasksScreen({
     <View style={s.reviewList}>
       {reviewCards.length ? (
         reviewCards.map((p) => (
-          <PressableScale
+          <Pressable
             key={p.id}
             accessibilityRole="button"
             accessibilityLabel={`Review: ${p.summary}`}
             onPress={() => openReview(p.id)}
             style={s.reviewRow}
           >
-            <Text style={s.reviewTitle} numberOfLines={2}>
-              {p.summary}
-            </Text>
+            <Text style={s.reviewTitle}>{p.summary}</Text>
             <Text style={s.reviewMeta}>
               {p.source === "assistant" ? agentName : p.proposer} ·{" "}
               {p.changes.length === 1
                 ? "1 change"
                 : `${p.changes.length} changes`}
             </Text>
-          </PressableScale>
+          </Pressable>
         ))
       ) : (
         <View style={s.emptyColumn}>
-          <Text style={shared.small}>Nothing waits for your review.</Text>
+          <Text style={shared.small}>
+            {ownersLoading
+              ? "Loading reviews…"
+              : ownersError
+                ? "Reviews unavailable"
+                : "Nothing waiting for review"}
+          </Text>
         </View>
       )}
     </View>
   );
   /** Drop the picked-up card on a column. */
   const dropOn = (to: string) => {
-    if (!picked) return;
-    const result = dropChange(picked.item, boardGroup, picked.from, to, names);
-    setPicked(null);
+    if (!picked || handlers.busy) return;
+    const currentItem = items.find((item) => item.id === picked.item.id);
+    if (!currentItem) {
+      setPicked(null);
+      return;
+    }
+    const result = dropChange(currentItem, boardGroup, picked.from, to, names);
     if (!result) return;
     if (!result.ok) {
       setMoveNote(result.reason);
       return;
     }
     tap();
+    setPicked(null);
     setMoveNote("");
     const change = result.change;
-    if ("status" in change) handlers.onSetStatus?.(picked.item, change.status);
-    else onChangeItem?.(picked.item, change);
+    if ("status" in change) handlers.onSetStatus?.(currentItem, change.status);
+    else onChangeItem?.(currentItem, change);
   };
   const rowProps = {
     busy: handlers.busy,
@@ -707,12 +755,12 @@ export function TasksScreen({
       : status === "all"
         ? emptyPlans
         : {
-            title: `Nothing ${statusLabels[status].toLowerCase()}.`,
-            body: "Tasks with this status will show up here.",
+            title: `No ${statusLabels[status].toLowerCase()} tasks`,
+            body: "",
           };
 
   return (
-    <>
+    <View onLayout={measurePane} style={{ width: "100%" }}>
       <View style={s.search}>
         <View style={s.icon} pointerEvents="none">
           <Icon name="search" size={17} color={colors.muted} />
@@ -740,15 +788,18 @@ export function TasksScreen({
         {owners &&
           BOARD_FILTERS.map((f) => {
             const selected = f === boardFilter;
-            const n = boardCounts[f];
+            const n =
+              (f === "needs_review" || f === "all") &&
+              (ownersLoading || ownersError)
+                ? null
+                : boardCounts[f];
             return (
-              <PressableScale
+              <Pressable
                 key={f}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
-                accessibilityLabel={`${BOARD_FILTER_LABELS[f]}, ${n}`}
+                accessibilityLabel={`${BOARD_FILTER_LABELS[f]}, ${n ?? "count unavailable"}`}
                 onPress={() => {
-                  animateLayout();
                   setBoardFilter(f);
                 }}
                 style={[s.chip, selected && s.chipSoft]}
@@ -757,9 +808,9 @@ export function TasksScreen({
                   {BOARD_FILTER_LABELS[f]}
                 </Text>
                 <Text style={[s.chipCount, selected && s.chipSoftText]}>
-                  {n}
+                  {n ?? "—"}
                 </Text>
-              </PressableScale>
+              </Pressable>
             );
           })}
         {!owners &&
@@ -768,19 +819,18 @@ export function TasksScreen({
             const tone = f === "all" ? null : statusTones[f];
             const n = count(f);
             return (
-              <PressableScale
+              <Pressable
                 key={f}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
                 accessibilityLabel={`${statusFilterLabel(f)}, ${n} item${n === 1 ? "" : "s"}`}
                 onPress={() => {
-                  animateLayout();
                   setStatus(f);
                 }}
                 style={[
                   s.chip,
                   selected && {
-                    backgroundColor: tone?.bg ?? colors.accent,
+                    backgroundColor: tone?.bg ?? colors.accentSoft,
                     borderColor: tone?.fg ?? colors.accent,
                   },
                 ]}
@@ -789,7 +839,7 @@ export function TasksScreen({
                 <Text
                   style={[
                     s.chipText,
-                    selected && { color: tone?.fg ?? colors.white },
+                    selected && { color: tone?.fg ?? colors.accent },
                   ]}
                 >
                   {statusFilterLabel(f)}
@@ -797,22 +847,22 @@ export function TasksScreen({
                 <Text
                   style={[
                     s.chipCount,
-                    selected && { color: tone?.fg ?? colors.white },
+                    selected && { color: tone?.fg ?? colors.accent },
                   ]}
                 >
                   {n}
                 </Text>
-              </PressableScale>
+              </Pressable>
             );
           })}
       </ScrollView>
 
-      <PressableScale
+      <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Filters and view${active.length ? `, ${active.length} active` : ""}`}
         accessibilityState={{ expanded: showTools }}
         onPress={() => {
-          setShowTools((shown) => !shown);
+          setShowTools(true);
           setOpen(null);
         }}
         style={s.toolsToggle}
@@ -824,150 +874,120 @@ export function TasksScreen({
         <Text style={s.toolsSummary}>
           {LAYOUT_LABELS[layout]} · {SORT_LABELS[sort]}
         </Text>
-        <Icon
-          name={showTools ? "chevronUp" : "chevronDown"}
-          size={16}
-          color={colors.muted}
-        />
-      </PressableScale>
-      {showTools && (
-        <>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={s.filterScroll}
-            contentContainerStyle={s.chips}
-            accessibilityLabel="Filters"
-          >
-            {keys.map((key) => {
-              const on = filters[key] !== "any" && filters[key] !== "none";
-              const isGroup = key === "group";
-              const shown = isGroup
-                ? layout === "board" || filters.group !== "none"
-                : on || filters[key] === "none";
-              return (
-                <PressableScale
-                  key={key}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${KEY_LABELS[key]}: ${current(key)}`}
-                  accessibilityHint="Shows the choices below"
-                  accessibilityState={{ expanded: open === key }}
-                  onPress={() => {
-                    animateLayout();
-                    setOpen(open === key ? null : key);
-                  }}
-                  style={[
-                    s.filter,
-                    shown && s.filterOn,
-                    open === key && s.filterOpen,
-                  ]}
-                >
-                  {key === "group" ? (
-                    <Icon
-                      name="list"
-                      size={13}
-                      color={shown ? colors.accent : colors.muted}
-                    />
-                  ) : (
-                    key === "due" && (
-                      <Icon
-                        name="filter"
-                        size={12}
-                        color={shown ? colors.accent : colors.muted}
-                      />
-                    )
-                  )}
-                  <Text style={[s.filterText, shown && s.filterTextOn]}>
-                    {shown
-                      ? `${isGroup && layout === "board" ? "Columns" : KEY_LABELS[key]}: ${current(key)}`
-                      : KEY_LABELS[key]}
-                  </Text>
-                </PressableScale>
-              );
-            })}
-            <PressableScale
+        <Icon name="chevronRight" size={16} color={colors.muted} />
+      </Pressable>
+      {active.length > 0 && (
+        <View style={s.activeFilters}>
+          {active.map((key) => (
+            <Pressable
+              key={key}
               accessibilityRole="button"
-              accessibilityLabel={`Pinned sections: ${pins.length ? pins.map((p) => PIN_LABELS[p]).join(", ") : "overdue only"}`}
-              accessibilityHint="Shows the choices below"
-              accessibilityState={{ expanded: open === "pins" }}
-              onPress={() => {
-                animateLayout();
-                setOpen(open === "pins" ? null : "pins");
-              }}
-              style={[
-                s.filter,
-                pins.length > 0 && s.filterOn,
-                open === "pins" && s.filterOpen,
-              ]}
+              accessibilityLabel={`Remove ${KEY_LABELS[key]} filter: ${current(key)}`}
+              style={s.activeFilter}
+              onPress={() => set(key, "any")}
             >
-              <Icon
-                name="pin"
-                size={12}
-                color={pins.length ? colors.accent : colors.muted}
-              />
-              <Text style={[s.filterText, pins.length > 0 && s.filterTextOn]}>
-                Pinned
+              <Text style={s.filterText}>
+                {KEY_LABELS[key]}: {current(key)}
               </Text>
-            </PressableScale>
-            {active.length > 0 && (
-              <PressableScale
-                accessibilityRole="button"
-                accessibilityLabel="Clear filters"
-                onPress={() => {
-                  animateLayout();
-                  setFilters((f) => ({ ...DEFAULTS, group: f.group }));
-                  setOpen(null);
-                }}
-                style={s.filter}
-              >
-                <Icon name="x" size={12} color={colors.danger} />
-                <Text style={[s.filterText, { color: colors.danger }]}>
-                  Clear
-                </Text>
-              </PressableScale>
+              <Icon name="x" size={14} color={colors.muted} />
+            </Pressable>
+          ))}
+        </View>
+      )}
+      <BottomSheet
+        visible={showTools}
+        title={
+          open === "pins"
+            ? "Pinned sections"
+            : open === "sort"
+              ? "Sort tasks"
+              : open
+                ? KEY_LABELS[open]
+                : "Filters and view"
+        }
+        onClose={() => {
+          afterTools.current = null;
+          setShowTools(false);
+        }}
+        afterClose={() => {
+          const next = afterTools.current;
+          afterTools.current = null;
+          if (next?.owner === session.token) next.run();
+        }}
+        footer={<Button title="Done" onPress={() => setShowTools(false)} />}
+      >
+        {open ? (
+          <View style={s.choicePage}>
+            <SmallAction
+              label="Back"
+              disabled={false}
+              onPress={() => setOpen(null)}
+            />
+            {open === "pins" ? (
+              <>
+                <ChipRow label="Pinned sections" multi>
+                  {PINS.map((pin) => (
+                    <Chip
+                      key={pin}
+                      multi
+                      label={PIN_LABELS[pin]}
+                      selected={pins.includes(pin)}
+                      onPress={() => togglePin(pin)}
+                    />
+                  ))}
+                </ChipRow>
+                <Text style={shared.small}>Overdue is always shown.</Text>
+              </>
+            ) : (
+              <>
+                <TextInput
+                  style={shared.input}
+                  value={choiceQuery}
+                  onChangeText={setChoiceQuery}
+                  accessibilityLabel="Search choices"
+                  placeholder="Search choices"
+                  placeholderTextColor={colors.faint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+                <ScrollView
+                  style={s.choiceList}
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled
+                >
+                  {choiceMatches.map((option) => {
+                    const selected =
+                      open === "sort"
+                        ? sort === option.value
+                        : valueOf(open) === option.value;
+                    return (
+                      <Pressable
+                        key={option.value}
+                        accessibilityRole="radio"
+                        accessibilityState={{ checked: selected }}
+                        style={[s.choiceRow, selected && s.choiceSelected]}
+                        onPress={() =>
+                          open === "sort"
+                            ? chooseSort(option.value as ItemSort)
+                            : set(open, option.value)
+                        }
+                      >
+                        <Text style={s.choiceText}>{option.label}</Text>
+                        {selected && (
+                          <Icon name="check" size={16} color={colors.accent} />
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                  {!choiceMatches.length && (
+                    <Text style={shared.small}>No matching choices</Text>
+                  )}
+                </ScrollView>
+              </>
             )}
-          </ScrollView>
-          {open && open !== "pins" && open !== "sort" && (
-            <View style={s.panel}>
-              <ChipRow label={KEY_LABELS[open]}>
-                {options[open].map((o) => (
-                  <Chip
-                    key={o.value}
-                    label={o.label}
-                    color={o.color}
-                    selected={valueOf(open) === o.value}
-                    onPress={() => set(open, o.value)}
-                  />
-                ))}
-              </ChipRow>
-              {(open === "list" || open === "tag") &&
-                options[open].length <= 2 && (
-                  <Text style={[shared.small, s.panelHint]}>
-                    {open === "list" ? "No lists yet." : "No tags yet."}
-                  </Text>
-                )}
-            </View>
-          )}
-          {open === "pins" && (
-            <View style={s.panel}>
-              <ChipRow label="Pinned sections" multi>
-                {PINS.map((p) => (
-                  <Chip
-                    key={p}
-                    multi
-                    label={PIN_LABELS[p]}
-                    selected={pins.includes(p)}
-                    onPress={() => togglePin(p)}
-                  />
-                ))}
-              </ChipRow>
-              <Text style={[shared.small, s.panelHint]}>
-                Pinned sections sit at the top of the list. Overdue tasks always
-                do.
-              </Text>
-            </View>
-          )}
-          <View style={s.layout}>
+          </View>
+        ) : (
+          <View style={s.choicePage}>
             <Segmented
               accessibilityLabel="Layout"
               options={LAYOUTS}
@@ -975,61 +995,82 @@ export function TasksScreen({
               value={layout}
               onChange={chooseLayout}
             />
-          </View>
-          <View style={s.toolbar}>
-            <PressableScale
-              accessibilityRole="button"
-              accessibilityLabel={`Sort by ${SORT_LABELS[sort]}`}
-              accessibilityHint="Shows the choices below"
-              accessibilityState={{ expanded: open === "sort" }}
-              onPress={() => {
-                animateLayout();
-                setOpen(open === "sort" ? null : "sort");
-              }}
-              style={[s.filter, open === "sort" && s.filterOpen]}
-            >
-              <Icon name="list" size={13} color={colors.muted} />
-              <Text style={s.filterText}>Sort: {SORT_LABELS[sort]}</Text>
-            </PressableScale>
+            {keys.map((key) => (
+              <Pressable
+                key={key}
+                accessibilityRole="button"
+                accessibilityLabel={`${KEY_LABELS[key]}: ${current(key)}`}
+                style={s.choiceRow}
+                onPress={() => setOpen(key)}
+              >
+                <View style={s.choiceValue}>
+                  <Text style={s.choiceLabel}>{KEY_LABELS[key]}</Text>
+                  <Text style={s.choiceText}>{current(key)}</Text>
+                </View>
+                <Icon name="chevronRight" size={16} color={colors.muted} />
+              </Pressable>
+            ))}
+            <SmallAction
+              label={`Sort: ${SORT_LABELS[sort]}`}
+              disabled={false}
+              onPress={() => setOpen("sort")}
+            />
+            <SmallAction
+              label="Pinned sections"
+              disabled={false}
+              onPress={() => setOpen("pins")}
+            />
+            {active.length > 0 && (
+              <SmallAction
+                label="Clear filters"
+                disabled={false}
+                onPress={() =>
+                  setFilters((filters) => ({
+                    ...DEFAULTS,
+                    group: filters.group,
+                  }))
+                }
+              />
+            )}
             <View style={s.toolbarActions}>
               <SmallAction
                 label="Tags"
-                disabled={false}
-                onPress={onManageTags}
+                disabled={handlers.busy}
+                onPress={() => closeToolsThen(onManageTags)}
               />
               <SmallAction
                 label="Lists"
-                disabled={false}
-                onPress={onManageLists}
+                disabled={handlers.busy}
+                onPress={() => closeToolsThen(onManageLists)}
               />
             </View>
           </View>
-          {open === "sort" && (
-            <View style={s.panel}>
-              <ChipRow label="Sort by">
-                {ITEM_SORTS.map((value) => (
-                  <Chip
-                    key={value}
-                    label={SORT_LABELS[value]}
-                    selected={sort === value}
-                    onPress={() => chooseSort(value)}
-                  />
-                ))}
-              </ChipRow>
-              <Text style={[shared.small, s.panelHint]}>
-                Finished and cancelled items always come last.
-              </Text>
-            </View>
-          )}
-          {manual && layout === "list" && visible.length > 1 && (
-            <Text style={[shared.small, s.manualHint]}>
-              Hold and drag to reorder within the same list or parent task.
-            </Text>
-          )}
-        </>
+        )}
+      </BottomSheet>
+      {manual && layout === "list" && visible.length > 1 && (
+        <Text style={[shared.small, s.manualHint]}>
+          Hold and drag within the same list or parent task.
+        </Text>
+      )}
+      {(projectError || ownersError) && (
+        <View style={s.feedback}>
+          <Text style={s.moveNote}>
+            Couldn't load {projectError ? "project names" : "ownership details"}
+            .
+          </Text>
+          <SmallAction
+            label="Retry"
+            disabled={false}
+            onPress={() => setDetailsRetry((n) => n + 1)}
+          />
+        </View>
+      )}
+      {owners && ownersLoading && (
+        <Text style={shared.small}>Loading ownership…</Text>
       )}
 
-      {visible.length === 0 && !(owners && reviewCards.length) ? (
+      {visible.length === 0 &&
+      !(owners && (reviewCards.length || ownersLoading || ownersError)) ? (
         <>
           <SectionHeading title={title} count={0} />
           <EmptyState {...empty} action="Add task" onAction={handlers.onAdd} />
@@ -1039,32 +1080,74 @@ export function TasksScreen({
         // a column chip puts it down there (DATA-03). On a wide screen the
         // sections sit two across.
         <>
-          {picked && (
-            <View style={s.pickBar} accessibilityLiveRegion="polite">
-              <Text style={s.pickTitle} numberOfLines={1}>
-                Move “{picked.item.title}” to…
-              </Text>
-              <ChipRow label="Columns">
-                {targets
-                  .filter((c) => c.key !== picked.from)
-                  .map((c) => (
-                    <Chip
-                      key={c.key}
-                      compact
-                      label={c.title}
-                      color={c.color}
-                      selected={false}
-                      onPress={() => dropOn(c.key)}
-                    />
-                  ))}
-              </ChipRow>
-              <SmallAction
-                label="Cancel"
-                disabled={false}
+          <BottomSheet
+            visible={!!picked}
+            title="Move task"
+            closeDisabled={handlers.busy}
+            onClose={() => {
+              if (!handlers.busy) setPicked(null);
+            }}
+            footer={
+              <Button
+                title="Cancel"
+                secondary
+                disabled={handlers.busy}
                 onPress={() => setPicked(null)}
               />
+            }
+          >
+            <View style={s.choicePage}>
+              <Text style={s.pickTitle}>{picked?.item.title}</Text>
+              {!!moveNote && (
+                <Text accessibilityRole="alert" style={s.moveNote}>
+                  {moveNote}
+                </Text>
+              )}
+              <TextInput
+                style={shared.input}
+                value={moveQuery}
+                onChangeText={setMoveQuery}
+                accessibilityLabel="Search columns"
+                placeholder="Search columns"
+                placeholderTextColor={colors.faint}
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!handlers.busy}
+              />
+              <ScrollView
+                style={s.choiceList}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
+              >
+                {targets
+                  .filter(
+                    (column) =>
+                      column.key !== picked?.from &&
+                      column.title
+                        .toLocaleLowerCase()
+                        .includes(moveQuery.trim().toLocaleLowerCase()),
+                  )
+                  .map((column) => (
+                    <Pressable
+                      key={column.key}
+                      accessibilityRole="button"
+                      disabled={handlers.busy}
+                      style={s.choiceRow}
+                      onPress={() => dropOn(column.key)}
+                    >
+                      <Text style={s.choiceText}>{column.title}</Text>
+                    </Pressable>
+                  ))}
+                {!targets.some(
+                  (column) =>
+                    column.key !== picked?.from &&
+                    column.title
+                      .toLocaleLowerCase()
+                      .includes(moveQuery.trim().toLocaleLowerCase()),
+                ) && <Text style={shared.small}>No matching columns</Text>}
+              </ScrollView>
             </View>
-          )}
+          </BottomSheet>
           {!!moveNote && (
             <Text
               style={[shared.small, s.moveNote]}
@@ -1085,7 +1168,9 @@ export function TasksScreen({
                     title={column.title}
                     count={
                       owners && column.key === OWNER_REVIEW
-                        ? reviewCards.length
+                        ? ownersLoading || ownersError
+                          ? undefined
+                          : reviewCards.length
                         : column.items.length
                     }
                     time={
@@ -1116,7 +1201,10 @@ export function TasksScreen({
                       items={column.items}
                       {...rowProps}
                       moveButton={boardGroup === "status"}
-                      onPickUp={(item) => setPicked({ item, from: column.key })}
+                      onPickUp={(item) => {
+                        if (!handlers.busy)
+                          setPicked({ item, from: column.key });
+                      }}
                     />
                   ) : (
                     <View style={s.emptyColumn}>
@@ -1160,7 +1248,11 @@ export function TasksScreen({
                     <>
                       <SectionHeading
                         title="Needs review"
-                        count={reviewCards.length}
+                        count={
+                          ownersLoading || ownersError
+                            ? undefined
+                            : reviewCards.length
+                        }
                         folded={folds.has(OWNER_REVIEW)}
                         onToggleFold={() => toggleFold(OWNER_REVIEW)}
                       />
@@ -1191,7 +1283,9 @@ export function TasksScreen({
             <View>
               <SectionHeading
                 title="Needs review"
-                count={reviewCards.length}
+                count={
+                  ownersLoading || ownersError ? undefined : reviewCards.length
+                }
                 folded={folds.has(OWNER_REVIEW)}
                 onToggleFold={() => toggleFold(OWNER_REVIEW)}
               />
@@ -1200,7 +1294,7 @@ export function TasksScreen({
           )}
         </>
       )}
-    </>
+    </View>
   );
 }
 
@@ -1210,9 +1304,56 @@ const s = themed(() =>
     icon: { position: "absolute", left: 15, zIndex: 1 },
     input: { paddingLeft: 42 },
     chipScroll: { marginHorizontal: -spacing.page, marginBottom: 10 },
-    filterScroll: { marginHorizontal: -spacing.page, marginBottom: 12 },
+    choicePage: { gap: 8, minWidth: 0 },
+    choiceList: { maxHeight: 300 },
+    choiceRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      minHeight: 44,
+      paddingVertical: 10,
+      paddingHorizontal: 12,
+      borderRadius: radii.input,
+    },
+    choiceSelected: { backgroundColor: colors.accentSoft },
+    choiceValue: { flex: 1, minWidth: 0, gap: 2 },
+    choiceLabel: {
+      color: colors.muted,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+    },
+    choiceText: {
+      color: colors.text,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      flexShrink: 1,
+    },
+    activeFilters: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      marginBottom: 12,
+    },
+    activeFilter: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      maxWidth: "100%",
+      minHeight: 44,
+      paddingHorizontal: 12,
+      borderRadius: radii.input,
+      backgroundColor: colors.surfaceMuted,
+    },
+    feedback: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
     toolsToggle: {
-      minHeight: 48,
+      minHeight: 44,
+      flexWrap: "wrap",
+      paddingVertical: 8,
       flexDirection: "row",
       alignItems: "center",
       gap: 8,
@@ -1224,12 +1365,16 @@ const s = themed(() =>
       backgroundColor: colors.surface,
     },
     toolsLabel: {
+      flexShrink: 1,
       fontFamily: fonts.semibold,
       fontSize: 13,
       color: colors.text,
     },
     toolsSummary: {
-      flex: 1,
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 110,
+      minWidth: 0,
       textAlign: "right",
       fontFamily: fonts.medium,
       fontSize: 11,
@@ -1250,66 +1395,24 @@ const s = themed(() =>
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
-    dot: { width: 7, height: 7, borderRadius: 4 },
+    dot: { width: 7, height: 7, borderRadius: radii.pill },
     chipText: {
       fontFamily: fonts.semibold,
       fontSize: 13,
       color: colors.textSoft,
     },
     chipCount: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
-    filter: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 5,
-      minHeight: 44,
-      paddingVertical: 8,
-      paddingHorizontal: 12,
-      borderRadius: radii.input,
-      borderWidth: 1,
-      borderStyle: "dashed",
-      borderColor: colors.border,
-      backgroundColor: colors.background,
+    filterText: {
+      flexShrink: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.muted,
     },
-    filterOn: {
-      borderStyle: "solid",
-      borderColor: colors.softBorder,
-      backgroundColor: colors.accentSoft,
-    },
-    filterOpen: { borderColor: colors.accent },
-    filterText: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
-    filterTextOn: { fontFamily: fonts.semibold, color: colors.accent },
-    panel: {
-      backgroundColor: colors.surface,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.card,
-      padding: 12,
-      marginBottom: 12,
-    },
-    panelHint: { marginTop: 8 },
-    layout: { marginBottom: 12 },
     manualHint: { marginTop: -4, marginBottom: 14 },
-    toolbar: {
-      flexDirection: "row",
-      flexWrap: "wrap",
-      alignItems: "center",
-      justifyContent: "space-between",
-      gap: 8,
-      marginBottom: 14,
-    },
     toolbarActions: { flexDirection: "row", gap: 8 },
     /** The board on a wide screen: status sections two across. */
     board: { flexDirection: "row", flexWrap: "wrap", marginHorizontal: -8 },
     boardColumn: { width: "50%", paddingHorizontal: 8 },
-    pickBar: {
-      gap: 10,
-      padding: 12,
-      marginBottom: 14,
-      borderRadius: radii.card,
-      borderWidth: 1,
-      borderColor: colors.accent,
-      backgroundColor: colors.accentSoft,
-    },
     pickTitle: {
       fontFamily: fonts.semibold,
       fontSize: 13,
@@ -1348,3 +1451,15 @@ const s = themed(() =>
     },
   }),
 );
+
+/** Account changes cannot retain stale owner names, selections or overlays. */
+export function TasksScreen(
+  props: React.ComponentProps<typeof TasksScreenBody>,
+) {
+  return (
+    <TasksScreenBody
+      key={`${session.token}:${props.user?.id ?? ""}`}
+      {...props}
+    />
+  );
+}

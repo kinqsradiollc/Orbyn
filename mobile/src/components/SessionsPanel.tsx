@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   atRiskReason,
@@ -16,6 +16,7 @@ import {
   type TimeBlock,
 } from "@orbyn/core";
 import { Button } from "./Button";
+import { BottomSheet } from "./BottomSheet";
 import { Chip, ChipRow } from "./Chip";
 import { ErrorBanner } from "./ErrorBanner";
 import { TimeField } from "./Field";
@@ -34,7 +35,6 @@ import {
 } from "../lib/planning";
 import { useRun } from "../hooks/useRun";
 import { errorText } from "../lib/errors";
-import { FadeIn, animateLayout } from "../motion";
 import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -107,7 +107,12 @@ function emptyText(s: ItemSessions | null, item: Item) {
  * ones flagged. "Find time before the deadline" asks the planner for this
  * task alone; "Add session…" picks a day and time by hand.
  */
-export function SessionsPanel({
+export function SessionsPanel(
+  props: React.ComponentProps<typeof SessionsPanelBody>,
+) {
+  return <SessionsPanelBody key={props.item.id} {...props} />;
+}
+function SessionsPanelBody({
   item,
   canWork,
   reloadKey,
@@ -124,7 +129,20 @@ export function SessionsPanel({
   /** Show a session's day on the calendar. */
   onShowOnCalendar?: (at: string) => void;
 }) {
-  const { busy, error, setError, run } = useRun();
+  const { busy, error, setError, run: runAction } = useRun();
+  const mutation = useRef(false);
+  const run = useCallback<typeof runAction>(
+    async (operation) => {
+      if (mutation.current) return undefined;
+      mutation.current = true;
+      try {
+        return await runAction(operation);
+      } finally {
+        mutation.current = false;
+      }
+    },
+    [runAction],
+  );
   const [data, setData] = useState<ItemSessions | null>(null);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [reason, setReason] = useState("");
@@ -133,19 +151,38 @@ export function SessionsPanel({
   const [time, setTime] = useState(nextHalfHour);
   const minutes = Math.min(1440, item.estimate_minutes || 30);
 
+  const mounted = useRef(true);
+  const readEpoch = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [readFailed, setReadFailed] = useState(false);
   const load = useCallback(async () => {
-    const next = await client.itemSessions(item.id);
-    animateLayout();
-    setData(next);
-    if (!next.assigned_to_me) {
-      setPlan(null);
-      setPicking(false);
+    const epoch = ++readEpoch.current;
+    setLoading(true);
+    try {
+      const next = await client.itemSessions(item.id);
+      if (!mounted.current || epoch !== readEpoch.current) return;
+      setData(next);
+      setReadFailed(false);
+      if (!next.assigned_to_me) {
+        setPlan(null);
+        setPicking(false);
+      }
+    } catch (e) {
+      if (mounted.current && epoch === readEpoch.current) {
+        setReadFailed(true);
+        setError(errorText(e));
+      }
+    } finally {
+      if (mounted.current && epoch === readEpoch.current) setLoading(false);
     }
-  }, [item.id]);
-
+  }, [item.id, setError]);
   useEffect(() => {
-    load().catch((e: Error) => setError(errorText(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      ++readEpoch.current;
+    };
   }, [load, reloadKey]);
 
   const deadline = data?.deadline_at ?? deadlineOf(item);
@@ -159,6 +196,7 @@ export function SessionsPanel({
 
   const find = () =>
     run(async () => {
+      if (!canPlan) return;
       setPicking(false);
       // Days up to the deadline, counted where the planner plans.
       const zone = await client
@@ -174,7 +212,7 @@ export function SessionsPanel({
         ...next.blocks.filter((b) => b.item_id === item.id),
         ...(next.moves ?? []).filter((m) => m.item_id === item.id),
       ];
-      animateLayout();
+      if (!mounted.current) return;
       setPlan(mine.length ? next : null);
       setReason(
         mine.length
@@ -186,23 +224,24 @@ export function SessionsPanel({
     });
 
   const done = async () => {
-    animateLayout();
+    if (!mounted.current) return;
     setPlan(null);
     setPicking(false);
     setReason("");
     await load();
-    onChanged?.();
+    if (mounted.current) onChanged?.();
   };
 
   const bookAll = () =>
     run(async () => {
-      if (!plan) return;
+      if (!plan || !canPlan) return;
       await client.applyPlan(plan.id, { moves: moves.map((m) => m.block_id) });
       await done();
     });
 
   const book = (start: Date, end: Date) =>
     run(async () => {
+      if (!canPlan) return;
       await client.createBlock({
         item_id: item.id,
         start_at: start.toISOString(),
@@ -213,9 +252,10 @@ export function SessionsPanel({
 
   const remove = (block: TimeBlock) =>
     run(async () => {
+      if (!canPlan) return;
       await client.deleteBlock(block.id);
       await load();
-      onChanged?.();
+      if (mounted.current) onChanged?.();
     });
 
   const pickedStart = new Date(dayStart(day));
@@ -223,17 +263,22 @@ export function SessionsPanel({
   const pickedEnd = new Date(pickedStart.getTime() + minutes * 60_000);
   const sessions = data?.sessions ?? [];
   const now = Date.now();
-  const canPlan = canWork && data?.assigned_to_me !== false;
+  const canPlan =
+    canWork &&
+    !!data &&
+    data.assigned_to_me !== false &&
+    !loading &&
+    !readFailed;
 
   return (
-    <FadeIn style={shared.card}>
+    <View style={shared.card}>
       <View style={s.heading}>
         <Icon name="calendar" size={16} color={colors.muted} />
         <Text style={shared.sectionTitle} accessibilityRole="header">
           Sessions
         </Text>
       </View>
-      <ErrorBanner error={error} onDismiss={() => setError("")} />
+      {!picking && <ErrorBanner error={error} onDismiss={() => setError("")} />}
       {!!data?.project_deadline &&
         dueAfterProject(data.deadline_at, data.project_deadline) && (
           <View style={s.latestRow} accessibilityRole="text">
@@ -243,7 +288,7 @@ export function SessionsPanel({
             {canWork && !item.rrule && (
               <SmallAction
                 label={`Use ${rowDay(data.project_deadline)}`}
-                disabled={busy}
+                disabled={busy || loading || readFailed}
                 onPress={() =>
                   run(async () => {
                     // Your own edit: the project never writes task deadlines.
@@ -254,14 +299,22 @@ export function SessionsPanel({
                       all_day: false,
                     });
                     await load();
-                    onChanged?.();
+                    if (mounted.current) onChanged?.();
                   })
                 }
               />
             )}
           </View>
         )}
-      {!data && !error && <Text style={shared.small}>Loading sessions…</Text>}
+      {loading && <Text style={shared.small}>Loading sessions…</Text>}
+      {readFailed && (
+        <Button
+          title="Retry sessions"
+          secondary
+          disabled={busy || loading}
+          onPress={() => void load()}
+        />
+      )}
       {!!data && sessions.length > 0 && (
         <>
           <Text style={[shared.small, s.summary]}>{summary(data, item)}</Text>
@@ -314,14 +367,14 @@ export function SessionsPanel({
                         onPress={() => onShowOnCalendar(b.start_at)}
                       />
                     )}
-                    {
+                    {canPlan && (
                       <SmallAction
                         destructive
                         label="Remove"
                         disabled={busy}
                         onPress={() => void remove(b)}
                       />
-                    }
+                    )}
                   </View>
                 )}
               </View>
@@ -381,7 +434,7 @@ export function SessionsPanel({
                     : "Book this time"
             }
             icon="check"
-            disabled={busy}
+            disabled={busy || !canPlan}
             style={s.offerButton}
             onPress={() =>
               offered.length > 1 || moves.length
@@ -411,7 +464,7 @@ export function SessionsPanel({
             title="Add session…"
             disabled={busy}
             onPress={() => {
-              animateLayout();
+              setError("");
               setPlan(null);
               setReason("");
               setPicking(true);
@@ -419,8 +472,16 @@ export function SessionsPanel({
           />
         </View>
       )}
-      {canPlan && picking && (
-        <View style={s.gap}>
+      <BottomSheet
+        visible={picking}
+        title="Add session"
+        onClose={() => {
+          if (!mutation.current) setPicking(false);
+        }}
+        closeDisabled={busy}
+      >
+        <View>
+          <ErrorBanner error={error} onDismiss={() => setError("")} />
           <Text style={shared.label}>Day</Text>
           <ChipRow label="Day">
             {Array.from({ length: PICK_DAYS }, (_, n) => (
@@ -434,12 +495,18 @@ export function SessionsPanel({
                       : shortDay(dayStart(n))
                 }
                 selected={day === n}
+                disabled={busy}
                 onPress={() => setDay(n)}
               />
             ))}
           </ChipRow>
           <Text style={[shared.label, s.gap]}>Start</Text>
-          <TimeField label="Start time" value={time} onChange={setTime} />
+          <TimeField
+            label="Start time"
+            value={time}
+            onChange={setTime}
+            disabled={busy}
+          />
           <Text style={[shared.small, s.gapSmall]}>
             {minutesLabel(minutes)}
             {item.estimate_minutes ? "" : " (set an estimate to change this)"}
@@ -447,7 +514,7 @@ export function SessionsPanel({
           <Button
             title={`Add ${slotLabel(pickedStart, pickedEnd)}`}
             icon="check"
-            disabled={busy}
+            disabled={busy || !canPlan}
             style={s.gap}
             onPress={() => void book(pickedStart, pickedEnd)}
           />
@@ -456,13 +523,12 @@ export function SessionsPanel({
             title="Cancel"
             disabled={busy}
             onPress={() => {
-              animateLayout();
-              setPicking(false);
+              if (!mutation.current) setPicking(false);
             }}
           />
         </View>
-      )}
-    </FadeIn>
+      </BottomSheet>
+    </View>
   );
 }
 
@@ -501,6 +567,7 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
+      flexWrap: "wrap",
       minHeight: controls.tap,
       paddingVertical: 8,
     },
@@ -516,7 +583,7 @@ const s = themed(() =>
       borderColor: colors.warningBorder,
       backgroundColor: colors.warningSoft,
     },
-    rowText: { flex: 1, gap: 2 },
+    rowText: { flex: 1, minWidth: 120, gap: 2 },
     rowActions: { flexDirection: "row", alignItems: "center", gap: 8 },
     when: {
       fontFamily: fonts.medium,

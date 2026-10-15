@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Pressable } from "../motion";
 import {
@@ -14,6 +14,7 @@ import {
 import { Button } from "../components/Button";
 import { Icon, type IconName } from "../components/Icon";
 import { Sheet, sheetStyles } from "../components/Sheet";
+import { session } from "../lib/session";
 import { client } from "../lib/api";
 import { errorText } from "../lib/errors";
 import { shared } from "../styles";
@@ -31,7 +32,10 @@ const PURPOSE_ICONS: Record<FirstRunPurpose, IconName> = {
  * alongside if you like, and a starter — a small project with a brief page
  * that links to its other pages. "Not now" skips it for good.
  */
-export function FirstRunSheet({
+export function FirstRunSheet(props: Parameters<typeof FirstRunBody>[0]) {
+  return <FirstRunBody key={`${props.user.id}:${session.token}`} {...props} />;
+}
+function FirstRunBody({
   visible,
   user,
   onDone,
@@ -50,27 +54,50 @@ export function FirstRunSheet({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  const owner = session.token;
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  const shown = useRef(visible);
+  shown.current = visible;
+  const connectedUrl = useRef("");
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () =>
+    mounted.current && shown.current && session.token === owner;
   const run = async (fn: () => Promise<void>) => {
+    if (pending.current || !current()) return;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
       await fn();
     } catch (e) {
-      setError(errorText(e));
+      if (current()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (mounted.current && session.token === owner) setBusy(false);
     }
   };
-  const skip = () => run(async () => onDone(await client.skipFirstRun(), null));
-  const connect = () => {
-    const url = calendarUrl.trim();
-    if (!url) return setStep(2);
-    void run(async () => {
-      await client.createCalendarSubscription({ url, name: "My calendar" });
-      setCalendarNote("Connected. Its events show on your calendar.");
-      setStep(2);
+  const skip = () =>
+    run(async () => {
+      const person = await client.skipFirstRun();
+      if (current()) onDone(person, null);
     });
-  };
+  const connect = () =>
+    run(async () => {
+      const url = calendarUrl.trim();
+      if (url && connectedUrl.current !== url) {
+        await client.createCalendarSubscription({ url, name: "My calendar" });
+        if (!current()) return;
+        connectedUrl.current = url;
+        setCalendarNote("Calendar connected.");
+      }
+      if (current()) setStep(2);
+    });
   const finish = () =>
     run(async () => {
       const made = await client.finishFirstRun({
@@ -80,7 +107,7 @@ export function FirstRunSheet({
           ? { team_name: teamName.trim() }
           : {}),
       });
-      onDone(made.user, made);
+      if (current()) onDone(made.user, made);
     });
 
   const first = user.name.split(" ")[0];
@@ -95,7 +122,8 @@ export function FirstRunSheet({
     <Pressable
       key={key}
       accessibilityRole="radio"
-      accessibilityState={{ checked: on }}
+      disabled={busy}
+      accessibilityState={{ checked: on, disabled: busy }}
       accessibilityLabel={`${name}. ${blurb}`}
       onPress={onPress}
       style={({ pressed }) => [
@@ -114,12 +142,7 @@ export function FirstRunSheet({
   );
 
   return (
-    <Sheet
-      visible={visible}
-      title="Welcome"
-      hideClose
-      onClose={() => void skip()}
-    >
+    <Sheet visible={visible} title="Welcome" hideClose onClose={() => {}}>
       <ScrollView
         contentContainerStyle={sheetStyles.body}
         keyboardShouldPersistTaps="handled"
@@ -132,12 +155,9 @@ export function FirstRunSheet({
           {step === 0 && (
             <>
               <Text style={s.heading} accessibilityRole="header">
-                Welcome{first ? `, ${first}` : ""}. What's Orbyn for?
+                Choose a starting point
               </Text>
-              <Text style={s.blurb}>
-                Orbyn sets up a first project to match. Everything stays open to
-                you, whichever you pick.
-              </Text>
+              <Text style={s.blurb}>Start with a project, or skip setup.</Text>
               <View accessibilityRole="radiogroup" style={s.choices}>
                 {FIRST_RUN_PURPOSES.map((p) =>
                   choice(
@@ -158,15 +178,15 @@ export function FirstRunSheet({
           {step === 1 && (
             <>
               <Text style={s.heading} accessibilityRole="header">
-                Connect a calendar (optional)
+                Add a calendar
               </Text>
               <Text style={s.blurb}>
-                Paste a private .ics calendar link. Its events appear beside
-                your plans. Add more later in Settings.
+                Add a private .ics link to show its events alongside your plans.
               </Text>
               <Text style={shared.label}>Calendar address</Text>
               <TextInput
                 style={shared.input}
+                editable={!busy}
                 value={calendarUrl}
                 onChangeText={setCalendarUrl}
                 placeholder="https://…/basic.ics"
@@ -201,6 +221,7 @@ export function FirstRunSheet({
                   <Text style={shared.label}>The team's name</Text>
                   <TextInput
                     style={shared.input}
+                    editable={!busy}
                     value={teamName}
                     maxLength={80}
                     onChangeText={setTeamName}
@@ -244,7 +265,7 @@ export function FirstRunSheet({
                       : "Skip this"
                     : starter === "none"
                       ? "Start"
-                      : "Make it"
+                      : "Create starter"
               }
               disabled={busy}
               style={s.footButton}
@@ -263,7 +284,7 @@ const s = themed(() =>
   StyleSheet.create({
     column: { gap: 12 },
     step: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
-    heading: { fontFamily: fonts.display, fontSize: 24, color: colors.text },
+    heading: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },
     blurb: {
       fontFamily: fonts.regular,
       fontSize: 13,

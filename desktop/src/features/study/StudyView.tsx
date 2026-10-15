@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useElementWidth } from "../../hooks/useElementWidth";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   BookOpenCheck,
   CalendarClock,
@@ -16,6 +17,7 @@ import {
 } from "lucide-react";
 import {
   withCards,
+  docContainerBlocks,
   type Doc,
   type DocSummary,
   type RevisionPlan,
@@ -23,6 +25,7 @@ import {
   type StudyOverview,
   aiFeatureProviderLabel,
   type SuggestedCard,
+  type DocBlock,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { deviceTimeZone } from "../../lib/planning";
@@ -34,6 +37,25 @@ import "./study.css";
 import { errorText } from "../../lib/errors";
 import { EmptyState } from "../../components/EmptyState";
 import { CONCEPT_ICON } from "../../app/concept-icons";
+import { Popover } from "../../components/Popover";
+import { OutcomeNote, useAction } from "../../components/Outcome";
+import { useModalFocus } from "../../hooks/useModalFocus";
+import { session as authSession } from "../../lib/session";
+
+function useStudyOwner() {
+  const owner = useRef(authSession.get()).current;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  return useCallback(
+    () => mounted.current && authSession.get() === owner,
+    [owner],
+  );
+}
 
 type Props = {
   report: (e: unknown) => void;
@@ -75,7 +97,16 @@ const EXAMPLE = `What does CAP stand for? :: Consistency, availability, partitio
  * answers and explaining — and revision planned around your exams. Every
  * change the assistant or the planner suggests waits for your approval.
  */
-export function StudyView({ report, onOpenPage, onPlanned }: Props) {
+export function StudyView(props: Props) {
+  return <StudyBody key={authSession.get()} {...props} />;
+}
+
+function StudyBody({ report, onOpenPage, onPlanned }: Props) {
+  const currentOwner = useStudyOwner();
+  const action = useAction(report);
+  const read = useRef(0);
+  const [readFailed, setReadFailed] = useState(false);
+  const { ref: pageRef, width: pageWidth } = useElementWidth();
   const { ask } = useConfirm();
   const [data, setData] = useState<StudyOverview | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -91,23 +122,35 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
   // Importing from Study: a finished upload offers "Make cards" right here.
   const imports = useImports(report, () => void load());
 
-  const load = useCallback(
-    () =>
-      client.study().then(setData, (e) => {
+  const load = useCallback(async () => {
+    if (!currentOwner()) return false;
+    const version = ++read.current;
+    setReadFailed(false);
+    try {
+      const next = await client.study();
+      if (!currentOwner() || read.current !== version) return false;
+      setData(next);
+      return true;
+    } catch (e) {
+      if (currentOwner() && read.current === version) {
+        setReadFailed(true);
         report(e);
-        setData((d) => d ?? null);
-      }),
-    [report],
-  );
+      }
+      return false;
+    }
+  }, [currentOwner, report]);
   useEffect(() => {
     void load();
   }, [load]);
 
   const openPage = (docId: string) =>
-    client.getDoc(docId).then(onOpenPage, report);
+    action.run(async () => {
+      const doc = await client.getDocForEditor(docId);
+      if (currentOwner()) onOpenPage(doc);
+    });
 
-  const newPage = async () => {
-    try {
+  const newPage = () =>
+    action.run(async () => {
       const doc = await client.createDoc({
         title: "Study notes",
         kind: "note",
@@ -120,48 +163,44 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
           { type: "bullet", text: EXAMPLE },
         ],
       });
-      onOpenPage(doc);
-    } catch (e) {
-      report(e);
-    }
-  };
+      if (currentOwner()) onOpenPage(doc);
+    });
 
-  const makeHabit = async () => {
-    if (
-      !(await ask({
-        title: "Make a daily review a habit?",
-        body: "Orbyn sets aside 15 minutes a day for reviewing cards and keeps your streak.",
-        confirmLabel: "Add the habit",
-      }))
-    )
-      return;
-    try {
+  const makeHabit = () =>
+    action.run(async () => {
+      if (
+        !(await ask({
+          title: "Make a daily review a habit?",
+          body: "Orbyn sets aside 15 minutes a day for reviewing cards and keeps your streak.",
+          confirmLabel: "Add the habit",
+        }))
+      )
+        return;
+      if (!currentOwner()) return;
       await client.createHabit({
         name: "Review cards",
         cadence: 1,
         period: "day",
         duration_minutes: 15,
       });
-      setNote("Added “Review cards” to your habits.");
-    } catch (e) {
-      report(e);
-    }
-  };
+      if (currentOwner()) setNote("Review habit added.");
+    });
 
-  const attach = async (exam: StudyExam, docIds: string[]) => {
-    try {
-      setData(
-        await client.setExamDecks({
-          key: exam.key,
-          title: exam.title,
-          starts_at: exam.starts_at,
-          doc_ids: docIds,
-        }),
-      );
-    } catch (e) {
-      report(e);
-    }
-  };
+  const attach = (exam: StudyExam, docIds: string[]) =>
+    action.run(async () => {
+      read.current++;
+      const next = await client.setExamDecks({
+        key: exam.key,
+        title: exam.title,
+        starts_at: exam.starts_at,
+        doc_ids: docIds,
+      });
+      if (currentOwner()) {
+        read.current++;
+        setReadFailed(false);
+        setData(next);
+      }
+    });
 
   if (session)
     return (
@@ -184,7 +223,19 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
       />
     );
 
-  if (!data) return <p className="muted">Loading your cards…</p>;
+  if (!data)
+    return readFailed ? (
+      <div role="status">
+        <p>Couldn’t load cards.</p>
+        <button className="secondary" onClick={() => void load()}>
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p className="muted" role="status">
+        Loading cards…
+      </p>
+    );
 
   const toReview = data.due_today + data.new_cards;
   const readyImports = imports.jobs
@@ -214,21 +265,37 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
     );
 
   return (
-    <div className="study">
+    <div
+      ref={pageRef}
+      className={
+        "study" +
+        (pageWidth < 760 ? " is-compact" : "") +
+        (pageWidth < 640 ? " is-small" : "")
+      }
+    >
+      <OutcomeNote outcome={action.outcome} />
+      {readFailed && (
+        <div role="status">
+          <span>Couldn’t refresh cards. </span>
+          <button className="text-button" onClick={() => void load()}>
+            Retry
+          </button>
+        </div>
+      )}
       <section className="card study-hero">
         <div className="study-hero-main">
           <span className="study-eyebrow">Today</span>
           <h2 className="study-hero-count">
             {toReview
               ? `${toReview} card${toReview === 1 ? "" : "s"} to review`
-              : "You're all caught up"}
+              : "No cards due"}
           </h2>
           <p className="muted">
             {toReview
               ? `${data.due_today} due · ${data.new_cards} new · about ${minutes} min`
               : totalCards
-                ? "Cards come back when they're about to slip. Study ahead, or quiz yourself."
-                : "Add cards from a page, or start a study page below."}
+                ? "Study ahead or start a quiz."
+                : "Add cards from a page."}
           </p>
           <div className="study-actions">
             {toReview ? (
@@ -317,7 +384,11 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
               ))}
             </div>
           )}
-          <button className="text-button" onClick={() => void makeHabit()}>
+          <button
+            className="text-button"
+            disabled={action.pending}
+            onClick={() => void makeHabit()}
+          >
             <Repeat size={14} /> Make it a daily habit
           </button>
         </div>
@@ -370,10 +441,7 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
                           </span>
                         </div>
                       ) : (
-                        <small className="muted">
-                          No pages attached yet. Choose what you&apos;re
-                          revising.
-                        </small>
+                        <small className="muted">Choose pages to revise.</small>
                       )}
                     </div>
                     <div className="study-exam-actions">
@@ -432,6 +500,7 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
                           <label key={x.doc_id} className="check-line">
                             <input
                               type="checkbox"
+                              disabled={action.pending}
                               checked={exam.doc_ids.includes(x.doc_id)}
                               onChange={(e) =>
                                 void attach(
@@ -472,7 +541,11 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
             body="Any line written as Question :: Answer in a page becomes a card."
           >
             <div className="empty-actions">
-              <button className="primary" onClick={() => void newPage()}>
+              <button
+                className="primary"
+                disabled={action.pending}
+                onClick={() => void newPage()}
+              >
                 <Plus size={15} /> New study page
               </button>
               <ImportButton
@@ -636,7 +709,7 @@ export function StudyView({ report, onOpenPage, onPlanned }: Props) {
 
       {data.weak.length > 0 && (
         <section className="study-section">
-          <h2>Keeps getting wrong</h2>
+          <h2>Needs practice</h2>
           <ul className="card study-weak">
             {data.weak.map((w) => (
               <li key={w.id}>
@@ -715,26 +788,11 @@ function DeckMenu({
   onQuiz: () => void;
   onAhead: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: MouseEvent) => {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    };
-    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
-    document.addEventListener("mousedown", close);
-    document.addEventListener("keydown", key);
-    return () => {
-      document.removeEventListener("mousedown", close);
-      document.removeEventListener("keydown", key);
-    };
-  }, [open]);
+  const [anchor, setAnchor] = useState<DOMRect | null>(null);
   const item = (label: string, icon: React.ReactNode, act: () => void) => (
     <button
-      role="menuitem"
       onClick={() => {
-        setOpen(false);
+        setAnchor(null);
         act();
       }}
     >
@@ -742,23 +800,30 @@ function DeckMenu({
     </button>
   );
   return (
-    <span className="study-menu" ref={ref}>
+    <span className="study-menu">
       <button
         className="icon-button"
         aria-label={`More for ${title}`}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
+        aria-haspopup="dialog"
+        aria-expanded={!!anchor}
+        onClick={(event) =>
+          setAnchor(anchor ? null : event.currentTarget.getBoundingClientRect())
+        }
       >
         <MoreHorizontal size={18} />
       </button>
-      {open && (
-        <span className="study-menu-list" role="menu">
+      {anchor && (
+        <Popover
+          anchor={anchor}
+          label={`Actions for ${title}`}
+          onClose={() => setAnchor(null)}
+          width={240}
+        >
           {item("Suggest cards", <Sparkles size={14} />, onSuggest)}
           {item("Quiz me", <HelpCircle size={14} />, onQuiz)}
           {item("Study ahead", <FastForward size={14} />, onAhead)}
           {item("Open page", <FileText size={14} />, onOpen)}
-        </span>
+        </Popover>
       )}
     </span>
   );
@@ -779,11 +844,20 @@ function PagePicker({
   onPick: (docId: string, title: string) => void;
   onClose: () => void;
 }) {
+  const currentOwner = useStudyOwner();
+  const modal = useModalFocus(onClose);
+  const titleId = useId();
   const [pages, setPages] = useState<DocSummary[] | null>(null);
   const [q, setQ] = useState("");
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [limit, setLimit] = useState(60);
   useEffect(() => {
+    let active = true;
+    setFailed(false);
     client.listDocs().then(
-      (all) =>
+      (all) => {
+        if (!active || !currentOwner()) return;
         setPages(
           all
             .filter((d) => d.kind !== "agenda")
@@ -792,14 +866,18 @@ function PagePicker({
                 Number(!!b.imported_from) - Number(!!a.imported_from) ||
                 b.updated_at.localeCompare(a.updated_at),
             ),
-        ),
+        );
+      },
       (e) => {
+        if (!active || !currentOwner()) return;
         report(e);
-        setPages([]);
+        setFailed(true);
       },
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [retry, currentOwner, report]);
   const shown = (pages ?? []).filter((p) =>
     `${p.title} ${p.preview}`.toLowerCase().includes(q.trim().toLowerCase()),
   );
@@ -809,36 +887,48 @@ function PagePicker({
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
       <section
+        ref={modal.ref}
+        data-modal-focus={modal.id}
+        tabIndex={-1}
         className="modal study-picker"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="study-picker-title"
+        aria-labelledby={titleId}
       >
         <div className="section-heading">
-          <h2 id="study-picker-title">Cards from a page</h2>
+          <h2 id={titleId}>Choose a page</h2>
           <button className="icon-button" aria-label="Close" onClick={onClose}>
             <X size={20} />
           </button>
         </div>
         <div className="modal-body">
-          <p className="muted">
-            The assistant suggests cards only from what the page says, and you
-            choose which to keep.
-          </p>
           <input
             autoFocus
             aria-label="Search your pages"
             placeholder="Search your pages…"
             value={q}
-            onChange={(e) => setQ(e.target.value)}
+            onChange={(e) => {
+              setQ(e.target.value);
+              setLimit(60);
+            }}
           />
-          {pages === null ? (
+          {failed ? (
+            <div role="status">
+              <p>Couldn’t load pages.</p>
+              <button
+                className="secondary"
+                onClick={() => setRetry((n) => n + 1)}
+              >
+                Retry
+              </button>
+            </div>
+          ) : pages === null ? (
             <p className="muted">Loading your pages…</p>
           ) : shown.length === 0 ? (
             <p className="muted">No pages match.</p>
           ) : (
             <ul className="study-picker-list">
-              {shown.slice(0, 60).map((p) => (
+              {shown.slice(0, limit).map((p) => (
                 <li key={p.id}>
                   <button onClick={() => onPick(p.id, p.title || "Untitled")}>
                     <FileText size={15} aria-hidden="true" />
@@ -855,11 +945,22 @@ function PagePicker({
               ))}
             </ul>
           )}
-          <p className="muted study-syntax">
-            Writing your own: <code>Question :: Answer</code> makes a card,{" "}
-            <code>A ::: B</code> asks both ways, and <code>{"{{word}}"}</code>{" "}
-            hides a word.
-          </p>
+          {!failed && shown.length > limit && (
+            <button
+              className="text-button"
+              onClick={() => setLimit((n) => n + 60)}
+            >
+              Show more pages
+            </button>
+          )}
+          <details className="study-syntax">
+            <summary>Write cards by hand</summary>
+            <p className="muted">
+              Writing your own: <code>Question :: Answer</code> makes a card,{" "}
+              <code>A ::: B</code> asks both ways, and <code>{"{{word}}"}</code>{" "}
+              hides a word.
+            </p>
+          </details>
         </div>
       </section>
     </div>
@@ -871,7 +972,16 @@ function PagePicker({
  * added until "Add" — then the ticked cards are written into the page under
  * its Cards heading, where they can be edited like any line.
  */
-export function MakeCardsDialog({
+export function MakeCardsDialog(props: Parameters<typeof MakeCardsBody>[0]) {
+  return (
+    <MakeCardsBody
+      key={`${authSession.get()}:${props.docId}:${props.max ?? ""}`}
+      {...props}
+    />
+  );
+}
+
+function MakeCardsBody({
   docId,
   title,
   report,
@@ -885,21 +995,39 @@ export function MakeCardsDialog({
   /** How many to suggest: "Make 10 flashcards" asks for ten (AI-01). */
   max?: number;
 }) {
+  const currentOwner = useStudyOwner();
+  const action = useAction(report);
+  const saving = action.pending;
+  const titleId = useId();
+  const additions = useRef<{ blocks: DocBlock[]; count: number } | null>(null);
+  const mutation = useRef(false);
+  const close = () => {
+    if (!mutation.current) onClose(0);
+  };
+  const modal = useModalFocus(close, saving);
+  const [retry, setRetry] = useState(0);
   const [providerLabel, setProviderLabel] = useState("");
   const [cards, setCards] = useState<
     (SuggestedCard & { keep: boolean })[] | null
   >(null);
   const [error, setError] = useState("");
-  const [saving, setSaving] = useState(false);
   useEffect(() => {
+    let active = true;
+    setError("");
     client.suggestCards(docId, max).then(
       (r) => {
+        if (!active || !currentOwner()) return;
         setProviderLabel(r.provider ? aiFeatureProviderLabel(r.provider) : "");
         setCards(r.cards.map((c) => ({ ...c, keep: true })));
       },
-      (e: Error) => setError(errorText(e)),
+      (e: Error) => {
+        if (active && currentOwner()) setError(errorText(e));
+      },
     );
-  }, [docId, max]);
+    return () => {
+      active = false;
+    };
+  }, [docId, max, retry, currentOwner]);
   const update = (
     i: number,
     patch: Partial<SuggestedCard & { keep: boolean }>,
@@ -911,41 +1039,88 @@ export function MakeCardsDialog({
     (c) => c.keep && c.question.trim() && c.answer.trim(),
   );
   const add = async () => {
-    setSaving(true);
-    try {
-      const doc = await client.getDoc(docId);
-      await client.updateDoc(docId, {
-        version: doc.version,
-        content: withCards(doc.content, kept),
-      });
-      onClose(kept.length);
-    } catch (e) {
-      report(e);
-      setSaving(false);
-    }
+    if (mutation.current || !kept.length || !currentOwner()) return;
+    mutation.current = true;
+    await action.run(async () => {
+      additions.current ??= {
+        blocks: withCards([], kept).map((block) => ({
+          ...block,
+          id: block.id ?? crypto.randomUUID(),
+        })),
+        count: kept.length,
+      };
+      const adding = additions.current;
+      const doc = await client.getDocForEditor(docId);
+      if (!currentOwner()) return;
+      const document = doc.document ?? {
+        format: 1 as const,
+        blocks: doc.content,
+      };
+      const blocks =
+        document.format === 1
+          ? document.blocks
+          : docContainerBlocks(document.nodes);
+      const ids = new Set(blocks.map((b) => b.id).filter(Boolean));
+      const found = adding.blocks.filter((b) => b.id && ids.has(b.id)).length;
+      if (found && found !== adding.blocks.length)
+        throw new Error(
+          "Some added cards changed. Review the page before adding more.",
+        );
+      if (!found) {
+        let updated = document;
+        if (document.format === 2) {
+          updated = {
+            format: 2,
+            nodes: [
+              ...document.nodes,
+              ...adding.blocks.map((block) => ({
+                kind: "block" as const,
+                block,
+              })),
+            ],
+          };
+        } else {
+          updated = {
+            format: 1,
+            blocks: [...document.blocks, ...adding.blocks],
+          };
+        }
+        await client.updateDocForEditor(docId, {
+          version: doc.version,
+          document: updated,
+        });
+      }
+      if (currentOwner()) onClose(adding.count);
+    });
+    mutation.current = false;
   };
   return (
     <div
       className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose(0)}
+      onMouseDown={(e) => e.target === e.currentTarget && close()}
     >
       <section
+        ref={modal.ref}
+        data-modal-focus={modal.id}
+        tabIndex={-1}
         className="modal modal-wide study-make"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="make-cards-title"
+        aria-labelledby={titleId}
       >
         <div className="section-heading">
-          <h2 id="make-cards-title">Cards from “{title}”</h2>
+          <h2 id={titleId}>Cards from {title}</h2>
           <button
             className="icon-button"
             aria-label="Close"
-            onClick={() => onClose(0)}
+            disabled={saving}
+            onClick={close}
           >
             <X size={20} />
           </button>
         </div>
         <div className="modal-body">
+          <OutcomeNote outcome={action.outcome} />
           {providerLabel && (
             <small className="muted study-provider-label">
               {providerLabel}
@@ -954,48 +1129,64 @@ export function MakeCardsDialog({
           {error ? (
             <div role="alert" className="error">
               {error}
+              <button
+                className="secondary"
+                onClick={() => setRetry((n) => n + 1)}
+              >
+                Retry suggestions
+              </button>
             </div>
           ) : cards === null ? (
             <p className="muted">
               <Sparkles size={14} /> Reading your notes…
             </p>
           ) : cards.length === 0 ? (
-            <p className="muted">
-              No new cards to suggest from this page — everything in it may
-              already be a card.
-            </p>
+            <p className="muted">No new cards to suggest.</p>
           ) : (
             <>
-              <p className="muted">
-                Suggested from your notes only. Untick any you don&apos;t want
-                and fix the wording before adding.
-              </p>
+              <p className="muted">Edit or deselect cards before adding.</p>
               <ul className="study-suggested">
                 {cards.map((c, i) => (
                   <li key={i} className={c.keep ? "" : "is-off"}>
                     <input
                       type="checkbox"
+                      disabled={saving || !!additions.current}
                       aria-label={`Keep card ${i + 1}`}
                       checked={c.keep}
                       onChange={(e) => update(i, { keep: e.target.checked })}
                     />
                     <div>
-                      <input
-                        aria-label={`Question ${i + 1}`}
-                        value={c.question}
-                        maxLength={500}
-                        onChange={(e) =>
-                          update(i, { question: e.target.value })
-                        }
-                      />
-                      <input
-                        aria-label={`Answer ${i + 1}`}
-                        value={c.answer}
-                        maxLength={1000}
-                        onChange={(e) => update(i, { answer: e.target.value })}
-                      />
+                      <label>
+                        Question
+                        <textarea
+                          aria-label={`Question ${i + 1}`}
+                          rows={2}
+                          disabled={saving || !!additions.current}
+                          value={c.question}
+                          maxLength={500}
+                          onChange={(e) =>
+                            update(i, { question: e.target.value })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Answer
+                        <textarea
+                          aria-label={`Answer ${i + 1}`}
+                          rows={3}
+                          disabled={saving || !!additions.current}
+                          value={c.answer}
+                          maxLength={1000}
+                          onChange={(e) =>
+                            update(i, { answer: e.target.value })
+                          }
+                        />
+                      </label>
                       {c.source && (
-                        <small className="muted">From: “{c.source}”</small>
+                        <details>
+                          <summary>Source</summary>
+                          <p className="muted">{c.source}</p>
+                        </details>
                       )}
                     </div>
                   </li>
@@ -1004,7 +1195,7 @@ export function MakeCardsDialog({
             </>
           )}
           <div className="button-row">
-            <button className="secondary" onClick={() => onClose(0)}>
+            <button className="secondary" disabled={saving} onClick={close}>
               Cancel
             </button>
             <button
@@ -1015,7 +1206,9 @@ export function MakeCardsDialog({
               <Check size={15} />{" "}
               {saving
                 ? "Adding…"
-                : `Add ${kept.length} card${kept.length === 1 ? "" : "s"} to the page`}
+                : additions.current
+                  ? "Retry adding cards"
+                  : `Add ${kept.length} card${kept.length === 1 ? "" : "s"}`}
             </button>
           </div>
         </div>
@@ -1037,27 +1230,48 @@ function RevisionDialog({
   report: (e: unknown) => void;
   onClose: (applied: boolean) => void;
 }) {
+  const currentOwner = useStudyOwner();
+  const action = useAction(report);
+  const saving = action.pending;
+  const mutation = useRef(false);
+  const close = () => {
+    if (!mutation.current) onClose(false);
+  };
+  const modal = useModalFocus(close, saving);
+  const titleId = useId();
+  const [retry, setRetry] = useState(0);
   const [minutes, setMinutes] = useState(30);
   const [plan, setPlan] = useState<RevisionPlan | null>(null);
   const [off, setOff] = useState<Set<string>>(new Set());
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
+    let active = true;
     setPlan(null);
+    setError("");
+    setOff(new Set());
     client
       .planRevision({ key: exam.key, minutes, timezone: deviceTimeZone() })
-      .then(setPlan, (e: Error) => setError(errorText(e)));
-  }, [exam.key, minutes]);
+      .then(
+        (next) => {
+          if (active && currentOwner()) setPlan(next);
+        },
+        (e: Error) => {
+          if (active && currentOwner()) setError(errorText(e));
+        },
+      );
+    return () => {
+      active = false;
+    };
+  }, [exam.key, minutes, retry, currentOwner]);
   const chosen = (plan?.sessions ?? []).filter((s) => !off.has(s.start_at));
   const apply = async () => {
-    setSaving(true);
-    try {
+    if (mutation.current || !chosen.length || !currentOwner()) return;
+    mutation.current = true;
+    await action.run(async () => {
       await client.applyRevision({ key: exam.key, sessions: chosen });
-      onClose(true);
-    } catch (e) {
-      report(e);
-      setSaving(false);
-    }
+      if (currentOwner()) onClose(true);
+    });
+    mutation.current = false;
   };
   const time = (iso: string) =>
     new Date(iso).toLocaleTimeString("en-GB", {
@@ -1067,29 +1281,31 @@ function RevisionDialog({
   return (
     <div
       className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose(false)}
+      onMouseDown={(e) => e.target === e.currentTarget && close()}
     >
       <section
+        ref={modal.ref}
+        data-modal-focus={modal.id}
+        tabIndex={-1}
         className="modal study-plan"
         role="dialog"
         aria-modal="true"
-        aria-labelledby="plan-title"
+        aria-labelledby={titleId}
       >
         <div className="section-heading">
-          <h2 id="plan-title">Revision for {exam.title}</h2>
+          <h2 id={titleId}>Revision for {exam.title}</h2>
           <button
             className="icon-button"
             aria-label="Close"
-            onClick={() => onClose(false)}
+            disabled={saving}
+            onClick={close}
           >
             <X size={20} />
           </button>
         </div>
         <div className="modal-body">
-          <p className="muted">
-            One session each free day, longer near the exam. Review before
-            adding anything.
-          </p>
+          <OutcomeNote outcome={action.outcome} />
+          <p className="muted">Choose sessions to add to your calendar.</p>
           <div
             className="study-plan-length"
             role="group"
@@ -1101,6 +1317,7 @@ function RevisionDialog({
                 type="button"
                 className={minutes === m ? "active" : ""}
                 aria-pressed={minutes === m}
+                disabled={saving}
                 onClick={() => setMinutes(m)}
               >
                 {m} min
@@ -1110,6 +1327,12 @@ function RevisionDialog({
           {error ? (
             <div role="alert" className="error">
               {error}
+              <button
+                className="secondary"
+                onClick={() => setRetry((n) => n + 1)}
+              >
+                Retry plan
+              </button>
             </div>
           ) : !plan ? (
             <p className="muted">Finding free time…</p>
@@ -1124,6 +1347,7 @@ function RevisionDialog({
                   <label className="check-line">
                     <input
                       type="checkbox"
+                      disabled={saving}
                       checked={!off.has(s.start_at)}
                       onChange={(e) =>
                         setOff((o) => {
@@ -1163,7 +1387,7 @@ function RevisionDialog({
             </p>
           )}
           <div className="button-row">
-            <button className="secondary" onClick={() => onClose(false)}>
+            <button className="secondary" disabled={saving} onClick={close}>
               Cancel
             </button>
             <button

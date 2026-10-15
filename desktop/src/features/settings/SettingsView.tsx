@@ -2,7 +2,7 @@ import { ChatgptConnections } from "./ChatgptConnections";
 import { AssistantRulesSettings } from "./AssistantRulesSettings";
 import { AssistantBudgetSettings } from "./AssistantBudgetSettings";
 import { SettingsFocus, SettingsSection } from "./SettingsSection";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { settingsExitAllowed } from "./SettingsModal";
 import {
   Activity,
@@ -87,12 +87,21 @@ export function SettingsView({
   onOpenWhatsNew,
   onAccountDeleted,
 }: Props) {
+  const id = useId();
+  const foundId = `${id}-found`;
+  const contentId = `${id}-content`;
+  const categoryId = `${id}-category`;
+  const content = useRef<HTMLElement>(null);
+  const [limit, setLimit] = useState(8);
   const [tab, setTab] = useState<SettingsTab>(initialTab);
   const [theme, setTheme] = useTheme();
   const [query, setQuery] = useState("");
   const [focus, setFocus] = useState<{ key: string; seq: number } | null>(null);
   const [reading, setReading] = useState(readsFirst);
   const found = searchSettings(query);
+  useEffect(() => {
+    if (content.current) content.current.scrollTop = 0;
+  }, [tab]);
   const choose = (entry: SettingEntry) => {
     if (!settingsExitAllowed()) return;
     setTab(entry.tab);
@@ -120,9 +129,12 @@ export function SettingsView({
                 type="search"
                 value={query}
                 placeholder="Search settings"
-                aria-controls="settings-found"
+                aria-controls={foundId}
                 aria-expanded={!!query.trim()}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setLimit(8);
+                }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && found[0]) {
                     e.preventDefault();
@@ -138,12 +150,12 @@ export function SettingsView({
             </label>
             {!!query.trim() && (
               <ul
-                id="settings-found"
+                id={foundId}
                 className="settings-found"
                 aria-label="Settings found"
               >
                 {found.length ? (
-                  found.slice(0, 8).map((entry) => (
+                  found.slice(0, limit).map((entry) => (
                     <li key={entry.id}>
                       <button type="button" onClick={() => choose(entry)}>
                         <strong>{entry.label}</strong>
@@ -158,14 +170,24 @@ export function SettingsView({
                     </li>
                   ))
                 ) : (
-                  <li className="settings-found-none">
-                    No setting is called that. Try other words.
+                  <li className="settings-found-none">No matching settings.</li>
+                )}
+                {found.length > limit && (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={() => setLimit((n) => n + 8)}
+                    >
+                      More results
+                    </button>
                   </li>
                 )}
               </ul>
             )}
           </div>
           <SettingsNavigation
+            contentId={contentId}
+            labelId={categoryId}
             selected={tab}
             onSelect={(next) => {
               if (settingsExitAllowed()) setTab(next);
@@ -173,9 +195,10 @@ export function SettingsView({
           />
         </aside>
         <section
+          ref={content}
           className="settings-content"
-          id="settings-content"
-          aria-labelledby={"settings-category-" + tab}
+          id={contentId}
+          aria-labelledby={categoryId}
         >
           {tab === "account" && (
             <SettingsSection className="card settings-card" defaultOpen>
@@ -191,9 +214,7 @@ export function SettingsView({
               <div className="preference theme-preference">
                 <span>
                   <strong>Theme</strong>
-                  <small>
-                    System follows your device. Saved on this device only.
-                  </small>
+                  <small>Saved on this device.</small>
                 </span>
                 <div className="segmented" role="group" aria-label="Theme">
                   {THEMES.map(({ id, label, icon: Icon }) => (
@@ -227,10 +248,7 @@ export function SettingsView({
                 <span>
                   <BookOpen size={14} aria-hidden="true" /> Open pages for
                   reading
-                  <small>
-                    Opens pages for reading. Use Edit or ⌘⇧R to change them.
-                    This setting is saved on this device.
-                  </small>
+                  <small>Use Edit to change a page.</small>
                 </span>
               </label>
             </SettingsSection>
@@ -241,7 +259,7 @@ export function SettingsView({
           {tab === "account" && <ShortcutSettings />}
           {tab === "account" && (
             <SettingsSection className="card settings-card">
-              <h2>Stay in the loop</h2>
+              <h2>Notifications</h2>
               <label className="switch-line settings-field">
                 <input
                   type="checkbox"
@@ -253,15 +271,15 @@ export function SettingsView({
                 />
                 <span>
                   Email reminders
-                  <small>
-                    Receive a reminder before your tasks and events are due.
-                  </small>
+                  <small>Reminders before items are due.</small>
                 </span>
               </label>
-              <p className="muted">
-                Set push notifications in the mobile app. Each item has its own
-                reminder time.
-              </p>
+              <details>
+                <summary>Push notifications</summary>
+                <p className="muted">
+                  Manage push notifications in the mobile app.
+                </p>
+              </details>
             </SettingsSection>
           )}
           {tab === "account" && (
@@ -276,9 +294,6 @@ export function SettingsView({
           {tab === "account" && onOpenWhatsNew && (
             <SettingsSection className="card settings-card">
               <h2>What's new</h2>
-              <p className="muted">
-                What changed in Orbyn lately: New, Better and No longer broken.
-              </p>
               <button className="secondary" onClick={onOpenWhatsNew}>
                 <Newspaper size={14} /> What's new
               </button>
@@ -287,10 +302,6 @@ export function SettingsView({
           {tab === "account" && onOpenStatus && (
             <SettingsSection className="card settings-card">
               <h2>Service status</h2>
-              <p className="muted">
-                See whether Orbyn is running smoothly and review recent
-                incidents.
-              </p>
               <button className="secondary" onClick={onOpenStatus}>
                 <Activity size={14} /> Service status
               </button>
@@ -311,10 +322,7 @@ export function SettingsView({
           {tab === "privacy" && onOpenSecurity && (
             <SettingsSection className="card settings-card">
               <h2>Security and data</h2>
-              <p className="muted">
-                How Orbyn keeps your account safe and how to take your data with
-                you, last checked {securityPageDate()}.
-              </p>
+              <p className="muted">Last reviewed {securityPageDate()}.</p>
               <button className="secondary" onClick={onOpenSecurity}>
                 <ShieldCheck size={14} /> Security and data
               </button>

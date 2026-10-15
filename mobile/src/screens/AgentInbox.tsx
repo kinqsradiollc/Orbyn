@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import {
   AGENT_INBOX_KINDS,
@@ -11,6 +11,8 @@ import {
   type AgentRule,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { BottomSheet } from "../components/BottomSheet";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { Chip, ChipRow } from "../components/Chip";
 import { Field } from "../components/Field";
 import { MoreMenu } from "../components/MoreMenu";
@@ -19,7 +21,6 @@ import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
 import { shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
-import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -30,7 +31,10 @@ type Run = (fn: () => Promise<void>) => Promise<unknown>;
  * things go to this agent (a switch each), and the address that wakes it
  * when something happens. The wake-up carries only a count and a link.
  */
-export function InboxPanel({
+export function InboxPanel(props: React.ComponentProps<typeof InboxBody>) {
+  return <InboxBody key={props.grant.id} {...props} />;
+}
+function InboxBody({
   grant,
   busy,
   run,
@@ -46,29 +50,57 @@ export function InboxPanel({
   const [secret, setSecret] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
-  useEffect(() => {
-    void run(async () => {
-      const s = await client.agentInbox(grant.id);
-      setSettings(s);
-      setUrl(s.wake_url ?? "");
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const mounted = useRef(true);
+  const request = useRef(0);
+  const [readError, setReadError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const load = useCallback(async () => {
+    const epoch = ++request.current;
+    setLoading(true);
+    try {
+      const next = await client.agentInbox(grant.id);
+      if (!mounted.current || epoch !== request.current) return;
+      setSettings(next);
+      setUrl(next.wake_url ?? "");
+      setReadError("");
+    } catch {
+      if (mounted.current && epoch === request.current)
+        setReadError("Couldn't load agent inbox.");
+    } finally {
+      if (mounted.current && epoch === request.current) setLoading(false);
+    }
   }, [grant.id]);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      ++request.current;
+    };
+  }, [load]);
 
   const toggle = (kind: AgentInboxKind, on: boolean) => {
-    if (!settings) return;
+    if (!settings || busy || loading || readError) return;
     const muted = on
       ? settings.muted.filter((k) => k !== kind)
       : [...settings.muted, kind];
-    setSettings({ ...settings, muted });
     void run(async () => {
-      setSettings(await client.setAgentInboxMutes(grant.id, muted));
+      const previous = settings;
+      setSettings({ ...previous, muted });
+      try {
+        const value = await client.setAgentInboxMutes(grant.id, muted);
+        if (mounted.current) setSettings(value);
+      } catch (error) {
+        if (mounted.current) setSettings(previous);
+        throw error;
+      }
     });
   };
 
   const saveWake = () =>
     void run(async () => {
       const made = await client.setAgentWake(grant.id, url.trim());
+      if (!mounted.current) return;
       setSettings(made.settings);
       setSecret(made.secret);
       setNote(null);
@@ -77,7 +109,9 @@ export function InboxPanel({
   const testWake = () =>
     void run(async () => {
       const r = await client.testAgentWake(grant.id);
-      setSettings(await client.agentInbox(grant.id));
+      const value = await client.agentInbox(grant.id);
+      if (!mounted.current) return;
+      setSettings(value);
       setNote(
         r.ok
           ? `The address answered ${r.status}.`
@@ -87,7 +121,9 @@ export function InboxPanel({
 
   const removeWake = () =>
     void run(async () => {
-      setSettings(await client.clearAgentWake(grant.id));
+      const value = await client.clearAgentWake(grant.id);
+      if (!mounted.current) return;
+      setSettings(value);
       setUrl("");
       setSecret(null);
       setNote("It won’t be woken any more.");
@@ -95,12 +131,32 @@ export function InboxPanel({
 
   if (!settings)
     return (
-      <FadeIn style={s.panel}>
-        <Text style={shared.small}>Loading…</Text>
-      </FadeIn>
+      <BottomSheet
+        visible
+        title="Agent inbox"
+        closeDisabled={busy}
+        onClose={onClose}
+      >
+        <ErrorBanner error={readError} />
+        {loading ? (
+          <Text style={shared.small}>Loading inbox…</Text>
+        ) : (
+          <Button
+            title="Retry inbox"
+            secondary
+            disabled={busy}
+            onPress={() => void load()}
+          />
+        )}
+      </BottomSheet>
     );
   return (
-    <FadeIn style={s.panel}>
+    <BottomSheet
+      visible
+      title="Agent inbox"
+      closeDisabled={busy}
+      onClose={onClose}
+    >
       <Text style={shared.small}>
         What happens in Orbyn goes to this agent first, only from the spaces it
         reaches.{" "}
@@ -130,12 +186,13 @@ export function InboxPanel({
         );
       })}
       <Field
-        label="Wake this agent when something happens"
-        hint={`For agents that run on a schedule. Orbyn sends a signed call with how many things wait and where to read them, never what they say, at most every ${AGENT_WAKE_MINUTES} minutes.`}
+        label="Wake-up URL"
+        hint={`Sends counts and links, never contents. At most once every ${AGENT_WAKE_MINUTES} minutes.`}
       >
         <TextInput
           style={shared.input}
           value={url}
+          editable={!busy}
           onChangeText={setUrl}
           maxLength={500}
           autoCapitalize="none"
@@ -147,7 +204,7 @@ export function InboxPanel({
         />
       </Field>
       {secret && (
-        <FadeIn style={s.secret}>
+        <View style={s.secret}>
           <Text style={shared.label}>
             Signing secret: copy it now, it won’t be shown again
           </Text>
@@ -159,7 +216,7 @@ export function InboxPanel({
             disabled={false}
             onPress={() => void shareText(secret)}
           />
-        </FadeIn>
+        </View>
       )}
       {settings.wake_url && (
         <View style={s.statusRow}>
@@ -193,11 +250,12 @@ export function InboxPanel({
         <Button
           secondary
           title="Close"
+          disabled={busy}
           style={s.flexButton}
           onPress={onClose}
         />
       </View>
-    </FadeIn>
+    </BottomSheet>
   );
 }
 
@@ -217,19 +275,43 @@ export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
     text: string;
   } | null>(null);
 
-  const load = async () => setRules(await client.agentRules());
-  useEffect(() => {
-    void run(load);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const mounted = useRef(true);
+  const request = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [readError, setReadError] = useState("");
+  const load = useCallback(async () => {
+    const epoch = ++request.current;
+    setLoading(true);
+    try {
+      const value = await client.agentRules();
+      if (!mounted.current || epoch !== request.current) return;
+      setRules(value);
+      setReadError("");
+    } catch {
+      if (mounted.current && epoch === request.current)
+        setReadError("Couldn't load standing rules.");
+    } finally {
+      if (mounted.current && epoch === request.current) setLoading(false);
+    }
   }, []);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      ++request.current;
+    };
+  }, [load]);
+  const blocked = busy || loading || !!readError;
 
   const save = () => {
-    if (!editing?.text.trim()) return;
+    if (!editing?.text.trim() || blocked) return;
     const d = editing;
     void run(async () => {
       const input = { kind: d.kind || null, text: d.text.trim() };
       if (d.id) await client.updateAgentRule(d.id, input);
       else await client.addAgentRule(input);
+      if (!mounted.current) return;
       setEditing(null);
       await load();
     });
@@ -253,8 +335,19 @@ export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
       <Text style={[shared.small, s.gap]}>
         Rules agents follow when work arrives.
       </Text>
+      <ErrorBanner error={readError} />
+      {readError && (
+        <Button
+          title="Retry rules"
+          secondary
+          disabled={busy || loading}
+          onPress={() => void load()}
+        />
+      )}
       {rules === null ? (
-        <Text style={shared.small}>Loading…</Text>
+        <Text style={shared.small}>
+          {loading ? "Loading rules…" : "Rules unavailable."}
+        </Text>
       ) : (
         rules.map((r) => (
           <View key={r.id} style={s.ruleRow}>
@@ -265,7 +358,7 @@ export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
             <MoreMenu
               label="Rule options"
               title={r.text}
-              disabled={busy}
+              disabled={blocked}
               actions={[
                 {
                   label: "Change",
@@ -283,7 +376,14 @@ export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
         ))
       )}
       {editing ? (
-        <FadeIn style={s.panel}>
+        <BottomSheet
+          visible
+          title="Standing rule"
+          closeDisabled={busy}
+          onClose={() => {
+            if (!busy) setEditing(null);
+          }}
+        >
           <Field label="Applies to">
             <ChipRow label="Applies to">
               {KIND_CHOICES.map((k) => (
@@ -292,6 +392,7 @@ export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
                   compact
                   label={kindText(k)}
                   selected={editing.kind === k}
+                  disabled={busy}
                   onPress={() => setEditing({ ...editing, kind: k })}
                 />
               ))}
@@ -301,6 +402,7 @@ export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
             <TextInput
               style={shared.input}
               value={editing.text}
+              editable={!busy}
               onChangeText={(text) => setEditing({ ...editing, text })}
               maxLength={500}
               multiline
@@ -319,17 +421,19 @@ export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
             <Button
               secondary
               title="Cancel"
+              disabled={busy}
               style={s.flexButton}
               onPress={() => setEditing(null)}
             />
           </View>
-        </FadeIn>
+        </BottomSheet>
       ) : (
         rules &&
         rules.length < MAX_AGENT_RULES && (
           <Button
             secondary
             title="Add a rule"
+            disabled={blocked}
             icon="plus"
             style={s.last}
             onPress={() => setEditing({ id: null, kind: "", text: "" })}
@@ -348,7 +452,7 @@ const s = themed(() =>
       padding: 10,
       gap: 8,
     },
-    flex: { flex: 1 },
+    flex: { flex: 1, minWidth: 120 },
     gap: { marginBottom: 10 },
     name: {
       fontFamily: fonts.semibold,
@@ -361,9 +465,19 @@ const s = themed(() =>
       gap: 12,
       marginBottom: 6,
     },
-    statusRow: { flexDirection: "row", alignItems: "center", gap: 10 },
-    actions: { flexDirection: "row", gap: 10, alignItems: "center" },
-    flexButton: { flex: 1, marginBottom: 0 },
+    statusRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 10,
+    },
+    actions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      alignItems: "center",
+    },
+    flexButton: { flex: 1, minWidth: 120, marginBottom: 0 },
     secret: {
       backgroundColor: colors.accentSoft,
       borderRadius: radii.input,

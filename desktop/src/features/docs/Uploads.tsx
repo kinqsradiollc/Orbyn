@@ -14,6 +14,7 @@ import {
   type ImportJob,
 } from "@orbyn/core";
 import { KeepOriginalsSwitch } from "./OriginalFile";
+import { errorText } from "../../lib/errors";
 import { client } from "../../lib/api";
 
 /**
@@ -26,33 +27,52 @@ export function useImports(
   projectId?: string,
   projectTeamId?: string | null,
 ) {
+  const alive = useRef(true);
+  const request = useRef(0);
+  const uploading = useRef(false);
+  const removing = useRef(new Set<string>());
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [starting, setStarting] = useState(0);
   const [caps, setCaps] = useState<ImportCapabilities | null>(null);
   useEffect(() => {
-    client.importCapabilities().then(setCaps, () => setCaps(null));
+    alive.current = true;
+    void client.importCapabilities().then(
+      (next) => {
+        if (alive.current) setCaps(next);
+      },
+      () => {},
+    );
+    return () => {
+      alive.current = false;
+      request.current++;
+    };
   }, []);
   const ready = useRef(new Set<string>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
-  const refresh = useCallback(
-    () =>
-      client.listImports().then(
-        (list) => {
-          // A page that just became ready joins the library.
-          const fresh = list.filter(
-            (j) => j.status === "ready" && !ready.current.has(j.id),
-          );
-          for (const j of list)
-            if (j.status === "ready") ready.current.add(j.id);
-          if (fresh.length) onReadyRef.current();
-          setJobs(list);
-        },
-        () => {},
-      ),
-    [],
-  );
+  const refresh = useCallback(async () => {
+    const epoch = ++request.current;
+    try {
+      const list = await client.listImports();
+      if (!alive.current || epoch !== request.current) return;
+      const fresh = list.filter(
+        (job) => job.status === "ready" && !ready.current.has(job.id),
+      );
+      for (const job of list)
+        if (job.status === "ready") ready.current.add(job.id);
+      if (fresh.length) onReadyRef.current();
+      setJobs(list);
+      setLoadError("");
+    } catch (reason) {
+      if (alive.current && epoch === request.current)
+        setLoadError(errorText(reason));
+    } finally {
+      if (alive.current && epoch === request.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -67,68 +87,92 @@ export function useImports(
 
   /** Upload files one after another; each becomes a page in Uploads. */
   const importFiles = async (files: File[]) => {
-    for (const file of files) {
-      const refused = importRefusal(file.name, file.type);
-      if (refused) {
-        report(new Error(refused));
-        continue;
+    if (uploading.current || !alive.current) return;
+    uploading.current = true;
+    try {
+      for (const file of files) {
+        if (!alive.current) break;
+        const refused = importRefusal(file.name, file.type);
+        if (refused) {
+          report(new Error(refused));
+          continue;
+        }
+        const type = importTypeOf(file.name, file.type);
+        if (caps && !caps.enabled) {
+          report(new Error("Importing files isn't set up on this server yet."));
+          return;
+        }
+        if ((type === "png" || type === "jpeg") && caps && !caps.photos) {
+          report(
+            new Error(
+              `${file.name}: photos of notes can't be read on this server. Import a PDF or Word file instead.`,
+            ),
+          );
+          continue;
+        }
+        if (file.size > IMPORT_LIMITS.maxBytes) {
+          report(
+            new Error(
+              `${file.name} is over the ${IMPORT_LIMITS.maxBytes / 1024 / 1024} MB limit.`,
+            ),
+          );
+          continue;
+        }
+        setStarting((n) => n + 1);
+        let startedId: string | null = null;
+        try {
+          const { upload_path, import: started } = await client.createImport({
+            file_name: file.name,
+            bytes: file.size,
+            mime: file.type || undefined,
+            project_id: projectId,
+            project_team_id: projectId ? projectTeamId : undefined,
+          });
+          startedId = started.id;
+          await refresh();
+          await client.uploadImportFile(upload_path, file, file.type);
+        } catch (e) {
+          report(e);
+          // The upload didn't arrive: don't leave the import waiting for it.
+          if (startedId) await client.removeImport(startedId).catch(() => {});
+        } finally {
+          if (alive.current) {
+            setStarting((n) => n - 1);
+            void refresh();
+          }
+        }
       }
-      const type = importTypeOf(file.name, file.type);
-      if (caps && !caps.enabled) {
-        report(new Error("Importing files isn't set up on this server yet."));
-        return;
-      }
-      if ((type === "png" || type === "jpeg") && caps && !caps.photos) {
-        report(
-          new Error(
-            `${file.name}: photos of notes can't be read on this server. Import a PDF or Word file instead.`,
-          ),
-        );
-        continue;
-      }
-      if (file.size > IMPORT_LIMITS.maxBytes) {
-        report(
-          new Error(
-            `${file.name} is over the ${IMPORT_LIMITS.maxBytes / 1024 / 1024} MB limit.`,
-          ),
-        );
-        continue;
-      }
-      setStarting((n) => n + 1);
-      let startedId: string | null = null;
-      try {
-        const { upload_path, import: started } = await client.createImport({
-          file_name: file.name,
-          bytes: file.size,
-          mime: file.type || undefined,
-          project_id: projectId,
-          project_team_id: projectId ? projectTeamId : undefined,
-        });
-        startedId = started.id;
-        await refresh();
-        await client.uploadImportFile(upload_path, file, file.type);
-      } catch (e) {
-        report(e);
-        // The upload didn't arrive: don't leave the import waiting for it.
-        if (startedId) await client.removeImport(startedId).catch(() => {});
-      } finally {
-        setStarting((n) => n - 1);
-        void refresh();
-      }
+    } finally {
+      uploading.current = false;
     }
   };
 
   const remove = async (job: ImportJob) => {
-    setJobs((all) => all.filter((j) => j.id !== job.id));
+    if (removing.current.has(job.id) || !alive.current) return;
+    removing.current.add(job.id);
     try {
       await client.removeImport(job.id);
-    } catch (e) {
-      report(e);
+      if (alive.current) {
+        setJobs((all) => all.filter((next) => next.id !== job.id));
+        await refresh();
+      }
+    } catch (reason) {
+      if (alive.current) report(reason);
+    } finally {
+      removing.current.delete(job.id);
     }
-    void refresh();
   };
 
-  return { jobs, importFiles, remove, busy: starting > 0, caps };
+  return {
+    jobs,
+    importFiles,
+    remove,
+    busy: starting > 0,
+    caps,
+    loading,
+    loadError,
+    refresh,
+  };
 }
 
 /** The "Import file" button: a hidden file input behind a normal button. */
@@ -190,7 +234,13 @@ export function UploadsPanel({
   caps,
   report,
   onChanged,
+  loading = false,
+  loadError = "",
+  onRetry,
 }: {
+  loading?: boolean;
+  loadError?: string;
+  onRetry?: () => void;
   caps: ImportCapabilities | null;
   /**
    * Shows errors; with it, the assistant's chips on each page (AI-01)
@@ -215,19 +265,30 @@ export function UploadsPanel({
   return (
     <div className="uploads">
       <p className="uploads-intro muted">
-        Import PDFs, Word files or photos as pages. The original is deleted
-        after import unless you choose to keep it.
+        Import files as pages. Originals are deleted unless you keep them.
       </p>
       {/* "Keep the original" is your account's setting, on every device. */}
       <KeepOriginalsSwitch report={report ?? (() => {})} />
-      <p className="uploads-hint">{importHint(caps)}</p>
-      {!waiting.length && !shownJobs.length && (
+      <details className="uploads-hint">
+        <summary>Supported files</summary>
+        <p>{importHint(caps)}</p>
+      </details>
+      {loadError && (
+        <div role="alert">
+          <p>{loadError}</p>
+          {onRetry && (
+            <button className="text-button" onClick={onRetry}>
+              Retry
+            </button>
+          )}
+        </div>
+      )}
+      {loading && !loadError && <p role="status">Loading imports…</p>}
+      {!loading && !loadError && !waiting.length && !shownJobs.length && (
         <div className="uploads-empty">
           <FileUp size={22} aria-hidden="true" />
-          <strong>Drop a lecture PDF or Word file here</strong>
-          <p className="muted">
-            Or choose one. Scanned pages take a few minutes each to read.
-          </p>
+          <strong>No imports yet</strong>
+          <p className="muted">Choose a file or drop it here.</p>
           <ImportButton onFiles={onFiles} busy={busy} className="primary" />
         </div>
       )}
@@ -346,7 +407,7 @@ export function UploadsPanel({
                     onMove(doc, e.currentTarget.getBoundingClientRect())
                   }
                 >
-                  <FolderInput size={15} /> Move to…
+                  <FolderInput size={15} /> Move
                 </button>
               </span>
             </li>

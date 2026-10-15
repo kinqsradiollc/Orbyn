@@ -17,6 +17,7 @@ export function useDocComments(
   blocks: DocBlock[],
   report: (e: unknown) => void,
 ) {
+  const accountAtRender = session.token;
   const [comments, setComments] = useState<DocComment[] | null>(null);
   const [failed, setFailed] = useState(false);
   const reportRef = useRef(report);
@@ -24,7 +25,9 @@ export function useDocComments(
   const [busy, setBusy] = useState(false);
   const [showResolved, setShowResolved] = useState(false);
   /** A tap can land twice before the button re-renders as disabled. */
-  const sending = useRef(false);
+  const mutation = useRef<object | null>(null);
+  const owner = useRef({ id: docId, mounted: true });
+  owner.current.id = docId;
 
   const refreshRef = useRef<ReturnType<typeof watchDocRefresh> | null>(null);
   const load = useCallback(
@@ -32,6 +35,9 @@ export function useDocComments(
     [],
   );
   useEffect(() => {
+    owner.current.mounted = true;
+    mutation.current = null;
+    setBusy(false);
     setComments(null);
     setFailed(false);
     const watcher = watchDocRefresh({
@@ -50,6 +56,8 @@ export function useDocComments(
     });
     refreshRef.current = watcher;
     return () => {
+      owner.current.mounted = false;
+      mutation.current = null;
       watcher.dispose();
       refreshRef.current = null;
     };
@@ -65,54 +73,58 @@ export function useDocComments(
   const resolved = all.filter((c) => c.resolved_at);
   const { anchored, loose } = anchorComments(showResolved ? all : open, blocks);
 
+  const runMutation = async (write: () => Promise<void>): Promise<boolean> => {
+    if (
+      mutation.current ||
+      !owner.current.mounted ||
+      owner.current.id !== docId ||
+      session.token !== accountAtRender
+    )
+      return false;
+    const ticket = {};
+    const account = session.token;
+    mutation.current = ticket;
+    setBusy(true);
+    const current = () =>
+      owner.current.mounted &&
+      owner.current.id === docId &&
+      session.token === account &&
+      mutation.current === ticket;
+    try {
+      await write();
+      if (!current()) return false;
+      // Refresh supersedes any comment read started before this write.
+      await load();
+      return current();
+    } catch (error) {
+      if (current()) reportRef.current(error);
+      return false;
+    } finally {
+      if (mutation.current === ticket) {
+        mutation.current = null;
+        if (owner.current.mounted && owner.current.id === docId) setBusy(false);
+      }
+    }
+  };
   const add = (
     body: string,
     anchor?: Parameters<typeof client.addDocComment>[2],
   ): Promise<boolean> => {
     const text = body.trim();
-    if (!text || sending.current) return Promise.resolve(false);
-    sending.current = true;
-    setBusy(true);
-    return client
-      .addDocComment(docId, text, anchor)
-      .then((made) => {
-        setComments((list) => [
-          ...(list ?? []).filter((row) => row.id !== made.id),
-          made,
-        ]);
-        return true;
-      })
-      .catch((e) => {
-        report(e);
-        return false;
-      })
-      .finally(() => {
-        sending.current = false;
-        setBusy(false);
-      });
+    if (!text) return Promise.resolve(false);
+    return runMutation(async () => {
+      await client.addDocComment(docId, text, anchor);
+    });
   };
-
-  const setResolved = (c: DocComment, next: boolean) => {
-    setBusy(true);
-    client
-      .resolveDocComment(docId, c.id, next)
-      .then(() => load())
-      .catch(report)
-      .finally(() => setBusy(false));
+  const setResolved = (comment: DocComment, next: boolean) => {
+    void runMutation(async () => {
+      await client.resolveDocComment(docId, comment.id, next);
+    });
   };
-
-  const remove = (c: DocComment) => {
-    setBusy(true);
-    client
-      .deleteDocComment(docId, c.id)
-      .then(() =>
-        setComments(
-          (list) =>
-            list?.filter((x) => x.id !== c.id && x.parent_id !== c.id) ?? list,
-        ),
-      )
-      .catch(report)
-      .finally(() => setBusy(false));
+  const remove = (comment: DocComment) => {
+    void runMutation(async () => {
+      await client.deleteDocComment(docId, comment.id);
+    });
   };
 
   /**

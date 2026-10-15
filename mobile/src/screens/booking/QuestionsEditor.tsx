@@ -4,8 +4,8 @@ import { QUESTION_TYPES, type BookingQuestion } from "@orbyn/core";
 import { Button } from "../../components/Button";
 import { Field } from "../../components/Field";
 import { Segmented } from "../../components/Segmented";
+import { MoreMenu } from "../../components/MoreMenu";
 import { SmallAction } from "../../components/SmallAction";
-import { animateLayout } from "../../motion";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import { MAX_OPTIONS, MAX_QUESTIONS, newKey } from "./helpers";
@@ -65,56 +65,72 @@ export const questionProblem = (q: QuestionDraft) =>
 export function QuestionsEditor({
   questions,
   onChange,
+  disabled = false,
 }: {
+  disabled?: boolean;
   questions: QuestionDraft[];
   onChange: (questions: QuestionDraft[]) => void;
 }) {
   const patch = (key: string, p: Partial<QuestionDraft>) =>
+    !disabled &&
     onChange(questions.map((q) => (q.key === key ? { ...q, ...p } : q)));
   const move = (from: number, to: number) => {
+    if (
+      disabled ||
+      from < 0 ||
+      from >= questions.length ||
+      to < 0 ||
+      to >= questions.length
+    )
+      return;
     const next = [...questions];
     const [q] = next.splice(from, 1);
     next.splice(to, 0, q);
-    animateLayout();
+
     onChange(next);
   };
 
   return (
     <>
       <Text style={[shared.small, bs.gap]}>
-        People always give their name and email. Add anything else you need to
-        know before you meet.
+        Name and email are included. Add up to 10 questions.
       </Text>
       {questions.map((q, n) => {
         const name = q.label.trim() || `Question ${n + 1}`;
         return (
-          <View key={q.key} style={s.question}>
+          <View key={q.key} style={[s.question, n > 0 && s.divided]}>
             <View style={s.head}>
               <Text style={s.number}>Question {n + 1}</Text>
-              <View style={s.moves}>
-                <SmallAction
-                  label="Up"
-                  disabled={n === 0}
-                  onPress={() => move(n, n - 1)}
-                />
-                <SmallAction
-                  label="Down"
-                  disabled={n === questions.length - 1}
-                  onPress={() => move(n, n + 1)}
-                />
-                <SmallAction
-                  destructive
-                  label="Remove"
-                  disabled={false}
-                  onPress={() => {
-                    animateLayout();
-                    onChange(questions.filter((x) => x.key !== q.key));
-                  }}
-                />
-              </View>
+              <MoreMenu
+                label={`Question ${n + 1} options`}
+                title={name}
+                disabled={disabled}
+                actions={[
+                  {
+                    label: "Move up",
+                    disabled: disabled || n === 0,
+                    onPress: () => move(n, n - 1),
+                  },
+                  {
+                    label: "Move down",
+                    disabled: disabled || n === questions.length - 1,
+                    onPress: () => move(n, n + 1),
+                  },
+                  {
+                    label: "Remove question",
+                    destructive: true,
+                    disabled,
+                    onPress: () => {
+                      if (!disabled)
+                        onChange(questions.filter((x) => x.key !== q.key));
+                    },
+                  },
+                ]}
+              />
             </View>
             <Field label="Question">
               <TextInput
+                editable={!disabled}
                 style={shared.input}
                 value={q.label}
                 onChangeText={(label) => patch(q.key, { label })}
@@ -126,12 +142,13 @@ export function QuestionsEditor({
             </Field>
             <Field label="Answer">
               <Segmented
+                wrap
+                disabled={disabled}
                 options={QUESTION_TYPES}
                 value={q.type}
                 labels={TYPE_LABELS}
                 accessibilityLabel={`${name} answer type`}
                 onChange={(type) => {
-                  animateLayout();
                   patch(q.key, {
                     type,
                     options:
@@ -147,6 +164,7 @@ export function QuestionsEditor({
                 {q.options.map((o, i) => (
                   <View key={i} style={[bs.pair, s.option]}>
                     <TextInput
+                      editable={!disabled}
                       style={[shared.input, bs.half]}
                       value={o}
                       onChangeText={(text) =>
@@ -162,6 +180,7 @@ export function QuestionsEditor({
                       accessibilityLabel={`${name} option ${i + 1}`}
                     />
                     <RemoveButton
+                      disabled={disabled}
                       label={`Remove option ${i + 1}`}
                       onPress={() =>
                         patch(q.key, {
@@ -180,7 +199,7 @@ export function QuestionsEditor({
                   <View style={s.row}>
                     <SmallAction
                       label="Add option"
-                      disabled={false}
+                      disabled={disabled}
                       onPress={() =>
                         patch(q.key, { options: [...q.options, ""] })
                       }
@@ -190,6 +209,7 @@ export function QuestionsEditor({
               </Field>
             )}
             <SwitchRow
+              disabled={disabled}
               title="Required"
               hint="People can’t book without answering."
               value={q.required}
@@ -200,12 +220,12 @@ export function QuestionsEditor({
       })}
       {questions.length < MAX_QUESTIONS ? (
         <Button
+          disabled={disabled}
           secondary
           title="Add a question"
           icon="plus"
           style={bs.last}
           onPress={() => {
-            animateLayout();
             onChange([
               ...questions,
               {
@@ -231,12 +251,12 @@ export function QuestionsEditor({
 const s = themed(() =>
   StyleSheet.create({
     question: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      padding: 12,
-      paddingBottom: 0,
-      marginBottom: 12,
+      paddingTop: 8,
+      marginBottom: 8,
+    },
+    divided: {
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
     },
     head: {
       flexDirection: "row",
@@ -251,7 +271,6 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.textSoft,
     },
-    moves: { flexDirection: "row", gap: 6 },
     option: { marginBottom: 8 },
     row: { flexDirection: "row" },
   }),

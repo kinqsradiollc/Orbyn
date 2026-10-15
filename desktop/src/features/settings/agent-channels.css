@@ -68,3 +68,41 @@
   overflow-wrap: anywhere;
   user-select: all;
 }
+
+.agent-channel-row > :is(strong, .muted) {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.agent-channel-review > strong {
+  overflow-wrap: anywhere;
+}
+
+.agent-channel-body {
+  container-type: inline-size;
+  container-name: agent-channel;
+}
+.agent-channel-actions :is(button, a) {
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+@container agent-channel (max-width: 440px) {
+  .agent-channel-identity {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+  .agent-channel-identity dd {
+    margin-bottom: 8px;
+  }
+}
+
+.agent-channel-body {
+  font-size: 13px;
+}
+.agent-channel-body .check-line {
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+.agent-channel-command {
+  max-height: min(200px, 35dvh);
+  overflow-y: auto;
+}

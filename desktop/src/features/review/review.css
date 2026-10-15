@@ -2,7 +2,7 @@
 .review-view {
   display: grid;
   grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
-  gap: 20px;
+  gap: 16px;
   align-items: start;
 }
 .review-loading,
@@ -69,7 +69,7 @@
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-surface);
-  padding: 18px 20px;
+  padding: 16px;
   min-width: 0;
 }
 .review-detail-head h2 {
@@ -86,16 +86,15 @@
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 10px;
+  gap: 0;
 }
 .review-change {
-  padding: 12px 14px;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-sm);
-  background: var(--color-sunken);
+  padding: 14px 0;
+  border-top: 1px solid var(--color-divider);
 }
 .review-change.stale {
-  border-color: var(--color-warn);
+  padding-left: 12px;
+  border-left: 2px solid var(--color-warn);
 }
 .review-change-head {
   display: flex;
@@ -203,4 +202,29 @@
 }
 .review-view.is-small .review-rows th {
   width: 84px;
+}
+
+.review-card {
+  min-height: 44px;
+}
+.review-actions button {
+  min-height: 44px;
+  white-space: normal;
+}
+.review-change-head input {
+  flex: none;
+  min-width: 24px;
+  min-height: 24px;
+  margin: 10px;
+}
+.review-card-text small {
+  font-size: 12px;
+}
+.review-detail-head .eyebrow {
+  text-transform: none;
+  letter-spacing: normal;
+}
+.review-view.is-small .review-rows th {
+  width: 68px;
+  overflow-wrap: anywhere;
 }

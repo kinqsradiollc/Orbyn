@@ -140,7 +140,6 @@ export function TeamCapacity({
                   </View>
                   <Text
                     style={s.name}
-                    numberOfLines={1}
                     accessibilityLabel={
                       m.name +
                       (status === "active"
@@ -264,7 +263,7 @@ const s = themed(() =>
       marginBottom: 4,
     },
     nameCell: {
-      width: 92,
+      width: 140,
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
@@ -281,7 +280,7 @@ const s = themed(() =>
     avatar: {
       width: 24,
       height: 24,
-      borderRadius: 12,
+      borderRadius: radii.pill,
       backgroundColor: colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
@@ -297,7 +296,7 @@ const s = themed(() =>
       bottom: -2,
       width: 9,
       height: 9,
-      borderRadius: 5,
+      borderRadius: radii.pill,
       borderWidth: 2,
       borderColor: colors.surface,
       backgroundColor: colors.faint,
@@ -305,6 +304,7 @@ const s = themed(() =>
     presenceActive: { backgroundColor: colors.accent },
     name: {
       flex: 1,
+      minWidth: 0,
       fontFamily: fonts.medium,
       fontSize: 13,
       color: colors.text,

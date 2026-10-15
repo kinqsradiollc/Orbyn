@@ -20,15 +20,18 @@ import {
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { ErrorBanner } from "../../components/ErrorBanner";
+import { InlineDetails } from "../../components/InlineDetails";
+import { MoreMenu } from "../../components/MoreMenu";
 import { Icon } from "../../components/Icon";
 import { Pill } from "../../components/Pill";
 import { Segmented } from "../../components/Segmented";
 import { sheetStyles } from "../../components/Sheet";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { minutesLabel, rangeLabel, shareText } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
-import { FadeIn, animateLayout, Pressable } from "../../motion";
+import { Pressable } from "../../motion";
 import { colors, fonts, radii, spacing, themed } from "../../theme";
 import { shared } from "../../styles";
 import {
@@ -91,6 +94,22 @@ export function BookingsHome({
   const { view, pageId, tab } = filters;
   // Only the newest list request may update the rows.
   const latest = useRef(0);
+  const statsTicket = useRef(0);
+  const pagesTicket = useRef(0);
+  const mounted = useRef(true);
+  const [rowsLoading, setRowsLoading] = useState(false);
+  const [pagesLoading, setPagesLoading] = useState(false);
+  const refreshPending = useRef(false);
+  const exportPending = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      latest.current++;
+      statsTicket.current++;
+      pagesTicket.current++;
+    };
+  }, []);
 
   // Search once typing pauses.
   useEffect(() => {
@@ -103,30 +122,74 @@ export function BookingsHome({
   const loadRows = useCallback(
     async (offset: number) => {
       const ticket = ++latest.current;
-      const page = await client.bookings({
-        view,
-        page_id: pageId ?? undefined,
-        q: q || undefined,
-        limit: ROWS,
-        offset,
-      });
-      if (ticket !== latest.current) return;
-      animateLayout();
-      setRows((prev) =>
-        offset === 0 || !prev ? page.rows : [...prev, ...page.rows],
-      );
-      setTotal(page.total);
+      const account = session.token;
+      setRowsLoading(true);
+      if (offset === 0) {
+        setRows(null);
+        setTotal(0);
+      }
+      try {
+        const page = await client.bookings({
+          view,
+          page_id: pageId ?? undefined,
+          q: q || undefined,
+          limit: ROWS,
+          offset,
+        });
+        if (
+          !mounted.current ||
+          ticket !== latest.current ||
+          account !== session.token
+        )
+          return;
+        setRows((prev) =>
+          offset === 0 || !prev ? page.rows : [...prev, ...page.rows],
+        );
+        setTotal(page.total);
+      } finally {
+        if (
+          mounted.current &&
+          ticket === latest.current &&
+          account === session.token
+        )
+          setRowsLoading(false);
+      }
     },
     [view, pageId, q],
   );
-  const loadStats = useCallback(
-    async () => setStats(await client.bookingStats(pageId ?? undefined)),
-    [pageId],
-  );
-  const loadPages = useCallback(
-    async () => onPages(await client.listBookingPages()),
-    [onPages],
-  );
+  const loadStats = useCallback(async () => {
+    const ticket = ++statsTicket.current;
+    const account = session.token;
+    setStats(null);
+    const next = await client.bookingStats(pageId ?? undefined);
+    if (
+      mounted.current &&
+      ticket === statsTicket.current &&
+      account === session.token
+    )
+      setStats(next);
+  }, [pageId]);
+  const loadPages = useCallback(async () => {
+    const ticket = ++pagesTicket.current;
+    const account = session.token;
+    setPagesLoading(true);
+    try {
+      const next = await client.listBookingPages();
+      if (
+        mounted.current &&
+        ticket === pagesTicket.current &&
+        account === session.token
+      )
+        onPages(next);
+    } finally {
+      if (
+        mounted.current &&
+        ticket === pagesTicket.current &&
+        account === session.token
+      )
+        setPagesLoading(false);
+    }
+  }, [onPages]);
 
   useEffect(() => {
     void run(loadPages);
@@ -139,28 +202,40 @@ export function BookingsHome({
   }, [run, loadRows]);
 
   const refresh = async () => {
+    if (refreshPending.current) return;
+    refreshPending.current = true;
     setRefreshing(true);
-    await run(() => Promise.all([loadPages(), loadStats(), loadRows(0)]));
-    setRefreshing(false);
+    try {
+      await run(() => Promise.all([loadPages(), loadStats(), loadRows(0)]));
+    } finally {
+      refreshPending.current = false;
+      if (mounted.current) setRefreshing(false);
+    }
   };
 
   // Sharing a file needs expo-file-system and expo-sharing; until then the
   // CSV goes out as text under the file's name.
-  const exportCsv = () =>
-    run(async () => {
-      const csv = await client.exportBookingsCsv({
-        view,
-        page_id: pageId ?? undefined,
-        q: q || undefined,
+  const exportCsv = async () => {
+    if (exportPending.current || rowsLoading) return;
+    const account = session.token;
+    exportPending.current = true;
+    try {
+      await run(async () => {
+        const csv = await client.exportBookingsCsv({
+          view,
+          page_id: pageId ?? undefined,
+          q: q || undefined,
+        });
+        if (!mounted.current || account !== session.token) return;
+        await Share.share({ message: csv, title: "bookings.csv" });
       });
-      await Share.share({ message: csv, title: "bookings.csv" }).catch(
-        () => {},
-      );
-    });
+    } finally {
+      exportPending.current = false;
+    }
+  };
 
   /** The bookings list, filtered to one page and view. */
   const showBookings = (page: BookingPage, next: BookingView) => {
-    animateLayout();
     onFilters({ tab: "bookings", pageId: page.id, view: next, q: "" });
   };
 
@@ -193,6 +268,13 @@ export function BookingsHome({
     >
       <View style={sheetStyles.column}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
+        {!!error && (
+          <SmallAction
+            label="Retry"
+            disabled={refreshing || rowsLoading || pagesLoading}
+            onPress={() => void refresh()}
+          />
+        )}
         <Segmented
           options={["bookings", "pages", "invites"] as const}
           value={tab}
@@ -200,7 +282,6 @@ export function BookingsHome({
           badges={{ bookings: needsApproval }}
           accessibilityLabel="Show"
           onChange={(t) => {
-            animateLayout();
             onFilters({ tab: t });
           }}
         />
@@ -212,7 +293,7 @@ export function BookingsHome({
             <ProfileCard />
             <PageList
               pages={pages}
-              busy={busy}
+              busy={pagesLoading}
               userId={user?.id}
               onOpen={onOpenPage}
               onShowBookings={showBookings}
@@ -275,7 +356,9 @@ export function BookingsHome({
             )}
             <View style={s.gap} />
             {rows === null ? (
-              <Text style={shared.small}>{busy ? "Loading…" : ""}</Text>
+              <Text style={shared.small}>
+                {rowsLoading ? "Loading bookings…" : ""}
+              </Text>
             ) : rows.length === 0 ? (
               pages?.length === 0 && !q ? (
                 <View style={[shared.card, shared.empty]}>
@@ -286,8 +369,7 @@ export function BookingsHome({
                     No booking pages yet.
                   </Text>
                   <Text style={[shared.subtitle, s.center, s.emptyBody]}>
-                    Make a booking page and share its link. Bookings show up
-                    here.
+                    Share a link so guests can choose a free time.
                   </Text>
                   <Button
                     title="New booking page"
@@ -304,11 +386,6 @@ export function BookingsHome({
                   <Text style={[shared.sectionTitle, s.center]}>
                     {q ? `No bookings match “${q}”.` : EMPTY_VIEW[view]}
                   </Text>
-                  {!q && view === "upcoming" && (
-                    <Text style={[shared.subtitle, s.center]}>
-                      Share a booking page and new bookings show up here.
-                    </Text>
-                  )}
                 </View>
               )
             ) : (
@@ -338,8 +415,12 @@ export function BookingsHome({
             {!!rows && rows.length < total && (
               <Button
                 secondary
-                title={busy ? "Loading…" : `Load more (${total - rows.length})`}
-                disabled={busy}
+                title={
+                  rowsLoading
+                    ? "Loading…"
+                    : `Load more (${total - rows.length})`
+                }
+                disabled={rowsLoading}
                 onPress={() => {
                   if (loadingMore.current) return;
                   loadingMore.current = true;
@@ -353,14 +434,9 @@ export function BookingsHome({
               secondary
               title="Export as CSV"
               icon="share"
-              disabled={busy || !rows?.length}
+              disabled={busy || rowsLoading || !rows?.length}
               onPress={() => void exportCsv()}
             />
-            <Text style={[shared.small, s.center]}>
-              Exports {VIEW_LABELS[view].toLowerCase()} bookings
-              {filtered ? ` on ${filtered.title}` : ""}
-              {q ? ` matching “${q}”` : ""}, for spreadsheets.
-            </Text>
           </>
         )}
       </View>
@@ -397,9 +473,9 @@ function Stats({ stats }: { stats: BookingStats | null }) {
     },
     { label: "No-shows", value: stats?.no_show, sub: "" },
   ];
-  return (
+  const group = (items: typeof tiles) => (
     <View style={s.stats}>
-      {tiles.map((t) => (
+      {items.map((t) => (
         <View
           key={t.label}
           style={[s.stat, t.warn && s.statWarn]}
@@ -410,14 +486,18 @@ function Stats({ stats }: { stats: BookingStats | null }) {
             {t.value ?? "–"}
           </Text>
           <Text style={shared.small}>{t.label}</Text>
-          {!!t.sub && (
-            <Text style={[shared.small, s.statSub]} numberOfLines={2}>
-              {t.sub}
-            </Text>
-          )}
+          {!!t.sub && <Text style={[shared.small, s.statSub]}>{t.sub}</Text>}
         </View>
       ))}
     </View>
+  );
+  return (
+    <>
+      {group(tiles.slice(0, 2))}
+      <InlineDetails title="Booking activity">
+        {group(tiles.slice(2))}
+      </InlineDetails>
+    </>
   );
 }
 
@@ -440,7 +520,7 @@ function BookingRow({
   const moved = b.reschedule_count > 0;
   const when = `${rangeLabel(b.start_at, b.end_at)} · ${length}`;
   return (
-    <FadeIn index={index} style={[index > 0 && bs.divider]}>
+    <View style={[index > 0 && bs.divider]}>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={[
@@ -458,9 +538,7 @@ function BookingRow({
         style={({ pressed }) => [s.row, pressed && bs.pressed]}
       >
         <View style={{ flex: 1 }}>
-          <Text style={bs.rowTitle} numberOfLines={1}>
-            {b.name}
-          </Text>
+          <Text style={bs.rowTitle}>{b.name}</Text>
           <Text style={shared.small}>{when}</Text>
           <View style={s.pageLine}>
             {showPage && (
@@ -471,7 +549,7 @@ function BookingRow({
                 ]}
               />
             )}
-            <Text style={[shared.small, { flex: 1 }]} numberOfLines={1}>
+            <Text style={[shared.small, { flex: 1 }]}>
               {showPage
                 ? `${b.page_title ?? "Open invite"} · ${b.email}`
                 : b.email}
@@ -487,7 +565,7 @@ function BookingRow({
         </View>
         <Icon name="chevronRight" size={16} color={colors.faint} />
       </Pressable>
-    </FadeIn>
+    </View>
   );
 }
 
@@ -520,8 +598,7 @@ function PageList({
           </View>
           <Text style={shared.sectionTitle}>No booking pages yet.</Text>
           <Text style={[shared.subtitle, s.center]}>
-            Make one for office hours, intro calls or anything people book with
-            you.
+            Share a link so guests can choose a free time.
           </Text>
         </View>
       ) : (
@@ -553,7 +630,6 @@ function PageList({
                   accessibilityState={editable ? undefined : { expanded: open }}
                   onPress={() => {
                     if (editable) return onOpen(p);
-                    animateLayout();
                     setExpanded(open ? null : p.id);
                   }}
                   style={({ pressed }) => [s.pageRow, pressed && bs.pressed]}
@@ -561,12 +637,13 @@ function PageList({
                   <View style={[s.dot, { backgroundColor: p.color }]} />
                   <View style={{ flex: 1 }}>
                     <Text style={bs.rowTitle}>{p.title}</Text>
-                    <Text style={shared.small} numberOfLines={1}>
+                    <Text style={shared.small}>
                       /book/{p.slug} ·{" "}
                       {p.durations.map((d) => minutesLabel(d)).join(", ")}
                     </Text>
-                    <Text style={shared.small} numberOfLines={2}>
-                      {summary}
+                    <Text style={shared.small}>
+                      {p.counts.upcoming} upcoming
+                      {p.requires_approval ? " · Approval on" : ""}
                     </Text>
                   </View>
                   {!p.active && <Pill label="Off" />}
@@ -576,6 +653,7 @@ function PageList({
                 </Pressable>
                 {open && (
                   <View style={s.readOnly}>
+                    <Text style={[shared.small, s.readLine]}>{summary}</Text>
                     {!!p.description && (
                       <Text style={[shared.body, s.readLine]}>
                         {p.description}
@@ -588,11 +666,11 @@ function PageList({
                     )}
                     <Text style={shared.small}>
                       {p.team_id
-                        ? `This is ${p.team_name ?? "your team"}’s page: you can share it and see its bookings. Its owners and admins can change it.`
-                        : `You’re a co-host here, so you can share it and see its bookings. ${
+                        ? `Team owners and admins can edit this page. You can share it and view bookings.`
+                        : `You can share this page and view bookings. ${
                             owner
-                              ? `Only ${owner} can change it.`
-                              : "Only its owner can change it."
+                              ? `Only ${owner} can edit it.`
+                              : "Only its owner can edit it."
                           }`}
                     </Text>
                   </View>
@@ -621,17 +699,26 @@ function PageList({
                     disabled={false}
                     onPress={() => onShowBookings(p, "upcoming")}
                   />
-                  <SmallAction
-                    label="Share link"
-                    disabled={!p.active}
-                    onPress={() => void shareText(bookingLink(p.slug))}
-                  />
-                  <SmallAction
-                    label="Preview"
-                    disabled={false}
-                    onPress={() =>
-                      void Linking.openURL(bookingLink(p.slug)).catch(() => {})
-                    }
+                  <MoreMenu
+                    label={`${p.title} options`}
+                    title={p.title}
+                    actions={[
+                      {
+                        label: "Share link",
+                        disabled: !p.active,
+                        onPress: () => {
+                          void shareText(bookingLink(p.slug));
+                        },
+                      },
+                      {
+                        label: "Preview",
+                        onPress: () => {
+                          void Linking.openURL(bookingLink(p.slug)).catch(
+                            () => {},
+                          );
+                        },
+                      },
+                    ]}
                   />
                 </View>
               </View>
@@ -657,7 +744,7 @@ const s = themed(() =>
     stats: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 14 },
     stat: {
       flexGrow: 1,
-      flexBasis: "30%",
+      flexBasis: "40%",
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
@@ -691,7 +778,7 @@ const s = themed(() =>
       paddingHorizontal: 16,
     },
     pageLine: { flexDirection: "row", alignItems: "center", gap: 6 },
-    smallDot: { width: 8, height: 8, borderRadius: 4 },
+    smallDot: { width: 8, height: 8, borderRadius: radii.pill },
     pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     pageRow: {
       flexDirection: "row",
@@ -701,7 +788,7 @@ const s = themed(() =>
       paddingBottom: 6,
       paddingHorizontal: 16,
     },
-    dot: { width: 10, height: 10, borderRadius: 5 },
+    dot: { width: 10, height: 10, borderRadius: radii.pill },
     turned: { transform: [{ rotate: "90deg" }] },
     readOnly: { paddingLeft: 36, paddingRight: 16, paddingBottom: 6 },
     readLine: { marginBottom: 4 },

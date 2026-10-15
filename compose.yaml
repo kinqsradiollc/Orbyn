@@ -165,6 +165,7 @@ services:
     <<: *backend
     environment:
       <<: *backend-env
+      DOC_LATEX_URL: http://latex:8000
       DOC_PDF_URL: http://pdf:8000
       DOC_PDF_KEY: ${DOC_PDF_KEY:?Set DOC_PDF_KEY in .env}
     command: ["node", "backend/dist/services/api.js"]
@@ -196,6 +197,26 @@ services:
     deploy:
       resources:
         limits: { cpus: "1", memory: 1G }
+
+  # Isolated LaTeX jobs: source + TeX installation only inside each namespace.
+  latex:
+    build: { context: ., dockerfile: backend/Dockerfile, target: latex }
+    environment:
+      PORT: 8000
+      DOC_PDF_KEY: ${DOC_PDF_KEY:?Set DOC_PDF_KEY in .env}
+    init: true
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,size=128m"]
+    cap_drop: [ALL]
+    security_opt:
+      ["no-new-privileges:true", "seccomp:./deploy/latex/seccomp.json"]
+    pids_limit: 64
+    healthcheck: *http-health
+    restart: unless-stopped
+    stop_grace_period: 35s
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 768M }
 
   # Interactive assistant and provider settings. Automation has separate processes.
   ai:

@@ -203,14 +203,23 @@ export function usePlanner() {
     };
   }, [refresh, report, refreshMaintenance]);
 
-  const act = async (fn: () => Promise<void>) => {
+  const actResult = async (fn: () => Promise<void>): Promise<boolean> => {
     const owner = tokenRef.current;
     setBusy(true);
     setError("");
     try {
       await fn();
+      return tokenRef.current === owner;
     } catch (e) {
       if (tokenRef.current === owner) report(e);
+      return false;
+    } finally {
+      if (tokenRef.current === owner) setBusy(false);
+    }
+  };
+  const act = async (fn: () => Promise<void>) => {
+    try {
+      await actResult(fn);
     } finally {
       setBusy(false);
     }
@@ -297,12 +306,17 @@ export function usePlanner() {
     });
 
   /** Status changes go through the timeline so everyone sees who moved what. */
-  const setItemStatus = (i: Item, status: Status) =>
-    act(async () => {
+  const setItemStatusResult = (i: Item, status: Status) =>
+    actResult(async () => {
+      const owner = tokenRef.current;
       await client.postItemUpdate(i.id, { status });
+      if (tokenRef.current !== owner) return;
       if (status === "done" && i.status !== "done") celebrate();
       await refresh();
     });
+  const setItemStatus = async (i: Item, status: Status) => {
+    await setItemStatusResult(i, status);
+  };
 
   /** Quick-complete: done, or back to in progress / to do when reopened. */
   const toggleItem = (i: Item) =>
@@ -346,6 +360,8 @@ export function usePlanner() {
     applyMaintenance,
     refresh,
     act,
+    actResult,
+    setItemStatusResult,
     report,
     clearSession,
     authenticate,

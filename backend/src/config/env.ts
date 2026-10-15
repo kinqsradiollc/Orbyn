@@ -10,6 +10,7 @@ loadEnv({
 
 const schema = z.object({
   /** Private renderer configuration; the browser process has no database/provider credentials. */
+  DOC_LATEX_URL: z.string().default(""),
   DOC_PDF_URL: z.string().default(""),
   DOC_PDF_KEY: z.string().default(""),
   DOC_PDF_EXECUTABLE: z.string().default("/usr/bin/chromium"),

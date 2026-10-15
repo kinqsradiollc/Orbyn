@@ -10,12 +10,10 @@ export function CalDavNote() {
       aria-labelledby="caldav-title"
     >
       <h2 id="caldav-title">
-        <CalendarSync size={18} aria-hidden="true" /> Subscribe from a calendar
-        app
+        <CalendarSync size={16} aria-hidden="true" /> Calendar app
       </h2>
       <p className="muted">
-        Show your Orbyn events, read-only, in Apple Calendar, Thunderbird or
-        DAVx5, signing in with your email and a personal API key.
+        Read-only events. Sign in with your email and a personal API key.
       </p>
       <code className="two-factor-secret">{url}</code>
     </SettingsSection>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Linking,
   ScrollView,
@@ -10,17 +10,18 @@ import {
 import { Alert } from "../../lib/alert";
 import { dateLabel, type BookingDetail, type BookingPage } from "@orbyn/core";
 import { Button } from "../../components/Button";
+import { InlineDetails } from "../../components/InlineDetails";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { Field } from "../../components/Field";
 import { Pill } from "../../components/Pill";
 import { sheetStyles } from "../../components/Sheet";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import * as outbox from "../../lib/outbox";
 import { deviceTimeZone, minutesLabel, slotLabel } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
-import { animateLayout } from "../../motion";
-import { colors, fonts, themed } from "../../theme";
+import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import {
   EVENT_LABELS,
@@ -42,33 +43,65 @@ export function BookingDetailView({
   pages,
   onPages,
   onChanged,
+  onBusyChange,
 }: {
   id: string;
   pages: BookingPage[] | null;
   onPages: (pages: BookingPage[]) => void;
   /** After an action, so counts elsewhere catch up. */
   onChanged: () => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const { busy, error, setError, run } = useRun();
   const [booking, setBooking] = useState<BookingDetail | null>(null);
   const [note, setNote] = useState("");
   const [panel, setPanel] = useState<Panel>(null);
   const [reason, setReason] = useState("");
+  const [reload, setReload] = useState(0);
+  const actionPending = useRef(false);
+  const renderAccount = session.token;
+  const context = useRef({ id, account: renderAccount });
+  context.current = { id, account: renderAccount };
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      onBusyChange?.(false);
+    };
+  }, [onBusyChange]);
 
   useEffect(() => {
+    let alive = true;
+    const account = session.token;
+    setBooking(null);
+    setPanel(null);
+    setReason("");
+    setQueued("");
     void run(async () => {
       const b = await client.getBooking(id);
+      if (!alive || account !== session.token) return;
       setBooking(b);
       setNote(b.host_note);
     });
-  }, [run, id]);
+    return () => {
+      alive = false;
+    };
+  }, [run, id, reload]);
   // Opened from a notification, before the pages list has loaded.
   useEffect(() => {
+    let alive = true;
+    const account = session.token;
     if (!pages)
       client
         .listBookingPages()
-        .then(onPages)
+        .then((next) => {
+          if (alive && account === session.token) onPages(next);
+        })
         .catch(() => {});
+    return () => {
+      alive = false;
+    };
   }, [pages, onPages]);
 
   /**
@@ -77,26 +110,48 @@ export function BookingDetailView({
    * is sent.
    */
   const [queued, setQueued] = useState("");
-  const act = (
+  const act = async (
     fn: () => Promise<unknown>,
     expected: Partial<BookingDetail> = {},
-    whenQueued = "Saved on this phone. It’s sent when you’re back online.",
-  ) =>
-    run(async () => {
-      const answer = (await fn()) as BookingDetail | null;
-      animateLayout();
-      const next = answer ?? (booking ? { ...booking, ...expected } : null);
-      if (next) {
-        setBooking(next);
-        setNote(next.host_note);
-      }
-      setQueued(answer ? "" : whenQueued);
-      setPanel(null);
-      setReason("");
-      if (answer) onChanged();
-    });
+    whenQueued = "Saved on this phone. Sends when online.",
+  ) => {
+    if (
+      actionPending.current ||
+      !mounted.current ||
+      context.current.id !== id ||
+      renderAccount !== session.token
+    )
+      return;
+    const account = session.token;
+    actionPending.current = true;
+    onBusyChange?.(true);
+    try {
+      await run(async () => {
+        const answer = (await fn()) as BookingDetail | null;
+        if (
+          !mounted.current ||
+          account !== session.token ||
+          context.current.id !== id ||
+          renderAccount !== session.token
+        )
+          return;
+        const next = answer ?? (booking ? { ...booking, ...expected } : null);
+        if (next) {
+          setBooking(next);
+          if ("host_note" in expected) setNote(next.host_note);
+        }
+        setQueued(answer ? "" : whenQueued);
+        setPanel(null);
+        setReason("");
+        if (answer) onChanged();
+      });
+    } finally {
+      actionPending.current = false;
+      onBusyChange?.(false);
+    }
+  };
   const openPanel = (p: Panel) => {
-    animateLayout();
+    if (busy || actionPending.current) return;
     setPanel(panel === p ? null : p);
     setReason("");
   };
@@ -106,7 +161,16 @@ export function BookingDetailView({
       <ScrollView contentContainerStyle={sheetStyles.body}>
         <View style={sheetStyles.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
-          <Text style={shared.small}>{busy ? "Loading…" : ""}</Text>
+          <Text accessibilityLiveRegion="polite" style={shared.small}>
+            {busy ? "Loading booking…" : ""}
+          </Text>
+          {!!error && (
+            <SmallAction
+              label="Retry"
+              disabled={busy}
+              onPress={() => setReload((value) => value + 1)}
+            />
+          )}
         </View>
       </ScrollView>
     );
@@ -240,8 +304,7 @@ export function BookingDetailView({
           <View style={[shared.softCard, s.approve]}>
             <Text style={bs.rowTitle}>{b.name} is waiting for you</Text>
             <Text style={[shared.small, bs.gap]}>
-              The time stays held until you decide. They’re told by email either
-              way.
+              Time is held until you decide. They’re notified by email.
             </Text>
             <Button
               title="Approve"
@@ -329,7 +392,7 @@ export function BookingDetailView({
                             () =>
                               outbox.rescheduleBooking(b.id, b.name, startAt),
                             {},
-                            "Saved on this phone. It’s sent when you’re back online — if that time has been taken by then, you’ll be asked to pick another.",
+                            "Saved on this phone. Sends when online; if the time is taken, choose another.",
                           )
                         }
                       />
@@ -381,36 +444,36 @@ export function BookingDetailView({
           </>
         )}
 
-        <Text style={[shared.eyebrow, bs.eyebrow]}>YOUR NOTE</Text>
-        <View style={shared.card}>
-          <TextInput
-            style={[shared.input, bs.multiline]}
-            value={note}
-            onChangeText={setNote}
-            maxLength={4000}
-            multiline
-            textAlignVertical="top"
-            placeholder="Only hosts see this"
-            placeholderTextColor={colors.faint}
-            accessibilityLabel="Private note about this booking"
-          />
-          <View style={s.noteActions}>
-            <SmallAction
-              label="Save note"
-              disabled={busy || note.trim() === b.host_note.trim()}
-              onPress={() =>
-                void act(
-                  () => outbox.setBookingNote(b.id, b.name, note.trim()),
-                  { host_note: note.trim() },
-                )
-              }
+        <InlineDetails title="Private note">
+          <View style={shared.card}>
+            <TextInput
+              style={[shared.input, bs.multiline]}
+              value={note}
+              editable={!busy}
+              onChangeText={setNote}
+              maxLength={4000}
+              multiline
+              textAlignVertical="top"
+              placeholder="Only hosts see this"
+              placeholderTextColor={colors.faint}
+              accessibilityLabel="Private note about this booking"
             />
+            <View style={s.noteActions}>
+              <SmallAction
+                label="Save note"
+                disabled={busy || note.trim() === b.host_note.trim()}
+                onPress={() =>
+                  void act(
+                    () => outbox.setBookingNote(b.id, b.name, note.trim()),
+                    { host_note: note.trim() },
+                  )
+                }
+              />
+            </View>
           </View>
-        </View>
-
+        </InlineDetails>
         {b.events.length > 0 && (
-          <>
-            <Text style={[shared.eyebrow, bs.eyebrow]}>HISTORY</Text>
+          <InlineDetails title="History">
             <View style={shared.card}>
               {b.events.map((e, n) => (
                 <View key={e.id} style={s.event}>
@@ -428,7 +491,7 @@ export function BookingDetailView({
                 </View>
               ))}
             </View>
-          </>
+          </InlineDetails>
         )}
       </View>
     </ScrollView>
@@ -477,6 +540,7 @@ function ReasonPanel({
         <TextInput
           style={[shared.input, bs.multiline]}
           value={reason}
+          editable={!busy}
           onChangeText={onReason}
           maxLength={500}
           multiline
@@ -498,7 +562,7 @@ function ReasonPanel({
 
 const s = themed(() =>
   StyleSheet.create({
-    head: { flexDirection: "row", gap: 10, marginBottom: 14 },
+    head: { flexDirection: "row", flexWrap: "wrap", gap: 10, marginBottom: 12 },
     email: { marginTop: 2 },
     pills: { flexDirection: "row", marginBottom: 14 },
     detail: { marginBottom: 14 },
@@ -512,7 +576,7 @@ const s = themed(() =>
     dot: {
       width: 10,
       height: 10,
-      borderRadius: 5,
+      borderRadius: radii.pill,
       marginTop: 4,
       backgroundColor: colors.dot,
     },

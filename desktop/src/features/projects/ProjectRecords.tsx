@@ -1,4 +1,12 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import type {
   Item,
   DocSummary,
@@ -35,7 +43,18 @@ const statusLabel = (status: string | null) =>
           : "not started";
 
 /** Small, project-scoped trail of commitments and their outcomes. */
-export function ProjectRecords({
+export function ProjectRecords(
+  props: Parameters<typeof ProjectRecordsBody>[0],
+) {
+  return (
+    <ProjectRecordsBody
+      key={`${props.project.id}:${props.userId}`}
+      {...props}
+    />
+  );
+}
+
+function ProjectRecordsBody({
   focusId = null,
   project,
   items,
@@ -69,32 +88,51 @@ export function ProjectRecords({
   const [editingOutcome, setEditingOutcome] = useState<string | null>(null);
   const [outcome, setOutcome] = useState("");
 
-  const load = () =>
-    client
-      .listWorkRecords({ project_id: project.id })
-      .then(setRecords)
-      .catch(report);
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [failed, setFailed] = useState(false);
+  const [ready, setReady] = useState(false);
+  const load = async () => {
+    const epoch = ++request.current;
+    setFailed(false);
+    try {
+      const [next, pages, team] = await Promise.all([
+        client.listWorkRecords({ project_id: project.id }),
+        client.listDocs({ project: project.id }),
+        project.team_id
+          ? client.getTeam(project.team_id)
+          : Promise.resolve(null),
+      ]);
+      if (epoch !== request.current) return;
+      setRecords(next);
+      setNotes(pages);
+      setMembers(team?.members ?? []);
+      setReady(true);
+    } catch (e) {
+      if (epoch === request.current) {
+        setFailed(true);
+        report(e);
+      }
+    }
+  };
   useEffect(() => {
     void load();
-  }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    setOwnerId(userId);
-    if (!project.team_id) {
-      setMembers([]);
-      return;
-    }
-    client
-      .getTeam(project.team_id)
-      .then((team) => setMembers(team.members))
-      .catch(report);
-  }, [project.team_id, userId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    client.listDocs({ project: project.id }).then(setNotes).catch(report);
-  }, [project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => {
+      request.current++;
+    };
+  }, [project.id, project.team_id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const create = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!title.trim()) return;
+    if (
+      !canWrite ||
+      !ready ||
+      mutation.current ||
+      !title.trim() ||
+      !meetingEffortValid
+    )
+      return;
+    mutation.current = true;
     setBusy(true);
     try {
       await client.createWorkRecord({
@@ -136,11 +174,14 @@ export function ProjectRecords({
     } catch (error) {
       report(error);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
 
   const changeStatus = async (record: WorkRecord, status: "done" | "open") => {
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       await client.updateWorkRecord(record.id, {
@@ -151,6 +192,7 @@ export function ProjectRecords({
     } catch (error) {
       report(error);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -159,6 +201,8 @@ export function ProjectRecords({
     record: WorkRecord,
     decision: "accept" | "decline",
   ) => {
+    if (record.owner_id !== userId || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       await client.respondWorkRecord(record.id, decision);
@@ -166,12 +210,15 @@ export function ProjectRecords({
     } catch (error) {
       report(error);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
 
   /** Turn a decision nobody is delivering yet into a task on this project. */
   const makeTask = async (record: WorkRecord) => {
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       const task = await client.createItem({
@@ -188,11 +235,14 @@ export function ProjectRecords({
     } catch (error) {
       report(error);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
 
   const saveOutcome = async (record: WorkRecord) => {
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       await client.updateWorkRecord(record.id, {
@@ -206,6 +256,7 @@ export function ProjectRecords({
     } catch (error) {
       report(error);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -230,165 +281,203 @@ export function ProjectRecords({
       <div className="project-records-head">
         <div>
           <h3 id="project-records-title">Decisions & commitments</h3>
-          <p className="muted">
-            Keep the reason, next step, and outcome beside the work.
-          </p>
         </div>
         {canWrite && (
-          <button className="secondary" onClick={() => setAdding(!adding)}>
-            {adding ? "Cancel" : "Add record"}
+          <button
+            className="secondary"
+            disabled={busy || !ready}
+            onClick={() => {
+              setEditingOutcome(null);
+              setAdding(true);
+            }}
+          >
+            Add record
           </button>
         )}
       </div>
-      {adding && (
-        <form className="project-record-form" onSubmit={create}>
-          <Select
-            aria-label="Record type"
-            value={kind}
-            onChange={(e) => {
-              setKind(e.target.value as WorkRecordKind);
-              setMeetingMinutes("");
-              setParticipantCount("");
-            }}
+      {failed && (
+        <p role="status">
+          Project records unavailable.{" "}
+          <button
+            type="button"
+            className="text-button"
+            disabled={busy}
+            onClick={() => void load()}
           >
-            {kinds.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </Select>
-          <input
-            aria-label="Record title"
-            placeholder={
-              kind === "experiment"
-                ? "What are we testing?"
-                : kind === "meeting_outcome"
-                  ? "What was this meeting for?"
-                  : kind === "decision"
-                    ? "What did we decide?"
-                    : "What was promised?"
-            }
-            value={title}
-            maxLength={200}
-            required
-            onChange={(e) => setTitle(e.target.value)}
-          />
-          <textarea
-            aria-label="Context"
-            placeholder={
-              kind === "experiment"
-                ? "What result would change our plan?"
-                : kind === "decision"
-                  ? "Why did we choose this?"
-                  : "Context or success criteria (optional)"
-            }
-            value={details}
-            maxLength={4000}
-            onChange={(e) => setDetails(e.target.value)}
-          />
-          {kind === "meeting_outcome" && (
-            <div className="project-record-meeting">
-              <label>
-                Length (minutes)
-                <input
-                  type="number"
-                  min="1"
-                  max="1440"
-                  value={meetingMinutes}
-                  onChange={(event) => setMeetingMinutes(event.target.value)}
-                />
-              </label>
-              <label>
-                People, including you
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  value={participantCount}
-                  onChange={(event) => setParticipantCount(event.target.value)}
-                />
-              </label>
-              {meetingMinutes && participantCount && (
-                <span className="muted">
-                  {(
-                    (Number(meetingMinutes) * Number(participantCount)) /
-                    60
-                  ).toLocaleString([], { maximumFractionDigits: 1 })}{" "}
-                  person-hours
-                </span>
-              )}
-            </div>
-          )}
-          {!!notes.length && (
-            <Select
-              aria-label="Source note"
-              value={sourceDocId}
-              onChange={(event) => setSourceDocId(event.target.value)}
-            >
-              <option value="">No source note</option>
-              {notes.map((note) => (
-                <option key={note.id} value={note.id}>
-                  {note.title || "Untitled note"}
-                </option>
-              ))}
-            </Select>
-          )}
-          {kind === "promise" && !!project.team_id && (
-            <label className="project-record-owner">
-              Promised by
+            Retry
+          </button>
+        </p>
+      )}
+      {adding && (
+        <RecordDialog
+          title="New record"
+          busy={busy}
+          onClose={() => setAdding(false)}
+        >
+          <form className="project-record-form" onSubmit={create}>
+            <fieldset disabled={busy} className="project-record-fields">
               <Select
-                aria-label="Promise owner"
-                value={ownerId}
-                onChange={(event) => setOwnerId(event.target.value)}
+                aria-label="Record type"
+                value={kind}
+                onChange={(e) => {
+                  setKind(e.target.value as WorkRecordKind);
+                  setMeetingMinutes("");
+                  setParticipantCount("");
+                }}
               >
-                <option value={userId}>Me</option>
-                {members
-                  .filter((member) => member.user_id !== userId)
-                  .map((member) => (
-                    <option key={member.user_id} value={member.user_id}>
-                      {member.name}
+                {kinds.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </Select>
+              <input
+                aria-label="Record title"
+                placeholder={
+                  kind === "experiment"
+                    ? "What are we testing?"
+                    : kind === "meeting_outcome"
+                      ? "What was this meeting for?"
+                      : kind === "decision"
+                        ? "What did we decide?"
+                        : "What was promised?"
+                }
+                value={title}
+                maxLength={200}
+                required
+                onChange={(e) => setTitle(e.target.value)}
+              />
+              <textarea
+                aria-label="Context"
+                placeholder={
+                  kind === "experiment"
+                    ? "What result would change our plan?"
+                    : kind === "decision"
+                      ? "Why did we choose this?"
+                      : "Context or success criteria (optional)"
+                }
+                value={details}
+                maxLength={4000}
+                onChange={(e) => setDetails(e.target.value)}
+              />
+              {kind === "meeting_outcome" && (
+                <div className="project-record-meeting">
+                  <label>
+                    Length (minutes)
+                    <input
+                      type="number"
+                      min="1"
+                      max="1440"
+                      value={meetingMinutes}
+                      onChange={(event) =>
+                        setMeetingMinutes(event.target.value)
+                      }
+                    />
+                  </label>
+                  <label>
+                    People, including you
+                    <input
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={participantCount}
+                      onChange={(event) =>
+                        setParticipantCount(event.target.value)
+                      }
+                    />
+                  </label>
+                  {meetingMinutes && participantCount && (
+                    <span className="muted">
+                      {(
+                        (Number(meetingMinutes) * Number(participantCount)) /
+                        60
+                      ).toLocaleString([], { maximumFractionDigits: 1 })}{" "}
+                      person-hours
+                    </span>
+                  )}
+                </div>
+              )}
+              {!!notes.length && (
+                <Select
+                  aria-label="Source note"
+                  value={sourceDocId}
+                  onChange={(event) => setSourceDocId(event.target.value)}
+                >
+                  <option value="">No source note</option>
+                  {notes.map((note) => (
+                    <option key={note.id} value={note.id}>
+                      {note.title || "Untitled note"}
                     </option>
                   ))}
-              </Select>
-            </label>
-          )}
-          <div className="project-record-form-bottom">
-            <Select
-              aria-label="Linked task"
-              value={linkedItem}
-              onChange={(e) => setLinkedItem(e.target.value)}
-            >
-              <option value="">No linked task</option>
-              {tasks.map((task) => (
-                <option key={task.id} value={task.id}>
-                  {task.title}
-                </option>
-              ))}
-            </Select>
-            {(kind === "promise" ||
-              kind === "experiment" ||
-              kind === "decision") && (
-              <label>
-                {kind === "promise" ? "Due" : "Review"}{" "}
-                <DateField
-                  type="date"
-                  value={date}
-                  onChange={(e) => setDate(e.target.value)}
-                />
-              </label>
-            )}
-            <button className="primary" disabled={busy || !meetingEffortValid}>
-              Save
-            </button>
-          </div>
-        </form>
+                </Select>
+              )}
+              {kind === "promise" && !!project.team_id && (
+                <label className="project-record-owner">
+                  Promised by
+                  <Select
+                    aria-label="Promise owner"
+                    value={ownerId}
+                    onChange={(event) => setOwnerId(event.target.value)}
+                  >
+                    <option value={userId}>Me</option>
+                    {members
+                      .filter((member) => member.user_id !== userId)
+                      .map((member) => (
+                        <option key={member.user_id} value={member.user_id}>
+                          {member.name}
+                        </option>
+                      ))}
+                  </Select>
+                </label>
+              )}
+              <div className="project-record-form-bottom">
+                <Select
+                  aria-label="Linked task"
+                  value={linkedItem}
+                  onChange={(e) => setLinkedItem(e.target.value)}
+                >
+                  <option value="">No linked task</option>
+                  {tasks.map((task) => (
+                    <option key={task.id} value={task.id}>
+                      {task.title}
+                    </option>
+                  ))}
+                </Select>
+                {(kind === "promise" ||
+                  kind === "experiment" ||
+                  kind === "decision") && (
+                  <label>
+                    {kind === "promise" ? "Due" : "Review"}{" "}
+                    <DateField
+                      type="date"
+                      value={date}
+                      onChange={(e) => setDate(e.target.value)}
+                    />
+                  </label>
+                )}
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => setAdding(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary"
+                  disabled={busy || !meetingEffortValid}
+                >
+                  Save
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </RecordDialog>
       )}
       {records === null ? (
-        <p className="muted">Loading records…</p>
+        <p className="muted">{failed ? "" : "Loading records…"}</p>
       ) : records.length === 0 ? (
-        <p className="muted project-record-empty">
-          No commitments recorded for this project yet.
-        </p>
+        <p className="muted project-record-empty">No records yet.</p>
       ) : (
         <ul className="project-record-list">
           {records.map((record) => (
@@ -500,30 +589,38 @@ export function ProjectRecords({
                 (record.status === "open" || record.status === "done") && (
                   <>
                     {editingOutcome === record.id && (
-                      <div className="project-record-form">
-                        <textarea
-                          aria-label="What happened?"
-                          placeholder="What happened?"
-                          value={outcome}
-                          maxLength={4000}
-                          onChange={(event) => setOutcome(event.target.value)}
-                        />
-                        <div className="project-record-actions">
-                          <button
-                            className="primary"
-                            disabled={busy || !outcome.trim()}
-                            onClick={() => void saveOutcome(record)}
-                          >
-                            Save outcome
-                          </button>
-                          <button
-                            className="secondary"
-                            onClick={() => setEditingOutcome(null)}
-                          >
-                            Cancel
-                          </button>
+                      <RecordDialog
+                        title="Record outcome"
+                        busy={busy}
+                        onClose={() => setEditingOutcome(null)}
+                      >
+                        <div className="project-record-form">
+                          <textarea
+                            disabled={busy}
+                            aria-label="What happened?"
+                            placeholder="What happened?"
+                            value={outcome}
+                            maxLength={4000}
+                            onChange={(event) => setOutcome(event.target.value)}
+                          />
+                          <div className="project-record-actions">
+                            <button
+                              className="primary"
+                              disabled={busy || !outcome.trim()}
+                              onClick={() => void saveOutcome(record)}
+                            >
+                              Save outcome
+                            </button>
+                            <button
+                              className="secondary"
+                              disabled={busy}
+                              onClick={() => setEditingOutcome(null)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
                         </div>
-                      </div>
+                      </RecordDialog>
                     )}
                     <div className="project-record-actions">
                       {record.status === "open" &&
@@ -564,5 +661,40 @@ export function ProjectRecords({
         </ul>
       )}
     </section>
+  );
+}
+
+function RecordDialog({
+  title,
+  busy,
+  onClose,
+  children,
+}: {
+  title: string;
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={focus.ref as RefObject<HTMLDialogElement>}
+      className="project-record-dialog"
+      aria-label={title}
+      data-modal-owner={focus.id}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <h2>{title}</h2>
+      {children}
+    </dialog>,
+    document.body,
   );
 }

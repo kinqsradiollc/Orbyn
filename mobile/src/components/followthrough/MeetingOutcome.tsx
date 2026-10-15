@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { hoursLabel, type Item, type WorkRecord } from "@orbyn/core";
 import { SmallAction } from "../SmallAction";
@@ -7,11 +7,17 @@ import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import { errorText } from "../../lib/errors";
 
+export function MeetingOutcome(
+  props: Parameters<typeof MeetingOutcomeBody>[0],
+) {
+  return <MeetingOutcomeBody key={props.item.id} {...props} />;
+}
+
 /**
  * A meeting's cost — its length times the people in it, time not money —
  * and what came out of it, kept as a record beside the meeting.
  */
-export function MeetingOutcome({
+function MeetingOutcomeBody({
   item,
   canWrite,
 }: {
@@ -22,16 +28,37 @@ export function MeetingOutcome({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const load = useCallback(() => {
-    client
-      .listWorkRecords({
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  const load = useCallback(async () => {
+    if (!mounted.current) return;
+    const version = ++request.current;
+    try {
+      const rows = await client.listWorkRecords({
         kind: "meeting_outcome",
         source_item_id: item.id,
         limit: 20,
-      })
-      .then(setRecords, () => setRecords([]));
+      });
+      if (version === request.current) {
+        setRecords(rows);
+        setError("");
+      }
+    } catch (reason) {
+      if (version === request.current) setError(errorText(reason));
+    }
   }, [item.id]);
-  useEffect(load, [load]);
+  useEffect(() => {
+    mounted.current = true;
+    setRecords(null);
+    setText("");
+    setError("");
+    void load();
+    return () => {
+      mounted.current = false;
+      request.current += 1;
+    };
+  }, [load]);
   const minutes =
     item.due_at && item.end_at
       ? Math.min(
@@ -45,6 +72,8 @@ export function MeetingOutcome({
   if (!minutes || item.all_day) return null;
   const ended = Date.parse(item.end_at!) <= Date.now();
   const save = async () => {
+    if (mutation.current || !canWrite || !ended || !text.trim()) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -59,11 +88,12 @@ export function MeetingOutcome({
         participant_count: people,
       });
       setText("");
-      load();
+      await load();
     } catch (e) {
       setError(errorText(e));
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
   return (
@@ -79,28 +109,48 @@ export function MeetingOutcome({
       </Text>
       {records?.map((r) => (
         <Text key={r.id} style={s.outcome}>
-          Came out of it: {r.details || r.outcome}
+          Outcome: {r.details || r.outcome}
         </Text>
       ))}
       {canWrite && ended && records?.length === 0 && (
         <>
           <TextInput
             style={shared.input}
+            editable={!busy}
             value={text}
             onChangeText={setText}
             maxLength={4000}
-            placeholder="What came out of it? A decision, a next step…"
+            placeholder="Decision or next step"
             placeholderTextColor={colors.faint}
-            accessibilityLabel="What came out of it"
+            accessibilityLabel="Meeting outcome"
           />
           <SmallAction
-            label="Keep it"
+            label="Save outcome"
             disabled={busy || !text.trim()}
             onPress={() => void save()}
           />
         </>
       )}
-      {!!error && <Text style={[shared.small, s.bad]}>{error}</Text>}
+      {records === null && !error && (
+        <Text style={shared.small}>Loading outcomes…</Text>
+      )}
+      {!!error && (
+        <View>
+          <Text style={[shared.small, s.bad]} accessibilityRole="alert">
+            {error}
+          </Text>
+          {records === null && (
+            <SmallAction
+              label="Retry"
+              disabled={busy}
+              onPress={() => {
+                setError("");
+                void load();
+              }}
+            />
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -112,9 +162,11 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      flexWrap: "wrap",
+      gap: 8,
     },
     cost: { fontFamily: fonts.semibold, fontSize: 13, color: colors.accent },
-    outcome: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    outcome: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
     bad: { color: colors.danger },
   }),
 );

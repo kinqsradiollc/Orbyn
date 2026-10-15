@@ -2,7 +2,6 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { Maintenance } from "@orbyn/core";
 import { Icon } from "./Icon";
-import { FadeIn } from "../motion";
 import { colors, fonts, themed } from "../theme";
 
 export const maintenanceTone = themed(() => ({
@@ -36,14 +35,14 @@ export function MaintenanceBanner({
 }) {
   if (!maintenance?.enabled) return null;
   const headline = admin
-    ? "Maintenance mode is on. Members can't make changes."
-    : "Orbyn is under maintenance. You can view everything, but changes are paused.";
+    ? "Maintenance on. Member edits are paused."
+    : "Maintenance. Viewing is available; edits are paused.";
   const details = [
     maintenance.message.trim(),
     maintenance.until ? `Expected back ${formatUntil(maintenance.until)}.` : "",
   ].filter(Boolean);
   return (
-    <FadeIn from="down" style={s.banner}>
+    <View style={s.banner}>
       <View
         style={s.row}
         accessible
@@ -54,13 +53,11 @@ export function MaintenanceBanner({
         <View style={{ flex: 1 }}>
           <Text style={s.headline}>{headline}</Text>
           {details.length > 0 && (
-            <Text style={s.details} numberOfLines={3}>
-              {details.join(" ")}
-            </Text>
+            <Text style={s.details}>{details.join(" ")}</Text>
           )}
         </View>
       </View>
-    </FadeIn>
+    </View>
   );
 }
 

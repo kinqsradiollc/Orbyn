@@ -32,7 +32,7 @@ visual checks are required for this closeout. U1 and the broader goal remain ope
   and backend types passed. Reviewer accepted main integration within round
   **2/3**; it is not yet deployed.
 - Phase: local unified `/mcp` code checkpoint accepted and pushed under
-  [ADR 002](../adr/002-unified-mcp-integration.md). The owner reported deployment
+  [ADR 002](../adr/archive/002-unified-mcp-integration.md). The owner reported deployment
   on 12 October with checkout hash `de83f54b`; running-container source remains
   independently unverified. Canonical authenticated reads and
   synthetic document save/replay/conflict checks now pass; full canonical-host

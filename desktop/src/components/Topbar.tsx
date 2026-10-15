@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { useElementWidth } from "../hooks/useElementWidth";
 import {
   Bell,
   Menu,
@@ -19,6 +21,9 @@ import { usePrefs } from "../app/prefs";
 
 type TopbarProps = {
   view: View;
+  sharedChrome?: boolean;
+  showLocation?: boolean;
+  tabs?: ReactNode;
   /** The assistant's chosen name, shown for its view. */
   agentName?: string;
   onToggleMenu: () => void;
@@ -38,9 +43,12 @@ export const COMMAND_SHORTCUT = keysFor(commandById("app.search"), isMac).join(
   isMac ? "" : "+",
 );
 
-/** Sticky header: mobile menu toggle, breadcrumb, search, today's date, and the bell. */
+/** Shared header: one navigation toggle, location, search, date and notifications. */
 export function Topbar({
   view,
+  sharedChrome = false,
+  showLocation = true,
+  tabs,
   agentName,
   onToggleMenu,
   onToggleRail,
@@ -50,6 +58,8 @@ export function Topbar({
   onOpenCommand,
   timeZone,
 }: TopbarProps) {
+  const { ref: headerRef, width } = useElementWidth();
+  const compact = width > 0 && width < 700;
   const today = new Date();
   const { prefs } = usePrefs();
   // ⌘K's keys, as changed (NAV-09); none shown when taken away.
@@ -59,7 +69,11 @@ export function Topbar({
     prefs.shortcuts,
   ).join(isMac ? "" : "+");
   return (
-    <header className="topbar">
+    <header
+      ref={headerRef}
+      className={`topbar${tabs ? " has-tabs" : ""}${compact ? " is-compact" : ""}`}
+      data-shared-chrome={sharedChrome ? "" : undefined}
+    >
       {onToggleRail && (
         <button
           className="icon-button workspace-rail-toggle"
@@ -82,10 +96,10 @@ export function Topbar({
       >
         <Menu size={20} />
       </button>
-      <span className="workspace-location">
-        <strong>{navName(view, agentName)}</strong>
-      </span>
-      <div>
+      <div className="workspace-location">
+        {tabs ?? (showLocation && <strong>{navName(view, agentName)}</strong>)}
+      </div>
+      <div className="workspace-header-actions">
         <button
           className="command-trigger"
           aria-label="Search or ask"
@@ -122,14 +136,16 @@ type PageHeadingProps = {
   onNewItem: () => void;
 };
 
-/** Per-view eyebrow, title, subtitle and the "New item" button at the top of the content area. */
+/** View identity and its primary creation action. */
 export function PageHeading({ view, user, onNewItem }: PageHeadingProps) {
   return (
     <div className="page-heading">
       <div>
-        <span className="eyebrow">{SCREENS[view].eyebrow}</span>
+        {SCREENS[view].eyebrow && (
+          <span className="eyebrow">{SCREENS[view].eyebrow}</span>
+        )}
         <h1>{viewTitle(view, user?.name)}</h1>
-        <p>{SCREENS[view].subtitle}</p>
+        {SCREENS[view].subtitle && <p>{SCREENS[view].subtitle}</p>}
       </div>
       {!VIEWS_WITHOUT_NEW_ITEM.includes(view) && (
         <button className="primary" onClick={onNewItem}>

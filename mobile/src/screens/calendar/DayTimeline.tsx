@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import {
   PanResponder,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   Vibration,
@@ -23,6 +24,10 @@ import {
   type PlannedBlock,
   type TimeBlock,
 } from "@orbyn/core";
+import { BottomSheet } from "../../components/BottomSheet";
+import { SmallAction } from "../../components/SmallAction";
+import { usePaneWidth } from "../../hooks/usePaneWidth";
+import { session } from "../../lib/session";
 import { Icon } from "../../components/Icon";
 import { useNow } from "../../hooks/useNow";
 import { shortDay } from "../../lib/planning";
@@ -342,6 +347,36 @@ export function DayTimeline({
   }[];
 }) {
   const now = useNow(60_000);
+  const { width, onLayout } = usePaneWidth();
+  const { fontScale } = useWindowDimensions();
+  const columnZones =
+    width >= (gutterWidth(zones.length) + 160) * Math.max(1, fontScale)
+      ? zones
+      : [];
+  const [details, setDetails] = useState<"allDay" | "timed" | "zones" | null>(
+    null,
+  );
+  const pendingDetails = useRef<{ owner: string; run: () => void } | null>(
+    null,
+  );
+  const owner = session.token;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      pendingDetails.current = null;
+    };
+  }, []);
+  const afterDetails = () => {
+    const next = pendingDetails.current;
+    pendingDetails.current = null;
+    if (mounted.current && next?.owner === session.token) next.run();
+  };
+  const chooseDetail = (run: () => void) => {
+    pendingDetails.current = { owner, run };
+    setDetails(null);
+  };
   const selectOrOpen = (itemId: string, entry?: CalendarEntry) => {
     if (onSelectTask && selectedTask !== itemId) onSelectTask(itemId);
     else onOpen(itemId, entry);
@@ -447,7 +482,9 @@ export function DayTimeline({
   const shift = (start - DAY_START) * HOUR_HEIGHT;
   const hours = Array.from({ length: end - start + 1 }, (_, i) => start + i);
   const windowHeight = (end - start) * HOUR_HEIGHT;
-  const gutter = bare ? 0 : gutterWidth(zones.length);
+  const gutter = bare
+    ? 0
+    : gutterWidth(columnZones.length) * Math.max(1, fontScale);
   // Teammates' strips sit between the hours and the events.
   const stripsWidth = mates.length ? mates.length * STRIP + 2 : 0;
   const clip = <T,>(item: T, top: number, bottom: number) => ({
@@ -562,6 +599,7 @@ export function DayTimeline({
     save: (start: Date, end: Date) => void,
   ) => {
     const d = dragRef.current;
+    if (d && d.id !== m.id) return false;
     frozen.current = null;
     setDrag(null);
     onDragging?.(false);
@@ -657,40 +695,110 @@ export function DayTimeline({
         ? () => onEntryMenu(slot.entry)
         : null;
 
+  const allDayKeys = new Set(allDay.map((slot) => slot.key));
+  const timedSlots = shownSlots.filter((slot) => !allDayKeys.has(slot.key));
+  const detailSlots = details === "allDay" ? allDay : timedSlots;
+  const allDayCount = allDay.filter((slot) => slot.type !== "ghost").length;
+  const detailTitle = (slot: TimelineSlot) =>
+    slot.type === "ghost"
+      ? slot.ghost.title
+      : slot.type === "block"
+        ? slot.block.title
+        : slot.type === "external"
+          ? slot.external.title
+          : slot.entry.title;
+  const detailMenu = (slot: TimelineSlot) =>
+    slot.type === "ghost"
+      ? onGhostMenu
+        ? () => onGhostMenu(slot.ghost)
+        : null
+      : slot.type === "external"
+        ? onExternal
+          ? () => onExternal(slot.external)
+          : null
+        : slotMenu(slot);
+  const openDetail = (slot: TimelineSlot) =>
+    slot.type === "external"
+      ? onExternal?.(slot.external)
+      : slot.type === "ghost"
+        ? onOpen(slot.ghost.item_id)
+        : slot.type === "block"
+          ? onOpen(slot.block.item_id)
+          : onOpen(slot.entry.item_id, slot.entry);
+
   return (
-    <View style={s.card}>
+    <View style={s.card} onLayout={onLayout}>
       {zones.length > 0 && (
-        <View
-          // Kept, invisible, beside another column so the hours line up.
-          style={[s.zoneHead, bare && s.hidden]}
-          importantForAccessibility="no-hide-descendants"
-          accessibilityElementsHidden
+        <Pressable
+          disabled={bare}
+          accessibilityRole="button"
+          accessibilityLabel={`Time zones: ${zones.map(zoneCity).join(", ")}`}
+          onPress={() => setDetails("zones")}
+          style={[
+            s.zoneHead,
+            { height: 44 * Math.max(1, fontScale) },
+            bare && s.hidden,
+          ]}
+          importantForAccessibility={bare ? "no-hide-descendants" : "auto"}
+          accessibilityElementsHidden={bare}
         >
-          {zones.map((zone) => (
-            <View key={zone} style={s.zoneCell}>
-              <Text style={s.zoneName} numberOfLines={1}>
-                {zoneCity(zone)}
-              </Text>
-              <Text style={s.zoneAbbr} numberOfLines={1}>
-                {zoneAbbr(zone, day)}
-              </Text>
-            </View>
-          ))}
-          <View style={[s.zoneCell, { width: GUTTER - 4 }]}>
-            <Text style={[s.zoneName, s.local]} numberOfLines={1}>
-              Local
-            </Text>
-          </View>
-        </View>
+          {columnZones.length ? (
+            <>
+              {columnZones.map((zone) => (
+                <View
+                  key={zone}
+                  style={[
+                    s.zoneCell,
+                    { width: ZONE_WIDTH * Math.max(1, fontScale) },
+                  ]}
+                >
+                  <Text style={s.zoneName} numberOfLines={1}>
+                    {zoneCity(zone)}
+                  </Text>
+                  <Text style={s.zoneAbbr} numberOfLines={1}>
+                    {zoneAbbr(zone, day)}
+                  </Text>
+                </View>
+              ))}
+              <View
+                style={[
+                  s.zoneCell,
+                  { width: GUTTER * Math.max(1, fontScale) - 4 },
+                ]}
+              >
+                <Text style={[s.zoneName, s.local]}>Local</Text>
+              </View>
+            </>
+          ) : (
+            <Text style={s.zoneSummary}>Time zones ({zones.length})</Text>
+          )}
+        </Pressable>
       )}
-      <View style={[s.allDay, grid && s.allDayGrid, bare && s.allDayBare]}>
+
+      <View
+        style={[
+          s.allDay,
+          grid && { height: 64 * Math.max(1, fontScale) },
+          bare && s.allDayBare,
+        ]}
+      >
         {!bare && (
           <Text style={[s.allDayLabel, { width: gutter - 4 }]}>
             All day{"\n"}no time
           </Text>
         )}
         <View style={s.allDayItems}>
-          {allDay.some((slot) => slot.type !== "ghost") ? (
+          {allDayCount && (grid || allDayCount > 3) ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setDetails("allDay")}
+              style={s.allDayChip}
+            >
+              <Text style={s.allDayText}>
+                {allDayCount} all-day {allDayCount === 1 ? "item" : "items"}
+              </Text>
+            </Pressable>
+          ) : allDay.some((slot) => slot.type !== "ghost") ? (
             allDay.map((slot) => {
               if (slot.type === "ghost") return null;
               if (slot.type === "external") {
@@ -708,9 +816,7 @@ export function DayTimeline({
                     ]}
                   >
                     <Icon name="lock" size={10} color={x.color} />
-                    <Text numberOfLines={1} style={s.allDayText}>
-                      {x.title}
-                    </Text>
+                    <Text style={s.allDayText}>{x.title}</Text>
                   </PressableScale>
                 );
               }
@@ -732,10 +838,7 @@ export function DayTimeline({
                   ]}
                 >
                   <View style={[s.dot, { backgroundColor: color ?? t.fg }]} />
-                  <Text
-                    numberOfLines={1}
-                    style={[s.allDayText, status === "done" && s.doneText]}
-                  >
+                  <Text style={[s.allDayText, status === "done" && s.doneText]}>
                     {title}
                   </Text>
                 </PressableScale>
@@ -770,12 +873,28 @@ export function DayTimeline({
               importantForAccessibility="no-hide-descendants"
             >
               {!bare &&
-                zones.map((zone) => (
-                  <Text key={zone} style={s.zoneHour} numberOfLines={1}>
+                columnZones.map((zone) => (
+                  <Text
+                    key={zone}
+                    style={[
+                      s.zoneHour,
+                      { width: ZONE_WIDTH * Math.max(1, fontScale) },
+                    ]}
+                    numberOfLines={1}
+                  >
                     {clockIn(zone, at)}
                   </Text>
                 ))}
-              {!bare && <Text style={s.hourLabel}>{hourLabel(hour % 24)}</Text>}
+              {!bare && (
+                <Text
+                  style={[
+                    s.hourLabel,
+                    { width: GUTTER * Math.max(1, fontScale) - 4 },
+                  ]}
+                >
+                  {hourLabel(hour % 24)}
+                </Text>
+              )}
               <View style={s.hourLine} />
             </View>
           );
@@ -838,6 +957,7 @@ export function DayTimeline({
                 onKeepFreeMenu ? "Long-press for options" : undefined
               }
               disabled={!onKeepFreeMenu}
+              onPress={() => onKeepFreeMenu?.(r)}
               {...menuProps(onKeepFreeMenu ? () => onKeepFreeMenu(r) : null)}
               style={({ pressed }) => [
                 s.keepFree,
@@ -863,6 +983,7 @@ export function DayTimeline({
                   : undefined
               }
               disabled={!onFrameMenu}
+              onPress={() => onFrameMenu?.(f)}
               {...menuProps(onFrameMenu ? () => onFrameMenu(f) : null)}
               style={({ pressed }) => [
                 s.frame,
@@ -1305,6 +1426,100 @@ export function DayTimeline({
           </View>
         )}
       </View>
+      {placed.length > 0 && (
+        <View style={s.detailTools}>
+          <SmallAction
+            label={`Events and sessions (${timedSlots.length})`}
+            disabled={false}
+            onPress={() => setDetails("timed")}
+          />
+        </View>
+      )}
+      <BottomSheet
+        visible={details !== null}
+        title={
+          details === "zones"
+            ? "Time zones"
+            : details === "allDay"
+              ? "All-day items"
+              : "Events and sessions"
+        }
+        onClose={() => setDetails(null)}
+        afterClose={afterDetails}
+      >
+        {details === "zones" ? (
+          <>
+            <Text style={shared.small}>{shortDay(day)}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator>
+              <View>
+                <View style={s.zoneDetailRow}>
+                  <Text style={s.zoneDetailCell}>Local</Text>
+                  {zones.map((zone) => (
+                    <Text key={zone} style={s.zoneDetailCell}>
+                      {zoneCity(zone)} · {zoneAbbr(zone, day)}
+                    </Text>
+                  ))}
+                </View>
+                {hours.map((hour) => {
+                  const at = new Date(
+                    day.getFullYear(),
+                    day.getMonth(),
+                    day.getDate(),
+                    hour,
+                  );
+                  return (
+                    <View key={hour} style={s.zoneDetailRow}>
+                      <Text style={s.zoneDetailCell}>
+                        {hourLabel(hour % 24)}
+                      </Text>
+                      {zones.map((zone) => (
+                        <Text key={zone} style={s.zoneDetailCell}>
+                          {clockIn(zone, at)}
+                        </Text>
+                      ))}
+                    </View>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          </>
+        ) : (
+          detailSlots.map((slot) => {
+            const options = detailMenu(slot);
+            return (
+              <View key={slot.key} style={s.detailRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Open ${detailTitle(slot)}`}
+                  onPress={() => chooseDetail(() => openDetail(slot))}
+                  style={s.detailOpen}
+                >
+                  <Text style={shared.body}>{detailTitle(slot)}</Text>
+                  <Text style={shared.small}>
+                    {slot.allDay
+                      ? "All day"
+                      : `${timeLabel(slot.start)}${slot.end ? ` – ${timeLabel(slot.end)}` : " · Due"}`}
+                    {slot.type === "ghost"
+                      ? " · Proposed"
+                      : slot.type === "block"
+                        ? " · Session"
+                        : slot.type === "external"
+                          ? ` · ${slot.external.name}`
+                          : ""}
+                  </Text>
+                </Pressable>
+                {options && (
+                  <SmallAction
+                    label="Options"
+                    disabled={false}
+                    onPress={() => chooseDetail(options)}
+                  />
+                )}
+              </View>
+            );
+          })
+        )}
+      </BottomSheet>
       {!fitsAll && (
         <Pressable
           accessibilityRole="button"
@@ -1446,8 +1661,24 @@ function DraggableBlock({
 }) {
   const [pressed, setPressed] = useState(false);
   // Latest props for the long-lived pan responders.
-  const latest = useRef({ canDrag, onTap, onMenu, onBegin, onDrag, onEnd });
-  latest.current = { canDrag, onTap, onMenu, onBegin, onDrag, onEnd };
+  const latest = useRef({
+    canDrag,
+    canResize,
+    onTap,
+    onMenu,
+    onBegin,
+    onDrag,
+    onEnd,
+  });
+  latest.current = {
+    canDrag,
+    canResize,
+    onTap,
+    onMenu,
+    onBegin,
+    onDrag,
+    onEnd,
+  };
   const hold = useRef<{
     timer: ReturnType<typeof setTimeout> | null;
     lifted: boolean;
@@ -1523,14 +1754,20 @@ function DraggableBlock({
   ).current;
   const grip = useRef(
     PanResponder.create({
-      onStartShouldSetPanResponder: () => latest.current.canDrag,
-      onPanResponderGrant: () => latest.current.onBegin(),
+      onStartShouldSetPanResponder: () =>
+        latest.current.canDrag && latest.current.canResize,
+      onPanResponderGrant: () => {
+        hold.lifted = true;
+        latest.current.onBegin();
+      },
       onPanResponderMove: (_, g) => latest.current.onDrag("resize", g.dy, 0),
       onPanResponderTerminationRequest: () => false,
       onPanResponderRelease: () => {
+        hold.lifted = false;
         latest.current.onEnd(true);
       },
       onPanResponderTerminate: () => {
+        hold.lifted = false;
         latest.current.onEnd(false);
       },
     }),
@@ -1578,6 +1815,42 @@ function DraggableBlock({
 
 const s = themed(() =>
   StyleSheet.create({
+    zoneSummary: {
+      color: colors.textSoft,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      paddingHorizontal: 10,
+    },
+    zoneDetailRow: {
+      flexDirection: "row",
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    zoneDetailCell: {
+      width: 112,
+      padding: 8,
+      fontSize: 13,
+      color: colors.text,
+    },
+    detailTools: { padding: 8 },
+    detailRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+      paddingVertical: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    detailOpen: {
+      flexGrow: 1,
+      flexShrink: 1,
+      flexBasis: 180,
+      minWidth: 0,
+      minHeight: 44,
+      justifyContent: "center",
+      gap: 4,
+    },
     deadlineMarker: {
       paddingHorizontal: 6,
       paddingVertical: 4,
@@ -1593,6 +1866,8 @@ const s = themed(() =>
       marginBottom: 22,
     },
     zoneHead: {
+      minHeight: 44,
+      alignItems: "center",
       flexDirection: "row",
       paddingTop: 8,
       paddingBottom: 2,
@@ -1623,7 +1898,6 @@ const s = themed(() =>
       backgroundColor: colors.surfaceMuted,
     },
     /** Days side by side: the same height in every column, so the hours line up. */
-    allDayGrid: { height: 58, overflow: "hidden" },
     allDayBare: { paddingLeft: 8 },
     hidden: { opacity: 0 },
     allDayLabel: {
@@ -1633,8 +1907,15 @@ const s = themed(() =>
       lineHeight: 14,
       color: colors.muted,
     },
-    allDayItems: { flex: 1, flexDirection: "row", flexWrap: "wrap", gap: 6 },
+    allDayItems: {
+      flex: 1,
+      minWidth: 0,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 6,
+    },
     allDayChip: {
+      minHeight: 44,
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
@@ -1649,7 +1930,7 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.text,
     },
-    dot: { width: 7, height: 7, borderRadius: 4 },
+    dot: { width: 7, height: 7, borderRadius: radii.pill },
     hour: {
       position: "absolute",
       left: 0,
@@ -1686,7 +1967,7 @@ const s = themed(() =>
       left: 0,
       right: 0,
       borderLeftWidth: 3,
-      borderRadius: 8,
+      borderRadius: radii.input,
       paddingHorizontal: 6,
       paddingTop: 3,
       alignItems: "flex-end",
@@ -1697,7 +1978,7 @@ const s = themed(() =>
       gap: 4,
       maxWidth: "70%",
     },
-    frameDot: { width: 6, height: 6, borderRadius: 3 },
+    frameDot: { width: 6, height: 6, borderRadius: radii.pill },
     frameText: {
       flexShrink: 1,
       fontFamily: fonts.semibold,
@@ -1718,7 +1999,7 @@ const s = themed(() =>
       position: "absolute",
       left: 0,
       right: 3,
-      borderRadius: 6,
+      borderRadius: radii.input,
       backgroundColor: colors.surfaceMuted,
       paddingHorizontal: 8,
       justifyContent: "center",
@@ -1732,7 +2013,7 @@ const s = themed(() =>
     event: {
       flex: 1,
       borderLeftWidth: 3,
-      borderRadius: 8,
+      borderRadius: radii.input,
       paddingHorizontal: 8,
       paddingVertical: 4,
       overflow: "hidden",
@@ -1777,7 +2058,7 @@ const s = themed(() =>
       justifyContent: "center",
       paddingRight: 8,
     },
-    gripBar: { width: 18, height: 3, borderRadius: 2, opacity: 0.6 },
+    gripBar: { width: 18, height: 3, borderRadius: radii.pill, opacity: 0.6 },
     blockTop: { flexDirection: "row", alignItems: "center", gap: 4 },
     grow: { flex: 1 },
     blockTitle: { flex: 1, color: colors.accent },
@@ -1815,7 +2096,7 @@ const s = themed(() =>
     nowDot: {
       width: 9,
       height: 9,
-      borderRadius: 5,
+      borderRadius: radii.pill,
       backgroundColor: colors.danger,
       marginTop: 1,
     },
@@ -1824,7 +2105,7 @@ const s = themed(() =>
       position: "absolute",
       left: 0,
       right: 3,
-      borderRadius: 6,
+      borderRadius: radii.input,
       borderWidth: 1,
       borderStyle: "dashed",
       borderColor: colors.faint,
@@ -1843,10 +2124,11 @@ const s = themed(() =>
     strip: {
       position: "absolute",
       width: STRIP - 1,
-      borderRadius: 2,
+      borderRadius: radii.pill,
       opacity: 0.85,
     },
     hoursToggle: {
+      minHeight: 44,
       alignItems: "center",
       paddingVertical: 12,
       borderTopWidth: StyleSheet.hairlineWidth,
@@ -1871,7 +2153,7 @@ const s = themed(() =>
     badgeText: {
       fontFamily: fonts.semibold,
       fontSize: 11,
-      color: colors.white,
+      color: colors.onAccent,
     },
   }),
 );

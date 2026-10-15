@@ -1,3 +1,4 @@
+import { session } from "../../lib/session";
 import { useEffect, useRef, useState } from "react";
 import {
   Download,
@@ -44,7 +45,11 @@ import { ConnectionsMap } from "../connections/ConnectionsMap";
  * whether it's still true, and your own fields (ORG-02). Sections with
  * nothing to say are left out.
  */
-export function PageInfo({
+export function PageInfo(props: Parameters<typeof PageInfoBody>[0]) {
+  return <PageInfoBody key={`${session.get()}:${props.doc.id}`} {...props} />;
+}
+
+function PageInfoBody({
   doc,
   tags,
   canWrite,
@@ -63,8 +68,10 @@ export function PageInfo({
   onShowLinked,
   onClose,
   report,
+  hidden = false,
 }: {
   doc: Doc;
+  hidden?: boolean;
   tags: DocTag[];
   canWrite: boolean;
   reading: boolean;
@@ -87,27 +94,46 @@ export function PageInfo({
   onClose: () => void;
   report: (e: unknown) => void;
 }) {
+  const account = useRef(session.get()).current;
+  const [hasOpened, setHasOpened] = useState(!hidden);
+  useEffect(() => {
+    if (!hidden) setHasOpened(true);
+  }, [hidden]);
   const [info, setInfo] = useState<DocInfo | null>(null);
   const [asked, setAsked] = useState(0);
+  const [failed, setFailed] = useState(false);
   const reportRef = useRef(report);
   reportRef.current = report;
   useEffect(() => {
+    if (hidden) return;
     let live = true;
+    setFailed(false);
     client.docInfo(doc.id).then(
-      (next) => live && setInfo(next),
-      (e) => live && reportRef.current(e),
+      (next) => live && session.get() === account && setInfo(next),
+      (error) => {
+        if (live && session.get() === account) {
+          setFailed(true);
+          reportRef.current(error);
+        }
+      },
     );
     return () => {
       live = false;
     };
-  }, [doc.id, revision, asked]);
+  }, [doc.id, revision, asked, hidden]);
 
   const belongs = [
     info?.team ? `In ${info.team.name}` : "Only you",
     info?.folder ? `Folder: ${info.folder.name}` : null,
   ].filter(Boolean);
+  if (!hasOpened) return null;
   return (
-    <aside className="page-info" aria-label="Page info">
+    <aside
+      className="page-info"
+      hidden={hidden}
+      style={hidden ? { display: "none" } : undefined}
+      aria-label="Page info"
+    >
       <div className="page-info-head">
         <h2>
           <Info size={15} aria-hidden="true" /> Info
@@ -123,32 +149,45 @@ export function PageInfo({
       </div>
       <p className="page-info-facts">{facts}</p>
 
-      <section className="page-info-section">
-        <h3>Belongs to</h3>
-        {info?.project && (
+      {failed && (
+        <p role="alert">
+          Page info couldn’t be loaded.{" "}
           <button
-            className="page-info-link"
-            onClick={() => onOpenProject?.(info.project!.id)}
-            disabled={!onOpenProject}
+            className="text-button"
+            onClick={() => setAsked((value) => value + 1)}
           >
-            Project: {info.project.name}
+            Retry
           </button>
-        )}
-        {info?.event && (
-          <p className="page-info-line">
-            Notes for {info.event.title}
-            {info.event.due_at ? ` · ${dateLabel(info.event.due_at)}` : ""}
-          </p>
-        )}
-        <p className="page-info-line">
-          {info?.team ? (
-            <Users size={13} aria-hidden="true" />
-          ) : (
-            <Folder size={13} aria-hidden="true" />
-          )}
-          {belongs.join(" · ")}
         </p>
-      </section>
+      )}
+      {info && (
+        <section className="page-info-section">
+          <h3>Location</h3>
+          {info?.project && (
+            <button
+              className="page-info-link"
+              onClick={() => onOpenProject?.(info.project!.id)}
+              disabled={!onOpenProject}
+            >
+              Project: {info.project.name}
+            </button>
+          )}
+          {info?.event && (
+            <p className="page-info-line">
+              Notes for {info.event.title}
+              {info.event.due_at ? ` · ${dateLabel(info.event.due_at)}` : ""}
+            </p>
+          )}
+          <p className="page-info-line">
+            {info?.team ? (
+              <Users size={13} aria-hidden="true" />
+            ) : (
+              <Folder size={13} aria-hidden="true" />
+            )}
+            {belongs.join(" · ")}
+          </p>
+        </section>
+      )}
 
       <AliasesSection
         doc={doc}
@@ -306,19 +345,32 @@ function SourcesSection({
   report: (e: unknown) => void;
 }) {
   const { ask } = useConfirm();
+  const mutation = useRef(false);
+  const [busy, setBusy] = useState(false);
   // Taking a source off the page (H6b): the page's words stay as they are,
   // and the source stays for other pages that use it.
   const remove = async (src: PageSource) => {
-    if (
-      !(await ask({
-        title: `Take “${src.title}” off this page?`,
-        body: "The page's words stay. Other pages that cite it keep it.",
-        confirmLabel: "Remove",
-        destructive: true,
-      }))
-    )
-      return;
-    client.removePageSource(docId, src.id).then(onRemoved, report);
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
+    setBusy(true);
+    try {
+      if (
+        !(await ask({
+          title: "Remove source?",
+          body: `Removes “${src.title}” from this page. Page text and other citations stay.`,
+          confirmLabel: "Remove",
+          destructive: true,
+        }))
+      )
+        return;
+      await client.removePageSource(docId, src.id);
+      onRemoved();
+    } catch (error) {
+      report(error);
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+    }
   };
   return (
     <section className="page-info-section">
@@ -345,6 +397,7 @@ function SourcesSection({
             {canWrite && (
               <button
                 className="icon-button page-info-source-remove"
+                disabled={busy}
                 onClick={() => void remove(src)}
                 aria-label={`Remove ${src.title} from this page`}
                 title="Remove from this page"
@@ -386,7 +439,7 @@ function AliasesSection({
             },
             (e) => {
               report(e);
-              return aliases;
+              throw e;
             },
           )
         }
@@ -414,36 +467,67 @@ function FilesSection({
   const { ask } = useConfirm();
   const [files, setFiles] = useState<PageFile[]>([]);
   const [usage, setUsage] = useState<PageFilesUsage | null>(null);
+  const mutation = useRef(false);
+  const [busy, setBusy] = useState(false);
   const [asked, setAsked] = useState(0);
+  const [failed, setFailed] = useState(false);
   const reportRef = useRef(report);
   reportRef.current = report;
   useEffect(() => {
     let live = true;
+    setFailed(false);
     Promise.all([client.pageFiles(docId), client.filesUsage()]).then(
       ([list, used]) => {
         if (!live) return;
         setFiles(list);
         setUsage(used);
       },
-      (e) => live && reportRef.current(e),
+      (error) => {
+        if (live) {
+          setFailed(true);
+          reportRef.current(error);
+        }
+      },
     );
     return () => {
       live = false;
     };
   }, [docId, revision, asked]);
   // The space is always shown, so someone near the limit sees it on any page.
-  if (!files.length && !usage) return null;
-  const remove = async (f: PageFile) => {
-    if (
-      !(await ask({
-        title: `Delete “${f.name}” for good?`,
-        body: "It frees its space now. Any line on a page that shows it will say it's gone.",
-        confirmLabel: "Delete",
-        destructive: true,
-      }))
-    )
-      return;
-    client.deletePageFile(f.id).then(() => setAsked((n) => n + 1), report);
+  if (!files.length && !usage)
+    return failed ? (
+      <p role="alert">
+        Files couldn’t be loaded.{" "}
+        <button
+          className="text-button"
+          onClick={() => setAsked((value) => value + 1)}
+        >
+          Retry
+        </button>
+      </p>
+    ) : null;
+  const remove = async (file: PageFile) => {
+    if (!canWrite || file.doc_id !== docId || mutation.current) return;
+    mutation.current = true;
+    setBusy(true);
+    try {
+      if (
+        !(await ask({
+          title: "Delete file?",
+          body: `Permanently deletes “${file.name}”. Pages using this file will show it as missing.`,
+          confirmLabel: "Delete",
+          destructive: true,
+        }))
+      )
+        return;
+      await client.deletePageFile(file.id);
+      setAsked((value) => value + 1);
+    } catch (error) {
+      report(error);
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+    }
   };
   const share = usage?.quota_bytes
     ? Math.min(100, (usage.used_bytes / usage.quota_bytes) * 100)
@@ -474,6 +558,7 @@ function FilesSection({
                 <button
                   className="icon-button"
                   onClick={() => void remove(f)}
+                  disabled={busy}
                   aria-label={`Delete ${f.name}`}
                   title="Delete for good"
                 >
@@ -498,9 +583,15 @@ function FilesSection({
           </div>
           <small>
             {fileSize(usage.used_bytes)} of {fileSize(usage.quota_bytes)} used
-            across your pages. Removed pictures free space after 30 days; Trash
-            keeps files until emptied.
+            across your pages.
           </small>
+          <details>
+            <summary>Storage details</summary>
+            <p>
+              Removed pictures free space after 30 days. Trash keeps files until
+              emptied.
+            </p>
+          </details>
         </div>
       )}
     </section>

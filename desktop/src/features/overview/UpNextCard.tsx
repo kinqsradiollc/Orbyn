@@ -46,15 +46,19 @@ export function UpNextCard({
   // Again when tasks change (at most every 15 seconds) and every few minutes.
   useEffect(() => {
     let alive = true;
+    let request = 0;
     const load = () => {
+      const version = ++request;
       fetched.current = Date.now();
       client.getUpNext().then(
         (n) => {
-          if (!alive) return;
+          if (!alive || version !== request) return;
           setNext(n);
           setFailed(false);
         },
-        () => alive && setFailed(true),
+        () => {
+          if (alive && version === request) setFailed(true);
+        },
       );
     };
     const wait = Math.max(0, 15_000 - (Date.now() - fetched.current));
@@ -100,11 +104,14 @@ export function UpNextCard({
           >
             {first.title}
           </button>
-          <ul className="up-next-reasons">
-            {first.reasons.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
+          <details className="up-next-why">
+            <summary>Why this task</summary>
+            <ul className="up-next-reasons">
+              {first.reasons.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          </details>
           <div className="up-next-actions">
             <button
               type="button"
@@ -114,17 +121,10 @@ export function UpNextCard({
               <Play size={14} aria-hidden="true" />
               Start focus
             </button>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => onOpen(firstItem)}
-            >
-              Open
-            </button>
             <small className="up-next-session">
               {first.planned_now
                 ? `${first.minutes} min left of its time`
-                : `About ${first.minutes} min is a good start`}
+                : `Suggested: ${first.minutes} min`}
             </small>
           </div>
         </div>
@@ -145,10 +145,7 @@ export function UpNextCard({
         </ul>
       )}
       {next && !first && (
-        <p className="section-empty">
-          Nothing is waiting on you right now. Enjoy the space, or plan
-          something new.
-        </p>
+        <p className="section-empty">No suggested task right now.</p>
       )}
     </section>
   );

@@ -1,11 +1,14 @@
+import { preparePaneDrafts } from "../../app/page-commands";
 import { PageMaintenanceDialog } from "./PageMaintenanceDialog";
 import { DocNavigationContext } from "./doc-navigation";
+import { DocSourceAsk } from "./DocSourceAsk";
 import { DocSourcePreview } from "./DocSourcePreview";
 import { StructuredDocEditor } from "./StructuredDocEditor";
 import { docRailLayout, observeDocLayout } from "./doc-layout";
 import {
   Fragment,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -128,10 +131,15 @@ import type { CSSProperties } from "react";
 import { useToast } from "../../components/Toast";
 import { useConfirm } from "../../components/Confirm";
 import { SharePageButton } from "../../components/ShareButton";
-import { usePageCommands } from "../../app/page-commands";
+import {
+  PageCommandScope,
+  preparePageLeave,
+  usePageCommands,
+} from "../../app/page-commands";
 import { copyLink } from "../../lib/links";
 import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
+import { session as authSession } from "../../lib/session";
 import { DocModeSwitch } from "./DocModeSwitch";
 import { readsFirst } from "./reading";
 import { useDocViewers } from "./DocViewers";
@@ -403,6 +411,19 @@ function LegacyDocEditor({
   };
   const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
   const [deciding, setDeciding] = useState(false);
+  const suggestionOwner = useRef({ id: doc.id, userId });
+  suggestionOwner.current = { id: doc.id, userId };
+  const suggestionMounted = useRef(true);
+  const suggestionRead = useRef(0);
+  const suggestionMutation = useRef<object | null>(null);
+  useEffect(() => {
+    suggestionMounted.current = true;
+    return () => {
+      suggestionMounted.current = false;
+      suggestionRead.current++;
+    };
+  }, []);
+
   /** What a line being suggested on has been typed into, before it is sent. */
   const suggestDraft = useRef<string | null>(null);
   /** The lines tied to a task, as the server last said. */
@@ -446,7 +467,30 @@ function LegacyDocEditor({
   /** The block whose handle menu is open, and where to hang it. */
   const [menu, setMenu] = useState<{ index: number; at: DOMRect } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const pageScope = useContext(PageCommandScope);
+  const historyMutation = useRef(false);
+  const pageMutation = useRef(false);
+  const [pagePending, setPagePending] = useState(false);
+  const [restoringHistory, setRestoringHistory] = useState(false);
+  const historyMounted = useRef(true);
+  const historyPermission = useRef(canWrite);
+  historyPermission.current = canWrite;
+  useEffect(() => {
+    historyMounted.current = true;
+    return () => {
+      historyMounted.current = false;
+    };
+  }, []);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
+  const linkNavigation = useRef(false);
+  const sourcePreviewOwner = useRef(sourcePreview);
+  sourcePreviewOwner.current = sourcePreview;
+  const [sourceAsk, setSourceAsk] = useState<{
+    blockId: string;
+    start: number;
+    end: number;
+    quote: string;
+  } | null>(null);
   /** The Info rail beside the page (NAV-04); it takes the margin's place. */
   const [showInfo, setShowInfo] = useState(false);
   /** Who else is here; opening the page tells the server this device is. */
@@ -456,6 +500,8 @@ function LegacyDocEditor({
   /** The heading being read, for the contents rail. */
   const [readingAt, setReadingAt] = useState(-1);
   /** Words chosen for a comment, before anything has been written. */
+  const beforeCommentAnchor = useRef<(() => Promise<boolean>) | null>(null);
+  const anchorChanging = useRef(false);
   const [pending, setPending] = useState<{
     blockId: string;
     quote: string;
@@ -575,6 +621,29 @@ function LegacyDocEditor({
   const [flash, setFlash] = useState<string | null>(null);
   /** The page's ⋯ menu, and "Merge into…". */
   const [moreMenu, setMoreMenu] = useState(false);
+  const pageActionsRef = useRef<HTMLSpanElement | null>(null);
+  useEffect(() => {
+    if (!moreMenu && !downloadMenu) return;
+    const dismiss = () => {
+      setMoreMenu(false);
+      setDownloadMenu(false);
+    };
+    const pointer = (event: PointerEvent) => {
+      if (!pageActionsRef.current?.contains(event.target as Node)) dismiss();
+    };
+    const keyboard = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        dismiss();
+      }
+    };
+    document.addEventListener("pointerdown", pointer);
+    document.addEventListener("keydown", keyboard);
+    return () => {
+      document.removeEventListener("pointerdown", pointer);
+      document.removeEventListener("keydown", keyboard);
+    };
+  }, [moreMenu, downloadMenu]);
   // The page's cover and icon (W6), kept apart from its words: changing
   // them doesn't make a new version.
   const [look, setLook] = useState<Look>({
@@ -597,8 +666,12 @@ function LegacyDocEditor({
       onChanged({ ...docNow.current, ...saved });
   };
   const saveLook = async (next: Look) => {
+    const account = authSession.get(),
+      target = doc.id;
     const before = look;
-    lookSaved(await client.setDocLook(doc.id, next));
+    const saved = await client.setDocLook(target, next);
+    if (authSession.get() !== account || docNow.current.id !== target) return;
+    lookSaved(saved);
     toast({
       text: "Cover and icon saved",
       action: {
@@ -811,7 +884,10 @@ function LegacyDocEditor({
       // answer, but its ticks are still the ones from before it: the server
       // mustn't count them again.
       const from = ticksFrom.current;
+      const account = authSession.get();
+      const canSettle = () => authSession.get() === account && !gone.current;
       const write = async () => {
+        if (!canSettle() || !historyPermission.current) return;
         setSave("saving");
         try {
           const saved = await client.updateDoc(
@@ -823,6 +899,7 @@ function LegacyDocEditor({
             },
             { ticksFrom: from },
           );
+          if (!canSettle()) return;
           version.current = saved.version;
           base.current = saved.content;
           dirty.current =
@@ -834,11 +911,13 @@ function LegacyDocEditor({
           setNow(new Date());
           onChanged(saved);
         } catch (e) {
+          if (!canSettle()) return;
           // Someone saved first. Take their copy, fold this edit into it and
           // save again, rather than making the writer sort it out by hand.
           if ((e as { statusCode?: number }).statusCode === 409) {
             try {
               const theirs = await client.getDocForEditor(doc.id);
+              if (!canSettle() || !historyPermission.current) return;
               if (theirs.document?.format === 2)
                 throw new Error(
                   "This page changed format. Keep your draft and reopen it before saving.",
@@ -856,6 +935,7 @@ function LegacyDocEditor({
                 },
                 { ticksFrom: ticksFrom.current },
               );
+              if (!canSettle()) return;
               version.current = saved.version;
               base.current = saved.content;
               dirty.current =
@@ -866,6 +946,7 @@ function LegacyDocEditor({
               onChanged(saved);
               return;
             } catch (again) {
+              if (!canSettle()) return;
               setSave("error");
               report(again);
               return;
@@ -1113,20 +1194,41 @@ function LegacyDocEditor({
    */
   /** Give a line a name, so a remark or a proposal can point at it. */
   const nameBlock = (index: number): string => {
-    const block = blocks[index];
+    const block = live.current.blocks[index];
     if (block.id) return block.id;
     const blockId = newBlockId();
-    const next = blocks.slice();
+    const next = live.current.blocks.slice();
     next[index] = { ...block, id: blockId };
     update(next);
     return blockId;
   };
 
-  const commentOn = (index: number) => {
-    const block = blocks[index];
-    const blockId = nameBlock(index);
-    setPending({ blockId, quote: blockText(block).slice(0, 400) });
-    setActiveComment(blockId);
+  const commentOn = async (index: number) => {
+    if (anchorChanging.current) return;
+    const block = live.current.blocks[index];
+    if (!block) return;
+    const account = authSession.get();
+    const page = doc.id;
+    anchorChanging.current = true;
+    try {
+      if (beforeCommentAnchor.current && !(await beforeCommentAnchor.current()))
+        return;
+      const now = live.current.blocks[index];
+      if (
+        !historyMounted.current ||
+        authSession.get() !== account ||
+        docNow.current.id !== page ||
+        !now ||
+        now.id !== block.id ||
+        blockText(now) !== blockText(block)
+      )
+        return;
+      const blockId = nameBlock(index);
+      setPending({ blockId, quote: blockText(now).slice(0, 400) });
+      setActiveComment(blockId);
+    } finally {
+      anchorChanging.current = false;
+    }
   };
 
   /**
@@ -1136,21 +1238,40 @@ function LegacyDocEditor({
    * page has not rendered, and rendering needs the name — so unlike
    * commenting on a whole line this never has to write to the page first.
    */
-  const commentOnSelection = (p: Picked) => {
-    // The name this points at may only exist in the open editor, so the page
-    // is saved now; the remark that follows then has a line to hang on.
-    if (!base.current.some((b) => b.id === p.blockId)) queueSave(title, blocks);
-    setPending({
-      blockId: p.blockId,
-      quote: p.quote.slice(0, 400),
-      range_start: p.start,
-      range_end: p.end,
-    });
-    setActiveComment(p.blockId);
-    setPicked(null);
-    window.getSelection()?.removeAllRanges();
+  const commentOnSelection = async (p: Picked) => {
+    if (anchorChanging.current) return;
+    const block = live.current.blocks.find((line) => line.id === p.blockId);
+    if (!block) return;
+    const account = authSession.get();
+    const page = doc.id;
+    anchorChanging.current = true;
+    try {
+      if (beforeCommentAnchor.current && !(await beforeCommentAnchor.current()))
+        return;
+      const now = live.current.blocks.find((line) => line.id === p.blockId);
+      if (
+        !historyMounted.current ||
+        authSession.get() !== account ||
+        docNow.current.id !== page ||
+        !now ||
+        blockText(now) !== blockText(block)
+      )
+        return;
+      if (!base.current.some((line) => line.id === p.blockId))
+        queueSave(live.current.title, live.current.blocks);
+      setPending({
+        blockId: p.blockId,
+        quote: p.quote.slice(0, 400),
+        range_start: p.start,
+        range_end: p.end,
+      });
+      setActiveComment(p.blockId);
+      setPicked(null);
+      window.getSelection()?.removeAllRanges();
+    } finally {
+      anchorChanging.current = false;
+    }
   };
-
   /**
    * Watch for words being selected on the page.
    *
@@ -1208,6 +1329,7 @@ function LegacyDocEditor({
     if (!change) return;
     try {
       const made = await client.proposeDocChanges(doc.id, [change]);
+      suggestionRead.current++;
       setSuggestions((list) => [...list, ...made]);
       toast({ text: "Suggested. It waits for someone to take it." });
     } catch (e) {
@@ -1216,39 +1338,96 @@ function LegacyDocEditor({
   };
 
   const loadSuggestions = useCallback(() => {
-    client
-      .listDocSuggestions(doc.id)
-      .then(setSuggestions, () => setSuggestions([]));
-  }, [doc.id]);
+    const request = ++suggestionRead.current;
+    const owner = { id: doc.id, userId, account: authSession.get() };
+    const current = () =>
+      suggestionMounted.current &&
+      request === suggestionRead.current &&
+      suggestionOwner.current.id === owner.id &&
+      suggestionOwner.current.userId === owner.userId &&
+      authSession.get() === owner.account;
+    client.listDocSuggestions(doc.id).then(
+      (list) => {
+        if (current()) setSuggestions(list);
+      },
+      (error) => {
+        if (current()) report(error);
+      },
+    );
+  }, [doc.id, userId]);
+  useEffect(() => {
+    setSuggestions([]);
+    suggestionMutation.current = null;
+    setSourceAsk(null);
+    setDeciding(false);
+    loadSuggestions();
+  }, [loadSuggestions]);
 
-  useEffect(() => loadSuggestions(), [loadSuggestions]);
-
-  /** Take a proposal into the page, or leave it. */
-  const decide = (s: DocSuggestion, take: boolean) => {
+  /** Serialize review decisions; a newer local draft never gets replaced by a receipt. */
+  const reviewSuggestions = async (
+    actions: { suggestion: DocSuggestion; take?: boolean }[],
+  ) => {
+    if (suggestionMutation.current) return;
+    if (dirty.current) {
+      report(new Error("Save your edits before reviewing changes."));
+      return;
+    }
+    const ticket = {};
+    suggestionMutation.current = ticket;
     setDeciding(true);
-    client
-      .decideDocSuggestion(doc.id, s.id, take)
-      .then(({ doc: saved }) => {
-        if (saved) {
-          version.current = saved.version;
-          ticksFrom.current = saved.version;
-          base.current = saved.content;
-          setBlocks(saved.content);
-          onChanged(saved);
+    const owner = { id: doc.id, userId, account: authSession.get() };
+    const current = () =>
+      suggestionMounted.current &&
+      suggestionMutation.current === ticket &&
+      suggestionOwner.current.id === owner.id &&
+      suggestionOwner.current.userId === owner.userId &&
+      authSession.get() === owner.account;
+    try {
+      await saveQueue.current;
+      for (const { suggestion, take } of actions) {
+        if (!current()) return;
+        if (dirty.current)
+          throw new Error("Save your new edits before continuing this review.");
+        if (take === undefined) {
+          await client.withdrawDocSuggestion(owner.id, suggestion.id);
+          if (current())
+            setSuggestions((list) =>
+              list.filter((one) => one.id !== suggestion.id),
+            );
+        } else {
+          const { doc: saved } = await client.decideDocSuggestion(
+            owner.id,
+            suggestion.id,
+            take,
+          );
+          if (!current()) return;
+          if (saved) {
+            if (dirty.current) reconcile(saved);
+            else {
+              version.current = saved.version;
+              ticksFrom.current = saved.version;
+              base.current = saved.content;
+              setBlocks(saved.content);
+            }
+            onChanged(saved);
+          }
         }
+      }
+    } catch (error) {
+      if (current()) report(error);
+    } finally {
+      if (current()) {
+        suggestionMutation.current = null;
+        setDeciding(false);
         loadSuggestions();
-      })
-      .catch(report)
-      .finally(() => setDeciding(false));
+      }
+    }
   };
-
-  const withdraw = (s: DocSuggestion) => {
-    setDeciding(true);
-    client
-      .withdrawDocSuggestion(doc.id, s.id)
-      .then(() => setSuggestions((list) => list.filter((x) => x.id !== s.id)))
-      .catch(report)
-      .finally(() => setDeciding(false));
+  const decide = (suggestion: DocSuggestion, take: boolean) => {
+    void reviewSuggestions([{ suggestion, take }]);
+  };
+  const withdraw = (suggestion: DocSuggestion) => {
+    void reviewSuggestions([{ suggestion }]);
   };
 
   /**
@@ -1271,34 +1450,88 @@ function LegacyDocEditor({
    * back is a proposal like any other, so the page does not change until
    * somebody takes it — which is what makes this safe on a shared page.
    */
-  const assist = async (words: Picked, action: DocAiAction) => {
-    setAskMenu(false);
-    let instruction = "";
-    if (action === "custom") {
-      const asked = await prompt({
-        title: "Ask about selected text",
-        label: "Instruction",
-        confirmLabel: "Ask assistant",
-        required: true,
-      });
-      if (!asked?.trim()) return;
-      instruction = asked.trim();
+  const assist = async (
+    words: Pick<Picked, "blockId" | "start" | "end">,
+    action: DocAiAction,
+    retained?: { instruction: string; quote: string },
+  ) => {
+    if (suggestionMutation.current) {
+      if (retained) throw new Error("Wait for the current request to finish.");
+      return;
     }
-    setPicked(null);
-    window.getSelection()?.removeAllRanges();
-    toast({ text: "Asking the assistant…" });
+    const ticket = {};
+    const owner = { id: doc.id, userId, account: authSession.get() };
+    const current = () =>
+      suggestionMounted.current &&
+      suggestionMutation.current === ticket &&
+      suggestionOwner.current.id === owner.id &&
+      suggestionOwner.current.userId === owner.userId &&
+      authSession.get() === owner.account;
+    const block = live.current.blocks.find((one) => one.id === words.blockId);
+    if (!block || !("text" in block)) {
+      if (retained)
+        throw new Error(
+          "The selected text changed. Select it again before asking.",
+        );
+      return;
+    }
+    const quote = retained?.quote ?? block.text.slice(words.start, words.end);
+    suggestionMutation.current = ticket;
+    setDeciding(true);
     try {
-      const made = await client.assistDoc(doc.id, {
+      setAskMenu(false);
+      let instruction = retained?.instruction ?? "";
+      if (action === "custom" && !retained) {
+        const asked = await prompt({
+          title: "Ask about selected text",
+          label: "Instruction",
+          confirmLabel: "Ask assistant",
+          required: true,
+        });
+        if (!asked?.trim()) return;
+        instruction = asked.trim();
+      }
+      setPicked(null);
+      window.getSelection()?.removeAllRanges();
+      if (!current()) throw new Error("The account or page changed.");
+      if (dirty.current)
+        throw new Error("Save your edits before asking for a change.");
+      await saveQueue.current;
+      if (!current()) throw new Error("The account or page changed.");
+      if (dirty.current)
+        throw new Error("Save your edits before asking for a change.");
+      const latest = live.current.blocks.find(
+        (one) => one.id === words.blockId,
+      );
+      if (
+        !latest ||
+        !("text" in latest) ||
+        latest.text.slice(words.start, words.end) !== quote
+      )
+        throw new Error(
+          "The selected text changed. Select it again before asking.",
+        );
+      const made = await client.assistDoc(owner.id, {
         block_id: words.blockId,
         range_start: words.start,
         range_end: words.end,
         action,
         instruction,
+        quote,
+        version: version.current,
       });
+      if (!current()) throw new Error("The account or page changed.");
+      suggestionRead.current++;
       setSuggestions((list) => [...list, made]);
-      toast({ text: "Suggested. Take it or leave it." });
-    } catch (e) {
-      report(e);
+      toast({ text: "Suggested. Review it before accepting." });
+    } catch (error) {
+      if (retained) throw error;
+      if (current()) report(error);
+    } finally {
+      if (current()) {
+        suggestionMutation.current = null;
+        setDeciding(false);
+      }
     }
   };
 
@@ -2079,9 +2312,20 @@ function LegacyDocEditor({
   // ---- links to one line, moving lines (LNK-04, ORG-05) ----
   /** Everything waiting is saved, so the server has what is on screen. */
   const flush = async () => {
+    const account = authSession.get();
+    const target = doc.id;
     if (timer.current) clearTimeout(timer.current);
     if (dirty.current) await persist(live.current.title, live.current.blocks);
     await saveQueue.current;
+    if (
+      !historyMounted.current ||
+      authSession.get() !== account ||
+      docNow.current.id !== target
+    )
+      throw new Error(
+        "The open page changed. Try again from the current page.",
+      );
+    if (dirty.current) throw new Error("Save this draft before continuing.");
   };
 
   /** "Copy link to this line": a link that opens the page there. */
@@ -2715,7 +2959,10 @@ function LegacyDocEditor({
     setDownloadMenu(false);
     toast({ text: `Making the ${EXPORT_LABELS[format].name} file…` });
     try {
-      const { blob, name } = await client.exportDoc(doc.id, format);
+      await flush();
+      const { blob, name } = await client.exportDoc(doc.id, format, {
+        version: version.current,
+      });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -2738,6 +2985,33 @@ function LegacyDocEditor({
       .writeText(`# ${title}\n\n${markdown}`)
       .then(() => toast({ text: "Copied as Markdown" }), report);
 
+  const prepareHistoryRestore = async () => {
+    if (
+      historyMutation.current ||
+      pageMutation.current ||
+      !historyPermission.current
+    )
+      return false;
+    const account = authSession.get();
+    const target = doc.id;
+    if (!(await preparePageLeave(pageScope))) return false;
+    if (
+      !historyMounted.current ||
+      authSession.get() !== account ||
+      docNow.current.id !== target ||
+      !historyPermission.current ||
+      historyMutation.current
+    )
+      return false;
+    historyMutation.current = true;
+    setRestoringHistory(true);
+    return true;
+  };
+  const endHistoryRestore = () => {
+    historyMutation.current = false;
+    if (historyMounted.current) setRestoringHistory(false);
+  };
+
   // ⌘K's Page commands act on this page while it's open.
   // Opened: it leads the quick switcher's recent list, on every device.
   useEffect(() => {
@@ -2746,6 +3020,20 @@ function LegacyDocEditor({
     rememberLastPage(doc.id);
   }, [doc.id]);
   usePageCommands({
+    beforeLeave: async () => {
+      if (
+        sourceAsk ||
+        sourcePreviewOwner.current ||
+        suggestionMutation.current ||
+        historyMutation.current ||
+        pageMutation.current
+      )
+        return false;
+      if (canWrite && dirty.current)
+        await persistRef.current(live.current.title, live.current.blocks);
+      await saveQueue.current;
+      return !dirty.current;
+    },
     docId: doc.id,
     title: title || "Untitled",
     run: {
@@ -2757,9 +3045,18 @@ function LegacyDocEditor({
       "page.markdown": copyMarkdown,
       "page.download-md": () => void download("md"),
       "page.download-pdf": () => void download("pdf"),
-      "page.history": () => setShowHistory(true),
+      "page.history": () => {
+        if (chat) return;
+        setShowInfo(false);
+        setShowHistory(true);
+      },
       "page.template": () => setSavingTemplate(true),
-      "page.ask": () => setChat(true),
+      "page.ask": () => {
+        setShowHistory(false);
+        setHistoryView(null);
+        setShowInfo(false);
+        setChat(true);
+      },
       "page.present": () => setPresenting(true),
       "page.window": () => openInWindow(doc.id),
       "page.star": () => toggleStar(),
@@ -2814,33 +3111,65 @@ function LegacyDocEditor({
       report(e);
     }
   };
-  /** Archive the page (out of lists and search), or bring it back. */
-  const toggleArchive = async () => {
-    const next = !archived;
+  const runPageMutation = async (
+    work: (current: () => boolean) => Promise<void>,
+  ) => {
+    if (
+      pageMutation.current ||
+      historyMutation.current ||
+      !historyPermission.current
+    )
+      return;
+    const account = authSession.get();
+    const target = doc.id;
+    const current = () =>
+      historyMounted.current &&
+      authSession.get() === account &&
+      docNow.current.id === target &&
+      historyPermission.current;
+    pageMutation.current = true;
+    setPagePending(true);
     try {
+      if (!(await preparePaneDrafts(pageScope)) || !current()) return;
+      await work(current);
+    } catch (error) {
+      if (current()) report(error);
+    } finally {
+      pageMutation.current = false;
+      if (
+        historyMounted.current &&
+        authSession.get() === account &&
+        docNow.current.id === target
+      )
+        setPagePending(false);
+    }
+  };
+  /** Archive only after the current draft is saved. */
+  const toggleArchive = () =>
+    runPageMutation(async (current) => {
+      const next = !archived;
       await flush();
+      if (!current()) return;
       const saved = await client.archiveDoc(doc.id, next);
+      if (!current()) return;
       setArchived(!!saved.archived);
       onChanged(saved);
       toast({
-        text: next
-          ? `Archived “${title || "Untitled"}”. It's out of the library and search.`
-          : `“${title || "Untitled"}” is back in the library`,
+        text: next ? "Archived" : "Back in the library",
         action: next
           ? {
               label: "Undo",
               run: () =>
-                void client.archiveDoc(doc.id, false).then((back) => {
+                void runPageMutation(async (stillCurrent) => {
+                  const back = await client.archiveDoc(doc.id, false);
+                  if (!stillCurrent()) return;
                   setArchived(false);
                   onChanged(back);
-                }, report),
+                }),
             }
           : undefined,
       });
-    } catch (e) {
-      report(e);
-    }
-  };
+    });
   /** A recording's summary lines go under the recording (CAP-10). */
   const addSummary = (fileId: string, lines: DocBlock[]) => {
     const now = live.current.blocks;
@@ -2890,60 +3219,119 @@ function LegacyDocEditor({
    * asks first, because nothing is lost — the page, its history and its
    * comments wait in Trash for 30 days.
    */
-  const remove = async () => {
-    if (doc.kind === "memory") {
-      const confirmed = await ask({
-        title: `Forget “${title || "Untitled"}”?`,
-        body: "This permanently removes the Memory note and its source links. This cannot be undone.",
-        confirmLabel: "Forget",
-        destructive: true,
-      });
-      if (!confirmed) return;
-      try {
+  const remove = () =>
+    runPageMutation(async (current) => {
+      const account = authSession.get();
+      if (doc.kind === "memory") {
+        const confirmed = await ask({
+          title: `Forget “${title || "Untitled"}”?`,
+          body: "This permanently removes the Memory note and its source links. This cannot be undone.",
+          confirmLabel: "Forget",
+          destructive: true,
+        });
+        if (!confirmed || !current()) return;
         await client.forgetMemory(doc.id);
-      } catch (e) {
-        report(e);
-        return;
+      } else {
+        await flush();
+        if (!current()) return;
+        await client.deleteDoc(doc.id);
       }
+      if (!current()) return;
+      dirty.current = false;
       flushOnClose.current = () => {};
       gone.current = true;
       onDeleted(doc.id);
-      toast({ text: `“${title || "Untitled"}” was forgotten.` });
-      return;
-    }
-    if (timer.current) clearTimeout(timer.current);
-    try {
-      // What was just typed goes with it, so Undo brings back all of it.
-      if (dirty.current) await persist(title, blocks);
-      await client.deleteDoc(doc.id);
-    } catch (e) {
-      report(e);
-      return;
-    }
-    dirty.current = false;
-    flushOnClose.current = () => {};
-    gone.current = true;
-    onDeleted(doc.id);
-    toast({
-      text: `Moved “${title || "Untitled"}” to Trash`,
-      action: {
-        label: "Undo",
-        run: () =>
-          void client.restoreDoc(doc.id).then((back) => {
-            if (onUndoDelete) onUndoDelete(back);
-            else toast({ text: `“${back.title || "Untitled"}” is back` });
-          }, report),
-      },
+      toast({
+        text:
+          doc.kind === "memory"
+            ? "Memory topic forgotten"
+            : `Moved “${title || "Untitled"}” to Trash`,
+        action:
+          doc.kind === "memory"
+            ? undefined
+            : {
+                label: "Undo",
+                run: () => {
+                  if (authSession.get() !== account) return;
+                  void client.restoreDoc(doc.id).then(
+                    (back) => {
+                      if (authSession.get() !== account) return;
+                      if (onUndoDelete) onUndoDelete(back);
+                      else
+                        toast({
+                          text: `“${back.title || "Untitled"}” is back`,
+                        });
+                    },
+                    (error) => {
+                      if (authSession.get() === account) report(error);
+                    },
+                  );
+                },
+              },
+      });
     });
-  };
 
   return (
     <RecordingContext.Provider value={recordingActions}>
-      <div className="doc-editor">
+      <div
+        className="doc-editor"
+        inert={restoringHistory || pagePending}
+        aria-busy={restoringHistory || pagePending || undefined}
+      >
+        {sourceAsk && (
+          <DocSourceAsk
+            text={sourceAsk.quote}
+            onClose={() => setSourceAsk(null)}
+            onAsk={(instruction) =>
+              assist(sourceAsk, "custom", {
+                instruction,
+                quote: sourceAsk.quote,
+              })
+            }
+          />
+        )}
         {sourcePreview === doc.id && (
           <DocSourcePreview
+            beforeNavigate={async () => {
+              const account = authSession.get();
+              const page = doc.id;
+              await flush();
+              if (
+                !historyMounted.current ||
+                authSession.get() !== account ||
+                docNow.current.id !== page
+              )
+                return false;
+              if (dirty.current)
+                throw new Error(
+                  "Save your document changes before opening this link.",
+                );
+              return preparePaneDrafts(pageScope);
+            }}
             blocks={blocks}
             docId={doc.id}
+            onCompileLatex={(source, signal) =>
+              client.compileDocLatex(
+                doc.id,
+                { source, version: version.current },
+                signal,
+              )
+            }
+            onAssist={
+              canWrite && !reading && !suggesting && !dirty.current
+                ? (block) => {
+                    if (block.id && "text" in block) {
+                      setSourcePreview(null);
+                      setSourceAsk({
+                        blockId: block.id,
+                        start: 0,
+                        end: block.text.length,
+                        quote: block.text,
+                      });
+                    }
+                  }
+                : undefined
+            }
             onSourceChange={
               canWrite && !reading && !suggesting
                 ? (text, expected) => {
@@ -2973,7 +3361,10 @@ function LegacyDocEditor({
                 new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
               )
             }
-            onClose={() => setSourcePreview(null)}
+            onClose={() => {
+              sourcePreviewOwner.current = null;
+              setSourcePreview(null);
+            }}
           />
         )}
         <div className="doc-bar">
@@ -3000,7 +3391,7 @@ function LegacyDocEditor({
               <Users size={13} aria-hidden="true" /> {note}
             </span>
           )}
-          <span className="doc-bar-actions">
+          <span className="doc-bar-actions" ref={pageActionsRef}>
             <DocModeSwitch
               mode={mode}
               canWrite={canWrite}
@@ -3016,7 +3407,17 @@ function LegacyDocEditor({
               not in the margin: the margin is where the remarks live. */}
             <button
               className={"icon-button" + (chat ? " is-on" : "")}
-              onClick={() => setChat((v) => !v)}
+              onClick={() => {
+                if (!chat) {
+                  setShowHistory(false);
+                  setHistoryView(null);
+                  setShowInfo(false);
+                  setMoreMenu(false);
+                  setDownloadMenu(false);
+                }
+                setChat((v) => !v);
+              }}
+              disabled={chat}
               aria-label="Talk about this page"
               aria-pressed={chat}
               title="Talk about this page"
@@ -3030,6 +3431,7 @@ function LegacyDocEditor({
                 setShowInfo(false);
                 setShowHistory((v) => !v);
               }}
+              disabled={chat}
               aria-label="Page history"
               aria-pressed={showHistory}
               title="Page history"
@@ -3053,7 +3455,10 @@ function LegacyDocEditor({
             <span className="doc-download">
               <button
                 className={"icon-button" + (downloadMenu ? " is-on" : "")}
-                onClick={() => setDownloadMenu((v) => !v)}
+                onClick={() => {
+                  setMoreMenu(false);
+                  setDownloadMenu((v) => !v);
+                }}
                 aria-label="Download this page"
                 aria-haspopup="menu"
                 aria-expanded={downloadMenu}
@@ -3081,7 +3486,10 @@ function LegacyDocEditor({
             <span className="doc-download">
               <button
                 className={"icon-button" + (moreMenu ? " is-on" : "")}
-                onClick={() => setMoreMenu((v) => !v)}
+                onClick={() => {
+                  setDownloadMenu(false);
+                  setMoreMenu((v) => !v);
+                }}
                 aria-label="More"
                 aria-haspopup="menu"
                 aria-expanded={moreMenu}
@@ -3090,11 +3498,7 @@ function LegacyDocEditor({
                 <MoreHorizontal size={15} />
               </button>
               {moreMenu && (
-                <ul
-                  className="doc-download-menu"
-                  role="menu"
-                  onMouseLeave={() => setMoreMenu(false)}
-                >
+                <ul className="doc-download-menu" role="menu">
                   <li>
                     <button
                       role="menuitem"
@@ -3379,6 +3783,7 @@ function LegacyDocEditor({
                 setHistoryView(null);
                 setShowInfo((v) => !v);
               }}
+              disabled={chat}
               aria-label="Page info"
               aria-pressed={showInfo}
               title="Page info"
@@ -3587,7 +3992,7 @@ function LegacyDocEditor({
               ? " has-history"
               : showInfo
                 ? " has-info"
-                : focusReading
+                : focusReading || chat
                   ? " is-reading"
                   : " has-comments") +
             (longPage && !historyView ? " has-outline" : "")
@@ -3612,8 +4017,15 @@ function LegacyDocEditor({
                   setHistoryView({ ...historyView, compare })
                 }
                 onRestoreLine={(source, index) => {
-                  update(restoreLine(blocks, source, index));
-                  toast({ text: "Line restored" });
+                  void (async () => {
+                    if (!(await prepareHistoryRestore())) return;
+                    try {
+                      update(restoreLine(live.current.blocks, source, index));
+                      toast({ text: "Line restored" });
+                    } finally {
+                      endHistoryRestore();
+                    }
+                  })().catch(report);
                 }}
                 onClose={() => setHistoryView(null)}
               />
@@ -3631,7 +4043,8 @@ function LegacyDocEditor({
               )}
               {lookOpen && (
                 <LookDialog
-                  title="Page cover and icon"
+                  scope={doc.id}
+                  title={title || "Untitled page"}
                   look={look}
                   uploadTo={doc.id}
                   report={report}
@@ -3680,10 +4093,34 @@ function LegacyDocEditor({
                         link.block
                       )
                         goToBlock(link.block);
-                      else
-                        window.dispatchEvent(
-                          new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
-                        );
+                      else {
+                        if (linkNavigation.current) return;
+                        linkNavigation.current = true;
+                        const account = authSession.get();
+                        const page = doc.id;
+                        void (async () => {
+                          try {
+                            if (!(await preparePageLeave(pageScope))) return;
+                            if (
+                              !historyMounted.current ||
+                              authSession.get() !== account ||
+                              docNow.current.id !== page
+                            )
+                              return;
+                            window.dispatchEvent(
+                              new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
+                            );
+                          } catch (e) {
+                            if (
+                              historyMounted.current &&
+                              authSession.get() === account
+                            )
+                              report(e);
+                          } finally {
+                            linkNavigation.current = false;
+                          }
+                        })();
+                      }
                     },
                   }}
                 >
@@ -4019,10 +4456,7 @@ function LegacyDocEditor({
                 shows only while a line is open, when it is useful. */}
               {focused !== null && !reading && (
                 <p className="doc-hint">
-                  Start a line with <code>#</code> for a heading, <code>-</code>{" "}
-                  for a bullet, <code>- [ ]</code> for a checkbox or{" "}
-                  <code>/</code> for more. <kbd>Tab</kbd> tucks a list item in;
-                  select words to style them.
+                  Type <code>/</code> for blocks. Select words to format them.
                 </p>
               )}
               <OriginalLine doc={doc} canWrite={canWrite} report={report} />
@@ -4041,6 +4475,7 @@ function LegacyDocEditor({
                           : `${part.text}: page info`
                       }
                       onClick={() => {
+                        if (chat) return;
                         setShowHistory(false);
                         setHistoryView(null);
                         setShowInfo(true);
@@ -4092,67 +4527,81 @@ function LegacyDocEditor({
             {!showHistory && (
               <DocSuggestions
                 suggestions={suggestions}
+                sourceBlockIds={
+                  new Set(
+                    blocks
+                      .filter(
+                        (block) =>
+                          block.type === "code" || block.type === "math",
+                      )
+                      .flatMap((block) => (block.id ? [block.id] : [])),
+                  )
+                }
                 canDecide={canWrite}
                 userId={userId}
-                busy={deciding}
+                busy={deciding || dirty.current || save === "saving"}
                 onDecide={decide}
+                onDecideAll={(list, take) =>
+                  void reviewSuggestions(
+                    list.map((suggestion) => ({ suggestion, take })),
+                  )
+                }
                 onWithdraw={withdraw}
               />
             )}
           </div>
-          {showInfo && !showHistory && (
-            <PageInfo
-              doc={doc}
-              tags={tags}
-              canWrite={canWrite}
-              reading={reading}
-              outline={outline}
-              current={readingAt}
-              viewers={viewers}
-              facts={
-                footerParts.map((p) => p.text).join(" · ") +
-                (writtenVia ? ` · written ${writtenVia}` : "")
-              }
-              revision={`${savedAt ?? ""}:${fieldsStamp}`}
-              onTags={setTags}
-              onJump={jumpTo}
-              starredHeadings={starredHeadings}
-              onStarHeading={(entry) => void starHeading(entry)}
-              onOpenProject={onOpenProject}
-              onShowHistory={() => {
-                setShowInfo(false);
-                setShowHistory(true);
-              }}
-              onShowLinked={() =>
-                linkedRef.current?.scrollIntoView({
-                  behavior: "smooth",
-                  block: "start",
-                })
-              }
-              onClose={() => setShowInfo(false)}
-              report={report}
-            />
-          )}
-          {!showHistory && !showInfo && !focusReading && (
-            <>
-              <DocComments
-                docId={doc.id}
-                blocks={blocks}
-                tops={tops}
-                userId={userId}
-                pending={pending}
-                onPendingChange={setPending}
-                active={activeComment}
-                onActiveChange={setActiveComment}
-                onAnchors={setCommented}
-                report={report}
-              />
-            </>
-          )}
+          <PageInfo
+            hidden={!showInfo || showHistory || focusReading || chat}
+            doc={doc}
+            tags={tags}
+            canWrite={canWrite}
+            reading={reading}
+            outline={outline}
+            current={readingAt}
+            viewers={viewers}
+            facts={
+              footerParts.map((p) => p.text).join(" · ") +
+              (writtenVia ? ` · written ${writtenVia}` : "")
+            }
+            revision={`${savedAt ?? ""}:${fieldsStamp}`}
+            onTags={setTags}
+            onJump={jumpTo}
+            starredHeadings={starredHeadings}
+            onStarHeading={(entry) => void starHeading(entry)}
+            onOpenProject={onOpenProject}
+            onShowHistory={() => {
+              setShowInfo(false);
+              setShowHistory(true);
+            }}
+            onShowLinked={() =>
+              linkedRef.current?.scrollIntoView({
+                behavior: "smooth",
+                block: "start",
+              })
+            }
+            onClose={() => setShowInfo(false)}
+            report={report}
+          />
+          <DocComments
+            hidden={showHistory || showInfo || focusReading || chat}
+            beforeAnchorChange={beforeCommentAnchor}
+            docId={doc.id}
+            blocks={blocks}
+            tops={tops}
+            userId={userId}
+            pending={pending}
+            onPendingChange={setPending}
+            active={activeComment}
+            onActiveChange={setActiveComment}
+            onAnchors={setCommented}
+            report={report}
+          />
           {showHistory && (
             <DocHistory
               doc={doc}
               canWrite={canWrite}
+              beforeRestore={prepareHistoryRestore}
+              onRestoreEnd={endHistoryRestore}
               onClose={() => {
                 setShowHistory(false);
                 setHistoryView(null);
@@ -4284,7 +4733,10 @@ function LegacyDocEditor({
             canWrite={canWrite || suggesting}
             onGoToBlock={goToBlock}
             onNameBlock={nameBlock}
-            onSuggested={(made) => setSuggestions((list) => [...list, made])}
+            onSuggested={(made) => {
+              suggestionRead.current++;
+              setSuggestions((list) => [...list, made]);
+            }}
             onClose={() => setChat(false)}
           />
         )}
@@ -4297,7 +4749,10 @@ export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
   const [complete, setComplete] = useState<Doc | null>(
     props.doc.document ? props.doc : null,
   );
+  const [loadError, setLoadError] = useState(false);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
+    setLoadError(false);
     if (props.doc.document) {
       setComplete(props.doc);
       return;
@@ -4308,14 +4763,30 @@ export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
         if (active) setComplete(doc);
       },
       (error) => {
-        if (active) props.report(error);
+        if (active) {
+          setLoadError(true);
+          props.report(error);
+        }
       },
     );
     return () => {
       active = false;
     };
-  }, [props.doc.id, props.doc.document, props.report]);
-  if (!complete || complete.id !== props.doc.id) return <p>Opening page…</p>;
+  }, [props.doc.id, props.doc.document, props.report, retry]);
+  if (!complete || complete.id !== props.doc.id)
+    return loadError ? (
+      <div role="alert">
+        <p>Page couldn’t be loaded.</p>
+        <button
+          className="text-button"
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p role="status">Opening page…</p>
+    );
   return complete.document?.format === 2 ? (
     <StructuredDocEditor
       doc={complete}

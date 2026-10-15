@@ -6,12 +6,12 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { PressableScale } from "../motion";
-import { controls, colors, fonts, radii, themed } from "../theme";
+import { Pressable } from "../motion";
+import { controls, colors, fonts, radii, themed, tint } from "../theme";
 
 /**
  * A choice chip: single choice (radio) or one of many (checkbox). Selected
- * chips fill with the accent, or with `color` for lists and tags.
+ * chips use a soft accent, or the custom `color` for lists and tags.
  */
 export function Chip({
   label,
@@ -41,21 +41,25 @@ export function Chip({
   accessibilityLabel?: string;
   accessibilityHint?: string;
 }) {
-  const tint = color ?? colors.accent;
+  const choiceColor = color ?? colors.accent;
   return (
-    <PressableScale
+    <Pressable
       accessibilityRole={multi ? "checkbox" : "radio"}
       accessibilityLabel={accessibilityLabel ?? label}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ checked: selected, disabled }}
       disabled={disabled}
-      hitSlop={compact ? { top: 9, bottom: 9 } : { top: 5, bottom: 5 }}
       onPress={onPress}
       style={[
         s.chip,
         compact && s.compact,
         selected &&
-          (color ? { backgroundColor: tint, borderColor: tint } : s.selected),
+          (color
+            ? {
+                backgroundColor: tint(choiceColor, 0.14),
+                borderColor: choiceColor,
+              }
+            : s.selected),
         disabled && s.disabled,
       ]}
     >
@@ -63,16 +67,15 @@ export function Chip({
         <View style={[s.dot, { backgroundColor: color }]} />
       )}
       <Text
-        numberOfLines={1}
         style={[
           s.text,
           compact && s.compactText,
-          selected && (color ? { color: colors.white } : s.selectedText),
+          selected && (color ? { color: colors.text } : s.selectedText),
         ]}
       >
         {label}
       </Text>
-    </PressableScale>
+    </Pressable>
   );
 }
 
@@ -107,9 +110,8 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      // Drawn at 34pt so a row of chips reads light, as on the web; the
-      // hitSlop above makes up the rest of a finger's 44pt.
-      minHeight: controls.tap - 10,
+      // Targets occupy their own space rather than covering neighboring choices.
+      minHeight: controls.tap,
       maxWidth: "100%",
       paddingVertical: 6,
       paddingHorizontal: 12,
@@ -119,20 +121,20 @@ const s = themed(() =>
       backgroundColor: colors.surface,
     },
     compact: {
-      minHeight: controls.compact,
+      minHeight: controls.tap,
       paddingVertical: 4,
       paddingHorizontal: 11,
     },
     compactText: { fontSize: 13 },
     // Chosen reads as a soft tint, not a solid block, so a row of choices
-    // stays quiet; a coloured chip (a list or tag) still fills with its colour.
+    // stays quiet; a coloured choice uses the same restrained tint.
     selected: {
       backgroundColor: colors.accentSoft,
       borderColor: colors.accent,
     },
     selectedText: { color: colors.accent, fontFamily: fonts.semibold },
     disabled: { opacity: 0.45 },
-    dot: { width: 8, height: 8, borderRadius: 4 },
+    dot: { width: 8, height: 8, borderRadius: radii.pill, flexShrink: 0 },
     text: {
       flexShrink: 1,
       fontFamily: fonts.medium,

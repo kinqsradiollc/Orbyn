@@ -107,10 +107,7 @@ export function OvernightView(props: Props) {
     return (
       <section className="overnight">
         <h2>No night work yet</h2>
-        <p>
-          Turn on night shift in Assistant settings, or hand a task over for
-          Tonight.
-        </p>
+        <p>Enable night shift in Settings or send a task to Tonight.</p>
       </section>
     );
   return (
@@ -118,11 +115,7 @@ export function OvernightView(props: Props) {
       <header className="overnight-head">
         <div>
           <h2>{night.local_day}</h2>
-          <p>
-            {night.status === "running"
-              ? "Your night is still in progress."
-              : "Here is what happened overnight."}
-          </p>
+          <p>{night.status === "running" ? "In progress" : "Night summary"}</p>
         </div>
         <div className="overnight-actions">
           {night.runs.some((run) => run.kind !== "reflection") && (

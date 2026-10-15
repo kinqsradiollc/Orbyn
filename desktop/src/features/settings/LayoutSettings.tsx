@@ -37,6 +37,25 @@ import { client } from "../../lib/api";
 
 const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
+function PreferenceRecovery({ title }: { title: string }) {
+  const { failed, reload } = usePrefs();
+  return (
+    <SettingsSection className="card settings-card" title={title}>
+      <p
+        className={failed ? "error" : "muted"}
+        role={failed ? "alert" : "status"}
+      >
+        {failed ? "Couldn't load preferences." : "Loading preferences…"}
+      </p>
+      {failed && (
+        <button type="button" className="secondary" onClick={reload}>
+          Retry
+        </button>
+      )}
+    </SettingsSection>
+  );
+}
+
 /** What opens at start, on this device (NAV-12). */
 export function StartSettings() {
   const [start, setStart] = useState<StartScreen>(startScreen);
@@ -46,10 +65,7 @@ export function StartSettings() {
       <div className="preference">
         <span>
           <strong>Open to</strong>
-          <small>
-            What Orbyn shows when it starts. Saved on this device only, so a
-            phone and a desk can differ.
-          </small>
+          <small>Saved on this device.</small>
         </span>
         <Select
           aria-label="Open to"
@@ -77,11 +93,12 @@ export function StartSettings() {
  * show; drag a row by its handle, or use the arrows.
  */
 export function ArrangeSettings({ user }: { user: User | null }) {
-  const { prefs, save } = usePrefs();
+  const { prefs, save, ready } = usePrefs();
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const arrangement = prefs.sidebar;
   const [dragging, setDragging] = useState<string | null>(null);
   const tabsOn = useTabsEnabled();
+  if (!ready) return <PreferenceRecovery title="Arrange" />;
   const groups = NAV_GROUPS.map((g) => ({
     label: g.label,
     items: arrangeEntries(
@@ -162,10 +179,7 @@ export function ArrangeSettings({ user }: { user: User | null }) {
   return (
     <SettingsSection className="card settings-card">
       <h2>Arrange</h2>
-      <p className="muted">
-        Show, hide and reorder what the sidebar lists, on every computer you
-        sign in to.
-      </p>
+      <p className="muted">Sidebar order and visibility follow your account.</p>
       {groups.map((g) => (
         <div key={g.label} className="arrange-group">
           <h3>{g.label.charAt(0) + g.label.slice(1).toLowerCase()}</h3>
@@ -211,7 +225,7 @@ export function ArrangeSettings({ user }: { user: User | null }) {
           className="text-button"
           onClick={() => save({ sidebar: { order: [], hidden: [] } })}
         >
-          <RotateCcw size={14} /> Back to how it came
+          <RotateCcw size={14} /> Reset sidebar
         </button>
       )}
     </SettingsSection>
@@ -223,16 +237,24 @@ export function ArrangeSettings({ user }: { user: User | null }) {
  * one of your pages under the greeting. It follows the account.
  */
 export function HomeArrangeSettings() {
-  const { prefs, save } = usePrefs();
+  const { prefs, save, ready } = usePrefs();
   const home = prefs.home;
   const order = homePanels(home, true);
   const [pages, setPages] = useState<DocSummary[] | null>(null);
+  const [pagesFailed, setPagesFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
+    let live = true;
+    setPagesFailed(false);
     client.listDocs().then(
-      (all) => setPages(all.filter((d) => d.kind !== "agenda")),
-      () => setPages([]),
+      (all) => live && setPages(all.filter((d) => d.kind !== "agenda")),
+      () => live && setPagesFailed(true),
     );
-  }, []);
+    return () => {
+      live = false;
+    };
+  }, [retry]);
+  if (!ready) return <PreferenceRecovery title="Home" />;
   const reorder = (next: HomePanel[]) =>
     save({ home: { ...home, order: next } });
   const toggle = (p: HomePanel) =>
@@ -250,10 +272,7 @@ export function HomeArrangeSettings() {
   return (
     <SettingsSection className="card settings-card">
       <h2>Home</h2>
-      <p className="muted">
-        Show, hide and reorder what Home shows under the greeting, on every
-        computer you sign in to.
-      </p>
+      <p className="muted">Home layout follows your account.</p>
       <ul className="arrange-list">
         {order.map((p, i) => {
           const label = HOME_PANEL_LABELS[p];
@@ -294,10 +313,8 @@ export function HomeArrangeSettings() {
       </ul>
       <div className="preference home-quote-setting">
         <span>
-          <strong>A quote under the greeting</strong>
-          <small>
-            A line from one of your pages, a different one each visit.
-          </small>
+          <strong>Page quote</strong>
+          <small>A different line each visit.</small>
         </span>
         <input
           type="checkbox"
@@ -316,6 +333,7 @@ export function HomeArrangeSettings() {
           </span>
           <Select
             aria-label="Quotes page"
+            disabled={!pages || pagesFailed}
             value={quote.doc_id ?? ""}
             onChange={(e) => setQuote({ doc_id: e.target.value || null })}
           >
@@ -328,12 +346,26 @@ export function HomeArrangeSettings() {
           </Select>
         </div>
       )}
+      {quote.on && pagesFailed && (
+        <div>
+          <p role="alert" className="error">
+            Couldn't load pages.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            Retry pages
+          </button>
+        </div>
+      )}
       {(home.order.length > 0 || home.hidden.length > 0) && (
         <button
           className="text-button"
           onClick={() => save({ home: { ...home, order: [], hidden: [] } })}
         >
-          <RotateCcw size={14} /> Back to how it came
+          <RotateCcw size={14} /> Reset Home layout
         </button>
       )}
     </SettingsSection>
@@ -346,14 +378,14 @@ export function HomeArrangeSettings() {
  * another command says so. The changes follow the account.
  */
 export function ShortcutSettings() {
-  const { prefs, save } = usePrefs();
+  const { prefs, save, ready } = usePrefs();
   const [query, setQuery] = useState("");
   const [recording, setRecording] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const commands = useMemo(() => COMMANDS.filter((c) => c.on !== "phone"), []);
   const overrides = prefs.shortcuts;
   useEffect(() => {
-    if (!recording) return;
+    if (!recording || !ready) return;
     const onKey = (e: KeyboardEvent) => {
       e.preventDefault();
       e.stopPropagation();
@@ -377,7 +409,9 @@ export function ShortcutSettings() {
     // Captured first, so the app's own shortcuts don't also run.
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [recording, overrides, commands, save]);
+  }, [recording, overrides, commands, save, ready]);
+
+  if (!ready) return <PreferenceRecovery title="Keyboard shortcuts" />;
 
   const q = query.trim().toLowerCase();
   const shown = commands.filter((c) => {
@@ -392,10 +426,7 @@ export function ShortcutSettings() {
   return (
     <SettingsSection className="card settings-card">
       <h2>Keyboard shortcuts</h2>
-      <p className="muted">
-        Give any command your own keys, or take one away, on every computer you
-        sign in to.
-      </p>
+      <p className="muted">Custom shortcuts follow your account.</p>
       <input
         type="search"
         className="shortcut-search"

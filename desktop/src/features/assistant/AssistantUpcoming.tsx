@@ -28,6 +28,8 @@ import { DateField } from "../../components/DateField";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { Popover } from "../../components/Popover";
+import { SettingsEditor } from "../settings/SettingsEditor";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import {
   CHANGE_KIND_LABELS,
@@ -61,23 +63,35 @@ function summaryOf(goal: Goal) {
 }
 
 /** Personal goals, their weekly check-ins, and scheduled assistant routines. */
-export function AssistantUpcoming({
+export function AssistantUpcoming(props: Parameters<typeof UpcomingBody>[0]) {
+  return <UpcomingBody key={session.get()} {...props} />;
+}
+function UpcomingBody({
+  id = "ai-upcoming",
   agentName,
   onClose,
   modal = false,
 }: {
+  id?: string;
   agentName: string;
   onClose: () => void;
   modal?: boolean;
 }) {
   const { ask } = useConfirm();
+  const owner = session.get();
   const live = useRef(true);
-  useEffect(
-    () => () => {
+  const current = () => live.current && session.get() === owner;
+  const readSequence = useRef(0);
+  const mutation = useRef(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [historyFailed, setHistoryFailed] = useState<string[]>([]);
+  useEffect(() => {
+    live.current = true;
+    return () => {
       live.current = false;
-    },
-    [],
-  );
+      readSequence.current++;
+    };
+  }, []);
   const [loading, setLoading] = useState(true);
   const [allowed, setAllowed] = useState<ApprovalScopes>({});
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -110,7 +124,9 @@ export function AssistantUpcoming({
 
   // Escape closes the panel, unless a menu or dialog above it is open.
   const latestClose = useRef(onClose);
-  latestClose.current = onClose;
+  latestClose.current = () => {
+    if (!saving && !goalForm && !routineForm) onClose();
+  };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented) return;
@@ -122,6 +138,8 @@ export function AssistantUpcoming({
   }, []);
 
   const load = async () => {
+    const sequence = ++readSequence.current;
+    const owned = () => current() && sequence === readSequence.current;
     const [nextGoals, nextRoutines, nextProjects, nextDocs, prefs, scopes] =
       await Promise.all([
         client.listGoals(),
@@ -129,56 +147,106 @@ export function AssistantUpcoming({
         client.listProjects(),
         client.listDocs({ kind: "agent" }),
         client.getPlannerPrefs(),
-        client.assistantApprovalScopes().catch(() => ({}) as ApprovalScopes),
+        client.assistantApprovalScopes(),
       ]);
-    if (!live.current) return;
+    if (!owned()) return;
     setAllowed(scopes);
     setGoals(nextGoals);
     setRoutines(nextRoutines);
     setProjects(nextProjects);
     setAgentDocs(nextDocs);
     setTimezone(prefs.timezone || "UTC");
-    setRoutineDay(localDateKey(new Date(), prefs.timezone || "UTC"));
-    // One goal's check-ins failing leaves the others (and the goal) shown.
+    if (!routineForm)
+      setRoutineDay(localDateKey(new Date(), prefs.timezone || "UTC"));
     const results = await Promise.all(
-      nextGoals
-        .slice(0, 30)
-        .map(
-          async (goal) =>
-            [
-              goal.id,
-              await client.goalCheckins(goal.id).catch(() => []),
-            ] as const,
-        ),
+      nextGoals.slice(0, 30).map(async (goal) => {
+        try {
+          return {
+            id: goal.id,
+            history: await client.goalCheckins(goal.id),
+            failed: false,
+          };
+        } catch {
+          return { id: goal.id, history: [] as GoalCheckin[], failed: true };
+        }
+      }),
     );
-    if (live.current) setCheckins(Object.fromEntries(results));
+    if (!owned()) return;
+    setCheckins(
+      Object.fromEntries(
+        results.filter((r) => !r.failed).map((r) => [r.id, r.history]),
+      ),
+    );
+    setHistoryFailed(results.filter((r) => r.failed).map((r) => r.id));
+    setLoadFailed(false);
   };
-
+  const reload = async () => {
+    if (!current() || mutation.current) return;
+    setLoading(true);
+    setError("");
+    const ticket = readSequence.current + 1;
+    try {
+      await load();
+    } catch {
+      if (current() && ticket === readSequence.current) {
+        setLoadFailed(true);
+        setError("Couldn't load upcoming work. Try again.");
+      }
+    } finally {
+      if (current() && ticket === readSequence.current) setLoading(false);
+    }
+  };
   useEffect(() => {
-    void load()
-      .catch(
-        () =>
-          live.current &&
-          setError("Upcoming goals and routines could not be loaded."),
-      )
-      .finally(() => live.current && setLoading(false));
+    void reload();
   }, []);
 
-  const removeAllowed = async (kind: AssistantChangeKind) => {
-    const next = { ...allowed };
-    delete next[kind];
+  const run = async (fn: () => Promise<void>, message: string) => {
+    if (!current() || mutation.current) return;
+    mutation.current = true;
+    readSequence.current++;
+    setLoading(false);
     setSaving(true);
     setError("");
     try {
-      const saved = await client.setAssistantApprovalScopes(next);
-      if (live.current) setAllowed(saved);
+      await fn();
     } catch {
-      if (live.current)
-        setError("That permission could not be removed. Try again.");
+      if (current()) setError(message);
     } finally {
-      if (live.current) setSaving(false);
+      mutation.current = false;
+      if (current()) setSaving(false);
     }
   };
+  const refreshSaved = async () => {
+    try {
+      await load();
+    } catch {
+      if (current()) {
+        setLoadFailed(true);
+        setError("Saved. Couldn't refresh upcoming work. Try again.");
+      }
+    }
+  };
+  const loadHistory = (goal: Goal) =>
+    run(async () => {
+      try {
+        const history = await client.goalCheckins(goal.id);
+        if (!current()) return;
+        setCheckins((all) => ({ ...all, [goal.id]: history }));
+        setHistoryFailed((ids) => ids.filter((id) => id !== goal.id));
+      } catch (e) {
+        if (current())
+          setHistoryFailed((ids) => [...new Set([...ids, goal.id])]);
+        throw e;
+      }
+    }, "Couldn't load that goal’s history. Try again.");
+  const removeAllowed = (kind: AssistantChangeKind) =>
+    run(async () => {
+      const next = { ...allowed };
+      delete next[kind];
+      const saved = await client.setAssistantApprovalScopes(next);
+      if (current()) setAllowed(saved);
+    }, "Couldn't remove that permission. Try again.");
+
   const allowedRows = (
     Object.entries(allowed) as [
       AssistantChangeKind,
@@ -211,6 +279,8 @@ export function AssistantUpcoming({
   };
 
   const openGoalForm = (goal?: Goal) => {
+    if (saving || loading || loadFailed || goalForm || routineForm) return;
+    setError("");
     setMenu(null);
     setRoutineForm(null);
     setGoalTitle(goal?.title ?? "");
@@ -222,6 +292,8 @@ export function AssistantUpcoming({
   };
 
   const openRoutineForm = (routine?: AgentRoutine) => {
+    if (saving || loading || loadFailed || goalForm || routineForm) return;
+    setError("");
     setMenu(null);
     setGoalForm(null);
     setRoutineText(routine?.instruction ?? "");
@@ -253,119 +325,86 @@ export function AssistantUpcoming({
 
   const saveGoal = async (event: FormEvent) => {
     event.preventDefault();
-    if (!goalTitle.trim() || saving || !goalForm) return;
-    setSaving(true);
-    setError("");
-    const input = {
-      title: goalTitle,
-      target: goalTarget,
-      target_date: goalDate || null,
-      project_id: goalProject || null,
-      plan_doc_id: goalDoc || null,
-    };
-    try {
+    if (!goalTitle.trim() || !goalForm) return;
+    await run(async () => {
+      const input = {
+        title: goalTitle,
+        target: goalTarget,
+        target_date: goalDate || null,
+        project_id: goalProject || null,
+        plan_doc_id: goalDoc || null,
+      };
       if (goalForm === "new") await client.createGoal(input);
       else await client.updateGoal(goalForm, input);
+      if (!current()) return;
       setGoalForm(null);
-      await load();
-    } catch {
-      setError(
-        "The goal could not be saved. Check its project and Agent note, then try again.",
-      );
-    } finally {
-      setSaving(false);
-    }
+      await refreshSaved();
+    }, "Couldn't save the goal. Check its project and plan note, then retry.");
   };
-
   const saveRoutine = async (event: FormEvent) => {
     event.preventDefault();
-    if (!routineText.trim() || saving || !routineForm) return;
-    setSaving(true);
-    setError("");
-    try {
-      const { rule, next } = nextRun(routineDay, routineTime, repeat, timezone);
-      if (!next)
-        throw new Error("No future run is available for this schedule.");
+    if (!routineText.trim() || !routineForm) return;
+    await run(async () => {
+      const zone =
+        routines.find((r) => r.id === routineForm)?.timezone ?? timezone;
+      const { rule, next } = nextRun(routineDay, routineTime, repeat, zone);
+      if (!next) throw new Error("No future run available");
       const input = {
         instruction: routineText,
         rrule: rule,
-        timezone,
+        timezone: zone,
         next_run_at: next.toISOString(),
       };
       if (routineForm === "new") await client.createAgentRoutine(input);
       else await client.updateAgentRoutine(routineForm, input);
+      if (!current()) return;
       setRoutineForm(null);
-      await load();
-    } catch {
-      setError(
-        "The routine could not be saved. Choose a future time and try again.",
-      );
-    } finally {
-      setSaving(false);
-    }
+      await refreshSaved();
+    }, "Couldn't save the routine. Check its schedule, then retry.");
   };
-
-  const setGoalStatus = async (goal: Goal, status: Goal["status"]) => {
-    setMenu(null);
-    setSaving(true);
-    try {
+  const setGoalStatus = (goal: Goal, status: Goal["status"]) =>
+    run(async () => {
+      setMenu(null);
       await client.updateGoal(goal.id, { status });
-      await load();
-    } catch {
-      setError("The goal could not be updated.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const toggleRoutine = async (routine: AgentRoutine) => {
-    setMenu(null);
-    setSaving(true);
-    try {
+      if (current()) await refreshSaved();
+    }, "Couldn't update the goal. Try again.");
+  const toggleRoutine = (routine: AgentRoutine) =>
+    run(async () => {
+      setMenu(null);
       let next = new Date(routine.next_run_at);
-      if (routine.paused && next <= new Date()) {
+      if (routine.paused && next <= new Date())
         next =
           nextOccurrence(next, routine.rrule, routine.timezone, new Date()) ??
           new Date(Date.now() + 60_000);
-      }
       await client.updateAgentRoutine(routine.id, {
         paused: !routine.paused,
         next_run_at: next.toISOString(),
       });
-      await load();
-    } catch {
-      setError("The routine could not be updated.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
+      if (current()) await refreshSaved();
+    }, "Couldn't update the routine. Try again.");
   const deleteSelected = async () => {
     if (!menu) return;
     const selected = menu;
-    setMenu(null);
-    if (
-      !(await ask({
-        title:
-          selected.kind === "goal"
-            ? "Delete this goal?"
-            : "Delete this routine?",
-        body: "Its progress history and upcoming runs will be removed.",
-        confirmLabel: "Delete",
-        destructive: true,
-      }))
-    )
-      return;
-    setSaving(true);
-    try {
+    const subject =
+      selected.kind === "goal"
+        ? goals.find((g) => g.id === selected.id)?.title
+        : routines.find((r) => r.id === selected.id)?.instruction;
+    await run(async () => {
+      setMenu(null);
+      if (
+        !(await ask({
+          title: selected.kind === "goal" ? "Delete goal?" : "Delete routine?",
+          body: `${subject ?? "This item"} · Its progress history and upcoming runs will be removed.`,
+          confirmLabel: "Delete",
+          destructive: true,
+        })) ||
+        !current()
+      )
+        return;
       if (selected.kind === "goal") await client.deleteGoal(selected.id);
       else await client.deleteAgentRoutine(selected.id);
-      await load();
-    } catch {
-      setError("It could not be deleted. Try again.");
-    } finally {
-      setSaving(false);
-    }
+      if (current()) await refreshSaved();
+    }, "Couldn't delete it. Try again.");
   };
 
   const today = localDateKey(new Date(), timezone);
@@ -380,6 +419,7 @@ export function AssistantUpcoming({
       <div className="settings-field">
         <label htmlFor="ai-goal-title">Goal</label>
         <input
+          disabled={saving}
           id="ai-goal-title"
           required
           autoFocus
@@ -392,6 +432,7 @@ export function AssistantUpcoming({
       <div className="settings-field">
         <label htmlFor="ai-goal-target">What does done look like?</label>
         <textarea
+          disabled={saving}
           id="ai-goal-target"
           maxLength={2000}
           rows={2}
@@ -402,6 +443,7 @@ export function AssistantUpcoming({
       <label className="settings-field">
         <span className="settings-label">Target date</span>
         <DateField
+          disabled={saving}
           value={goalDate}
           onChange={(event) => setGoalDate(event.target.value)}
         />
@@ -409,6 +451,7 @@ export function AssistantUpcoming({
       <label className="settings-field">
         <span className="settings-label">Project</span>
         <Select
+          disabled={saving}
           value={goalProject}
           onChange={(event) => chooseGoalProject(event.target.value)}
         >
@@ -423,6 +466,7 @@ export function AssistantUpcoming({
       <label className="settings-field">
         <span className="settings-label">Plan (an Agent note)</span>
         <Select
+          disabled={saving}
           value={goalDoc}
           onChange={(event) => setGoalDoc(event.target.value)}
         >
@@ -438,12 +482,16 @@ export function AssistantUpcoming({
         <button
           type="button"
           className="secondary"
-          onClick={() => setGoalForm(null)}
+          disabled={saving}
+          onClick={() => {
+            setGoalForm(null);
+            setError("");
+          }}
         >
           Cancel
         </button>
         <button type="submit" className="primary" disabled={saving}>
-          {goalForm === "new" ? "Add goal" : "Save goal"}
+          {saving ? "Saving…" : goalForm === "new" ? "Add goal" : "Save goal"}
         </button>
       </div>
     </form>
@@ -458,6 +506,7 @@ export function AssistantUpcoming({
       <div className="settings-field">
         <label htmlFor="ai-routine-text">What should {agentName} do?</label>
         <textarea
+          disabled={saving}
           id="ai-routine-text"
           required
           autoFocus
@@ -474,6 +523,7 @@ export function AssistantUpcoming({
             {routineForm === "new" ? "First run" : "Next run"}
           </span>
           <DateField
+            disabled={saving}
             type="date"
             value={routineDay}
             onChange={(event) => setRoutineDay(event.target.value)}
@@ -482,6 +532,7 @@ export function AssistantUpcoming({
         <label className="settings-field">
           <span className="settings-label">Time</span>
           <DateField
+            disabled={saving}
             type="time"
             value={routineTime}
             onChange={(event) => setRoutineTime(event.target.value)}
@@ -491,6 +542,7 @@ export function AssistantUpcoming({
       <label className="settings-field">
         <span className="settings-label">Repeat</span>
         <Select
+          disabled={saving}
           value={repeat}
           onChange={(event) => setRepeat(event.target.value)}
         >
@@ -503,12 +555,20 @@ export function AssistantUpcoming({
         <button
           type="button"
           className="secondary"
-          onClick={() => setRoutineForm(null)}
+          disabled={saving}
+          onClick={() => {
+            setRoutineForm(null);
+            setError("");
+          }}
         >
           Cancel
         </button>
         <button type="submit" className="primary" disabled={saving}>
-          {routineForm === "new" ? "Add routine" : "Save routine"}
+          {saving
+            ? "Saving…"
+            : routineForm === "new"
+              ? "Add routine"
+              : "Save routine"}
         </button>
       </div>
     </form>
@@ -533,19 +593,21 @@ export function AssistantUpcoming({
 
   return (
     <aside
-      id="ai-upcoming"
+      id={id}
       className="ai-upcoming"
       role={modal ? "dialog" : undefined}
       aria-modal={modal ? true : undefined}
-      aria-labelledby="ai-upcoming-title"
+      aria-busy={saving || loading}
+      aria-labelledby={`${id}-title`}
     >
       <div className="ai-upcoming-head">
-        <h2 id="ai-upcoming-title">Upcoming</h2>
+        <h2 id={`${id}-title`}>Upcoming</h2>
         <button
           type="button"
           className="icon-button"
           aria-label="Close Upcoming"
           title="Close"
+          disabled={saving || !!goalForm || !!routineForm}
           onClick={onClose}
         >
           <X size={18} aria-hidden="true" />
@@ -553,15 +615,23 @@ export function AssistantUpcoming({
       </div>
       <div className="ai-upcoming-body">
         <p className="muted ai-upcoming-lead">
-          Weekly goal check-ins and {agentName}’s scheduled runs, in your
-          planner time zone ({timezone}).
+          {agentName} · {timezone}
         </p>
-        {error && (
+        {error && !goalForm && !routineForm && (
           <p className="error" role="alert">
             {error}
           </p>
         )}
 
+        {loadFailed && (
+          <button
+            className="secondary"
+            disabled={loading || saving || !!goalForm || !!routineForm}
+            onClick={() => void reload()}
+          >
+            Retry
+          </button>
+        )}
         <section aria-labelledby="ai-goals-title">
           <div className="ai-upcoming-section-head">
             <h3 id="ai-goals-title" className="settings-subtitle">
@@ -570,26 +640,22 @@ export function AssistantUpcoming({
             <button
               type="button"
               className="text-button"
-              disabled={loading}
+              disabled={
+                loading || saving || loadFailed || !!goalForm || !!routineForm
+              }
               onClick={() => openGoalForm()}
             >
               <Plus size={14} aria-hidden="true" /> New goal
             </button>
           </div>
-          {goalForm === "new" && goalFields}
           {loading ? (
             <p className="muted">Loading…</p>
           ) : activeGoals.length ? (
             <ul className="settings-list">
               {activeGoals.map((goal) => {
-                if (goalForm === goal.id)
-                  return (
-                    <li key={goal.id} className="is-editing">
-                      {goalFields}
-                    </li>
-                  );
                 const history = checkins[goal.id] ?? [];
                 const latest = history[0];
+                const historyKnown = Object.hasOwn(checkins, goal.id);
                 const checkinDay =
                   latest?.week_of === currentMonday &&
                   ["done", "running"].includes(latest.status)
@@ -602,18 +668,39 @@ export function AssistantUpcoming({
                       <small>
                         {goal.status === "paused"
                           ? "Paused"
-                          : `Check-in ${dayLabel(checkinDay)}`}
+                          : historyKnown
+                            ? `Check-in ${dayLabel(checkinDay)}`
+                            : historyFailed.includes(goal.id)
+                              ? "History unavailable"
+                              : "History not loaded"}
                         {goal.target_date
                           ? ` · Target ${dayLabel(goal.target_date)}`
                           : ""}
                         {goal.project_name ? ` · ${goal.project_name}` : ""}
                       </small>
-                      {summaryOf(goal) && <small>{summaryOf(goal)}</small>}
+                      {!historyKnown && (
+                        <button
+                          type="button"
+                          className="text-button"
+                          disabled={saving || loading || loadFailed}
+                          onClick={() => void loadHistory(goal)}
+                        >
+                          {historyFailed.includes(goal.id)
+                            ? "Retry history"
+                            : "Load history"}
+                        </button>
+                      )}
                       {latest && (
                         <small>
                           Last check-in: {checkinStatusLabel(latest.status)}
-                          {latest.summary ? ` · ${latest.summary}` : ""}
                         </small>
+                      )}
+                      {(summaryOf(goal) || latest?.summary) && (
+                        <details className="ai-upcoming-details">
+                          <summary>Progress details</summary>
+                          {summaryOf(goal) && <p>{summaryOf(goal)}</p>}
+                          {latest?.summary && <p>{latest.summary}</p>}
+                        </details>
                       )}
                     </div>
                     <button
@@ -622,7 +709,13 @@ export function AssistantUpcoming({
                       aria-label={`Options for ${goal.title}`}
                       aria-haspopup="dialog"
                       aria-expanded={menu?.id === goal.id}
-                      disabled={saving}
+                      disabled={
+                        saving ||
+                        loading ||
+                        loadFailed ||
+                        !!goalForm ||
+                        !!routineForm
+                      }
                       onClick={(event) =>
                         openMenu("goal", goal.id, event.currentTarget)
                       }
@@ -634,6 +727,7 @@ export function AssistantUpcoming({
               })}
             </ul>
           ) : (
+            !loadFailed &&
             goalForm !== "new" && <p className="muted">No goals yet.</p>
           )}
         </section>
@@ -646,63 +740,66 @@ export function AssistantUpcoming({
             <button
               type="button"
               className="text-button"
-              disabled={loading}
+              disabled={
+                loading || saving || loadFailed || !!goalForm || !!routineForm
+              }
               onClick={() => openRoutineForm()}
             >
               <Plus size={14} aria-hidden="true" /> New routine
             </button>
           </div>
-          {routineForm === "new" && routineFields}
           {loading ? (
             <p className="muted">Loading…</p>
           ) : routines.length ? (
             <ul className="settings-list">
-              {routines.map((routine) =>
-                routineForm === routine.id ? (
-                  <li key={routine.id} className="is-editing">
-                    {routineFields}
-                  </li>
-                ) : (
-                  <li key={routine.id}>
-                    <div className="settings-list-main">
-                      <strong>{routine.instruction}</strong>
-                      <small>
-                        {routine.paused
-                          ? "Paused"
-                          : `Next ${new Date(routine.next_run_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short", timeZone: routine.timezone })}`}{" "}
-                        · {describeRrule(routine.rrule)}
-                      </small>
-                      {typeof routine.last_result?.summary === "string" && (
-                        <small>Last run: {routine.last_result.summary}</small>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      className="icon-button"
-                      aria-label={`Options for ${routine.instruction}`}
-                      aria-haspopup="dialog"
-                      aria-expanded={menu?.id === routine.id}
-                      disabled={saving}
-                      onClick={(event) =>
-                        openMenu("routine", routine.id, event.currentTarget)
-                      }
-                    >
-                      <MoreHorizontal size={18} aria-hidden="true" />
-                    </button>
-                  </li>
-                ),
-              )}
+              {routines.map((routine) => (
+                <li key={routine.id}>
+                  <div className="settings-list-main">
+                    <strong>{routine.instruction}</strong>
+                    <small>
+                      {routine.paused
+                        ? "Paused"
+                        : `Next ${new Date(routine.next_run_at).toLocaleString([], { dateStyle: "medium", timeStyle: "short", timeZone: routine.timezone })}`}{" "}
+                      · {describeRrule(routine.rrule)}
+                    </small>
+                    {typeof routine.last_result?.summary === "string" && (
+                      <details className="ai-upcoming-details">
+                        <summary>Last run</summary>
+                        <p>{routine.last_result.summary}</p>
+                      </details>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Options for ${routine.instruction}`}
+                    aria-haspopup="dialog"
+                    aria-expanded={menu?.id === routine.id}
+                    disabled={
+                      saving ||
+                      loading ||
+                      loadFailed ||
+                      !!goalForm ||
+                      !!routineForm
+                    }
+                    onClick={(event) =>
+                      openMenu("routine", routine.id, event.currentTarget)
+                    }
+                  >
+                    <MoreHorizontal size={18} aria-hidden="true" />
+                  </button>
+                </li>
+              ))}
             </ul>
           ) : (
+            !loadFailed &&
             routineForm !== "new" && <p className="muted">No routines yet.</p>
           )}
         </section>
 
         {allowedRows.length > 0 && (
-          <section aria-labelledby="ai-allowed-title">
-            <h3 id="ai-allowed-title" className="settings-subtitle">
-              Allowed without asking
-            </h3>
+          <details className="ai-upcoming-details">
+            <summary>Automatic permissions ({allowedRows.length})</summary>
             <ul className="settings-list">
               {allowedRows.map(([kind, rule]) => {
                 const label = CHANGE_KIND_LABELS[kind] ?? kind;
@@ -726,10 +823,36 @@ export function AssistantUpcoming({
                 );
               })}
             </ul>
-          </section>
+          </details>
         )}
       </div>
 
+      {(goalForm || routineForm) && (
+        <SettingsEditor
+          title={
+            goalForm
+              ? goalForm === "new"
+                ? "New goal"
+                : "Edit goal"
+              : routineForm === "new"
+                ? "New routine"
+                : "Edit routine"
+          }
+          pending={saving}
+          onClose={() => {
+            setGoalForm(null);
+            setRoutineForm(null);
+            setError("");
+          }}
+        >
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          {goalForm ? goalFields : routineFields}
+        </SettingsEditor>
+      )}
       {menu && (menuGoal || menuRoutine) && (
         <Popover
           anchor={menu.anchor}

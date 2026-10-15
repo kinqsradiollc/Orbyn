@@ -489,7 +489,9 @@
 }
 .agents-instructions-form textarea {
   width: 100%;
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
   font-size: 13px;
 }
 .agents-instructions-actions {
@@ -525,4 +527,182 @@
   color: var(--color-accent);
   background: var(--color-accentSoft);
   border-color: var(--color-accent);
+}
+
+.agents-rule-form {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 170px), 1fr));
+  min-width: 0;
+}
+.agents-rule-form > .primary:last-child {
+  grid-column: auto;
+}
+.agents-rule-form .select,
+.agents-rule-form input {
+  width: 100%;
+  min-width: 0;
+}
+.agents-instructions-form {
+  width: 100%;
+  min-width: 0;
+}
+.agents-instructions-actions {
+  flex-wrap: wrap;
+}
+.agents-rules-list li {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.agents-rules-list li > .agents-rule-text {
+  flex-basis: 160px;
+}
+.agents-wake-row {
+  flex-wrap: wrap;
+}
+.agents-wake-row input {
+  flex-basis: 180px;
+}
+.agents-identity-form .button-row {
+  flex-wrap: wrap;
+}
+
+/* Agent settings fit the remaining pane and retain complete values. */
+.agents-tag {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.agents-job-links .link-button {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+.agents-job-acts,
+.agents-tools-actions {
+  flex-wrap: wrap;
+}
+.settings-editor .agents-connect,
+.settings-editor .agents-tools-edit {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.settings-editor .agents-form > fieldset {
+  display: grid;
+  gap: 12px;
+}
+.agents-trust-space {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 150px), 1fr));
+}
+.agents-activity li {
+  flex-wrap: wrap;
+}
+.agents-activity-time {
+  width: auto;
+}
+.agents-job-main {
+  flex-basis: 160px;
+}
+
+.agents-search {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+.agents-search > span {
+  font-size: 13px;
+  font-weight: 500;
+}
+.agents-search input {
+  width: 100%;
+  min-width: 0;
+}
+.agents-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.agents-pagination > span {
+  color: var(--color-textMuted);
+  font-size: 13px;
+}
+
+.settings-editor .agents-activity {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+/* Connection collections keep Settings usable as accounts add integrations. */
+.agents-list {
+  container: connected-agents / inline-size;
+  max-height: min(48dvh, 440px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.agents-list .agents-client {
+  font-size: 13px;
+}
+.agents-main p,
+.agents-main small,
+.agents-activity li {
+  overflow-wrap: anywhere;
+}
+.agents-tabs button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.agents-instructions-form textarea {
+  min-width: 0;
+  font-size: var(--control-fs);
+  max-height: min(240px, 40dvh);
+}
+.agents-snippet {
+  flex-wrap: wrap;
+}
+.agents-snippet pre {
+  flex-basis: 180px;
+}
+@container connected-agents (max-width: 560px) {
+  .agents-row {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 4px 8px;
+  }
+  .agents-client {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+    padding-top: 0;
+  }
+  .agents-icon {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+  }
+  .agents-main {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+@container settings-pane (max-width: 560px) {
+  .agents-snippet {
+    flex-direction: column;
+  }
+  .agents-snippet pre {
+    align-self: stretch;
+    flex-basis: auto;
+  }
+}
+@media (pointer: coarse) {
+  .agents-tabs button,
+  .agents-acts button,
+  .agents-help summary,
+  .agents-job-acts button,
+  .agents-about button {
+    min-height: 44px;
+  }
 }

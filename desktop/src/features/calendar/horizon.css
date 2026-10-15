@@ -81,9 +81,7 @@
 .horizon-block-text strong {
   font-size: 13px;
   color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .horizon-move select {
   font-size: var(--control-fs-sm);
@@ -97,4 +95,59 @@
   gap: 6px;
   margin: 4px 0 6px;
   font-size: 13px;
+}
+
+.horizon {
+  container: horizon-pane / inline-size;
+  min-width: 0;
+}
+.horizon-lane,
+.horizon-block {
+  min-width: 0;
+}
+.horizon-block > svg {
+  flex-shrink: 0;
+}
+.horizon-block-text small {
+  overflow-wrap: anywhere;
+}
+.horizon-move {
+  min-width: 0;
+  flex: 0 1 130px;
+}
+.horizon-move .select {
+  max-width: 100%;
+}
+.horizon-help {
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.horizon-help > summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+@container horizon-pane (max-width: 420px) {
+  .horizon-lane {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .horizon-day {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+  .horizon-block {
+    display: grid;
+    grid-template-columns: 13px minmax(0, 1fr);
+  }
+  .horizon-move {
+    grid-column: 2;
+    width: 100%;
+  }
+}
+
+.horizon-move .select {
+  width: 100%;
+  min-width: 0;
 }

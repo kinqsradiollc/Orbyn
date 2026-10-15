@@ -44,7 +44,7 @@ export function DocModeSwitch({
   return (
     <span
       className="doc-mode"
-      role="radiogroup"
+      role="group"
       aria-label="How you're working on this page"
     >
       {modes.map((m) => {
@@ -52,8 +52,7 @@ export function DocModeSwitch({
         return (
           <button
             key={m}
-            role="radio"
-            aria-checked={mode === m}
+            aria-pressed={mode === m}
             className={mode === m ? "is-on" : undefined}
             title={
               m === "suggest"

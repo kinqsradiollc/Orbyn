@@ -28,10 +28,13 @@ export const fonts = {
 
 /**
  * The one type scale shared with the web (11/13/15/18/24/36): every
- * `fontSize` is one of these, and text still follows the phone's text size
+ * display text uses these roles; web inputs have a 16px exception. Text follows the phone's text size
  * setting on top. See `typeScale` in @orbyn/core.
  */
 export { TYPE_SCALE, typeScale } from "@orbyn/core";
+
+/** Web fields avoid focus zoom; native fields retain the compact input role. */
+export const inputFontSize = Platform.OS === "web" ? 16 : 15;
 
 export const spacing = {
   /** Horizontal page padding, added on top of safe-area insets. */
@@ -55,7 +58,7 @@ export const controls = {
 export const radii = {
   /** A checkbox's rounded square (22pt), as on task rows. */
   check: 7,
-  input: 12,
-  card: 20,
+  input: 8,
+  card: 12,
   pill: 999,
 } as const;

@@ -1,5 +1,13 @@
+import type { ViewDraftStore } from "@orbyn/api-client";
 import { useElementWidth } from "../../hooks/useElementWidth";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   CalendarDays,
   Columns3,
@@ -15,7 +23,6 @@ import {
   Star,
   Table2,
   Trash2,
-  X,
 } from "lucide-react";
 import {
   boardColumns,
@@ -53,6 +60,12 @@ import {
   type ViewRow,
   type ViewSource,
 } from "@orbyn/core";
+import {
+  PageCommandScope,
+  preparePageLeave,
+  usePaneLeaveGuard,
+} from "../../app/page-commands";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { announceStars } from "../../app/prefs";
 import { EmptyState } from "../../components/EmptyState";
@@ -66,11 +79,13 @@ import { copyText } from "../../lib/planning";
 import { TaskBoard } from "../tasks/TaskBoard";
 import { applyEdit, type CellEdit, type TaskActions } from "./edits";
 import { ViewFilters } from "./ViewFilters";
+import { SettingsEditor } from "../settings/SettingsEditor";
 import { ViewTable } from "./ViewTable";
 import { ViewBoard, ViewCalendar, ViewGallery, ViewList } from "./ViewLayouts";
 import "./views.css";
 
 type Props = TaskActions & {
+  draftStore: ViewDraftStore;
   report: (e: unknown) => void;
   teams: Team[];
   userId?: string;
@@ -111,6 +126,7 @@ const timeZone = () => Intl.DateTimeFormat().resolvedOptions().timeZone;
  * save a copy.
  */
 export function ViewsView({
+  draftStore,
   report,
   teams,
   userId,
@@ -128,6 +144,8 @@ export function ViewsView({
   onChangeItem,
 }: Props) {
   const { ref: pageRef, width: pageWidth } = useElementWidth();
+  const commandScope = useContext(PageCommandScope);
+  const accountAtRender = session.get();
   const planning = usePlanning();
   const toast = useToast();
   const { ask } = useConfirm();
@@ -136,6 +154,13 @@ export function ViewsView({
   const [stars, setStars] = useState<Set<string>>(new Set());
   const [selected, setSelected] = useState<string | null>(null);
   const [def, setDef] = useState<ViewDefinition | null>(null);
+  const definitionRef = useRef(def);
+  definitionRef.current = def;
+  const draftRevision = useSyncExternalStore(
+    draftStore.subscribe,
+    draftStore.getSnapshot,
+  );
+  const appliedDraftRevision = useRef(0);
   const [result, setResult] = useState<ViewResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [folded, setFolded] = useState<Set<string>>(new Set());
@@ -147,19 +172,71 @@ export function ViewsView({
   const [folders, setFolders] = useState<Folder[]>([]);
   const [fields, setFields] = useState<CustomField[]>([]);
   const [stamp, setStamp] = useState(0);
+  const [libraryError, setLibraryError] = useState(false);
+  const [libraryRetry, setLibraryRetry] = useState(0);
+  const [rowsError, setRowsError] = useState(false);
+  const mounted = useRef(true);
+  const currentOwner = () =>
+    mounted.current && session.get() === accountAtRender;
+  const libraryRead = useRef(0);
+  const saveStates = draftStore.states;
+  useEffect(() => {
+    const after = appliedDraftRevision.current;
+    appliedDraftRevision.current = draftRevision;
+    setViews(
+      (list) =>
+        list?.map((entry) => {
+          const saved = draftStore.saved.get(entry.id);
+          return saved && saved.version > after
+            ? { ...entry, definition: saved.definition }
+            : entry;
+        }) ?? list,
+    );
+  }, [draftRevision, draftStore]);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      libraryRead.current += 1;
+    };
+  }, []);
   const reportRef = useRef(report);
   reportRef.current = report;
   // The account's time zone, as the server read the rows' days in it.
   const tz = result?.time_zone ?? planning.prefs?.timezone ?? timeZone();
 
   const view = views?.find((v) => v.id === selected) ?? null;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const editingRows = useRef(new Set<string>());
+  const confirmedRows = useRef(new Set<string>());
+  const [blockedRows, setBlockedRows] = useState<Set<string>>(new Set());
+  const rowRead = useRef(0);
+  const publishBlockedRows = () => {
+    if (currentOwner())
+      setBlockedRows(
+        new Set([...editingRows.current, ...confirmedRows.current]),
+      );
+  };
+  usePaneLeaveGuard(async () => editingRows.current.size === 0);
+  const resultDefinition = useRef("");
 
   const loadViews = async () => {
+    const request = ++libraryRead.current;
+    const started = draftStore.getSnapshot();
     const [list, favourites] = await Promise.all([
       client.listViews(),
       client.listFavourites(),
     ]);
-    setViews(list);
+    if (!currentOwner() || request !== libraryRead.current) return list;
+    setViews(
+      list.map((entry) => {
+        const saved = draftStore.saved.get(entry.id);
+        return saved && saved.version > started
+          ? { ...entry, definition: saved.definition }
+          : entry;
+      }),
+    );
     setStars(
       new Set(
         favourites.filter((f) => f.kind === "view").map((f) => f.target_id),
@@ -169,33 +246,62 @@ export function ViewsView({
   };
 
   useEffect(() => {
+    let alive = true;
+    setLibraryError(false);
     loadViews().then(
-      (list) =>
-        setSelected(
-          (s) =>
-            s ??
-            (openViewId && list.some((v) => v.id === openViewId)
-              ? openViewId
-              : (list.find((v) => v.pinned)?.id ?? list[0]?.id ?? null)),
-        ),
-      (e) => reportRef.current(e),
+      (list) => {
+        if (alive && currentOwner())
+          setSelected(
+            (s) =>
+              s ??
+              (openViewId && list.some((v) => v.id === openViewId)
+                ? openViewId
+                : (list.find((v) => v.pinned)?.id ?? list[0]?.id ?? null)),
+          );
+      },
+      (e) => {
+        if (alive && currentOwner()) {
+          setLibraryError(true);
+          reportRef.current(e);
+        }
+      },
     );
     // Names for the filters: projects, folders and fields.
-    void Promise.all([
+    void Promise.allSettled([
       client.listProjects(),
       client.listFolders(),
       client.listFields(),
     ]).then(([p, f, fl]) => {
-      setProjects(p);
-      setFolders(f);
-      setFields(fl);
-    }, reportRef.current);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+      if (!alive || !currentOwner()) return;
+      if (p.status === "fulfilled") setProjects(p.value);
+      if (f.status === "fulfilled") setFolders(f.value);
+      if (fl.status === "fulfilled") setFields(fl.value);
+      const rejected = [p, f, fl].find((entry) => entry.status === "rejected");
+      if (rejected?.status === "rejected") {
+        setLibraryError(true);
+        reportRef.current(rejected.reason);
+      }
+    });
+    return () => {
+      alive = false;
+      libraryRead.current += 1;
+    };
+  }, [libraryRetry]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const chooseView = async (id: string) => {
+    if (id === selectedRef.current) return;
+    if (
+      !(await preparePageLeave(commandScope)) ||
+      !mounted.current ||
+      session.get() !== accountAtRender
+    )
+      return;
+    setSelected(id);
+  };
   // A view asked for from the sidebar or a link.
   useEffect(() => {
     if (!openViewId || !views) return;
-    if (views.some((v) => v.id === openViewId)) setSelected(openViewId);
+    if (views.some((v) => v.id === openViewId)) void chooseView(openViewId);
     else
       report(
         new HttpError(404, "That view isn't shared with you, or was deleted."),
@@ -210,26 +316,40 @@ export function ViewsView({
 
   // The working copy follows the open view.
   useEffect(() => {
-    setDef(view ? view.definition : null);
+    setDef(view ? (draftStore.drafts.get(view.id) ?? view.definition) : null);
     setFolded(new Set());
     setResult(null);
+    setRowsError(false);
+    setMenu(null);
+    setColumnsMenu(null);
+    setRenaming(null);
+    setFiltersOpen(false);
   }, [view?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Rows, read afresh whenever the definition or anything else changes.
   useEffect(() => {
     if (!def) return;
     let live = true;
+    const request = ++rowRead.current;
     setLoading(true);
+    setRowsError(false);
+    const key = `${view?.id}:${JSON.stringify(def)}`;
+    if (resultDefinition.current !== key) setResult(null);
     const timer = window.setTimeout(() => {
+      const awaitingRefresh = new Set(confirmedRows.current);
       client.runDefinition(def).then(
         (r) => {
-          if (!live) return;
+          if (!live || !currentOwner() || rowRead.current !== request) return;
+          for (const id of awaitingRefresh) confirmedRows.current.delete(id);
+          publishBlockedRows();
+          resultDefinition.current = key;
           setResult(r);
           setLoading(false);
         },
         (e) => {
-          if (!live) return;
+          if (!live || !currentOwner() || rowRead.current !== request) return;
           setLoading(false);
+          setRowsError(true);
           reportRef.current(e);
         },
       );
@@ -238,28 +358,33 @@ export function ViewsView({
       live = false;
       window.clearTimeout(timer);
     };
-  }, [def, revision, stamp]);
+  }, [def, revision, stamp, view?.id]);
 
-  // Changes to a view you may change are kept as you make them.
-  useEffect(() => {
-    if (!view || !def || !view.can_edit || same(def, view.definition)) return;
-    const timer = window.setTimeout(() => {
-      client.updateView(view.id, { definition: def }).then((saved) => {
-        setViews((vs) => vs?.map((v) => (v.id === saved.id ? saved : v)) ?? vs);
-      }, reportRef.current);
-    }, 700);
-    return () => window.clearTimeout(timer);
-  }, [def]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const change = (next: Partial<ViewDefinitionInput>) =>
-    setDef((d) =>
-      d ? fullDefinition({ ...d, ...next } as ViewDefinitionInput) : d,
-    );
+  // Queue at the initiating event; the workspace owns the debounce and writes.
+  const change = async (next: Partial<ViewDefinitionInput>) => {
+    if (
+      !(await preparePageLeave(commandScope)) ||
+      session.get() !== accountAtRender ||
+      !mounted.current
+    )
+      return;
+    const current = definitionRef.current;
+    if (!current || !view) return;
+    const changed = fullDefinition({
+      ...current,
+      ...next,
+    } as ViewDefinitionInput);
+    rowRead.current += 1;
+    definitionRef.current = changed;
+    draftStore.change(view.id, changed, view.can_edit);
+    setDef(changed);
+  };
 
   const itemOf = (row: ViewRow) =>
     items.find((i) => i.id === row.id) ?? row.item;
 
-  const open = (row: ViewRow) => {
+  const open = async (row: ViewRow) => {
+    if (!(await preparePageLeave(commandScope)) || !currentOwner()) return;
     if (row.kind === "task") {
       const item = itemOf(row);
       if (item) onOpenItem(item);
@@ -267,111 +392,218 @@ export function ViewsView({
     else onOpenProject(row.id);
   };
 
-  const edit = (row: ViewRow, e: CellEdit) => {
-    applyEdit(
-      row,
-      e,
-      itemOf(row),
-      { onToggle, onSetStatus, onChangeItem },
-      tz,
-    ).then(
-      () => setStamp((n) => n + 1),
-      (err) => {
-        report(err);
-        setStamp((n) => n + 1);
-      },
+  const runRowChange = async (
+    row: ViewRow,
+    operation: () => Promise<boolean>,
+  ): Promise<boolean> => {
+    if (
+      !currentOwner() ||
+      !row.can_write ||
+      editingRows.current.has(row.id) ||
+      confirmedRows.current.has(row.id)
+    )
+      return false;
+    editingRows.current.add(row.id);
+    publishBlockedRows();
+    try {
+      const saved = await operation();
+      if (!currentOwner()) return false;
+      if (saved) {
+        confirmedRows.current.add(row.id);
+        rowRead.current += 1;
+        setStamp((value) => value + 1);
+      }
+      return saved;
+    } catch (error) {
+      if (currentOwner()) report(error);
+      return false;
+    } finally {
+      editingRows.current.delete(row.id);
+      publishBlockedRows();
+    }
+  };
+  const edit = (row: ViewRow, change: CellEdit): Promise<boolean> =>
+    runRowChange(row, () =>
+      applyEdit(
+        row,
+        change,
+        itemOf(row),
+        { onToggle, onSetStatus, onChangeItem },
+        tz,
+      ),
     );
-  };
 
-  const setStar = (id: string, starred: boolean) => {
-    setStars((s) => {
-      const next = new Set(s);
-      if (starred) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-    client.setFavourite("view", id, starred).then(announceStars, (e) => {
-      report(e);
-      void loadViews();
-    });
+  const managementLock = useRef(false);
+  const [managementBusy, setManagementBusy] = useState(false);
+  const manage = async (operation: () => Promise<void>) => {
+    if (!currentOwner() || managementLock.current) return;
+    if (
+      !(await preparePageLeave(commandScope)) ||
+      !currentOwner() ||
+      managementLock.current
+    )
+      return;
+    managementLock.current = true;
+    setManagementBusy(true);
+    try {
+      await operation();
+    } catch (error) {
+      if (currentOwner()) report(error);
+    } finally {
+      managementLock.current = false;
+      if (currentOwner()) setManagementBusy(false);
+    }
   };
-
-  const setPin = (v: SavedView, pinned: boolean) => {
-    setViews(
-      (vs) => vs?.map((x) => (x.id === v.id ? { ...x, pinned } : x)) ?? vs,
-    );
-    client.pinView(v.id, pinned).then(onViewsChanged, (e) => {
-      report(e);
-      void loadViews();
+  const setStar = (id: string, starred: boolean) =>
+    void manage(async () => {
+      await client.setFavourite("view", id, starred);
+      if (!currentOwner()) return;
+      setStars((old) => {
+        const next = new Set(old);
+        if (starred) next.add(id);
+        else next.delete(id);
+        return next;
+      });
+      announceStars();
     });
-  };
-
+  const setPin = (view: SavedView, pinned: boolean) =>
+    void manage(async () => {
+      await client.pinView(view.id, pinned);
+      if (!currentOwner()) return;
+      setViews(
+        (list) =>
+          list?.map((entry) =>
+            entry.id === view.id ? { ...entry, pinned } : entry,
+          ) ?? list,
+      );
+      onViewsChanged();
+    });
   const create = async (
     name: string,
     definition: ViewDefinitionInput,
     teamId: string | null,
   ) => {
-    const made = await client.createView({ name, definition, team_id: teamId });
+    if (!currentOwner() || managementLock.current)
+      throw new Error("A view change is already in progress.");
+    if (!(await preparePageLeave(commandScope)) || !currentOwner())
+      throw new Error("Finish or cancel the current cell edit first.");
+    if (managementLock.current)
+      throw new Error("A view change is already in progress.");
+    managementLock.current = true;
+    setManagementBusy(true);
+    let made: SavedView;
+    try {
+      made = await client.createView({ name, definition, team_id: teamId });
+    } finally {
+      managementLock.current = false;
+      if (currentOwner()) setManagementBusy(false);
+    }
+    if (!currentOwner()) return;
     setViews((vs) => [...(vs ?? []), made]);
     setSelected(made.id);
+    draftStore.keepCreation(null);
     setCreating(false);
     onViewsChanged();
   };
 
-  const remove = async (v: SavedView) => {
-    setMenu(null);
-    const ok = await ask({
-      title: `Delete ${v.name}?`,
-      body: v.team_id
-        ? `It goes for everyone in ${v.team_name ?? "the team"}. Nothing it shows is deleted.`
-        : "Nothing it shows is deleted.",
-      confirmLabel: "Delete view",
-      destructive: true,
+  const remove = (v: SavedView) =>
+    manage(async () => {
+      setMenu(null);
+      const ok = await ask({
+        title: `Delete ${v.name}?`,
+        body: v.team_id
+          ? `It goes for everyone in ${v.team_name ?? "the team"}. Nothing it shows is deleted.`
+          : "Nothing it shows is deleted.",
+        confirmLabel: "Delete view",
+        destructive: true,
+      });
+      if (!ok || !currentOwner()) return;
+      try {
+        await client.deleteView(v.id);
+        draftStore.forget(v.id);
+        if (!currentOwner()) return;
+        const list = await loadViews();
+        if (!currentOwner()) return;
+        if (selectedRef.current === v.id) setSelected(list[0]?.id ?? null);
+        onViewsChanged();
+        toast({ text: `${v.name} deleted.` });
+      } catch (error) {
+        if (currentOwner()) report(error);
+      }
     });
-    if (!ok) return;
-    client.deleteView(v.id).then(async () => {
-      const list = await loadViews();
-      setSelected(list[0]?.id ?? null);
-      onViewsChanged();
-      toast({ text: `${v.name} deleted.` });
-    }, report);
-  };
 
   const [renaming, setRenaming] = useState<string | null>(null);
-  const rename = (v: SavedView, name: string) => {
-    setRenaming(null);
-    const next = name.trim().slice(0, 80);
-    if (!next || next === v.name) return;
-    client.updateView(v.id, { name: next }).then((saved) => {
-      setViews((vs) => vs?.map((x) => (x.id === saved.id ? saved : x)) ?? vs);
-      onViewsChanged();
-    }, report);
+  const [renameError, setRenameError] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const renamingNow = useRef(false);
+  const rename = async (v: SavedView, name: string) => {
+    if (renamingNow.current) return;
+    const next = name.trim();
+    if (!next) return;
+    if (next === v.name) {
+      setRenaming(null);
+      return;
+    }
+    renamingNow.current = true;
+    setRenameBusy(true);
+    setRenameError("");
+    try {
+      const saved = await client.updateView(v.id, { name: next });
+      if (mounted.current) {
+        setViews(
+          (vs) =>
+            vs?.map((x) =>
+              x.id === saved.id ? { ...x, name: saved.name } : x,
+            ) ?? vs,
+        );
+        setRenaming(null);
+        onViewsChanged();
+      }
+    } catch (e) {
+      if (mounted.current)
+        setRenameError(
+          e instanceof Error ? e.message : "Couldn’t rename view. Try again.",
+        );
+    } finally {
+      renamingNow.current = false;
+      if (mounted.current) setRenameBusy(false);
+    }
   };
 
-  const share = (v: SavedView, teamId: string | null) => {
+  const share = (view: SavedView, teamId: string | null) => {
     setMenu(null);
-    client.updateView(v.id, { team_id: teamId }).then((saved) => {
-      setViews((vs) => vs?.map((x) => (x.id === saved.id ? saved : x)) ?? vs);
+    void manage(async () => {
+      const saved = await client.updateView(view.id, { team_id: teamId });
+      if (!currentOwner()) return;
+      setViews(
+        (list) =>
+          list?.map((entry) =>
+            entry.id === saved.id
+              ? { ...saved, definition: entry.definition }
+              : entry,
+          ) ?? list,
+      );
       toast({
         text: teamId
-          ? `Shared with ${saved.team_name}. Everyone sees only what they can open.`
+          ? `Shared with ${saved.team_name}. Access permissions still apply.`
           : "Only you have this view now.",
       });
-    }, report);
+    });
   };
-
-  const exportCsv = (v: SavedView) => {
+  const exportCsv = (view: SavedView) => {
     setMenu(null);
-    client.exportViewCsv(v.id).then(({ text, name }) => {
+    void manage(async () => {
+      const { text, name } = await client.exportViewCsv(view.id);
+      if (!currentOwner()) return;
       const url = URL.createObjectURL(
         new Blob([text], { type: "text/csv;charset=utf-8" }),
       );
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }, report);
+    });
   };
 
   const copyTable = () => {
@@ -406,9 +638,16 @@ export function ViewsView({
     };
   }, [result, planning.lists, planning.tags, userId]);
 
+  const layoutRows = useMemo(
+    () =>
+      result?.rows.map((row) =>
+        blockedRows.has(row.id) ? { ...row, can_write: false } : row,
+      ) ?? [],
+    [result, blockedRows],
+  );
   const groups = useMemo(
-    () => (result && def ? groupRows(result.rows, def, names) : []),
-    [result, def, names],
+    () => (result && def ? groupRows(layoutRows, def, names) : []),
+    [result, def, names, layoutRows],
   );
 
   const toggleFold = (key: string) =>
@@ -457,9 +696,10 @@ export function ViewsView({
       case "table":
         return (
           <ViewTable
+            key={view?.id}
             source={def.source}
             groups={groups}
-            rows={result.rows}
+            rows={layoutRows}
             columns={viewColumns(def)}
             fields={result.fields}
             people={result.people}
@@ -490,13 +730,13 @@ export function ViewsView({
                 : null
             : null;
         if (by) {
-          const tasks = result.rows.flatMap((r) => {
+          const tasks = layoutRows.flatMap((r) => {
             const item = itemOf(r);
             return item ? [item] : [];
           });
           const columns = boardColumns(tasks, by, names);
           const canWrite = (item: Item) =>
-            result.rows.find((r) => r.id === item.id)?.can_write ?? false;
+            layoutRows.find((r) => r.id === item.id)?.can_write ?? false;
           return (
             <TaskBoard
               columns={columns}
@@ -512,7 +752,11 @@ export function ViewsView({
                   toast({ text: moved.reason, tone: "warn" });
                   return;
                 }
-                onChangeItem(item, moved.change);
+                const row = layoutRows.find((entry) => entry.id === item.id);
+                if (row)
+                  void runRowChange(row, () =>
+                    onChangeItem(item, moved.change),
+                  );
               }}
               folded={folded}
               onToggleFold={toggleFold}
@@ -534,7 +778,7 @@ export function ViewsView({
         return (
           <ViewCalendar
             {...shared}
-            rows={result.rows}
+            rows={layoutRows}
             def={def}
             onMoveDay={(row, day) => {
               const field = fieldKeyId(def.date_by ?? "");
@@ -545,7 +789,7 @@ export function ViewsView({
           />
         );
       case "gallery":
-        return <ViewGallery {...shared} rows={result.rows} />;
+        return <ViewGallery {...shared} rows={layoutRows} />;
     }
   };
 
@@ -588,6 +832,14 @@ export function ViewsView({
             No matching views.
           </p>
         )}
+        {libraryError && (
+          <button
+            className="secondary"
+            onClick={() => setLibraryRetry((n) => n + 1)}
+          >
+            Retry view library
+          </button>
+        )}
         {views && !views.length && (
           <p className="muted views-rail-empty">Save a filter to use again.</p>
         )}
@@ -597,7 +849,7 @@ export function ViewsView({
             views={mine}
             stars={stars}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={(id) => void chooseView(id)}
           />
         )}
         {byTeam.map((g) => (
@@ -607,7 +859,7 @@ export function ViewsView({
             views={g.views}
             stars={stars}
             selected={selected}
-            onSelect={setSelected}
+            onSelect={(id) => void chooseView(id)}
           />
         ))}
       </aside>
@@ -616,36 +868,24 @@ export function ViewsView({
         {!view || !def ? (
           <EmptyState
             icon={Table2}
-            title={views === null ? "Loading views…" : "No view open"}
-            body="Save a filter to use again."
-          >
-            {views !== null && (
-              <button className="primary" onClick={() => setCreating(true)}>
-                <Plus size={15} aria-hidden="true" /> New view
-              </button>
-            )}
-          </EmptyState>
+            title={
+              libraryError && views === null
+                ? "Couldn’t load views"
+                : views === null
+                  ? "Loading views…"
+                  : "No view open"
+            }
+          ></EmptyState>
         ) : (
           <>
+            {managementBusy && (
+              <p className="muted views-save-status" role="status">
+                Updating view…
+              </p>
+            )}
             <div className="section-heading views-heading">
               <div className="views-title">
-                {renaming !== null ? (
-                  <input
-                    autoFocus
-                    className="views-rename"
-                    aria-label="View name"
-                    value={renaming}
-                    maxLength={80}
-                    onChange={(e) => setRenaming(e.target.value)}
-                    onBlur={() => rename(view, renaming)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") rename(view, renaming);
-                      if (e.key === "Escape") setRenaming(null);
-                    }}
-                  />
-                ) : (
-                  <h2>{view.name}</h2>
-                )}
+                <h2>{view.name}</h2>
                 <small className="muted">
                   {VIEW_SOURCE_LABELS[view.source]}
                   {view.team_name ? ` · Shared with ${view.team_name}` : ""}
@@ -655,31 +895,6 @@ export function ViewsView({
                 </small>
               </div>
               <div className="views-actions">
-                <button
-                  className={
-                    "icon-button" + (stars.has(view.id) ? " is-on" : "")
-                  }
-                  aria-pressed={stars.has(view.id)}
-                  aria-label={stars.has(view.id) ? "Unstar" : "Star"}
-                  title={stars.has(view.id) ? "Starred" : "Star"}
-                  onClick={() => setStar(view.id, !stars.has(view.id))}
-                >
-                  <Star
-                    size={16}
-                    fill={stars.has(view.id) ? "currentColor" : "none"}
-                  />
-                </button>
-                <button
-                  className={"icon-button" + (view.pinned ? " is-on" : "")}
-                  aria-pressed={view.pinned}
-                  aria-label={
-                    view.pinned ? "Unpin from sidebar" : "Pin to sidebar"
-                  }
-                  title={view.pinned ? "Unpin from sidebar" : "Pin to sidebar"}
-                  onClick={() => setPin(view, !view.pinned)}
-                >
-                  <Pin size={16} />
-                </button>
                 <button
                   className="icon-button"
                   aria-label="View options"
@@ -697,22 +912,40 @@ export function ViewsView({
             </div>
 
             <div className="views-toolbar">
-              <div className="segmented" role="group" aria-label="Layout">
-                {layoutsFor(def.source).map((l) => {
-                  const Icon = LAYOUT_ICONS[l];
-                  return (
-                    <button
-                      key={l}
-                      aria-pressed={def.layout === l}
-                      className={def.layout === l ? "active" : ""}
-                      onClick={() => change({ layout: l })}
-                    >
-                      <Icon size={14} aria-hidden="true" />{" "}
-                      {VIEW_LAYOUT_LABELS[l]}
-                    </button>
-                  );
-                })}
-              </div>
+              {pageWidth < 640 ? (
+                <label className="filter-select">
+                  <span>Layout</span>
+                  <Select
+                    value={def.layout}
+                    onChange={(event) =>
+                      change({ layout: event.target.value as ViewLayout })
+                    }
+                  >
+                    {layoutsFor(def.source).map((layout) => (
+                      <option key={layout} value={layout}>
+                        {VIEW_LAYOUT_LABELS[layout]}
+                      </option>
+                    ))}
+                  </Select>
+                </label>
+              ) : (
+                <div className="segmented" role="group" aria-label="Layout">
+                  {layoutsFor(def.source).map((l) => {
+                    const Icon = LAYOUT_ICONS[l];
+                    return (
+                      <button
+                        key={l}
+                        aria-pressed={def.layout === l}
+                        className={def.layout === l ? "active" : ""}
+                        onClick={() => change({ layout: l })}
+                      >
+                        <Icon size={14} aria-hidden="true" />{" "}
+                        {VIEW_LAYOUT_LABELS[l]}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               {def.layout === "calendar" && def.source !== "tasks" && (
                 <label className="filter-select">
                   <span>Dates from</span>
@@ -760,8 +993,8 @@ export function ViewsView({
               >
                 <SlidersHorizontal size={14} aria-hidden="true" />
                 {Object.keys(def.filters).length
-                  ? `Filter, group and sort · ${Object.keys(def.filters).length}`
-                  : "Filter, group and sort"}
+                  ? `Filters and sort · ${Object.keys(def.filters).length}`
+                  : "Filters and sort"}
               </button>
             </div>
 
@@ -769,7 +1002,7 @@ export function ViewsView({
               <section
                 id="view-filters"
                 className="views-options"
-                aria-label="Filter, group and sort"
+                aria-label="Filters and sort"
               >
                 <div className="views-arrangement">
                   <label className="filter-select">
@@ -824,6 +1057,7 @@ export function ViewsView({
                   </label>
                 </div>
                 <ViewFilters
+                  key={view.id}
                   id="view-filter-fields"
                   def={def}
                   teams={teams}
@@ -840,9 +1074,7 @@ export function ViewsView({
             {!view.can_edit && !same(def, view.definition) && (
               <div className="views-unsaved" role="status">
                 <span>
-                  Only {view.owner_name ?? "whoever made it"} or the team's
-                  admins can change this view, so these changes are just for
-                  now.
+                  These changes are temporary. Save a copy to keep them.
                 </span>
                 <button
                   className="secondary"
@@ -852,19 +1084,64 @@ export function ViewsView({
                     )
                   }
                 >
-                  Save as my own view
+                  Save a copy
                 </button>
                 <button
                   className="text-button"
-                  onClick={() => setDef(view.definition)}
+                  onClick={() => {
+                    draftStore.drafts.delete(view.id);
+                    setDef(view.definition);
+                  }}
                 >
-                  Put it back
+                  Reset changes
                 </button>
               </div>
             )}
 
-            <div className={"views-body" + (loading ? " is-loading" : "")}>
-              {renderLayout()}
+            {view.can_edit && saveStates[view.id] === "failed" && (
+              <div className="views-unsaved" role="status">
+                <span>Changes weren’t saved.</span>
+                <button
+                  className="secondary"
+                  onClick={() => draftStore.change(view.id, def, true, true)}
+                >
+                  Retry save
+                </button>
+              </div>
+            )}
+            {view.can_edit && saveStates[view.id] === "saving" && (
+              <p className="muted views-save-status" role="status">
+                Saving view…
+              </p>
+            )}
+            <div
+              className={"views-body" + (loading ? " is-loading" : "")}
+              aria-busy={loading}
+            >
+              {(editingRows.current.size > 0 || (loading && !!result)) && (
+                <p className="muted views-save-status" role="status">
+                  {editingRows.current.size > 0
+                    ? "Saving changes…"
+                    : "Updating results…"}
+                </p>
+              )}
+              {rowsError && (
+                <div>
+                  <p role="alert">Couldn't load results.</p>
+                  <button
+                    className="secondary"
+                    onClick={() => setStamp((n) => n + 1)}
+                  >
+                    Retry results
+                  </button>
+                </div>
+              )}
+              {loading && !result && (
+                <p className="muted" role="status">
+                  Loading results…
+                </p>
+              )}
+              {result && renderLayout()}
               {result?.truncated && (
                 <p className="muted views-truncated">
                   Showing the first {result.rows.length}. Narrow the filters to
@@ -882,11 +1159,34 @@ export function ViewsView({
           label="View options"
           onClose={() => setMenu(null)}
         >
-          <div className="popover-actions view-menu">
+          <fieldset
+            disabled={managementBusy}
+            className="popover-actions view-menu"
+          >
+            <button
+              onClick={() => {
+                setMenu(null);
+                setStar(view.id, !stars.has(view.id));
+              }}
+            >
+              <Star size={14} aria-hidden="true" />
+              {stars.has(view.id) ? "Unstar" : "Star"}
+            </button>
+            <button
+              onClick={() => {
+                setMenu(null);
+                setPin(view, !view.pinned);
+              }}
+            >
+              <Pin size={14} aria-hidden="true" />
+              {view.pinned ? "Unpin from sidebar" : "Pin to sidebar"}
+            </button>
+
             {view.can_edit && (
               <button
                 onClick={() => {
                   setMenu(null);
+                  setRenameError("");
                   setRenaming(view.name);
                 }}
               >
@@ -953,7 +1253,7 @@ export function ViewsView({
                 <Trash2 size={14} aria-hidden="true" /> Delete view
               </button>
             )}
-          </div>
+          </fieldset>
         </Popover>
       )}
 
@@ -995,12 +1295,63 @@ export function ViewsView({
         </Popover>
       )}
 
+      {renaming !== null && view && (
+        <SettingsEditor
+          title="Rename view"
+          pending={renameBusy}
+          onClose={() => {
+            if (!renamingNow.current) setRenaming(null);
+          }}
+        >
+          <form
+            className="new-view-body"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void rename(view, renaming);
+            }}
+          >
+            {renameError && (
+              <p className="error" role="alert">
+                {renameError}
+              </p>
+            )}
+            <label>
+              Name
+              <input
+                autoFocus
+                value={renaming}
+                maxLength={80}
+                disabled={renameBusy}
+                onChange={(e) => setRenaming(e.target.value)}
+              />
+            </label>
+            <div className="new-view-actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={renameBusy}
+                onClick={() => setRenaming(null)}
+              >
+                Cancel
+              </button>
+              <button
+                className="primary"
+                disabled={renameBusy || !renaming.trim()}
+              >
+                {renameBusy ? "Saving…" : "Save name"}
+              </button>
+            </div>
+          </form>
+        </SettingsEditor>
+      )}
+
       {creating && (
         <NewViewDialog
+          draftStore={draftStore}
           teams={teams}
           onClose={() => setCreating(false)}
           onCreate={(name, definition, teamId) =>
-            create(name, definition, teamId).catch(report)
+            create(name, definition, teamId)
           }
         />
       )}
@@ -1049,10 +1400,12 @@ function ViewPicker({
 
 /** A new view: what it shows, a name, a place to start and who has it. */
 function NewViewDialog({
+  draftStore,
   teams,
   onClose,
   onCreate,
 }: {
+  draftStore: ViewDraftStore;
   teams: Team[];
   onClose: () => void;
   onCreate: (
@@ -1061,18 +1414,39 @@ function NewViewDialog({
     teamId: string | null,
   ) => Promise<unknown>;
 }) {
-  const [source, setSource] = useState<ViewSource>("tasks");
-  const [name, setName] = useState("");
-  const [teamId, setTeamId] = useState("");
-  const [preset, setPreset] = useState<number | null>(null);
+  const accountAtRender = session.get();
+  const [source, setSource] = useState<ViewSource>(
+    draftStore.creation?.source ?? "tasks",
+  );
+  const [name, setName] = useState(draftStore.creation?.name ?? "");
+  const [teamId, setTeamId] = useState(draftStore.creation?.team_id ?? "");
+  const [preset, setPreset] = useState<number | null>(
+    draftStore.creation?.preset ?? null,
+  );
+  useEffect(() => {
+    draftStore.keepCreation({ source, name, team_id: teamId || null, preset });
+  }, [source, name, teamId, preset, draftStore]);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const writing = useRef(false);
+  const mounted = useRef(true);
+  const currentOwner = () =>
+    mounted.current && session.get() === accountAtRender;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const presets = VIEW_PRESETS.map((p, n) => ({ ...p, n })).filter(
     (p) => p.definition.source === source,
   );
   const submit = () => {
     const chosen = preset !== null ? VIEW_PRESETS[preset] : null;
     const finalName = name.trim() || chosen?.name || "";
-    if (!finalName || busy) return;
+    if (!finalName || writing.current || !currentOwner()) return;
+    writing.current = true;
+    setError("");
     setBusy(true);
     void onCreate(
       finalName,
@@ -1081,33 +1455,39 @@ function NewViewDialog({
         layout: source === "pages" ? "gallery" : "table",
       },
       teamId || null,
-    ).finally(() => setBusy(false));
+    )
+      .catch((e) => {
+        if (currentOwner())
+          setError(
+            e instanceof Error ? e.message : "Couldn’t create view. Try again.",
+          );
+      })
+      .finally(() => {
+        writing.current = false;
+        if (currentOwner()) setBusy(false);
+      });
   };
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && !busy && onClose()}
-      onKeyDown={(e) => e.key === "Escape" && !busy && onClose()}
+    <SettingsEditor
+      title="New view"
+      pending={busy}
+      onClose={() => {
+        if (!writing.current) onClose();
+      }}
     >
-      <section
-        className="modal new-view"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="new-view-title"
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      <form
+        className="new-view-body"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
       >
-        <div className="section-heading">
-          <h2 id="new-view-title">New view</h2>
-          <button className="icon-button" aria-label="Close" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </div>
-        <form
-          className="new-view-body"
-          onSubmit={(e) => {
-            e.preventDefault();
-            submit();
-          }}
-        >
+        <fieldset disabled={busy} className="new-view-fields">
           <div className="segmented" role="group" aria-label="What it shows">
             {VIEW_SOURCES.map((s) => (
               <button
@@ -1146,10 +1526,7 @@ function NewViewDialog({
                   checked={preset === null}
                   onChange={() => setPreset(null)}
                 />
-                <span>
-                  Everything
-                  <small>Change the filters once it's made.</small>
-                </span>
+                <span>Everything</span>
               </label>
               {presets.map((p) => (
                 <label key={p.n} className="popover-check">
@@ -1186,19 +1563,24 @@ function NewViewDialog({
               </small>
             </label>
           )}
-          <div className="new-view-actions">
-            <button type="button" className="secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button
-              className="primary"
-              disabled={busy || !(name.trim() || preset !== null)}
-            >
-              Make view
-            </button>
-          </div>
-        </form>
-      </section>
-    </div>
+        </fieldset>
+        <div className="new-view-actions">
+          <button
+            type="button"
+            className="secondary"
+            disabled={busy}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            className="primary"
+            disabled={busy || !(name.trim() || preset !== null)}
+          >
+            {busy ? "Creating…" : "Create view"}
+          </button>
+        </div>
+      </form>
+    </SettingsEditor>
   );
 }

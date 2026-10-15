@@ -5,6 +5,7 @@ import { client } from "../../lib/api";
 import { session } from "../../lib/session";
 import { errorText } from "../../lib/errors";
 import { SmallAction } from "../../components/SmallAction";
+import { InlineDetails } from "../../components/InlineDetails";
 import { shared } from "../../styles";
 /** Completed request history is separate from OpenAI's account limits. */
 export function ChatgptUsage({ userId }: { userId: string }) {
@@ -94,15 +95,19 @@ export function ChatgptUsage({ userId }: { userId: string }) {
                     No completed ChatGPT calls recorded.
                   </Text>
                 )}
-                {data.recent.map((row) => (
-                  <Text key={row.request_id} style={shared.small}>
-                    {row.model} · {new Date(row.completed_at).toLocaleString()}{" "}
-                    ·{" "}
-                    {row.usage
-                      ? `${formatChatgptTokens(String(row.usage.total_tokens))} tokens`
-                      : "Usage not reported"}
-                  </Text>
-                ))}
+                {!!data.recent.length && (
+                  <InlineDetails title="Recent requests">
+                    {data.recent.map((row) => (
+                      <Text key={row.request_id} style={shared.small}>
+                        {row.model} ·{" "}
+                        {new Date(row.completed_at).toLocaleString()} ·{" "}
+                        {row.usage
+                          ? `${formatChatgptTokens(String(row.usage.total_tokens))} tokens`
+                          : "Usage not reported"}
+                      </Text>
+                    ))}
+                  </InlineDetails>
+                )}
                 <Text style={shared.small}>
                   Orbyn calls only. Plan limits are in ChatGPT.
                 </Text>

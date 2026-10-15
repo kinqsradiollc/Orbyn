@@ -25,11 +25,13 @@ export function TurnChanges({
   undo: (job: string) => Promise<number>;
 }) {
   const [changes, setChanges] = useState<AgentActivity[] | null>(null);
+  const [expanded, setExpanded] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const [undone, setUndone] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     let live = true;
+    setExpanded(false);
     load(job).then(
       (list) => live && setChanges(list),
       () => live && setChanges([]),
@@ -72,7 +74,7 @@ export function TurnChanges({
           )
         )}
       </View>
-      {shown.slice(0, SHOWN).map((change) => (
+      {(expanded ? shown : shown.slice(0, SHOWN)).map((change) => (
         <View key={change.id} style={s.row}>
           <Text style={s.text}>{changeLine(change)}</Text>
           {!!change.links?.length && (
@@ -91,9 +93,7 @@ export function TurnChanges({
                     size={13}
                     color={colors.accent}
                   />
-                  <Text style={s.linkText} numberOfLines={1}>
-                    {l.title || "Untitled"}
-                  </Text>
+                  <Text style={s.linkText}>{l.title || "Untitled"}</Text>
                 </PressableScale>
               ))}
             </View>
@@ -101,7 +101,18 @@ export function TurnChanges({
         </View>
       ))}
       {shown.length > SHOWN && (
-        <Text style={s.text}>and {shown.length - SHOWN} more</Text>
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          onPress={() => setExpanded(!expanded)}
+          style={s.expand}
+        >
+          <Text style={s.linkText}>
+            {expanded
+              ? "Show fewer changes"
+              : `Show all ${shown.length} changes`}
+          </Text>
+        </PressableScale>
       )}
       {!!error && (
         <Text accessibilityRole="alert" style={s.error}>
@@ -138,7 +149,7 @@ const s = themed(() =>
     },
     links: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     link: {
-      minHeight: controls.tap - 10,
+      minHeight: controls.tap,
       maxWidth: "100%",
       flexDirection: "row",
       alignItems: "center",
@@ -149,6 +160,11 @@ const s = themed(() =>
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
+    },
+    expand: {
+      minHeight: controls.tap,
+      justifyContent: "center",
+      alignSelf: "flex-start",
     },
     linkText: {
       flexShrink: 1,

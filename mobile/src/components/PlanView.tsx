@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../motion";
 import {
@@ -18,6 +18,7 @@ import { SmallAction } from "./SmallAction";
 import { minutesLabel, rangeLabel, shortDay } from "../lib/planning";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
+import { usePaneWidth } from "../hooks/usePaneWidth";
 
 /** Blocks grouped by the day they start, in time order. */
 function byDay(blocks: PlannedBlock[]) {
@@ -70,13 +71,15 @@ export function PlanView({
   /** Shown under a block, such as the form that moves it. */
   below?: (block: PlannedBlock) => React.ReactNode;
 }) {
-  const shown = limit ? plan.blocks.slice(0, limit) : plan.blocks;
-  const hidden = plan.blocks.length - shown.length;
+  const [expanded, setExpanded] = useState(false);
+  const { width, onLayout } = usePaneWidth();
+  const compact = width < 420;
+  const shown = limit && !expanded ? plan.blocks.slice(0, limit) : plan.blocks;
   const fill = plan.capacity_minutes
     ? Math.round((plan.planned_minutes / plan.capacity_minutes) * 100)
     : 0;
   return (
-    <View>
+    <View onLayout={onLayout}>
       {!!plan.summary && <Text style={shared.body}>{plan.summary}</Text>}
       <View style={s.capacity}>
         <Text style={s.capacityText}>
@@ -95,8 +98,7 @@ export function PlanView({
         ? !plan.moves?.length &&
           !plan.at_risk.length && (
             <Text style={[shared.small, s.gap]}>
-              No sessions to place. Tasks need to be open, and an estimate helps
-              the planner size them.
+              No sessions to place. Add an estimate to an open task.
             </Text>
           )
         : byDay(shown).map((blocks) => (
@@ -110,17 +112,15 @@ export function PlanView({
                   style={[n > 0 && s.divider]}
                 >
                   <View
-                    style={s.block}
+                    style={[s.block, compact && s.blockCompact]}
                     accessible
                     accessibilityLabel={`${rangeLabel(b.start_at, b.end_at)}, ${b.title}${b.parts > 1 ? `, session ${b.part} of ${b.parts}` : ""}${b.pinned ? ", pinned" : ""}`}
                   >
-                    <Text style={s.time}>
+                    <Text style={[s.time, compact && s.timeCompact]}>
                       {rangeLabel(b.start_at, b.end_at)}
                     </Text>
                     <View style={s.blockMain}>
-                      <Text style={s.blockTitle} numberOfLines={2}>
-                        {b.title}
-                      </Text>
+                      <Text style={s.blockTitle}>{b.title}</Text>
                       {(b.parts > 1 || !!b.frame_name || !!b.pinned) && (
                         <Text style={shared.small}>
                           {[
@@ -137,7 +137,7 @@ export function PlanView({
                     </View>
                   </View>
                   {actions && (
-                    <View style={s.blockActions}>
+                    <View style={[s.blockActions, compact && s.actionsCompact]}>
                       <SmallAction
                         label="Move"
                         disabled={actions.busy}
@@ -162,10 +162,23 @@ export function PlanView({
               ))}
             </View>
           ))}
-      {hidden > 0 && (
-        <Text style={[shared.small, s.gap]}>
-          And {hidden} more session{hidden === 1 ? "" : "s"}.
-        </Text>
+      {!!limit && plan.blocks.length > limit && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityState={{ expanded }}
+          onPress={() => setExpanded(!expanded)}
+          style={{
+            minHeight: 44,
+            justifyContent: "center",
+            alignSelf: "flex-start",
+          }}
+        >
+          <Text style={shared.small}>
+            {expanded
+              ? "Show fewer sessions"
+              : `Show all ${plan.blocks.length} sessions`}
+          </Text>
+        </Pressable>
       )}
 
       <Moves
@@ -228,11 +241,10 @@ function Moves({
             accessibilityState={{ checked: on, disabled: !onTick }}
             disabled={!onTick}
             onPress={() => onTick?.(m.block_id, !on)}
-            hitSlop={6}
             style={({ pressed }) => [s.move, pressed && s.pressed]}
           >
             <View style={[s.check, on && s.checkOn]}>
-              {on && <Icon name="check" size={13} color={colors.white} />}
+              {on && <Icon name="check" size={13} color={colors.onAccent} />}
             </View>
             <Text style={s.moveText}>{line}</Text>
           </Pressable>
@@ -322,6 +334,9 @@ const s = themed(() =>
       marginBottom: 2,
     },
     block: { flexDirection: "row", gap: 10, paddingVertical: 8 },
+    blockCompact: { flexDirection: "column", gap: 4 },
+    timeCompact: { width: "100%" },
+    actionsCompact: { paddingLeft: 0 },
     divider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
@@ -334,7 +349,7 @@ const s = themed(() =>
       color: colors.accent,
       paddingTop: 1,
     },
-    blockMain: { flex: 1 },
+    blockMain: { flex: 1, minWidth: 0 },
     blockActions: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -348,7 +363,12 @@ const s = themed(() =>
       color: colors.text,
     },
     notes: { marginTop: 14 },
-    notesHead: { flexDirection: "row", alignItems: "center", gap: 6 },
+    notesHead: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 6,
+    },
     notesTitle: {
       fontFamily: fonts.semibold,
       fontSize: 13,
@@ -362,6 +382,7 @@ const s = themed(() =>
       alignItems: "flex-start",
       gap: 10,
       paddingVertical: 8,
+      minHeight: 44,
       borderRadius: radii.input,
     },
     pressed: { backgroundColor: colors.surfaceMuted },

@@ -1,5 +1,5 @@
 import { PluginAiPermission } from "./PluginAiPermission";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
 import {
   AGENT_ACCESS,
@@ -34,6 +34,10 @@ import {
   type Team,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { BottomSheet } from "../components/BottomSheet";
+import { MoreMenu } from "../components/MoreMenu";
+import { ErrorBanner } from "../components/ErrorBanner";
+import { InlineDetails } from "../components/InlineDetails";
 import { Chip, ChipRow } from "../components/Chip";
 import { Field } from "../components/Field";
 import { Icon, CONCEPT_ICON } from "../components/Icon";
@@ -46,7 +50,7 @@ import { confirmAction } from "../lib/confirm";
 import { openReview } from "../lib/review";
 import { shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
-import { FadeIn, PressableScale, animateLayout } from "../motion";
+import { Pressable } from "../motion";
 import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { AgentRulesCard, InboxPanel } from "./AgentInbox";
@@ -78,22 +82,18 @@ function ToolsetChips({
   value,
   onChange,
   bookings,
+  disabled = false,
 }: {
   value: AgentToolset[];
   onChange: (next: AgentToolset[]) => void;
   bookings: boolean;
+  disabled?: boolean;
 }) {
   const shown = OPTIONAL_TOOLSETS.filter((t) => bookings || t !== "booking");
   return (
     <Field
       label="Tools"
-      hint={`${AGENT_TOOLSET_LABELS.core.name} are always on. ${shown
-        .filter((t) => value.includes(t))
-        .map(
-          (t) =>
-            `${AGENT_TOOLSET_LABELS[t].name}: ${AGENT_TOOLSET_LABELS[t].blurb}`,
-        )
-        .join(" ")}`}
+      hint={`${AGENT_TOOLSET_LABELS.core.name} are always on.`}
     >
       <ChipRow label="Tools" multi>
         {shown.map((t) => {
@@ -104,6 +104,7 @@ function ToolsetChips({
               multi
               label={AGENT_TOOLSET_LABELS[t].name}
               selected={on}
+              disabled={disabled}
               onPress={() =>
                 onChange(on ? value.filter((x) => x !== t) : [...value, t])
               }
@@ -111,6 +112,13 @@ function ToolsetChips({
           );
         })}
       </ChipRow>
+      <InlineDetails title="About these tools">
+        {shown.map((t) => (
+          <Text key={t} style={shared.small}>
+            {AGENT_TOOLSET_LABELS[t].name}: {AGENT_TOOLSET_LABELS[t].blurb}
+          </Text>
+        ))}
+      </InlineDetails>
     </Field>
   );
 }
@@ -166,7 +174,12 @@ function TrustPanel({
     ...grant.teams,
   ];
   return (
-    <FadeIn style={s.activity}>
+    <BottomSheet
+      visible
+      title="Agent permissions"
+      closeDisabled={busy}
+      onClose={onCancel}
+    >
       {!changes ? (
         <Text style={shared.small}>
           {grant.access === "read"
@@ -191,7 +204,7 @@ function TrustPanel({
                   key={t}
                   label={`${AGENT_TRUST_LABELS[t].name}${assistantGrant && t === "full" ? " · current" : ""}`}
                   selected={draft.trust === t}
-                  disabled={assistantGrant && t === "full"}
+                  disabled={busy || (assistantGrant && t === "full")}
                   onPress={() => onChange({ ...draft, trust: t })}
                 />
               ))}
@@ -212,6 +225,7 @@ function TrustPanel({
                       compact
                       label={t ? TRUST_TAG[t] : "Same"}
                       selected={(draft.spaces[sp.id] ?? "") === t}
+                      disabled={busy}
                       onPress={() =>
                         onChange({
                           ...draft,
@@ -243,6 +257,7 @@ function TrustPanel({
                     </View>
                     <Switch
                       value={asks}
+                      disabled={busy}
                       onValueChange={(on) =>
                         onChange({
                           ...draft,
@@ -274,11 +289,12 @@ function TrustPanel({
         <Button
           secondary
           title={changes ? "Cancel" : "Close"}
+          disabled={busy}
           style={s.flexButton}
           onPress={onCancel}
         />
       </View>
-    </FadeIn>
+    </BottomSheet>
   );
 }
 
@@ -292,14 +308,14 @@ const spacesText = (g: AgentGrant) =>
         ", ",
       ) || "No spaces";
 
-/** What a job touched that still opens, each once, at most five. */
+/** Each still-visible target touched by a job, once. */
 const jobLinks = (job: AgentJob): AgentActivityLink[] => {
   const seen = new Set<string>();
   const out: AgentActivityLink[] = [];
   for (const row of job.rows)
     for (const l of row.links ?? []) {
       const key = `${l.kind}:${l.id}`;
-      if (seen.has(key) || out.length >= 5) continue;
+      if (seen.has(key)) continue;
       seen.add(key);
       out.push(l);
     }
@@ -315,21 +331,24 @@ const outcomeText = (a: AgentActivity) =>
       : ` · ${a.outcome}`) + (a.undone_at ? " · undone" : "");
 
 /** Something a job touched, as a small link that opens it in the app. */
-function LinkChip({ link }: { link: AgentActivityLink }) {
+function LinkChip({
+  link,
+  onOpen,
+}: {
+  link: AgentActivityLink;
+  onOpen?: () => void;
+}) {
   const concept = link.kind === "doc" ? "page" : link.kind;
   return (
-    <PressableScale
+    <Pressable
       accessibilityRole="link"
       accessibilityLabel={`Open ${link.title || "Untitled"}`}
-      hitSlop={{ top: 5, bottom: 5 }}
-      onPress={() => openAppUrl(`orbyn://${link.kind}/${link.id}`)}
+      onPress={onOpen ?? (() => openAppUrl(`orbyn://${link.kind}/${link.id}`))}
       style={s.link}
     >
       <Icon name={CONCEPT_ICON[concept]} size={13} color={colors.accent} />
-      <Text style={s.linkText} numberOfLines={1}>
-        {link.title || "Untitled"}
-      </Text>
-    </PressableScale>
+      <Text style={s.linkText}>{link.title || "Untitled"}</Text>
+    </Pressable>
   );
 }
 
@@ -352,13 +371,29 @@ export function ConnectedAgentsCard({
   busy,
   run,
   onOpenReview = openReview,
+  onPermissionBusyChange,
 }: {
   busy: boolean;
   run: (fn: () => Promise<void>) => Promise<unknown>;
   /** Opens a proposal an agent made in Review. */
   onOpenReview?: (proposalId: string) => void;
+  onPermissionBusyChange?: (grantId: string, busy: boolean) => void;
 }) {
   const [overview, setOverview] = useState<AgentsOverview | null>(null);
+  const [activityId, setActivityId] = useState<string | null>(null);
+  const [activityOpen, setActivityOpen] = useState(false);
+  const activityExitAction = useRef<(() => void) | null>(null);
+  const leaveActivity = (next?: () => void) => {
+    if (busy) return;
+    activityExitAction.current = next ?? null;
+    setActivityOpen(false);
+  };
+  const [connectionQuery, setConnectionQuery] = useState("");
+  const [connectionPage, setConnectionPage] = useState(0);
+  const [connecting, setConnecting] = useState(false);
+  const [connectError, setConnectError] = useState("");
+  const [keyPending, setKeyPending] = useState(false);
+  const keyMutation = useRef(false);
   const [connectionHelpOpen, setConnectionHelpOpen] = useState(false);
   const [teams, setTeams] = useState<Team[]>([]);
   const [activity, setActivity] = useState<
@@ -388,10 +423,38 @@ export function ConnectedAgentsCard({
   /** The connection whose inbox choices (kinds, wake-up) are open. */
   const [hearing, setHearing] = useState<string | null>(null);
 
-  const reload = async () => setOverview(await client.agents());
+  const mounted = useRef(true);
+  const readEpoch = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [readError, setReadError] = useState("");
+  const [activityError, setActivityError] = useState<Record<string, string>>(
+    {},
+  );
+  const activityPending = useRef(false);
+  const reload = useCallback(async () => {
+    const epoch = ++readEpoch.current;
+    setLoading(true);
+    try {
+      const [next, availableTeams] = await Promise.all([
+        client.agents(),
+        client.listTeams(),
+      ]);
+      if (!mounted.current || readEpoch.current !== epoch) return;
+      setOverview(next);
+      setTeams(availableTeams);
+      setReadError("");
+    } catch (error) {
+      if (mounted.current && readEpoch.current === epoch)
+        setReadError(
+          error instanceof Error ? error.message : "Couldn't load agents.",
+        );
+    } finally {
+      if (mounted.current && readEpoch.current === epoch) setLoading(false);
+    }
+  }, []);
+  const blocked = busy || loading || !!readError;
 
   const openTrust = (g: AgentGrant) => {
-    animateLayout();
     setTrusting(
       trusting?.id === g.id
         ? null
@@ -419,32 +482,50 @@ export function ConnectedAgentsCard({
         ),
         acts_alone: d.actsAlone,
       });
-      animateLayout();
+      if (!mounted.current) return;
       setTrusting(null);
       await reload();
     });
   useEffect(() => {
-    void run(async () => {
-      const [o, t] = await Promise.all([client.agents(), client.listTeams()]);
-      setOverview(o);
-      setTeams(t);
-    });
-  }, [run]);
+    mounted.current = true;
+    void reload();
+    return () => {
+      mounted.current = false;
+      ++readEpoch.current;
+    };
+  }, [reload]);
 
   const url = overview?.mcp_url || "https://mcp.orbyn.dev/mcp";
   const setup = agentSetup(tab, url, fresh ?? undefined);
 
-  const toggleActivity = (g: AgentGrant) => {
-    animateLayout();
-    if (activity[g.id] !== undefined) {
-      setActivity(({ [g.id]: _open, ...rest }) => rest);
-      return;
-    }
-    setActivity((a) => ({ ...a, [g.id]: null }));
+  const loadActivity = (g: AgentGrant) => {
+    if (busy || activityPending.current) return;
+    activityPending.current = true;
+    setActivity((value) => ({ ...value, [g.id]: null }));
+    setActivityError((value) => ({ ...value, [g.id]: "" }));
     void run(async () => {
-      const list = await client.agentActivity(g.id);
-      setActivity((a) => ({ ...a, [g.id]: list }));
+      try {
+        const value = await client.agentActivity(g.id);
+        if (mounted.current) setActivity((all) => ({ ...all, [g.id]: value }));
+      } catch (error) {
+        if (mounted.current)
+          setActivityError((all) => ({
+            ...all,
+            [g.id]:
+              error instanceof Error
+                ? error.message
+                : "Couldn't load activity.",
+          }));
+      }
+    }).finally(() => {
+      activityPending.current = false;
     });
+  };
+  const toggleActivity = (g: AgentGrant) => {
+    if (blocked || activityPending.current) return;
+    setActivityId(g.id);
+    setActivityOpen(true);
+    loadActivity(g);
   };
 
   // Take back one change an agent made directly (kept 30 days; refused if
@@ -458,7 +539,7 @@ export function ConnectedAgentsCard({
         void run(async () => {
           await client.undoAgentChange(a.id);
           const list = await client.agentActivity(g.id);
-          animateLayout();
+          if (!mounted.current) return;
           setActivity((all) => ({ ...all, [g.id]: list }));
         }),
       false,
@@ -475,7 +556,7 @@ export function ConnectedAgentsCard({
         void run(async () => {
           const { undone } = await client.undoAgentJob(g.id, job.job!);
           const list = await client.agentActivity(g.id);
-          animateLayout();
+          if (!mounted.current) return;
           setActivity((all) => ({ ...all, [g.id]: list }));
           showToast({
             text: undone === 1 ? "Undid 1 change." : `Undid ${undone} changes.`,
@@ -485,7 +566,6 @@ export function ConnectedAgentsCard({
     );
 
   const toggleJob = (key: string) => {
-    animateLayout();
     setExpanded((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
@@ -508,7 +588,7 @@ export function ConnectedAgentsCard({
         <SmallAction
           label="Review"
           disabled={busy}
-          onPress={() => onOpenReview(a.proposal_id!)}
+          onPress={() => leaveActivity(() => onOpenReview(a.proposal_id!))}
         />
       )}
       {a.undoable && (
@@ -551,7 +631,9 @@ export function ConnectedAgentsCard({
               <SmallAction
                 label="Review"
                 disabled={busy}
-                onPress={() => onOpenReview(row.proposal_id!)}
+                onPress={() =>
+                  leaveActivity(() => onOpenReview(row.proposal_id!))
+                }
               />
             )}
             {single && row.undoable && (
@@ -566,7 +648,13 @@ export function ConnectedAgentsCard({
         {links.length > 0 && (
           <View style={[s.indent, s.links]}>
             {links.map((l) => (
-              <LinkChip key={`${l.kind}:${l.id}`} link={l} />
+              <LinkChip
+                key={`${l.kind}:${l.id}`}
+                link={l}
+                onOpen={() =>
+                  leaveActivity(() => openAppUrl(`orbyn://${l.kind}/${l.id}`))
+                }
+              />
             ))}
           </View>
         )}
@@ -614,7 +702,6 @@ export function ConnectedAgentsCard({
       () =>
         void run(async () => {
           await client.revokeAgent(g.id);
-          animateLayout();
           await reload();
         }),
     );
@@ -624,7 +711,7 @@ export function ConnectedAgentsCard({
     void run(async () => {
       if (!editing) return;
       await client.setAgentToolsets(editing.id, editing.toolsets);
-      animateLayout();
+      if (!mounted.current) return;
       setEditing(null);
       await reload();
     });
@@ -632,43 +719,74 @@ export function ConnectedAgentsCard({
   const restore = (g: AgentGrant) =>
     void run(async () => {
       await client.restoreAgent(g.id);
-      animateLayout();
       await reload();
     });
 
-  const make = () =>
+  const make = () => {
+    if (blocked || keyMutation.current) return;
+    if (!personal && !teamIds.length) {
+      setConnectError("Choose at least one space.");
+      return;
+    }
+    keyMutation.current = true;
+    setKeyPending(true);
+    setConnectError("");
     void run(async () => {
-      if (!personal && !teamIds.length)
-        throw new Error("Choose at least one space: Personal or a team.");
-      const made = await client.createAgentKey({
-        name: name.trim() || `${AGENT_SETUP_LABELS[tab]} key`,
-        access,
-        personal,
-        team_ids: teamIds,
-        expires_in_days: days,
-        hide_outside_content: hideOutside,
-        toolsets: ["core", ...toolsets],
-      });
-      animateLayout();
-      setFresh(made.key);
-      setMaking(false);
-      setName("");
-      await reload();
+      try {
+        const made = await client.createAgentKey({
+          name: name.trim() || `${AGENT_SETUP_LABELS[tab]} key`,
+          access,
+          personal,
+          team_ids: teamIds,
+          expires_in_days: days,
+          hide_outside_content: hideOutside,
+          toolsets: ["core", ...toolsets],
+        });
+        if (!mounted.current) return;
+        setFresh(made.key);
+        setMaking(false);
+        setName("");
+        await reload();
+      } catch (error) {
+        if (mounted.current)
+          setConnectError("Couldn't create the key. Try again.");
+        throw error;
+      } finally {
+        keyMutation.current = false;
+        if (mounted.current) setKeyPending(false);
+      }
     });
+  };
 
   const grants = overview?.grants ?? [];
+  const listLocked =
+    blocked || !!editing || !!trusting || !!hearing || !!activityId;
+  const query = connectionQuery.trim().toLocaleLowerCase();
+  const matchingGrants = grants.filter((grant) =>
+    [grantTitle(grant), grant.name, grant.client_host, spacesText(grant)]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(query),
+  );
+  const pageSize = 5;
+  const lastPage = Math.max(0, Math.ceil(matchingGrants.length / pageSize) - 1);
+  const page = Math.min(connectionPage, lastPage);
+  const shownGrants = matchingGrants.slice(
+    page * pageSize,
+    (page + 1) * pageSize,
+  );
   return (
     <>
-      <Text style={[shared.eyebrow, s.eyebrow]}>CONNECTED AGENTS</Text>
+      <Text style={[shared.eyebrow, s.eyebrow]}>Connected agents</Text>
       <View style={shared.card}>
         <Text style={[shared.small, s.gap]}>
           Choose what connected agents can access.
         </Text>
-        <PressableScale
+        <Pressable
           accessibilityRole="button"
           accessibilityState={{ expanded: connectionHelpOpen }}
           onPress={() => {
-            animateLayout();
             setConnectionHelpOpen(!connectionHelpOpen);
           }}
           style={s.connectionHelp}
@@ -679,17 +797,44 @@ export function ConnectedAgentsCard({
             size={16}
             color={colors.muted}
           />
-        </PressableScale>
+        </Pressable>
         {connectionHelpOpen && (
           <Text style={[shared.small, s.gap]}>
             Agents use their own AI and only access the spaces you allow. Review
             permissions when connecting and disconnect at any time.
           </Text>
         )}
+        {!!grants.length && (
+          <View style={s.gap}>
+            <Text style={shared.label}>Find a connection</Text>
+            <TextInput
+              accessibilityLabel="Find a connection"
+              placeholder="Name or space"
+              style={shared.input}
+              value={connectionQuery}
+              editable={!listLocked}
+              onChangeText={(value) => {
+                setConnectionQuery(value);
+                setConnectionPage(0);
+              }}
+            />
+          </View>
+        )}
+        <ErrorBanner error={readError} />
+        {readError && (
+          <Button
+            title="Retry agents"
+            secondary
+            disabled={busy || loading}
+            onPress={() => void reload()}
+          />
+        )}
         {overview === null ? (
-          <Text style={shared.small}>Loading…</Text>
+          <Text style={shared.small}>
+            {loading ? "Loading agents…" : "Agents unavailable."}
+          </Text>
         ) : grants.length ? (
-          grants.map((g) => {
+          shownGrants.map((g) => {
             const expiry = agentExpiryText(g.expires_at);
             const open = activity[g.id];
             return (
@@ -749,60 +894,56 @@ export function ConnectedAgentsCard({
                 <View style={[s.actions, s.wrap]}>
                   <SmallAction
                     label={open !== undefined ? "Hide activity" : "Activity"}
-                    disabled={busy}
+                    disabled={blocked}
                     onPress={() => toggleActivity(g)}
                   />
-                  <SmallAction
-                    label="How it acts"
-                    disabled={busy}
-                    onPress={() => openTrust(g)}
+                  <MoreMenu
+                    label={`${grantTitle(g)} options`}
+                    title={grantTitle(g)}
+                    disabled={blocked}
+                    actions={[
+                      { label: "Permissions", onPress: () => openTrust(g) },
+                      {
+                        label: "Inbox",
+                        onPress: () =>
+                          setHearing(hearing === g.id ? null : g.id),
+                      },
+                      ...(g.kind !== "legacy" && g.kind !== "assistant"
+                        ? [
+                            {
+                              label: "Tools",
+                              onPress: () =>
+                                setEditing({
+                                  id: g.id,
+                                  toolsets: g.toolsets.filter(
+                                    (t) => t !== "core",
+                                  ),
+                                }),
+                            },
+                          ]
+                        : []),
+                      ...(g.suspended_at
+                        ? [
+                            {
+                              label: "Restore agent",
+                              onPress: () => restore(g),
+                            },
+                          ]
+                        : []),
+                      ...(g.kind !== "assistant"
+                        ? [
+                            {
+                              label:
+                                g.kind === "legacy" || g.kind === "oauth"
+                                  ? "Disconnect"
+                                  : "Revoke key",
+                              destructive: true,
+                              onPress: () => revoke(g),
+                            },
+                          ]
+                        : []),
+                    ]}
                   />
-                  <SmallAction
-                    label="What it hears"
-                    disabled={busy}
-                    onPress={() => {
-                      animateLayout();
-                      setHearing(hearing === g.id ? null : g.id);
-                    }}
-                  />
-                  {g.kind !== "legacy" && g.kind !== "assistant" && (
-                    <SmallAction
-                      label={editing?.id === g.id ? "Close tools" : "Tools"}
-                      disabled={busy}
-                      onPress={() => {
-                        animateLayout();
-                        setEditing(
-                          editing?.id === g.id
-                            ? null
-                            : {
-                                id: g.id,
-                                toolsets: g.toolsets.filter(
-                                  (t) => t !== "core",
-                                ),
-                              },
-                        );
-                      }}
-                    />
-                  )}
-                  {g.suspended_at && (
-                    <SmallAction
-                      label="Restore"
-                      disabled={busy}
-                      onPress={() => restore(g)}
-                    />
-                  )}
-                  {g.kind !== "assistant" && (
-                    <SmallAction
-                      destructive
-                      label={
-                        g.kind === "legacy" || g.kind === "oauth"
-                          ? "Disconnect"
-                          : "Revoke"
-                      }
-                      disabled={busy}
-                      onPress={() => revoke(g)}
-                    />
-                  )}
                 </View>
                 {hearing === g.id && (
                   <InboxPanel
@@ -810,12 +951,16 @@ export function ConnectedAgentsCard({
                     busy={busy}
                     run={run}
                     onClose={() => {
-                      animateLayout();
                       setHearing(null);
                     }}
                   />
                 )}
-                {g.kind === "oauth" && <PluginAiPermission grantId={g.id} />}
+                {g.kind === "oauth" && (
+                  <PluginAiPermission
+                    grantId={g.id}
+                    onBusyChange={onPermissionBusyChange}
+                  />
+                )}
                 {trusting?.id === g.id && (
                   <TrustPanel
                     grant={g}
@@ -823,16 +968,23 @@ export function ConnectedAgentsCard({
                     onChange={setTrusting}
                     onSave={() => saveTrust(g)}
                     onCancel={() => {
-                      animateLayout();
                       setTrusting(null);
                     }}
                     busy={busy}
                   />
                 )}
                 {editing?.id === g.id && (
-                  <FadeIn style={s.activity}>
+                  <BottomSheet
+                    visible
+                    title="Agent tools"
+                    closeDisabled={busy}
+                    onClose={() => {
+                      if (!busy) setEditing(null);
+                    }}
+                  >
                     <ToolsetChips
                       value={editing.toolsets}
+                      disabled={busy}
                       bookings={
                         g.kind === "key" || g.toolsets.includes("booking")
                       }
@@ -856,24 +1008,51 @@ export function ConnectedAgentsCard({
                       <Button
                         secondary
                         title="Cancel"
+                        disabled={busy}
                         style={s.flexButton}
                         onPress={() => setEditing(null)}
                       />
                     </View>
-                  </FadeIn>
+                  </BottomSheet>
                 )}
-                {open !== undefined && (
-                  <FadeIn style={s.activity}>
-                    {open === null ? (
-                      <Text style={shared.small}>Loading…</Text>
-                    ) : open.length ? (
-                      groupAgentActivity(open)
-                        .slice(0, 30)
-                        .map((job, n) => jobView(g, job, n === 0))
-                    ) : (
-                      <Text style={shared.small}>Nothing yet.</Text>
-                    )}
-                  </FadeIn>
+                {activityId === g.id && open !== undefined && (
+                  <BottomSheet
+                    visible={activityOpen}
+                    title={`Activity · ${grantTitle(g)}`}
+                    closeDisabled={busy}
+                    onClose={() => leaveActivity()}
+                    afterClose={() => {
+                      const next = activityExitAction.current;
+                      activityExitAction.current = null;
+                      setActivityId(null);
+                      next?.();
+                    }}
+                  >
+                    <View style={s.activity}>
+                      <ErrorBanner error={activityError[g.id]} />
+                      {activityError[g.id] && (
+                        <Button
+                          title="Retry activity"
+                          secondary
+                          disabled={busy}
+                          onPress={() => loadActivity(g)}
+                        />
+                      )}
+                      {open === null ? (
+                        <Text style={shared.small}>
+                          {activityError[g.id]
+                            ? "Activity unavailable."
+                            : "Loading activity…"}
+                        </Text>
+                      ) : open.length ? (
+                        groupAgentActivity(open).map((job, n) =>
+                          jobView(g, job, n === 0),
+                        )
+                      ) : (
+                        <Text style={shared.small}>Nothing yet.</Text>
+                      )}
+                    </View>
+                  </BottomSheet>
                 )}
               </View>
             );
@@ -883,221 +1062,289 @@ export function ConnectedAgentsCard({
         )}
       </View>
 
-      <Text style={[shared.eyebrow, s.eyebrow]}>ABOUT YOU</Text>
+      {overview &&
+        !readError &&
+        grants.length > 0 &&
+        matchingGrants.length === 0 && (
+          <Text style={shared.small}>No matching connections.</Text>
+        )}
+      {overview && !readError && matchingGrants.length > pageSize && (
+        <View style={s.actions}>
+          <Button
+            title="Previous"
+            secondary
+            disabled={page === 0 || listLocked}
+            onPress={() => setConnectionPage(page - 1)}
+          />
+          <Text style={shared.small}>
+            {page * pageSize + 1}–
+            {Math.min((page + 1) * pageSize, matchingGrants.length)} of{" "}
+            {matchingGrants.length}
+          </Text>
+          <Button
+            title="Next"
+            secondary
+            disabled={page === lastPage || listLocked}
+            onPress={() => setConnectionPage(page + 1)}
+          />
+        </View>
+      )}
+
+      <Text style={[shared.eyebrow, s.eyebrow]}>Agent identity</Text>
       <AgentWarmStartCards busy={busy} run={run} />
 
       {!!overview?.grants.length && (
         <>
-          <Text style={[shared.eyebrow, s.eyebrow]}>STANDING RULES</Text>
+          <Text style={[shared.eyebrow, s.eyebrow]}>Standing rules</Text>
           <AgentRulesCard busy={busy} run={run} />
         </>
       )}
 
-      <Text style={[shared.eyebrow, s.eyebrow]}>CONNECT AN AGENT</Text>
-      <View style={shared.card}>
-        <ChipRow label="Which app">
-          {AGENT_SETUP_CLIENTS.map((c) => (
-            <Chip
-              key={c}
-              label={AGENT_SETUP_LABELS[c]}
-              selected={tab === c}
-              onPress={() => setTab(c)}
-            />
-          ))}
-        </ChipRow>
+      <Button
+        title="Connect an agent"
+        icon="plus"
+        disabled={blocked}
+        onPress={() => {
+          setConnectError("");
+          setConnecting(true);
+        }}
+      />
+      <BottomSheet
+        visible={connecting}
+        title="Connect an agent"
+        closeDisabled={busy || keyPending || !!fresh}
+        onClose={() => {
+          if (!busy && !keyMutation.current && !fresh) setConnecting(false);
+        }}
+      >
+        <View style={s.connectForm}>
+          <ErrorBanner error={connectError} />
+          <ChipRow label="Which app">
+            {AGENT_SETUP_CLIENTS.map((c) => (
+              <Chip
+                key={c}
+                label={AGENT_SETUP_LABELS[c]}
+                selected={tab === c}
+                disabled={busy || keyPending || making}
+                onPress={() => setTab(c)}
+              />
+            ))}
+          </ChipRow>
 
-        {isSignInClient(tab) ? (
-          <>
-            <Text style={[shared.label, s.step]}>1. {setup.where}</Text>
-            <Text selectable style={s.code}>
-              {setup.snippet}
-            </Text>
-            <SmallAction
-              label="Copy or share"
-              disabled={false}
-              onPress={() => void shareText(setup.snippet)}
-            />
-            {AGENT_SIGN_IN_STEPS[tab as keyof typeof AGENT_SIGN_IN_STEPS].map(
-              (step, i) => (
-                <Text key={step} style={[shared.small, s.step]}>
-                  {i + 2}. {step}
-                </Text>
-              ),
-            )}
-            <Text style={[shared.small, s.step]}>
-              No key needed. Choose its spaces and access. Write access needs
-              another password or passkey check.
-            </Text>
-          </>
-        ) : (
-          <>
-            <Text style={[shared.label, s.step]}>1. Make an agent key</Text>
-            {fresh ? (
-              <FadeIn style={s.secret}>
-                <Text style={shared.label}>
-                  Copy it now, it won’t be shown again
-                </Text>
-                <Text selectable style={s.code}>
-                  {fresh}
-                </Text>
-                <View style={s.actions}>
-                  <Button
-                    title="Copy or share"
-                    icon="share"
-                    style={s.flexButton}
-                    onPress={() => void shareText(fresh)}
-                  />
-                  <Button
-                    secondary
-                    title="Done"
-                    style={s.flexButton}
-                    onPress={() => setFresh(null)}
-                  />
-                </View>
-              </FadeIn>
-            ) : making ? (
-              <>
-                <Field label="Name">
-                  <TextInput
-                    style={shared.input}
-                    value={name}
-                    onChangeText={setName}
-                    maxLength={80}
-                    placeholder={`Like “MacBook · ${AGENT_SETUP_LABELS[tab]}”`}
-                    placeholderTextColor={colors.faint}
-                    accessibilityLabel="Agent key name"
-                  />
-                </Field>
-                <Field
-                  label="What it may do"
-                  hint={
-                    AGENT_ACCESS_LABELS[access].blurb +
-                    (access === "write"
-                      ? " Change how much it does alone later with “How it acts”."
-                      : "")
-                  }
-                >
-                  <ChipRow label="What it may do">
-                    {AGENT_ACCESS.map((a) => (
-                      <Chip
-                        key={a}
-                        label={AGENT_ACCESS_LABELS[a].name}
-                        selected={access === a}
-                        onPress={() => setAccess(a)}
-                      />
-                    ))}
-                  </ChipRow>
-                </Field>
-                <Field label="In these spaces">
-                  <ChipRow label="Spaces" multi>
-                    <Chip
-                      multi
-                      label="Personal"
-                      selected={personal}
-                      onPress={() => setPersonal(!personal)}
+          {isSignInClient(tab) ? (
+            <>
+              <Text style={[shared.label, s.step]}>1. {setup.where}</Text>
+              <Text selectable style={s.code}>
+                {setup.snippet}
+              </Text>
+              <SmallAction
+                label="Copy or share"
+                disabled={false}
+                onPress={() => void shareText(setup.snippet)}
+              />
+              {AGENT_SIGN_IN_STEPS[tab as keyof typeof AGENT_SIGN_IN_STEPS].map(
+                (step, i) => (
+                  <Text key={step} style={[shared.small, s.step]}>
+                    {i + 2}. {step}
+                  </Text>
+                ),
+              )}
+              <Text style={[shared.small, s.step]}>
+                No key needed. Choose its spaces and access. Write access needs
+                another password or passkey check.
+              </Text>
+            </>
+          ) : (
+            <>
+              <Text style={[shared.label, s.step]}>1. Make an agent key</Text>
+              {fresh ? (
+                <View style={s.secret}>
+                  <Text style={shared.label}>
+                    Copy it now, it won’t be shown again
+                  </Text>
+                  <Text selectable style={s.code}>
+                    {fresh}
+                  </Text>
+                  <View style={s.actions}>
+                    <Button
+                      title="Copy or share"
+                      icon="share"
+                      style={s.flexButton}
+                      onPress={() => void shareText(fresh)}
                     />
-                    {teams.map((t) => {
-                      const on = teamIds.includes(t.id);
-                      return (
-                        <Chip
-                          key={t.id}
-                          multi
-                          label={t.name}
-                          selected={on}
-                          onPress={() =>
-                            setTeamIds(
-                              on
-                                ? teamIds.filter((x) => x !== t.id)
-                                : [...teamIds, t.id],
-                            )
-                          }
-                        />
-                      );
-                    })}
-                  </ChipRow>
-                </Field>
-                <Field label="Lasts">
-                  <ChipRow label="Lasts">
-                    {EXPIRY_CHOICES.map((d) => (
-                      <Chip
-                        key={d}
-                        label={d === 365 ? "A year" : `${d} days`}
-                        selected={days === d}
-                        onPress={() => setDays(d)}
-                      />
-                    ))}
-                  </ChipRow>
-                </Field>
-                <ToolsetChips
-                  value={toolsets}
-                  bookings
-                  onChange={setToolsets}
-                />
-                <View style={s.switchRow}>
-                  <View style={s.flex}>
-                    <Text style={shared.label}>Hide outside content</Text>
-                    <Text style={shared.small}>{AGENT_HIDE_OUTSIDE_TEXT}</Text>
+                    <Button
+                      secondary
+                      title="Done"
+                      style={s.flexButton}
+                      onPress={() => setFresh(null)}
+                    />
                   </View>
-                  <Switch
-                    value={hideOutside}
-                    onValueChange={setHideOutside}
-                    trackColor={{ true: colors.accent }}
-                    accessibilityLabel="Hide outside content"
+                </View>
+              ) : making ? (
+                <View style={s.connectForm}>
+                  <Field label="Name">
+                    <TextInput
+                      style={shared.input}
+                      value={name}
+                      editable={!busy && !keyPending}
+                      onChangeText={setName}
+                      maxLength={80}
+                      placeholder={`Like “MacBook · ${AGENT_SETUP_LABELS[tab]}”`}
+                      placeholderTextColor={colors.faint}
+                      accessibilityLabel="Agent key name"
+                    />
+                  </Field>
+                  <Field
+                    label="What it may do"
+                    hint={
+                      AGENT_ACCESS_LABELS[access].blurb +
+                      (access === "write"
+                        ? " Change how much it does alone later with “How it acts”."
+                        : "")
+                    }
+                  >
+                    <ChipRow label="What it may do">
+                      {AGENT_ACCESS.map((a) => (
+                        <Chip
+                          key={a}
+                          label={AGENT_ACCESS_LABELS[a].name}
+                          selected={access === a}
+                          disabled={busy || keyPending}
+                          onPress={() => setAccess(a)}
+                        />
+                      ))}
+                    </ChipRow>
+                  </Field>
+                  <Field label="In these spaces">
+                    <ChipRow label="Spaces" multi>
+                      <Chip
+                        multi
+                        label="Personal"
+                        selected={personal}
+                        disabled={busy || keyPending}
+                        onPress={() => setPersonal(!personal)}
+                      />
+                      {teams.map((t) => {
+                        const on = teamIds.includes(t.id);
+                        return (
+                          <Chip
+                            key={t.id}
+                            multi
+                            label={t.name}
+                            selected={on}
+                            disabled={busy || keyPending}
+                            onPress={() =>
+                              setTeamIds(
+                                on
+                                  ? teamIds.filter((x) => x !== t.id)
+                                  : [...teamIds, t.id],
+                              )
+                            }
+                          />
+                        );
+                      })}
+                    </ChipRow>
+                  </Field>
+                  <Field label="Lasts">
+                    <ChipRow label="Lasts">
+                      {EXPIRY_CHOICES.map((d) => (
+                        <Chip
+                          key={d}
+                          label={d === 365 ? "A year" : `${d} days`}
+                          selected={days === d}
+                          disabled={busy || keyPending}
+                          onPress={() => setDays(d)}
+                        />
+                      ))}
+                    </ChipRow>
+                  </Field>
+                  <ToolsetChips
+                    value={toolsets}
+                    disabled={busy || keyPending}
+                    bookings
+                    onChange={setToolsets}
+                  />
+                  <View style={s.switchRow}>
+                    <View style={s.flex}>
+                      <Text style={shared.label}>Hide outside content</Text>
+                      <Text style={shared.small}>
+                        {AGENT_HIDE_OUTSIDE_TEXT}
+                      </Text>
+                    </View>
+                    <Switch
+                      value={hideOutside}
+                      disabled={busy || keyPending}
+                      onValueChange={setHideOutside}
+                      trackColor={{ true: colors.accent }}
+                      accessibilityLabel="Hide outside content"
+                    />
+                  </View>
+                  <Button
+                    title="Make key"
+                    icon="key"
+                    style={s.last}
+                    disabled={blocked || keyPending}
+                    onPress={make}
+                  />
+                  <Button
+                    title="Cancel key"
+                    secondary
+                    disabled={busy || keyPending}
+                    onPress={() => setMaking(false)}
                   />
                 </View>
+              ) : (
                 <Button
-                  title="Make key"
+                  secondary
+                  title="Make a key"
+                  disabled={blocked || keyPending}
                   icon="key"
                   style={s.last}
-                  disabled={busy}
-                  onPress={make}
+                  onPress={() => setMaking(true)}
                 />
-              </>
-            ) : (
-              <Button
-                secondary
-                title="Make a key"
-                icon="key"
-                style={s.last}
-                onPress={() => setMaking(true)}
+              )}
+
+              <Text style={[shared.label, s.step]}>2. {setup.where}</Text>
+              <Text selectable style={s.code}>
+                {setup.snippet}
+              </Text>
+              <SmallAction
+                label="Copy or share"
+                disabled={false}
+                onPress={() => void shareText(setup.snippet)}
               />
-            )}
+            </>
+          )}
 
-            <Text style={[shared.label, s.step]}>2. {setup.where}</Text>
-            <Text selectable style={s.code}>
-              {setup.snippet}
-            </Text>
-            <SmallAction
-              label="Copy or share"
-              disabled={false}
-              onPress={() => void shareText(setup.snippet)}
-            />
-          </>
-        )}
-
-        <Text style={[shared.label, s.step]}>Or add Orbyn in one click</Text>
-        <Text style={[shared.small, s.gap]}>
-          Open this link on your computer. It signs in or asks for an agent key;
-          the link contains no key.
-        </Text>
-        {agentInstallLinks(url).map((l) => (
-          <View key={l.app} style={s.installRow}>
-            <Text style={[shared.label, s.flex]}>{l.label}</Text>
-            <SmallAction
-              label="Share link"
-              disabled={false}
-              onPress={() => void shareText(l.href)}
-            />
-          </View>
-        ))}
-      </View>
+          <Text style={[shared.label, s.step]}>Or add Orbyn in one click</Text>
+          <Text style={[shared.small, s.gap]}>
+            Open this link on your computer. It signs in or asks for an agent
+            key; the link contains no key.
+          </Text>
+          {agentInstallLinks(url).map((l) => (
+            <View key={l.app} style={s.installRow}>
+              <Text style={[shared.label, s.flex]}>{l.label}</Text>
+              <SmallAction
+                label="Share link"
+                disabled={false}
+                onPress={() => void shareText(l.href)}
+              />
+            </View>
+          ))}
+        </View>
+      </BottomSheet>
     </>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
-    eyebrow: { marginTop: 8 },
+    eyebrow: {
+      marginTop: 8,
+      fontSize: 13,
+      letterSpacing: 0,
+      textTransform: "none",
+    },
     gap: { marginBottom: 12 },
     connectionHelp: {
       minHeight: controls.tap,
@@ -1118,16 +1365,22 @@ const s = themed(() =>
       fontSize: 15,
       color: colors.text,
     },
+    connectForm: { gap: 12 },
     tags: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
-    actions: { flexDirection: "row", gap: 10, alignItems: "center" },
-    wrap: { flexWrap: "wrap" },
-    activity: {
-      backgroundColor: colors.surfaceMuted,
-      borderRadius: radii.input,
-      padding: 10,
-      gap: 6,
+    actions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      alignItems: "center",
     },
-    activityRow: { flexDirection: "row", gap: 10, alignItems: "center" },
+    wrap: { flexWrap: "wrap" },
+    activity: { gap: 6 },
+    activityRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      alignItems: "center",
+    },
     activityTime: { width: 64, color: colors.muted },
     job: { gap: 6 },
     jobDivider: {
@@ -1137,11 +1390,11 @@ const s = themed(() =>
     },
     jobText: { color: colors.text },
     // Under the words, past the time column (64 + the row's gap).
-    indent: { paddingLeft: 74 },
+    indent: { paddingLeft: 0 },
     links: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     link: {
       // 34pt drawn, 44pt to a finger through hitSlop.
-      minHeight: controls.tap - 10,
+      minHeight: controls.tap,
       maxWidth: "100%",
       flexDirection: "row",
       alignItems: "center",
@@ -1161,7 +1414,7 @@ const s = themed(() =>
     },
     jobActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     jobRows: { gap: 6 },
-    flex: { flex: 1 },
+    flex: { flex: 1, minWidth: 120 },
     askName: {
       fontFamily: fonts.semibold,
       fontSize: 13,
@@ -1173,7 +1426,7 @@ const s = themed(() =>
       gap: 12,
       marginBottom: 14,
     },
-    flexButton: { flex: 1, marginBottom: 0 },
+    flexButton: { flex: 1, minWidth: 120, marginBottom: 0 },
     step: { marginTop: 14, marginBottom: 8 },
     secret: {
       backgroundColor: colors.accentSoft,

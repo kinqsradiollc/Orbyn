@@ -1,6 +1,6 @@
 import { Character } from "../components/Character";
 import { CharacterEditor } from "../components/CharacterEditor";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import {
   MAX_AGENT_INSTRUCTIONS,
@@ -12,6 +12,9 @@ import {
   type AgentInstructions,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { BottomSheet } from "../components/BottomSheet";
+import { ErrorBanner } from "../components/ErrorBanner";
+import { InlineDetails } from "../components/InlineDetails";
 import { Field } from "../components/Field";
 import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
@@ -19,7 +22,6 @@ import { openAppUrl } from "../hooks/useAppLinks";
 import { client } from "../lib/api";
 import { session } from "../lib/session";
 import { timeAgo } from "../lib/progress";
-import { FadeIn } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { NightShift } from "./NightShift";
@@ -28,7 +30,7 @@ import { ReminderNudges } from "./ReminderNudges";
 type Run = (fn: () => Promise<void>) => Promise<unknown>;
 
 /**
- * Connected agents on the phone → "About me for agents" and "Instructions"
+ * Connected agents on the phone → "Agent context" and "Instructions"
  * (H8): the page every agent reads first (an ordinary Personal page, made
  * here on first use) and a few lines per space that agents follow there.
  * A team's are shared by its members' agents; viewers only read them.
@@ -55,34 +57,71 @@ export function AgentWarmStartCards({
     text: string;
   } | null>(null);
 
-  const load = async () => setData(await client.agentContext());
-  useEffect(() => {
-    void run(load);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const mounted = useRef(true);
+  const contextEpoch = useRef(0);
+  const identityEpoch = useRef(0);
+  const [contextError, setContextError] = useState("");
+  const [identityError, setIdentityError] = useState("");
+  const load = useCallback(async () => {
+    const epoch = ++contextEpoch.current;
+    const token = session.token;
+    try {
+      const next = await client.agentContext();
+      if (
+        !mounted.current ||
+        epoch !== contextEpoch.current ||
+        token !== session.token
+      )
+        return;
+      setData(next);
+      setContextError("");
+    } catch {
+      if (
+        mounted.current &&
+        epoch === contextEpoch.current &&
+        token === session.token
+      )
+        setContextError("Couldn't load agent instructions.");
+    }
   }, []);
-
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      ++contextEpoch.current;
+    };
+  }, [load]);
   useEffect(() => {
     let live = true;
+    const epoch = ++identityEpoch.current;
     const token = session.token;
     setIdentity(null);
+    setIdentityError("");
     setEditingLook(false);
-    void run(async () => {
-      const value = await client.automationAgentIdentity(lane);
-      if (!live || token !== session.token) return;
-      setIdentity(value);
-      setIdentityName(value.name);
-      setIdentityPersona(value.persona);
-      setAppearance(characterAppearance(value.character));
-    });
+    void client
+      .automationAgentIdentity(lane)
+      .then((value) => {
+        if (!live || token !== session.token || epoch !== identityEpoch.current)
+          return;
+        setIdentity(value);
+        setIdentityName(value.name);
+        setIdentityPersona(value.persona);
+        setAppearance(characterAppearance(value.character));
+      })
+      .catch(() => {
+        if (live && token === session.token && epoch === identityEpoch.current)
+          setIdentityError("Couldn't load agent profile.");
+      });
     return () => {
       live = false;
     };
-    // run is a screen action wrapper, not a query dependency.
   }, [lane, reload]);
 
   const openProfile = () =>
     void run(async () => {
       const made = await client.openAgentProfile();
+      if (!mounted.current) return;
       openAppUrl(`orbyn://doc/${made.doc_id}`);
       await load();
     });
@@ -91,7 +130,10 @@ export function AgentWarmStartCards({
     if (!editing) return;
     const d = editing;
     void run(async () => {
-      setData(await client.setAgentInstructions(d.team_id, d.text.trim()));
+      const value = await client.setAgentInstructions(d.team_id, d.text.trim());
+      if (!mounted.current) return;
+      ++contextEpoch.current;
+      setData(value);
       setEditing(null);
     });
   };
@@ -99,6 +141,7 @@ export function AgentWarmStartCards({
   const saveIdentity = () => {
     if (!identity || identity.lane !== lane) return;
     const token = session.token;
+    const epoch = identityEpoch.current;
     void run(async () => {
       const value = await client.updateAutomationAgentIdentity(lane, {
         expected_revision: identity.revision,
@@ -106,7 +149,12 @@ export function AgentWarmStartCards({
         persona: identityPersona,
         character: appearance,
       });
-      if (token === session.token) setIdentity(value);
+      if (
+        mounted.current &&
+        token === session.token &&
+        epoch === identityEpoch.current
+      )
+        setIdentity(value);
     });
   };
 
@@ -126,7 +174,7 @@ export function AgentWarmStartCards({
       {i.can_edit && (
         <SmallAction
           label="Change"
-          disabled={busy}
+          disabled={busy || !!contextError}
           onPress={() => setEditing({ team_id: i.team_id, text: i.text })}
         />
       )}
@@ -159,14 +207,12 @@ export function AgentWarmStartCards({
             onPress={() => setReload((value) => value + 1)}
           />
         </View>
-        {identity === null && (
-          <Text style={shared.small}>
-            Agent profile is loading or unavailable. Reload to try again.
-          </Text>
+        <ErrorBanner error={identityError} />
+        {identity === null && !identityError && (
+          <Text style={shared.small}>Loading agent profile…</Text>
         )}
         <Text style={[shared.small, s.gap]}>
-          {lane === "background" ? "Background" : "Overnight"} has its own name,
-          character and communication style.
+          {lane === "background" ? "Background" : "Overnight"} profile.
         </Text>
         <Field label="Name">
           <TextInput
@@ -180,7 +226,7 @@ export function AgentWarmStartCards({
             style={shared.input}
           />
         </Field>
-        <Field label="Persona (optional)">
+        <Field label="Communication style">
           <TextInput
             editable={!busy && identity?.lane === lane}
             value={identityPersona}
@@ -192,17 +238,26 @@ export function AgentWarmStartCards({
             placeholderTextColor={colors.faint}
           />
         </Field>
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-          {CHARACTER_PERSONAS.map((preset) => (
-            <SmallAction
-              key={preset.label}
-              label={preset.label}
-              disabled={busy || identity?.lane !== lane}
-              onPress={() => setIdentityPersona(preset.persona)}
-            />
-          ))}
-        </View>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+        <InlineDetails title="Suggested styles">
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {CHARACTER_PERSONAS.map((preset) => (
+              <SmallAction
+                key={preset.label}
+                label={preset.label}
+                disabled={busy || identity?.lane !== lane}
+                onPress={() => setIdentityPersona(preset.persona)}
+              />
+            ))}
+          </View>
+        </InlineDetails>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 12,
+          }}
+        >
           <Character appearance={appearance} name={identityName} size={48} />
           <SmallAction
             label={
@@ -233,16 +288,16 @@ export function AgentWarmStartCards({
         />
       </View>
       <View style={shared.card}>
-        <Text style={shared.label}>About me for agents</Text>
+        <Text style={shared.label}>Agent context</Text>
         <Text style={[shared.small, s.gap]}>
-          A page of context for your agents. Edit it like any other page.
+          Context your connected agents can read.
         </Text>
         <Button
           secondary
           title={data?.profile ? "Open the page" : "Make the page"}
           icon="fileText"
           style={s.last}
-          disabled={busy || data === null}
+          disabled={busy || data === null || !!contextError}
           onPress={openProfile}
         />
         {!!data?.profile && (
@@ -257,17 +312,38 @@ export function AgentWarmStartCards({
           Space-specific rules for agents. Team rules apply to every member’s
           agents.
         </Text>
+        <ErrorBanner error={contextError} />
+        {contextError && (
+          <Button
+            title="Retry instructions"
+            secondary
+            disabled={busy}
+            onPress={() => void load()}
+          />
+        )}
         {data === null ? (
-          <Text style={shared.small}>Loading…</Text>
+          <Text style={shared.small}>
+            {contextError
+              ? "Instructions unavailable."
+              : "Loading instructions…"}
+          </Text>
         ) : (
           data.instructions.map(row)
         )}
         {editing && (
-          <FadeIn style={s.panel}>
+          <BottomSheet
+            visible
+            title="Agent instructions"
+            closeDisabled={busy}
+            onClose={() => {
+              if (!busy) setEditing(null);
+            }}
+          >
             <Field label={`Instructions for ${editingSpace ?? "this space"}`}>
               <TextInput
                 style={[shared.input, s.area]}
                 value={editing.text}
+                editable={!busy}
                 onChangeText={(text) => setEditing({ ...editing, text })}
                 maxLength={MAX_AGENT_INSTRUCTIONS}
                 multiline
@@ -290,11 +366,12 @@ export function AgentWarmStartCards({
               <Button
                 secondary
                 title="Cancel"
+                disabled={busy}
                 style={s.flexButton}
                 onPress={() => setEditing(null)}
               />
             </View>
-          </FadeIn>
+          </BottomSheet>
         )}
       </View>
     </>
@@ -310,7 +387,7 @@ const s = themed(() =>
       gap: 8,
       marginTop: 10,
     },
-    flex: { flex: 1 },
+    flex: { flex: 1, minWidth: 120 },
     gap: { marginBottom: 10 },
     row: {
       flexDirection: "row",
@@ -323,8 +400,13 @@ const s = themed(() =>
     text: { fontSize: 15, color: colors.text, fontFamily: fonts.regular },
     none: { color: colors.muted },
     area: { minHeight: 80, textAlignVertical: "top" },
-    actions: { flexDirection: "row", gap: 10, alignItems: "center" },
-    flexButton: { flex: 1, marginBottom: 0 },
+    actions: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 10,
+      alignItems: "center",
+    },
+    flexButton: { flex: 1, minWidth: 120, marginBottom: 0 },
     last: { marginBottom: 0 },
     after: { marginTop: 8 },
   }),

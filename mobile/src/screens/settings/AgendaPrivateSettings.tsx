@@ -1,5 +1,6 @@
 import { agendaPrivateSummaryText } from "@orbyn/core";
-import { Text, View, Switch } from "react-native";
+import { Text, View } from "react-native";
+import { Switch } from "../../components/Switch";
 import { useAgendaPrivateSettings } from "../../hooks/useAgendaPrivateSettings";
 import { SmallAction } from "../../components/SmallAction";
 import { shared } from "../../styles";
@@ -12,7 +13,7 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
     <View style={{ gap: 12 }}>
       <Text style={shared.body}>Morning summary</Text>
       <Text style={shared.small}>
-        Uses your ChatGPT plan. Keep Orbyn desktop online for morning summaries.
+        Uses your ChatGPT plan while the connected device is available.
       </Text>
       {!data && !error && (
         <Text accessibilityLiveRegion="polite" style={shared.small}>
@@ -50,7 +51,6 @@ export function AgendaPrivateSettings({ userId }: { userId: string }) {
           )}
           {canEnable && data.permission.enabled && (
             <Text style={shared.small}>
-              {data.catalog?.preference.model} ·{" "}
               {data.choice.fallback_to_default
                 ? "Orbyn fallback"
                 : "No fallback"}

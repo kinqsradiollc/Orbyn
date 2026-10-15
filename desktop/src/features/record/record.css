@@ -15,7 +15,9 @@
 .recorder-transcript textarea {
   width: 100%;
   min-height: 100px;
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
 }
 .recorder-clock {
   display: flex;
@@ -91,4 +93,63 @@
   .recorder-dot.is-on {
     animation: none;
   }
+}
+
+/* Focused recording sheets keep consent, full results and controls reachable. */
+dialog.recorder {
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 20px;
+}
+.recorder h2 {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.recorder-file {
+  margin: 0 0 12px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  color: var(--color-muted);
+}
+.recorder-clock {
+  flex-wrap: wrap;
+  font-size: 28px;
+}
+.recorder-actions {
+  flex-wrap: wrap;
+}
+.recorder-actions button,
+.recorder .icon-button,
+.recorder-actions-list button {
+  min-height: 44px;
+}
+.recorder-actions-list li {
+  flex-wrap: wrap;
+}
+.recorder-actions-list li > span {
+  flex: 1 1 180px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.recorder-summary {
+  overflow-wrap: anywhere;
+}
+.recorder-dot.is-on {
+  animation: none;
+}
+@media (max-width: 480px) {
+  dialog.recorder {
+    padding: 16px;
+  }
+  .recorder-transcript textarea {
+    font-size: 16px;
+  }
+}
+
+.recorder .section-heading {
+  padding: 0 0 12px;
+  align-items: center;
+}
+dialog.recorder::backdrop {
+  background: var(--color-backdrop);
 }

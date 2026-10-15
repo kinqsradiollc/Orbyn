@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ScrollView,
   StyleSheet,
@@ -24,8 +24,16 @@ import { Chip, ChipRow } from "../../components/Chip";
 import { Icon } from "../../components/Icon";
 import { Sheet } from "../../components/Sheet";
 import { client } from "../../lib/api";
-import { PressableScale, Pressable } from "../../motion";
-import { controls, colors, fonts, radii, spacing, themed } from "../../theme";
+import { InlineDetails } from "../../components/InlineDetails";
+import { Pressable } from "../../motion";
+import {
+  inputFontSize,
+  colors,
+  fonts,
+  radii,
+  spacing,
+  themed,
+} from "../../theme";
 import { errorText } from "../../lib/errors";
 
 /** The actions worth one tap; "custom" is whatever gets typed instead. */
@@ -55,7 +63,11 @@ const nextId = () => `t${++seq}`;
  * and what comes back is a proposal, waiting with every other proposal.
  * Nothing it writes reaches the page on its own.
  */
-export function DocAsk({
+export function DocAsk(props: Parameters<typeof DocAskBody>[0]) {
+  return <DocAskBody key={props.docId} {...props} />;
+}
+
+function DocAskBody({
   visible,
   docId,
   blocks,
@@ -77,6 +89,17 @@ export function DocAsk({
   onNameBlock: (index: number) => string;
   onSuggested: (made: DocSuggestion) => void;
 }) {
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    if (!canWrite) setTarget(null);
+  }, [canWrite]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
@@ -92,9 +115,10 @@ export function DocAsk({
   const canSend = !busy && !!message.trim() && (target === null || canWrite);
 
   const say = (turn: Omit<Turn, "id">) => {
+    if (!mounted.current) return;
     setTurns((list) => [...list, { ...turn, id: nextId() }]);
     requestAnimationFrame(() =>
-      scroller.current?.scrollToEnd({ animated: true }),
+      scroller.current?.scrollToEnd({ animated: false }),
     );
   };
 
@@ -105,6 +129,8 @@ export function DocAsk({
     });
 
   const ask = async (question: string) => {
+    if (mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       const answer = await client.askDoc(docId, question);
@@ -117,12 +143,14 @@ export function DocAsk({
     } catch (e) {
       fail(e);
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
   const change = async (action: DocAiAction, instruction = "") => {
-    if (target === null || !line) return;
+    if (mutation.current || !canWrite || target === null || !line) return;
+    mutation.current = true;
     setBusy(true);
     try {
       const blockId = onNameBlock(target);
@@ -134,17 +162,19 @@ export function DocAsk({
         action,
         instruction,
       });
+      if (!mounted.current) return;
       onSuggested(made);
       say({
         role: "orbyn",
-        text: "Proposed. It waits with the rest of them.",
+        text: "Change proposed. Review it before applying.",
         proposed: made,
         provider: made.provider,
       });
     } catch (e) {
       fail(e);
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -158,35 +188,51 @@ export function DocAsk({
   };
 
   return (
-    <Sheet visible={visible} title="Talk about this page" onClose={onClose}>
+    <Sheet
+      visible={visible}
+      title="Page assistant"
+      onClose={() => {
+        if (!mutation.current) onClose();
+      }}
+    >
       <View style={s.screen}>
         {/* What the conversation is pointed at. The page answers questions;
             a line is something that can be changed. */}
-        <ScrollView
-          horizontal
-          keyboardShouldPersistTaps="handled"
-          showsHorizontalScrollIndicator={false}
-          style={s.targets}
-          contentContainerStyle={s.targetsInner}
+        <InlineDetails
+          title={
+            target === null ? "Scope: whole page" : `Scope: line ${target + 1}`
+          }
         >
-          <ChipRow label="What this is about">
-            <Chip
-              compact
-              label="The whole page"
-              selected={target === null}
-              onPress={() => setTarget(null)}
-            />
-            {lines.map((l) => (
+          <ScrollView
+            horizontal
+            keyboardShouldPersistTaps="handled"
+            showsHorizontalScrollIndicator={false}
+            style={s.targets}
+            contentContainerStyle={s.targetsInner}
+          >
+            <ChipRow label="What this is about">
               <Chip
-                key={l.index}
                 compact
-                label={plainText(l.text).slice(0, 28)}
-                selected={target === l.index}
-                onPress={() => setTarget(l.index)}
+                label="Whole page"
+                disabled={busy}
+                selected={target === null}
+                onPress={() => setTarget(null)}
               />
-            ))}
-          </ChipRow>
-        </ScrollView>
+              {canWrite &&
+                lines.map((l) => (
+                  <Chip
+                    key={l.index}
+                    compact
+                    label={`Line ${l.index + 1}: ${plainText(l.text).slice(0, 40)}${plainText(l.text).length > 40 ? "…" : ""}`}
+                    accessibilityLabel={`Line ${l.index + 1}: ${plainText(l.text)}`}
+                    disabled={busy}
+                    selected={target === l.index}
+                    onPress={() => setTarget(l.index)}
+                  />
+                ))}
+            </ChipRow>
+          </ScrollView>
+        </InlineDetails>
 
         <ScrollView
           ref={scroller}
@@ -197,8 +243,8 @@ export function DocAsk({
           {turns.length === 0 && (
             <Text style={s.empty}>
               {target === null
-                ? "Ask anything about this page. The answer comes from this page and nothing else, and names the lines it leant on."
-                : "Ask for this line to be changed. What comes back is a proposal, for anyone to take or leave."}
+                ? "Answers use this page and cite their sources."
+                : "Changes are proposals. Review before applying."}
             </Text>
           )}
 
@@ -225,15 +271,15 @@ export function DocAsk({
                   key={source.block_id}
                   accessibilityRole="button"
                   accessibilityLabel={`Go to “${plainText(source.quote)}”`}
+                  disabled={busy}
                   onPress={() => {
+                    if (mutation.current) return;
                     onClose();
                     onGoToBlock(source.block_id);
                   }}
                   style={({ pressed }) => [s.source, pressed && s.pressed]}
                 >
-                  <Text style={s.sourceText} numberOfLines={3}>
-                    “{plainText(source.quote)}”
-                  </Text>
+                  <Text style={s.sourceText}>“{plainText(source.quote)}”</Text>
                 </Pressable>
               ))}
             </View>
@@ -271,6 +317,7 @@ export function DocAsk({
             <TextInput
               style={[s.input, { maxHeight: LINE * 5 * fontScale + 22 }]}
               value={message}
+              editable={!busy}
               multiline
               maxLength={1000}
               placeholder={
@@ -283,7 +330,7 @@ export function DocAsk({
               textAlignVertical="top"
               onChangeText={setMessage}
             />
-            <PressableScale
+            <Pressable
               accessibilityRole="button"
               accessibilityLabel={target === null ? "Ask" : "Suggest"}
               accessibilityState={{ disabled: !canSend }}
@@ -298,10 +345,10 @@ export function DocAsk({
               <Icon
                 name="arrowRight"
                 size={18}
-                color={colors.white}
+                color={colors.onAccent}
                 strokeWidth={2.2}
               />
-            </PressableScale>
+            </Pressable>
           </View>
         </View>
       </View>
@@ -340,7 +387,7 @@ const s = themed(() =>
       borderWidth: 1,
       borderColor: colors.border,
     },
-    youText: { color: colors.white, fontSize: 15, lineHeight: LINE },
+    youText: { color: colors.onAccent, fontSize: 15, lineHeight: LINE },
     orbynText: { color: colors.text, fontSize: 15, lineHeight: LINE },
     proposed: {
       color: colors.muted,
@@ -353,7 +400,7 @@ const s = themed(() =>
     // A line the answer leant on: tapping it opens that line's remarks.
     source: {
       alignSelf: "flex-start",
-      minHeight: controls.tap,
+      minHeight: 44,
       maxWidth: "88%",
       justifyContent: "center",
       paddingVertical: 6,
@@ -386,18 +433,18 @@ const s = themed(() =>
     },
     input: {
       flex: 1,
-      minHeight: controls.tap,
+      minHeight: 44,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: inputFontSize,
       lineHeight: LINE,
       color: colors.text,
       paddingTop: 11,
       paddingBottom: 11,
     },
     send: {
-      width: controls.tap,
-      height: controls.tap,
-      borderRadius: controls.tap / 2,
+      width: 44,
+      height: 44,
+      borderRadius: radii.pill,
       backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",

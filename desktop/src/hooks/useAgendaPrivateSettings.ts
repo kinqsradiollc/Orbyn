@@ -27,6 +27,7 @@ export function useAgendaPrivateSettings(userId: string) {
   const [busy, setBusy] = useState(false);
   const [revision, setRevision] = useState(0);
   const lifetime = useRef<AbortController | null>(null);
+  const mutation = useRef(false);
   const data =
     owned?.userId === userId && owned.token === token ? owned.data : null;
   useEffect(() => {
@@ -82,12 +83,14 @@ export function useAgendaPrivateSettings(userId: string) {
     if (
       !data ||
       busy ||
+      mutation.current ||
       !abort ||
       abort.signal.aborted ||
       token !== session.get() ||
       (enabled && !canEnable)
     )
       return;
+    mutation.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -108,6 +111,7 @@ export function useAgendaPrivateSettings(userId: string) {
       if (!abort.signal.aborted && token === session.get())
         setError(errorText(e));
     } finally {
+      mutation.current = false;
       if (!abort.signal.aborted && token === session.get()) setBusy(false);
     }
   };
@@ -118,6 +122,8 @@ export function useAgendaPrivateSettings(userId: string) {
     canEnable,
     enablementMessage,
     save,
-    refresh: () => setRevision((n) => n + 1),
+    refresh: () => {
+      if (!mutation.current) setRevision((n) => n + 1);
+    },
   };
 }

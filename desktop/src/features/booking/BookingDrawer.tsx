@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   CalendarClock,
   Check,
@@ -17,6 +17,8 @@ import {
   type BusyInterval,
   type HttpError,
 } from "@orbyn/core";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { client } from "../../lib/api";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { deviceTimeZone, errorText, minutesLabel } from "../../lib/planning";
@@ -57,12 +59,11 @@ export function BookingDrawer({
   const [note, setNote] = useState("");
   const action = useAction(report);
   const noteAction = useAction(report);
-  const panel = useRef<HTMLElement>(null);
-  const closeButton = useRef<HTMLButtonElement>(null);
-  const stepRef = useRef(step);
-  stepRef.current = step;
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  const pending = action.pending || noteAction.pending;
+  const focus = useModalFocus(() => {
+    if (step) setStep(null);
+    else onClose();
+  }, pending);
 
   useEffect(() => {
     let alive = true;
@@ -83,40 +84,6 @@ export function BookingDrawer({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-
-  // Focus the panel on open; give focus back to whatever opened it.
-  useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    closeButton.current?.focus();
-    return () => opener?.focus?.();
-  }, []);
-
-  // Escape backs out of an open step, then closes; Tab stays in the panel.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        if (stepRef.current) setStep(null);
-        else closeRef.current();
-      }
-      if (e.key !== "Tab" || !panel.current) return;
-      const focusable = panel.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), [tabindex]:not([tabindex="-1"])',
-      );
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (!first || !last) return;
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, []);
 
   const apply = (
     fn: () => Promise<BookingDetail>,
@@ -160,20 +127,21 @@ export function BookingDrawer({
       )
     : [];
 
-  return (
+  return createPortal(
     <div
       className="drawer-backdrop"
       onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget && !pending) onClose();
       }}
     >
       <aside
-        ref={panel}
+        ref={focus.ref}
+        data-modal-focus={focus.id}
         className="task-drawer booking-drawer"
         role="dialog"
         aria-modal="true"
         aria-labelledby="booking-drawer-title"
-        aria-busy={action.pending}
+        aria-busy={pending}
       >
         <header className="drawer-head">
           <div className="drawer-kicker">
@@ -181,9 +149,9 @@ export function BookingDrawer({
             {d && <BookingStatusPill status={d.status} />}
             {d?.no_show && <span className="chip is-danger">No-show</span>}
             <button
-              ref={closeButton}
               className="icon-button drawer-close"
               aria-label="Close booking panel"
+              disabled={pending}
               onClick={onClose}
             >
               <X size={20} />
@@ -305,6 +273,7 @@ export function BookingDrawer({
                           rows={3}
                           maxLength={500}
                           value={reason}
+                          disabled={pending}
                           onChange={(e) => setReason(e.target.value)}
                         />
                       </label>
@@ -451,15 +420,16 @@ export function BookingDrawer({
                 </section>
               )}
 
-              <section className="drawer-section">
-                <h3>
+              <details className="drawer-section booking-detail-disclosure">
+                <summary>
                   <Lock size={14} aria-hidden="true" /> Private note
-                </h3>
+                </summary>
                 <textarea
                   className="host-note"
                   rows={3}
                   maxLength={4000}
                   value={note}
+                  disabled={noteAction.pending}
                   aria-label="Private note"
                   aria-describedby="host-note-hint"
                   placeholder="Only hosts see this."
@@ -478,12 +448,12 @@ export function BookingDrawer({
                   </small>
                   <OutcomeNote outcome={noteAction.outcome} />
                 </div>
-              </section>
+              </details>
 
-              <section className="drawer-section">
-                <h3>
+              <details className="drawer-section booking-detail-disclosure">
+                <summary>
                   <History size={14} aria-hidden="true" /> History
-                </h3>
+                </summary>
                 {d.events.length ? (
                   <ol className="booking-timeline">
                     {d.events.map((e) => (
@@ -504,12 +474,13 @@ export function BookingDrawer({
                 ) : (
                   <p className="drawer-hint">Nothing has happened yet.</p>
                 )}
-              </section>
+              </details>
             </>
           )}
         </div>
       </aside>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -586,28 +557,31 @@ function HostReschedule({
         {booking.page_title ? ` on “${booking.page_title}”` : ""}. A booking can
         only move to a time that's free.
       </p>
-      <SlotPicker
-        tz={tz}
-        date={date}
-        onDateChange={(next) => {
-          setDate(next);
-          setPicked(null);
-        }}
-        slots={slots}
-        loading={loading}
-        error={error}
-        selected={picked}
-        onPick={(s) => {
-          setPicked(s.start_at);
-          setCustom("");
-        }}
-        exclude={booking.start_at}
-      />
+      <fieldset className="booking-pending-fields" disabled={pending}>
+        <SlotPicker
+          tz={tz}
+          date={date}
+          onDateChange={(next) => {
+            setDate(next);
+            setPicked(null);
+          }}
+          slots={slots}
+          loading={loading}
+          error={error}
+          selected={picked}
+          onPick={(s) => {
+            setPicked(s.start_at);
+            setCustom("");
+          }}
+          exclude={booking.start_at}
+        />
+      </fieldset>
       <label className="booking-custom-time">
         Or type a time
         <DateField
           type="datetime-local"
           value={custom}
+          disabled={pending}
           onChange={(e) => {
             setCustom(e.target.value);
             setPicked(null);

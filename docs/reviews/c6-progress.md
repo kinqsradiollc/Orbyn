@@ -1,5 +1,22 @@
 # C6 progress — 12 October 2026
 
+**Current project phase is now ADR 003 — Product UI/UX redesign**, started from
+baseline `c7b3bdb7`; implementation is in progress, review round 0/3, with no
+candidate frozen. Source changes remain uncommitted in `c6-next` at baseline
+`c7b3bdb7`. The owner requires layout, styling, position, copy and interaction
+assessment across the complete surface inventory. Early source work includes a
+neutral/blue foundation, grouped Settings, actual-pane sizing, compact type,
+foreground contrast and mobile web input sizing; the full audit remains in
+progress. The owner flagged **Your agents** as still visually large and
+intimidating on a dark surface; Builder prioritizes a compact list/navigation,
+restrained character presentation and clear action hierarchy. C6 remains closed
+under its owner-approved bounded scope and is historical for current delivery.
+Track the new phase in the
+[Builder-owned UI/UX redesign ledger](ui-ux-redesign.md) and
+[ADR 003](../adr/003-product-ui-ux-redesign.md); this C6 record is not its
+implementation tracker. No candidate, final Visual Check or merge exists yet;
+production deployment is not claimed.
+
 **Current state: C6 complete for the owner-approved bounded release scope.**
 Reviewer approved closeout in existing formal round **2/3**; this does not
 complete the broader ADR or start U1. Latest closeout report commit

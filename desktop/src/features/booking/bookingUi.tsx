@@ -220,7 +220,7 @@ export function Message({
   return (
     <section
       className={
-        "public-card public-message fade-up is-" +
+        "public-card public-message is-" +
         tone +
         (accent ? " booking-accent" : "")
       }

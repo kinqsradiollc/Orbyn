@@ -98,7 +98,7 @@ export function EntryMenu({
         )}
         {e.rrule && <small>{describeRrule(e.rrule)}</small>}
         {e.team_name && <small>Shared with {e.team_name}</small>}
-        {cancelled && <small className="eyebrow">CANCELLED</small>}
+        {cancelled && <small className="eyebrow">Cancelled</small>}
       </div>
       <div className="popover-actions">
         {canJoin && (
@@ -114,7 +114,7 @@ export function EntryMenu({
         )}
         {later && (
           <small className="popover-note">
-            Join opens 5 minutes before it starts.
+            Join available 5 minutes before start.
           </small>
         )}
         <button onClick={act(onOpen)}>
@@ -203,7 +203,7 @@ export function BlockMenu({
   return (
     <Popover anchor={anchor} label={`Session for ${b.title}`} onClose={onClose}>
       <div className="popover-head">
-        <small className="eyebrow">SESSION</small>
+        <small className="eyebrow">Session</small>
         <strong>{b.title}</strong>
         <small>
           <CalendarClock size={12} aria-hidden="true" /> {shortDay(b.start_at)},{" "}
@@ -224,7 +224,7 @@ export function BlockMenu({
         </button>
         {late && canWrite && onFindTime && (
           <button onClick={act(onFindTime)}>
-            <Wand2 size={14} /> Find time before the deadline
+            <Wand2 size={14} /> Find time before deadline
           </button>
         )}
         {open && (
@@ -237,26 +237,33 @@ export function BlockMenu({
             <CircleCheck size={14} /> Mark task done
           </button>
         )}
-        <button onClick={act(onChangeTime)}>
-          <CalendarClock size={14} /> Change time…
-        </button>
-        {open && (
+        {canWrite && (
+          <button onClick={act(onChangeTime)}>
+            <CalendarClock size={14} /> Change time…
+          </button>
+        )}
+        {open && canWrite && (
           <button onClick={act(onReschedule)}>
             <FastForward size={14} /> Move to next free time
           </button>
         )}
-        {open && (
+        {open && canWrite && (
           <button onClick={act(onDuplicate)}>
             <Copy size={14} /> Duplicate
           </button>
         )}
-        <button className="is-danger" onClick={act(onDelete)}>
-          <Trash2 size={14} /> Delete session
-        </button>
-        {open && (
-          <small className="popover-note">
-            Tip: hold Alt (Option on a Mac) while dragging to copy a session.
-          </small>
+        {canWrite && (
+          <button className="is-danger" onClick={act(onDelete)}>
+            <Trash2 size={14} /> Delete session
+          </button>
+        )}
+        {open && canWrite && (
+          <details className="popover-help">
+            <summary>Copy shortcut</summary>
+            <small className="popover-note">
+              Hold Alt/Option while dragging to copy a session.
+            </small>
+          </details>
         )}
       </div>
     </Popover>
@@ -286,7 +293,7 @@ export function FrameMenu({
   return (
     <Popover anchor={anchor} label={`${f.name} frame`} onClose={onClose}>
       <div className="popover-head">
-        <small className="eyebrow">FRAME</small>
+        <small className="eyebrow">Frame</small>
         <strong>{f.name}</strong>
         <small>
           <CalendarClock size={12} aria-hidden="true" /> {shortDay(f.start_at)},{" "}
@@ -329,7 +336,7 @@ export function ExternalMenu({
   return (
     <Popover anchor={anchor} label={x.title} onClose={onClose}>
       <div className="popover-head">
-        <small className="eyebrow">{x.name.toUpperCase()}</small>
+        <small className="eyebrow">{x.name}</small>
         <strong>{x.title}</strong>
         <small>
           <CalendarClock size={12} aria-hidden="true" /> {when}
@@ -340,14 +347,12 @@ export function ExternalMenu({
           </small>
         )}
         <small>
-          <Lock size={12} aria-hidden="true" /> Read-only, from a subscribed
-          calendar. {x.busy ? "Counts as busy." : "Doesn't count as busy."}
+          <Lock size={12} aria-hidden="true" /> Read-only calendar.{" "}
+          {x.busy ? "Counts as busy." : "Doesn't count as busy."}
         </small>
       </div>
       <div className="popover-actions">
-        <small className="popover-note">
-          Change it in the app it comes from.
-        </small>
+        <small className="popover-note">Edit in the source calendar.</small>
       </div>
     </Popover>
   );

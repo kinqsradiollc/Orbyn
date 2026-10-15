@@ -21,13 +21,14 @@ export function Disclosure({
     <View style={s.section}>
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel={title}
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen(!open)}
         style={({ pressed }) => [s.heading, pressed && { opacity: 0.65 }]}
       >
         <View style={s.copy}>
           <Text style={s.title}>{title}</Text>
-          <Text style={s.detail}>{detail}</Text>
+          {detail && <Text style={s.detail}>{detail}</Text>}
         </View>
         <Icon
           name={open ? "chevronDown" : "chevronRight"}
@@ -35,7 +36,13 @@ export function Disclosure({
           color={colors.muted}
         />
       </Pressable>
-      <View style={[s.body, !open && s.hidden]}>{children}</View>
+      <View
+        accessibilityElementsHidden={!open}
+        importantForAccessibility={open ? "auto" : "no-hide-descendants"}
+        style={[s.body, !open && s.hidden]}
+      >
+        {children}
+      </View>
     </View>
   );
 }
@@ -54,8 +61,8 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      padding: 16,
-      minHeight: 76,
+      padding: 12,
+      minHeight: 52,
     },
     copy: { flex: 1, minWidth: 0, gap: 4 },
     title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },

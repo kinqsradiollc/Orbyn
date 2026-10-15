@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { Bot } from "lucide-react";
 import {
   TEAM_AGENT_ACCESS,
@@ -10,6 +10,9 @@ import { client } from "../../lib/api";
 import { timeAgo } from "../../lib/tasks";
 import { Select } from "../../components/Select";
 import "./team-agents.css";
+import { useSettingsRead } from "../settings/useSettingsRead";
+import { usePaneLeaveGuard } from "../../app/page-commands";
+import { errorText } from "../../lib/errors";
 
 /**
  * Team settings → Outside agents: how members' AI agents may use the team's
@@ -28,22 +31,48 @@ export function TeamAgents({
   canManage: boolean;
   report: (e: unknown) => void;
 }) {
-  const [data, setData] = useState<TeamAgentsView | null>(null);
   const [saving, setSaving] = useState(false);
-  const load = useCallback(() => {
-    client.teamAgents(teamId).then(setData, report);
-  }, [teamId, report]);
-  useEffect(load, [load]);
-
-  const change = (agent_access: TeamAgentAccess) => {
+  const [error, setError] = useState("");
+  const mutation = useRef(false);
+  const read = useSettingsRead<TeamAgentsView>(
+    () => client.teamAgents(teamId),
+    report,
+  );
+  const data = read.data;
+  usePaneLeaveGuard(async () => !mutation.current);
+  const change = async (agent_access: TeamAgentAccess) => {
+    if (!canManage || !read.current() || mutation.current) return;
+    mutation.current = true;
     setSaving(true);
-    client
-      .setTeamAgentAccess(teamId, agent_access)
-      .then(load, report)
-      .finally(() => setSaving(false));
+    setError("");
+    try {
+      await client.setTeamAgentAccess(teamId, agent_access);
+      if (read.current()) {
+        read.commit((previous) =>
+          previous ? { ...previous, agent_access } : previous,
+        );
+        await read.reload();
+      }
+    } catch (e) {
+      if (read.current()) setError(errorText(e));
+    } finally {
+      mutation.current = false;
+      if (read.current()) setSaving(false);
+    }
   };
-
-  if (!data) return null;
+  if (!data)
+    return read.failed ? (
+      <p role="alert">
+        Agent access couldn’t be loaded.{" "}
+        <button className="text-button" onClick={() => void read.reload()}>
+          Retry
+        </button>
+      </p>
+    ) : (
+      <p className="muted" role="status">
+        Loading agent access…
+      </p>
+    );
   const label = TEAM_AGENT_ACCESS_LABELS[data.agent_access];
   return (
     <div className="team-agents">
@@ -55,7 +84,7 @@ export function TeamAgents({
           <Select
             aria-label={`Outside agents in ${teamName}`}
             value={data.agent_access}
-            disabled={saving}
+            disabled={saving || read.loading || read.failed}
             onChange={(e) => change(e.target.value as TeamAgentAccess)}
           >
             {TEAM_AGENT_ACCESS.map((a) => (
@@ -66,14 +95,33 @@ export function TeamAgents({
           </Select>
         )}
       </div>
+      {saving && (
+        <p className="muted" role="status">
+          Saving…
+        </p>
+      )}
+      {error && <p role="alert">{error}</p>}
+      {read.failed && (
+        <p role="alert">
+          Agent access couldn’t be refreshed.{" "}
+          <button className="text-button" onClick={() => void read.reload()}>
+            Retry
+          </button>
+        </p>
+      )}
       <p className="muted team-agents-lead">
         {canManage ? "" : `${label.name}. `}
-        {label.blurb} AI agents members connect (like Claude or ChatGPT) never
-        see more than their person.
-        {data.first_used_at
-          ? ` An agent first used ${teamName} ${timeAgo(data.first_used_at)}.`
-          : ""}
+        {label.blurb}
       </p>
+      <details className="team-agents-help">
+        <summary>Agent access details</summary>
+        <p className="muted">
+          Agents never see more than the member who connected them.
+        </p>
+        {data.first_used_at && (
+          <p className="muted">First used {timeAgo(data.first_used_at)}.</p>
+        )}
+      </details>
       {data.connections &&
         (data.connections.length ? (
           <ul className="team-agents-list">
@@ -91,7 +139,7 @@ export function TeamAgents({
           </ul>
         ) : (
           <p className="muted team-agents-lead">
-            No member has connected an agent that can reach this team.
+            No connected agents can access this team.
           </p>
         ))}
     </div>

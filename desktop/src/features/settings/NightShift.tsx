@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NIGHT_SHIFT_KINDS, type NightShiftSettings } from "@orbyn/core";
 import { DateField } from "../../components/DateField";
 import { client } from "../../lib/api";
@@ -19,11 +19,55 @@ const labels = {
 /** Personal night window, allowed work, and morning review controls. */
 export function NightShift({ report }: { report: (error: unknown) => void }) {
   const [value, setValue] = useState<NightShiftSettings | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const mounted = useRef(false);
+  const reportRef = useRef(report);
+  reportRef.current = report;
   const action = useAction(report);
   useEffect(() => {
-    void client.nightShiftSettings().then(setValue, report);
-  }, [report]);
-  if (!value) return <p className="muted">Loading night shift…</p>;
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    let live = true;
+    setFailed(false);
+    void client.nightShiftSettings().then(
+      (next) => {
+        if (live) setValue(next);
+      },
+      (error) => {
+        if (live) {
+          setFailed(true);
+          reportRef.current(error);
+        }
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [retry]);
+  if (!value)
+    return failed ? (
+      <div>
+        <p role="alert" className="error">
+          Couldn't load night shift.
+        </p>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p className="muted" role="status">
+        Loading night shift…
+      </p>
+    );
   return (
     <section className="agents-rules night-shift">
       <h3>Night shift</h3>
@@ -36,89 +80,94 @@ export function NightShift({ report }: { report: (error: unknown) => void }) {
         onSubmit={(event) => {
           event.preventDefault();
           void action.run(async () => {
-            setValue(await client.updateNightShiftSettings(value));
+            const next = await client.updateNightShiftSettings(value);
+            if (mounted.current) setValue(next);
             return "Night shift saved.";
           });
         }}
       >
-        <label className="settings-field">
-          <span>Work overnight</span>
-          <input
-            type="checkbox"
-            role="switch"
-            className="ai-switch"
-            checked={value.enabled}
-            onChange={(e) => setValue({ ...value, enabled: e.target.checked })}
-          />
-        </label>
-        <div className="settings-field">
-          <label htmlFor="night-start">Start</label>
-          <DateField
-            id="night-start"
-            type="time"
-            value={value.start}
-            onChange={(e) => setValue({ ...value, start: e.target.value })}
-          />
-        </div>
-        <div className="settings-field">
-          <label htmlFor="night-end">End</label>
-          <DateField
-            id="night-end"
-            type="time"
-            value={value.end}
-            onChange={(e) => setValue({ ...value, end: e.target.value })}
-          />
-        </div>
-        <div className="settings-field">
-          <label htmlFor="night-zone">Time zone</label>
-          <input
-            id="night-zone"
-            value={value.timezone}
-            onChange={(e) => setValue({ ...value, timezone: e.target.value })}
-            required
-            placeholder="Australia/Melbourne"
-          />
-        </div>
-        <fieldset>
-          <legend>What to work on</legend>
-          {NIGHT_SHIFT_KINDS.map((kind) => (
-            <label className="settings-field" key={kind}>
-              <span>{labels[kind]}</span>
-              <input
-                type="checkbox"
-                checked={value.kinds[kind]}
-                onChange={(e) =>
-                  setValue({
-                    ...value,
-                    kinds: { ...value.kinds, [kind]: e.target.checked },
-                  })
-                }
-              />
-            </label>
-          ))}
+        <fieldset className="night-shift-form-fields" disabled={action.pending}>
+          <label className="settings-field">
+            <span>Work overnight</span>
+            <input
+              type="checkbox"
+              role="switch"
+              className="ai-switch"
+              checked={value.enabled}
+              onChange={(e) =>
+                setValue({ ...value, enabled: e.target.checked })
+              }
+            />
+          </label>
+          <div className="settings-field">
+            <label htmlFor="night-start">Start</label>
+            <DateField
+              id="night-start"
+              type="time"
+              value={value.start}
+              onChange={(e) => setValue({ ...value, start: e.target.value })}
+            />
+          </div>
+          <div className="settings-field">
+            <label htmlFor="night-end">End</label>
+            <DateField
+              id="night-end"
+              type="time"
+              value={value.end}
+              onChange={(e) => setValue({ ...value, end: e.target.value })}
+            />
+          </div>
+          <div className="settings-field">
+            <label htmlFor="night-zone">Time zone</label>
+            <input
+              id="night-zone"
+              value={value.timezone}
+              onChange={(e) => setValue({ ...value, timezone: e.target.value })}
+              required
+              placeholder="Australia/Melbourne"
+            />
+          </div>
+          <fieldset>
+            <legend>What to work on</legend>
+            {NIGHT_SHIFT_KINDS.map((kind) => (
+              <label className="settings-field" key={kind}>
+                <span>{labels[kind]}</span>
+                <input
+                  type="checkbox"
+                  checked={value.kinds[kind]}
+                  onChange={(e) =>
+                    setValue({
+                      ...value,
+                      kinds: { ...value.kinds, [kind]: e.target.checked },
+                    })
+                  }
+                />
+              </label>
+            ))}
+          </fieldset>
+          <label className="settings-field">
+            <span>Wait for my OK in the morning</span>
+            <input
+              type="checkbox"
+              role="switch"
+              className="ai-switch"
+              checked={value.wait_for_ok}
+              onChange={(e) =>
+                setValue({ ...value, wait_for_ok: e.target.checked })
+              }
+            />
+          </label>
+          <p className="muted">
+            Deletes, publishing, messages and permission requests always wait in
+            Review.
+          </p>
+          <div className="button-row start">
+            <button className="primary" disabled={action.pending}>
+              Save night shift
+            </button>
+          </div>
+          <OutcomeNote outcome={action.outcome} />
         </fieldset>
-        <label className="settings-field">
-          <span>Wait for my OK in the morning</span>
-          <input
-            type="checkbox"
-            role="switch"
-            className="ai-switch"
-            checked={value.wait_for_ok}
-            onChange={(e) =>
-              setValue({ ...value, wait_for_ok: e.target.checked })
-            }
-          />
-        </label>
-        <p className="muted">
-          Deletes, publishing, messages and permission requests always wait in
-          Review.
-        </p>
-        <div className="button-row start">
-          <button className="primary" disabled={action.pending}>
-            Save night shift
-          </button>
-        </div>
-        <OutcomeNote outcome={action.outcome} />
       </form>
     </section>
   );

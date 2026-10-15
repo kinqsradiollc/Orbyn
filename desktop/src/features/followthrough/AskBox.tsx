@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { MessageCircleQuestion } from "lucide-react";
 import { dateLabel, type TaskAsk } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -37,7 +45,13 @@ export function AskCard({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const mutation = useRef(false);
+  useEffect(() => {
+    setMode("idle");
+  }, [ask.status]);
   const act = async (fn: () => Promise<unknown>) => {
+    if (mutation.current || turn === "settled") return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -47,6 +61,7 @@ export function AskCard({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -137,87 +152,110 @@ export function AskCard({
             disabled={busy}
             onClick={() => void act(() => client.settleAsk(ask.id, "withdraw"))}
           >
-            Withdraw the ask
+            Withdraw request
           </button>
         </div>
       )}
       {mode === "counter" && (
-        <form
-          className="ask-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void act(() =>
-              client.replyToAsk(ask.id, {
-                action: "counter",
-                due_at: day ? new Date(`${day}T17:00:00`).toISOString() : null,
-                message: message.trim(),
-              }),
-            );
-          }}
+        <AskDialog
+          title="Suggest a date"
+          busy={busy}
+          error={error}
+          onClose={() => setMode("idle")}
         >
-          <label>
-            I can do it by
-            <DateField
-              type="date"
-              value={day}
-              required
-              onChange={(e) => setDay(e.target.value)}
-            />
-          </label>
-          <input
-            value={message}
-            maxLength={500}
-            placeholder="A word about why (optional)"
-            aria-label="Why"
-            onChange={(e) => setMessage(e.target.value)}
-          />
-          <button className="secondary" disabled={busy || !day}>
-            Send suggestion
-          </button>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setMode("idle")}
+          <form
+            className="ask-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!day) return;
+              void act(() =>
+                client.replyToAsk(ask.id, {
+                  action: "counter",
+                  due_at: day
+                    ? new Date(`${day}T17:00:00`).toISOString()
+                    : null,
+                  message: message.trim(),
+                }),
+              );
+            }}
           >
-            Cancel
-          </button>
-        </form>
+            <label>
+              Suggested date
+              <DateField
+                type="date"
+                disabled={busy}
+                value={day}
+                required
+                onChange={(e) => setDay(e.target.value)}
+              />
+            </label>
+            <input
+              disabled={busy}
+              value={message}
+              maxLength={500}
+              placeholder="Reason (optional)"
+              aria-label="Why"
+              onChange={(e) => setMessage(e.target.value)}
+            />
+            <button className="secondary" disabled={busy || !day}>
+              Send suggestion
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => setMode("idle")}
+            >
+              Cancel
+            </button>
+          </form>
+        </AskDialog>
       )}
       {mode === "decline" && (
-        <form
-          className="ask-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void act(() =>
-              client.replyToAsk(ask.id, {
-                action: "decline",
-                message: message.trim(),
-              }),
-            );
-          }}
+        <AskDialog
+          title="Decline request"
+          busy={busy}
+          error={error}
+          onClose={() => setMode("idle")}
         >
-          <input
-            value={message}
-            maxLength={500}
-            required
-            placeholder="Why you can't — they'll see this"
-            aria-label="Why you can't"
-            onChange={(e) => setMessage(e.target.value)}
-            autoFocus
-          />
-          <button className="secondary" disabled={busy || !message.trim()}>
-            Send
-          </button>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setMode("idle")}
+          <form
+            className="ask-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!message.trim()) return;
+              void act(() =>
+                client.replyToAsk(ask.id, {
+                  action: "decline",
+                  message: message.trim(),
+                }),
+              );
+            }}
           >
-            Cancel
-          </button>
-        </form>
+            <input
+              disabled={busy}
+              value={message}
+              maxLength={500}
+              required
+              placeholder="Reason · shared with requester"
+              aria-label="Why you can't"
+              onChange={(e) => setMessage(e.target.value)}
+              autoFocus
+            />
+            <button className="secondary" disabled={busy || !message.trim()}>
+              Send
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              disabled={busy}
+              onClick={() => setMode("idle")}
+            >
+              Cancel
+            </button>
+          </form>
+        </AskDialog>
       )}
-      {error && (
+      {error && mode === "idle" && (
         <p className="error" role="alert">
           {error}
         </p>
@@ -226,8 +264,12 @@ export function AskCard({
   );
 }
 
+export function AskBox(props: Parameters<typeof AskBoxBody>[0]) {
+  return <AskBoxBody key={props.itemId} {...props} />;
+}
+
 /** The ask on one task, in its panel. Nothing when there isn't one. */
-export function AskBox({
+function AskBoxBody({
   itemId,
   onChanged,
 }: {
@@ -238,22 +280,47 @@ export function AskBox({
     ask: TaskAsk;
     turn: "mine" | "theirs" | "settled";
   } | null>(null);
-  const load = useCallback(() => {
-    client.listAsks().then(
-      (lists) => {
-        const ask =
-          [...lists.to_me, ...lists.from_me, ...lists.recent].find(
-            (a) => a.item_id === itemId,
-          ) ?? null;
-        setState(ask ? { ask, turn: askTurn(ask, lists) } : null);
-      },
-      () => setState(null),
-    );
+  const [error, setError] = useState("");
+  const request = useRef(0);
+  const load = useCallback(async () => {
+    const version = ++request.current;
+    try {
+      const lists = await client.listAsks();
+      if (version !== request.current) return;
+      const ask = [...lists.to_me, ...lists.from_me, ...lists.recent].find(
+        (row) => row.item_id === itemId,
+      );
+      setState(ask ? { ask, turn: askTurn(ask, lists) } : null);
+      setError("");
+    } catch (reason) {
+      if (version === request.current) setError(errorText(reason));
+    }
   }, [itemId]);
-  useEffect(load, [load]);
+  useEffect(() => {
+    setState(null);
+    void load();
+    return () => {
+      request.current += 1;
+    };
+  }, [load]);
+  if (error)
+    return (
+      <p className="error" role="alert">
+        {error}
+        <button
+          className="text-button"
+          onClick={() => {
+            void load();
+          }}
+        >
+          Retry
+        </button>
+      </p>
+    );
   if (!state) return null;
   return (
     <AskCard
+      key={state.ask.id}
       ask={state.ask}
       turn={state.turn}
       onChanged={() => {
@@ -261,5 +328,49 @@ export function AskBox({
         onChanged();
       }}
     />
+  );
+}
+
+function AskDialog({
+  title,
+  busy,
+  error,
+  onClose,
+  children,
+}: {
+  title: string;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const node = focus.ref.current as HTMLDialogElement;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      data-modal-focus={focus.id}
+      className="modal modal-small ask-dialog"
+      aria-labelledby="ask-dialog-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <h2 id="ask-dialog-title">{title}</h2>
+      {children}
+      {error && (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </dialog>,
+    document.body,
   );
 }

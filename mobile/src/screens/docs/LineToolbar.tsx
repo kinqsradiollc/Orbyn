@@ -223,13 +223,15 @@ export function LineToolbar({
   ];
   return (
     <View style={s.dock}>
-      {suggesting && (
-        <Text style={s.hint}>
-          Suggest mode changes words only. Leave it to move or delete lines.
-        </Text>
-      )}
-      {panel === "kinds" && (
-        <View style={s.panel} accessibilityLabel="Kind of line">
+      {suggesting && <Text style={s.hint}>Suggest mode edits words only.</Text>}
+      {panel === "kinds" && (linkQuery === null || bracketShut) && (
+        <ScrollView
+          style={s.panelScroll}
+          contentContainerStyle={s.panel}
+          nestedScrollEnabled
+          keyboardShouldPersistTaps="always"
+          accessibilityLabel="Kind of line"
+        >
           {BLOCK_KINDS.map((kind) => {
             const key = kindKey(kind);
             const on = key === line.kind;
@@ -292,7 +294,7 @@ export function LineToolbar({
                 <Text style={s.kindText}>{item.label}</Text>
               </Pressable>
             ))}
-        </View>
+        </ScrollView>
       )}
       {linkQuery !== null && !bracketShut ? (
         <LinkPickerPanel
@@ -325,7 +327,7 @@ export function LineToolbar({
         <ScrollView
           horizontal
           keyboardShouldPersistTaps="always"
-          showsHorizontalScrollIndicator={false}
+          showsHorizontalScrollIndicator
           contentContainerStyle={s.row}
         >
           <Tool icon="undo" label="Undo" off={!line.canUndo} onPress={onUndo} />
@@ -419,7 +421,7 @@ export function LineToolbar({
   );
 }
 
-/** One icon in the toolbar: 34pt drawn, a thumb's worth to press. */
+/** Each toolbar action reserves its touch target in the layout. */
 function Tool({
   icon,
   label,
@@ -439,7 +441,6 @@ function Tool({
       accessibilityLabel={label}
       accessibilityState={{ disabled: off, selected: on }}
       disabled={off}
-      hitSlop={{ top: 5, bottom: 5 }}
       onPress={onPress}
       style={({ pressed }) => [
         s.tool,
@@ -488,14 +489,15 @@ const s = themed(() =>
       backgroundColor: colors.border,
     },
     tool: {
-      width: controls.tap - 6,
-      height: controls.tap - 10,
+      width: controls.tap,
+      height: controls.tap,
       borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },
     toolOn: { backgroundColor: colors.accentSoft },
     hint: { color: colors.faint, fontSize: 13, lineHeight: 18 },
+    panelScroll: { maxHeight: 240 },
     panel: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -507,7 +509,8 @@ const s = themed(() =>
       borderColor: colors.border,
     },
     kind: {
-      minHeight: controls.compact + 4,
+      minHeight: controls.tap,
+      maxWidth: "100%",
       paddingHorizontal: 12,
       justifyContent: "center",
       borderRadius: radii.pill,
@@ -517,6 +520,7 @@ const s = themed(() =>
     },
     kindOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
     kindText: {
+      flexShrink: 1,
       fontFamily: fonts.medium,
       fontSize: 13,
       color: colors.textSoft,

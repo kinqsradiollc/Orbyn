@@ -67,8 +67,7 @@ export function agendaPrivateSummaryText(
     return "The morning window ended.";
   if (run.state === "running") return "Writing your summary…";
   if (run.state === "queued") return "Queued for this morning.";
-  if (run.state === "waiting")
-    return "Waiting for your connected Orbyn desktop app.";
+  if (run.state === "waiting") return "Waiting for your connected device.";
   if (run.reason === "completion_unknown")
     return "Completion could not be confirmed. It was not retried.";
   if (run.reason === "authority_changed")

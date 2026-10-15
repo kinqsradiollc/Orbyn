@@ -1,4 +1,10 @@
-import { useState, type DragEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type DragEvent,
+  type ReactNode,
+} from "react";
 import {
   ChevronRight,
   FileText,
@@ -148,12 +154,20 @@ export function TreePages({
   canWrite: (doc: DocSummary) => boolean;
   onOpen: (id: string) => void;
   onMove: (doc: DocSummary, to: TreeMoveTo) => void;
-  onRename: (doc: DocSummary, title: string) => void;
+  onRename: (doc: DocSummary, title: string) => Promise<boolean>;
   onNewInside: (doc: DocSummary) => void;
   onMoveMenu: (doc: DocSummary, anchor: DOMRect) => void;
 }) {
   const [drop, setDrop] = useState<{ id: string; zone: Zone } | null>(null);
   const [renaming, setRenaming] = useState<string | null>(null);
+  const renamePending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [name, setName] = useState("");
   const [menu, setMenu] = useState<{
     doc: DocSummary;
@@ -182,7 +196,8 @@ export function TreePages({
     const page = held;
     held = null;
     setDrop(null);
-    if (!page || !allowed(page, target, zone)) return;
+    if (busy || !page || !canWrite(page) || !allowed(page, target, zone))
+      return;
     if (zone === "inside") {
       tree.show(target.id);
       onMove(page, { parent_id: target.id });
@@ -212,10 +227,20 @@ export function TreePages({
     return y < 0.3 ? "before" : y > 0.7 ? "after" : "inside";
   };
 
-  const finishRename = (doc: DocSummary) => {
+  const finishRename = async (doc: DocSummary) => {
+    if (busy || renamePending.current || !canWrite(doc)) return;
     const title = name.trim();
-    setRenaming(null);
-    if (title !== (doc.title || "").trim()) onRename(doc, title);
+    if (title === (doc.title || "").trim()) {
+      setRenaming(null);
+      return;
+    }
+    renamePending.current = true;
+    try {
+      const saved = await onRename(doc, title);
+      if (saved && mounted.current) setRenaming(null);
+    } finally {
+      renamePending.current = false;
+    }
   };
 
   return (
@@ -230,7 +255,8 @@ export function TreePages({
             className={"docs-tree-row" + marked}
             style={{ "--depth": depth } as never}
             onDragOver={(e) => {
-              if (!carries(e, DOC_MIME) || !held) return;
+              if (busy || !carries(e, DOC_MIME) || !held || !canWrite(held))
+                return;
               const zone = zoneOf(e);
               if (!allowed(held, doc, zone)) {
                 if (drop?.id === doc.id) setDrop(null);
@@ -248,7 +274,7 @@ export function TreePages({
               setDrop((d) => (d?.id === doc.id ? null : d));
             }}
             onDrop={(e) => {
-              if (!held || !carries(e, DOC_MIME)) return;
+              if (busy || !held || !carries(e, DOC_MIME)) return;
               e.preventDefault();
               e.stopPropagation();
               land(doc, zoneOf(e));
@@ -268,25 +294,40 @@ export function TreePages({
               <span className="docs-tree-toggle" aria-hidden="true" />
             )}
             {renaming === doc.id ? (
-              <input
-                className="docs-tree-rename"
-                aria-label={`Rename ${title}`}
-                value={name}
-                maxLength={200}
-                autoFocus
-                onChange={(e) => setName(e.target.value)}
-                onBlur={() => finishRename(doc)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    finishRename(doc);
-                  }
-                  if (e.key === "Escape") {
-                    e.preventDefault();
-                    setRenaming(null);
-                  }
+              <form
+                className="docs-tree-rename-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void finishRename(doc);
                 }}
-              />
+              >
+                <input
+                  className="docs-tree-rename"
+                  aria-label={`Rename ${title}`}
+                  value={name}
+                  maxLength={200}
+                  disabled={busy || !writable}
+                  autoFocus
+                  onChange={(event) => setName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (!busy && !renamePending.current) setRenaming(null);
+                    }
+                  }}
+                />
+                <button type="submit" disabled={busy || !writable}>
+                  Save
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setRenaming(null)}
+                >
+                  Cancel
+                </button>
+              </form>
             ) : (
               <button
                 id={`doc-tree-${doc.id}`}
@@ -295,11 +336,11 @@ export function TreePages({
                 disabled={busy}
                 onClick={() => onOpen(doc.id)}
                 onDoubleClick={() => {
-                  if (!writable) return;
+                  if (!writable || busy) return;
                   setName(doc.title);
                   setRenaming(doc.id);
                 }}
-                draggable={writable}
+                draggable={writable && !busy}
                 onDragStart={(e) => {
                   held = doc;
                   startDrag(e, { kind: "doc", id: doc.id, title });
@@ -321,6 +362,7 @@ export function TreePages({
                 className="docs-tree-more"
                 aria-label={`More for ${title}`}
                 title="More"
+                disabled={busy}
                 aria-haspopup="menu"
                 aria-expanded={menu?.doc.id === doc.id}
                 onClick={(e) =>
@@ -436,9 +478,13 @@ export function TreeMoveMenu({
       .map((p) => p.title || "Untitled")
       .join(" › ");
   const first = () => {
-    const f = shownPlaces[0];
+    if (busy) return;
+    const f = shownPlaces.find(
+      (place) => doc.parent_id || (doc.folder_id ?? "") !== place.id,
+    );
     if (f) return onPick({ parent_id: null, folder_id: f.id || null });
-    if (pages[0]) onPick({ parent_id: pages[0].id });
+    const page = pages.find((page) => page.id !== doc.parent_id);
+    if (page) onPick({ parent_id: page.id });
   };
   return (
     <Popover label="Move to" anchor={anchor} onClose={onClose} width={300}>
@@ -451,9 +497,10 @@ export function TreeMoveMenu({
           placeholder="Find a folder or page…"
           value={query}
           autoFocus
+          disabled={busy}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key !== "Enter") return;
+            if (e.nativeEvent.isComposing || e.key !== "Enter") return;
             e.preventDefault();
             first();
           }}
@@ -475,7 +522,7 @@ export function TreeMoveMenu({
           );
         })}
         {pages.length > 0 && <strong>Inside a page</strong>}
-        {pages.slice(0, 40).map((d) => {
+        {pages.map((d) => {
           const path = where(d);
           return (
             <button
@@ -495,7 +542,7 @@ export function TreeMoveMenu({
           );
         })}
         {!shownPlaces.length && !pages.length && (
-          <p className="muted">Nothing here is called that.</p>
+          <p className="muted">No matching folders or pages.</p>
         )}
       </div>
     </Popover>

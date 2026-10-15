@@ -1,17 +1,10 @@
-import React, { useEffect, useRef } from "react";
-import { Animated, StyleSheet, Text, View } from "react-native";
+import React from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { motion } from "@orbyn/core";
 import { TABS, type Tab } from "../app/tabs";
 import { Icon, type IconName } from "./Icon";
-import {
-  easeOut,
-  pop,
-  usePressScale,
-  useReducedMotion,
-  Pressable,
-} from "../motion";
-import { colors, fonts, spacing, themed } from "../theme";
+import { Pressable } from "../motion";
+import { colors, fonts, radii, spacing, themed } from "../theme";
 
 /** Bottom navigation. Extends under the home indicator and pads for it. */
 export function TabBar({
@@ -49,10 +42,7 @@ export function TabBar({
   );
 }
 
-/**
- * One tab. When it becomes active its pill fades and scales in and the icon
- * bounces (1 → 1.12 → 1); it shrinks slightly while pressed.
- */
+/** Stable navigation with visible selection and full scaling labels. */
 function TabButton({
   label,
   icon,
@@ -64,66 +54,24 @@ function TabButton({
   active: boolean;
   onPress: () => void;
 }) {
-  const reduced = useReducedMotion();
-  const press = usePressScale();
-  const on = useRef(new Animated.Value(active ? 1 : 0)).current;
-  const bounce = useRef(new Animated.Value(1)).current;
-  const wasActive = useRef(active);
-
-  useEffect(() => {
-    if (wasActive.current === active) return;
-    wasActive.current = active;
-    if (reduced) {
-      on.setValue(active ? 1 : 0);
-      return;
-    }
-    Animated.timing(on, {
-      toValue: active ? 1 : 0,
-      duration: motion.base,
-      easing: easeOut,
-      useNativeDriver: true,
-    }).start();
-    if (active) pop(bounce).start();
-  }, [active, reduced, on, bounce]);
-
-  const pillScale = on.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.7, 1],
-  });
   return (
     <Pressable
       accessibilityRole="tab"
       accessibilityLabel={label}
       accessibilityState={{ selected: active }}
       onPress={onPress}
-      onPressIn={press.onPressIn}
-      onPressOut={press.onPressOut}
       style={[s.tab, active && s.tabActive]}
     >
-      <Animated.View style={[s.iconWrap, press.style]}>
-        <Animated.View
-          style={[s.pill, { opacity: on, transform: [{ scale: pillScale }] }]}
+      <View style={s.iconWrap}>
+        {active && <View style={s.pill} />}
+        <Icon
+          name={icon}
+          size={20}
+          color={active ? colors.accent : colors.faint}
+          strokeWidth={active ? 2 : 1.8}
         />
-        <Animated.View style={{ transform: [{ scale: bounce }] }}>
-          <Icon
-            name={icon}
-            size={20}
-            color={active ? colors.accent : colors.faint}
-            strokeWidth={active ? 2 : 1.8}
-          />
-        </Animated.View>
-      </Animated.View>
-      <Text
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.8}
-        // Text follows the phone's text size (MOB-11); a tab label grows
-        // only so far, so five still fit across.
-        maxFontSizeMultiplier={1.4}
-        style={[s.label, active && s.labelActive]}
-      >
-        {label}
-      </Text>
+      </View>
+      <Text style={[s.label, active && s.labelActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -145,11 +93,14 @@ const s = themed(() =>
     tab: {
       flex: 1,
       minHeight: 58,
+      minWidth: 0,
+      paddingHorizontal: 2,
+      paddingVertical: 4,
       alignItems: "center",
       justifyContent: "center",
       gap: 2,
       marginHorizontal: 2,
-      borderRadius: 15,
+      borderRadius: radii.input,
     },
     tabActive: { backgroundColor: colors.accentSoft },
     iconWrap: {
@@ -164,10 +115,16 @@ const s = themed(() =>
       left: 18,
       right: 18,
       height: 3,
-      borderRadius: 2,
+      borderRadius: radii.pill,
       backgroundColor: colors.accent,
     },
-    label: { fontFamily: fonts.medium, fontSize: 11, color: colors.muted },
+    label: {
+      fontFamily: fonts.medium,
+      fontSize: 11,
+      color: colors.muted,
+      textAlign: "center",
+      flexShrink: 1,
+    },
     labelActive: { fontFamily: fonts.semibold, color: colors.accent },
   }),
 );

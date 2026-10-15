@@ -40,10 +40,8 @@ export function ProjectTimeline({
   if (!timeline)
     return (
       <View style={s.wrap}>
-        <Text style={s.eyebrow}>TIMELINE</Text>
-        <Text style={s.empty}>
-          Nothing here has a date yet. A timeline can only place work that does.
-        </Text>
+        <Text style={s.eyebrow}>Timeline</Text>
+        <Text style={s.empty}>Add a task date to see the timeline.</Text>
       </View>
     );
 
@@ -58,7 +56,7 @@ export function ProjectTimeline({
 
   return (
     <View style={s.wrap}>
-      <Text style={s.eyebrow}>TIMELINE</Text>
+      <Text style={s.eyebrow}>Timeline</Text>
       <Text style={s.range}>
         {day(timeline.start)} – {day(timeline.end)} · {timeline.days} day
         {timeline.days === 1 ? "" : "s"}
@@ -67,24 +65,39 @@ export function ProjectTimeline({
       {/* Today and the deadline are drawn once, across the whole chart, so
           every bar is read against the same two marks. */}
       <View style={s.chart}>
-        {timeline.todayAt !== null && (
-          <View
-            style={[s.mark, s.today, { left: `${timeline.todayAt}%` }]}
-            accessibilityLabel="Today"
-          />
-        )}
-        {timeline.deadlineAt !== null && (
-          <View
-            style={[s.mark, s.deadline, { left: `${timeline.deadlineAt}%` }]}
-            accessibilityLabel="Deadline"
-          />
-        )}
         {timeline.bars.map((bar) => (
-          <View key={bar.id} style={s.lane}>
-            <Text style={s.laneTitle} numberOfLines={1}>
-              {bar.title}
-            </Text>
+          <Pressable
+            key={bar.id}
+            style={s.lane}
+            accessibilityRole="button"
+            accessibilityLabel={`${bar.title}${bar.stage ? `, ${bar.stage}` : ""}${bar.late ? ", overdue" : ""}${ticks
+              .filter((t) => t.item_id === bar.id)
+              .map((t) => `, session ${new Date(t.start_at).toLocaleString()}`)
+              .join("")}`}
+            onPress={() => {
+              const item = byId.get(bar.id);
+              if (item) onOpenItem(item);
+            }}
+          >
+            <Text style={s.laneTitle}>{bar.title}</Text>
             <View style={s.track}>
+              {timeline.todayAt !== null && (
+                <View
+                  style={[s.mark, s.today, { left: `${timeline.todayAt}%` }]}
+                  pointerEvents="none"
+                />
+              )}
+              {timeline.deadlineAt !== null && (
+                <View
+                  style={[
+                    s.mark,
+                    s.deadline,
+                    { left: `${timeline.deadlineAt}%` },
+                  ]}
+                  pointerEvents="none"
+                />
+              )}
+
               <View
                 style={[
                   s.bar,
@@ -96,15 +109,8 @@ export function ProjectTimeline({
               {ticks
                 .filter((tick) => tick.item_id === bar.id)
                 .map((tick) => (
-                  <Pressable
+                  <View
                     key={tick.id}
-                    hitSlop={12}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open ${bar.title} scheduled session`}
-                    onPress={() => {
-                      const item = byId.get(bar.id);
-                      if (item) onOpenItem(item);
-                    }}
                     style={[
                       s.session,
                       { left: `${tick.left}%`, width: `${tick.width}%` },
@@ -113,23 +119,43 @@ export function ProjectTimeline({
                 ))}
             </View>
             <Text style={s.laneStage}>{bar.stage}</Text>
-          </View>
+          </Pressable>
         ))}
         {undatedWithSessions.map((item) => (
-          <View key={item.id} style={s.lane}>
-            <Text style={s.laneTitle} numberOfLines={1}>
-              {item.title}
-            </Text>
+          <Pressable
+            key={item.id}
+            style={s.lane}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.title}${ticks
+              .filter((t) => t.item_id === item.id)
+              .map((t) => `, session ${new Date(t.start_at).toLocaleString()}`)
+              .join("")}`}
+            onPress={() => onOpenItem(item)}
+          >
+            <Text style={s.laneTitle}>{item.title}</Text>
             <View style={s.track}>
+              {timeline.todayAt !== null && (
+                <View
+                  style={[s.mark, s.today, { left: `${timeline.todayAt}%` }]}
+                  pointerEvents="none"
+                />
+              )}
+              {timeline.deadlineAt !== null && (
+                <View
+                  style={[
+                    s.mark,
+                    s.deadline,
+                    { left: `${timeline.deadlineAt}%` },
+                  ]}
+                  pointerEvents="none"
+                />
+              )}
+
               {ticks
                 .filter((tick) => tick.item_id === item.id)
                 .map((tick) => (
-                  <Pressable
+                  <View
                     key={tick.id}
-                    hitSlop={12}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Open ${item.title} scheduled session`}
-                    onPress={() => onOpenItem(item)}
                     style={[
                       s.session,
                       { left: `${tick.left}%`, width: `${tick.width}%` },
@@ -137,7 +163,7 @@ export function ProjectTimeline({
                   />
                 ))}
             </View>
-          </View>
+          </Pressable>
         ))}
       </View>
 
@@ -147,7 +173,7 @@ export function ProjectTimeline({
             No date or session · {notShown.length}
           </Text>
           {notShown.map((t) => (
-            <Text key={t.id} style={s.undatedItem} numberOfLines={1}>
+            <Text key={t.id} style={s.undatedItem}>
               {t.title}
             </Text>
           ))}
@@ -170,17 +196,16 @@ const s = themed(() =>
     },
     eyebrow: {
       color: colors.muted,
-      fontSize: 11,
-      letterSpacing: 0.8,
+      fontSize: 13,
       fontFamily: fonts.semibold,
     },
     range: { color: colors.muted, fontSize: 13 },
     empty: { color: colors.muted, fontSize: 13, lineHeight: 19 },
     chart: { position: "relative", gap: 10 },
-    mark: { position: "absolute", top: 0, bottom: 0, width: 1 },
+    mark: { position: "absolute", top: 0, bottom: 0, width: 1, zIndex: 2 },
     today: { backgroundColor: colors.accent },
     deadline: { backgroundColor: colors.danger },
-    lane: { gap: 3 },
+    lane: { gap: 3, minHeight: 44, paddingVertical: 6 },
     laneTitle: { color: colors.text, fontSize: 13 },
     track: {
       height: 8,

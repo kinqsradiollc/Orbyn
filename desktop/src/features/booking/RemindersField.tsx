@@ -11,7 +11,9 @@ const MAX_REMINDERS = 3;
 export function RemindersField({
   value,
   onChange,
+  disabled = false,
 }: {
+  disabled?: boolean;
   value: number[];
   onChange: (next: number[]) => void;
 }) {
@@ -19,8 +21,8 @@ export function RemindersField({
   const [choice, setChoice] = useState("");
   const free = PRESETS.filter((m) => !value.includes(m));
   return (
-    <fieldset className="check-group">
-      <legend>Reminder emails to the booker</legend>
+    <fieldset className="check-group" disabled={disabled}>
+      <legend>Email reminders</legend>
       {value.length ? (
         <ul className="chip-list">
           {[...value]
@@ -32,7 +34,10 @@ export function RemindersField({
                   type="button"
                   className="icon-button"
                   aria-label={`Remove the reminder ${alertLabel(m)}`}
-                  onClick={() => onChange(value.filter((x) => x !== m))}
+                  disabled={disabled}
+                  onClick={() => {
+                    if (!disabled) onChange(value.filter((x) => x !== m));
+                  }}
                 >
                   <X size={12} />
                 </button>
@@ -40,7 +45,7 @@ export function RemindersField({
             ))}
         </ul>
       ) : (
-        <p className="field-hint">No reminders.</p>
+        <p className="field-hint">No reminders</p>
       )}
       {value.length < MAX_REMINDERS && free.length > 0 && (
         <div className="field-row">
@@ -49,6 +54,7 @@ export function RemindersField({
           </label>
           <Select
             id={id}
+            disabled={disabled}
             value={choice}
             onChange={(e) => setChoice(e.target.value)}
           >
@@ -62,8 +68,9 @@ export function RemindersField({
           <button
             type="button"
             className="secondary"
-            disabled={!choice}
+            disabled={disabled || !choice}
             onClick={() => {
+              if (disabled || !free.includes(Number(choice))) return;
               onChange([...value, Number(choice)]);
               setChoice("");
             }}
@@ -73,7 +80,7 @@ export function RemindersField({
         </div>
       )}
       <small className="field-hint">
-        Up to three, each with the link to change or cancel.
+        Up to three reminders, with change and cancel links.
       </small>
     </fieldset>
   );

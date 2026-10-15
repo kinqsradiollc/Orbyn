@@ -14,9 +14,13 @@ export function PublicProfilePage({ path, onHome }: Props) {
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [missing, setMissing] = useState(!handle);
   const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     document.title = "Book a time · Orbyn";
+    setProfile(null);
+    setMissing(!handle);
+    setError("");
     if (!handle) return;
     let alive = true;
     client.getPublicProfile(handle).then(
@@ -34,7 +38,7 @@ export function PublicProfilePage({ path, onHome }: Props) {
     return () => {
       alive = false;
     };
-  }, [handle]);
+  }, [handle, retry]);
 
   return (
     <PublicShell onHome={onHome} footer="Scheduling by Orbyn.">
@@ -45,7 +49,15 @@ export function PublicProfilePage({ path, onHome }: Props) {
         />
       ) : !profile ? (
         error ? (
-          <Message title="Couldn't load this page." body={error} />
+          <Message title="Couldn't load this page" body={error}>
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setRetry((n) => n + 1)}
+            >
+              Retry
+            </button>
+          </Message>
         ) : (
           <section className="public-card">
             <p className="muted">Loading…</p>
@@ -53,10 +65,10 @@ export function PublicProfilePage({ path, onHome }: Props) {
         )
       ) : (
         <section
-          className="public-card profile-page fade-up"
+          className="public-card profile-page"
           aria-labelledby="profile-title"
         >
-          <span className="eyebrow">BOOK A TIME</span>
+          <p className="profile-label">Book a time</p>
           <h1 id="profile-title">{profile.name}</h1>
           {profile.bio && <p className="booking-desc">{profile.bio}</p>}
           {profile.pages.length ? (

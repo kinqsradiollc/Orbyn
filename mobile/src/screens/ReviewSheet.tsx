@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import type { ReviewInbox, ReviewItem } from "@orbyn/core";
 import { Button } from "../components/Button";
@@ -11,7 +11,7 @@ import { confirmAction } from "../lib/confirm";
 import { errorText } from "../lib/errors";
 import { onLive } from "../lib/live";
 import { timeAgo } from "../lib/progress";
-import { FadeIn, PressableScale, animateLayout } from "../motion";
+import { Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -61,59 +61,131 @@ export function ReviewSheet({
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
 
-  const load = () =>
-    client.reviewInbox().then(
-      (next) => {
-        setInbox(next);
-        onCount?.(next.pending.length);
-      },
-      (e) => setError(errorText(e)),
-    );
-  const show = (id: string) =>
-    client.reviewItem(id).then(
-      (item) => {
-        animateLayout();
-        setOpen(item);
-        setChosen(new Set(item.changes.map((c) => c.index)));
-      },
-      (e) => setError(errorText(e)),
-    );
+  const active = useRef(visible);
+  active.current = visible;
+  const listEpoch = useRef(0);
+  const detailEpoch = useRef(0);
+  const selected = useRef<string | null>(null);
+  const mutation = useRef(false);
+  const [targetId, setTargetId] = useState<string | null>(null);
+  const [readFailure, setReadFailure] = useState<"list" | "detail" | null>(
+    null,
+  );
+  const [detailPending, setDetailPending] = useState(false);
+  const countRef = useRef(onCount);
+  countRef.current = onCount;
+  const load = async () => {
+    const epoch = ++listEpoch.current;
+    try {
+      const next = await client.reviewInbox();
+      if (!active.current || epoch !== listEpoch.current) return;
+      setInbox(next);
+      countRef.current?.(next.pending.length);
+      setReadFailure((value) => (value === "list" ? null : value));
+    } catch (error) {
+      if (active.current && epoch === listEpoch.current) {
+        setError(errorText(error));
+        setReadFailure("list");
+      }
+    }
+  };
+  const show = async (id: string) => {
+    const epoch = ++detailEpoch.current;
+    if (selected.current !== id) {
+      setOpen(null);
+      setDone("");
+    }
+    selected.current = id;
+    setTargetId(id);
+    setDetailPending(true);
+    setReadFailure(null);
+    setError("");
+    try {
+      const item = await client.reviewItem(id);
+      if (
+        !active.current ||
+        epoch !== detailEpoch.current ||
+        selected.current !== id
+      )
+        return;
+      setOpen(item);
+      setChosen(new Set(item.changes.map((change) => change.index)));
+    } catch (error) {
+      if (active.current && epoch === detailEpoch.current) {
+        setError(errorText(error));
+        setReadFailure("detail");
+      }
+    } finally {
+      if (active.current && epoch === detailEpoch.current)
+        setDetailPending(false);
+    }
+  };
 
   useEffect(() => {
     if (!visible) return;
+    active.current = true;
     setDone("");
     setError("");
+    setInbox(null);
+    setOpen(null);
+    setTargetId(null);
+    selected.current = null;
     void load();
     const stop = onLive((news) => {
       if (news.kind !== "changed" || (news.area && news.area !== "review"))
         return;
       void load();
+      if (selected.current && !mutation.current) void show(selected.current);
     });
-    return stop;
+    return () => {
+      active.current = false;
+      listEpoch.current++;
+      detailEpoch.current++;
+      stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
   useEffect(() => {
-    if (!visible || !focusId) return;
+    if (!visible || !focusId || mutation.current) return;
     void show(focusId);
     onFocused();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, focusId]);
 
   const act = async (fn: () => Promise<string>) => {
+    if (
+      mutation.current ||
+      !active.current ||
+      detailPending ||
+      readFailure === "detail"
+    )
+      return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
-      setDone(await fn());
-    } catch (e) {
-      setError(errorText(e));
+      const message = await fn();
+      if (active.current) setDone(message);
+    } catch (error) {
+      if (active.current) setError(errorText(error));
     } finally {
-      setBusy(false);
+      mutation.current = false;
+      if (active.current) setBusy(false);
     }
   };
 
-  const approve = (item: ReviewItem) =>
-    act(async () => {
+  const approve = (item: ReviewItem) => {
+    if (
+      selected.current !== item.id ||
+      item.status !== "pending" ||
+      !chosen.size ||
+      item.changes.some(
+        (c) => c.stale && (!item.partial || chosen.has(c.index)),
+      )
+    )
+      return;
+    return act(async () => {
       const only =
         item.partial && chosen.size < item.changes.length
           ? [...chosen]
@@ -122,8 +194,9 @@ export function ReviewSheet({
       await Promise.all([load(), show(item.id)]);
       return only
         ? `Approved ${only.length} of ${item.changes.length} changes.`
-        : "Approved. The changes are made.";
+        : "Changes approved.";
     });
+  };
 
   const decline = (item: ReviewItem) =>
     confirmAction(
@@ -134,14 +207,15 @@ export function ReviewSheet({
         void act(async () => {
           await client.declineReview(item.id);
           await Promise.all([load(), show(item.id)]);
-          return "Declined. Nothing changed.";
+          return "Suggestion declined.";
         }),
     );
 
   const row = (item: ReviewItem) => (
-    <PressableScale
+    <Pressable
       key={item.id}
       accessibilityRole="button"
+      disabled={busy}
       onPress={() => void show(item.id)}
       style={s.card}
     >
@@ -163,7 +237,7 @@ export function ReviewSheet({
             : `${STATUS[item.status]} ${timeAgo(item.decided_at ?? item.expires_at)}`}
         </Text>
       </View>
-    </PressableScale>
+    </Pressable>
   );
 
   const chosenStale =
@@ -172,15 +246,25 @@ export function ReviewSheet({
   return (
     <Sheet
       visible={visible}
-      title={open ? "Suggested changes" : "Review"}
+      title={targetId ? "Suggested changes" : "Review"}
       onClose={() => {
+        if (mutation.current) return;
+        selected.current = null;
+        detailEpoch.current++;
+        setTargetId(null);
         setOpen(null);
         onClose();
       }}
       onBack={
-        open
+        targetId
           ? () => {
-              animateLayout();
+              if (mutation.current) return;
+              selected.current = null;
+              detailEpoch.current++;
+              setTargetId(null);
+              setReadFailure(null);
+              setError("");
+              setDetailPending(false);
               setOpen(null);
               setDone("");
             }
@@ -192,17 +276,38 @@ export function ReviewSheet({
         {!!error && (
           <ErrorBanner error={error} onDismiss={() => setError("")} />
         )}
+        {readFailure && (
+          <Button
+            title="Retry"
+            secondary
+            disabled={busy || detailPending}
+            onPress={() => {
+              if (readFailure === "detail" && selected.current)
+                void show(selected.current);
+              else void load();
+            }}
+          />
+        )}
+        {detailPending && (
+          <Text style={shared.small} accessibilityLiveRegion="polite">
+            Loading changes…
+          </Text>
+        )}
         {!open ? (
-          !inbox ? (
-            <Text style={shared.small}>Loading…</Text>
+          targetId ? null : !inbox ? (
+            readFailure === "list" ? null : (
+              <Text style={shared.small}>Loading…</Text>
+            )
           ) : (
-            <FadeIn>
+            <View>
               {inbox.pending.length ? (
                 <View style={s.list}>{inbox.pending.map(row)}</View>
               ) : (
                 <View style={s.empty}>
                   <Icon name="inbox" size={28} color={colors.muted} />
-                  <Text style={shared.sectionTitle}>Nothing waits for you</Text>
+                  <Text style={shared.sectionTitle}>
+                    No pending suggestions
+                  </Text>
                   <Text style={[shared.small, s.center]}>
                     Agent changes that need approval appear here.
                   </Text>
@@ -210,17 +315,18 @@ export function ReviewSheet({
               )}
               {inbox.recent.length > 0 && (
                 <>
-                  <Text style={[shared.label, s.heading]}>Decided lately</Text>
+                  <Text style={[shared.label, s.heading]}>
+                    Recent decisions
+                  </Text>
                   <View style={s.list}>{inbox.recent.map(row)}</View>
                 </>
               )}
-            </FadeIn>
+            </View>
           )
         ) : (
-          <FadeIn>
-            <Text style={shared.eyebrow}>
-              {open.proposer.toUpperCase()} ·{" "}
-              {STATUS[open.status].toUpperCase()}
+          <View>
+            <Text style={shared.small}>
+              {open.proposer} · {STATUS[open.status]}
             </Text>
             <Text style={s.title}>{open.summary}</Text>
             <Text style={[shared.small, s.gap]}>
@@ -231,13 +337,16 @@ export function ReviewSheet({
               {open.changes.map((c) => (
                 <View
                   key={c.index}
-                  style={[s.change, c.stale && { borderColor: colors.warning }]}
+                  style={[s.change, c.stale && s.staleChange]}
                 >
                   <View style={s.changeHead}>
                     {open.partial && open.status === "pending" && (
                       <Switch
                         accessibilityLabel={`Include: ${c.headline}`}
                         value={chosen.has(c.index)}
+                        disabled={
+                          busy || detailPending || readFailure === "detail"
+                        }
                         onValueChange={(on) =>
                           setChosen((now) => {
                             const next = new Set(now);
@@ -284,7 +393,7 @@ export function ReviewSheet({
                 <Button
                   title="Decline"
                   secondary
-                  disabled={busy}
+                  disabled={busy || detailPending || readFailure === "detail"}
                   onPress={() => decline(open)}
                   style={s.actionButton}
                 />
@@ -295,7 +404,14 @@ export function ReviewSheet({
                       : "Approve"
                   }
                   icon="check"
-                  disabled={busy || chosen.size === 0 || chosenStale}
+                  disabled={
+                    busy ||
+                    detailPending ||
+                    readFailure === "detail" ||
+                    chosen.size === 0 ||
+                    chosenStale ||
+                    (!open.partial && open.changes.some((c) => c.stale))
+                  }
                   onPress={() => void approve(open)}
                   style={s.actionButton}
                 />
@@ -307,7 +423,7 @@ export function ReviewSheet({
               </Text>
             )}
             {!!done && <Text style={s.done}>{done}</Text>}
-          </FadeIn>
+          </View>
         )}
       </ScrollView>
     </Sheet>
@@ -316,7 +432,7 @@ export function ReviewSheet({
 
 const s = themed(() =>
   StyleSheet.create({
-    flex: { flex: 1, minWidth: 0 },
+    flex: { flexGrow: 1, flexBasis: 140, minWidth: 0 },
     list: { gap: 8 },
     heading: { marginTop: 20 },
     center: { textAlign: "center" },
@@ -347,17 +463,20 @@ const s = themed(() =>
     },
     title: {
       fontFamily: fonts.display,
-      fontSize: 18,
+      fontSize: 16,
       color: colors.text,
       marginBottom: 4,
     },
     change: {
-      padding: 12,
+      paddingVertical: 14,
       gap: 6,
-      borderRadius: radii.input,
-      borderWidth: StyleSheet.hairlineWidth,
-      borderColor: colors.border,
-      backgroundColor: colors.surfaceMuted,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+    },
+    staleChange: {
+      paddingLeft: 12,
+      borderLeftWidth: 2,
+      borderLeftColor: colors.warning,
     },
     changeHead: {
       flexDirection: "row",
@@ -371,7 +490,7 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.text,
     },
-    row: { flexDirection: "row", gap: 10 },
+    row: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     rowLabel: {
       width: 84,
       fontFamily: fonts.medium,

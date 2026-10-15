@@ -1,5 +1,14 @@
+import { useElementWidth } from "../../hooks/useElementWidth";
 import { Select } from "../../components/Select";
-import { Fragment, useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -50,6 +59,7 @@ import {
   type Status,
   type TaskGroupBy,
 } from "@orbyn/core";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { ProgressDialog } from "../followthrough/ProgressDialog";
 import "../followthrough/followthrough.css";
@@ -270,6 +280,17 @@ export function TasksView({
   agentName = "Orbyn",
   onOpenReview,
 }: Props) {
+  const { ref: paneRef, width: paneWidth } = useElementWidth();
+  const filtersId = useId();
+  const mounted = useRef(false);
+  const owner = useRef(session.get());
+  const current = () => mounted.current && owner.current === session.get();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const { lists, tags } = usePlanning();
   const { feed } = usePlanned();
   const [filter, setFilter] = useState<Filter>("all");
@@ -303,19 +324,27 @@ export function TasksView({
   };
   // Project names, for grouping by project (loaded only then).
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [projectReadError, setProjectReadError] = useState("");
+  const [projectRetry, setProjectRetry] = useState(0);
   useEffect(() => {
-    if (shownGroup !== "project" || projects.length) return;
+    if (shownGroup !== "project") return;
+    setProjectReadError("");
     let live = true;
     client
       .listProjects()
       .then(
-        (all) => live && setProjects(all.map(({ id, name }) => ({ id, name }))),
+        (all) =>
+          live &&
+          current() &&
+          setProjects(all.map(({ id, name }) => ({ id, name }))),
       )
-      .catch(() => {});
+      .catch((e) => {
+        if (live && current()) setProjectReadError(errorText(e));
+      });
     return () => {
       live = false;
     };
-  }, [shownGroup, projects.length]);
+  }, [shownGroup, projectRetry]);
   const [pins, setPinsState] = useState<PinId[]>(savedPins);
   const [sort, setSortState] = useState<ItemSort>(() =>
     saved(
@@ -366,7 +395,7 @@ export function TasksView({
   const [tagId, setTagId] = useState("any");
   const [size, setSize] = useState<Size | "any">("any");
   const [assignee, setAssignee] = useState("any");
-  /** On a phone the filters fold behind one button (see .filter-bar). */
+  /** Detailed filters stay behind one explicit control at every pane size. */
   const [filtersOpen, setFiltersOpen] = useState(false);
   // "Who's on it" (W2): quick filters, a date range, connected agents' work
   // and what waits in Review.
@@ -380,21 +409,30 @@ export function TasksView({
   const itemsKey = items
     .map((i) => `${i.id}:${i.version}:${i.agent_state ?? ""}`)
     .join();
+  const [ownerDataError, setOwnerDataError] = useState("");
+  const [ownerDataLoading, setOwnerDataLoading] = useState(false);
+  const [ownerRetry, setOwnerRetry] = useState(0);
   useEffect(() => {
     if (!owners) return;
     let live = true;
-    client
-      .agentWork()
-      .then((work) => live && setAgentWork(work))
-      .catch(() => {});
-    client
-      .reviewInbox()
-      .then((inbox) => live && setReviewCards(inbox.pending))
-      .catch(() => {});
+    setOwnerDataLoading(true);
+    setOwnerDataError("");
+    void Promise.allSettled([client.agentWork(), client.reviewInbox()]).then(
+      ([work, inbox]) => {
+        if (!live || !current()) return;
+        if (work.status === "fulfilled") setAgentWork(work.value);
+        if (inbox.status === "fulfilled") setReviewCards(inbox.value.pending);
+        if (work.status === "rejected" || inbox.status === "rejected")
+          setOwnerDataError(
+            "Couldn’t refresh connected-agent work and reviews.",
+          );
+        setOwnerDataLoading(false);
+      },
+    );
     return () => {
       live = false;
     };
-  }, [owners, itemsKey]);
+  }, [owners, itemsKey, ownerRetry]);
   // While your agent has work, its progress is looked at again every few seconds.
   const agentBusy = items.some(
     (i) => i.agent_state === "queued" || i.agent_state === "working",
@@ -582,6 +620,7 @@ export function TasksView({
           .map(({ key, title }) => ({ key, title }))
       : [];
   const moveCard = (item: Item, from: string, to: string) => {
+    if (busy || moving || !current() || !canWrite(item)) return;
     const result = dropChange(item, boardGroup, from, to, names);
     if (!result) return;
     if (!result.ok) {
@@ -611,16 +650,31 @@ export function TasksView({
     null,
   );
   const [moveError, setMoveError] = useState("");
+  const [moving, setMoving] = useState(false);
+  const moveLock = useRef(false);
   const move = async (
     id: string,
     to: { before_id?: string; after_id?: string },
   ) => {
+    const item = items.find((candidate) => candidate.id === id);
+    if (!item || !canWrite(item) || busy || moveLock.current || !current())
+      return;
+    moveLock.current = true;
+    setMoving(true);
     setMoveError("");
+    let saved = false;
     try {
       await client.moveItem(id, to);
-      await onChanged?.();
+      saved = true;
+      if (current()) await onChanged?.();
     } catch (e) {
-      setMoveError(errorText(e));
+      if (current())
+        setMoveError(
+          saved ? "Order saved. Couldn’t reload tasks." : errorText(e),
+        );
+    } finally {
+      moveLock.current = false;
+      if (current()) setMoving(false);
     }
   };
 
@@ -648,7 +702,7 @@ export function TasksView({
             key={i.id}
             item={i}
             index={n}
-            busy={busy}
+            busy={busy || moving}
             readOnly={!canWrite(i)}
             score={sort === "score" ? i.score : undefined}
             parentTitle={
@@ -686,8 +740,12 @@ export function TasksView({
                   : " is-drop-after"
                 : "")
             }
-            draggable
+            draggable={!busy && !moving && canWrite(i)}
             onDragStart={(e) => {
+              if (busy || moving || !canWrite(i)) {
+                e.preventDefault();
+                return;
+              }
               e.dataTransfer.effectAllowed = "move";
               e.dataTransfer.setData("text/plain", i.id);
               setDragId(i.id);
@@ -740,7 +798,13 @@ export function TasksView({
   };
 
   return (
-    <section className="card tasks-card">
+    <section
+      ref={paneRef}
+      className={
+        "card tasks-card" +
+        (paneWidth > 0 && paneWidth < 760 ? " is-compact" : "")
+      }
+    >
       {progressOpen && (
         <ProgressDialog onClose={() => setProgressOpen(false)} />
       )}
@@ -804,7 +868,7 @@ export function TasksView({
             type="button"
             className="secondary filters-toggle"
             aria-expanded={filtersOpen}
-            aria-controls="task-filters"
+            aria-controls={filtersId}
             onClick={() => setFiltersOpen(!filtersOpen)}
           >
             <SlidersHorizontal size={14} aria-hidden="true" />
@@ -860,7 +924,7 @@ export function TasksView({
         </Popover>
       )}
       <div
-        id="task-filters"
+        id={filtersId}
         className={"filter-bar" + (filtersOpen ? " is-open" : "")}
         role="group"
         aria-label="Filters"
@@ -999,7 +1063,11 @@ export function TasksView({
                 onClick={() => setBoardFilter(f)}
               >
                 {BOARD_FILTER_LABELS[f]}
-                <span>{boardCounts[f]}</span>
+                <span>
+                  {f === "needs_review" && (ownerDataLoading || ownerDataError)
+                    ? "—"
+                    : boardCounts[f]}
+                </span>
               </button>
             ))}
           </div>
@@ -1060,6 +1128,38 @@ export function TasksView({
           ))}
         </div>
       )}
+      {shownGroup === "project" && projectReadError && (
+        <div className="error" role="alert">
+          {projectReadError}{" "}
+          <button
+            className="secondary"
+            onClick={() => setProjectRetry((value) => value + 1)}
+          >
+            Retry project names
+          </button>
+        </div>
+      )}
+      {owners && ownerDataLoading && (
+        <p className="muted" role="status">
+          Refreshing agent work and reviews…
+        </p>
+      )}
+      {owners && ownerDataError && (
+        <div className="error" role="alert">
+          {ownerDataError}{" "}
+          <button
+            className="secondary"
+            onClick={() => setOwnerRetry((value) => value + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {moving && (
+        <p className="muted" role="status">
+          Saving order…
+        </p>
+      )}
       {moveError && (
         <div className="error" role="alert">
           {moveError}
@@ -1087,7 +1187,7 @@ export function TasksView({
           parentOf={(i) =>
             i.parent_id ? itemById.get(i.parent_id)?.title : undefined
           }
-          busy={busy}
+          busy={busy || moving}
           canWrite={canWrite}
           onOpen={onOpen}
           onMove={moveCard}

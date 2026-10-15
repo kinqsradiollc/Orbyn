@@ -5,8 +5,32 @@ its acceptance contract in `devday-2026-implementation-review.md`.
 
 ## Current instruction
 
-C1, C2/M1, C3, C4/D1, C5, and now C6 have accepted deliveries within their
-recorded scopes. Reviewer approved C6 closeout for the owner-approved bounded
+The previous owner-revised ADR 001/002 delivery is complete under its recorded
+scopes. Its final integration candidate `c1aedfb9` and closing receipt `c7b3bdb7`
+are on remote main; deployment and recorded follow-ups remain user-owned,
+deferred or unverified. Do not reopen that delivery by carrying historical
+pending language forward.
+
+The current owner-directed phase is **ADR 003 — Product UI/UX redesign**. Its
+baseline is `c7b3bdb7`; phase is implementation, review round **0/3**, and no
+candidate is frozen. Source changes remain uncommitted in the active `c6-next`
+worktree. Use the [ADR 003 decision](../adr/003-product-ui-ux-redesign.md) and
+[Builder-owned delivery ledger](ui-ux-redesign.md) for scope and area status.
+The owner requires assessment of every layout, style, position, copy and
+interaction in the full surface inventory. Implemented source includes neutral/
+blue theme work, grouped Settings, actual-pane sizing in several panes, compact
+type, foreground contrast and mobile web input sizing; none establishes whole-
+surface completion. The owner specifically flagged **Your agents** as still
+large and intimidating on a dark surface. Builder's first redesign target is a
+compact list/navigation, restrained character presentation and clear action
+hierarchy. Finish all surface families, freeze the candidate, run Tester then
+Reviewer, complete one final web/Expo web Visual Check, fix scoped findings and
+integrate. No final Visual Check or merge exists yet. Stage Tracker updates only
+these summary records; it does not edit the ADR or implementation ledger while
+Builder's implementation proceeds.
+
+The completed ADR 001/002 scope includes C1, C2/M1, C3, C4/D1, C5, and C6
+accepted deliveries within their recorded scopes. Reviewer approved C6 closeout for the owner-approved bounded
 release scope in existing round **2/3**. The retained evidence includes the
 unified `/mcp` source correction cohort (**58/58**, zero failures/skips, plus
 backend typecheck), launcher checks (canonical **8/8**, legacy **16/16**, plus
@@ -22,7 +46,7 @@ bounded disposition accepts these limits for C6 closeout. Latest closeout commit
 and [qualification handoff](c6-qualification.md).
 See [current state](adr-current-state.md) and [C6 progress](c6-progress.md).
 
-The owner added [ADR 002](../adr/002-unified-mcp-integration.md): one canonical
+The owner added [ADR 002](../adr/archive/002-unified-mcp-integration.md): one canonical
 `/mcp` connection with optional previews, retaining internal inference isolation.
 C6 now includes the complete endpoint/grant migration and environment alignment
 before final acceptance. Current `/plugin` evidence remains legacy-path evidence.
@@ -79,7 +103,7 @@ accurately; inaccessible historical images remain unreviewed.
 Existing visual reports remain historical evidence. The earlier capture manifest
 is `/Users/anhdang/.codex/visualizations/2026/10/07/01a1150d-e6e8-7c93-a48e-edd209938fec/orbyn-qa/review-tracking.md`.
 
-## Canonical top-down delivery queue
+## Completed ADR 001/002 delivery queue (historical)
 
 The user explicitly requires the full ADR from top down (7 October 2026).
 This supersedes the earlier Docs-first queue. QA-006 remains a completed scoped

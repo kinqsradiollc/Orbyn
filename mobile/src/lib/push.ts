@@ -2,19 +2,31 @@ import { Platform } from "react-native";
 import * as Notifications from "expo-notifications";
 import Constants from "expo-constants";
 import { client } from "./api";
-import { clearPushToken, getPushToken, savePushToken } from "./session";
+import {
+  clearPushToken,
+  getPushToken,
+  savePushToken,
+  session,
+} from "./session";
 
 /**
  * Ask for permission, fetch the Expo push token and register this device with
  * the server. Throws a user-facing Error when a prerequisite is missing.
  */
 export async function enablePush() {
+  const token = session.token;
+  const checkOwner = () => {
+    if (!token || token !== session.token)
+      throw new Error("Sign in again before changing notifications.");
+  };
+  checkOwner();
   if (Platform.OS === "android")
     await Notifications.setNotificationChannelAsync("default", {
       name: "Planner reminders",
       importance: Notifications.AndroidImportance.HIGH,
     });
   const permission = await Notifications.requestPermissionsAsync();
+  checkOwner();
   if (permission.status !== "granted")
     throw new Error(
       "Allow notifications in your device settings to receive reminders.",
@@ -27,7 +39,9 @@ export async function enablePush() {
       "Configure the Expo EAS project ID before enabling push notifications.",
     );
   const push = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+  checkOwner();
   await client.registerDevice(push);
+  checkOwner();
   await savePushToken(push);
   await registerReviewActions();
 }
@@ -99,7 +113,11 @@ export async function answerReview(action: ReviewAnswer) {
 
 /** Unregister this device (when one is registered) and forget the push token. */
 export async function disablePush() {
+  const token = session.token;
   const push = await getPushToken();
+  if (!token || token !== session.token)
+    throw new Error("Sign in again before changing notifications.");
   if (push) await client.removeDevice(push);
+  if (token !== session.token) return;
   await clearPushToken();
 }

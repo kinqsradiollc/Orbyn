@@ -149,8 +149,13 @@ export function PlannerPanel({
   const [teamIds, setTeamIds] = useState<string[] | null>(null);
   const [listIds, setListIds] = useState<string[]>([]);
   const [pending, setPending] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [outcome, setOutcome] = useState<Outcome>(null);
   const [review, setReview] = useState<PlannerReview | null>(null);
+  const [reviewError, setReviewError] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const reviewRequest = useRef(0);
+  const mutation = useRef(false);
   /**
    * Ticks changed on offered moves, by session, kept while the plan is
    * tuned (each tuning makes a new plan with the same sessions).
@@ -190,18 +195,32 @@ export function PlannerPanel({
   );
 
   const loadReview = useCallback(async () => {
+    const version = ++reviewRequest.current;
+    setReviewLoading(true);
+    setReviewError("");
     try {
-      setReview(await client.plannerReview());
+      const next = await client.plannerReview();
+      if (version === reviewRequest.current) setReview(next);
     } catch (e) {
+      if (version !== reviewRequest.current) return;
       if ((e as HttpError).status === 401) report(e);
+      setReviewError("Couldn't load the plan review. Try again.");
+    } finally {
+      if (version === reviewRequest.current) setReviewLoading(false);
     }
   }, [report]);
   useEffect(() => {
     void loadReview();
+    return () => {
+      reviewRequest.current++;
+    };
   }, [loadReview, revision]);
 
   const preview = useCallback(
     async (dayCount = days, include?: string[], only?: string[]) => {
+      if (mutation.current || tuner.pending) return;
+      mutation.current = true;
+      setPreviewing(true);
       setPending(true);
       setOutcome(null);
       try {
@@ -233,10 +252,13 @@ export function PlannerPanel({
       } catch (e) {
         fail(e);
       } finally {
+        mutation.current = false;
+        setPreviewing(false);
         setPending(false);
       }
     },
     [
+      tuner.pending,
       days,
       startDate,
       useFrames,
@@ -283,6 +305,7 @@ export function PlannerPanel({
 
   /** A change to "Plan for"; a live preview is tuned to match. */
   const changeScope = (p: boolean, t: string[] | null, l: string[]) => {
+    if (mutation.current || tuner.pending) return;
     setPersonal(p);
     setTeamIds(t);
     setListIds(l);
@@ -303,13 +326,20 @@ export function PlannerPanel({
     );
 
   const apply = async (moves: string[]) => {
-    if (!plan) return "";
-    const result = await client.applyPlan(plan.id, { moves });
-    // The ticks stay: the applied plan shows what was moved.
-    onPlan({ ...plan, applied: true });
-    await onChanged();
-    void loadReview();
-    return appliedText(result, plan);
+    if (!plan || mutation.current || tuner.pending)
+      throw new Error("Wait for the current plan update to finish.");
+    mutation.current = true;
+    setPending(true);
+    try {
+      const result = await client.applyPlan(plan.id, { moves });
+      onPlan({ ...plan, applied: true });
+      await onChanged();
+      void loadReview();
+      return appliedText(result, plan);
+    } finally {
+      mutation.current = false;
+      setPending(false);
+    }
   };
 
   /** "Look further ahead": the same plan over the most days it can cover. */
@@ -323,6 +353,8 @@ export function PlannerPanel({
   };
 
   const moveForward = async (ids?: string[]) => {
+    if (mutation.current || tuner.pending) return;
+    mutation.current = true;
     setPending(true);
     setOutcome(null);
     try {
@@ -334,11 +366,14 @@ export function PlannerPanel({
     } catch (e) {
       fail(e);
     } finally {
+      mutation.current = false;
       setPending(false);
     }
   };
 
   const reschedule = async (blockId: string) => {
+    if (mutation.current || tuner.pending) return;
+    mutation.current = true;
     setPending(true);
     setOutcome(null);
     try {
@@ -352,6 +387,7 @@ export function PlannerPanel({
     } catch (e) {
       fail(e);
     } finally {
+      mutation.current = false;
       setPending(false);
     }
   };
@@ -371,6 +407,18 @@ export function PlannerPanel({
   const tasks = plan?.tasks ?? [];
   const keepFree = tuner.state?.keepFree ?? [];
   const busy = pending || tuner.pending;
+  const scopeSummary =
+    [
+      personal ? "Personal" : "",
+      teams.length
+        ? teamIds === null
+          ? "All teams"
+          : `${teamIds.length} teams`
+        : "",
+      listIds.length ? `${listIds.length} lists` : "",
+    ]
+      .filter(Boolean)
+      .join(" · ") || "No tasks";
 
   return (
     <section className="card planner-panel" aria-labelledby="planner-title">
@@ -381,155 +429,170 @@ export function PlannerPanel({
         <button
           className="icon-button"
           aria-label="Close planner"
+          disabled={busy}
           onClick={onClose}
         >
           <X size={18} />
         </button>
       </div>
-      <form className="planner-form" onSubmit={submit}>
-        <label>
-          Start
-          <DateField
-            type="date"
-            required
-            value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
-          />
-        </label>
-        <label>
-          Days
-          <Select
-            value={days}
-            onChange={(e) => setDays(Number(e.target.value))}
-          >
-            {/* Up to a deadline can be any number of days. */}
-            {[...new Set([1, 2, 3, 4, 5, 6, 7, 14, days])]
-              .sort((a, b) => a - b)
-              .map((d) => (
-                <option key={d} value={d}>
-                  {d === 1 ? "1 day" : `${d} days`}
-                </option>
-              ))}
-          </Select>
-        </label>
-        {(teams.length > 0 || lists.length > 0) && (
-          <fieldset className="wide planner-scope">
-            <legend>Plan for</legend>
-            <label className="check-line">
-              <input
-                type="checkbox"
-                checked={personal}
-                disabled={tuner.pending}
-                onChange={(e) =>
-                  changeScope(e.target.checked, teamIds, listIds)
-                }
-              />
-              Personal tasks
-            </label>
-            {teams.map((t) => (
-              <label key={t.id} className="check-line">
-                <input
-                  type="checkbox"
-                  checked={teamIds === null || teamIds.includes(t.id)}
-                  disabled={tuner.pending}
-                  onChange={() => toggleTeam(t.id)}
-                />
-                <span>
-                  {t.name} <small>· assigned to you</small>
-                </span>
-              </label>
-            ))}
-            {lists.length > 0 && (
-              <div className="scope-lists" role="group" aria-label="Lists">
-                <small>Only these lists (none ticked: any list)</small>
-                {lists.map((l) => (
-                  <label key={l.id} className="check-line">
+      <form className="planner-form" onSubmit={submit} aria-busy={busy}>
+        <fieldset disabled={busy} className="planner-fields">
+          <label>
+            Start
+            <DateField
+              type="date"
+              disabled={busy}
+              required
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+            />
+          </label>
+          <label>
+            Days
+            <Select
+              value={days}
+              disabled={busy}
+              onChange={(e) => setDays(Number(e.target.value))}
+            >
+              {/* Up to a deadline can be any number of days. */}
+              {[...new Set([1, 2, 3, 4, 5, 6, 7, 14, days])]
+                .sort((a, b) => a - b)
+                .map((d) => (
+                  <option key={d} value={d}>
+                    {d === 1 ? "1 day" : `${d} days`}
+                  </option>
+                ))}
+            </Select>
+          </label>
+          {(teams.length > 0 || lists.length > 0) && (
+            <details className="wide planner-options">
+              <summary>Plan for · {scopeSummary}</summary>
+              <fieldset className="planner-scope" disabled={busy}>
+                <legend className="sr-only">Plan for</legend>
+                <label className="check-line">
+                  <input
+                    type="checkbox"
+                    checked={personal}
+                    disabled={busy}
+                    onChange={(e) =>
+                      changeScope(e.target.checked, teamIds, listIds)
+                    }
+                  />
+                  Personal tasks
+                </label>
+                {teams.map((t) => (
+                  <label key={t.id} className="check-line">
                     <input
                       type="checkbox"
-                      checked={listIds.includes(l.id)}
-                      disabled={tuner.pending}
-                      onChange={() => toggleList(l.id)}
+                      checked={teamIds === null || teamIds.includes(t.id)}
+                      disabled={busy}
+                      onChange={() => toggleTeam(t.id)}
                     />
-                    <i
-                      className="list-dot"
-                      style={{ background: l.color }}
-                      aria-hidden="true"
-                    />
-                    {l.team_name ? `${l.name} · ${l.team_name}` : l.name}
+                    <span>
+                      {t.name} <small>· assigned to you</small>
+                    </span>
                   </label>
                 ))}
-              </div>
-            )}
-          </fieldset>
-        )}
-        <label className="switch-line">
-          <input
-            type="checkbox"
-            role="switch"
-            className="ai-switch"
-            checked={useFrames}
-            onChange={(e) => setUseFrames(e.target.checked)}
-          />
-          <span>
-            Use frames
-            <small>Only place tasks inside your frames.</small>
-          </span>
-        </label>
-        <label className="switch-line">
-          <input
-            type="checkbox"
-            role="switch"
-            className="ai-switch"
-            checked={split}
-            onChange={(e) => setSplit(e.target.checked)}
-          />
-          <span>
-            Split long tasks
-            <small>Break big tasks into sessions.</small>
-          </span>
-        </label>
-        <label className="wide">
-          Padding <strong>{pad}%</strong>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={5}
-            value={pad}
-            aria-valuetext={`${pad}% extra time`}
-            onChange={(e) => setPad(Number(e.target.value))}
-          />
-          <small className="field-hint">
-            Extra time added to each estimate.
-          </small>
-        </label>
-        <label className="wide">
-          Breaks
-          <Select
-            value={breakLevel}
-            onChange={(e) => setBreakLevel(e.target.value as BreakLevel)}
-          >
-            {BREAK_LEVELS.map((b) => (
-              <option key={b} value={b}>
-                {BREAK_LABELS[b]}
-              </option>
-            ))}
-          </Select>
-        </label>
-        <div className="wide planner-buttons">
-          <button className="primary" disabled={busy}>
-            <Wand2 size={15} /> {pending ? "Planning…" : "Preview plan"}
-          </button>
-          {plan && (
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => onPlan(null)}
-            >
-              Clear preview
-            </button>
+                {lists.length > 0 && (
+                  <div className="scope-lists" role="group" aria-label="Lists">
+                    <small>Lists · none selected includes all</small>
+                    {lists.map((l) => (
+                      <label key={l.id} className="check-line">
+                        <input
+                          type="checkbox"
+                          checked={listIds.includes(l.id)}
+                          disabled={busy}
+                          onChange={() => toggleList(l.id)}
+                        />
+                        <i
+                          className="list-dot"
+                          style={{ background: l.color }}
+                          aria-hidden="true"
+                        />
+                        {l.team_name ? `${l.name} · ${l.team_name}` : l.name}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </fieldset>
+            </details>
           )}
-        </div>
+          <details className="wide planner-options">
+            <summary>Scheduling options</summary>
+            <div className="planner-options-body">
+              <label className="switch-line">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="ai-switch"
+                  checked={useFrames}
+                  onChange={(e) => setUseFrames(e.target.checked)}
+                />
+                <span>
+                  Use frames
+                  <small>Only place tasks inside your frames.</small>
+                </span>
+              </label>
+              <label className="switch-line">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="ai-switch"
+                  checked={split}
+                  onChange={(e) => setSplit(e.target.checked)}
+                />
+                <span>
+                  Split long tasks
+                  <small>Break big tasks into sessions.</small>
+                </span>
+              </label>
+              <label className="wide">
+                Padding <strong>{pad}%</strong>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={pad}
+                  aria-valuetext={`${pad}% extra time`}
+                  onChange={(e) => setPad(Number(e.target.value))}
+                />
+                <small className="field-hint">
+                  Extra time added to each estimate.
+                </small>
+              </label>
+              <label className="wide">
+                Breaks
+                <Select
+                  value={breakLevel}
+                  disabled={busy}
+                  onChange={(e) => setBreakLevel(e.target.value as BreakLevel)}
+                >
+                  {BREAK_LEVELS.map((b) => (
+                    <option key={b} value={b}>
+                      {BREAK_LABELS[b]}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </div>
+          </details>
+          <div className="wide planner-buttons">
+            <button className="primary" disabled={busy}>
+              <Wand2 size={15} /> {previewing ? "Planning…" : "Preview plan"}
+            </button>
+            {plan && (
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={() => onPlan(null)}
+              >
+                Clear preview
+              </button>
+            )}
+          </div>
+        </fieldset>
       </form>
 
       {outcome && (
@@ -550,7 +613,7 @@ export function PlannerPanel({
           <span>Your calendar changed since this plan was made.</span>
           <button
             className="secondary"
-            disabled={tuner.pending}
+            disabled={busy}
             onClick={() => void tuner.refresh()}
           >
             Refresh plan
@@ -571,16 +634,18 @@ export function PlannerPanel({
 
       {plan && (
         <div className="planner-result">
-          <PlanCard
-            key={plan.id}
-            plan={plan}
-            onApply={apply}
-            limit={20}
-            ticks={ticks}
-            onTick={(id, on) => setTicks((t) => ({ ...t, [id]: on }))}
-            onLookAhead={lookAhead}
-            onShowOnCalendar={onShowDay}
-          />
+          <fieldset className="planner-pending-fields" disabled={busy}>
+            <PlanCard
+              key={plan.id}
+              plan={plan}
+              onApply={apply}
+              limit={20}
+              ticks={ticks}
+              onTick={(id, on) => setTicks((t) => ({ ...t, [id]: on }))}
+              onLookAhead={lookAhead}
+              onShowOnCalendar={onShowDay}
+            />
+          </fieldset>
         </div>
       )}
       {live && plan && (
@@ -596,13 +661,11 @@ export function PlannerPanel({
       <PlanExperiments />
 
       {live && tasks.length > 0 && (
-        <div className="plan-tasks">
-          <div className="planner-review-head">
-            <h3>Tasks considered</h3>
-            <small>
-              {tasks.filter((t) => t.included).length} of {tasks.length} in
-            </small>
-          </div>
+        <details className="plan-tasks planner-options">
+          <summary>
+            Tasks considered · {tasks.filter((t) => t.included).length} of{" "}
+            {tasks.length}
+          </summary>
           <ul>
             {tasks.map((t) => (
               <PlanTaskRow
@@ -614,12 +677,12 @@ export function PlannerPanel({
               />
             ))}
           </ul>
-        </div>
+        </details>
       )}
 
       {live && (
-        <div className="plan-keepfree">
-          <h3>Keep free</h3>
+        <details className="plan-keepfree planner-options">
+          <summary>Keep free · {keepFree.length}</summary>
           {keepFree.length > 0 && (
             <ul>
               {keepFree.map((r) => (
@@ -641,7 +704,7 @@ export function PlannerPanel({
             Drag empty time to keep it free, or drag a session to pin it. Use ×
             to exclude one.
           </p>
-        </div>
+        </details>
       )}
 
       <div className="planner-review">
@@ -650,15 +713,34 @@ export function PlannerPanel({
           <button
             className="icon-button"
             aria-label="Refresh review"
+            disabled={reviewLoading || busy}
             onClick={() => void loadReview()}
           >
             <RefreshCw size={14} />
           </button>
         </div>
-        {!review ? (
-          <p className="panel-hint">Checking your plan…</p>
-        ) : !unfinished.length && !conflicts.length && !atRisk.length ? (
-          <p className="panel-hint">All clear. Nothing needs attention.</p>
+        {reviewError && (
+          <p className="error" role="alert">
+            {reviewError}
+            <button
+              className="text-button"
+              disabled={reviewLoading || busy}
+              onClick={() => void loadReview()}
+            >
+              Retry
+            </button>
+          </p>
+        )}
+        {reviewLoading ? (
+          <p className="panel-hint" role="status">
+            Checking your plan…
+          </p>
+        ) : review &&
+          !reviewError &&
+          !unfinished.length &&
+          !conflicts.length &&
+          !atRisk.length ? (
+          <p className="panel-hint">No conflicts or unfinished sessions.</p>
         ) : null}
 
         {unfinished.length > 0 && (
@@ -667,7 +749,7 @@ export function PlannerPanel({
               <strong>Unfinished sessions</strong>
               <button
                 className="secondary"
-                disabled={pending}
+                disabled={busy}
                 onClick={() => void moveForward()}
               >
                 <FastForward size={13} /> Move all forward
@@ -689,7 +771,7 @@ export function PlannerPanel({
                   </span>
                   <button
                     className="link-button"
-                    disabled={pending}
+                    disabled={busy}
                     onClick={() => void moveForward([b.id])}
                   >
                     Move forward
@@ -714,7 +796,7 @@ export function PlannerPanel({
                   </span>
                   <button
                     className="link-button"
-                    disabled={pending}
+                    disabled={busy}
                     onClick={() => void reschedule(block.id)}
                   >
                     Reschedule
@@ -791,6 +873,7 @@ function PlanTaskRow({ task: t, disabled, onInclude, onEstimate }: RowProps) {
           className="plan-estimate"
           onSubmit={(e) => {
             e.preventDefault();
+            if (disabled) return;
             onEstimate(minutes, save);
             setEditing(false);
           }}
@@ -806,6 +889,7 @@ function PlanTaskRow({ task: t, disabled, onInclude, onEstimate }: RowProps) {
             required
             autoFocus
             value={minutes}
+            disabled={disabled}
             onChange={(e) => setMinutes(Number(e.target.value))}
           />
           <span className="muted">min</span>
@@ -813,6 +897,7 @@ function PlanTaskRow({ task: t, disabled, onInclude, onEstimate }: RowProps) {
             <input
               type="checkbox"
               checked={save}
+              disabled={disabled}
               onChange={(e) => setSave(e.target.checked)}
             />
             Save estimate to the task
@@ -823,6 +908,7 @@ function PlanTaskRow({ task: t, disabled, onInclude, onEstimate }: RowProps) {
           <button
             type="button"
             className="link-button"
+            disabled={disabled}
             onClick={() => setEditing(false)}
           >
             Cancel

@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { FlaskConical, Gauge } from "lucide-react";
 import {
   realityCheck,
@@ -25,10 +27,40 @@ export function RealityLine({
   timeZone: string;
 }) {
   const [reality, setReality] = useState<PlanReality | null>(null);
+  const [error, setError] = useState(false);
+  const [version, setVersion] = useState(0);
   useEffect(() => {
-    client.planReality().then(setReality, () => setReality(null));
-  }, []);
+    let alive = true;
+    setError(false);
+    client.planReality().then(
+      (next) => {
+        if (alive) setReality(next);
+      },
+      () => {
+        if (alive) {
+          setReality(null);
+          setError(true);
+        }
+      },
+    );
+    return () => {
+      alive = false;
+    };
+  }, [version]);
   const { message, days, note } = realityCheck(plan, reality, timeZone);
+  if (error)
+    return (
+      <p className="reality-line" role="alert">
+        Couldn't load planning history.
+        <button
+          className="text-button"
+          type="button"
+          onClick={() => setVersion((n) => n + 1)}
+        >
+          Retry
+        </button>
+      </p>
+    );
   if (!message && !note) return null;
   const stretched = days.some((d) => d.stretch) || !!note?.includes("only");
   return (
@@ -73,6 +105,7 @@ export function WhatIfBox({ items, days }: { items: Item[]; days: number }) {
         : !!itemId && !!day;
 
   const run = async () => {
+    if (!ready || busy) return;
     setBusy(true);
     setError("");
     setResult(null);
@@ -112,112 +145,179 @@ export function WhatIfBox({ items, days }: { items: Item[]; days: number }) {
       </button>
     );
   return (
-    <section className="what-if" aria-labelledby="what-if-title">
-      <h3 id="what-if-title">
-        <FlaskConical size={14} aria-hidden="true" /> What if…
-      </h3>
-      <div className="segmented" role="group" aria-label="What would change">
-        {(
-          [
-            ["add", "I take on a task"],
-            ["off", "I take a day off"],
-            ["move", "A deadline moves"],
-          ] as const
-        ).map(([id, label]) => (
-          <button
-            key={id}
-            type="button"
-            aria-pressed={mode === id}
-            className={mode === id ? "active" : ""}
-            onClick={() => {
-              setMode(id);
-              setResult(null);
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-      <div className="what-if-fields">
-        {mode === "add" && (
-          <>
+    <WhatIfDialog busy={busy} onClose={() => setOpen(false)}>
+      <section
+        className="what-if"
+        aria-labelledby="what-if-title"
+        aria-busy={busy}
+      >
+        <h3 id="what-if-title">
+          <FlaskConical size={14} aria-hidden="true" /> What if…
+        </h3>
+        <p className="muted what-if-scope">
+          Preview only. No changes are saved.
+        </p>
+        <div className="segmented" role="group" aria-label="What would change">
+          {(
+            [
+              ["add", "New task"],
+              ["off", "Day off"],
+              ["move", "Move deadline"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              disabled={busy}
+              aria-pressed={mode === id}
+              className={mode === id ? "active" : ""}
+              onClick={() => {
+                setMode(id);
+                setResult(null);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="what-if-fields">
+          {mode === "add" && (
+            <>
+              <label>
+                Task
+                <input
+                  value={title}
+                  disabled={busy}
+                  maxLength={200}
+                  placeholder="Quarterly report"
+                  onChange={(e) => {
+                    setTitle(e.target.value);
+                    setResult(null);
+                  }}
+                />
+              </label>
+              <label>
+                Takes
+                <Select
+                  value={String(hours)}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setHours(Number(e.target.value));
+                    setResult(null);
+                  }}
+                >
+                  {HOURS.map((h) => (
+                    <option key={h} value={h}>
+                      {h < 1 ? "30 min" : `${h} h`}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </>
+          )}
+          {mode === "move" && (
             <label>
               Task
-              <input
-                value={title}
-                maxLength={200}
-                placeholder="Quarterly report"
-                onChange={(e) => setTitle(e.target.value)}
-              />
-            </label>
-            <label>
-              Takes
               <Select
-                value={String(hours)}
-                onChange={(e) => setHours(Number(e.target.value))}
+                disabled={busy}
+                value={itemId}
+                onChange={(e) => {
+                  setItemId(e.target.value);
+                  setResult(null);
+                }}
               >
-                {HOURS.map((h) => (
-                  <option key={h} value={h}>
-                    {h < 1 ? "30 min" : `${h} h`}
+                <option value="">Choose a task</option>
+                {open_.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.title}
                   </option>
                 ))}
               </Select>
             </label>
-          </>
-        )}
-        {mode === "move" && (
+          )}
           <label>
-            Task
-            <Select value={itemId} onChange={(e) => setItemId(e.target.value)}>
-              <option value="">Choose a task</option>
-              {open_.map((i) => (
-                <option key={i.id} value={i.id}>
-                  {i.title}
-                </option>
-              ))}
-            </Select>
+            {mode === "add"
+              ? "Due (optional)"
+              : mode === "off"
+                ? "Day"
+                : "New due date"}
+            <DateField
+              type="date"
+              disabled={busy}
+              value={day}
+              onChange={(e) => {
+                setDay(e.target.value);
+                setResult(null);
+              }}
+            />
           </label>
+        </div>
+        <div className="what-if-actions">
+          <button
+            className="secondary"
+            disabled={!ready || busy}
+            onClick={() => void run()}
+          >
+            {busy ? "Checking…" : "Check"}
+          </button>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => setOpen(false)}
+          >
+            Close
+          </button>
+        </div>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
         )}
-        <label>
-          {mode === "add"
-            ? "Due (optional)"
-            : mode === "off"
-              ? "Day"
-              : "New due date"}
-          <DateField
-            type="date"
-            value={day}
-            onChange={(e) => setDay(e.target.value)}
-          />
-        </label>
-      </div>
-      <div className="what-if-actions">
-        <button
-          className="secondary"
-          disabled={!ready || busy}
-          onClick={() => void run()}
-        >
-          {busy ? "Working it out…" : "Check"}
-        </button>
-        <button className="text-button" onClick={() => setOpen(false)}>
-          Close
-        </button>
-      </div>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      {result && (
-        <p
-          className={
-            "what-if-verdict" + (result.newly_late.length ? " is-bad" : "")
-          }
-          role="status"
-        >
-          {result.verdict} <small>Nothing was changed.</small>
-        </p>
-      )}
-    </section>
+        {result && (
+          <p
+            className={
+              "what-if-verdict" + (result.newly_late.length ? " is-bad" : "")
+            }
+            role="status"
+          >
+            {result.verdict}
+          </p>
+        )}
+      </section>
+    </WhatIfDialog>
+  );
+}
+
+function WhatIfDialog({
+  busy,
+  onClose,
+  children,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const node = focus.ref.current as HTMLDialogElement;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      className="modal what-if-dialog"
+      data-modal-focus={focus.id}
+      aria-labelledby="what-if-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      {children}
+    </dialog>,
+    document.body,
   );
 }

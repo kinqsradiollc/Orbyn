@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
-import { StyleSheet, Text, View, Switch, ScrollView } from "react-native";
+import { StyleSheet, Text, View, ScrollView } from "react-native";
+import { Switch } from "../../components/Switch";
+import { Chip, ChipRow } from "../../components/Chip";
 import { PagePublicationStore } from "@orbyn/api-client";
 import { blockText, type Doc } from "@orbyn/core";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -137,42 +139,41 @@ export function PagePublicationSheet({
                         {state.selected.includes(block.id) ? "✓" : "○"}
                       </Text>
                       <Text style={s.block}>
-                        {index + 1}.{" "}
-                        {blockText(block).slice(0, 100) || block.type}
+                        {index + 1}. {blockText(block) || block.type}
                       </Text>
                     </Pressable>
                   ),
               )}
             </ScrollView>
             <Text style={s.label}>Updates</Text>
-            <View style={s.choices}>
+            <ChipRow label="Updates">
               {(["snapshot", "live"] as const).map((mode) => (
-                <Button
+                <Chip
                   key={mode}
-                  title={mode === "snapshot" ? "Saved snapshot" : "Live blocks"}
-                  secondary={state.mode !== mode}
+                  label={mode === "snapshot" ? "Saved snapshot" : "Live blocks"}
+                  selected={state.mode === mode}
                   disabled={state.busy}
                   onPress={() => store.configure({ mode })}
                 />
               ))}
-            </View>
+            </ChipRow>
             <Text style={s.help}>
               {state.mode === "snapshot"
                 ? "Later edits stay private until you update this link."
                 : "Edits to selected blocks are public. New blocks stay private."}
             </Text>
             <Text style={s.label}>Expires</Text>
-            <View style={s.choices}>
+            <ChipRow label="Link expiry">
               {([7, 30, 0] as const).map((expiryDays) => (
-                <Button
+                <Chip
                   key={expiryDays}
-                  title={expiryDays ? `${expiryDays} days` : "Never"}
-                  secondary={state.expiryDays !== expiryDays}
+                  label={expiryDays ? `${expiryDays} days` : "Never"}
+                  selected={state.expiryDays === expiryDays}
                   disabled={state.busy}
                   onPress={() => store.configure({ expiryDays })}
                 />
               ))}
-            </View>
+            </ChipRow>
             <View style={s.row}>
               <Text style={s.block}>
                 Anyone with the link can read the title and selected blocks.
@@ -207,16 +208,17 @@ const s = themed(() =>
     body: { padding: 16, gap: 12 },
     group: { gap: 8 },
     blocks: { maxHeight: 220 },
-    choices: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     row: {
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
-      paddingVertical: 6,
+      minHeight: 44,
+      paddingVertical: 8,
     },
     label: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     block: {
       flex: 1,
+      minWidth: 0,
       fontFamily: fonts.regular,
       fontSize: 15,
       color: colors.text,

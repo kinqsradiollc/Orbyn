@@ -15,7 +15,7 @@ import { Segmented } from "../components/Segmented";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
-import { colors, fonts, radii, themed } from "../theme";
+import { inputFontSize, colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 type Act = (fn: () => Promise<void>) => Promise<void>;
@@ -118,9 +118,7 @@ export function AdminDatabase({
               ]}
             >
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={s.tableName} numberOfLines={1}>
-                  {t.name}
-                </Text>
+                <Text style={s.tableName}>{t.name}</Text>
                 <Text style={shared.small}>
                   {/* Postgres estimates rows only once a table is analysed;
                       before that the estimate is 0, which isn't a count. */}
@@ -189,9 +187,7 @@ function TableView({
         <Text style={s.backText}>All tables</Text>
       </Pressable>
       <View>
-        <Text style={s.title} numberOfLines={2}>
-          {name}
-        </Text>
+        <Text style={s.title}>{name}</Text>
         {detail && (
           <Text style={shared.small}>
             {detail.table.estimated_rows > 0
@@ -222,9 +218,7 @@ function TableView({
               <View key={id} style={s.card}>
                 {(expanded ? cells : cells.slice(0, 5)).map(([k, v]) => (
                   <View key={k} style={s.cell}>
-                    <Text style={s.cellKey} numberOfLines={1}>
-                      {k}
-                    </Text>
+                    <Text style={s.cellKey}>{k}</Text>
                     <Text
                       style={[s.cellValue, v === "••••" && s.masked]}
                       numberOfLines={expanded ? undefined : 1}
@@ -235,11 +229,9 @@ function TableView({
                   </View>
                 ))}
                 <View style={s.cardActions}>
-                  {cells.length > 5 && (
+                  {cells.length > 0 && (
                     <SmallAction
-                      label={
-                        expanded ? "Show less" : `All ${cells.length} columns`
-                      }
+                      label={expanded ? "Show less" : "Full row details"}
                       disabled={false}
                       onPress={() => {
                         const next = new Set(open);
@@ -296,9 +288,7 @@ function TableView({
           {columns.map((c, n) => (
             <View key={c.name} style={[s.detailRow, n > 0 && s.divided]}>
               <View style={s.nameLine}>
-                <Text style={s.tableName} numberOfLines={1}>
-                  {c.name}
-                </Text>
+                <Text style={s.tableName}>{c.name}</Text>
                 {c.primary_key && <Text style={s.pk}>PK</Text>}
               </View>
               <Text style={shared.small}>
@@ -380,6 +370,7 @@ function UserEditor({
             key={r}
             label={r === "admin" ? "Admin" : "Member"}
             selected={role === r}
+            disabled={busy}
             onPress={() => setRole(r)}
           />
         ))}
@@ -389,6 +380,8 @@ function UserEditor({
         <Switch
           trackColor={{ true: colors.accent }}
           value={disabled}
+          disabled={busy}
+          accessibilityLabel="Account disabled"
           onValueChange={setDisabled}
         />
       </View>
@@ -397,6 +390,8 @@ function UserEditor({
         <Switch
           trackColor={{ true: colors.accent }}
           value={verified}
+          disabled={busy}
+          accessibilityLabel="Email verified"
           onValueChange={setVerified}
         />
       </View>
@@ -444,6 +439,7 @@ function TeamEditor({
       <TextInput
         style={shared.input}
         value={name}
+        editable={!busy}
         onChangeText={setName}
         maxLength={80}
         accessibilityLabel="Team name"
@@ -484,7 +480,7 @@ const s = themed(() =>
       paddingVertical: 10,
       color: colors.text,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: inputFontSize,
     },
     list: {
       overflow: "hidden",
@@ -516,15 +512,17 @@ const s = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
-    cell: { flexDirection: "row", gap: 10 },
+    cell: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     cellKey: {
-      width: 110,
+      flexBasis: 100,
+      flexGrow: 1,
       color: colors.muted,
       fontFamily: fonts.medium,
       fontSize: 13,
     },
     cellValue: {
       flex: 1,
+      flexBasis: 150,
       minWidth: 0,
       color: colors.text,
       fontFamily: fonts.regular,
@@ -533,7 +531,12 @@ const s = themed(() =>
     masked: { color: colors.muted, letterSpacing: 1 },
     cardActions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     detailRow: { gap: 3, paddingHorizontal: 14, paddingVertical: 11 },
-    nameLine: { flexDirection: "row", alignItems: "center", gap: 8 },
+    nameLine: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
     pk: {
       paddingHorizontal: 6,
       paddingVertical: 1,

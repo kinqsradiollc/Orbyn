@@ -39,14 +39,12 @@ export function AssistantIdeasCard({ onReview }: { onReview: () => void }) {
         <div>
           <h2 id="assistant-ideas-title">
             <Sparkles size={16} aria-hidden="true" className="heading-icon" />
-            For today
+            Suggested for today
           </h2>
-          <p className="section-hint">
-            A few ideas from {agentName}, ready for Review.
-          </p>
+          <p className="section-hint">Ideas from {agentName}.</p>
         </div>
         <button type="button" className="text-button" onClick={onReview}>
-          Review <ArrowRight size={14} aria-hidden="true" />
+          View all <ArrowRight size={14} aria-hidden="true" />
         </button>
       </div>
       <ul className="assistant-ideas-list">
@@ -57,7 +55,10 @@ export function AssistantIdeasCard({ onReview }: { onReview: () => void }) {
               <div className="item-main">
                 <strong>{idea.title}</strong>
                 {detail && detail !== idea.title.trim() && (
-                  <span className="item-meta">{detail}</span>
+                  <details className="item-meta">
+                    <summary>Details</summary>
+                    <p>{detail}</p>
+                  </details>
                 )}
               </div>
               <button type="button" className="text-button" onClick={onReview}>

@@ -4,6 +4,7 @@
   align-items: center;
   gap: 8px;
   min-width: 0;
+  flex-wrap: wrap;
 }
 .connections-head h3 {
   flex: 1;
@@ -20,7 +21,8 @@
   background: transparent;
   color: var(--color-muted);
   font-size: 11px;
-  padding: 3px 8px;
+  padding: 8px;
+  min-height: 44px;
   border-radius: var(--radius-pill);
   cursor: pointer;
 }
@@ -41,10 +43,10 @@
   width: 100%;
   height: auto;
   display: block;
-  overflow: visible;
+  overflow: hidden;
 }
 .connections-dialog {
-  width: min(640px, calc(100vw - 32px));
+  width: min(640px, calc(100vw - 24px));
 }
 .connections-dialog .connections-map {
   max-height: calc(100vh - 160px);
@@ -109,4 +111,34 @@
 }
 .connections-node:focus-visible text {
   text-decoration: underline;
+}
+
+.connections-list > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--color-textSoft);
+  font-size: 13px;
+}
+.connection-list-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 8px;
+  border: 0;
+  border-top: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.connection-list-row small {
+  color: var(--color-textSoft);
+}
+.connections-note {
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
 }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import type { AdminStorage as Storage } from "@orbyn/core";
+import { InlineDetails } from "../components/InlineDetails";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import { confirmAction } from "../lib/confirm";
@@ -129,20 +130,16 @@ export function AdminStorage({ act, busy }: { act: Act; busy: boolean }) {
       <View style={shared.card}>
         <Text style={s.title}>Files on the server</Text>
         <Text style={shared.small}>
-          Pending uploads are deleted after import or within a day. You can
-          delete them, but cannot open them.
+          Uploads expire after import or within a day. You can delete files, not
+          open them.
         </Text>
         {!!note && <Text style={[shared.small, s.note]}>{note}</Text>}
         {data.stored.length === 0 ? (
-          <Text style={[shared.small, s.gapTop]}>
-            No files are stored right now.
-          </Text>
+          <Text style={[shared.small, s.gapTop]}>No stored uploads.</Text>
         ) : (
           data.stored.map((f) => (
             <View key={f.import_id} style={s.file}>
-              <Text style={shared.body} numberOfLines={1}>
-                {f.file_name}
-              </Text>
+              <Text style={shared.body}>{f.file_name}</Text>
               <Text style={shared.small}>
                 {f.owner_name} · {bytes(f.bytes)} · {f.status} · uploaded{" "}
                 {ago(f.uploaded_at)}
@@ -175,7 +172,7 @@ export function AdminStorage({ act, busy }: { act: Act; busy: boolean }) {
             onPress={() => void load()}
           />
           <SmallAction
-            label="Run sweep now"
+            label="Sweep now"
             disabled={busy}
             onPress={() =>
               void act(async () => {
@@ -192,21 +189,27 @@ export function AdminStorage({ act, busy }: { act: Act; busy: boolean }) {
         </View>
       </View>
       {data.history.length > 0 && (
-        <View style={shared.card}>
-          <Text style={s.title}>Imports in the last 30 days</Text>
-          {data.history.slice(0, 20).map((h) => (
-            <View key={h.id} style={s.file}>
-              <Text style={shared.body} numberOfLines={1}>
-                {h.file_name}
-              </Text>
-              <Text style={[shared.small, h.status === "failed" && s.bad]}>
-                {h.owner_name} · {h.pages ?? "—"} pages · {h.status}
-                {h.seconds !== null ? ` · ${h.seconds} s` : ""} ·{" "}
-                {ago(h.created_at)}
-              </Text>
-            </View>
-          ))}
-        </View>
+        <InlineDetails title="Import history · 30 days">
+          <View style={s.history}>
+            {data.history.slice(0, 20).map((h) => (
+              <View key={h.id} style={s.file}>
+                <Text style={shared.body}>{h.file_name}</Text>
+                <Text style={[shared.small, h.status === "failed" && s.bad]}>
+                  {h.owner_name} · {h.pages ?? "—"} pages · {h.status}
+                  {h.seconds !== null ? ` · ${h.seconds} s` : ""} ·{" "}
+                  {ago(h.created_at)}
+                </Text>
+                {h.error && (
+                  <InlineDetails title="Import error">
+                    <Text selectable style={[shared.small, s.bad]}>
+                      {h.error}
+                    </Text>
+                  </InlineDetails>
+                )}
+              </View>
+            ))}
+          </View>
+        </InlineDetails>
       )}
     </View>
   );
@@ -215,9 +218,12 @@ export function AdminStorage({ act, busy }: { act: Act; busy: boolean }) {
 const s = themed(() =>
   StyleSheet.create({
     list: { gap: 12 },
-    tiles: { flexDirection: "row", gap: 10 },
+    tiles: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    history: { minWidth: 0 },
     tile: {
       flex: 1,
+      minWidth: 0,
+      flexBasis: 140,
       gap: 2,
       padding: 14,
       borderRadius: radii.card,

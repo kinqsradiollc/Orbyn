@@ -1,15 +1,19 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Hourglass } from "lucide-react";
 import { ageLabel, pageFreshness, type Doc } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/planning";
+
+export function PageFreshness(props: Parameters<typeof PageFreshnessBody>[0]) {
+  return <PageFreshnessBody key={props.doc.id} {...props} />;
+}
 
 /**
  * A page nobody has changed or confirmed in months may not be true any more.
  * Anyone who can edit it can say it still is, or that it needs updating —
  * which gives whoever wrote it a task.
  */
-export function PageFreshness({
+function PageFreshnessBody({
   doc,
   canWrite,
   always = false,
@@ -24,6 +28,8 @@ export function PageFreshness({
   always?: boolean;
   onReviewed?: () => void;
 }) {
+  const mutation = useRef(false);
+  const [busy, setBusy] = useState(false);
   const [reviewed, setReviewed] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState("");
@@ -41,6 +47,9 @@ export function PageFreshness({
     input:
       { verdict: "still_true" } | { verdict: "needs_update"; note: string },
   ) => {
+    if (mutation.current || !canWrite) return;
+    mutation.current = true;
+    setBusy(true);
     setError("");
     try {
       const r = await client.reviewDoc(doc.id, input);
@@ -48,13 +57,16 @@ export function PageFreshness({
       onReviewed?.();
       setDone(
         input.verdict === "still_true"
-          ? "Thanks — marked as still true."
+          ? "Confirmed up to date."
           : r.task?.assignee_name
-            ? `A task to update it went to ${r.task.assignee_name}.`
-            : "A task to update it is on the list.",
+            ? `Update assigned to ${r.task.assignee_name}.`
+            : "Update task created.",
       );
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      mutation.current = false;
+      setBusy(false);
     }
   };
   return (
@@ -81,11 +93,16 @@ export function PageFreshness({
         <span className="page-freshness-actions">
           <button
             className="secondary"
+            disabled={busy}
             onClick={() => void review({ verdict: "still_true" })}
           >
             Still true
           </button>
-          <button className="text-button" onClick={() => setAsking(true)}>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => setAsking(true)}
+          >
             Needs update
           </button>
         </span>
@@ -99,6 +116,7 @@ export function PageFreshness({
           }}
         >
           <input
+            disabled={busy}
             value={note}
             maxLength={1000}
             placeholder="What's changed? (optional)"
@@ -106,12 +124,13 @@ export function PageFreshness({
             onChange={(e) => setNote(e.target.value)}
             autoFocus
           />
-          <button className="secondary" type="submit">
+          <button className="secondary" disabled={busy} type="submit">
             Make a task
           </button>
           <button
             className="text-button"
             type="button"
+            disabled={busy}
             onClick={() => setAsking(false)}
           >
             Cancel

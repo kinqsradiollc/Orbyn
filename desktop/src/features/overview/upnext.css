@@ -96,3 +96,20 @@
 .up-next .section-empty {
   padding-top: 4px;
 }
+
+.up-next-why summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-accent);
+}
+.up-next-title,
+.up-next-more strong,
+.up-next-more small {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.up-next-actions {
+  flex-wrap: wrap;
+}

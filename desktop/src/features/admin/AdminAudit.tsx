@@ -3,7 +3,6 @@ import { RefreshCw } from "lucide-react";
 import type { AuditEntry } from "@orbyn/core";
 import { client } from "../../lib/api";
 import type { TeamActions } from "../teams/TeamDetail";
-import { stagger } from "../../lib/motion";
 
 const PAGE = 50;
 
@@ -70,12 +69,8 @@ export function AdminAudit({ report }: Pick<TeamActions, "report">) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((a, n) => (
-              <tr
-                key={a.id}
-                className="fade-up stagger"
-                style={stagger(n % PAGE)}
-              >
+            {rows.map((a) => (
+              <tr key={a.id}>
                 <td className="nowrap">
                   {new Date(a.created_at).toLocaleString()}
                 </td>
@@ -92,18 +87,21 @@ export function AdminAudit({ report }: Pick<TeamActions, "report">) {
                 <td data-label="Target" className="nowrap">
                   {a.target_type}
                   {a.target_id && (
-                    <small className="muted" title={a.target_id}>
-                      {" "}
-                      {a.target_id.slice(0, 8)}
-                    </small>
+                    <details className="admin-audit-detail">
+                      <summary>Target ID</summary>
+                      <code>{a.target_id}</code>
+                    </details>
                   )}
                 </td>
-                <td
-                  data-label="Details"
-                  className="audit-details"
-                  title={formatDetails(a.details)}
-                >
-                  {formatDetails(a.details) || <span className="muted">—</span>}
+                <td data-label="Details" className="audit-details">
+                  {Object.keys(a.details ?? {}).length ? (
+                    <details className="admin-audit-detail">
+                      <summary>View details</summary>
+                      <p>{formatDetails(a.details)}</p>
+                    </details>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
                 </td>
               </tr>
             ))}

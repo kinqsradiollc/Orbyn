@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Modal,
@@ -9,7 +9,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { Alert } from "../lib/alert";
+import { session } from "../lib/session";
+import { ChoicePicker } from "./ChoicePicker";
+import { InlineDetails } from "./InlineDetails";
+import { ActionSheet, MoreMenu } from "./MoreMenu";
 import { Switch } from "./Switch";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { DateTimeControl } from "./DateTimeControl";
@@ -53,7 +56,7 @@ import {
   shortDay,
 } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
-import { PressableScale, Pressable } from "../motion";
+import { PressableScale, Pressable, useReducedMotion } from "../motion";
 import { controls, colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -95,12 +98,23 @@ const LINK_URL = /^https?:\/\/\S+$/i;
 
 /** Native sheet on iOS, full-screen modal on Android; both respect safe areas. */
 export function ItemEditor({ editing, onClose, onDismissed, ...form }: Props) {
+  const reduced = useReducedMotion();
+  const closeGuard = useRef<(() => void) | null>(null);
+  const registerClose = (guard: () => void) => {
+    closeGuard.current = guard;
+    return () => {
+      if (closeGuard.current === guard) closeGuard.current = null;
+    };
+  };
   return (
     <Modal
       visible={!!editing}
-      animationType="slide"
+      animationType={Platform.OS === "web" || reduced ? "none" : "slide"}
       presentationStyle={Platform.OS === "ios" ? "pageSheet" : "fullScreen"}
-      onRequestClose={onClose}
+      onRequestClose={() => {
+        if (!form.busy) closeGuard.current?.();
+      }}
+      allowSwipeDismissal={false}
       onDismiss={onDismissed}
     >
       <SafeAreaProvider>
@@ -108,7 +122,15 @@ export function ItemEditor({ editing, onClose, onDismissed, ...form }: Props) {
           edges={["top", "bottom", "left", "right"]}
           style={s.sheet}
         >
-          {editing && <Form editing={editing} onClose={onClose} {...form} />}
+          {editing && (
+            <Form
+              key={`${session.token}:${"id" in editing ? editing.id : "new"}`}
+              editing={editing}
+              onClose={onClose}
+              registerClose={registerClose}
+              {...form}
+            />
+          )}
         </SafeAreaView>
       </SafeAreaProvider>
     </Modal>
@@ -127,10 +149,32 @@ function Form({
   onDelete,
   onClose,
   onAgentChanged,
-}: Omit<Props, "editing"> & { editing: Editing }) {
+  registerClose,
+}: Omit<Props, "editing"> & {
+  editing: Editing;
+  registerClose: (guard: () => void) => () => void;
+}) {
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  const owns = () => mounted.current && session.token === owner;
+  const tagOperation = useRef(false);
+  const [deletePrompt, setDeletePrompt] = useState(false);
+  const [leavePrompt, setLeavePrompt] = useState(false);
+  const baseline = useRef(JSON.stringify(editing)).current;
+  const pendingLink = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [picker, setPicker] = useState<Picker | null>(null);
   // iOS's page sheet is pulled down by the system; elsewhere the header is.
-  const swipe = useSwipeDown(true, onClose);
+  const swipe = useSwipeDown(!busy, () => {
+    requestClose();
+  });
   const headerSwipe = Platform.OS === "ios" ? {} : swipe.handlers;
   const setDate = (field: DateField, value: string | null) =>
     onChange(field === "due_at" ? { due_at: value } : { end_at: value });
@@ -140,13 +184,16 @@ function Form({
   const teamId = editing.team_id ?? null;
   const team = teams.find((t) => t.id === teamId);
   const savedTeam = teams.find((t) => t.id === savedTeamId);
-  const readOnly = !!team && !hasTeamPermission(team.role, "items:write");
+  const readOnly =
+    !!teamId && (!team || !hasTeamPermission(team.role, "items:write"));
   const lockedToTeam =
     exists &&
-    !!savedTeam &&
-    !hasTeamPermission(savedTeam.role, "members:manage");
+    !!savedTeamId &&
+    (!savedTeam || !hasTeamPermission(savedTeam.role, "members:manage"));
   const shareTargets = lockedToTeam
-    ? [savedTeam]
+    ? savedTeam
+      ? [savedTeam]
+      : []
     : teams.filter((t) => hasTeamPermission(t.role, "items:write"));
   const shareOptions = [
     ...(lockedToTeam ? [] : [PERSONAL]),
@@ -162,21 +209,24 @@ function Form({
     null,
   );
   const [defaultsError, setDefaultsError] = useState(false);
+  const [defaultsRetry, setDefaultsRetry] = useState(0);
   useEffect(() => {
     if (exists) return;
     let alive = true;
+    setDefaultsError(false);
     client.getPlannerPrefs().then(
       (p) =>
         alive &&
+        owns() &&
         setDefaultAlerts(
           p.default_alerts ?? { task: [30], event: [30], all_day: [30] },
         ),
-      () => alive && setDefaultsError(true),
+      () => alive && owns() && setDefaultsError(true),
     );
     return () => {
       alive = false;
     };
-  }, [exists]);
+  }, [exists, defaultsRetry]);
   const scopeLists = lists.filter((l) => (l.team_id ?? null) === teamId);
   const scopeTags = tags.filter((t) => (t.team_id ?? null) === teamId);
   const tagIds = editing.tag_ids ?? [];
@@ -189,36 +239,81 @@ function Form({
       i.status !== "cancelled",
   );
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [membersError, setMembersError] = useState("");
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [membersRetry, setMembersRetry] = useState(0);
   useEffect(() => {
+    setMembers([]);
+    setMembersError("");
+    setMembersLoading(!!teamId);
     if (!teamId) {
-      setMembers([]);
       return;
     }
     let alive = true;
     client
       .getTeam(teamId)
-      .then((d) => alive && setMembers(d.members))
-      .catch(() => alive && setMembers([]));
+      .then((d) => {
+        if (alive && owns()) setMembers(d.members);
+      })
+      .catch((e) => {
+        if (alive && owns()) setMembersError(errorText(e));
+      })
+      .finally(() => {
+        if (alive && owns()) setMembersLoading(false);
+      });
     return () => {
       alive = false;
     };
-  }, [teamId]);
+  }, [teamId, membersRetry]);
   const estimate = editing.estimate_minutes ?? null;
   const [customEstimate, setCustomEstimate] = useState(
     () => !!estimate && !(ESTIMATES as readonly number[]).includes(estimate),
   );
+  const [estimateText, setEstimateText] = useState(
+    estimate == null ? "" : String(estimate),
+  );
+  const [estimateProblem, setEstimateProblem] = useState("");
+  useEffect(() => {
+    if (!customEstimate) {
+      setEstimateText(estimate == null ? "" : String(estimate));
+      setEstimateProblem("");
+    }
+  }, [estimate, customEstimate]);
   const [newTag, setNewTag] = useState("");
   const [tagBusy, setTagBusy] = useState(false);
+  const locked = readOnly || busy || tagBusy || leavePrompt;
+  const lockedRef = useRef(locked);
+  lockedRef.current = locked;
   const [tagError, setTagError] = useState("");
   /** From the repeat picker: an ending chosen without its date. */
   const [repeatProblem, setRepeatProblem] = useState<string | null>(null);
   const [formError, setFormError] = useState("");
+  const requestClose = () => {
+    if (!owns() || busy || tagOperation.current || leavePrompt) return;
+    if (
+      JSON.stringify(editingRef.current) !== baseline ||
+      newTag.trim() ||
+      estimateProblem ||
+      pendingLink.current
+    )
+      setLeavePrompt(true);
+    else onClose();
+  };
+  useEffect(() => registerClose(requestClose));
   /** The web's checks before saving: a repeat needs a date, and its last date. */
   const save = () => {
+    if (!owns() || lockedRef.current || tagOperation.current) return;
     const problem =
-      editing.rrule && !editing.due_at
-        ? "Repeating items need a date. Add a start time."
-        : repeatProblem;
+      estimateProblem ||
+      (pendingLink.current
+        ? "Add or clear the unfinished link before saving."
+        : newTag.trim()
+          ? "Add or clear the unfinished tag before saving."
+          : !editing.title.trim()
+            ? "Add a title."
+            : editing.rrule && !editing.due_at
+              ? "Repeating items need a date. Add a start time."
+              : repeatProblem);
     setFormError(problem ?? "");
     if (!problem) onSave();
   };
@@ -233,13 +328,18 @@ function Form({
   );
   /** Links saved on the item (rows in lists don't carry them). */
   const [savedLinks, setSavedLinks] = useState<LinkDraft[]>([]);
+  const [detailError, setDetailError] = useState("");
+  const [detailLoading, setDetailLoading] = useState(!!itemId);
+  const [detailRetry, setDetailRetry] = useState(0);
   useEffect(() => {
     if (!itemId) return;
+    setDetailError("");
+    setDetailLoading(true);
     let alive = true;
     client
       .getItem(itemId)
       .then((d) => {
-        if (!alive) return;
+        if (!alive || !owns()) return;
         setSavedLinks(
           (d.links ?? []).map(({ url, title }) => ({
             url,
@@ -253,11 +353,16 @@ function Form({
         );
         setStatuses(new Map(people.map((a) => [a.email, a.status])));
       })
-      .catch(() => {});
+      .catch((e) => {
+        if (alive && owns()) setDetailError(errorText(e));
+      })
+      .finally(() => {
+        if (alive && owns()) setDetailLoading(false);
+      });
     return () => {
       alive = false;
     };
-  }, [itemId]);
+  }, [itemId, detailRetry]);
   // Sent only once changed: the list replaces the saved invitees.
   const people = editing.attendees ?? savedPeople;
   // Likewise links: sending the list replaces the saved ones.
@@ -284,23 +389,27 @@ function Form({
   const zone = editing.timezone ?? deviceTimeZone();
   const [project, setProject] = useState<Project | null>(null);
   const projectId = editing.project_id ?? null;
+  const [projectError, setProjectError] = useState("");
+  const [projectRetry, setProjectRetry] = useState(0);
   useEffect(() => {
+    setProject(null);
+    setProjectError("");
     if (!projectId) {
-      setProject(null);
       return;
     }
     let alive = true;
     void client.getProject(projectId).then(
-      (value) => alive && setProject(value),
-      () => alive && setProject(null),
+      (value) => alive && owns() && setProject(value),
+      (e) => alive && owns() && setProjectError(errorText(e)),
     );
     return () => {
       alive = false;
     };
-  }, [projectId]);
+  }, [projectId, projectRetry]);
   const candidateDeadline =
     editing.kind === "task" ? deadlineOf({ ...editing, timezone: zone }) : null;
   const afterProject =
+    project?.id === projectId &&
     !!project?.deadline &&
     !!candidateDeadline &&
     Date.parse(candidateDeadline) > Date.parse(project.deadline);
@@ -343,7 +452,7 @@ function Form({
 
   const addTag = async () => {
     const name = newTag.trim();
-    if (!name) return;
+    if (!name || !owns() || lockedRef.current || tagOperation.current) return;
     if (tagIds.length >= MAX_TAGS) {
       setTagError("Up to 20 tags.");
       return;
@@ -357,17 +466,27 @@ function Form({
       setNewTag("");
       return;
     }
+    tagOperation.current = true;
     setTagBusy(true);
     setTagError("");
     try {
       const tag = await client.createTag({ name, team_id: teamId });
-      await reload();
-      onChange({ tag_ids: [...tagIds, tag.id] });
-      setNewTag("");
+      if (!owns() || (editingRef.current.team_id ?? null) !== teamId) return;
+      const currentTags = editingRef.current.tag_ids ?? [];
+      if (currentTags.length < MAX_TAGS && !currentTags.includes(tag.id))
+        onChange({ tag_ids: [...currentTags, tag.id] });
+      setNewTag((current) => (current.trim() === name ? "" : current));
+      try {
+        await reload();
+      } catch {
+        if (owns())
+          setTagError("Tag created. Refresh tags to update the list.");
+      }
     } catch (e) {
-      setTagError(errorText(e));
+      if (owns()) setTagError(errorText(e));
     } finally {
-      setTagBusy(false);
+      tagOperation.current = false;
+      if (owns()) setTagBusy(false);
     }
   };
   return (
@@ -386,17 +505,15 @@ function Form({
           <View style={s.grab} />
         </View>
         <Text style={s.headerTitle} numberOfLines={1}>
-          {readOnly
-            ? "View plan"
-            : exists
-              ? "Edit your plan"
-              : "Make a little plan"}
+          {`${readOnly ? "View" : exists ? "Edit" : "New"} ${editing.kind}`}
         </Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close editor"
-          hitSlop={10}
-          onPress={onClose}
+          disabled={busy || tagBusy}
+          onPress={() => {
+            requestClose();
+          }}
           style={s.close}
         >
           <Icon name="x" size={18} color={colors.textSoft} />
@@ -415,45 +532,49 @@ function Form({
             <View style={s.viewOnly}>
               <Icon name="users" size={16} color={colors.accent} />
               <Text style={s.viewOnlyText}>
-                View only — you’re a viewer in {team?.name}
+                View only{team?.name ? ` in ${team.name}` : ""}.
               </Text>
             </View>
           )}
-          <Section label="What’s the plan?">
+          <Section label="Title">
             <TextInput
-              editable={!readOnly}
+              editable={!locked}
               style={[shared.input, s.titleInput]}
               value={editing.title}
               onChangeText={(title) => onChange({ title })}
               maxLength={200}
-              placeholder="Something worth making time for"
+              placeholder={
+                editing.kind === "task" ? "Task title" : "Event title"
+              }
               placeholderTextColor={colors.faint}
               autoFocus={!exists}
             />
           </Section>
           {!readOnly && shareOptions.length > 1 && (
             <Section label="Share with">
-              <Segmented
-                wrap
-                accessibilityLabel="Share with"
-                options={shareOptions}
-                labels={shareLabels}
+              <ChoicePicker<string>
+                label="Share with"
                 value={teamId ?? PERSONAL}
+                disabled={locked}
+                options={shareOptions.map((value) => ({
+                  value,
+                  label: shareLabels[value],
+                }))}
                 onChange={(value) => {
                   const next = value === PERSONAL ? null : value;
-                  if (next === teamId) return;
-                  // A list, tags or assignee from elsewhere don't carry over.
-                  onChange({
-                    team_id: next,
-                    list_id: null,
-                    tag_ids: [],
-                    assignee_id: null,
-                  });
+                  if (next !== teamId && !lockedRef.current)
+                    onChange({
+                      team_id: next,
+                      list_id: null,
+                      tag_ids: [],
+                      assignee_id: null,
+                    });
                 }}
               />
               {lockedToTeam && (
                 <Text style={[shared.small, s.hint]}>
-                  Only team admins can move this out of {savedTeam.name}.
+                  Only team admins can move this out of{" "}
+                  {savedTeam?.name ?? "this team"}.
                 </Text>
               )}
               {teamId !== savedTeamId && (
@@ -465,7 +586,7 @@ function Form({
           )}
           <Section label="Type">
             <Segmented
-              disabled={readOnly}
+              disabled={locked}
               accessibilityLabel="Type"
               options={["task", "event"] as const}
               value={editing.kind}
@@ -475,38 +596,37 @@ function Form({
           {"id" in editing && editing.kind === "task" && (
             <TaskAgent
               item={editing}
-              disabled={busy || readOnly}
+              disabled={locked}
               onChanged={onAgentChanged}
             />
           )}
           <Section label="Priority">
             <Segmented
-              disabled={readOnly}
+              disabled={locked}
               accessibilityLabel="Priority"
               options={["low", "medium", "high"] as const}
               value={editing.priority}
               onChange={(priority) => onChange({ priority })}
             />
           </Section>
-          <Section label="Status">
-            <Segmented
-              wrap
-              disabled={readOnly}
-              accessibilityLabel="Status"
-              options={STATUS_OPTIONS}
-              labels={statusLabels}
-              value={editing.status}
-              onChange={(status) => onChange({ status })}
-            />
-          </Section>
+          <ChoicePicker
+            label="Status"
+            value={editing.status}
+            disabled={locked}
+            options={STATUS_OPTIONS.map((value) => ({
+              value,
+              label: statusLabels[value],
+            }))}
+            onChange={(status) => onChange({ status })}
+          />
           <Section label="All day">
             <View style={s.switchRow}>
               <Text style={[shared.small, { flex: 1 }]}>
-                Just dates, no times. All-day items never count as busy.
+                Doesn’t block time.
               </Text>
               <Switch
                 value={allDay}
-                disabled={readOnly}
+                disabled={locked}
                 trackColor={{ true: colors.accent }}
                 accessibilityLabel="All day"
                 onValueChange={setAllDay}
@@ -520,6 +640,7 @@ function Form({
               <Section label={editing.kind === "event" ? "First day" : "Due"}>
                 <DateField
                   label={editing.kind === "event" ? "First day" : "Due"}
+                  disabled={locked}
                   value={keyOf(
                     editing.kind === "event" || lastDay < firstDay
                       ? firstDay
@@ -554,6 +675,7 @@ function Form({
                 <Section label="Last day">
                   <DateField
                     label="Last day"
+                    disabled={locked}
                     value={keyOf(lastDay < firstDay ? firstDay : lastDay)}
                     minimumDate={firstDay}
                     onChange={(key) =>
@@ -590,7 +712,7 @@ function Form({
                             ? "Start: "
                             : "Due: ") + dateLabel(editing[field])
                       }
-                      disabled={readOnly}
+                      disabled={locked}
                       onPress={() => setPicker({ field, mode: "date" })}
                       style={({ pressed }) => [
                         s.dateButton,
@@ -616,7 +738,7 @@ function Form({
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel="Clear time"
-                        hitSlop={8}
+                        disabled={locked}
                         onPress={() => {
                           if (picker?.field === field) setPicker(null);
                           setDate(field, null);
@@ -653,6 +775,7 @@ function Form({
                     accentColor={colors.accent}
                     textColor={colors.text}
                     onChange={(event, date) => {
+                      if (lockedRef.current || !owns()) return;
                       if (event.type === "dismissed") {
                         setPicker(null);
                         return;
@@ -689,6 +812,7 @@ function Form({
                       title={picker.mode === "date" ? "Choose time" : "Done"}
                       icon={picker.mode === "date" ? "arrowRight" : "check"}
                       style={{ marginBottom: 0 }}
+                      disabled={locked}
                       onPress={() => {
                         if (!editing[picker.field])
                           setDate(picker.field, new Date().toISOString());
@@ -704,6 +828,18 @@ function Form({
               )}
             </>
           )}
+          {!!projectError && (
+            <View>
+              <Text accessibilityRole="alert" style={s.error}>
+                {projectError}
+              </Text>
+              <Button
+                title="Retry project details"
+                disabled={locked}
+                onPress={() => setProjectRetry((n) => n + 1)}
+              />
+            </View>
+          )}
           {afterProject && project?.deadline && (
             <View style={s.projectDeadlineWarning}>
               <Text style={shared.small}>
@@ -712,6 +848,7 @@ function Form({
               {!readOnly && (
                 <Button
                   title={`Use ${shortDay(project.deadline)}`}
+                  disabled={locked}
                   secondary
                   onPress={() => {
                     setPicker(null);
@@ -729,7 +866,7 @@ function Form({
             <RepeatPicker
               rrule={editing.rrule}
               dueAt={editing.due_at}
-              disabled={readOnly}
+              disabled={locked}
               onProblem={setRepeatProblem}
               onChange={(rrule) =>
                 onChange(rrule ? { rrule, timezone: zone } : { rrule: null })
@@ -737,17 +874,16 @@ function Form({
             />
             {exists && !!editing.rrule && (
               <Text style={[shared.small, s.hint]}>
-                When you save or delete, you choose this one, this and
-                following, or all of them.
+                Choose which occurrences change when you save or delete.
               </Text>
             )}
           </Section>
-          <Section label="How long will it take?">
+          <Section label="Estimate">
             <ChipRow label="Estimate">
               <Chip
                 label="Not sure"
                 selected={!estimate && !customEstimate}
-                disabled={readOnly}
+                disabled={locked}
                 onPress={() => {
                   setCustomEstimate(false);
                   onChange({ estimate_minutes: null });
@@ -759,7 +895,7 @@ function Form({
                   label={minutesLabel(m)}
                   accessibilityLabel={`${minutesLabel(m)} estimate`}
                   selected={!customEstimate && estimate === m}
-                  disabled={readOnly}
+                  disabled={locked}
                   onPress={() => {
                     setCustomEstimate(false);
                     onChange({ estimate_minutes: m });
@@ -769,380 +905,416 @@ function Form({
               <Chip
                 label="Custom"
                 selected={customEstimate}
-                disabled={readOnly}
+                disabled={locked}
                 onPress={() => setCustomEstimate(true)}
               />
             </ChipRow>
+            {!!estimateProblem && (
+              <Text accessibilityRole="alert" style={s.error}>
+                {estimateProblem}
+              </Text>
+            )}
             {customEstimate && (
               <View style={s.below}>
                 <NumberInput
-                  value={estimate ? String(estimate) : ""}
-                  editable={!readOnly}
+                  value={estimateText}
+                  editable={!locked}
                   placeholder="50"
                   suffix="minutes"
                   accessibilityLabel="Estimate in minutes"
-                  onChangeText={(text) =>
-                    onChange({
-                      estimate_minutes:
-                        Math.min(10080, Number(text) || 0) || null,
-                    })
-                  }
-                />
-              </View>
-            )}
-          </Section>
-          <Section label="List">
-            {scopeLists.length ? (
-              <ChipRow label="List">
-                <Chip
-                  label="No list"
-                  selected={!editing.list_id}
-                  disabled={readOnly}
-                  onPress={() => onChange({ list_id: null })}
-                />
-                {scopeLists.map((l) => (
-                  <Chip
-                    key={l.id}
-                    label={l.name}
-                    color={l.color}
-                    selected={editing.list_id === l.id}
-                    disabled={readOnly}
-                    onPress={() => onChange({ list_id: l.id })}
-                  />
-                ))}
-              </ChipRow>
-            ) : (
-              <Text style={shared.small}>
-                {teamId
-                  ? "This team has no lists yet. Add them from My tasks → Lists."
-                  : "No lists yet. Add them from My tasks → Lists."}
-              </Text>
-            )}
-          </Section>
-          <Section label="Tags">
-            {scopeTags.length > 0 && (
-              <ChipRow label="Tags" multi>
-                {scopeTags.map((t) => {
-                  const on = tagIds.includes(t.id);
-                  return (
-                    <Chip
-                      key={t.id}
-                      multi
-                      label={t.name}
-                      color={t.color}
-                      selected={on}
-                      disabled={readOnly || (!on && tagIds.length >= MAX_TAGS)}
-                      onPress={() =>
-                        onChange({
-                          tag_ids: on
-                            ? tagIds.filter((id) => id !== t.id)
-                            : [...tagIds, t.id],
-                        })
-                      }
-                    />
-                  );
-                })}
-              </ChipRow>
-            )}
-            {!readOnly && (
-              <View style={[s.tagRow, scopeTags.length > 0 && s.below]}>
-                <TextInput
-                  style={[shared.input, s.tagInput]}
-                  value={newTag}
-                  onChangeText={setNewTag}
-                  maxLength={40}
-                  placeholder={teamId ? "New team tag" : "New tag"}
-                  placeholderTextColor={colors.faint}
-                  returnKeyType="done"
-                  submitBehavior="submit"
-                  onSubmitEditing={() => void addTag()}
-                  accessibilityLabel="New tag name"
-                />
-                <PressableScale
-                  accessibilityRole="button"
-                  accessibilityLabel="Create tag"
-                  accessibilityState={{
-                    disabled: tagBusy || !newTag.trim(),
+                  onChangeText={(text) => {
+                    setEstimateText(text);
+                    const value = text ? Number(text) : null;
+                    const problem =
+                      value !== null && (value < 1 || value > 10080)
+                        ? "Use 1–10,080 minutes."
+                        : "";
+                    setEstimateProblem(problem);
+                    if (!problem) onChange({ estimate_minutes: value });
                   }}
-                  disabled={tagBusy || !newTag.trim()}
-                  onPress={() => void addTag()}
-                  style={[
-                    s.tagAdd,
-                    (tagBusy || !newTag.trim()) && { opacity: 0.45 },
-                  ]}
-                >
-                  <Icon
-                    name="plus"
-                    size={18}
-                    color={colors.white}
-                    strokeWidth={2.2}
-                  />
-                </PressableScale>
+                />
               </View>
             )}
-            {tagIds.length >= MAX_TAGS && (
-              <Text style={[shared.small, s.hint]}>Up to 20 tags.</Text>
-            )}
-            {!!tagError && (
-              <Text accessibilityRole="alert" style={[s.error, s.below]}>
-                {tagError}
-              </Text>
-            )}
           </Section>
-          {/* What a task waits on. The planner will not place it until every
+          <ChoicePicker<string>
+            label="List"
+            value={editing.list_id ?? ""}
+            disabled={locked}
+            options={[
+              { value: "", label: "No list" },
+              ...scopeLists.map((list) => ({
+                value: list.id,
+                label: list.name,
+              })),
+            ]}
+            onChange={(value) => onChange({ list_id: value || null })}
+          />
+          <InlineDetails
+            title="More details"
+            reveal={!!formError || !!tagError}
+          >
+            <Section label="Tags">
+              {scopeTags.length > 0 && (
+                <ChipRow label="Tags" multi>
+                  {scopeTags.map((t) => {
+                    const on = tagIds.includes(t.id);
+                    return (
+                      <Chip
+                        key={t.id}
+                        multi
+                        label={t.name}
+                        color={t.color}
+                        selected={on}
+                        disabled={locked || (!on && tagIds.length >= MAX_TAGS)}
+                        onPress={() =>
+                          onChange({
+                            tag_ids: on
+                              ? tagIds.filter((id) => id !== t.id)
+                              : [...tagIds, t.id],
+                          })
+                        }
+                      />
+                    );
+                  })}
+                </ChipRow>
+              )}
+              {!readOnly && (
+                <View style={[s.tagRow, scopeTags.length > 0 && s.below]}>
+                  <TextInput
+                    style={[shared.input, s.tagInput]}
+                    value={newTag}
+                    onChangeText={setNewTag}
+                    maxLength={40}
+                    placeholder={teamId ? "New team tag" : "New tag"}
+                    placeholderTextColor={colors.faint}
+                    returnKeyType="done"
+                    submitBehavior="submit"
+                    onSubmitEditing={() => void addTag()}
+                    accessibilityLabel="New tag name"
+                  />
+                  <PressableScale
+                    accessibilityRole="button"
+                    accessibilityLabel="Create tag"
+                    accessibilityState={{
+                      disabled: tagBusy || !newTag.trim(),
+                    }}
+                    disabled={tagBusy || !newTag.trim()}
+                    onPress={() => void addTag()}
+                    style={[
+                      s.tagAdd,
+                      (tagBusy || !newTag.trim()) && { opacity: 0.45 },
+                    ]}
+                  >
+                    <Icon
+                      name="plus"
+                      size={18}
+                      color={colors.onAccent}
+                      strokeWidth={2.2}
+                    />
+                  </PressableScale>
+                </View>
+              )}
+              {tagIds.length >= MAX_TAGS && (
+                <Text style={[shared.small, s.hint]}>Up to 20 tags.</Text>
+              )}
+              {!!tagError && (
+                <Text accessibilityRole="alert" style={[s.error, s.below]}>
+                  {tagError}
+                </Text>
+              )}
+            </Section>
+            {/* What a task waits on. The planner will not place it until every
               one of these is finished or fully scheduled, so this is the
               field that explains a task the planner keeps refusing. A loop
               would leave every task in it unplaceable for good, so the
               server refuses one; here a task simply is not offered itself. */}
-          {editing.kind === "task" && (
-            <Section label="Waiting on">
-              {waitable.length > 0 ? (
-                <ScrollView
-                  horizontal
-                  keyboardShouldPersistTaps="handled"
-                  showsHorizontalScrollIndicator={false}
-                >
-                  <ChipRow label="Waiting on" multi>
-                    {waitable.map((t) => {
-                      const on = waitsOn.includes(t.id);
-                      return (
-                        <Chip
-                          key={t.id}
-                          multi
-                          compact
-                          label={t.title}
-                          selected={on}
-                          disabled={
-                            readOnly || (!on && waitsOn.length >= MAX_WAITS_ON)
-                          }
-                          onPress={() =>
-                            onChange({
-                              prerequisite_ids: on
-                                ? waitsOn.filter((id) => id !== t.id)
-                                : [...waitsOn, t.id],
-                            })
-                          }
-                        />
-                      );
-                    })}
-                  </ChipRow>
-                </ScrollView>
-              ) : (
-                <Text style={shared.small}>
-                  Nothing else open to wait on yet.
-                </Text>
-              )}
-              {waitsOn.length >= MAX_WAITS_ON && (
+            {editing.kind === "task" && (
+              <Section label="Waiting on">
+                {waitable.length > 0 ? (
+                  <ScrollView
+                    horizontal
+                    keyboardShouldPersistTaps="handled"
+                    showsHorizontalScrollIndicator={false}
+                  >
+                    <ChipRow label="Waiting on" multi>
+                      {waitable.map((t) => {
+                        const on = waitsOn.includes(t.id);
+                        return (
+                          <Chip
+                            key={t.id}
+                            multi
+                            compact
+                            label={t.title}
+                            selected={on}
+                            disabled={
+                              locked || (!on && waitsOn.length >= MAX_WAITS_ON)
+                            }
+                            onPress={() =>
+                              onChange({
+                                prerequisite_ids: on
+                                  ? waitsOn.filter((id) => id !== t.id)
+                                  : [...waitsOn, t.id],
+                              })
+                            }
+                          />
+                        );
+                      })}
+                    </ChipRow>
+                  </ScrollView>
+                ) : (
+                  <Text style={shared.small}>
+                    Nothing else open to wait on yet.
+                  </Text>
+                )}
+                {waitsOn.length >= MAX_WAITS_ON && (
+                  <Text style={[shared.small, s.hint]}>
+                    Up to {MAX_WAITS_ON} at a time.
+                  </Text>
+                )}
+              </Section>
+            )}
+            {editing.kind === "task" && (
+              <Section label="Measure progress">
+                <View style={s.measureRow}>
+                  <TextInput
+                    style={[shared.input, s.measureInput]}
+                    keyboardType="decimal-pad"
+                    editable={!locked && editing.target_value != null}
+                    value={
+                      editing.current_value == null
+                        ? ""
+                        : String(editing.current_value)
+                    }
+                    placeholder="Now"
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="Where it is now"
+                    onChangeText={(t) => {
+                      const n = Number(t.replace(",", "."));
+                      onChange({
+                        current_value:
+                          t.trim() === "" || !Number.isFinite(n) ? 0 : n,
+                      });
+                    }}
+                  />
+                  <Text style={shared.small}>of</Text>
+                  <TextInput
+                    style={[shared.input, s.measureInput]}
+                    keyboardType="decimal-pad"
+                    editable={!locked}
+                    value={
+                      editing.target_value == null
+                        ? ""
+                        : String(editing.target_value)
+                    }
+                    placeholder="Target"
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="Target"
+                    onChangeText={(t) => {
+                      const n = Number(t.replace(",", "."));
+                      const target =
+                        t.trim() === "" || !Number.isFinite(n) ? null : n;
+                      onChange({
+                        target_value: target,
+                        current_value:
+                          target === null ? null : (editing.current_value ?? 0),
+                        ...(target === null ? { value_unit: "" } : {}),
+                      });
+                    }}
+                  />
+                  <TextInput
+                    style={[shared.input, s.measureUnit]}
+                    editable={!locked && editing.target_value != null}
+                    value={editing.value_unit ?? ""}
+                    maxLength={16}
+                    placeholder="unit"
+                    placeholderTextColor={colors.faint}
+                    accessibilityLabel="Unit"
+                    onChangeText={(t) => onChange({ value_unit: t })}
+                  />
+                </View>
                 <Text style={[shared.small, s.hint]}>
-                  Up to {MAX_WAITS_ON} at a time.
+                  {editing.target_value == null
+                    ? "For a key result: progress follows the number."
+                    : `${measureLabel(editing)} · ${measureProgress(editing) ?? 0}%`}
                 </Text>
-              )}
+              </Section>
+            )}
+            <Section label="Calendar color">
+              <ColorField
+                value={editing.color ?? null}
+                choices={colorChoices}
+                disabled={locked}
+                onChange={(color) => onChange({ color })}
+              />
+              <Text style={[shared.small, s.hint]}>
+                With no colour of its own it takes its list’s.
+              </Text>
             </Section>
-          )}
-          {editing.kind === "task" && (
-            <Section label="Number to reach">
-              <View style={s.measureRow}>
-                <TextInput
-                  style={[shared.input, s.measureInput]}
-                  keyboardType="decimal-pad"
-                  editable={!readOnly && editing.target_value != null}
-                  value={
-                    editing.current_value == null
-                      ? ""
-                      : String(editing.current_value)
-                  }
-                  placeholder="Now"
-                  placeholderTextColor={colors.faint}
-                  accessibilityLabel="Where it is now"
-                  onChangeText={(t) => {
-                    const n = Number(t.replace(",", "."));
-                    onChange({
-                      current_value:
-                        t.trim() === "" || !Number.isFinite(n) ? 0 : n,
-                    });
-                  }}
-                />
-                <Text style={shared.small}>of</Text>
-                <TextInput
-                  style={[shared.input, s.measureInput]}
-                  keyboardType="decimal-pad"
-                  editable={!readOnly}
-                  value={
-                    editing.target_value == null
-                      ? ""
-                      : String(editing.target_value)
-                  }
-                  placeholder="Target"
-                  placeholderTextColor={colors.faint}
-                  accessibilityLabel="Target"
-                  onChangeText={(t) => {
-                    const n = Number(t.replace(",", "."));
-                    const target =
-                      t.trim() === "" || !Number.isFinite(n) ? null : n;
-                    onChange({
-                      target_value: target,
-                      current_value:
-                        target === null ? null : (editing.current_value ?? 0),
-                      ...(target === null ? { value_unit: "" } : {}),
-                    });
-                  }}
-                />
-                <TextInput
-                  style={[shared.input, s.measureUnit]}
-                  editable={!readOnly && editing.target_value != null}
-                  value={editing.value_unit ?? ""}
-                  maxLength={16}
-                  placeholder="unit"
-                  placeholderTextColor={colors.faint}
-                  accessibilityLabel="Unit"
-                  onChangeText={(t) => onChange({ value_unit: t })}
+            {!!teamId && membersLoading && (
+              <Text style={shared.small}>Loading people…</Text>
+            )}
+            {!!teamId && !!membersError && (
+              <View>
+                <Text accessibilityRole="alert" style={s.error}>
+                  {membersError}
+                </Text>
+                <Button
+                  title="Retry people"
+                  disabled={locked}
+                  onPress={() => setMembersRetry((n) => n + 1)}
                 />
               </View>
-              <Text style={[shared.small, s.hint]}>
-                {editing.target_value == null
-                  ? "For a key result: progress follows the number."
-                  : `${measureLabel(editing)} · ${measureProgress(editing) ?? 0}%`}
-              </Text>
-            </Section>
-          )}
-          <Section label="Colour on the calendar">
-            <ColorField
-              value={editing.color ?? null}
-              choices={colorChoices}
-              disabled={readOnly}
-              onChange={(color) => onChange({ color })}
-            />
-            <Text style={[shared.small, s.hint]}>
-              With no colour of its own it takes its list’s.
-            </Text>
-          </Section>
-          {!!teamId && members.length > 0 && (
-            <Section label="Assigned to">
-              <ChipRow label="Assigned to">
-                <Chip
-                  label="Nobody"
-                  selected={!editing.assignee_id}
-                  disabled={readOnly}
-                  onPress={() => onChange({ assignee_id: null })}
-                />
-                {members.map((m) => (
-                  <Chip
-                    key={m.user_id}
-                    label={m.name}
-                    selected={editing.assignee_id === m.user_id}
-                    disabled={readOnly}
-                    onPress={() => onChange({ assignee_id: m.user_id })}
-                  />
-                ))}
-                {/* Someone who left the team stays until you pick another. */}
-                {!!editing.assignee_id &&
-                  !members.some((m) => m.user_id === editing.assignee_id) && (
-                    <Chip
-                      label={
-                        ("assignee_name" in editing && editing.assignee_name) ||
-                        "Current assignee"
-                      }
-                      selected
-                      disabled={readOnly}
-                      onPress={() => {}}
-                    />
-                  )}
-              </ChipRow>
-            </Section>
-          )}
-          {editing.kind === "event" && (
-            <>
-              <Section label="Location">
-                <TextInput
-                  style={shared.input}
-                  editable={!readOnly}
-                  value={editing.location ?? ""}
-                  maxLength={300}
-                  placeholder="Where it happens"
-                  placeholderTextColor={colors.faint}
-                  onChangeText={(location) => onChange({ location })}
-                />
-              </Section>
-              <Section label="Meeting link">
-                <TextInput
-                  style={shared.input}
-                  editable={!readOnly}
-                  value={editing.meeting_url ?? ""}
-                  maxLength={500}
-                  placeholder="https://"
-                  placeholderTextColor={colors.faint}
-                  keyboardType="url"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  onChangeText={(meeting_url) => onChange({ meeting_url })}
-                />
-              </Section>
-              {!allDay && (
-                <Section label="Show as">
-                  <Segmented
-                    disabled={readOnly}
-                    accessibilityLabel="Show as"
-                    options={["busy", "free"] as const}
-                    labels={{ busy: "Busy", free: "Free" }}
-                    value={editing.busy === false ? "free" : "busy"}
-                    onChange={(value) => onChange({ busy: value === "busy" })}
-                  />
-                  <Text style={[shared.small, s.hint]}>
-                    Free events don’t block your planner, booking pages or
-                    teammates.
-                  </Text>
-                </Section>
-              )}
-              <Section label="Invite people">
-                <InviteesField
-                  people={people}
-                  statuses={statuses}
-                  disabled={readOnly}
-                  onChange={(attendees) => onChange({ attendees })}
-                />
-              </Section>
-            </>
-          )}
-          <Section label="Notes">
-            <TextInput
-              style={[shared.input, s.notes]}
-              editable={!readOnly}
-              multiline
-              textAlignVertical="top"
-              value={editing.notes}
-              maxLength={10000}
-              placeholder="Anything worth remembering"
-              placeholderTextColor={colors.faint}
-              onChangeText={(notes) => onChange({ notes })}
-            />
-          </Section>
-          <Section label="Links">
-            <LinksField
-              links={links}
-              disabled={readOnly}
-              onChange={(next) => onChange({ links: next })}
-            />
-          </Section>
-          <Section label="Alerts">
-            {!exists &&
-            !defaultAlerts &&
-            editing.alerts === undefined &&
-            editing.reminder_minutes == null ? (
-              <Text style={shared.small}>
-                {defaultsError
-                  ? "Your saved alert defaults will apply. Reopen the editor to load and change them."
-                  : "Loading your default alerts…"}
-              </Text>
-            ) : (
-              <AlertsField
-                alerts={alerts}
-                disabled={readOnly}
-                onChange={(next) =>
-                  onChange({ alerts: next, reminder_minutes: undefined })
-                }
+            )}
+            {!!teamId && !membersLoading && !membersError && (
+              <ChoicePicker<string>
+                label="Assigned to"
+                value={editing.assignee_id ?? ""}
+                disabled={locked}
+                options={[
+                  { value: "", label: "Nobody" },
+                  ...members.map((member) => ({
+                    value: member.user_id,
+                    label: member.name,
+                    detail: member.email,
+                  })),
+                  ...(editing.assignee_id &&
+                  !members.some(
+                    (member) => member.user_id === editing.assignee_id,
+                  )
+                    ? [
+                        {
+                          value: editing.assignee_id,
+                          label:
+                            ("assignee_name" in editing &&
+                              editing.assignee_name) ||
+                            "Current assignee",
+                        },
+                      ]
+                    : []),
+                ]}
+                onChange={(value) => onChange({ assignee_id: value || null })}
               />
             )}
-          </Section>
+            {editing.kind === "event" && (
+              <>
+                <Section label="Location">
+                  <TextInput
+                    style={shared.input}
+                    editable={!locked}
+                    value={editing.location ?? ""}
+                    maxLength={300}
+                    placeholder="Where it happens"
+                    placeholderTextColor={colors.faint}
+                    onChangeText={(location) => onChange({ location })}
+                  />
+                </Section>
+                <Section label="Meeting link">
+                  <TextInput
+                    style={shared.input}
+                    editable={!locked}
+                    value={editing.meeting_url ?? ""}
+                    maxLength={500}
+                    placeholder="https://"
+                    placeholderTextColor={colors.faint}
+                    keyboardType="url"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={(meeting_url) => onChange({ meeting_url })}
+                  />
+                </Section>
+                {!allDay && (
+                  <Section label="Show as">
+                    <Segmented
+                      disabled={locked}
+                      accessibilityLabel="Show as"
+                      options={["busy", "free"] as const}
+                      labels={{ busy: "Busy", free: "Free" }}
+                      value={editing.busy === false ? "free" : "busy"}
+                      onChange={(value) => onChange({ busy: value === "busy" })}
+                    />
+                    <Text style={[shared.small, s.hint]}>
+                      Doesn’t block time.
+                    </Text>
+                  </Section>
+                )}
+                <Section label="Invitees">
+                  <InviteesField
+                    people={people}
+                    statuses={statuses}
+                    disabled={locked || detailLoading || !!detailError}
+                    onChange={(attendees) => onChange({ attendees })}
+                  />
+                </Section>
+              </>
+            )}
+            <Section label="Notes">
+              <TextInput
+                style={[shared.input, s.notes]}
+                editable={!locked}
+                multiline
+                textAlignVertical="top"
+                value={editing.notes}
+                maxLength={10000}
+                placeholder="Add notes…"
+                placeholderTextColor={colors.faint}
+                onChangeText={(notes) => onChange({ notes })}
+              />
+            </Section>
+            {!!itemId && detailLoading && (
+              <Text style={shared.small}>Loading links and invitees…</Text>
+            )}
+            {!!detailError && (
+              <View>
+                <Text accessibilityRole="alert" style={s.error}>
+                  {detailError}
+                </Text>
+                <Button
+                  title="Retry item details"
+                  disabled={locked}
+                  onPress={() => setDetailRetry((n) => n + 1)}
+                />
+              </View>
+            )}
+            <Section label="Links">
+              <LinksField
+                links={links}
+                disabled={locked || detailLoading || !!detailError}
+                onPendingChange={(pending) => {
+                  pendingLink.current = pending;
+                }}
+                onChange={(next) => onChange({ links: next })}
+              />
+            </Section>
+            <Section label="Alerts">
+              {!exists &&
+              !defaultAlerts &&
+              editing.alerts === undefined &&
+              editing.reminder_minutes == null ? (
+                <View>
+                  <Text style={shared.small}>
+                    {defaultsError
+                      ? "Couldn't load alert defaults. Saved defaults still apply."
+                      : "Loading alerts…"}
+                  </Text>
+                  {defaultsError && (
+                    <Button
+                      title="Retry alerts"
+                      disabled={locked}
+                      onPress={() => setDefaultsRetry((n) => n + 1)}
+                    />
+                  )}
+                </View>
+              ) : (
+                <AlertsField
+                  alerts={alerts}
+                  disabled={locked}
+                  onChange={(next) =>
+                    onChange({ alerts: next, reminder_minutes: undefined })
+                  }
+                />
+              )}
+            </Section>
+          </InlineDetails>
           {!!formError && (
             <Text accessibilityRole="alert" style={s.error}>
               {formError}
@@ -1155,38 +1327,66 @@ function Form({
           )}
           {!readOnly && (
             <Button
-              title={busy ? "Saving…" : "Save item"}
+              title={busy ? "Saving…" : "Save"}
               icon={busy ? undefined : "check"}
-              disabled={busy}
+              disabled={locked}
               onPress={save}
             />
           )}
           {exists && !readOnly && (
-            <Button
-              destructive
-              title="Delete item"
-              disabled={busy}
-              onPress={() =>
-                // A repeating item asks which ones to delete instead.
-                editing.rrule
-                  ? onDelete()
-                  : Alert.alert(
-                      "Delete this item?",
-                      "This removes it from your planner.",
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Delete",
-                          style: "destructive",
-                          onPress: onDelete,
-                        },
-                      ],
-                    )
-              }
+            <MoreMenu
+              label="Item options"
+              disabled={locked}
+              actions={[
+                {
+                  label: "Delete item",
+                  destructive: true,
+                  onPress: () => {
+                    if (!owns() || lockedRef.current) return;
+                    if (editing.rrule) onDelete();
+                    else setDeletePrompt(true);
+                  },
+                },
+              ]}
             />
           )}
         </View>
       </ScrollView>
+      <ActionSheet
+        visible={leavePrompt}
+        label="Unsaved changes"
+        title="Discard changes?"
+        message="Your edits haven't been saved."
+        cancelLabel="Keep editing"
+        actions={[
+          {
+            label: "Discard changes",
+            destructive: true,
+            onPress: () => {
+              if (owns() && !busy && !tagOperation.current) onClose();
+            },
+          },
+        ]}
+        onClose={() => setLeavePrompt(false)}
+      />
+      <ActionSheet
+        visible={deletePrompt}
+        label="Delete item"
+        title={`Delete “${editing.title}”?`}
+        message="This removes it from your planner."
+        cancelLabel="Keep item"
+        actions={[
+          {
+            label: "Delete item",
+            destructive: true,
+            disabled: locked,
+            onPress: () => {
+              if (owns() && !lockedRef.current) onDelete();
+            },
+          },
+        ]}
+        onClose={() => setDeletePrompt(false)}
+      />
     </>
   );
 }
@@ -1196,16 +1396,22 @@ function LinksField({
   links,
   disabled,
   onChange,
+  onPendingChange,
 }: {
   links: LinkDraft[];
   disabled: boolean;
   onChange: (links: LinkDraft[]) => void;
+  onPendingChange: (pending: boolean) => void;
 }) {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
   const [problem, setProblem] = useState("");
+  useEffect(() => {
+    onPendingChange(!!url.trim() || !!title.trim());
+  }, [url, title, onPendingChange]);
   const full = links.length >= MAX_LINKS;
   const add = () => {
+    if (disabled || full) return;
     const clean = url.trim();
     if (!LINK_URL.test(clean)) {
       setProblem("Links start with http:// or https://.");
@@ -1216,6 +1422,7 @@ function LinksField({
       return;
     }
     onChange([...links, { url: clean, title: title.trim() }]);
+    onPendingChange(false);
     setUrl("");
     setTitle("");
     setProblem("");
@@ -1228,21 +1435,14 @@ function LinksField({
       {links.map((l, n) => (
         <View key={`${l.url}-${n}`} style={[s.linkRow, n > 0 && s.linkDivider]}>
           <Icon name="link" size={14} color={colors.accent} />
-          <View style={{ flex: 1 }}>
-            <Text style={s.linkTitle} numberOfLines={1}>
-              {l.title || l.url}
-            </Text>
-            {!!l.title && (
-              <Text style={shared.small} numberOfLines={1}>
-                {l.url}
-              </Text>
-            )}
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={s.linkTitle}>{l.title || l.url}</Text>
+            {!!l.title && <Text style={shared.small}>{l.url}</Text>}
           </View>
           {!disabled && (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`Remove ${l.title || l.url}`}
-              hitSlop={8}
               onPress={() => onChange(links.filter((_, i) => i !== n))}
               style={s.linkRemove}
             >
@@ -1251,12 +1451,14 @@ function LinksField({
           )}
         </View>
       ))}
-      {!disabled && !full && (
+      {!full && (
         <View style={links.length > 0 && s.below}>
           <TextInput
             style={shared.input}
             value={url}
+            editable={!disabled}
             onChangeText={(t) => {
+              onPendingChange(!!t.trim() || !!title.trim());
               setUrl(t);
               if (problem) setProblem("");
             }}
@@ -1272,7 +1474,11 @@ function LinksField({
             <TextInput
               style={[shared.input, s.tagInput]}
               value={title}
-              onChangeText={setTitle}
+              editable={!disabled}
+              onChangeText={(text) => {
+                onPendingChange(!!url.trim() || !!text.trim());
+                setTitle(text);
+              }}
               maxLength={200}
               placeholder="Title (optional)"
               placeholderTextColor={colors.faint}
@@ -1283,15 +1489,15 @@ function LinksField({
             <PressableScale
               accessibilityRole="button"
               accessibilityLabel="Add link"
-              accessibilityState={{ disabled: !url.trim() }}
-              disabled={!url.trim()}
+              accessibilityState={{ disabled: disabled || !url.trim() }}
+              disabled={disabled || !url.trim()}
               onPress={add}
               style={[s.tagAdd, !url.trim() && { opacity: 0.45 }]}
             >
               <Icon
                 name="plus"
                 size={18}
-                color={colors.white}
+                color={colors.onAccent}
                 strokeWidth={2.2}
               />
             </PressableScale>
@@ -1359,9 +1565,9 @@ const s = themed(() =>
       color: colors.text,
     },
     close: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      width: controls.tap,
+      height: controls.tap,
+      borderRadius: radii.pill,
       backgroundColor: colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
@@ -1385,7 +1591,12 @@ const s = themed(() =>
       paddingHorizontal: 15,
     },
     dateActive: { borderColor: colors.accent },
-    dateText: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    dateText: {
+      flexShrink: 1,
+      fontFamily: fonts.medium,
+      fontSize: 15,
+      color: colors.text,
+    },
     clear: {
       width: 44,
       height: 50,
@@ -1404,7 +1615,7 @@ const s = themed(() =>
       padding: 12,
       marginBottom: 18,
     },
-    notes: { minHeight: 100 },
+    notes: { minHeight: 100, maxHeight: 220 },
     hint: { marginTop: 8 },
     projectDeadlineWarning: {
       gap: 8,
@@ -1415,9 +1626,14 @@ const s = themed(() =>
       borderRadius: radii.card,
       backgroundColor: colors.surface,
     },
-    measureRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-    measureInput: { flex: 1, minWidth: 0 },
-    measureUnit: { flex: 1.2, minWidth: 0 },
+    measureRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
+    measureInput: { flex: 1, minWidth: 80 },
+    measureUnit: { flex: 1.2, minWidth: 80 },
     viewOnly: {
       flexDirection: "row",
       alignItems: "center",
@@ -1462,9 +1678,9 @@ const s = themed(() =>
       color: colors.text,
     },
     linkRemove: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      width: controls.tap,
+      height: controls.tap,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },

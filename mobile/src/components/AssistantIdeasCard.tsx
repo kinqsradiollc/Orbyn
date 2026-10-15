@@ -3,7 +3,7 @@ import { StyleSheet, Text, View } from "react-native";
 import type { AssistantIdea } from "@orbyn/core";
 import { client } from "../lib/api";
 import { openReview } from "../lib/review";
-import { FadeIn } from "../motion";
+import { InlineDetails } from "./InlineDetails";
 import { fonts, colors, themed } from "../theme";
 import { shared } from "../styles";
 import { SmallAction } from "./SmallAction";
@@ -39,9 +39,9 @@ export function AssistantIdeasCard() {
   }, []);
   if (!ideas.length) return null;
   return (
-    <FadeIn style={shared.card}>
+    <View style={shared.card}>
       <Text style={shared.sectionTitle} accessibilityRole="header">
-        For today
+        Suggested for today
       </Text>
       <Text style={[shared.small, s.hint]}>
         Ideas from {agentName}, ready to review.
@@ -51,13 +51,11 @@ export function AssistantIdeasCard() {
         return (
           <View key={idea.id} style={s.row}>
             <View style={s.flex}>
-              <Text style={s.title} numberOfLines={1}>
-                {idea.title}
-              </Text>
+              <Text style={s.title}>{idea.title}</Text>
               {!!detail && detail !== idea.title.trim() && (
-                <Text style={shared.small} numberOfLines={2}>
-                  {detail}
-                </Text>
+                <InlineDetails title="Details">
+                  <Text style={shared.small}>{detail}</Text>
+                </InlineDetails>
               )}
             </View>
             <SmallAction
@@ -68,20 +66,21 @@ export function AssistantIdeasCard() {
           </View>
         );
       })}
-    </FadeIn>
+    </View>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
     hint: { marginTop: 2, marginBottom: 12 },
-    flex: { flex: 1, minWidth: 0 },
+    flex: { flexGrow: 1, flexBasis: 160, minWidth: 0 },
     row: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 10,
       paddingVertical: 6,
     },
-    title: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    title: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
   }),
 );

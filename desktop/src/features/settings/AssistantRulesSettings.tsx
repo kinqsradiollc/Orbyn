@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ASSISTANT_RULE_ACTIONS,
   type AssistantActionRule,
@@ -14,7 +14,7 @@ const ACTION_LABELS: Record<AssistantActionRule["action"], string> = {
   any_change: "Any change",
   create: "Create",
   edit: "Edit",
-  delete_move_restore: "Delete or move",
+  delete_move_restore: "Delete, move or restore",
   email: "Email",
   notify: "Notify",
   publish: "Publish",
@@ -46,6 +46,16 @@ export function AssistantRulesSettings({
   userId: string;
   teams: Team[];
 }) {
+  return <AssistantRulesBody key={userId} userId={userId} teams={teams} />;
+}
+
+function AssistantRulesBody({
+  userId,
+  teams,
+}: {
+  userId: string;
+  teams: Team[];
+}) {
   const [revision, setRevision] = useState<number | null>(null);
   const [rules, setRules] = useState<AssistantActionRule[]>([]);
   const [saved, setSaved] = useState<AssistantActionRule[]>([]);
@@ -53,37 +63,40 @@ export function AssistantRulesSettings({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const mounted = useRef(false);
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [loading, setLoading] = useState(false);
 
-  const load = async () => {
-    const value = await client.assistantRules();
-    setRevision(value.revision);
-    setRules(value.rules);
-    setSaved(value.rules);
-    setEditing(null);
+  const load = useCallback(async () => {
+    if (!userId || mutation.current) return;
+    const epoch = ++request.current;
+    setLoading(true);
     setError("");
-  };
-  useEffect(() => {
-    let live = true;
-    setRevision(null);
-    setRules([]);
-    setSaved([]);
-    setEditing(null);
-    if (!userId) return;
-    void client.assistantRules().then(
-      (value) => {
-        if (!live) return;
+    setNotice("");
+    try {
+      const value = await client.assistantRules();
+      if (mounted.current && epoch === request.current) {
         setRevision(value.revision);
         setRules(value.rules);
         setSaved(value.rules);
-      },
-      () => {
-        if (live) setError("Couldn't load rules. Retry.");
-      },
-    );
-    return () => {
-      live = false;
-    };
+        setEditing(null);
+      }
+    } catch {
+      if (mounted.current && epoch === request.current)
+        setError("Couldn't load rules. Retry.");
+    } finally {
+      if (mounted.current && epoch === request.current) setLoading(false);
+    }
   }, [userId]);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      request.current++;
+    };
+  }, [load]);
 
   const change = (id: string, next: AssistantActionRule) =>
     setRules((list) => list.map((rule) => (rule.id === id ? next : rule)));
@@ -104,20 +117,24 @@ export function AssistantRulesSettings({
     setNotice("");
   };
   const save = async () => {
-    if (revision === null || pending) return;
+    if (revision === null || mutation.current || loading) return;
+    mutation.current = true;
     setPending(true);
     setError("");
     try {
       const value = await client.replaceAssistantRules(revision, rules);
+      if (!mounted.current) return;
       setRevision(value.revision);
       setRules(value.rules);
       setSaved(value.rules);
       setEditing(null);
       setNotice("Rules saved");
     } catch {
-      setError("Couldn't save rules. Reload if they changed elsewhere.");
+      if (mounted.current)
+        setError("Couldn't save rules. Retry or reload the latest rules.");
     } finally {
-      setPending(false);
+      mutation.current = false;
+      if (mounted.current) setPending(false);
     }
   };
 
@@ -136,9 +153,8 @@ export function AssistantRulesSettings({
             <button
               type="button"
               className="secondary"
-              onClick={() =>
-                void load().catch(() => setError("Couldn't load rules. Retry."))
-              }
+              disabled={loading}
+              onClick={() => void load()}
             >
               Retry
             </button>
@@ -149,7 +165,10 @@ export function AssistantRulesSettings({
           {rules.map((rule) => (
             <li key={rule.id}>
               {editing === rule.id ? (
-                <div className="assistant-rule-editor">
+                <fieldset
+                  className="assistant-rule-editor"
+                  disabled={pending || loading}
+                >
                   <label>
                     Agent
                     <Select
@@ -237,7 +256,7 @@ export function AssistantRulesSettings({
                   {rule.action === "read" && rule.decision !== "allow" && (
                     <p className="muted">Agents skip this space.</p>
                   )}
-                </div>
+                </fieldset>
               ) : (
                 <span>{summary(rule, teams)}</span>
               )}
@@ -245,7 +264,7 @@ export function AssistantRulesSettings({
                 <button
                   type="button"
                   className="secondary"
-                  disabled={pending}
+                  disabled={pending || loading}
                   onClick={() =>
                     setEditing(editing === rule.id ? null : rule.id)
                   }
@@ -255,7 +274,7 @@ export function AssistantRulesSettings({
                 <button
                   type="button"
                   className="secondary"
-                  disabled={pending}
+                  disabled={pending || loading}
                   onClick={() => {
                     setRules((list) =>
                       list.filter((item) => item.id !== rule.id),
@@ -277,7 +296,7 @@ export function AssistantRulesSettings({
           <button
             type="button"
             className="secondary"
-            disabled={pending || rules.length >= 100}
+            disabled={pending || loading || rules.length >= 100}
             onClick={add}
           >
             Add rule
@@ -286,7 +305,9 @@ export function AssistantRulesSettings({
             type="button"
             className="primary"
             disabled={
-              pending || JSON.stringify(rules) === JSON.stringify(saved)
+              pending ||
+              loading ||
+              JSON.stringify(rules) === JSON.stringify(saved)
             }
             onClick={() => void save()}
           >
@@ -295,12 +316,14 @@ export function AssistantRulesSettings({
           <button
             type="button"
             className="link-button"
-            disabled={pending}
-            onClick={() =>
-              void load().catch(() => setError("Couldn't reload rules. Retry."))
-            }
+            disabled={pending || loading}
+            onClick={() => void load()}
           >
-            Reload
+            {loading
+              ? "Reloading…"
+              : JSON.stringify(rules) !== JSON.stringify(saved)
+                ? "Discard changes and reload"
+                : "Reload"}
           </button>
         </div>
       )}

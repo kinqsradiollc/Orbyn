@@ -22,7 +22,6 @@ export function SmallAction({
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
-      hitSlop={{ top: 5, bottom: 5 }}
       onPress={onPress}
       style={({ pressed }) => [
         s.action,
@@ -46,12 +45,11 @@ export function SmallAction({
 const s = themed(() =>
   StyleSheet.create({
     action: {
-      // 34pt drawn, 44pt to a finger through hitSlop.
-      minHeight: controls.tap - 10,
+      minHeight: controls.tap,
       maxWidth: "100%",
       paddingVertical: 6,
       paddingHorizontal: 12,
-      borderRadius: radii.input - 3,
+      borderRadius: radii.input,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,

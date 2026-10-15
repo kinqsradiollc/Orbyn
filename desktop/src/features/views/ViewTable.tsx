@@ -1,5 +1,6 @@
 import {
   Fragment,
+  useEffect,
   useRef,
   useState,
   type KeyboardEvent,
@@ -26,6 +27,7 @@ import {
   type ViewRow,
   type ViewSource,
 } from "@orbyn/core";
+import { usePaneLeaveGuard } from "../../app/page-commands";
 import { DateField } from "../../components/DateField";
 import { Select } from "../../components/Select";
 import { FieldInput } from "./FieldInput";
@@ -42,7 +44,7 @@ type Props = {
   folded: Set<string>;
   onToggleFold: (key: string) => void;
   onOpen: (row: ViewRow) => void;
-  onEdit: (row: ViewRow, edit: CellEdit) => void;
+  onEdit: (row: ViewRow, edit: CellEdit) => Promise<boolean>;
 };
 
 /** The day a row is due, as the date picker reads it. */
@@ -74,6 +76,33 @@ export function ViewTable({
 }: Props) {
   const [editing, setEditing] = useState<string | null>(null);
   const table = useRef<HTMLTableElement>(null);
+  const alive = useRef(true);
+  const writing = useRef(false);
+  const [pending, setPending] = useState<string | null>(null);
+  const [failure, setFailure] = useState<{
+    key: string;
+    edit: CellEdit;
+  } | null>(null);
+  const [leaveError, setLeaveError] = useState("");
+  const [drafts, setDrafts] = useState<Record<string, string | null>>({});
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const canLeaveTable = () => {
+    if (writing.current || editing || failure) {
+      setLeaveError(
+        writing.current
+          ? "Wait for this cell to save."
+          : "Finish or cancel the cell edit before leaving.",
+      );
+      return false;
+    }
+    return true;
+  };
+  usePaneLeaveGuard(async () => canLeaveTable());
   const now = new Date();
   const ctx = { now, timeZone };
   const names = { fields, people };
@@ -93,7 +122,8 @@ export function ViewTable({
     key: string,
     editable: boolean,
   ) => {
-    if (editing === key) return;
+    if (editing === key || writing.current || (failure && failure.key !== key))
+      return;
     const moves: Record<string, [number, number]> = {
       ArrowUp: [-1, 0],
       ArrowDown: [1, 0],
@@ -128,13 +158,41 @@ export function ViewTable({
       column !== "done";
     const isEditing = editing === key;
     const done = () => {
+      if (!alive.current || writing.current) return;
       setEditing(null);
+      setFailure(null);
+      setLeaveError("");
+      setDrafts((all) => {
+        const { [key]: _old, ...rest } = all;
+        return rest;
+      });
       requestAnimationFrame(() => focusCell(r, c));
     };
-    const commit = (edit: CellEdit) => {
-      onEdit(row, edit);
-      done();
+    const commit = async (edit: CellEdit): Promise<boolean> => {
+      if (writing.current) return false;
+      writing.current = true;
+      setPending(key);
+      setFailure(null);
+      if ("value" in edit && !("field" in edit))
+        setDrafts((all) => ({ ...all, [key]: edit.value }));
+      let saved = false;
+      try {
+        saved = await onEdit(row, edit);
+      } catch {
+        saved = false;
+      } finally {
+        writing.current = false;
+        if (alive.current) setPending(null);
+      }
+      if (!alive.current) return saved;
+      if (saved) done();
+      else setFailure({ key, edit });
+      return saved;
     };
+    const draft = (fallback: string) =>
+      Object.prototype.hasOwnProperty.call(drafts, key)
+        ? (drafts[key] ?? "")
+        : fallback;
     let content: ReactNode = cellText(row, column, ctx, names);
     if (column === "done")
       content = (
@@ -142,8 +200,8 @@ export function ViewTable({
           type="checkbox"
           aria-label={`${row.status === "done" ? "Reopen" : "Finish"} ${row.title}`}
           checked={row.status === "done"}
-          disabled={!row.can_write}
-          onChange={() => onEdit(row, { column: "done" })}
+          disabled={!row.can_write || !!pending}
+          onChange={() => void commit({ column: "done" })}
         />
       );
     else if (column === "title" && !isEditing)
@@ -170,7 +228,7 @@ export function ViewTable({
             people={people}
             autoFocus
             onCommit={(value: FieldValue) =>
-              onEdit(row, { column, field: field.id, value })
+              commit({ column, field: field.id, value })
             }
             onDone={done}
             className="view-cell-input"
@@ -181,7 +239,8 @@ export function ViewTable({
           <Select
             aria-label="Status"
             className="view-cell-input"
-            value={row.status ?? ""}
+            value={draft(row.status ?? "")}
+            disabled={!!pending}
             onChange={(e) => commit({ column, value: e.target.value })}
           >
             {statusChoices(row.kind).map((s) => (
@@ -196,7 +255,8 @@ export function ViewTable({
           <Select
             aria-label="Priority"
             className="view-cell-input"
-            value={row.priority ?? "medium"}
+            value={draft(row.priority ?? "medium")}
+            disabled={!!pending}
             onChange={(e) => commit({ column, value: e.target.value })}
           >
             {[...PRIORITIES].reverse().map((p) => (
@@ -212,7 +272,8 @@ export function ViewTable({
             aria-label="Due"
             className="view-cell-input"
             autoFocus
-            value={dayOf(row, timeZone)}
+            value={draft(dayOf(row, timeZone))}
+            disabled={!!pending}
             placeholder="No deadline"
             onChange={(e) => commit({ column, value: e.target.value || null })}
           />
@@ -247,16 +308,47 @@ export function ViewTable({
           (column === "done" ? " is-tick" : "")
         }
         onClick={() => {
-          if (editable && !isEditing) setEditing(key);
+          if (
+            editable &&
+            !isEditing &&
+            !writing.current &&
+            (!failure || failure.key === key)
+          )
+            setEditing(key);
         }}
         title={
           column === "due" && row.can_write && isRepeatingTask(row)
             ? REPEATING_DATE_NOTE
             : undefined
         }
-        onKeyDown={(e) => onCellKey(e, r, c, key, editable)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape" && isEditing && !writing.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            done();
+          } else onCellKey(e, r, c, key, editable);
+        }}
       >
         {content}
+        {failure?.key === key &&
+          column !== "title" &&
+          column !== "estimate" &&
+          !field && (
+            <div className="view-cell-recovery">
+              <span role="alert">Not saved.</span>
+              <button
+                type="button"
+                className="link-button"
+                disabled={!!pending}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  void commit(failure.edit);
+                }}
+              >
+                Retry
+              </button>
+            </div>
+          )}
       </td>
     );
   };
@@ -283,6 +375,25 @@ export function ViewTable({
       role="region"
       aria-label="View table"
     >
+      {(failure || leaveError) && (
+        <div className="view-cell-recovery">
+          {leaveError && <span role="alert">{leaveError}</span>}
+          <button
+            type="button"
+            className="link-button"
+            disabled={!!pending}
+            onClick={() => {
+              if (writing.current) return;
+              setFailure(null);
+              setEditing(null);
+              setDrafts({});
+              setLeaveError("");
+            }}
+          >
+            Cancel edit
+          </button>
+        </div>
+      )}
       <table className="view-table" ref={table}>
         <thead>
           <tr>
@@ -312,7 +423,9 @@ export function ViewTable({
                       <button
                         className="task-group-fold"
                         aria-expanded={!isFolded}
-                        onClick={() => onToggleFold(g.key)}
+                        onClick={() => {
+                          if (canLeaveTable()) onToggleFold(g.key);
+                        }}
                       >
                         {isFolded ? (
                           <ChevronRight size={14} aria-hidden="true" />
@@ -392,40 +505,83 @@ function TextCell({
   initial: string;
   label: string;
   placeholder: string;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => Promise<boolean>;
   onCancel: () => void;
 }) {
   const [text, setText] = useState(initial);
-  const left = useRef(false);
-  const finish = (save: boolean) => {
-    if (left.current) return;
-    left.current = true;
-    if (save && text.trim() !== initial.trim()) onCommit(text.trim());
-    else onCancel();
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const writing = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const finish = async (save: boolean) => {
+    if (writing.current) return;
+    if (!save || text.trim() === initial.trim()) {
+      onCancel();
+      return;
+    }
+    writing.current = true;
+    setPending(true);
+    setFailed(false);
+    try {
+      const saved = await onCommit(text.trim());
+      if (alive.current && !saved) setFailed(true);
+    } catch {
+      if (alive.current) setFailed(true);
+    } finally {
+      writing.current = false;
+      if (alive.current) setPending(false);
+    }
   };
   return (
-    <input
-      autoFocus
-      className="view-cell-input"
-      aria-label={label}
-      placeholder={placeholder}
-      value={text}
-      maxLength={500}
-      onChange={(e) => setText(e.target.value)}
-      // Typing replaces what was there, as in a spreadsheet.
-      onFocus={(e) => e.currentTarget.select()}
-      onBlur={() => finish(true)}
-      onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Enter") {
-          e.preventDefault();
-          finish(true);
-        }
-        if (e.key === "Escape") {
-          e.preventDefault();
-          finish(false);
-        }
-      }}
-    />
+    <div className="view-cell-editor">
+      <input
+        autoFocus
+        className="view-cell-input"
+        aria-label={label}
+        placeholder={placeholder}
+        value={text}
+        disabled={pending}
+        maxLength={500}
+        onChange={(e) => setText(e.target.value)}
+        // Typing replaces what was there, as in a spreadsheet.
+        onFocus={(e) => e.currentTarget.select()}
+        onBlur={() => {
+          if (!failed) void finish(true);
+        }}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Enter") {
+            e.preventDefault();
+            finish(true);
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            finish(false);
+          }
+        }}
+      />
+      {failed && (
+        <div className="view-cell-recovery">
+          <span role="alert">Not saved.</span>
+          <button
+            type="button"
+            className="link-button"
+            disabled={pending}
+            onClick={(event) => {
+              event.stopPropagation();
+              void finish(true);
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

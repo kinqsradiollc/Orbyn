@@ -24,7 +24,8 @@
   font-size: 13px;
   color: var(--color-text);
   text-align: left;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  max-width: 180px;
   padding-right: 10px;
 }
 .capacity-person {
@@ -38,7 +39,7 @@
   place-items: center;
   width: 26px;
   height: 26px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--color-surfaceMuted);
   color: var(--color-textSoft);
   font:
@@ -51,7 +52,7 @@
   bottom: -2px;
   width: 9px;
   height: 9px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   border: 2px solid var(--color-surface);
   background: var(--color-faint);
 }
@@ -61,7 +62,7 @@
 .capacity-cell {
   width: 100%;
   min-width: 56px;
-  min-height: 40px;
+  min-height: 44px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font-size: 13px;
@@ -185,9 +186,8 @@
   font-size: 13px;
 }
 .attention-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .attention-bar {
   position: relative;
@@ -215,4 +215,72 @@
 .attention-over {
   color: var(--color-danger);
   font-weight: 600;
+}
+
+.attention-budget {
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.attention-budget .select {
+  min-width: 0;
+}
+.attention-list li {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.attention-bar {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.capacity-person > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.capacity-avatar {
+  flex: none;
+}
+.capacity-detail p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.capacity-detail .secondary {
+  white-space: normal;
+  text-align: left;
+}
+
+.team-budget-help {
+  margin: 6px 0;
+  font-size: 13px;
+}
+.team-budget-help summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--color-accentText);
+}
+.team-budget-help p {
+  margin: 0 0 8px;
+}
+
+/* Keep seven independently operable day cells inside a contained table scroll. */
+.capacity-grid {
+  min-width: 600px;
+}
+.capacity-grid thead th {
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+.capacity-person {
+  min-width: 0;
+}
+.capacity-legend span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.attention-head p,
+.capacity-detail > * {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }

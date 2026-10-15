@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Pressable,
@@ -14,14 +14,19 @@ import { isReducedMotion } from "./useReducedMotion";
 import { pressableWebState } from "./accessibility";
 
 /**
- * Press feedback: scale towards `motion.pressScale` on press-in and back on
+ * Optional press feedback: explicit callers can scale on press-in and back on
  * press-out, over `motion.fast` on the native driver. Returns handlers to put
  * on a Pressable and an animated style for whichever view should shrink.
  */
-export function usePressScale(to: number = motion.pressScale) {
+export function usePressScale(to: number = 1) {
   const scale = useRef(new Animated.Value(1)).current;
+  useEffect(() => () => scale.stopAnimation(), [scale]);
   const animate = (value: number) => {
-    if (isReducedMotion()) return;
+    if (to === 1 || isReducedMotion()) {
+      scale.stopAnimation();
+      scale.setValue(1);
+      return;
+    }
     Animated.timing(scale, {
       toValue: value,
       duration: motion.fast,
@@ -40,7 +45,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type PressState = { pressed: boolean };
 
-/** A Pressable that shrinks slightly while pressed. Drop-in for Pressable. */
+/** Stable by default; an explicit scaleTo opts into press scaling. */
 export function PressableScale({
   style,
   scaleTo,

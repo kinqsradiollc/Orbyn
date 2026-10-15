@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   min-height: 40px;
-  padding: 4px 35px;
+  padding: 4px 20px;
   border-bottom: 1px solid var(--border);
   background: var(--color-sunken);
 }
@@ -18,6 +18,8 @@
   gap: 4px;
   min-width: 0;
   flex: 1;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 .tab-item {
   position: relative;
@@ -91,11 +93,41 @@
   visibility: hidden;
 }
 .tab-item.is-active .tab-more,
-.tab-item:hover .tab-more {
+.tab-item:hover .tab-more,
+.tab-item:focus-within .tab-more {
   visibility: visible;
 }
 @media (max-width: 899px) {
   .tab-strip {
     display: none;
   }
+}
+
+.tab-item {
+  min-height: 44px;
+  height: auto;
+  flex: 0 1 auto;
+  width: max-content;
+  max-width: 200px;
+}
+.tab-main {
+  min-height: 44px;
+}
+.tab-item .tab-more {
+  min-width: 44px;
+  min-height: 44px;
+  visibility: visible;
+}
+.tab-item.is-pinned .tab-main {
+  min-width: 44px;
+}
+
+.tab-new {
+  flex: none;
+  min-width: 44px;
+  min-height: 44px;
+  margin-left: 4px;
+}
+.tab-list {
+  overscroll-behavior-x: contain;
 }

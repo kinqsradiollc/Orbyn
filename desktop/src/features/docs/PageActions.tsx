@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { FileText, LayoutTemplate, X } from "lucide-react";
 import {
   blankDate,
@@ -25,7 +27,11 @@ import { deviceTimeZone } from "../../lib/planning";
  * space), then merge. The page goes to Trash, links to it are pointed at
  * the other, and its remarks and task lines go with its lines.
  */
-export function MergeDialog({
+export function MergeDialog(props: Parameters<typeof MergeDialogBody>[0]) {
+  return <MergeDialogBody key={props.doc.id} {...props} />;
+}
+
+function MergeDialogBody({
   doc,
   version,
   onClose,
@@ -37,34 +43,51 @@ export function MergeDialog({
   onClose: () => void;
   onMerged: (into: Doc, relinked: number) => void;
 }) {
+  const mutation = useRef(false);
+  const [searching, setSearching] = useState(true);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [q, setQ] = useState("");
   const [found, setFound] = useState<LinkOption[]>([]);
   const [picked, setPicked] = useState<LinkOption | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const focus = useModalFocus(onClose, busy);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
   useEffect(() => {
     let live = true;
+    setFound([]);
+    setSearching(true);
+    setSearchFailed(false);
     const t = window.setTimeout(() => {
       client.pickLinks(q, 20).then(
-        (hits) =>
-          live &&
-          setFound(hits.filter((h) => h.kind === "doc" && h.id !== doc.id)),
-        () => live && setFound([]),
+        (hits) => {
+          if (live) {
+            setFound(hits.filter((h) => h.kind === "doc" && h.id !== doc.id));
+            setSearching(false);
+          }
+        },
+        () => {
+          if (live) {
+            setSearchFailed(true);
+            setSearching(false);
+          }
+        },
       );
     }, 150);
     return () => {
       live = false;
       window.clearTimeout(t);
     };
-  }, [q, doc.id]);
+  }, [q, doc.id, retry]);
 
   const merge = async () => {
-    if (!picked) return;
+    if (!picked || searching || searchFailed || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -72,87 +95,122 @@ export function MergeDialog({
       onMerged(done.doc, done.relinked);
     } catch (e) {
       setError(errorText(e));
+      mutation.current = false;
       setBusy(false);
     }
   };
 
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      data-modal-owner={focus.id}
+      className="modal merge-dialog"
+      aria-labelledby="merge-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!mutation.current) onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !mutation.current)
+          onClose();
+      }}
     >
-      <section
-        className="modal merge-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="merge-title"
-      >
-        <div className="section-heading">
-          <h2 id="merge-title">Merge into…</h2>
-          <button className="icon-button" aria-label="Close" onClick={onClose}>
-            <X size={20} />
-          </button>
+      <div className="section-heading">
+        <h2 id="merge-title">Merge into…</h2>
+        <button
+          className="icon-button"
+          disabled={busy}
+          aria-label="Close"
+          onClick={onClose}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <p className="muted">
+        “{doc.title || "Untitled"}” joins the target with comments and tasks.
+        Links redirect; this page moves to Trash and can be restored.
+      </p>
+      {error && (
+        <div className="error" role="alert">
+          {error}
         </div>
-        <p className="muted">
-          “{doc.title || "Untitled"}” joins the target with comments and tasks.
-          Links redirect; this page moves to Trash and can be restored.
-        </p>
-        {error && (
-          <div className="error" role="alert">
-            {error}
-          </div>
+      )}
+      <input
+        autoFocus
+        disabled={busy}
+        value={q}
+        placeholder="Find a page"
+        aria-label="Find the page to merge into"
+        onChange={(e) => {
+          setQ(e.target.value);
+          setPicked(null);
+        }}
+      />
+      <ul className="merge-list" role="listbox" aria-label="Pages">
+        {found.map((f) => (
+          <li key={f.id}>
+            <button
+              type="button"
+              role="option"
+              disabled={busy}
+              aria-selected={picked?.id === f.id}
+              className={
+                "doc-menu-item" + (picked?.id === f.id ? " is-active" : "")
+              }
+              onClick={() => setPicked(f)}
+            >
+              <FileText size={15} aria-hidden="true" />
+              <span className="doc-menu-text">
+                <strong>{f.title}</strong>
+                {f.hint && <small>{f.hint}</small>}
+              </span>
+            </button>
+          </li>
+        ))}
+        {searching && (
+          <li className="muted merge-empty" role="status">
+            Searching…
+          </li>
         )}
-        <input
-          autoFocus
-          value={q}
-          placeholder="Find a page"
-          aria-label="Find the page to merge into"
-          onChange={(e) => {
-            setQ(e.target.value);
-            setPicked(null);
-          }}
-        />
-        <ul className="merge-list" role="listbox" aria-label="Pages">
-          {found.map((f) => (
-            <li key={f.id}>
-              <button
-                type="button"
-                role="option"
-                aria-selected={picked?.id === f.id}
-                className={
-                  "doc-menu-item" + (picked?.id === f.id ? " is-active" : "")
-                }
-                onClick={() => setPicked(f)}
-              >
-                <FileText size={15} aria-hidden="true" />
-                <span className="doc-menu-text">
-                  <strong>{f.title}</strong>
-                  {f.hint && <small>{f.hint}</small>}
-                </span>
-              </button>
-            </li>
-          ))}
-          {!found.length && (
-            <li className="muted merge-empty">
-              {q ? "No page is called that." : "Type to find a page."}
-            </li>
-          )}
-        </ul>
-        <div className="confirm-actions">
-          <button type="button" className="ghost" onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="primary"
-            disabled={!picked || busy}
-            onClick={() => void merge()}
-          >
-            {picked ? `Merge into “${picked.title}”` : "Merge"}
-          </button>
-        </div>
-      </section>
-    </div>
+        {searchFailed && (
+          <li role="alert">
+            Couldn't load pages.{" "}
+            <button
+              className="text-button"
+              onClick={() => setRetry((value) => value + 1)}
+            >
+              Retry
+            </button>
+          </li>
+        )}
+        {!searching && !searchFailed && !found.length && (
+          <li className="muted merge-empty">
+            {q ? "No matching pages." : "No pages available."}
+          </li>
+        )}
+      </ul>
+      <div className="confirm-actions">
+        <button
+          type="button"
+          className="ghost"
+          disabled={busy}
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          className="primary"
+          disabled={!picked || busy || searching || searchFailed}
+          onClick={() => void merge()}
+        >
+          {busy ? "Merging…" : "Merge pages"}
+        </button>
+      </div>
+    </dialog>,
+    document.body,
   );
 }
 
@@ -174,13 +232,29 @@ export function TemplateInsert({
   report: (e: unknown) => void;
 }) {
   const [templates, setTemplates] = useState<PageTemplate[] | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const reportRef = useRef(report);
+  reportRef.current = report;
   useEffect(() => {
-    client.listPageTemplates().then(setTemplates, (e) => {
-      setTemplates([]);
-      report(e);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let live = true;
+    setFailed(false);
+    setTemplates(null);
+    void client.listPageTemplates().then(
+      (next) => {
+        if (live) setTemplates(next);
+      },
+      (reason) => {
+        if (live) {
+          setFailed(true);
+          reportRef.current(reason);
+        }
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [retry]);
   const values = useMemo(
     () => ({
       date: blankDate(new Date(), deviceTimeZone()),
@@ -198,11 +272,24 @@ export function TemplateInsert({
     >
       <div className="doc-menu">
         <span className="doc-menu-label">Insert a template</span>
-        {templates === null && <p className="doc-menu-note">Loading…</p>}
-        {templates?.length === 0 && (
-          <p className="doc-menu-note">
-            No templates yet. Save a page as one with Save as template.
+        {!failed && templates === null && (
+          <p className="doc-menu-note" role="status">
+            Loading…
           </p>
+        )}
+        {failed && (
+          <div role="alert">
+            <p>Couldn't load templates.</p>
+            <button
+              className="text-button"
+              onClick={() => setRetry((value) => value + 1)}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {templates?.length === 0 && (
+          <p className="doc-menu-note">No templates yet.</p>
         )}
         <div className="doc-menu-kinds" role="listbox" aria-label="Templates">
           {templates?.map((t) => (

@@ -15,40 +15,44 @@ export function ScreenIntro({
 }) {
   return (
     <View style={s.intro}>
-      <View style={s.badge}>
-        <Icon name={icon} size={24} color={colors.accent} />
+      <View style={s.heading}>
+        <View style={s.badge}>
+          <Icon name={icon} size={18} color={colors.accent} />
+        </View>
+        <Text accessibilityRole="header" style={s.title}>
+          {title}
+        </Text>
       </View>
-      <Text accessibilityRole="header" style={s.title}>
-        {title}
-      </Text>
-      <Text style={s.detail}>{detail}</Text>
+      {detail && <Text style={s.detail}>{detail}</Text>}
     </View>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
-    intro: { gap: 8, marginBottom: 22 },
+    intro: { gap: 6, marginBottom: 14 },
+    heading: { flexDirection: "row", alignItems: "center", gap: 10 },
     badge: {
-      width: 48,
-      height: 48,
-      borderRadius: 16,
+      width: 32,
+      height: 32,
+      borderRadius: 8,
       backgroundColor: colors.accentSoft,
       alignItems: "center",
       justifyContent: "center",
-      marginBottom: 4,
     },
     title: {
-      fontFamily: fonts.display,
-      fontSize: 24,
-      lineHeight: 34,
-      letterSpacing: -0.7,
+      fontFamily: fonts.bold,
+      flex: 1,
+      minWidth: 0,
+      fontSize: 18,
+      lineHeight: 26,
+      letterSpacing: -0.2,
       color: colors.text,
     },
     detail: {
       fontFamily: fonts.regular,
-      fontSize: 15,
-      lineHeight: 22,
+      fontSize: 13,
+      lineHeight: 19,
       color: colors.muted,
     },
   }),

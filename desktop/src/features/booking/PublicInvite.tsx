@@ -23,7 +23,7 @@ import {
   minutesLabel,
   timeZones,
 } from "../../lib/planning";
-import { DEFAULT_COLOR, Message, accentStyle, whenLabel } from "./bookingUi";
+import { Message, whenLabel } from "./bookingUi";
 import { PublicShell } from "./PublicShell";
 import { SlotPicker } from "./SlotPicker";
 
@@ -41,7 +41,7 @@ export function PublicInvitePage({ path, onHome }: Props) {
       footer="Scheduling by Orbyn · your details go only to the host."
     >
       {token ? (
-        <InviteBook token={token} />
+        <InviteBook key={token} token={token} />
       ) : (
         <Message
           title="This link isn't complete."
@@ -88,6 +88,7 @@ function InviteBook({ token }: { token: string }) {
     let alive = true;
     setLoading(true);
     setLoadError("");
+    setMissing(false);
     client.getPublicInvite(token, tz).then(
       (next) => {
         if (!alive) return;
@@ -150,7 +151,11 @@ function InviteBook({ token }: { token: string }) {
       <Message
         title="Couldn't load this invite"
         body={loadError || "Try again in a moment."}
-      />
+      >
+        <button className="secondary" onClick={() => setReloads((r) => r + 1)}>
+          Retry
+        </button>
+      </Message>
     );
   if (invite.status !== "open") {
     const closed = CLOSED[invite.status] ?? CLOSED.expired;
@@ -160,7 +165,7 @@ function InviteBook({ token }: { token: string }) {
   const zones = timeZones();
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!slot) return;
+    if (!slot || sending || loading) return;
     setSending(true);
     setFormError("");
     try {
@@ -187,12 +192,11 @@ function InviteBook({ token }: { token: string }) {
 
   return (
     <section
-      className="public-card booking-public booking-accent fade-up"
-      style={accentStyle(DEFAULT_COLOR)}
+      className="public-card booking-public"
       aria-labelledby="invite-title"
     >
       <div className="booking-intro">
-        <span className="eyebrow">PICK A TIME</span>
+        <span className="eyebrow">Pick a time</span>
         <h1 id="invite-title">{invite.title}</h1>
         <p className="booking-hosts">With {invite.hosts.join(", ")}</p>
         <ul className="booking-facts">
@@ -203,8 +207,8 @@ function InviteBook({ token }: { token: string }) {
           )}
           {invite.has_meeting_link && (
             <li>
-              <Video size={14} aria-hidden="true" /> Video link sent when you
-              book
+              <Video size={14} aria-hidden="true" /> Video link sent after
+              booking
             </li>
           )}
           <li>
@@ -212,7 +216,7 @@ function InviteBook({ token }: { token: string }) {
             {minutesLabel(invite.duration)}
           </li>
           <li>
-            <CalendarClock size={14} aria-hidden="true" /> This link works until{" "}
+            <CalendarClock size={14} aria-hidden="true" /> Expires{" "}
             {dateLabel(invite.expires_at)}
           </li>
           <li>
@@ -221,9 +225,12 @@ function InviteBook({ token }: { token: string }) {
               <span className="sr-only">Your time zone</span>
               <Select
                 value={tz}
+                disabled={sending}
                 onChange={(e) => {
                   setTz(e.target.value);
                   setSlot(null);
+                  setDate(null);
+                  setDay(null);
                 }}
               >
                 {!zones.includes(tz) && <option value={tz}>{tz}</option>}
@@ -239,56 +246,62 @@ function InviteBook({ token }: { token: string }) {
       </div>
 
       {slot ? (
-        <form className="booking-form-public" onSubmit={(e) => void submit(e)}>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setSlot(null)}
-          >
-            <ArrowLeft size={14} /> Pick another time
-          </button>
-          <p className="booking-chosen">
-            <strong>{whenLabel(slot.start_at, slot.end_at, tz)}</strong>
-          </p>
-          <label>
-            Your name
-            <input
-              required
-              autoFocus
-              maxLength={120}
-              autoComplete="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label>
-            Email
-            <input
-              type="email"
-              required
-              maxLength={254}
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          <label>
-            Anything to share? (optional)
-            <textarea
-              rows={3}
-              maxLength={2000}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </label>
-          {formError && (
-            <div className="error" role="alert">
-              {formError}
-            </div>
-          )}
-          <button className="primary wide" disabled={sending}>
-            {sending ? "Booking…" : "Book this time"}
-          </button>
+        <form
+          className="booking-form-public"
+          aria-busy={sending}
+          onSubmit={(e) => void submit(e)}
+        >
+          <fieldset disabled={sending}>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setSlot(null)}
+            >
+              <ArrowLeft size={14} /> Pick another time
+            </button>
+            <p className="booking-chosen">
+              <strong>{whenLabel(slot.start_at, slot.end_at, tz)}</strong>
+            </p>
+            <label>
+              Your name
+              <input
+                required
+                autoFocus
+                maxLength={120}
+                autoComplete="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <label>
+              Email
+              <input
+                type="email"
+                required
+                maxLength={254}
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+            <label>
+              Note (optional)
+              <textarea
+                rows={3}
+                maxLength={2000}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </label>
+            {formError && (
+              <div className="error" role="alert">
+                {formError}
+              </div>
+            )}
+            <button className="primary wide" disabled={sending}>
+              {sending ? "Booking…" : "Book this time"}
+            </button>
+          </fieldset>
         </form>
       ) : (
         <div>
@@ -300,14 +313,14 @@ function InviteBook({ token }: { token: string }) {
               slots={invite.slots}
               loading={loading}
               error={loadError}
+              onRetry={() => setReloads((r) => r + 1)}
               onPick={setSlot}
               day={day}
               onDayChange={setDay}
             />
           ) : (
             <p className="muted">
-              None of the offered times are free any more. Ask whoever sent the
-              link for new ones.
+              No offered times are free. Ask the sender for new times.
             </p>
           )}
           {formError && (

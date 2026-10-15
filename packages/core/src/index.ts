@@ -156,3 +156,7 @@ export * from "./doc-page-merge.js";
 export * from "./doc-content-extract.js";
 
 export * from "./doc-container-append.js";
+
+export * from "./activity-summary.js";
+
+export * from "./doc-latex.js";

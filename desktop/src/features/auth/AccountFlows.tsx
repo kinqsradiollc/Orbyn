@@ -1,8 +1,50 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowRight, MailCheck, Orbit } from "lucide-react";
 import type { AuthResponse } from "@orbyn/core";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/planning";
+
+/** Serialize an account form and keep its receipts with the initiating session/link. */
+function useAccountRequest(scope = "") {
+  const owner = session.get();
+  const latest = useRef({ owner, scope });
+  latest.current = { owner, scope };
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    setError("");
+    setBusy(false);
+  }, [owner, scope]);
+  const run = async (fn: (current: () => boolean) => Promise<void>) => {
+    const current = () =>
+      mounted.current &&
+      session.get() === owner &&
+      latest.current.owner === owner &&
+      latest.current.scope === scope;
+    if (pending.current || !current()) return;
+    pending.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await fn(current);
+    } catch (e) {
+      if (current()) setError(errorText(e));
+    } finally {
+      pending.current = false;
+      if (current()) setBusy(false);
+    }
+  };
+  return { busy, error, run };
+}
 
 /** The plain single-card layout the account-flow pages share with sign-in. */
 export function AuthShell({
@@ -20,7 +62,7 @@ export function AuthShell({
         </button>
       )}
       <main className="auth-form">
-        <div className="auth-card fade-up motion-slow">
+        <div className="auth-card">
           <div className="brand">
             <Orbit /> orbyn<span>•</span>
           </div>
@@ -39,26 +81,17 @@ export function ForgotPasswordPage({
   onNavigate: (path: string) => void;
   onHome?: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  const { busy, error, run } = useAccountRequest();
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState("");
 
-  const submit = async (email: string) => {
-    setBusy(true);
-    setError("");
-    try {
+  const submit = (email: string) =>
+    run(async (current) => {
       await client.forgotPassword(email);
-      setSent(true);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+      if (current()) setSent(true);
+    });
 
   return (
     <AuthShell onHome={onHome}>
-      <span className="eyebrow">FORGOT YOUR PASSWORD?</span>
       {sent ? (
         <>
           <h2>Check your inbox.</h2>
@@ -71,8 +104,8 @@ export function ForgotPasswordPage({
         </>
       ) : (
         <>
-          <h2>Let's get you back in.</h2>
-          <p>Enter your email and we'll send a link to reset your password.</p>
+          <h2>Reset your password</h2>
+          <p>We'll email you a reset link.</p>
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -85,6 +118,7 @@ export function ForgotPasswordPage({
             <label>
               Email address
               <input
+                disabled={busy}
                 name="email"
                 type="email"
                 required
@@ -103,7 +137,7 @@ export function ForgotPasswordPage({
             </button>
           </form>
           <button className="text-button" onClick={() => onNavigate("/login")}>
-            Remembered it? Sign in
+            Back to sign in
           </button>
         </>
       )}
@@ -123,8 +157,7 @@ export function ResetPasswordPage({
   onNavigate: (path: string) => void;
   onHome?: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const { busy, error, run } = useAccountRequest(token);
 
   if (!token)
     return (
@@ -141,23 +174,18 @@ export function ResetPasswordPage({
       </AuthShell>
     );
 
-  const submit = async (password: string) => {
-    setBusy(true);
-    setError("");
-    try {
-      onAuthed(await client.resetPassword(token, password));
-    } catch (e) {
-      setError(errorText(e));
-      setBusy(false);
-    }
-  };
+  const submit = (password: string) =>
+    run(async (current) => {
+      const result = await client.resetPassword(token, password);
+      if (current()) onAuthed(result);
+    });
 
   return (
     <AuthShell onHome={onHome}>
-      <span className="eyebrow">CHOOSE A NEW PASSWORD</span>
-      <h2>Almost there.</h2>
-      <p>Pick a new password and you'll be signed straight in.</p>
+      <h2>Set a new password</h2>
+      <p>You'll be signed in after saving.</p>
       <form
+        key={token}
         onSubmit={(e) => {
           e.preventDefault();
           const password = new FormData(e.currentTarget).get(
@@ -169,6 +197,7 @@ export function ResetPasswordPage({
         <label>
           New password
           <input
+            disabled={busy}
             name="password"
             type="password"
             minLength={10}
@@ -212,8 +241,14 @@ export function VerifyEmailPage({
     token ? "verifying" : "error",
   );
   const [error, setError] = useState(token ? "" : "This link is incomplete.");
+  const [checkedToken, setCheckedToken] = useState(token);
+  const verified = useRef(onVerified);
+  verified.current = onVerified;
 
   useEffect(() => {
+    setCheckedToken(token);
+    setState(token ? "verifying" : "error");
+    setError(token ? "" : "This link is incomplete.");
     if (!token) return;
     let alive = true;
     client
@@ -222,7 +257,7 @@ export function VerifyEmailPage({
         if (!alive) return;
         setState("done");
         // Already in the app in this browser: pick up the confirmed state.
-        if (signedIn) onVerified();
+        if (signedIn) verified.current();
       })
       .catch((e) => {
         if (!alive) return;
@@ -232,26 +267,18 @@ export function VerifyEmailPage({
     return () => {
       alive = false;
     };
-  }, [token, signedIn, onVerified]);
+  }, [token, signedIn]);
 
   return (
     <AuthShell onHome={onHome}>
-      <span className="eyebrow">EMAIL CONFIRMATION</span>
-      {state === "verifying" && (
+      {(checkedToken !== token || state === "verifying") && (
         <>
           <h2>Confirming your email…</h2>
-          <p>One moment while we check your link.</p>
         </>
       )}
-      {state === "done" && (
+      {checkedToken === token && state === "done" && (
         <>
-          <h2>You're all set.</h2>
-          <p>
-            Your email is confirmed.{" "}
-            {signedIn
-              ? "You can head back to Orbyn."
-              : "Sign in to start using your account."}
-          </p>
+          <h2>Email confirmed</h2>
           <button
             className="primary wide"
             onClick={() => onNavigate(signedIn ? "/app" : "/login")}
@@ -261,7 +288,7 @@ export function VerifyEmailPage({
           </button>
         </>
       )}
-      {state === "error" && (
+      {checkedToken === token && state === "error" && (
         <>
           <h2>This link didn't work.</h2>
           <p>
@@ -287,34 +314,28 @@ export function VerifyGate({
   onContinue: () => void;
   onLogout: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  const { busy, error, run } = useAccountRequest(email);
   const [note, setNote] = useState("");
-  const [error, setError] = useState("");
-
-  const resend = async () => {
-    setBusy(true);
+  useEffect(() => {
     setNote("");
-    setError("");
-    try {
+  }, [email]);
+
+  const resend = () =>
+    run(async (current) => {
+      setNote("");
       await client.resendVerification();
-      setNote("Sent. Check your inbox for the new link.");
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+      if (current()) setNote("Sent. Check your inbox.");
+    });
 
   return (
     <AuthShell>
-      <span className="eyebrow">ONE LAST STEP</span>
       <h2>
         <MailCheck size={22} style={{ verticalAlign: "-3px" }} /> Confirm your
         email
       </h2>
       <p>
-        We sent a confirmation link to <strong>{email}</strong>. Open it to
-        start using Orbyn. Once you have, come back and continue.
+        Open the link sent to <strong>{email}</strong>, then return here to
+        continue.
       </p>
       {note && <p className="muted">{note}</p>}
       {error && (
@@ -322,8 +343,8 @@ export function VerifyGate({
           {error}
         </div>
       )}
-      <button className="primary wide" onClick={onContinue}>
-        I've confirmed — continue
+      <button className="primary wide" disabled={busy} onClick={onContinue}>
+        Continue
         <ArrowRight size={17} />
       </button>
       <button
@@ -333,7 +354,7 @@ export function VerifyGate({
       >
         {busy ? "Sending…" : "Resend the email"}
       </button>
-      <button className="text-button" onClick={onLogout}>
+      <button className="text-button" disabled={busy} onClick={onLogout}>
         Sign out
       </button>
     </AuthShell>

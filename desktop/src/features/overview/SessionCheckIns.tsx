@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   SESSION_OUTCOME_LABELS,
   checkInNote,
@@ -6,13 +6,18 @@ import {
   type SessionCheckIn,
   type SessionOutcome,
 } from "@orbyn/core";
+import { errorText } from "../../lib/errors";
 import { client } from "../../lib/api";
 
 /** "Tue 9:00 – 10:00 am" for a session that has ended. */
 function when(s: SessionCheckIn) {
   const start = new Date(s.start_at);
   const end = new Date(s.end_at);
-  const day = start.toLocaleDateString([], { weekday: "short" });
+  const day = start.toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+  });
   const time = (d: Date) =>
     d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return `${day} ${time(start)} – ${time(end)}`;
@@ -49,6 +54,15 @@ export function SessionCheckIns({
   onListed,
   report,
 }: Props) {
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [list, setList] = useState<SessionCheckIn[]>([]);
   const [asking, setAsking] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -81,12 +95,16 @@ export function SessionCheckIns({
     outcome: SessionOutcome,
     more?: number,
   ) => {
+    if (mutation.current) return;
+    mutation.current = true;
     setBusy(s.id);
+    setError("");
     try {
       const r = await client.checkInSession(s.id, {
         outcome,
         ...(more ? { more_minutes: more } : {}),
       });
+      if (!mounted.current) return;
       setList((l) => l.filter((x) => x.id !== s.id));
       setAsking(null);
       setSaid({
@@ -97,15 +115,24 @@ export function SessionCheckIns({
       });
       onChanged();
     } catch (error) {
-      report(error);
+      if (mounted.current) {
+        setError(errorText(error));
+        report(error);
+      }
     } finally {
-      setBusy(null);
+      mutation.current = false;
+      if (mounted.current) setBusy(null);
     }
   };
 
   if (!list.length && !said) return null;
   return (
     <div className="today-unfinished today-checkin">
+      {error && (
+        <p className="error" role="alert">
+          {error} Try the check-in again.
+        </p>
+      )}
       {list.length > 0 && (
         <h3>
           How did it go? <span>{list.length}</span>
@@ -163,7 +190,7 @@ export function SessionCheckIns({
                       key={m}
                       type="button"
                       className="plan-chip is-neutral today-more-chip"
-                      disabled={busy === s.id}
+                      disabled={busy !== null}
                       onClick={() => void answer(s, "more", m)}
                     >
                       +{shortMinutes(m)}
@@ -172,6 +199,7 @@ export function SessionCheckIns({
                   <button
                     type="button"
                     className="text-button today-action is-quiet"
+                    disabled={busy !== null}
                     onClick={() => setAsking(null)}
                   >
                     Cancel
@@ -186,7 +214,7 @@ export function SessionCheckIns({
                   <button
                     type="button"
                     className="text-button today-action"
-                    disabled={busy === s.id}
+                    disabled={busy !== null}
                     onClick={() => void answer(s, "done")}
                   >
                     {SESSION_OUTCOME_LABELS.done}
@@ -194,7 +222,7 @@ export function SessionCheckIns({
                   <button
                     type="button"
                     className="text-button today-action"
-                    disabled={busy === s.id}
+                    disabled={busy !== null}
                     onClick={() => setAsking(s.id)}
                   >
                     {SESSION_OUTCOME_LABELS.more}
@@ -202,7 +230,7 @@ export function SessionCheckIns({
                   <button
                     type="button"
                     className="text-button today-action is-quiet"
-                    disabled={busy === s.id}
+                    disabled={busy !== null}
                     onClick={() => void answer(s, "skipped")}
                   >
                     {SESSION_OUTCOME_LABELS.skipped}

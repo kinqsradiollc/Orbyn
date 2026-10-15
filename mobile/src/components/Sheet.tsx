@@ -8,7 +8,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Pressable } from "../motion";
+import { Pressable, useReducedMotion } from "../motion";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "./Icon";
 import { ToastHost } from "./Toast";
@@ -30,6 +30,8 @@ export function Sheet({
   avoidKeyboard = true,
   actions,
   hideClose = false,
+  closeDisabled = false,
+  guardedClose = false,
   centerTitle = false,
   collapsed = false,
   children,
@@ -41,6 +43,10 @@ export function Sheet({
   actions?: React.ReactNode;
   /** Leave the close button out, when Back already closes (a page's header). */
   hideClose?: boolean;
+  /** Keep the owning operation visible until its write finishes. */
+  closeDisabled?: boolean;
+  /** A draft guard must run before a native gesture dismisses the sheet. */
+  guardedClose?: boolean;
   /** A short title in the middle of the header rather than after Back. */
   centerTitle?: boolean;
   /** Shows a back chevron that returns to the previous page in the sheet. */
@@ -57,28 +63,38 @@ export function Sheet({
   onExpand?: () => void;
   children: React.ReactNode;
 }) {
+  const reducedMotion = useReducedMotion();
   const area = useRef<View>(null);
   const keyboard = useKeyboardInset(area, visible && avoidKeyboard);
   // iOS's page sheet is pulled down by the system; elsewhere the header is.
-  const swipe = useSwipeDown(visible, onBack ?? onClose);
+  const swipe = useSwipeDown(visible && !closeDisabled, onBack ?? onClose);
   const headerSwipe = Platform.OS === "ios" ? {} : swipe.handlers;
   const shown = useRef(new Animated.Value(collapsed ? 0 : 1)).current;
   useEffect(() => {
+    if (Platform.OS === "web" || reducedMotion) {
+      shown.stopAnimation();
+      shown.setValue(collapsed ? 0 : 1);
+      return;
+    }
     Animated.timing(shown, {
       toValue: collapsed ? 0 : 1,
       duration: 180,
       useNativeDriver: false,
     }).start();
-  }, [collapsed, shown]);
+  }, [collapsed, shown, reducedMotion]);
   const [headerHeight, setHeaderHeight] = useState(60);
   return (
     <Modal
       visible={visible}
-      animationType="slide"
+      animationType={Platform.OS === "web" || reducedMotion ? "none" : "slide"}
       presentationStyle={Platform.OS === "ios" ? "pageSheet" : "fullScreen"}
+      allowSwipeDismissal={guardedClose || closeDisabled ? false : undefined}
       // iOS calls this after a pageSheet swipe-down has already dismissed the
       // sheet, so it must close; Android's back button pops the pushed page.
-      onRequestClose={Platform.OS === "android" && onBack ? onBack : onClose}
+      onRequestClose={() => {
+        if (!closeDisabled)
+          (Platform.OS === "android" && onBack ? onBack : onClose)();
+      }}
       onDismiss={onDismiss}
     >
       <SafeAreaProvider>
@@ -120,7 +136,8 @@ export function Sheet({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Back"
-                hitSlop={10}
+                disabled={closeDisabled}
+                accessibilityState={{ disabled: closeDisabled }}
                 onPress={onBack}
                 style={s.round}
               >
@@ -145,7 +162,8 @@ export function Sheet({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="Close"
-                hitSlop={10}
+                disabled={closeDisabled}
+                accessibilityState={{ disabled: closeDisabled }}
                 onPress={onClose}
                 style={s.round}
               >
@@ -184,8 +202,10 @@ export function HeaderButton({
   icon,
   label,
   onPress,
-  on = false,
+  on,
+  disabled = false,
 }: {
+  disabled?: boolean;
   icon: IconName;
   label: string;
   onPress: () => void;
@@ -196,11 +216,12 @@ export function HeaderButton({
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
-      accessibilityState={{ expanded: on }}
-      hitSlop={10}
+      accessibilityState={{ expanded: on, disabled }}
+      disabled={disabled}
       onPress={onPress}
       style={({ pressed }) => [
         s.round,
+        disabled && { opacity: 0.5 },
         (on || pressed) && { backgroundColor: colors.accentSoft },
       ]}
     >
@@ -264,6 +285,7 @@ const s = themed(() =>
     },
     title: {
       flex: 1,
+      minWidth: 0,
       fontFamily: fonts.display,
       fontSize: 18,
       letterSpacing: -0.4,
@@ -272,7 +294,7 @@ const s = themed(() =>
     round: {
       width: 44,
       height: controls.tap,
-      borderRadius: 22,
+      borderRadius: radii.pill,
       backgroundColor: colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",

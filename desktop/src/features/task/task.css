@@ -1,25 +1,12 @@
 /* Task detail: right-side drawer on wide screens, full-screen sheet on phones. */
-@keyframes drawer-in {
-  from {
-    opacity: 0;
-    translate: 28px 0;
-  }
-}
-@keyframes sheet-in {
-  from {
-    opacity: 0;
-    translate: 0 32px;
-  }
-}
-
 .drawer-backdrop {
   position: fixed;
   inset: 0;
   z-index: 4;
   display: flex;
   justify-content: flex-end;
-  background: #24352c47;
-  animation: motion-fade-in var(--motion-base) var(--ease-out) backwards;
+  background: var(--color-backdrop);
+  animation: none;
 }
 .task-drawer {
   width: min(500px, 100%);
@@ -27,12 +14,12 @@
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
-  box-shadow: -24px 0 70px #1c312426;
-  animation: drawer-in var(--motion-slow) var(--ease-out) backwards;
+  box-shadow: -8px 0 24px var(--color-backdrop);
+  animation: none;
 }
 
 .drawer-head {
-  padding: 18px 26px 20px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border);
 }
 .drawer-kicker {
@@ -186,6 +173,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 12px;
 }
 .drawer-count {
@@ -222,11 +210,12 @@
   accent-color: var(--green);
 }
 .progress-control input[type="range"]:focus-visible {
-  outline: 3px solid #95b49c;
+  outline: 3px solid var(--color-focus);
   outline-offset: 4px;
 }
 .progress-snaps {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 6px;
   margin-top: 8px;
@@ -298,7 +287,7 @@ button.step-title {
 .step-actions {
   display: flex;
   gap: 2px;
-  opacity: 0.6;
+  opacity: 1;
   transition: opacity var(--motion-fast) var(--ease-out);
 }
 .step:hover .step-actions,
@@ -310,7 +299,7 @@ button.step-title {
   flex: 1;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid #d3ddd3;
+  border: 1px solid var(--color-borderHover);
   border-radius: var(--radius-sm);
   font-size: var(--control-fs);
   color: var(--color-text);
@@ -337,8 +326,8 @@ button.step-title {
     box-shadow var(--motion-fast) var(--ease-out);
 }
 .update-composer:focus-within {
-  border-color: #95b49c;
-  box-shadow: 0 0 0 3px #95b49c33;
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px var(--color-accentSoft);
 }
 .update-composer textarea {
   display: block;
@@ -347,7 +336,9 @@ button.step-title {
   padding: 4px;
   border: 0;
   background: transparent;
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
   font-size: var(--control-fs);
   line-height: 1.5;
   color: var(--color-text);
@@ -366,7 +357,7 @@ button.step-title {
 .update-composer-row select {
   max-width: 230px;
   padding: 8px 10px;
-  border: 1px solid #d3ddd3;
+  border: 1px solid var(--color-borderHover);
   border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text);
@@ -452,6 +443,10 @@ button.step-title {
   color: var(--color-textSoft);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  flex-wrap: wrap;
 }
 .timeline-chip .task-status {
   padding: 1px 7px 1px 6px;
@@ -474,7 +469,6 @@ button.step-title {
 @media (max-width: 700px) {
   .task-drawer {
     width: 100%;
-    animation-name: sheet-in;
   }
   .drawer-head,
   .drawer-body,
@@ -490,14 +484,13 @@ button.step-title {
   }
   .drawer-foot {
     padding-bottom: calc(14px + env(safe-area-inset-bottom));
-    /* Two to a row, each label on one line, rather than squeezed four
-       across with their words wrapping inside the buttons. */
+    /* Footer actions share the available width and wrap full labels. */
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .drawer-foot > button {
     justify-content: center;
-    white-space: nowrap;
+    white-space: normal;
   }
 }
 
@@ -515,6 +508,8 @@ button.step-title {
   padding: 8px 0;
   border-top: 1px solid var(--color-divider);
   font-size: 13px;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
 }
 .booked-list li:first-child {
   border-top: 0;
@@ -600,4 +595,87 @@ button.step-title {
   align-items: center;
   gap: 4px 10px;
   color: var(--color-warn);
+}
+
+/* Keep identity compact and let the task details scroll. */
+.task-drawer {
+  min-width: 0;
+  min-height: 0;
+}
+.drawer-head {
+  max-height: 35dvh;
+  overflow: auto;
+  flex: none;
+}
+.drawer-head h2 {
+  font-size: 20px;
+  margin-bottom: 0;
+}
+.drawer-kicker {
+  flex-wrap: wrap;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.drawer-body {
+  min-height: 0;
+  padding: 16px 20px 24px;
+}
+.drawer-facts {
+  margin-top: 10px;
+  margin-bottom: 12px;
+}
+.drawer-facts > span,
+.task-context-link,
+.drawer-kicker .team-badge {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.status-picker {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 92px), 1fr));
+}
+.status-picker button {
+  min-height: 44px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.drawer-foot {
+  flex-wrap: wrap;
+  flex: none;
+  max-height: 25dvh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (pointer: coarse) {
+  .progress-snaps button,
+  .step-title,
+  .step-add button,
+  .drawer-foot button,
+  .sessions-tools button,
+  .session-actions button,
+  .booked-list .link-button {
+    min-height: 44px;
+  }
+}
+
+.task-connections > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.task-connections > summary::before {
+  content: "+";
+  margin-right: 8px;
+  color: var(--color-muted);
+}
+.task-connections[open] > summary::before {
+  content: "−";
+}
+.step-actions.icon-button {
+  min-width: 44px;
+  min-height: 44px;
+  flex: none;
 }

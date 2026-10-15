@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Alert } from "../lib/alert";
 import { Switch } from "../components/Switch";
@@ -29,9 +29,12 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { ClockField, Field, NumberInput } from "../components/Field";
 import { Icon } from "../components/Icon";
 import { Disclosure } from "../components/Disclosure";
-import { ScreenIntro } from "../components/ScreenIntro";
+import { InlineDetails } from "../components/InlineDetails";
+import { BottomSheet } from "../components/BottomSheet";
+import { errorText } from "../lib/errors";
 import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
+import { MoreMenu } from "../components/MoreMenu";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
 import {
@@ -45,7 +48,7 @@ import {
 } from "../lib/planning";
 import { usePlanning } from "../lib/planningContext";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, animateLayout, Pressable } from "../motion";
+import { Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { TimeZonePicker } from "./booking/TimeZonePicker";
@@ -278,21 +281,29 @@ export function PlanningSheet({
   onClose: () => void;
   onDismiss?: () => void;
 }) {
+  const [pending, setPending] = useState(false);
   return (
     <Sheet
+      closeDisabled={pending}
       visible={visible}
       title="Planning"
       onClose={onClose}
       onDismiss={onDismiss}
     >
-      <Body teams={teams} />
+      {visible && <Body teams={teams} onBusyChange={setPending} />}
     </Sheet>
   );
 }
 
-function Body({ teams }: { teams: Team[] }) {
+function Body({
+  teams,
+  onBusyChange,
+}: {
+  teams: Team[];
+  onBusyChange: (busy: boolean) => void;
+}) {
   const { lists, listById, tagById } = usePlanning();
-  const { busy, error, setError, run } = useRun();
+  const { busy, error, setError, run: execute } = useRun();
   const [form, setForm] = useState<Form | null>(null);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [places, setPlaces] = useState<Place[]>([]);
@@ -302,21 +313,83 @@ function Body({ teams }: { teams: Team[] }) {
   const [learning, setLearning] = useState<PlannerLearning | null>(null);
   const device = deviceTimeZone();
 
+  const alive = useRef(true);
+  const saving = useRef(false);
+  const [loading, setLoading] = useState(true);
+  const [readError, setReadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [learningError, setLearningError] = useState("");
+  const [learningLoading, setLearningLoading] = useState(true);
+  const [learningAttempt, setLearningAttempt] = useState(0);
   useEffect(() => {
-    void run(async () => {
-      const [p, f, pl] = await Promise.all([
-        client.getPlannerPrefs(),
-        client.listFrames(),
-        client.listPlaces(),
-      ]);
-      setForm(toForm(p));
-      setFrames(f);
-      setPlaces(pl);
-    });
-    client.getLearning().then(setLearning, () => setLearning(null));
-  }, [run]);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      onBusyChange(false);
+    };
+  }, [onBusyChange]);
+  useEffect(() => {
+    let current = true;
+    setLoading(true);
+    setReadError("");
+    Promise.all([
+      client.getPlannerPrefs(),
+      client.listFrames(),
+      client.listPlaces(),
+    ])
+      .then(
+        ([prefs, nextFrames, nextPlaces]) => {
+          if (!current) return;
+          setForm(toForm(prefs));
+          setFrames(nextFrames);
+          setPlaces(nextPlaces);
+        },
+        (e) => {
+          if (current) setReadError(errorText(e));
+        },
+      )
+      .finally(() => {
+        if (current) setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [attempt]);
+  useEffect(() => {
+    let current = true;
+    setLearningError("");
+    setLearningLoading(true);
+    client
+      .getLearning()
+      .then(
+        (value) => {
+          if (current) setLearning(value);
+        },
+        (e) => {
+          if (current) setLearningError(errorText(e));
+        },
+      )
+      .finally(() => {
+        if (current) setLearningLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [learningAttempt]);
+  const run = async (fn: () => Promise<void>) => {
+    if (saving.current || loading || readError || !alive.current) return;
+    saving.current = true;
+    onBusyChange(true);
+    try {
+      await execute(fn);
+    } finally {
+      saving.current = false;
+      if (alive.current) onBusyChange(false);
+    }
+  };
 
   const patch = (next: Partial<Form>) => {
+    if (saving.current || loading || readError) return;
     setSaved(false);
     setForm((f) => (f ? { ...f, ...next } : f));
   };
@@ -361,6 +434,7 @@ function Body({ teams }: { teams: Team[] }) {
         balance_load: form.balance_load,
         session_reminder_minutes: REMINDER_MINUTES[form.sessionReminder],
       });
+      if (!alive.current) return;
       setForm(toForm(p));
       setSaved(true);
     });
@@ -385,8 +459,6 @@ function Body({ teams }: { teams: Team[] }) {
       .join(" · ");
   };
 
-  const reloadFrames = async () => setFrames(await client.listFrames());
-  const reloadPlaces = async () => setPlaces(await client.listPlaces());
   const learned = learningSummary(learning);
 
   return (
@@ -398,19 +470,24 @@ function Body({ teams }: { teams: Team[] }) {
       >
         <View style={sheetStyles.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
-          <ScreenIntro
-            icon="calendar"
-            title="Make time for what matters"
-            detail="Shape your working day. Orbyn plans around your rhythm."
-          />
+          {!!readError && (
+            <>
+              <ErrorBanner error={readError} />
+              <Button
+                secondary
+                title="Retry planning settings"
+                onPress={() => setAttempt((n) => n + 1)}
+              />
+            </>
+          )}
           {!form ? (
             <Text style={shared.small}>
-              {busy ? "Loading your settings…" : "Settings aren’t available."}
+              {loading ? "Loading settings…" : "Settings unavailable."}
             </Text>
           ) : (
             <>
               <Disclosure
-                title="Your working day"
+                title="Working hours"
                 detail="Hours, days and your time zone"
                 initiallyOpen
               >
@@ -420,7 +497,8 @@ function Body({ teams }: { teams: Team[] }) {
                     {form.timezone !== device && (
                       <Button
                         secondary
-                        title={`Use this device’s (${device})`}
+                        title="Use device time zone"
+                        disabled={busy || loading || !!readError}
                         style={s.inline}
                         onPress={() => patch({ timezone: device })}
                       />
@@ -432,6 +510,7 @@ function Body({ teams }: { teams: Team[] }) {
                         const on = form.work_days.includes(d);
                         return (
                           <Chip
+                            disabled={busy || loading || !!readError}
                             key={d}
                             multi
                             label={WEEKDAYS[d]}
@@ -450,6 +529,7 @@ function Body({ teams }: { teams: Team[] }) {
                   <View style={s.pair}>
                     <Field label="Start" style={s.half}>
                       <ClockField
+                        disabled={busy || loading || !!readError}
                         label="Work starts"
                         value={form.work_start}
                         onChange={(work_start) => patch({ work_start })}
@@ -457,6 +537,7 @@ function Body({ teams }: { teams: Team[] }) {
                     </Field>
                     <Field label="End" style={s.half}>
                       <ClockField
+                        disabled={busy || loading || !!readError}
                         label="Work ends"
                         value={form.work_end}
                         onChange={(work_end) => patch({ work_end })}
@@ -477,6 +558,7 @@ function Body({ teams }: { teams: Team[] }) {
                     <View key={n} style={[s.pair, s.zoneRow]}>
                       <View style={{ flex: 1 }}>
                         <TimeZonePicker
+                          disabled={busy || loading || !!readError}
                           value={zone}
                           onChange={(next) =>
                             patch({
@@ -490,9 +572,8 @@ function Body({ teams }: { teams: Team[] }) {
                       <SmallAction
                         destructive
                         label="Remove"
-                        disabled={busy}
+                        disabled={busy || loading || !!readError}
                         onPress={() => {
-                          animateLayout();
                           patch({
                             zones: form.zones.filter((_, i) => i !== n),
                           });
@@ -504,17 +585,15 @@ function Body({ teams }: { teams: Team[] }) {
                     <Button
                       secondary
                       title="Add a time zone"
+                      disabled={busy || loading || !!readError}
                       icon="plus"
                       style={s.inline}
                       onPress={() => {
-                        animateLayout();
                         patch({ zones: [...form.zones, ""] });
                       }}
                     />
                   ) : (
-                    <Text style={shared.small}>
-                      That’s the most zones shown.
-                    </Text>
+                    <Text style={shared.small}>Maximum 3 time zones.</Text>
                   )}
                 </View>
               </Disclosure>
@@ -524,10 +603,11 @@ function Body({ teams }: { teams: Team[] }) {
               >
                 <View style={s.preferenceCard}>
                   <Field
-                    label="Remind me when a session starts"
-                    hint="On this phone and in Notifications, with Start to begin it."
+                    label="Session reminders"
+                    hint="Shown on your phone and in Notifications."
                   >
                     <Segmented
+                      disabled={busy || loading || !!readError}
                       wrap
                       accessibilityLabel="Session reminders"
                       options={SESSION_REMINDERS}
@@ -535,11 +615,9 @@ function Body({ teams }: { teams: Team[] }) {
                       onChange={(sessionReminder) => patch({ sessionReminder })}
                     />
                   </Field>
-                  <Field
-                    label="Days to plan"
-                    hint="How many days Plan my day covers unless you pick another number."
-                  >
+                  <Field label="Days to plan" hint="Default planning horizon.">
                     <Segmented
+                      disabled={busy || loading || !!readError}
                       wrap
                       accessibilityLabel="Days to plan by default"
                       options={HORIZONS}
@@ -552,6 +630,7 @@ function Body({ teams }: { teams: Team[] }) {
                     hint="Extra time for the unexpected."
                   >
                     <NumberInput
+                      editable={!busy && !loading && !readError}
                       value={form.pad}
                       onChangeText={(pad) => patch({ pad })}
                       suffix="%"
@@ -563,6 +642,7 @@ function Body({ teams }: { teams: Team[] }) {
                     hint="Long tasks become several sessions."
                   >
                     <NumberInput
+                      editable={!busy && !loading && !readError}
                       value={form.split}
                       onChangeText={(split) => patch({ split })}
                       suffix="minutes"
@@ -571,6 +651,7 @@ function Body({ teams }: { teams: Team[] }) {
                   </Field>
                   <Field label="Shortest session">
                     <NumberInput
+                      editable={!busy && !loading && !readError}
                       value={form.minBlock}
                       onChangeText={(minBlock) => patch({ minBlock })}
                       suffix="minutes"
@@ -579,6 +660,7 @@ function Body({ teams }: { teams: Team[] }) {
                   </Field>
                   <Field label="Breaks between sessions" style={s.last}>
                     <Segmented
+                      disabled={busy || loading || !!readError}
                       accessibilityLabel="Breaks between sessions"
                       options={BREAK_LEVELS}
                       labels={BREAK_LABELS}
@@ -596,6 +678,7 @@ function Body({ teams }: { teams: Team[] }) {
                   <View style={s.pair}>
                     <Field label="Before events" style={s.half}>
                       <NumberInput
+                        editable={!busy && !loading && !readError}
                         value={form.before}
                         onChangeText={(before) => patch({ before })}
                         suffix="min"
@@ -604,6 +687,7 @@ function Body({ teams }: { teams: Team[] }) {
                     </Field>
                     <Field label="After events" style={s.half}>
                       <NumberInput
+                        editable={!busy && !loading && !readError}
                         value={form.after}
                         onChangeText={(after) => patch({ after })}
                         suffix="min"
@@ -619,6 +703,7 @@ function Body({ teams }: { teams: Team[] }) {
                       </Text>
                     </View>
                     <Switch
+                      disabled={busy || loading || !!readError}
                       value={form.adaptive}
                       trackColor={{ true: colors.accent }}
                       accessibilityLabel="Adaptive buffers"
@@ -636,6 +721,7 @@ function Body({ teams }: { teams: Team[] }) {
                       </Text>
                     </View>
                     <Switch
+                      disabled={busy || loading || !!readError}
                       value={form.scope.personal}
                       trackColor={{ true: colors.accent }}
                       accessibilityLabel="Buffers around personal events"
@@ -655,6 +741,7 @@ function Body({ teams }: { teams: Team[] }) {
                           const ids = form.scope.team_ids ?? all;
                           return (
                             <Chip
+                              disabled={busy || loading || !!readError}
                               key={t.id}
                               multi
                               label={t.name}
@@ -687,6 +774,7 @@ function Body({ teams }: { teams: Team[] }) {
                       <ChipRow label="Lists whose events get buffers" multi>
                         {lists.map((l) => (
                           <Chip
+                            disabled={busy || loading || !!readError}
                             key={l.id}
                             multi
                             color={l.color}
@@ -710,6 +798,7 @@ function Body({ teams }: { teams: Team[] }) {
                     hint="Shorter events get no buffer. 0 for every length."
                   >
                     <NumberInput
+                      editable={!busy && !loading && !readError}
                       value={form.scope.min}
                       onChangeText={(min) =>
                         patch({ scope: { ...form.scope, min } })
@@ -728,6 +817,7 @@ function Body({ teams }: { teams: Team[] }) {
                       </Text>
                     </View>
                     <Switch
+                      disabled={busy || loading || !!readError}
                       value={form.scope.only_with_others}
                       trackColor={{ true: colors.accent }}
                       accessibilityLabel="Buffers only around meetings with others"
@@ -741,6 +831,7 @@ function Body({ teams }: { teams: Team[] }) {
                     hint="For events with a location that doesn’t match one of your places."
                   >
                     <NumberInput
+                      editable={!busy && !loading && !readError}
                       value={form.travel}
                       onChangeText={(travel) => patch({ travel })}
                       suffix="minutes"
@@ -753,6 +844,7 @@ function Body({ teams }: { teams: Team[] }) {
                     style={s.last}
                   >
                     <NumberInput
+                      editable={!busy && !loading && !readError}
                       value={form.travelPad}
                       onChangeText={(travelPad) => patch({ travelPad })}
                       suffix="minutes"
@@ -762,38 +854,42 @@ function Body({ teams }: { teams: Team[] }) {
                 </View>
               </Disclosure>
               <Disclosure
-                title="What Orbyn has learned"
+                title="Learning"
                 detail="Estimates, your best hours and a usual day"
               >
                 <Text style={[shared.small, s.sectionHint]}>
                   Only your completed work shapes future estimates and timing.
                   Tasks themselves stay unchanged.
                 </Text>
+                {learningLoading && (
+                  <Text style={shared.small}>Loading learning history…</Text>
+                )}
+                {!!learningError && (
+                  <>
+                    <ErrorBanner error={learningError} />
+                    <Button
+                      secondary
+                      title="Retry learning history"
+                      onPress={() => setLearningAttempt((n) => n + 1)}
+                    />
+                  </>
+                )}
                 {(
                   [
-                    [
-                      "learn_estimates",
-                      "Adjust estimates from history",
-                      learned.estimates,
-                    ],
-                    [
-                      "learn_rhythm",
-                      "Put demanding work in your best hours",
-                      learned.rhythm,
-                    ],
-                    [
-                      "balance_load",
-                      "Keep days to what you usually get through",
-                      learned.load,
-                    ],
+                    ["learn_estimates", "Adjust estimates", learned.estimates],
+                    ["learn_rhythm", "Use best hours", learned.rhythm],
+                    ["balance_load", "Balance daily workload", learned.load],
                   ] as const
                 ).map(([key, title, detail]) => (
                   <View key={key} style={s.switchRow}>
                     <View style={{ flex: 1 }}>
                       <Text style={s.switchTitle}>{title}</Text>
-                      <Text style={shared.small}>{detail}</Text>
+                      {!learningError && !learningLoading && (
+                        <Text style={shared.small}>{detail}</Text>
+                      )}
                     </View>
                     <Switch
+                      disabled={busy || loading || !!readError}
                       trackColor={{ true: colors.accent }}
                       value={form[key]}
                       accessibilityLabel={title}
@@ -822,6 +918,7 @@ function Body({ teams }: { teams: Team[] }) {
                     <Text style={s.switchTitle}>Morning agenda</Text>
                   </View>
                   <Switch
+                    disabled={busy || loading || !!readError}
                     trackColor={{ true: colors.accent }}
                     value={form.digest.morning}
                     accessibilityLabel="Morning agenda email"
@@ -832,6 +929,7 @@ function Body({ teams }: { teams: Team[] }) {
                 </View>
                 <Field label="Morning time">
                   <ClockField
+                    disabled={busy || loading || !!readError}
                     label="Morning digest time"
                     value={form.digest.morning_time}
                     onChange={(morning_time) =>
@@ -843,11 +941,11 @@ function Body({ teams }: { teams: Team[] }) {
                   <View style={{ flex: 1 }}>
                     <Text style={s.switchTitle}>What your agents did</Text>
                     <Text style={shared.small}>
-                      In the morning digest: what connected agents changed, with
-                      links, and what waits for you.
+                      Agent changes and pending approvals in the morning email.
                     </Text>
                   </View>
                   <Switch
+                    disabled={busy || loading || !!readError}
                     trackColor={{ true: colors.accent }}
                     value={form.digest.agents !== false}
                     accessibilityLabel="What your agents did, in the morning digest"
@@ -858,18 +956,17 @@ function Body({ teams }: { teams: Team[] }) {
                 </View>
                 <View style={s.switchRow}>
                   <View style={{ flex: 1 }}>
-                    <Text style={s.switchTitle}>
-                      Tell me when an agent finishes a big job
-                    </Text>
+                    <Text style={s.switchTitle}>Large-job notices</Text>
                     <Text style={shared.small}>
                       One notice when an agent makes more than{" "}
                       {AGENT_REPORT_THRESHOLD} changes in one go.
                     </Text>
                   </View>
                   <Switch
+                    disabled={busy || loading || !!readError}
                     trackColor={{ true: colors.accent }}
                     value={form.digest.agent_push !== false}
-                    accessibilityLabel="Tell me when an agent finishes a big job"
+                    accessibilityLabel="Large-job notices"
                     onValueChange={(agent_push) =>
                       patch({ digest: { ...form.digest, agent_push } })
                     }
@@ -880,6 +977,7 @@ function Body({ teams }: { teams: Team[] }) {
                     <Text style={s.switchTitle}>Evening review</Text>
                   </View>
                   <Switch
+                    disabled={busy || loading || !!readError}
                     trackColor={{ true: colors.accent }}
                     value={form.digest.evening}
                     accessibilityLabel="Evening review email"
@@ -890,6 +988,7 @@ function Body({ teams }: { teams: Team[] }) {
                 </View>
                 <Field label="Evening time" style={s.last}>
                   <ClockField
+                    disabled={busy || loading || !!readError}
                     label="Evening digest time"
                     value={form.digest.evening_time}
                     onChange={(evening_time) =>
@@ -899,7 +998,7 @@ function Body({ teams }: { teams: Team[] }) {
                 </Field>
                 <SmallAction
                   label="Email me a preview"
-                  disabled={busy}
+                  disabled={busy || loading || !!readError}
                   onPress={() =>
                     void run(async () => {
                       await client.sendTestDigest("morning");
@@ -918,86 +1017,23 @@ function Body({ teams }: { teams: Team[] }) {
               Reserve time for matching tasks, such as weekday focus work.
             </Text>
             <View style={s.card}>
-              {frames.map((f, n) =>
-                editingFrame !== "new" && editingFrame?.id === f.id ? (
-                  <FrameForm
-                    key={f.id}
-                    frame={f}
-                    teams={teams}
-                    onUnskip={(date) =>
-                      void run(async () => {
-                        await client.unskipFrame(f.id, date);
-                        await reloadFrames();
-                      })
-                    }
-                    busy={busy}
-                    first={n === 0}
-                    onCancel={() => setEditingFrame(null)}
-                    onSave={(input) =>
-                      run(async () => {
-                        await client.updateFrame(f.id, input);
-                        await reloadFrames();
-                        setEditingFrame(null);
-                      })
-                    }
-                    onDelete={() =>
-                      Alert.alert(
-                        `Delete ${f.name}?`,
-                        "Tasks aren’t affected.",
-                        [
-                          { text: "Cancel", style: "cancel" },
-                          {
-                            text: "Delete",
-                            style: "destructive",
-                            onPress: () =>
-                              void run(async () => {
-                                await client.deleteFrame(f.id);
-                                await reloadFrames();
-                                setEditingFrame(null);
-                              }),
-                          },
-                        ],
-                      )
-                    }
-                  />
-                ) : (
-                  <Row
-                    key={f.id}
-                    first={n === 0}
-                    title={f.name}
-                    detail={frameDetail(f)}
-                    color={f.color}
-                    onPress={() => {
-                      animateLayout();
-                      setEditingFrame(f);
-                    }}
-                  />
-                ),
-              )}
-              {editingFrame === "new" ? (
-                <FrameForm
-                  teams={teams}
-                  busy={busy}
-                  first={!frames.length}
-                  onCancel={() => setEditingFrame(null)}
-                  onSave={(input) =>
-                    run(async () => {
-                      await client.createFrame(input);
-                      await reloadFrames();
-                      setEditingFrame(null);
-                    })
-                  }
+              {frames.map((f, n) => (
+                <Row
+                  key={f.id}
+                  first={n === 0}
+                  title={f.name}
+                  detail={frameDetail(f)}
+                  color={f.color}
+                  disabled={busy || loading || !!readError}
+                  onPress={() => setEditingFrame(f)}
                 />
-              ) : (
-                <AddRow
-                  first={!frames.length}
-                  label="Add a frame"
-                  onPress={() => {
-                    animateLayout();
-                    setEditingFrame("new");
-                  }}
-                />
-              )}
+              ))}
+              <AddRow
+                first={!frames.length}
+                label="Add frame"
+                disabled={busy || loading || !!readError}
+                onPress={() => setEditingFrame("new")}
+              />
             </View>
           </Disclosure>
           <Disclosure
@@ -1008,75 +1044,159 @@ function Body({ teams }: { teams: Team[] }) {
               Matching event locations reserve travel time before and after.
             </Text>
             <View style={s.card}>
-              {places.map((p, n) =>
-                editingPlace !== "new" && editingPlace?.id === p.id ? (
-                  <PlaceForm
-                    key={p.id}
-                    place={p}
-                    busy={busy}
-                    first={n === 0}
-                    onCancel={() => setEditingPlace(null)}
-                    onSave={(input) =>
-                      run(async () => {
-                        await client.updatePlace(p.id, input);
-                        await reloadPlaces();
-                        setEditingPlace(null);
-                      })
-                    }
-                    onDelete={() =>
-                      void run(async () => {
-                        await client.deletePlace(p.id);
-                        await reloadPlaces();
-                        setEditingPlace(null);
-                      })
-                    }
-                  />
-                ) : (
-                  <Row
-                    key={p.id}
-                    first={n === 0}
-                    title={p.label}
-                    detail={[
-                      `“${p.match}”`,
-                      `${p.travel_minutes} min travel${p.peak_minutes != null ? ` (${p.peak_minutes} at rush hour)` : ""}`,
-                      p.mode ? MODE_LABELS[p.mode] : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")}
-                    onPress={() => {
-                      animateLayout();
-                      setEditingPlace(p);
-                    }}
-                  />
-                ),
-              )}
-              {editingPlace === "new" ? (
-                <PlaceForm
-                  busy={busy}
-                  first={!places.length}
-                  onCancel={() => setEditingPlace(null)}
-                  onSave={(input) =>
-                    run(async () => {
-                      await client.createPlace(input);
-                      await reloadPlaces();
-                      setEditingPlace(null);
-                    })
-                  }
+              {places.map((place, n) => (
+                <Row
+                  key={place.id}
+                  first={n === 0}
+                  title={place.label}
+                  detail={`“${place.match}” · ${place.travel_minutes} min travel${place.peak_minutes != null ? ` · ${place.peak_minutes} min at rush hour` : ""}${place.mode ? ` · ${MODE_LABELS[place.mode]}` : ""}`}
+                  disabled={busy || loading || !!readError}
+                  onPress={() => setEditingPlace(place)}
                 />
-              ) : (
-                <AddRow
-                  first={!places.length}
-                  label="Add a place"
-                  onPress={() => {
-                    animateLayout();
-                    setEditingPlace("new");
-                  }}
-                />
-              )}
+              ))}
+              <AddRow
+                first={!places.length}
+                label="Add place"
+                disabled={busy || loading || !!readError}
+                onPress={() => setEditingPlace("new")}
+              />
             </View>
           </Disclosure>
         </View>
       </ScrollView>
+      <BottomSheet
+        visible={!!editingFrame}
+        title={editingFrame === "new" ? "Add frame" : "Edit frame"}
+        closeDisabled={busy}
+        onClose={() => setEditingFrame(null)}
+      >
+        <ErrorBanner error={error} onDismiss={() => setError("")} />
+        {editingFrame && (
+          <FrameForm
+            key={editingFrame === "new" ? "new" : editingFrame.id}
+            first
+            teams={teams}
+            busy={busy}
+            frame={editingFrame === "new" ? undefined : editingFrame}
+            onCancel={() => {
+              if (!saving.current) setEditingFrame(null);
+            }}
+            onSave={(input) =>
+              void run(async () => {
+                const savedFrame =
+                  editingFrame === "new"
+                    ? await client.createFrame(input)
+                    : await client.updateFrame(editingFrame.id, input);
+                if (!alive.current) return;
+                setFrames((current) => [
+                  ...current.filter((f) => f.id !== savedFrame.id),
+                  savedFrame,
+                ]);
+                setEditingFrame(null);
+              })
+            }
+            onUnskip={
+              editingFrame === "new"
+                ? undefined
+                : (date) =>
+                    void run(async () => {
+                      const next = await client.unskipFrame(
+                        editingFrame.id,
+                        date,
+                      );
+                      if (!alive.current) return;
+                      setEditingFrame(next);
+                      setFrames((current) =>
+                        current.map((f) => (f.id === next.id ? next : f)),
+                      );
+                    })
+            }
+            onDelete={
+              editingFrame === "new"
+                ? undefined
+                : () =>
+                    Alert.alert(
+                      `Delete ${editingFrame.name}?`,
+                      "All occurrences are removed. Tasks are unchanged.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Delete",
+                          style: "destructive",
+                          onPress: () =>
+                            void run(async () => {
+                              await client.deleteFrame(editingFrame.id);
+                              if (!alive.current) return;
+                              setFrames((current) =>
+                                current.filter((f) => f.id !== editingFrame.id),
+                              );
+                              setEditingFrame(null);
+                            }),
+                        },
+                      ],
+                    )
+            }
+          />
+        )}
+      </BottomSheet>
+      <BottomSheet
+        visible={!!editingPlace}
+        title={editingPlace === "new" ? "Add place" : "Edit place"}
+        closeDisabled={busy}
+        onClose={() => setEditingPlace(null)}
+      >
+        <ErrorBanner error={error} onDismiss={() => setError("")} />
+        {editingPlace && (
+          <PlaceForm
+            key={editingPlace === "new" ? "new" : editingPlace.id}
+            first
+            busy={busy}
+            place={editingPlace === "new" ? undefined : editingPlace}
+            onCancel={() => {
+              if (!saving.current) setEditingPlace(null);
+            }}
+            onSave={(input) =>
+              void run(async () => {
+                const savedPlace =
+                  editingPlace === "new"
+                    ? await client.createPlace(input)
+                    : await client.updatePlace(editingPlace.id, input);
+                if (!alive.current) return;
+                setPlaces((current) => [
+                  ...current.filter((p) => p.id !== savedPlace.id),
+                  savedPlace,
+                ]);
+                setEditingPlace(null);
+              })
+            }
+            onDelete={
+              editingPlace === "new"
+                ? undefined
+                : () =>
+                    Alert.alert(
+                      `Delete ${editingPlace.label}?`,
+                      "Matching events will use the default travel time.",
+                      [
+                        { text: "Cancel", style: "cancel" },
+                        {
+                          text: "Delete",
+                          style: "destructive",
+                          onPress: () =>
+                            void run(async () => {
+                              await client.deletePlace(editingPlace.id);
+                              if (!alive.current) return;
+                              setPlaces((current) =>
+                                current.filter((p) => p.id !== editingPlace.id),
+                              );
+                              setEditingPlace(null);
+                            }),
+                        },
+                      ],
+                    )
+            }
+          />
+        )}
+      </BottomSheet>
       {form && (
         <View style={s.saveFooter}>
           <Button
@@ -1084,7 +1204,7 @@ function Body({ teams }: { teams: Team[] }) {
               busy ? "Saving…" : saved ? "Saved" : "Save planning settings"
             }
             icon="check"
-            disabled={busy}
+            disabled={busy || loading || !!readError}
             onPress={() => void save()}
           />
         </View>
@@ -1099,6 +1219,7 @@ function Row({
   color,
   first,
   onPress,
+  disabled = false,
 }: {
   title: string;
   detail: string;
@@ -1106,9 +1227,11 @@ function Row({
   color?: string;
   first: boolean;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={`${title}, ${detail}`}
       accessibilityHint="Edit"
@@ -1133,13 +1256,16 @@ function AddRow({
   label,
   first,
   onPress,
+  disabled = false,
 }: {
   label: string;
   first: boolean;
   onPress: () => void;
+  disabled?: boolean;
 }) {
   return (
     <Pressable
+      disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onPress}
@@ -1228,9 +1354,10 @@ export function FrameForm({
         ? "The longest size is at least the shortest."
         : "";
   return (
-    <FadeIn style={[s.form, !first && s.divider]}>
+    <View style={[s.form, !first && s.divider]}>
       <Field label="Name">
         <TextInput
+          editable={!busy}
           style={shared.input}
           value={name}
           onChangeText={setName}
@@ -1244,6 +1371,7 @@ export function FrameForm({
         <ChipRow label="Repeats">
           {REPEATS.map((r) => (
             <Chip
+              disabled={busy}
               key={r}
               label={REPEAT_LABELS[r]}
               selected={repeat === r}
@@ -1258,6 +1386,7 @@ export function FrameForm({
           hint="An iCalendar RRULE, like FREQ=WEEKLY;BYDAY=MO,TU,TH,FR. It’s checked when you save."
         >
           <TextInput
+            editable={!busy}
             style={shared.input}
             value={rule}
             onChangeText={setRule}
@@ -1277,6 +1406,7 @@ export function FrameForm({
               const on = days.includes(d);
               return (
                 <Chip
+                  disabled={busy}
                   key={d}
                   multi
                   label={WEEKDAYS[d]}
@@ -1295,10 +1425,20 @@ export function FrameForm({
       )}
       <View style={s.pair}>
         <Field label="From" style={s.half}>
-          <ClockField label="Frame starts" value={start} onChange={setStart} />
+          <ClockField
+            disabled={busy}
+            label="Frame starts"
+            value={start}
+            onChange={setStart}
+          />
         </Field>
         <Field label="To" style={s.half}>
-          <ClockField label="Frame ends" value={end} onChange={setEnd} />
+          <ClockField
+            disabled={busy}
+            label="Frame ends"
+            value={end}
+            onChange={setEnd}
+          />
         </Field>
       </View>
       <View style={s.switchRow}>
@@ -1309,6 +1449,7 @@ export function FrameForm({
           </Text>
         </View>
         <Switch
+          disabled={busy}
           value={blocking}
           trackColor={{ true: colors.accent }}
           accessibilityLabel="Busy"
@@ -1319,6 +1460,7 @@ export function FrameForm({
         <ChipRow label="Frame time zone">
           {zones.map((z) => (
             <Chip
+              disabled={busy}
               key={z ?? "planner"}
               label={z ?? "My planning time zone"}
               selected={zone === z}
@@ -1332,10 +1474,10 @@ export function FrameForm({
           <ChipRow label="Skipped days">
             {frame.exdates.map((d) => (
               <Chip
+                disabled={busy}
                 key={d}
                 label={`${dayText(d)} ×`}
                 accessibilityLabel={`Bring back ${dayText(d)}`}
-                disabled={busy}
                 selected={false}
                 onPress={() => onUnskip(d)}
               />
@@ -1343,102 +1485,106 @@ export function FrameForm({
           </ChipRow>
         </Field>
       )}
-      <Field label="Only these priorities" hint="None chosen means any task.">
-        <ChipRow label="Priorities" multi>
-          {PRIORITIES.map((p) => {
-            const on = priorities.includes(p);
-            return (
-              <Chip
-                key={p}
-                multi
-                label={PRIORITY_LABELS[p]}
-                selected={on}
-                onPress={() =>
-                  setPriorities(
-                    on ? priorities.filter((x) => x !== p) : [...priorities, p],
-                  )
-                }
-              />
-            );
-          })}
-        </ChipRow>
-      </Field>
-      <Field
-        label="Only these lists"
-        hint={lists.length ? "None chosen means any list." : "No lists yet."}
+      <InlineDetails
+        title={`Task filters · ${priorities.length + listIds.length + tagIds.length + teamIds.length ? `${priorities.length + listIds.length + tagIds.length + teamIds.length} selected` : "All tasks"}${min ? ` · at least ${min} min` : ""}${max ? ` · at most ${max} min` : ""}`}
       >
-        {lists.length > 0 && (
-          <ChipRow label="Lists" multi>
-            {lists.map((l) => (
-              <Chip
-                key={l.id}
-                multi
-                color={l.color}
-                label={l.team_name ? `${l.name} · ${l.team_name}` : l.name}
-                selected={listIds.includes(l.id)}
-                onPress={() => setListIds(toggleId(listIds, l.id))}
-              />
-            ))}
+        <Text style={shared.small}>Unselected categories allow any task.</Text>
+        <Field label="Priorities">
+          <ChipRow label="Priorities" multi>
+            {PRIORITIES.map((p) => {
+              const on = priorities.includes(p);
+              return (
+                <Chip
+                  disabled={busy}
+                  key={p}
+                  multi
+                  label={PRIORITY_LABELS[p]}
+                  selected={on}
+                  onPress={() =>
+                    setPriorities(
+                      on
+                        ? priorities.filter((x) => x !== p)
+                        : [...priorities, p],
+                    )
+                  }
+                />
+              );
+            })}
           </ChipRow>
+        </Field>
+        <Field label="Lists" hint={lists.length ? undefined : "No lists yet."}>
+          {lists.length > 0 && (
+            <ChipRow label="Lists" multi>
+              {lists.map((l) => (
+                <Chip
+                  disabled={busy}
+                  key={l.id}
+                  multi
+                  color={l.color}
+                  label={l.team_name ? `${l.name} · ${l.team_name}` : l.name}
+                  selected={listIds.includes(l.id)}
+                  onPress={() => setListIds(toggleId(listIds, l.id))}
+                />
+              ))}
+            </ChipRow>
+          )}
+        </Field>
+        <Field label="Tags" hint={tags.length ? undefined : "No tags yet."}>
+          {tags.length > 0 && (
+            <ChipRow label="Tags" multi>
+              {tags.map((t) => (
+                <Chip
+                  disabled={busy}
+                  key={t.id}
+                  multi
+                  color={t.color}
+                  label={t.name}
+                  selected={tagIds.includes(t.id)}
+                  onPress={() => setTagIds(toggleId(tagIds, t.id))}
+                />
+              ))}
+            </ChipRow>
+          )}
+        </Field>
+        {teams.length > 0 && (
+          <Field label="Teams">
+            <ChipRow label="Teams" multi>
+              {teams.map((t) => (
+                <Chip
+                  disabled={busy}
+                  key={t.id}
+                  multi
+                  label={t.name}
+                  selected={teamIds.includes(t.id)}
+                  onPress={() => setTeamIds(toggleId(teamIds, t.id))}
+                />
+              ))}
+            </ChipRow>
+          </Field>
         )}
-      </Field>
-      <Field
-        label="Only these tags"
-        hint={tags.length ? "None chosen means any tag." : "No tags yet."}
-      >
-        {tags.length > 0 && (
-          <ChipRow label="Tags" multi>
-            {tags.map((t) => (
-              <Chip
-                key={t.id}
-                multi
-                color={t.color}
-                label={t.name}
-                selected={tagIds.includes(t.id)}
-                onPress={() => setTagIds(toggleId(tagIds, t.id))}
-              />
-            ))}
-          </ChipRow>
-        )}
-      </Field>
-      {teams.length > 0 && (
-        <Field
-          label="Only these teams"
-          hint="None chosen means personal and team tasks alike."
-        >
-          <ChipRow label="Teams" multi>
-            {teams.map((t) => (
-              <Chip
-                key={t.id}
-                multi
-                label={t.name}
-                selected={teamIds.includes(t.id)}
-                onPress={() => setTeamIds(toggleId(teamIds, t.id))}
-              />
-            ))}
-          </ChipRow>
-        </Field>
-      )}
-      <View style={s.pair}>
-        <Field label="Shortest task" style={s.half}>
-          <NumberInput
-            value={min}
-            onChangeText={setMin}
-            suffix="min"
-            placeholder="Any"
-            accessibilityLabel="Only tasks estimated at least this many minutes"
-          />
-        </Field>
-        <Field label="Longest task" style={s.half}>
-          <NumberInput
-            value={max}
-            onChangeText={setMax}
-            suffix="min"
-            placeholder="Any"
-            accessibilityLabel="Only tasks estimated at most this many minutes"
-          />
-        </Field>
-      </View>
+        <View style={s.pair}>
+          <Field label="Shortest task" style={s.half}>
+            <NumberInput
+              editable={!busy}
+              value={min}
+              onChangeText={setMin}
+              suffix="min"
+              placeholder="Any"
+              accessibilityLabel="Only tasks estimated at least this many minutes"
+            />
+          </Field>
+          <Field label="Longest task" style={s.half}>
+            <NumberInput
+              editable={!busy}
+              value={max}
+              onChangeText={setMax}
+              suffix="min"
+              placeholder="Any"
+              accessibilityLabel="Only tasks estimated at most this many minutes"
+            />
+          </Field>
+        </View>
+      </InlineDetails>
       {!!sizeError && (
         <Text style={[shared.small, s.warn, s.sizeWarn]}>{sizeError}</Text>
       )}
@@ -1450,11 +1596,11 @@ export function FrameForm({
         >
           {LIST_COLORS.map((c, n) => (
             <Pressable
+              disabled={busy}
               key={c}
               accessibilityRole="radio"
               accessibilityLabel={`Colour ${n + 1} of ${LIST_COLORS.length}`}
               accessibilityState={{ checked: color === c }}
-              hitSlop={4}
               onPress={() => setColor(c)}
               style={[s.swatch, { backgroundColor: c }]}
             >
@@ -1462,7 +1608,7 @@ export function FrameForm({
                 <Icon
                   name="check"
                   size={14}
-                  color={colors.white}
+                  color={colors.onAccent}
                   strokeWidth={3}
                 />
               )}
@@ -1507,18 +1653,24 @@ export function FrameForm({
         }
       />
       <View style={s.formActions}>
-        <Button secondary title="Cancel" style={s.flex} onPress={onCancel} />
+        <Button
+          secondary
+          title="Cancel"
+          disabled={busy}
+          style={s.flex}
+          onPress={onCancel}
+        />
         {onDelete && (
-          <Button
-            destructive
-            title="Delete"
+          <MoreMenu
+            label="Frame options"
             disabled={busy}
-            style={s.flex}
-            onPress={onDelete}
+            actions={[
+              { label: "Delete frame", destructive: true, onPress: onDelete },
+            ]}
           />
         )}
       </View>
-    </FadeIn>
+    </View>
   );
 }
 
@@ -1558,9 +1710,10 @@ function PlaceForm({
     (minutes !== null && minutes > 240) ||
     (peakMinutes !== null && peakMinutes > 240);
   return (
-    <FadeIn style={[s.form, !first && s.divider]}>
+    <View style={[s.form, !first && s.divider]}>
       <Field label="Name">
         <TextInput
+          editable={!busy}
           style={shared.input}
           value={label}
           onChangeText={setLabel}
@@ -1575,6 +1728,7 @@ function PlaceForm({
         hint="Found in an event’s location, like “Collins St”."
       >
         <TextInput
+          editable={!busy}
           style={shared.input}
           value={match}
           onChangeText={setMatch}
@@ -1586,6 +1740,7 @@ function PlaceForm({
       </Field>
       <Field label="Travel time">
         <NumberInput
+          editable={!busy}
           value={travel}
           onChangeText={setTravel}
           suffix="minutes"
@@ -1597,6 +1752,7 @@ function PlaceForm({
         hint="Used on weekdays 7–9 AM and 4–6 PM. Leave empty for the usual time."
       >
         <NumberInput
+          editable={!busy}
           value={peak}
           onChangeText={setPeak}
           placeholder="Same"
@@ -1606,6 +1762,7 @@ function PlaceForm({
       </Field>
       <Field label="How you get there" hint="A label only.">
         <Segmented
+          disabled={busy}
           wrap
           accessibilityLabel="How you get there"
           options={MODE_OPTIONS}
@@ -1636,18 +1793,24 @@ function PlaceForm({
         }
       />
       <View style={s.formActions}>
-        <Button secondary title="Cancel" style={s.flex} onPress={onCancel} />
+        <Button
+          secondary
+          title="Cancel"
+          disabled={busy}
+          style={s.flex}
+          onPress={onCancel}
+        />
         {onDelete && (
-          <Button
-            destructive
-            title="Delete"
+          <MoreMenu
+            label="Place options"
             disabled={busy}
-            style={s.flex}
-            onPress={onDelete}
+            actions={[
+              { label: "Delete place", destructive: true, onPress: onDelete },
+            ]}
           />
         )}
       </View>
-    </FadeIn>
+    </View>
   );
 }
 
@@ -1743,17 +1906,18 @@ const s = themed(() =>
       gap: 3,
       height: 40,
     },
-    stripBar: { flex: 1, borderRadius: 3 },
+    stripBar: { flex: 1, borderRadius: radii.check },
     stripGood: { backgroundColor: colors.accent },
     stripSlip: { backgroundColor: colors.muted },
     stripEven: { backgroundColor: colors.border },
     stripLegend: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 6,
       marginTop: 6,
     },
-    stripKey: { width: 9, height: 9, borderRadius: 3 },
+    stripKey: { width: 9, height: 9, borderRadius: radii.check },
     stripKeyGap: { marginLeft: 8 },
     stripAxis: {
       flexDirection: "row",
@@ -1789,16 +1953,16 @@ const s = themed(() =>
     },
     addText: { fontFamily: fonts.semibold, fontSize: 15, color: colors.accent },
     form: { padding: 16 },
-    formActions: { flexDirection: "row", gap: 10 },
+    formActions: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     flex: { flex: 1 },
     warn: { color: colors.danger, marginBottom: 10 },
     sizeWarn: { marginTop: -8 },
-    colorDot: { width: 10, height: 10, borderRadius: 5 },
+    colorDot: { width: 10, height: 10, borderRadius: radii.pill },
     swatches: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     swatch: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+      width: 44,
+      height: 44,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },

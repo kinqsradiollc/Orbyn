@@ -58,7 +58,7 @@ export function AiModelControls({
         aria-expanded={open}
         onClick={() => setOpen(!open)}
       >
-        Model controls
+        {error ? "Model controls · needs attention" : "Model controls"}
       </button>
       {open && (
         <div className="ai-controls-body">

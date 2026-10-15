@@ -18,6 +18,7 @@ import {
   type DocSummary,
   type ImportJob,
 } from "@orbyn/core";
+import { InlineDetails } from "../../components/InlineDetails";
 import { Icon } from "../../components/Icon";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
@@ -196,32 +197,52 @@ export function useImports(
   projectId?: string,
   projectTeamId?: string | null,
 ) {
+  const alive = useRef(true);
+  const request = useRef(0);
+  const choosing = useRef(false);
+  const removing = useRef(new Set<string>());
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [jobs, setJobs] = useState<ImportJob[]>([]);
   const [uploading, setUploading] = useState(0);
   const [caps, setCaps] = useState<ImportCapabilities | null>(null);
   useEffect(() => {
-    client.importCapabilities().then(setCaps, () => setCaps(null));
+    alive.current = true;
+    void client.importCapabilities().then(
+      (next) => {
+        if (alive.current) setCaps(next);
+      },
+      () => {},
+    );
+    return () => {
+      alive.current = false;
+      request.current++;
+    };
   }, []);
   const ready = useRef(new Set<string>());
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
-  const refresh = useCallback(
-    () =>
-      client.listImports().then(
-        (list) => {
-          const fresh = list.filter(
-            (j) => j.status === "ready" && !ready.current.has(j.id),
-          );
-          for (const j of list)
-            if (j.status === "ready") ready.current.add(j.id);
-          if (fresh.length) onReadyRef.current();
-          setJobs(list);
-        },
-        () => {},
-      ),
-    [],
-  );
+  const refresh = useCallback(async () => {
+    const epoch = ++request.current;
+    try {
+      const list = await client.listImports();
+      if (!alive.current || epoch !== request.current) return;
+      const fresh = list.filter(
+        (job) => job.status === "ready" && !ready.current.has(job.id),
+      );
+      for (const job of list)
+        if (job.status === "ready") ready.current.add(job.id);
+      if (fresh.length) onReadyRef.current();
+      setJobs(list);
+      setLoadError("");
+    } catch (reason) {
+      if (alive.current && epoch === request.current)
+        setLoadError(errorText(reason));
+    } finally {
+      if (alive.current && epoch === request.current) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     void refresh();
@@ -236,6 +257,7 @@ export function useImports(
 
   /** Upload one file (picked or photographed). */
   const upload = async (file: LocalFile) => {
+    if (!alive.current) return;
     const refused = importRefusal(file.name, file.mimeType ?? undefined);
     if (refused) {
       onError(refused);
@@ -264,40 +286,64 @@ export function useImports(
     } catch (e) {
       onError(errorText(e));
     } finally {
-      setUploading((n) => n - 1);
-      void refresh();
+      if (alive.current) {
+        setUploading((n) => n - 1);
+        void refresh();
+      }
     }
   };
 
   /** Choose files and upload them one after another. */
   const pickAndImport = async () => {
-    const picked = await DocumentPicker.getDocumentAsync({
-      type: Object.values(IMPORT_MIME),
-      multiple: true,
-      copyToCacheDirectory: true,
-    });
-    if (picked.canceled) return;
-    for (const asset of picked.assets) await upload(asset);
+    if (choosing.current || !alive.current) return;
+    choosing.current = true;
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: Object.values(IMPORT_MIME),
+        multiple: true,
+        copyToCacheDirectory: true,
+      });
+      if (!picked.canceled)
+        for (const asset of picked.assets) await upload(asset);
+    } catch (reason) {
+      if (alive.current) onError(errorText(reason));
+    } finally {
+      choosing.current = false;
+    }
   };
-
-  /** Photograph a page of notes and import it. */
   const scanNotes = async () => {
-    const photo = await takeNotesPhoto(onError);
-    if (photo) await upload(photo);
+    if (choosing.current || !alive.current) return;
+    choosing.current = true;
+    try {
+      const photo = await takeNotesPhoto(onError);
+      if (photo) await upload(photo);
+    } catch (reason) {
+      if (alive.current) onError(errorText(reason));
+    } finally {
+      choosing.current = false;
+    }
   };
-
   const remove = async (job: ImportJob) => {
-    setJobs((all) => all.filter((j) => j.id !== job.id));
+    if (removing.current.has(job.id) || !alive.current) return;
+    removing.current.add(job.id);
     try {
       await client.removeImport(job.id);
-    } catch (e) {
-      onError(errorText(e));
+      if (alive.current) {
+        setJobs((all) => all.filter((next) => next.id !== job.id));
+        await refresh();
+      }
+    } catch (reason) {
+      if (alive.current) onError(errorText(reason));
+    } finally {
+      removing.current.delete(job.id);
     }
-    void refresh();
   };
 
   return {
     jobs,
+    loading,
+    loadError,
+    refresh,
     pickAndImport,
     scanNotes,
     remove,
@@ -326,7 +372,13 @@ export function UploadsList({
   onChanged,
   caps,
   report,
+  loading = false,
+  loadError = "",
+  onRetry,
 }: {
+  loading?: boolean;
+  loadError?: string;
+  onRetry?: () => void;
   caps: ImportCapabilities | null;
   /** Shows errors ("Keep the original", your account's setting, and more). */
   report?: (e: unknown) => void;
@@ -349,21 +401,29 @@ export function UploadsList({
   return (
     <View style={s.list}>
       <Text style={s.intro}>
-        Import PDFs, Word files or photos as pages. The original is deleted
-        after import unless you choose to keep it.
+        Import files as pages. Originals are deleted unless you keep them.
       </Text>
       {/* "Keep the original" is your account's setting, on every device. */}
       <KeepOriginals report={report ?? (() => {})} />
-      <Text style={s.hint}>{importHint(caps)}</Text>
-      {!waiting.length && !shownJobs.length && (
+      <InlineDetails title="Supported files">
+        <Text style={s.hint}>{importHint(caps)}</Text>
+      </InlineDetails>
+      {!!loadError && (
+        <View accessibilityRole="alert">
+          <Text style={s.hint}>{loadError}</Text>
+          {onRetry && (
+            <SmallAction label="Retry" disabled={busy} onPress={onRetry} />
+          )}
+        </View>
+      )}
+      {loading && !loadError && <Text style={s.hint}>Loading imports…</Text>}
+      {!loading && !loadError && !waiting.length && !shownJobs.length && (
         <View style={s.empty}>
           <View style={s.emptyIcon}>
             <Icon name="fileText" size={22} color={colors.accent} />
           </View>
-          <Text style={s.emptyTitle}>Import a lecture PDF or Word file</Text>
-          <Text style={s.emptyBody}>
-            Scans can take a few minutes. You can leave; we'll notify you.
-          </Text>
+          <Text style={s.emptyTitle}>No imports yet</Text>
+          <Text style={s.emptyBody}>Choose a file to start.</Text>
           <View style={s.actions}>
             <SmallAction
               label={busy ? "Uploading…" : "Choose a file"}
@@ -396,13 +456,8 @@ export function UploadsList({
               </Text>
             </View>
             <View style={s.main}>
-              <Text style={s.title} numberOfLines={1}>
-                {job.file_name}
-              </Text>
-              <Text
-                style={[s.status, job.status === "failed" && s.failed]}
-                numberOfLines={3}
-              >
+              <Text style={s.title}>{job.file_name}</Text>
+              <Text style={[s.status, job.status === "failed" && s.failed]}>
                 {importStatusLine(job)}
               </Text>
               {progress !== null && (
@@ -461,21 +516,14 @@ export function UploadsList({
               accessibilityLabel={`Open ${doc.title || "Untitled"}`}
               onPress={() => onOpen(doc.id)}
             >
-              <Text style={s.title} numberOfLines={2}>
-                {doc.title || "Untitled"}
-              </Text>
-              <Text style={s.status} numberOfLines={2}>
+              <Text style={s.title}>{doc.title || "Untitled"}</Text>
+              <Text style={s.status}>
                 Ready · from {doc.imported_from?.file_name ?? "an upload"}
               </Text>
             </Pressable>
             <View style={s.actions}>
               <SmallAction
-                label="Open"
-                disabled={false}
-                onPress={() => onOpen(doc.id)}
-              />
-              <SmallAction
-                label="Move to folder"
+                label="Move"
                 disabled={false}
                 onPress={() => onFile(doc)}
               />
@@ -539,7 +587,7 @@ const s = themed(() =>
     emptyIcon: {
       width: 44,
       height: 44,
-      borderRadius: 22,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.accentSoft,
@@ -570,13 +618,13 @@ const s = themed(() =>
     kind: {
       width: 36,
       height: 42,
-      borderRadius: 10,
+      borderRadius: radii.input,
       alignItems: "center",
       justifyContent: "center",
     },
     kindText: { fontFamily: fonts.semibold, fontSize: 11, letterSpacing: 0.5 },
     main: { flex: 1, minWidth: 0, gap: 3 },
-    title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+    title: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
     status: {
       fontFamily: fonts.regular,
       fontSize: 13,
@@ -586,14 +634,14 @@ const s = themed(() =>
     failed: { color: colors.danger },
     bar: {
       height: 5,
-      borderRadius: 3,
+      borderRadius: radii.pill,
       backgroundColor: colors.surfaceMuted,
       overflow: "hidden",
       marginTop: 4,
     },
     barFill: {
       height: "100%",
-      borderRadius: 3,
+      borderRadius: radii.pill,
       backgroundColor: colors.accent,
     },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 },

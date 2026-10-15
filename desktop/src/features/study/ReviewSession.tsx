@@ -11,6 +11,8 @@ import { client } from "../../lib/api";
 import { Inline } from "../docs/DocBlocks";
 import { ImageBlock } from "../docs/RichBlocks";
 import { errorText } from "../../lib/errors";
+import { session as authSession } from "../../lib/session";
+import { useElementWidth } from "../../hooks/useElementWidth";
 
 const LABEL: Record<Rating, string> = {
   again: "Again",
@@ -32,7 +34,16 @@ type Grade = {
  * an answer and the assistant checks it against the card and its page, then
  * you rate it. The rating sets when the card comes back.
  */
-export function ReviewSession({
+export function ReviewSession(props: Parameters<typeof ReviewBody>[0]) {
+  return (
+    <ReviewBody
+      key={`${authSession.get()}:${props.docId ?? "all"}:${props.quiz}:${props.ahead}`}
+      {...props}
+    />
+  );
+}
+
+function ReviewBody({
   docId,
   title,
   quiz,
@@ -49,6 +60,9 @@ export function ReviewSession({
   onOpenPage: (docId: string) => void;
   onDone: (reviewed: number) => void;
 }) {
+  const owner = useRef(authSession.get()).current;
+  const { ref: pageRef, width } = useElementWidth();
+  const root = useRef<HTMLDivElement>(null);
   const [queue, setQueue] = useState<StudyCard[] | null>(null);
   const [shown, setShown] = useState(false);
   const [reviewed, setReviewed] = useState(0);
@@ -64,24 +78,55 @@ export function ReviewSession({
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState("");
   const answerBox = useRef<HTMLTextAreaElement>(null);
+  const [loadError, setLoadError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const generation = useRef(0);
+  const action = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const pending = busy || grading || explaining;
+  const currentOwner = () => mounted.current && authSession.get() === owner;
 
   useEffect(() => {
-    client
-      .studyQueue({ docId, limit: quiz ? 15 : 100, ahead })
-      .then(setQueue, (e) => {
-        report(e);
-        setQueue([]);
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    const request = ++generation.current;
+    setQueue(null);
+    setLoadError("");
+    setShown(false);
+    setReviewed(0);
+    setAnswer("");
+    setGrade(null);
+    setExplained(null);
+    setNote("");
+    void client.studyQueue({ docId, limit: quiz ? 15 : 100, ahead }).then(
+      (cards) => {
+        if (currentOwner() && request === generation.current) setQueue(cards);
+      },
+      (error) => {
+        if (!currentOwner() || request !== generation.current) return;
+        setLoadError(errorText(error));
+        report(error);
+      },
+    );
+    return () => {
+      generation.current += 1;
+    };
+  }, [docId, quiz, ahead, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const card = queue?.[0];
 
   const rate = async (rating: Rating) => {
-    if (!card || busy) return;
+    if (!currentOwner() || !card || action.current) return;
+    action.current = true;
+    const request = generation.current;
     setBusy(true);
     try {
       const next = await client.reviewCard(card.id, rating);
+      if (!currentOwner() || request !== generation.current) return;
       setReviewed((n) => n + 1);
       // Forgotten cards come back at the end of this session too.
       setQueue((q) => {
@@ -94,34 +139,53 @@ export function ReviewSession({
       setExplained(null);
       setNote("");
     } catch (e) {
-      report(e);
+      if (currentOwner() && request === generation.current) {
+        setNote(errorText(e));
+        report(e);
+      }
     } finally {
-      setBusy(false);
+      action.current = false;
+      if (currentOwner() && request === generation.current) setBusy(false);
     }
   };
 
   const check = async () => {
-    if (!card || !answer.trim()) return;
+    if (!currentOwner() || !card || !answer.trim() || action.current) return;
+    action.current = true;
+    const request = generation.current;
     setGrading(true);
+    setNote("");
     try {
-      setGrade(await client.gradeAnswer(card.id, answer));
-    } catch (e) {
-      setNote(errorText(e));
-    } finally {
-      setGrading(false);
+      const result = await client.gradeAnswer(card.id, answer);
+      if (!currentOwner() || request !== generation.current) return;
+      setGrade(result);
       setShown(true);
+    } catch (e) {
+      if (currentOwner() && request === generation.current)
+        setNote(errorText(e));
+    } finally {
+      action.current = false;
+      if (currentOwner() && request === generation.current) setGrading(false);
     }
   };
 
   const explain = async () => {
-    if (!card) return;
+    if (!currentOwner() || !card || action.current) return;
+    action.current = true;
+    const request = generation.current;
     setExplaining(true);
+    setNote("");
     try {
-      setExplained(await client.explainCard(card.id));
+      const result = await client.explainCard(card.id);
+      if (currentOwner() && request === generation.current)
+        setExplained(result);
     } catch (e) {
-      setNote(errorText(e));
+      if (currentOwner() && request === generation.current)
+        setNote(errorText(e));
     } finally {
-      setExplaining(false);
+      action.current = false;
+      if (currentOwner() && request === generation.current)
+        setExplaining(false);
     }
   };
 
@@ -129,7 +193,27 @@ export function ReviewSession({
     if (!card || quiz) return;
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target.closest?.("input, textarea, [contenteditable]")) return;
+      const pane = root.current?.closest(
+        ".workspace-duo-primary, .workspace-duo-secondary",
+      );
+      if (
+        !currentOwner() ||
+        (pane?.closest(".workspace-duo.is-paired") &&
+          !pane.contains(document.activeElement))
+      )
+        return;
+      if (
+        e.defaultPrevented ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        action.current ||
+        document.querySelector(
+          'dialog[open], [aria-modal="true"], .popover, .select-list.is-floating',
+        ) ||
+        target.closest?.("input, textarea, button, a, [contenteditable]")
+      )
+        return;
       if (!shown && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();
         setShown(true);
@@ -149,9 +233,21 @@ export function ReviewSession({
   const total = reviewed + (queue?.length ?? 0);
 
   return (
-    <div className="study-review">
+    <div
+      ref={(node) => {
+        root.current = node;
+        pageRef(node);
+      }}
+      className={"study-review" + (width < 640 ? " is-small" : "")}
+    >
       <div className="study-review-head">
-        <button className="text-button" onClick={() => onDone(reviewed)}>
+        <button
+          className="text-button"
+          disabled={pending}
+          onClick={() => {
+            if (!action.current && currentOwner()) onDone(reviewed);
+          }}
+        >
           <ArrowLeft size={15} /> Back to Study
         </button>
         <span className="study-review-title">
@@ -177,8 +273,21 @@ export function ReviewSession({
           <i style={{ width: `${(reviewed / total) * 100}%` }} />
         </div>
       )}
-      {!queue ? (
-        <p className="muted">Getting your cards…</p>
+      {loadError ? (
+        <div className="error" role="alert">
+          {loadError}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setRetry((n) => n + 1)}
+          >
+            Retry cards
+          </button>
+        </div>
+      ) : !queue ? (
+        <p className="muted" role="status">
+          Loading cards…
+        </p>
       ) : !card ? (
         <div className="card study-finished">
           <span className="study-finished-icon" aria-hidden="true">
@@ -189,10 +298,6 @@ export function ReviewSession({
               ? `Done. ${reviewed} card${reviewed === 1 ? "" : "s"} reviewed.`
               : "Nothing to review right now."}
           </strong>
-          <p className="muted">
-            Each card comes back when it&apos;s about to slip. The better you
-            knew it, the longer the wait.
-          </p>
           <button className="primary" onClick={() => onDone(reviewed)}>
             Back to Study
           </button>
@@ -206,6 +311,7 @@ export function ReviewSession({
             <div className="study-from">
               <button
                 className="study-source"
+                disabled={pending}
                 onClick={() => onOpenPage(card.doc_id)}
                 title="Open the page"
               >
@@ -233,6 +339,7 @@ export function ReviewSession({
                 {card.source && (
                   <button
                     className="study-source study-from-line"
+                    disabled={pending}
                     onClick={() => onOpenPage(card.source!.doc_id)}
                     title="Open the notes this card came from"
                   >
@@ -257,6 +364,7 @@ export function ReviewSession({
                 aria-label="Your answer"
                 rows={3}
                 value={answer}
+                disabled={pending}
                 placeholder="Type your answer…"
                 onChange={(e) => setAnswer(e.target.value)}
                 onKeyDown={(e) => {
@@ -270,13 +378,14 @@ export function ReviewSession({
                 <button
                   type="button"
                   className="text-button"
+                  disabled={pending}
                   onClick={() => setShown(true)}
                 >
                   I don&apos;t know
                 </button>
                 <button
                   className="primary"
-                  disabled={grading || !answer.trim()}
+                  disabled={pending || !answer.trim()}
                 >
                   <Sparkles size={14} /> {grading ? "Checking…" : "Check"}
                 </button>
@@ -349,7 +458,7 @@ export function ReviewSession({
                       r +
                       (grade?.suggested_rating === r ? " is-suggested" : "")
                     }
-                    disabled={busy}
+                    disabled={pending}
                     onClick={() => void rate(r)}
                   >
                     <strong>{LABEL[r]}</strong>
@@ -364,7 +473,7 @@ export function ReviewSession({
                 {!explained && (
                   <button
                     className="text-button"
-                    disabled={explaining}
+                    disabled={pending}
                     onClick={() => void explain()}
                   >
                     <Lightbulb size={14} />{" "}
@@ -375,7 +484,7 @@ export function ReviewSession({
             </div>
           )}
           {note && (
-            <p className="muted study-note" role="status">
+            <p className="error study-note" role="alert">
               {note}
             </p>
           )}

@@ -79,13 +79,13 @@ export function PublicBooking({ path, onHome }: Props) {
       )}
       <main className="public-main">
         {first === "confirm" && token ? (
-          <Confirm token={token} />
+          <Confirm key={token} token={token} />
         ) : first === "cancel" && token ? (
-          <Cancel token={token} />
+          <Cancel key={token} token={token} />
         ) : first === "manage" && token ? (
-          <ManageBooking token={token} />
+          <ManageBooking key={token} token={token} />
         ) : first && !LINKS.has(first) ? (
-          <BookPage slug={first} />
+          <BookPage key={first} slug={first} />
         ) : (
           <Message
             title="This booking link isn't complete."
@@ -112,7 +112,9 @@ function QuestionField({
   question: q,
   value,
   onChange,
+  disabled = false,
 }: {
+  disabled?: boolean;
   question: BookingQuestion;
   value: string;
   onChange: (value: string) => void;
@@ -146,6 +148,7 @@ function QuestionField({
       {q.required && <Required />}
       {q.type === "choice" ? (
         <Select
+          disabled={disabled}
           required={q.required}
           value={value}
           onChange={(e) => onChange(e.target.value)}
@@ -296,14 +299,18 @@ function BookPage({ slug }: { slug: string }) {
       <Message
         title="This page isn't available"
         body={loadError || "Check the link and try again."}
-      />
+      >
+        <button className="secondary" onClick={() => setReloads((r) => r + 1)}>
+          Retry
+        </button>
+      </Message>
     );
 
   const zones = timeZones();
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!slot || !duration) return;
+    if (!slot || !duration || sending || loading) return;
     const missing = page.questions.find(
       (q) => q.required && !answers[q.id]?.trim(),
     );
@@ -343,12 +350,12 @@ function BookPage({ slug }: { slug: string }) {
 
   return (
     <section
-      className="public-card booking-public booking-accent fade-up"
+      className="public-card booking-public booking-accent"
       style={accentStyle(page.color)}
       aria-labelledby="book-title"
     >
       <div className="booking-intro">
-        <span className="eyebrow">BOOK A TIME</span>
+        <span className="eyebrow">Book a time</span>
         <h1 id="book-title">{page.title}</h1>
         <p className="booking-hosts">With {page.hosts.join(", ")}</p>
         {page.description && <p className="booking-desc">{page.description}</p>}
@@ -360,8 +367,8 @@ function BookPage({ slug }: { slug: string }) {
           )}
           {page.has_meeting_link && (
             <li>
-              <Video size={14} aria-hidden="true" /> Video link sent when you
-              book
+              <Video size={14} aria-hidden="true" /> Video link sent after
+              booking
             </li>
           )}
           {page.requires_approval && (
@@ -378,6 +385,7 @@ function BookPage({ slug }: { slug: string }) {
                   <button
                     key={d}
                     type="button"
+                    disabled={sending}
                     aria-pressed={duration === d}
                     className={duration === d ? "active" : ""}
                     onClick={() => {
@@ -399,9 +407,12 @@ function BookPage({ slug }: { slug: string }) {
               <span className="sr-only">Your time zone</span>
               <Select
                 value={tz}
+                disabled={sending}
                 onChange={(e) => {
                   setTz(e.target.value);
                   setSlot(null);
+                  setDay(null);
+                  setDate(localDateKey(new Date(), e.target.value));
                 }}
               >
                 {!zones.includes(tz) && <option value={tz}>{tz}</option>}
@@ -417,76 +428,83 @@ function BookPage({ slug }: { slug: string }) {
       </div>
 
       {slot ? (
-        <form className="booking-form-public" onSubmit={(e) => void submit(e)}>
-          <button
-            type="button"
-            className="text-button"
-            onClick={() => setSlot(null)}
-          >
-            <ArrowLeft size={14} /> Pick another time
-          </button>
-          <p className="booking-chosen">
-            <strong>{whenLabel(slot.start_at, slot.end_at, tz)}</strong>
-          </p>
-          <label>
-            Your name
-            <Required />
-            <input
-              required
-              autoFocus
-              maxLength={120}
-              autoComplete="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label>
-            Email
-            <Required />
-            <input
-              type="email"
-              required
-              maxLength={254}
-              autoComplete="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </label>
-          {page.questions.map((q) => (
-            <QuestionField
-              key={q.id}
-              question={q}
-              value={answers[q.id] ?? ""}
-              onChange={(v) => setAnswers((a) => ({ ...a, [q.id]: v }))}
-            />
-          ))}
-          <label>
-            Anything to share? (optional)
-            <textarea
-              rows={3}
-              maxLength={2000}
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-            />
-          </label>
-          {formError && (
-            <div className="error" role="alert">
-              {formError}
-            </div>
-          )}
-          {page.requires_approval && (
-            <p className="booking-approval-note">
-              <ShieldCheck size={14} aria-hidden="true" /> The host will confirm
-              this request.
+        <form
+          className="booking-form-public"
+          aria-busy={sending}
+          onSubmit={(e) => void submit(e)}
+        >
+          <fieldset disabled={sending}>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setSlot(null)}
+            >
+              <ArrowLeft size={14} /> Pick another time
+            </button>
+            <p className="booking-chosen">
+              <strong>{whenLabel(slot.start_at, slot.end_at, tz)}</strong>
             </p>
-          )}
-          <button className="primary wide" disabled={sending}>
-            {sending
-              ? "Sending…"
-              : page.requires_approval
-                ? "Request this time"
-                : "Book this time"}
-          </button>
+            <label>
+              Your name
+              <Required />
+              <input
+                required
+                autoFocus
+                maxLength={120}
+                autoComplete="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </label>
+            <label>
+              Email
+              <Required />
+              <input
+                type="email"
+                required
+                maxLength={254}
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </label>
+            {page.questions.map((q) => (
+              <QuestionField
+                key={q.id}
+                question={q}
+                disabled={sending}
+                value={answers[q.id] ?? ""}
+                onChange={(v) => setAnswers((a) => ({ ...a, [q.id]: v }))}
+              />
+            ))}
+            <label>
+              Note (optional)
+              <textarea
+                rows={3}
+                maxLength={2000}
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+              />
+            </label>
+            {formError && (
+              <div className="error" role="alert">
+                {formError}
+              </div>
+            )}
+            {page.requires_approval && (
+              <p className="booking-approval-note">
+                <ShieldCheck size={14} aria-hidden="true" /> The host will
+                confirm this request.
+              </p>
+            )}
+            <button className="primary wide" disabled={sending}>
+              {sending
+                ? "Sending…"
+                : page.requires_approval
+                  ? "Request this time"
+                  : "Book this time"}
+            </button>
+          </fieldset>
         </form>
       ) : (
         <div>
@@ -497,6 +515,7 @@ function BookPage({ slug }: { slug: string }) {
             slots={page.slots}
             loading={loading}
             error={loadError}
+            onRetry={() => setReloads((r) => r + 1)}
             onPick={setSlot}
             day={day}
             onDayChange={setDay}
@@ -577,7 +596,10 @@ function Cancel({ token }: { token: string }) {
       />
     );
   return (
-    <section className="public-card public-message fade-up">
+    <section
+      className="public-card public-message"
+      aria-busy={state === "sending"}
+    >
       <MailCheck size={30} />
       <h1>Cancel this booking?</h1>
       <p>The host will see that the time is free again.</p>
@@ -590,6 +612,7 @@ function Cancel({ token }: { token: string }) {
         className="primary"
         disabled={state === "sending"}
         onClick={() => {
+          if (state === "sending") return;
           setState("sending");
           setError("");
           client.cancelBookingByToken(token).then(
@@ -601,7 +624,7 @@ function Cancel({ token }: { token: string }) {
           );
         }}
       >
-        {state === "sending" ? "Cancelling…" : "Yes, cancel it"}
+        {state === "sending" ? "Cancelling…" : "Cancel booking"}
       </button>
     </section>
   );

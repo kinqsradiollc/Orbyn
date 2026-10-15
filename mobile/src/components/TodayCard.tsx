@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   SESSION_OUTCOME_LABELS,
@@ -18,8 +18,8 @@ import { tap } from "../lib/haptics";
 import { Icon, type IconName } from "./Icon";
 import { Pill, chipTone } from "./Pill";
 import { readLocal, saveLocal } from "../lib/localPrefs";
-import { FadeIn, PressableScale, animateLayout, Pressable } from "../motion";
-import { colors, controls, fonts, radii, themed } from "../theme";
+import { Pressable } from "../motion";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 /** Late tasks shown before "Show all". */
@@ -91,6 +91,8 @@ export function TodayCard({
     itemId: string;
     plan: boolean;
   } | null>(null);
+  const mutation = useRef(false);
+  const [answerError, setAnswerError] = useState("");
   const [answering, setAnswering] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -128,6 +130,9 @@ export function TodayCard({
     outcome: SessionOutcome,
     more?: number,
   ) => {
+    if (mutation.current || busy) return;
+    mutation.current = true;
+    setAnswerError("");
     setAnswering(c.id);
     try {
       const r = await client.checkInSession(c.id, {
@@ -135,7 +140,6 @@ export function TodayCard({
         ...(more ? { more_minutes: more } : {}),
       });
       tap();
-      animateLayout();
       setCheckIns((list) => list.filter((x) => x.id !== c.id));
       setAsking(null);
       setSaid({
@@ -145,14 +149,14 @@ export function TodayCard({
       });
       onCheckedIn?.();
     } catch {
-      // The row stays; answering again is safe.
+      setAnswerError("Could not save check-in. Try again.");
     } finally {
+      mutation.current = false;
       setAnswering(null);
     }
   };
 
   const dismiss = (blockId: string) => {
-    animateLayout();
     // Only ids still listed are kept, so the list doesn't grow for ever.
     const listed = new Set(today.unfinished.map((u) => u.block_id));
     const next = [...dismissed.filter((id) => listed.has(id)), blockId];
@@ -202,7 +206,6 @@ export function TodayCard({
           style={({ pressed }) => [s.main, pressed && s.pressed]}
         >
           <Text
-            numberOfLines={2}
             style={[
               s.title,
               r.kind === "event" && s.eventTitle,
@@ -243,7 +246,7 @@ export function TodayCard({
 
   const empty = !rows.length && !unfinished.length && !checkIns.length;
   return (
-    <FadeIn style={shared.card}>
+    <View style={shared.card}>
       <View style={s.head}>
         <Text style={shared.sectionTitle} accessibilityRole="header">
           Today · {dayName(today.day)}
@@ -267,7 +270,6 @@ export function TodayCard({
                   }
                   quiet
                   onPress={() => {
-                    animateLayout();
                     setAllLate(!allLate);
                   }}
                 />
@@ -315,9 +317,7 @@ export function TodayCard({
                       onPress={() => onOpen(c.item_id)}
                       style={({ pressed }) => [s.main, pressed && s.pressed]}
                     >
-                      <Text numberOfLines={2} style={s.title}>
-                        {c.title}
-                      </Text>
+                      <Text style={s.title}>{c.title}</Text>
                       <Text style={s.line}>
                         {when}
                         {c.project_name ? ` · ${c.project_name}` : ""}
@@ -330,12 +330,13 @@ export function TodayCard({
                             <PillButton
                               key={m}
                               label={`+${shortMinutes(m)}`}
-                              disabled={answering === c.id}
+                              disabled={answering !== null || busy}
                               onPress={() => void answer(c, "more", m)}
                             />
                           ))}
                           <PillButton
                             label="Cancel"
+                            disabled={answering !== null || busy}
                             quiet
                             onPress={() => setAsking(null)}
                           />
@@ -344,18 +345,18 @@ export function TodayCard({
                         <>
                           <PillButton
                             label={SESSION_OUTCOME_LABELS.done}
-                            disabled={answering === c.id}
+                            disabled={answering !== null || busy}
                             onPress={() => void answer(c, "done")}
                           />
                           <PillButton
                             label={SESSION_OUTCOME_LABELS.more}
-                            disabled={answering === c.id}
+                            disabled={answering !== null || busy}
                             onPress={() => setAsking(c.id)}
                           />
                           <PillButton
                             label={SESSION_OUTCOME_LABELS.skipped}
                             quiet
-                            disabled={answering === c.id}
+                            disabled={answering !== null || busy}
                             onPress={() => void answer(c, "skipped")}
                           />
                         </>
@@ -380,9 +381,7 @@ export function TodayCard({
                     onPress={() => onOpen(u.item_id)}
                     style={({ pressed }) => [s.main, pressed && s.pressed]}
                   >
-                    <Text numberOfLines={2} style={s.title}>
-                      {u.title}
-                    </Text>
+                    <Text style={s.title}>{u.title}</Text>
                     <Text style={s.line}>{unfinishedWhen(u)}</Text>
                   </Pressable>
                   <View style={s.buttons}>
@@ -403,6 +402,11 @@ export function TodayCard({
           )}
         </>
       )}
+      {!!answerError && (
+        <Text style={s.warnText} accessibilityRole="alert">
+          {answerError}
+        </Text>
+      )}
       <Pressable
         accessibilityRole="button"
         onPress={onOpenCalendar}
@@ -412,7 +416,7 @@ export function TodayCard({
         <Text style={s.footerText}>Open calendar</Text>
         <Icon name="arrowRight" size={15} color={colors.accent} />
       </Pressable>
-    </FadeIn>
+    </View>
   );
 }
 
@@ -429,7 +433,7 @@ function PillButton({
   quiet?: boolean;
 }) {
   return (
-    <PressableScale
+    <Pressable
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
@@ -443,7 +447,7 @@ function PillButton({
       ]}
     >
       <Text style={[s.pillText, quiet && s.pillTextQuiet]}>{label}</Text>
-    </PressableScale>
+    </Pressable>
   );
 }
 
@@ -454,6 +458,7 @@ const s = themed(() =>
     row: {
       flexDirection: "row",
       alignItems: "center",
+      flexWrap: "wrap",
       gap: 10,
       paddingVertical: 11,
     },
@@ -462,11 +467,11 @@ const s = themed(() =>
       borderTopColor: colors.divider,
     },
     icon: { alignSelf: "flex-start", paddingTop: 2 },
-    main: { flex: 1, gap: 4 },
+    main: { flex: 1, flexBasis: 160, minWidth: 0, gap: 4 },
     pressed: { opacity: 0.6 },
     title: {
       fontFamily: fonts.semibold,
-      fontSize: 15,
+      fontSize: 13,
       lineHeight: 20,
       color: colors.text,
     },
@@ -497,11 +502,11 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
-    buttons: { gap: 6, alignItems: "flex-end" },
+    buttons: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     checkRow: { gap: 8, paddingVertical: 11 },
     answers: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     said: { gap: 8 },
-    saidButtons: { flexDirection: "row", gap: 6 },
+    saidButtons: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     footer: {
       flexDirection: "row",
       alignItems: "center",
@@ -509,6 +514,7 @@ const s = themed(() =>
       gap: 6,
       marginTop: 8,
       paddingTop: 12,
+      minHeight: 44,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
@@ -518,7 +524,7 @@ const s = themed(() =>
       color: colors.accent,
     },
     pill: {
-      minHeight: controls.tap - 10,
+      minHeight: 44,
       paddingHorizontal: 12,
       borderRadius: radii.pill,
       backgroundColor: colors.accentSoft,

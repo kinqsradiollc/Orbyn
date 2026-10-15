@@ -38,6 +38,10 @@ export function Popover({
   width,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+  // Stay in the native dialog top layer when opened by one of its controls.
+  const portalHost = useRef(
+    document.activeElement?.closest("dialog[open]") ?? document.body,
+  );
   const [pos, setPos] = useState({ top: anchor.bottom + 6, left: anchor.left });
   const latest = useRef(onClose);
   latest.current = onClose;
@@ -87,6 +91,10 @@ export function Popover({
     const opener = takeFocus
       ? (document.activeElement as HTMLElement | null)
       : null;
+    const owner = document.activeElement
+      ?.closest("[data-modal-focus]")
+      ?.getAttribute("data-modal-focus");
+    if (owner) ref.current?.setAttribute("data-modal-owner", owner);
     if (takeFocus)
       ref.current
         ?.querySelector<HTMLElement>("button:not(:disabled), a[href], input")
@@ -114,7 +122,7 @@ export function Popover({
   return createPortal(
     <div
       ref={ref}
-      className="popover scale-in"
+      className="popover"
       role="dialog"
       aria-label={label}
       style={{
@@ -125,6 +133,6 @@ export function Popover({
     >
       {children}
     </div>,
-    document.body,
+    portalHost.current,
   );
 }

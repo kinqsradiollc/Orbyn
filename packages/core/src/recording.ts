@@ -137,16 +137,16 @@ export const TEAM_POLICY_TEXT: Record<
   { label: string; hint: string }
 > = {
   publishing: {
-    label: "Publishing to the web",
-    hint: "Members can put the team's pages and folders on the public web. Off takes every published page down at once.",
+    label: "Public publishing",
+    hint: "Members can publish team pages and folders. Turning this off removes every public page.",
   },
   assistant: {
-    label: "The assistant on team pages",
-    hint: "Members can ask the assistant about the team's pages, and it can read them to answer. Off keeps them out of it.",
+    label: "Page assistant",
+    hint: "The assistant can read team pages to answer members. Turning this off excludes them.",
   },
   booking: {
-    label: "Booking pages for people outside",
-    hint: "The team's booking pages take bookings from anyone with the link. Off pauses them until it's on again.",
+    label: "Public bookings",
+    hint: "Anyone with the link can book. Turning this off pauses the team’s booking pages.",
   },
 };
 

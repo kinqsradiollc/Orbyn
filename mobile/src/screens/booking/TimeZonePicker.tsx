@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { isTimeZone } from "@orbyn/core";
 import { Icon } from "../../components/Icon";
-import { animateLayout, Pressable } from "../../motion";
+import { Pressable } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 import { timeZones, zoneLabel } from "./helpers";
@@ -17,7 +17,9 @@ const SHOWN = 60;
 export function TimeZonePicker({
   value,
   onChange,
+  disabled = false,
 }: {
+  disabled?: boolean;
   value: string;
   onChange: (zone: string) => void;
 }) {
@@ -32,7 +34,8 @@ export function TimeZonePicker({
   const valid = isTimeZone(value);
 
   const pick = (zone: string) => {
-    animateLayout();
+    if (disabled) return;
+
     onChange(zone);
     setOpen(false);
     setQ("");
@@ -44,9 +47,9 @@ export function TimeZonePicker({
         accessibilityRole="button"
         accessibilityLabel={`Time zone: ${valid ? zoneLabel(value) : "not set"}`}
         accessibilityHint="Opens a list of time zones"
-        accessibilityState={{ expanded: open }}
+        disabled={disabled}
+        accessibilityState={{ expanded: open, disabled }}
         onPress={() => {
-          animateLayout();
           setOpen((o) => !o);
         }}
         style={({ pressed }) => [
@@ -56,14 +59,14 @@ export function TimeZonePicker({
         ]}
       >
         <Icon name="clock" size={16} color={colors.accent} />
-        <Text style={[s.value, !valid && s.invalid]} numberOfLines={1}>
+        <Text style={[s.value, !valid && s.invalid]}>
           {valid ? zoneLabel(value) : value || "Pick a time zone"}
         </Text>
         <View style={open && s.turned}>
           <Icon name="chevronRight" size={16} color={colors.faint} />
         </View>
       </Pressable>
-      {open && (
+      {open && !disabled && (
         <View style={s.panel}>
           <TextInput
             style={shared.input}
@@ -120,9 +123,7 @@ function ZoneRow({
       onPress={() => onPick(zone)}
       style={({ pressed }) => [s.row, pressed && s.rowPressed]}
     >
-      <Text style={[s.rowText, selected && s.rowOn]} numberOfLines={1}>
-        {zoneLabel(zone)}
-      </Text>
+      <Text style={[s.rowText, selected && s.rowOn]}>{zoneLabel(zone)}</Text>
       {selected && <Icon name="check" size={16} color={colors.accent} />}
     </Pressable>
   );
@@ -131,7 +132,7 @@ function ZoneRow({
 const s = themed(() =>
   StyleSheet.create({
     field: {
-      minHeight: 50,
+      minHeight: 44,
       flexDirection: "row",
       alignItems: "center",
       gap: 10,
@@ -139,7 +140,8 @@ const s = themed(() =>
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.input,
-      paddingHorizontal: 15,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
     },
     fieldOpen: { borderColor: colors.accent },
     value: {
@@ -165,7 +167,7 @@ const s = themed(() =>
       gap: 8,
       minHeight: 44,
       paddingHorizontal: 6,
-      borderRadius: 8,
+      borderRadius: radii.input,
     },
     rowPressed: { backgroundColor: colors.surfaceMuted },
     rowText: {

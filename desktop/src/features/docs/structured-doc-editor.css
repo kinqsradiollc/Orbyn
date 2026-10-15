@@ -19,11 +19,47 @@
   width: 100%;
   min-width: 0;
   margin: 12px 0 16px;
-  font-size: clamp(1.5rem, 2vw, 1.75rem);
+  font-size: 24px;
 }
 .structured-doc-pane-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.structured-doc-pane-switch button[aria-pressed="true"] {
+  background: var(--color-surfaceMuted);
+}
+.structured-doc-columns:not([data-active-pane="split"]) {
+  grid-template-columns: minmax(0, 1fr);
+}
+.structured-doc-columns[data-active-pane="preview"] > .structured-doc-source,
+.structured-doc-columns[data-active-pane="source"] > .structured-doc-preview {
   display: none;
 }
+.structured-doc-source-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.structured-doc-source-head h2 {
+  font-size: 13px;
+  margin: 0;
+}
+.structured-doc-source-head button {
+  min-height: 44px;
+}
+@container (max-width:760px) {
+  .structured-doc-split-button {
+    display: none;
+  }
+  .structured-doc-columns[data-active-pane="split"] > .structured-doc-source {
+    display: none;
+  }
+}
+
 .structured-doc-columns {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -72,10 +108,13 @@
 .structured-doc-leaf textarea {
   width: 100%;
   min-height: 72px;
+  max-height: 240px;
+  overflow: auto;
+  resize: none;
   margin: 4px 0 10px;
 }
 .structured-doc-edit {
-  font-size: 0.8rem;
+  font-size: 13px;
   margin: 0 0 8px;
 }
 .structured-doc-error {
@@ -185,5 +224,45 @@
   .structured-doc-menu > button {
     min-height: 40px;
     padding-inline: 10px;
+  }
+}
+
+.structured-doc-editor h1 {
+  font-size: 24px;
+  overflow-wrap: anywhere;
+}
+.structured-doc-toolbar button,
+.structured-doc-menu-items button,
+.structured-doc-history-head button,
+.structured-doc-history ol button,
+.structured-doc-edit {
+  min-height: 44px;
+}
+.structured-doc-history-head {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.structured-doc-history-head h2,
+.structured-doc-history h3 {
+  margin: 0;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+.structured-doc-history ol button {
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.structured-doc-comments h2 {
+  font-size: 15px;
+}
+@container (max-width: 420px) {
+  .structured-doc-source textarea,
+  .structured-doc-leaf textarea {
+    font-size: 16px;
+    line-height: 24px;
+  }
+  .structured-doc-pane-switch button {
+    min-height: 44px;
   }
 }

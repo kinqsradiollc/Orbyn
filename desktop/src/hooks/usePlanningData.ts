@@ -5,6 +5,7 @@ import type {
   Tag,
   TaskList,
 } from "@orbyn/core";
+import { session } from "../lib/session";
 import { client } from "../lib/api";
 import type { Planning } from "../app/planning";
 
@@ -23,20 +24,34 @@ export function usePlanningData(
   const reportRef = useRef(report);
   reportRef.current = report;
   const seq = useRef(0);
+  const owner = useRef(token);
+  owner.current = token;
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      seq.current++;
+    };
+  }, []);
+  const current = useCallback(
+    () => mounted.current && owner.current === token && session.get() === token,
+    [token],
+  );
 
   const reload = useCallback(async () => {
-    if (!token) return;
+    if (!token || !current()) return;
     const mine = ++seq.current;
     const [l, t, p] = await Promise.all([
       client.listLists(),
       client.listTags(),
       client.getPlannerPrefs(),
     ]);
-    if (mine !== seq.current) return;
+    if (mine !== seq.current || !current()) return;
     setLists(l);
     setTags(t);
     setPrefs(p);
-  }, [token]);
+  }, [token, current]);
 
   useEffect(() => {
     if (!token) {
@@ -45,14 +60,21 @@ export function usePlanningData(
       setPrefs(null);
       return;
     }
-    reload().catch((e) => reportRef.current(e));
-  }, [token, reload, revision]);
+    reload().catch((e) => {
+      if (current()) reportRef.current(e);
+    });
+  }, [token, reload, revision, current]);
 
-  const savePrefs = useCallback(async (input: PlannerPrefsInput) => {
-    const next = await client.updatePlannerPrefs(input);
-    setPrefs(next);
-    return next;
-  }, []);
+  const savePrefs = useCallback(
+    async (input: PlannerPrefsInput) => {
+      if (!current()) throw new Error("Account changed. Reopen settings.");
+      const mine = ++seq.current;
+      const next = await client.updatePlannerPrefs(input);
+      if (current() && mine === seq.current) setPrefs(next);
+      return next;
+    },
+    [current],
+  );
 
   return useMemo(
     () => ({

@@ -5,6 +5,7 @@ import {
   ChevronDown,
   ChevronRight,
   Copy,
+  Ellipsis,
   ExternalLink,
   Globe,
   KeyRound,
@@ -12,6 +13,7 @@ import {
   Terminal,
 } from "lucide-react";
 import {
+  HttpError,
   AGENT_ACCESS,
   AGENT_ACCESS_LABELS,
   AGENT_ASK_FIRST,
@@ -51,7 +53,9 @@ import { openObject } from "../docs/DocLinks";
 import { useConfirm } from "../../components/Confirm";
 import { OutcomeNote, useAction } from "../../components/Outcome";
 import { Select } from "../../components/Select";
+import { Popover } from "../../components/Popover";
 import { SettingsSection } from "./SettingsSection";
+import { SettingsEditor } from "./SettingsEditor";
 import { AgentRules, InboxEdit } from "./AgentInbox";
 import { AgentWarmStart } from "./AgentContext";
 import "./agents.css";
@@ -183,7 +187,7 @@ function TrustEdit({
     ...grant.teams,
   ];
   return (
-    <div className="agents-tools-edit agents-trust">
+    <fieldset disabled={pending} className="agents-tools-edit agents-trust">
       {!changes ? (
         <p className="muted">
           {grant.access === "read"
@@ -201,6 +205,7 @@ function TrustEdit({
           <div className="settings-field">
             <label htmlFor={`trust-${grant.id}`}>How much it does alone</label>
             <Select
+              disabled={pending}
               id={`trust-${grant.id}`}
               value={draft.trust}
               onChange={(e) =>
@@ -231,6 +236,7 @@ function TrustEdit({
                     {sp.name}
                   </label>
                   <Select
+                    disabled={pending}
                     id={`trust-${grant.id}-${sp.id}`}
                     value={draft.spaces[sp.id] ?? ""}
                     onChange={(e) =>
@@ -308,11 +314,16 @@ function TrustEdit({
             Save
           </button>
         )}
-        <button type="button" className="secondary" onClick={onCancel}>
+        <button
+          type="button"
+          className="secondary"
+          disabled={pending}
+          onClick={onCancel}
+        >
           {changes ? "Cancel" : "Close"}
         </button>
       </div>
-    </div>
+    </fieldset>
   );
 }
 
@@ -373,14 +384,14 @@ function undoneText(job: AgentJob) {
   return undone === job.rows.length ? " · undone" : " · partly undone";
 }
 
-/** What a job touched that still opens, each once, at most five. */
+/** Every distinct object a job touched that still opens. */
 function jobLinks(job: AgentJob): AgentActivityLink[] {
   const seen = new Set<string>();
   const out: AgentActivityLink[] = [];
   for (const a of job.rows)
     for (const l of a.links ?? []) {
       const key = `${l.kind}:${l.id}`;
-      if (seen.has(key) || out.length >= 5) continue;
+      if (seen.has(key)) continue;
       seen.add(key);
       out.push(l);
     }
@@ -396,10 +407,34 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
   const { ask } = useConfirm();
   const [overview, setOverview] = useState<AgentsOverview | null>(null);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [activityId, setActivityId] = useState<string | null>(null);
+  const [connectionQuery, setConnectionQuery] = useState("");
+  const [connectionPage, setConnectionPage] = useState(0);
+  const connectionList = useRef<HTMLUListElement>(null);
+  const [overviewFailed, setOverviewFailed] = useState(false);
+  const [teamsFailed, setTeamsFailed] = useState(false);
+  const [teamsLoading, setTeamsLoading] = useState(true);
+  const [activityFailed, setActivityFailed] = useState<Record<string, boolean>>(
+    {},
+  );
+  const mounted = useRef(true);
+  const overviewRequest = useRef(0);
+  const activityRequest = useRef<Record<string, number>>({});
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const authFailure = (error: unknown) => {
+    if (error instanceof HttpError && error.statusCode === 401)
+      reportRef.current(error);
+  };
   const [activity, setActivity] = useState<
     Record<string, AgentActivity[] | null>
   >({});
+  const [menu, setMenu] = useState<{ id: string; anchor: DOMRect } | null>(
+    null,
+  );
   const [connecting, setConnecting] = useState(false);
+  const [connectBusy, setConnectBusy] = useState(false);
+  const [secretUnsaved, setSecretUnsaved] = useState(false);
   /** The connection whose toolsets are being changed, and the choice so far. */
   const [editing, setEditing] = useState<{
     id: string;
@@ -418,7 +453,6 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
       else next.add(id);
       return next;
     });
-  const connectRef = useRef<HTMLDivElement>(null);
   const action = useAction(report);
 
   const openTrust = (g: AgentGrant) =>
@@ -441,43 +475,84 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
       ...g.teams.map((t) => t.id),
     ];
     void action.run(async () => {
-      await client.setAgentTrust(d.id, {
+      const saved = await client.setAgentTrust(d.id, {
         trust: d.trust,
         spaces: Object.fromEntries(
           reach.map((id) => [id, d.spaces[id] ? d.spaces[id] : null]),
         ),
         acts_alone: d.actsAlone,
       });
+      if (!mounted.current) return;
+      setOverview(
+        (all) =>
+          all && {
+            ...all,
+            grants: all.grants.map((item) =>
+              item.id === saved.id ? saved : item,
+            ),
+          },
+      );
       setTrusting(null);
-      await load();
       return `${grantTitle(g)} now: ${AGENT_TRUST_LABELS[d.trust].name.toLowerCase()}.`;
     });
   };
 
-  const load = () =>
-    client.agents().then(setOverview, (e) => {
-      setOverview({ mcp_url: "", legacy_keys_until: null, grants: [] });
-      report(e);
-    });
+  const load = async () => {
+    const request = ++overviewRequest.current;
+    setOverviewFailed(false);
+    try {
+      const next = await client.agents();
+      if (mounted.current && request === overviewRequest.current)
+        setOverview(next);
+    } catch (error) {
+      if (!mounted.current || request !== overviewRequest.current) return;
+      setOverviewFailed(true);
+      authFailure(error);
+    }
+  };
+  const loadTeams = async () => {
+    setTeamsLoading(true);
+    setTeamsFailed(false);
+    try {
+      const next = await client.listTeams();
+      if (mounted.current) setTeams(next);
+    } catch (error) {
+      if (!mounted.current) return;
+      setTeamsFailed(true);
+      authFailure(error);
+    } finally {
+      if (mounted.current) setTeamsLoading(false);
+    }
+  };
   useEffect(() => {
+    mounted.current = true;
     void load();
-    client.listTeams().then(setTeams, () => setTeams([]));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void loadTeams();
+    return () => {
+      mounted.current = false;
+      overviewRequest.current += 1;
+    };
   }, []);
 
-  const toggleActivity = (g: AgentGrant) => {
-    if (activity[g.id] !== undefined) {
-      setActivity(({ [g.id]: _open, ...rest }) => rest);
-      return;
+  const loadActivity = async (id: string) => {
+    const request = (activityRequest.current[id] ?? 0) + 1;
+    activityRequest.current[id] = request;
+    setActivityFailed((all) => ({ ...all, [id]: false }));
+    setActivity((all) => ({ ...all, [id]: null }));
+    try {
+      const next = await client.agentActivity(id);
+      if (mounted.current && activityRequest.current[id] === request)
+        setActivity((all) => ({ ...all, [id]: next }));
+    } catch (error) {
+      if (!mounted.current || activityRequest.current[id] !== request) return;
+      setActivityFailed((all) => ({ ...all, [id]: true }));
+      authFailure(error);
     }
-    setActivity((a) => ({ ...a, [g.id]: null }));
-    client.agentActivity(g.id).then(
-      (list) => setActivity((a) => ({ ...a, [g.id]: list })),
-      (e) => {
-        setActivity(({ [g.id]: _open, ...rest }) => rest);
-        report(e);
-      },
-    );
+  };
+  const toggleActivity = (g: AgentGrant) => {
+    if (action.pending) return;
+    setActivityId(g.id);
+    void loadActivity(g.id);
   };
 
   // Take back one change an agent made directly (its activity keeps the
@@ -491,10 +566,11 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
       }))
     )
       return;
+    if (!mounted.current) return;
     await action.run(async () => {
       await client.undoAgentChange(a.id);
-      const list = await client.agentActivity(g.id);
-      setActivity((all) => ({ ...all, [g.id]: list }));
+      if (!mounted.current) return;
+      await loadActivity(g.id);
       return `Undid “${a.summary}”.`;
     });
   };
@@ -513,10 +589,11 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
       }))
     )
       return;
+    if (!mounted.current) return;
     await action.run(async () => {
       const { undone } = await client.undoAgentJob(g.id, id);
-      const list = await client.agentActivity(g.id);
-      setActivity((all) => ({ ...all, [g.id]: list }));
+      if (!mounted.current) return;
+      await loadActivity(g.id);
       return `Undid ${undone} ${undone === 1 ? "change" : "changes"} ${who} made.`;
     });
   };
@@ -528,7 +605,10 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
         <button
           type="button"
           className="link-button"
-          onClick={() => onOpenReview(a.proposal_id!)}
+          onClick={() => {
+            setActivityId(null);
+            onOpenReview(a.proposal_id!);
+          }}
         >
           Review
         </button>
@@ -561,9 +641,17 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
       }))
     )
       return;
+    if (!mounted.current) return;
     void action.run(async () => {
       await client.revokeAgent(g.id);
-      await load();
+      if (!mounted.current) return;
+      setOverview(
+        (all) =>
+          all && {
+            ...all,
+            grants: all.grants.filter((item) => item.id !== g.id),
+          },
+      );
       return legacy || app
         ? `Disconnected ${app ? grantTitle(g) : `“${g.name}”`}.`
         : `Revoked “${g.name}”.`;
@@ -574,33 +662,61 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
     if (!editing) return;
     const target = editing;
     void action.run(async () => {
-      await client.setAgentToolsets(target.id, target.toolsets);
+      const saved = await client.setAgentToolsets(target.id, target.toolsets);
+      if (!mounted.current) return;
+      setOverview(
+        (all) =>
+          all && {
+            ...all,
+            grants: all.grants.map((item) =>
+              item.id === saved.id ? saved : item,
+            ),
+          },
+      );
       setEditing(null);
-      await load();
-      return "Its tools changed. The agent sees them the next time it lists its tools (within five minutes).";
+      return "Tools saved. Allow up to five minutes for the agent to refresh.";
     });
   };
 
   const restore = (g: AgentGrant) =>
     void action.run(async () => {
       await client.restoreAgent(g.id);
-      await load();
+      if (!mounted.current) return;
+      setOverview(
+        (all) =>
+          all && {
+            ...all,
+            grants: all.grants.map((item) =>
+              item.id === g.id ? { ...item, suspended_at: null } : item,
+            ),
+          },
+      );
       return `“${g.name}” works again.`;
     });
 
-  const openConnect = () => {
-    setConnecting(true);
-    window.setTimeout(
-      () =>
-        connectRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        }),
-      50,
-    );
-  };
+  const openConnect = () => setConnecting(true);
 
   const grants = overview?.grants ?? [];
+  const listLocked =
+    action.pending || !!editing || !!trusting || !!hearing || !!activityId;
+  const query = connectionQuery.trim().toLocaleLowerCase();
+  const matchingGrants = grants.filter((grant) =>
+    [grantTitle(grant), grant.name, grant.client_host, spacesText(grant)]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase()
+      .includes(query),
+  );
+  const pageSize = 5;
+  const lastPage = Math.max(0, Math.ceil(matchingGrants.length / pageSize) - 1);
+  const page = Math.min(connectionPage, lastPage);
+  useEffect(() => {
+    if (connectionList.current) connectionList.current.scrollTop = 0;
+  }, [page, query]);
+  const shownGrants = matchingGrants.slice(
+    page * pageSize,
+    (page + 1) * pageSize,
+  );
   return (
     <SettingsSection
       className="card settings-card agents-card"
@@ -612,7 +728,18 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
       </h2>
       <div className="agents-head">
         <p className="muted">Choose what connected agents can access.</p>
-        <button type="button" className="primary" onClick={openConnect}>
+        <button
+          type="button"
+          className="primary"
+          disabled={
+            !overview ||
+            overviewFailed ||
+            teamsLoading ||
+            teamsFailed ||
+            action.pending
+          }
+          onClick={openConnect}
+        >
           <Plus size={14} /> Connect an agent
         </button>
       </div>
@@ -628,11 +755,41 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
         </a>
       </details>
 
-      {overview === null ? (
+      {!!grants.length && (
+        <label className="agents-search">
+          <span>Find a connection</span>
+          <input
+            type="search"
+            disabled={listLocked}
+            value={connectionQuery}
+            placeholder="Name or space"
+            onChange={(event) => {
+              setConnectionQuery(event.target.value);
+              setConnectionPage(0);
+            }}
+          />
+        </label>
+      )}
+      {teamsFailed && (
+        <div>
+          <p role="alert">Couldn't load spaces.</p>
+          <button className="secondary" onClick={() => void loadTeams()}>
+            Retry spaces
+          </button>
+        </div>
+      )}
+      {overviewFailed ? (
+        <div>
+          <p role="alert">Couldn't load connected agents.</p>
+          <button className="secondary" onClick={() => void load()}>
+            Retry
+          </button>
+        </div>
+      ) : overview === null ? (
         <p className="muted">Loading connected agents…</p>
       ) : grants.length ? (
-        <ul className="agents-list">
-          {grants.map((g) => {
+        <ul className="agents-list" ref={connectionList}>
+          {shownGrants.map((g) => {
             const expiry = agentExpiryText(g.expires_at);
             const open = activity[g.id];
             return (
@@ -730,79 +887,129 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                     <button
                       type="button"
                       className="link-button"
-                      aria-expanded={open !== undefined}
+                      aria-haspopup="dialog"
+                      aria-expanded={activityId === g.id}
                       onClick={() => toggleActivity(g)}
                     >
                       Activity
                     </button>
                     <button
                       type="button"
-                      className="link-button"
-                      aria-expanded={trusting?.id === g.id}
-                      onClick={() => openTrust(g)}
+                      className="icon-button"
+                      aria-label={`Manage ${grantTitle(g)}`}
+                      aria-haspopup="menu"
+                      aria-expanded={menu?.id === g.id}
+                      disabled={action.pending}
+                      onClick={(event) =>
+                        setMenu({
+                          id: g.id,
+                          anchor: event.currentTarget.getBoundingClientRect(),
+                        })
+                      }
                     >
-                      How it acts
+                      <Ellipsis size={16} />
                     </button>
-                    <button
-                      type="button"
-                      className="link-button"
-                      aria-expanded={hearing === g.id}
-                      onClick={() => setHearing(hearing === g.id ? null : g.id)}
-                    >
-                      What it hears
-                    </button>
-                    {g.kind !== "legacy" && (
-                      <button
-                        type="button"
-                        className="link-button"
-                        aria-expanded={editing?.id === g.id}
-                        onClick={() =>
-                          setEditing(
-                            editing?.id === g.id
-                              ? null
-                              : {
-                                  id: g.id,
-                                  toolsets: g.toolsets.filter(
-                                    (t) => t !== "core",
-                                  ),
-                                },
-                          )
-                        }
+                    {menu?.id === g.id && (
+                      <Popover
+                        anchor={menu.anchor}
+                        label={`Manage ${grantTitle(g)}`}
+                        onClose={() => setMenu(null)}
                       >
-                        Tools
-                      </button>
-                    )}
-                    {g.suspended_at && (
-                      <button
-                        type="button"
-                        className="link-button"
-                        disabled={action.pending}
-                        onClick={() => restore(g)}
-                      >
-                        Restore
-                      </button>
-                    )}
-                    {g.kind !== "assistant" && (
-                      <button
-                        type="button"
-                        className="danger-text"
-                        disabled={action.pending}
-                        onClick={() => void revoke(g)}
-                      >
-                        {g.kind === "key" ? "Revoke" : "Disconnect"}
-                      </button>
+                        <div
+                          className="popover-actions"
+                          role="menu"
+                          onClick={() => setMenu(null)}
+                        >
+                          <button
+                            role="menuitem"
+                            type="button"
+                            className="link-button"
+                            aria-expanded={trusting?.id === g.id}
+                            onClick={() => openTrust(g)}
+                          >
+                            How it acts
+                          </button>
+                          <button
+                            role="menuitem"
+                            type="button"
+                            className="link-button"
+                            aria-expanded={hearing === g.id}
+                            onClick={() =>
+                              setHearing(hearing === g.id ? null : g.id)
+                            }
+                          >
+                            What it hears
+                          </button>
+                          {g.kind !== "legacy" && (
+                            <button
+                              role="menuitem"
+                              type="button"
+                              className="link-button"
+                              aria-expanded={editing?.id === g.id}
+                              onClick={() =>
+                                setEditing(
+                                  editing?.id === g.id
+                                    ? null
+                                    : {
+                                        id: g.id,
+                                        toolsets: g.toolsets.filter(
+                                          (t) => t !== "core",
+                                        ),
+                                      },
+                                )
+                              }
+                            >
+                              Tools
+                            </button>
+                          )}
+                          {g.suspended_at && (
+                            <button
+                              role="menuitem"
+                              type="button"
+                              className="link-button"
+                              disabled={action.pending}
+                              onClick={() => restore(g)}
+                            >
+                              Restore
+                            </button>
+                          )}
+                          {g.kind !== "assistant" && (
+                            <button
+                              role="menuitem"
+                              type="button"
+                              className="danger-text"
+                              disabled={action.pending}
+                              onClick={() => void revoke(g)}
+                            >
+                              {g.kind === "key" ? "Revoke" : "Disconnect"}
+                            </button>
+                          )}
+                        </div>
+                      </Popover>
                     )}
                   </div>
-                  {g.kind === "oauth" && <PluginAiPermission grantId={g.id} />}
-                  {trusting?.id === g.id && (
-                    <TrustEdit
-                      grant={g}
-                      draft={trusting}
-                      onChange={setTrusting}
-                      onSave={() => saveTrust(g)}
-                      onCancel={() => setTrusting(null)}
-                      pending={action.pending}
+                  {g.kind === "oauth" && (
+                    <PluginAiPermission
+                      grantId={g.id}
+                      grantName={grantTitle(g)}
                     />
+                  )}
+                  {trusting?.id === g.id && (
+                    <SettingsEditor
+                      title={`How ${grantTitle(g)} acts`}
+                      pending={action.pending}
+                      onClose={() => setTrusting(null)}
+                    >
+                      <TrustEdit
+                        grant={g}
+                        draft={trusting}
+                        onChange={setTrusting}
+                        onSave={() => saveTrust(g)}
+                        onCancel={() => setTrusting(null)}
+                        pending={action.pending}
+                      />
+                      <OutcomeNote outcome={action.outcome} />
+                    </SettingsEditor>
                   )}
                   {hearing === g.id && (
                     <InboxEdit
@@ -812,154 +1019,180 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
                     />
                   )}
                   {editing?.id === g.id && (
-                    <div className="agents-tools-edit">
-                      <ToolsetChoice
-                        idPrefix={`tools-${g.id}`}
-                        value={editing.toolsets}
-                        bookings={
-                          g.kind === "key" || g.toolsets.includes("booking")
-                        }
-                        onChange={(toolsets) =>
-                          setEditing({ id: g.id, toolsets })
-                        }
-                      />
-                      {g.kind === "oauth" &&
-                        !g.toolsets.includes("booking") && (
-                          <small className="muted">
-                            Bookings need {g.client_name || "the app"} to ask
-                            for them when it signs in again.
-                          </small>
-                        )}
-                      <div className="agents-tools-actions">
-                        <button
-                          type="button"
-                          className="primary"
-                          disabled={action.pending}
-                          onClick={saveToolsets}
-                        >
-                          Save
-                        </button>
-                        <button
-                          type="button"
-                          className="secondary"
-                          onClick={() => setEditing(null)}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    </div>
+                    <SettingsEditor
+                      title={`Tools for ${grantTitle(g)}`}
+                      pending={action.pending}
+                      onClose={() => setEditing(null)}
+                    >
+                      <fieldset disabled={action.pending}>
+                        <ToolsetChoice
+                          idPrefix={`tools-${g.id}`}
+                          value={editing.toolsets}
+                          bookings={
+                            g.kind === "key" || g.toolsets.includes("booking")
+                          }
+                          onChange={(toolsets) =>
+                            setEditing({ id: g.id, toolsets })
+                          }
+                        />
+                        {g.kind === "oauth" &&
+                          !g.toolsets.includes("booking") && (
+                            <small className="muted">
+                              Bookings need {g.client_name || "the app"} to ask
+                              for them when it signs in again.
+                            </small>
+                          )}
+                        <div className="agents-tools-actions">
+                          <button
+                            type="button"
+                            className="primary"
+                            disabled={action.pending}
+                            onClick={saveToolsets}
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={action.pending}
+                            onClick={() => setEditing(null)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </fieldset>
+                      <OutcomeNote outcome={action.outcome} />
+                    </SettingsEditor>
                   )}
-                  {open !== undefined && (
-                    <div className="agents-activity" aria-live="polite">
-                      {open === null ? (
-                        <p className="muted">Loading activity…</p>
-                      ) : open.length ? (
-                        <ul>
-                          {groupAgentActivity(open).map((job) => {
-                            const many = job.rows.length > 1;
-                            const shown = expanded.has(job.id);
-                            const links = jobLinks(job);
-                            const undoable = job.rows.filter(
-                              (a) => a.undoable,
-                            ).length;
-                            return (
-                              <li key={job.id} className="agents-job">
-                                <span className="agents-activity-time">
-                                  {timeAgo(job.at)}
-                                </span>
-                                <div className="agents-job-main">
-                                  <span>
-                                    {jobText(g, job)}
-                                    {undoneText(job) && (
-                                      <span className="muted">
-                                        {undoneText(job)}
+                  {activityId === g.id && open !== undefined && (
+                    <SettingsEditor
+                      title={`Activity · ${grantTitle(g)}`}
+                      pending={action.pending}
+                      onClose={() => setActivityId(null)}
+                    >
+                      <div className="agents-activity" aria-live="polite">
+                        {activityFailed[g.id] ? (
+                          <>
+                            <p role="alert">Couldn't load activity.</p>
+                            <button
+                              className="secondary"
+                              onClick={() => void loadActivity(g.id)}
+                            >
+                              Retry
+                            </button>
+                          </>
+                        ) : open === null ? (
+                          <p className="muted">Loading activity…</p>
+                        ) : open.length ? (
+                          <ul>
+                            {groupAgentActivity(open).map((job) => {
+                              const many = job.rows.length > 1;
+                              const shown = expanded.has(job.id);
+                              const links = jobLinks(job);
+                              const undoable = job.rows.filter(
+                                (a) => a.undoable,
+                              ).length;
+                              return (
+                                <li key={job.id} className="agents-job">
+                                  <span className="agents-activity-time">
+                                    {timeAgo(job.at)}
+                                  </span>
+                                  <div className="agents-job-main">
+                                    <span>
+                                      {jobText(g, job)}
+                                      {undoneText(job) && (
+                                        <span className="muted">
+                                          {undoneText(job)}
+                                        </span>
+                                      )}
+                                    </span>
+                                    {links.length > 0 && (
+                                      <span className="agents-job-links">
+                                        {links.map((l) => (
+                                          <button
+                                            key={`${l.kind}:${l.id}`}
+                                            type="button"
+                                            className="link-button"
+                                            title={`Open this ${l.kind === "doc" ? "page" : l.kind}`}
+                                            onClick={() => {
+                                              setActivityId(null);
+                                              openObject({
+                                                kind: l.kind,
+                                                id: l.id,
+                                              });
+                                            }}
+                                          >
+                                            {l.title || "Untitled"}
+                                          </button>
+                                        ))}
                                       </span>
                                     )}
-                                  </span>
-                                  {links.length > 0 && (
-                                    <span className="agents-job-links">
-                                      {links.map((l) => (
+                                    {many && shown && (
+                                      <ul className="agents-job-steps">
+                                        {job.rows.map((a) => (
+                                          <li key={a.id}>
+                                            <span>
+                                              {activityText(a)}
+                                              {a.undone_at && (
+                                                <span className="muted">
+                                                  {" "}
+                                                  · undone
+                                                </span>
+                                              )}
+                                            </span>
+                                            {rowActions(g, a)}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    )}
+                                  </div>
+                                  <span className="agents-job-acts">
+                                    {many ? (
+                                      <>
                                         <button
-                                          key={`${l.kind}:${l.id}`}
                                           type="button"
-                                          className="link-button"
-                                          title={`Open this ${l.kind === "doc" ? "page" : l.kind}`}
-                                          onClick={() =>
-                                            openObject({
-                                              kind: l.kind,
-                                              id: l.id,
-                                            })
-                                          }
+                                          className="link-button agents-job-toggle"
+                                          aria-expanded={shown}
+                                          onClick={() => toggleJob(job.id)}
                                         >
-                                          {l.title || "Untitled"}
+                                          {shown ? (
+                                            <ChevronDown
+                                              size={13}
+                                              aria-hidden="true"
+                                            />
+                                          ) : (
+                                            <ChevronRight
+                                              size={13}
+                                              aria-hidden="true"
+                                            />
+                                          )}
+                                          {job.rows.length} steps
                                         </button>
-                                      ))}
-                                    </span>
-                                  )}
-                                  {many && shown && (
-                                    <ul className="agents-job-steps">
-                                      {job.rows.map((a) => (
-                                        <li key={a.id}>
-                                          <span>
-                                            {activityText(a)}
-                                            {a.undone_at && (
-                                              <span className="muted">
-                                                {" "}
-                                                · undone
-                                              </span>
-                                            )}
-                                          </span>
-                                          {rowActions(g, a)}
-                                        </li>
-                                      ))}
-                                    </ul>
-                                  )}
-                                </div>
-                                <span className="agents-job-acts">
-                                  {many ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="link-button agents-job-toggle"
-                                        aria-expanded={shown}
-                                        onClick={() => toggleJob(job.id)}
-                                      >
-                                        {shown ? (
-                                          <ChevronDown
-                                            size={13}
-                                            aria-hidden="true"
-                                          />
-                                        ) : (
-                                          <ChevronRight
-                                            size={13}
-                                            aria-hidden="true"
-                                          />
+                                        {job.job && undoable > 1 && (
+                                          <button
+                                            type="button"
+                                            className="link-button"
+                                            disabled={action.pending}
+                                            onClick={() => void undoJob(g, job)}
+                                          >
+                                            Undo job
+                                          </button>
                                         )}
-                                        {job.rows.length} steps
-                                      </button>
-                                      {job.job && undoable > 1 && (
-                                        <button
-                                          type="button"
-                                          className="link-button"
-                                          disabled={action.pending}
-                                          onClick={() => void undoJob(g, job)}
-                                        >
-                                          Undo job
-                                        </button>
-                                      )}
-                                    </>
-                                  ) : (
-                                    rowActions(g, job.rows[0])
-                                  )}
-                                </span>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      ) : (
-                        <p className="muted">Nothing yet.</p>
-                      )}
-                    </div>
+                                      </>
+                                    ) : (
+                                      rowActions(g, job.rows[0])
+                                    )}
+                                  </span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        ) : (
+                          <p className="muted">Nothing yet.</p>
+                        )}
+                      </div>
+                      <OutcomeNote outcome={action.outcome} />
+                    </SettingsEditor>
                   )}
                 </div>
               </li>
@@ -968,6 +1201,45 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
         </ul>
       ) : (
         <p className="muted agents-empty">No agents connected.</p>
+      )}
+      {overview &&
+        !overviewFailed &&
+        grants.length > 0 &&
+        matchingGrants.length === 0 && (
+          <p className="muted" role="status">
+            No matching connections.
+          </p>
+        )}
+      {overview && !overviewFailed && matchingGrants.length > pageSize && (
+        <div className="agents-pagination" aria-label="Connection pages">
+          <button
+            type="button"
+            className="secondary"
+            disabled={page === 0 || listLocked}
+            onClick={() => {
+              setConnectionPage(page - 1);
+              setMenu(null);
+            }}
+          >
+            Previous
+          </button>
+          <span role="status">
+            {page * pageSize + 1}–
+            {Math.min((page + 1) * pageSize, matchingGrants.length)} of{" "}
+            {matchingGrants.length}
+          </span>
+          <button
+            type="button"
+            className="secondary"
+            disabled={page === lastPage || listLocked}
+            onClick={() => {
+              setConnectionPage(page + 1);
+              setMenu(null);
+            }}
+          >
+            Next
+          </button>
+        </div>
       )}
       {overview &&
         grants.some((g) => g.kind === "legacy") &&
@@ -985,16 +1257,25 @@ export function ConnectedAgents({ report, onOpenReview = openReview }: Props) {
       <AgentWarmStart report={report} />
       {grants.length > 0 && <AgentRules report={report} />}
 
-      <div ref={connectRef}>
-        <ConnectAgent
-          url={overview?.mcp_url ?? ""}
-          teams={teams}
-          open={connecting}
-          onOpen={() => setConnecting(true)}
-          onCreated={() => void load()}
-          report={report}
-        />
-      </div>
+      {connecting && (
+        <SettingsEditor
+          title="Connect an agent"
+          pending={connectBusy}
+          closeDisabled={secretUnsaved}
+          onClose={() => setConnecting(false)}
+        >
+          <ConnectAgent
+            url={overview?.mcp_url ?? ""}
+            teams={teams}
+            open={connecting}
+            onOpen={() => setConnecting(true)}
+            onCreated={() => void load()}
+            onPendingChange={setConnectBusy}
+            onSecretUnsaved={setSecretUnsaved}
+            report={report}
+          />
+        </SettingsEditor>
+      )}
     </SettingsSection>
   );
 }
@@ -1006,6 +1287,8 @@ function ConnectAgent({
   open,
   onOpen,
   onCreated,
+  onPendingChange,
+  onSecretUnsaved,
   report,
 }: {
   url: string;
@@ -1013,6 +1296,8 @@ function ConnectAgent({
   open: boolean;
   onOpen: () => void;
   onCreated: () => void;
+  onPendingChange: (pending: boolean) => void;
+  onSecretUnsaved: (unsaved: boolean) => void;
   report: (e: unknown) => void;
 }) {
   const [tab, setTab] = useState<AgentSetupClient>("claude");
@@ -1027,7 +1312,23 @@ function ConnectAgent({
   const [toolsets, setToolsets] = useState<AgentToolset[]>([]);
   const [fresh, setFresh] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [savedKey, setSavedKey] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const action = useAction(report);
+  useEffect(() => {
+    onPendingChange(action.pending);
+    return () => onPendingChange(false);
+  }, [action.pending, onPendingChange]);
+  useEffect(() => {
+    onSecretUnsaved(!!fresh && !savedKey);
+    return () => onSecretUnsaved(false);
+  }, [fresh, savedKey, onSecretUnsaved]);
   const setup = agentSetup(
     tab,
     url || "https://mcp.orbyn.dev/mcp",
@@ -1053,6 +1354,8 @@ function ConnectAgent({
         hide_outside_content: hideOutside,
         toolsets: ["core", ...toolsets],
       });
+      if (!mounted.current) return;
+      setSavedKey(false);
       setFresh(made.key);
       setName("");
       onCreated();
@@ -1060,11 +1363,18 @@ function ConnectAgent({
   };
 
   const copy = (text: string, what: string) =>
-    void copyText(text).then((ok) => setCopied(ok ? what : null));
+    void copyText(text).then((ok) => {
+      if (!mounted.current) return;
+      setCopied(ok ? what : null);
+      if (!ok)
+        action.setOutcome({
+          ok: false,
+          text: "Couldn't copy. Select and copy the text manually.",
+        });
+    });
 
   return (
     <div className="agents-connect">
-      <h3>Connect an agent</h3>
       <div className="agents-tabs" role="tablist" aria-label="Which app">
         {AGENT_SETUP_CLIENTS.map((c) => (
           <button
@@ -1072,6 +1382,7 @@ function ConnectAgent({
             type="button"
             role="tab"
             aria-selected={tab === c}
+            disabled={action.pending || (!!fresh && !savedKey)}
             className={tab === c ? "active" : ""}
             onClick={() => {
               setTab(c);
@@ -1136,8 +1447,18 @@ function ConnectAgent({
                   Copy it now. For your safety it won’t be shown again. It’s
                   filled in below.
                 </small>
+                {!savedKey && (
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => setSavedKey(true)}
+                  >
+                    I've saved the key
+                  </button>
+                )}
                 <button
                   type="button"
+                  disabled={!savedKey}
                   className="link-button agents-another"
                   onClick={() => setFresh(null)}
                 >
@@ -1150,97 +1471,101 @@ function ConnectAgent({
               </button>
             ) : (
               <form className="agents-form" onSubmit={create}>
-                <div className="settings-field">
-                  <label htmlFor="agent-key-name">Name</label>
-                  <input
-                    id="agent-key-name"
-                    maxLength={80}
-                    placeholder={`Like “MacBook · ${AGENT_SETUP_LABELS[tab]}”`}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </div>
-                <div className="settings-field">
-                  <label htmlFor="agent-key-access">What it may do</label>
-                  <Select
-                    id="agent-key-access"
-                    value={access}
-                    onChange={(e) => setAccess(e.target.value as AgentAccess)}
-                  >
-                    {AGENT_ACCESS.map((a) => (
-                      <option key={a} value={a}>
-                        {AGENT_ACCESS_LABELS[a].name}
-                      </option>
-                    ))}
-                  </Select>
-                  <small className="muted">
-                    {AGENT_ACCESS_LABELS[access].blurb}
-                    {access === "write" &&
-                      " Change how much it does alone later with “How it acts”."}
-                  </small>
-                </div>
-                <fieldset className="check-group">
-                  <legend>In these spaces</legend>
-                  <div className="check-grid">
-                    <label className="check-line">
-                      <input
-                        type="checkbox"
-                        checked={personal}
-                        onChange={(e) => setPersonal(e.target.checked)}
-                      />
-                      Personal
-                    </label>
-                    {teams.map((t) => (
-                      <label key={t.id} className="check-line">
+                <fieldset disabled={action.pending}>
+                  <div className="settings-field">
+                    <label htmlFor="agent-key-name">Name</label>
+                    <input
+                      id="agent-key-name"
+                      maxLength={80}
+                      placeholder={`Like “MacBook · ${AGENT_SETUP_LABELS[tab]}”`}
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                  </div>
+                  <div className="settings-field">
+                    <label htmlFor="agent-key-access">What it may do</label>
+                    <Select
+                      disabled={action.pending}
+                      id="agent-key-access"
+                      value={access}
+                      onChange={(e) => setAccess(e.target.value as AgentAccess)}
+                    >
+                      {AGENT_ACCESS.map((a) => (
+                        <option key={a} value={a}>
+                          {AGENT_ACCESS_LABELS[a].name}
+                        </option>
+                      ))}
+                    </Select>
+                    <small className="muted">
+                      {AGENT_ACCESS_LABELS[access].blurb}
+                      {access === "write" &&
+                        " Change how much it does alone later with “How it acts”."}
+                    </small>
+                  </div>
+                  <fieldset className="check-group">
+                    <legend>In these spaces</legend>
+                    <div className="check-grid">
+                      <label className="check-line">
                         <input
                           type="checkbox"
-                          checked={teamIds.includes(t.id)}
-                          onChange={(e) =>
-                            setTeamIds((ids) =>
-                              e.target.checked
-                                ? [...ids, t.id]
-                                : ids.filter((x) => x !== t.id),
-                            )
-                          }
+                          checked={personal}
+                          onChange={(e) => setPersonal(e.target.checked)}
                         />
-                        {t.name}
+                        Personal
                       </label>
-                    ))}
+                      {teams.map((t) => (
+                        <label key={t.id} className="check-line">
+                          <input
+                            type="checkbox"
+                            checked={teamIds.includes(t.id)}
+                            onChange={(e) =>
+                              setTeamIds((ids) =>
+                                e.target.checked
+                                  ? [...ids, t.id]
+                                  : ids.filter((x) => x !== t.id),
+                              )
+                            }
+                          />
+                          {t.name}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <ToolsetChoice
+                    idPrefix="agent-key-tools"
+                    value={toolsets}
+                    bookings
+                    onChange={setToolsets}
+                  />
+                  <label className="switch-line">
+                    <input
+                      type="checkbox"
+                      role="switch"
+                      className="ai-switch"
+                      checked={hideOutside}
+                      onChange={(e) => setHideOutside(e.target.checked)}
+                    />
+                    <span>
+                      Hide outside content
+                      <small>{AGENT_HIDE_OUTSIDE_TEXT}</small>
+                    </span>
+                  </label>
+                  <div className="settings-field">
+                    <label htmlFor="agent-key-days">Lasts</label>
+                    <Select
+                      disabled={action.pending}
+                      id="agent-key-days"
+                      value={days}
+                      onChange={(e) => setDays(Number(e.target.value))}
+                    >
+                      {EXPIRY_CHOICES.map((d) => (
+                        <option key={d} value={d}>
+                          {d === 365 ? "A year" : `${d} days`}
+                        </option>
+                      ))}
+                    </Select>
                   </div>
                 </fieldset>
-                <ToolsetChoice
-                  idPrefix="agent-key-tools"
-                  value={toolsets}
-                  bookings
-                  onChange={setToolsets}
-                />
-                <label className="switch-line">
-                  <input
-                    type="checkbox"
-                    role="switch"
-                    className="ai-switch"
-                    checked={hideOutside}
-                    onChange={(e) => setHideOutside(e.target.checked)}
-                  />
-                  <span>
-                    Hide outside content
-                    <small>{AGENT_HIDE_OUTSIDE_TEXT}</small>
-                  </span>
-                </label>
-                <div className="settings-field">
-                  <label htmlFor="agent-key-days">Lasts</label>
-                  <Select
-                    id="agent-key-days"
-                    value={days}
-                    onChange={(e) => setDays(Number(e.target.value))}
-                  >
-                    {EXPIRY_CHOICES.map((d) => (
-                      <option key={d} value={d}>
-                        {d === 365 ? "A year" : `${d} days`}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
                 <button className="primary" disabled={action.pending}>
                   <KeyRound size={14} /> Make key
                 </button>

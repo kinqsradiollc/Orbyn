@@ -1,12 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Columns3,
-  Database,
-  Pencil,
-  RefreshCw,
-  Search,
-  Table2,
-} from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
+import { Columns3, Pencil, RefreshCw, Search, Table2 } from "lucide-react";
 import type {
   AdminDatabaseRows,
   AdminDatabaseTable,
@@ -18,6 +13,7 @@ import { useConfirm } from "../../components/Confirm";
 import type { TeamActions } from "../teams/TeamDetail";
 import "./database.css";
 import { Select } from "../../components/Select";
+import { useElementWidth } from "../../hooks/useElementWidth";
 import { errorText } from "../../lib/errors";
 
 type Panel = "Rows" | "Columns" | "Indexes";
@@ -45,6 +41,8 @@ export function AdminDatabase({
   refresh: refreshPlanner,
 }: Pick<TeamActions, "report" | "user" | "refresh">) {
   const { ask } = useConfirm();
+  const { ref: paneRef, width: paneWidth } = useElementWidth();
+  const compact = paneWidth < 900;
   const [tables, setTables] = useState<AdminDatabaseTable[]>([]);
   const [selected, setSelected] = useState("");
   const [detail, setDetail] = useState<AdminDatabaseTableDetail | null>(null);
@@ -258,16 +256,16 @@ export function AdminDatabase({
   const editableTable = selected === "users" || selected === "teams";
 
   return (
-    <section className="admin-database">
+    <section
+      ref={paneRef}
+      className={"admin-database" + (compact ? " is-compact" : "")}
+    >
       <div className="card db-intro">
         <div>
-          <span className="db-eyebrow">
-            <Database size={15} /> PUBLIC SCHEMA
-          </span>
-          <h2>Database explorer</h2>
+          <h2>Database</h2>
           <p>
-            Inspect schema and redacted rows. Edit validated user fields and
-            team names.
+            Private values stay masked. Editing is limited to accounts and team
+            names.
           </p>
         </div>
         <div className="db-intro-actions">
@@ -311,43 +309,66 @@ export function AdminDatabase({
         </p>
       )}
       <div className="db-layout">
-        <aside className="card db-sidebar" aria-label="Database tables">
-          <label className="db-search">
-            <Search size={15} />
-            <input
-              aria-label="Find a database table"
-              placeholder="Find a table…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+        {compact ? (
+          <label className="db-table-picker">
+            Table
+            <Select
+              searchable
+              aria-label="Database table"
+              value={selected}
+              disabled={saving}
+              onChange={(e) => {
+                setSelected(e.target.value);
+                setPanel("Rows");
+                setEditing(null);
+              }}
+            >
+              {tables.map((table) => (
+                <option key={table.name} value={table.name}>
+                  {table.name}
+                </option>
+              ))}
+            </Select>
           </label>
-          <div className="db-table-count">
-            TABLES <span>{filtered.length}</span>
-          </div>
-          <div className="db-table-list">
-            {filtered.map((table) => (
-              <button
-                key={table.name}
-                className={selected === table.name ? "selected" : ""}
-                onClick={() => {
-                  setSelected(table.name);
-                  setPanel("Rows");
-                  setEditing(null);
-                }}
-                aria-current={selected === table.name ? "true" : undefined}
-              >
-                <Table2 size={14} /> <span>{table.name}</span>
-              </button>
-            ))}
-            {!filtered.length && <p className="muted">No matching tables.</p>}
-          </div>
-        </aside>
+        ) : (
+          <aside className="card db-sidebar" aria-label="Database tables">
+            <label className="db-search">
+              <Search size={15} />
+              <input
+                aria-label="Find a database table"
+                placeholder="Find a table…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </label>
+            <div className="db-table-count">
+              TABLES <span>{filtered.length}</span>
+            </div>
+            <div className="db-table-list">
+              {filtered.map((table) => (
+                <button
+                  key={table.name}
+                  disabled={saving}
+                  className={selected === table.name ? "selected" : ""}
+                  onClick={() => {
+                    setSelected(table.name);
+                    setPanel("Rows");
+                    setEditing(null);
+                  }}
+                  aria-current={selected === table.name ? "true" : undefined}
+                >
+                  <Table2 size={14} /> <span>{table.name}</span>
+                </button>
+              ))}
+              {!filtered.length && <p className="muted">No matching tables.</p>}
+            </div>
+          </aside>
+        )}
         <div className="card db-main">
           {detail ? (
             <>
               <div className="db-main-head">
                 <div>
-                  <span className="db-eyebrow">public / table</span>
                   <h2>
                     <Table2 size={20} /> {detail.table.name}
                   </h2>
@@ -358,16 +379,11 @@ export function AdminDatabase({
                   </p>
                 </div>
               </div>
-              <div
-                className="db-tabs"
-                role="tablist"
-                aria-label="Table details"
-              >
+              <div className="db-tabs" role="group" aria-label="Table details">
                 {(["Rows", "Columns", "Indexes"] as const).map((name) => (
                   <button
                     key={name}
-                    role="tab"
-                    aria-selected={panel === name}
+                    aria-pressed={panel === name}
                     className={panel === name ? "active" : ""}
                     onClick={() => setPanel(name)}
                   >
@@ -390,9 +406,10 @@ export function AdminDatabase({
                       : "View mode · 25 rows per page · •••• means a masked value"}
                   </p>
                   {editing && (
-                    <div
-                      className="db-editor"
-                      aria-label={`Edit ${editing.table} row`}
+                    <DatabaseEditor
+                      label={`Edit ${editing.table} row`}
+                      busy={saving}
+                      onClose={() => setEditing(null)}
                     >
                       <div className="db-editor-head">
                         <strong>
@@ -480,7 +497,7 @@ export function AdminDatabase({
                           {saving ? "Saving…" : "Review and save"}
                         </button>
                       </div>
-                    </div>
+                    </DatabaseEditor>
                   )}
                   <div className="db-grid-scroll">
                     <table className="data-table db-grid">
@@ -512,9 +529,8 @@ export function AdminDatabase({
                                 className={
                                   row[column.name] === "••••" ? "db-masked" : ""
                                 }
-                                title={display(row[column.name])}
                               >
-                                {display(row[column.name])}
+                                <DatabaseValue value={row[column.name]} />
                               </td>
                             ))}
                           </tr>
@@ -615,5 +631,52 @@ export function AdminDatabase({
         </div>
       </div>
     </section>
+  );
+}
+
+/** Long redacted values remain available on touch and keyboard, not just hover. */
+function DatabaseValue({ value }: { value: unknown }) {
+  const text = display(value);
+  if (text.length <= 80) return <>{text}</>;
+  return (
+    <details className="db-value-detail">
+      <summary>{text.slice(0, 80)}…</summary>
+      <pre>{text}</pre>
+    </details>
+  );
+}
+
+function DatabaseEditor({
+  label,
+  busy,
+  onClose,
+  children,
+}: {
+  label: string;
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget && !busy) onClose();
+      }}
+    >
+      <section
+        className="modal db-editor"
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        ref={focus.ref}
+        data-modal-focus={focus.id}
+        tabIndex={-1}
+      >
+        {children}
+      </section>
+    </div>,
+    document.body,
   );
 }

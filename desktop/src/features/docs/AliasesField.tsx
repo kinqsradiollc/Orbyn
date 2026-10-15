@@ -1,4 +1,7 @@
-import { useEffect, useState } from "react";
+import { usePaneLeaveGuard } from "../../app/page-commands";
+import { useConfirm } from "../../components/Confirm";
+import { session } from "../../lib/session";
+import { useEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { MAX_ALIASES } from "@orbyn/core";
 
@@ -21,13 +24,68 @@ export function AliasesField({
 }) {
   const [list, setList] = useState(aliases);
   const [typed, setTyped] = useState("");
+  const mutation = useRef(false);
+  const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   useEffect(() => setList(aliases), [aliases]);
-  const save = (next: string[]) => {
+  const { ask } = useConfirm();
+  const mounted = useRef(true);
+  const account = useRef(session.get()).current;
+  const latestTyped = useRef(typed);
+  latestTyped.current = typed;
+  const deciding = useRef(false);
+  const current = () => mounted.current && account === session.get();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  usePaneLeaveGuard(async () => {
+    if (mutation.current || deciding.current) return false;
+    const value = latestTyped.current;
+    if (!value.trim()) return true;
+    deciding.current = true;
+    try {
+      if (
+        !(await ask({
+          title: "Discard another name?",
+          body: "The name you haven't added will be lost.",
+          confirmLabel: "Discard name",
+          cancelLabel: "Keep editing",
+        }))
+      )
+        return false;
+      if (!current() || latestTyped.current !== value || mutation.current)
+        return false;
+      setTyped("");
+      return true;
+    } finally {
+      deciding.current = false;
+    }
+  });
+
+  const save = (next: string[], added?: string) => {
+    if (mutation.current || deciding.current || !canWrite || !current()) return;
+    const submitted = latestTyped.current;
+    mutation.current = true;
     setBusy(true);
+    setError("");
     void onSave(next)
-      .then((kept) => setList(kept))
-      .finally(() => setBusy(false));
+      .then(
+        (kept) => {
+          if (!current()) return;
+          setList(kept);
+          if (added && latestTyped.current === submitted) setTyped("");
+        },
+        () => {
+          if (current()) setError("Could not save names. Try again.");
+        },
+      )
+      .finally(() => {
+        mutation.current = false;
+        if (current()) setBusy(false);
+      });
   };
   if (!canWrite && !list.length) return null;
   return (
@@ -54,18 +112,25 @@ export function AliasesField({
           aria-label="Add another name"
           maxLength={80}
           disabled={busy}
-          onChange={(e) => setTyped(e.target.value)}
+          onChange={(e) => {
+            latestTyped.current = e.target.value;
+            setTyped(e.target.value);
+          }}
           onKeyDown={(e) => {
             if (e.key !== "Enter" && e.key !== ",") return;
             e.preventDefault();
             const name = typed.trim();
             if (!name) return;
-            setTyped("");
             if (list.some((x) => x.toLowerCase() === name.toLowerCase()))
               return;
-            save([...list, name]);
+            save([...list, name], name);
           }}
         />
+      )}
+      {error && (
+        <span className="error" role="alert">
+          {error}
+        </span>
       )}
     </div>
   );

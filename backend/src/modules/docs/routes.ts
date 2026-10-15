@@ -97,7 +97,11 @@ import {
 import { adoptDeviceZone } from "../planner/timezone.js";
 import { syncSavedPages } from "../study/service.js";
 import { docToDocx } from "./docx.js";
-import { exportRenderedPdf, exportRenderedHtml } from "./pdf-client.js";
+import {
+  exportRenderedPdf,
+  exportRenderedHtml,
+  compileLatexPdf,
+} from "./pdf-client.js";
 import { exportImages } from "./export-images.js";
 import { claimToken } from "../imports/tokens.js";
 import { visibleItems } from "../../lib/visibility.js";
@@ -170,6 +174,50 @@ import {
 const AGENDA_GET_DEPRECATED = Date.UTC(2026, 8, 26);
 
 export async function docRoutes(app: FastifyInstance) {
+  app.post(
+    "/docs/:id/latex/preview",
+    {
+      bodyLimit: 1_100_000,
+      config: { rateLimit: { max: 6, timeWindow: "1 minute" } },
+      onRequest: async (request) => {
+        await authenticate(request);
+      },
+    },
+    async (request, reply) => {
+      const user = await authenticate(request);
+      const docId = idParam(request);
+      const body = z
+        .object({
+          source: z
+            .string()
+            .min(1)
+            .max(256 * 1024),
+          version: z.number().int().positive(),
+        })
+        .strict()
+        .parse(request.body);
+      if (Buffer.byteLength(body.source) > 256 * 1024)
+        fail(413, "LaTeX source is too large.");
+      const authorize = () =>
+        transaction(async (db) => {
+          const current = await requireDoc(db, docId, user, "items:write");
+          if (current.version !== body.version)
+            fail(
+              409,
+              "This document changed. Save or refresh before compiling.",
+            );
+        });
+      await authorize();
+      const pdf = await compileLatexPdf(body.source, request, reply);
+      // Permissions and revision may have changed while the compiler was running.
+      await authorize();
+      return reply
+        .header("Cache-Control", "no-store")
+        .header("Content-Disposition", 'inline; filename="document.pdf"')
+        .type("application/pdf")
+        .send(pdf);
+    },
+  );
   app.get("/docs/:id/maintenance/runs", async (r, reply) => {
     reply.header("Cache-Control", "no-store");
     const user = await authenticate(r);

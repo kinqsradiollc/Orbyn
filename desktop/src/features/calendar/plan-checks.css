@@ -136,7 +136,9 @@
 }
 .plan-experiment-form textarea {
   min-height: 70px;
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
 }
 .plan-experiment-actions {
   display: flex;
@@ -179,4 +181,111 @@
 .experiment-evidence thead th {
   font-weight: 600;
   color: var(--color-textSoft);
+}
+
+.plan-experiments-toggle {
+  flex-wrap: wrap;
+  min-height: 44px;
+}
+.plan-experiments-toggle strong,
+.plan-experiments-toggle .muted {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.plan-experiment-row {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.plan-experiment-row p {
+  white-space: pre-wrap;
+}
+.experiment-details > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.experiment-details > summary::before {
+  content: "+";
+  width: 18px;
+  flex-shrink: 0;
+}
+.experiment-details[open] > summary::before {
+  content: "−";
+}
+.experiment-details > p {
+  margin-block: 8px;
+}
+.experiment-fields {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.experiment-dialog {
+  width: min(480px, calc(100vw - 24px));
+  padding: 20px;
+  overflow-wrap: anywhere;
+}
+.experiment-dialog h2 {
+  font-size: 18px;
+  margin: 0 0 16px;
+}
+.experiment-dialog .plan-experiment-form > p {
+  margin: 0;
+  font-size: 13px;
+}
+.experiment-evidence {
+  table-layout: fixed;
+}
+.experiment-evidence th,
+.experiment-evidence td {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 420px) {
+  .experiment-dialog {
+    padding: 16px;
+  }
+}
+
+.what-if-dialog {
+  width: min(560px, calc(100vw - 24px));
+  padding: 20px;
+}
+.what-if-dialog .what-if {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.what-if-fields {
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+}
+.what-if-fields label {
+  min-width: 0;
+  font-size: 13px;
+}
+.what-if-actions {
+  flex-wrap: wrap;
+}
+.what-if-scope {
+  margin: 0;
+  font-size: 13px;
+}
+.reality-line {
+  flex-wrap: wrap;
+}
+.reality-line > span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 420px) {
+  .what-if-dialog {
+    padding: 16px;
+  }
 }

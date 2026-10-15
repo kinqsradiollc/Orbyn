@@ -110,9 +110,7 @@ function Meta({
       {icon && (
         <Icon name={icon} size={large ? 12 : 10} color={tint ?? colors.muted} />
       )}
-      <Text numberOfLines={1} style={[s.text, large && s.textLarge]}>
-        {label}
-      </Text>
+      <Text style={[s.text, large && s.textLarge]}>{label}</Text>
     </View>
   );
 }
@@ -124,16 +122,17 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      maxWidth: 200,
+      maxWidth: "100%",
       backgroundColor: colors.surfaceMuted,
       borderRadius: radii.pill,
       paddingHorizontal: 7,
       paddingVertical: 2,
     },
-    chipLarge: { paddingHorizontal: 9, paddingVertical: 4, maxWidth: 260 },
-    dot: { width: 7, height: 7, borderRadius: 4 },
+    chipLarge: { paddingHorizontal: 9, paddingVertical: 4, maxWidth: "100%" },
+    dot: { width: 7, height: 7, borderRadius: radii.pill },
     text: {
       flexShrink: 1,
+      minWidth: 0,
       fontFamily: fonts.semibold,
       fontSize: 11,
       color: colors.textSoft,

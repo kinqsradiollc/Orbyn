@@ -48,22 +48,59 @@ export function BookingSheet({
   onClose: () => void;
   onDismiss?: () => void;
 }) {
+  const [pageDraft, setPageDraft] = useState<Extract<
+    Screen,
+    { kind: "page" }
+  > | null>(null);
+  const [newDraftVersion, setNewDraftVersion] = useState(0);
+  const [pageSaved, setPageSaved] = useState(false);
+  const [pageBusy, setPageBusy] = useState(false);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [detailBusy, setDetailBusy] = useState(false);
   const [stack, setStack] = useState<Screen[]>([HOME]);
   const [filters, setFilters] = useState<BookingFilters>(FILTERS);
   const [pages, setPages] = useState<BookingPage[] | null>(null);
   const top = stack[stack.length - 1];
-  const push = (screen: Screen) => setStack((s) => [...s, screen]);
-  const pop = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  const push = (screen: Screen) => {
+    if (screen.kind === "page") {
+      if (!screen.page && pageSaved)
+        setNewDraftVersion((version) => version + 1);
+      if (
+        (screen.page?.id ?? null) !== (pageDraft?.page?.id ?? null) ||
+        (!screen.page && pageSaved)
+      )
+        setPageSaved(false);
+      setPageDraft(screen);
+    }
+    setStack((s) => [...s, screen]);
+  };
+  const pop = () => {
+    if (inviteBusy || pageBusy || detailBusy) return;
+    setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  };
   const onPages = useCallback((next: BookingPage[]) => setPages(next), []);
   const patchFilters = (patch: Partial<BookingFilters>) =>
     setFilters((f) => ({ ...f, ...patch }));
 
   useEffect(() => {
+    setStack([HOME]);
+    setPages(null);
+    setFilters(FILTERS);
+    setPageDraft(null);
+    setPageSaved(false);
+    setNewDraftVersion((version) => version + 1);
+    setPageBusy(false);
+    setInviteBusy(false);
+    setDetailBusy(false);
+  }, [user?.id]);
+
+  useEffect(() => {
     if (visible && bookingId)
       setStack([HOME, { kind: "booking", id: bookingId }]);
-  }, [visible, bookingId]);
+  }, [visible, bookingId, user?.id]);
 
   const close = () => {
+    if (inviteBusy || pageBusy || detailBusy) return;
     setStack([HOME]);
     onClose();
   };
@@ -77,6 +114,7 @@ export function BookingSheet({
   return (
     <Sheet
       visible={visible}
+      closeDisabled={inviteBusy || pageBusy || detailBusy}
       title={title}
       onClose={close}
       onBack={stack.length > 1 ? pop : undefined}
@@ -93,31 +131,42 @@ export function BookingSheet({
           onOpenBooking={(b) => push({ kind: "booking", id: b.id })}
           onNewInvite={() => push({ kind: "invite" })}
         />
-      ) : top.kind === "invite" ? (
-        <InviteEditor
-          teams={teams}
-          userId={user?.id}
-          onDone={() => {
-            patchFilters({ tab: "invites" });
-            pop();
-          }}
+      ) : top.kind === "invite" || top.kind === "page" ? null : (
+        <BookingDetailView
+          key={top.id}
+          id={top.id}
+          onBusyChange={setDetailBusy}
+          pages={pages}
+          onPages={onPages}
+          // Page counts change with approvals and cancellations.
+          onChanged={() => setPages(null)}
         />
-      ) : top.kind === "page" ? (
+      )}
+      {pageDraft && (
         <PageEditor
-          key={top.page?.id ?? "new"}
-          page={top.page}
+          onBusyChange={setPageBusy}
+          key={pageDraft.page?.id ?? `new-${newDraftVersion}`}
+          visible={top.kind === "page"}
+          page={pageDraft.page}
           user={user}
           teams={teams}
-          onSaved={(saved) =>
+          onSaved={(saved) => {
+            setPageSaved(true);
             setPages((list) =>
               list?.some((p) => p.id === saved.id)
                 ? list.map((p) => (p.id === saved.id ? saved : p))
                 : [...(list ?? []), saved],
-            )
-          }
+            );
+          }}
           onDeleted={() => {
             patchFilters({ pageId: null });
-            pop();
+            setPages(null);
+            setPageDraft(null);
+            setPageSaved(false);
+            // Completed deletion may leave while user navigation stays locked.
+            setStack((screens) =>
+              screens.length > 1 ? screens.slice(0, -1) : screens,
+            );
           }}
           onShowBookings={(page) => {
             patchFilters({
@@ -128,16 +177,17 @@ export function BookingSheet({
             setStack([HOME]);
           }}
         />
-      ) : (
-        <BookingDetailView
-          key={top.id}
-          id={top.id}
-          pages={pages}
-          onPages={onPages}
-          // Page counts change with approvals and cancellations.
-          onChanged={() => setPages(null)}
-        />
       )}
+      <InviteEditor
+        visible={top.kind === "invite"}
+        onBusyChange={setInviteBusy}
+        teams={teams}
+        userId={user?.id}
+        onDone={() => {
+          patchFilters({ tab: "invites" });
+          pop();
+        }}
+      />
     </Sheet>
   );
 }

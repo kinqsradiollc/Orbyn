@@ -1,4 +1,8 @@
-/* "Today" on the Overview: events, sessions and what's due, in time order. */
+/* "Today" responds to the space left beside other panes. */
+.today-card {
+  container: today-pane / inline-size;
+  min-width: 0;
+}
 .today-card .section-heading {
   padding-bottom: 8px;
 }
@@ -184,8 +188,7 @@ button.today-title:hover {
   padding: 6px 18px 8px;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
+  letter-spacing: normal;
   color: var(--color-textMuted);
 }
 .today-unfinished h3 span {
@@ -261,4 +264,57 @@ button.today-title:hover {
   list-style: none;
   margin: 0;
   padding: 0;
+}
+
+@container today-pane (max-width: 560px) {
+  .today-list {
+    grid-template-columns: 24px minmax(0, 1fr);
+    padding: 0 12px 12px;
+  }
+  .today-icon {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: start;
+  }
+  .today-lead {
+    grid-column: 2;
+    grid-row: 1;
+    white-space: normal;
+  }
+  .today-main {
+    grid-column: 2;
+    grid-row: 2;
+  }
+  .today-action,
+  .today-buttons {
+    grid-column: 2;
+    grid-row: 3;
+    justify-self: start;
+    margin-left: 0;
+    white-space: normal;
+    flex-wrap: wrap;
+  }
+  .today-checkin .today-buttons {
+    justify-content: flex-start;
+  }
+  .today-list.is-unfinished {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .today-list.is-unfinished .today-main {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .today-list.is-unfinished .today-buttons {
+    grid-column: 1;
+    grid-row: 2;
+  }
+}
+.assistant-ideas-list details summary {
+  min-height: 44px;
+  padding-block: 10px;
+  cursor: pointer;
+}
+.assistant-ideas-list details p {
+  margin-block: 0 8px;
+  overflow-wrap: anywhere;
 }

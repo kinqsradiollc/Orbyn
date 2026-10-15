@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -26,6 +26,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
+import { session } from "../../lib/session";
 import "./oauth.css";
 
 /**
@@ -95,7 +96,7 @@ function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="auth-page oauth-page">
       <main className="auth-form">
-        <div className="oauth-card fade-up motion-slow">
+        <div className="oauth-card">
           <div className="brand">
             <Orbit /> orbyn<span>•</span>
           </div>
@@ -178,7 +179,10 @@ export function OAuthConsentPage({
   signIn,
   onSwitchAccount,
 }: Props) {
-  const request = useMemo(() => oauthRequestFrom(location.search), []);
+  const search = location.search;
+  const request = useMemo(() => oauthRequestFrom(search), [search]);
+  const readKey = JSON.stringify([search, signedIn, user?.id, session.get()]);
+  const [checkedFor, setCheckedFor] = useState("");
   const [check, setCheck] = useState<OAuthCheck | null>(null);
   const [problem, setProblem] = useState("");
   const isFramed = framed();
@@ -187,14 +191,25 @@ export function OAuthConsentPage({
     if (isFramed) return;
     let alive = true;
     setProblem("");
+    setCheck(null);
     client.oauthCheck(request).then(
-      (c) => alive && setCheck(c),
-      (e) => alive && setProblem(errorText(e)),
+      (c) => {
+        if (alive) {
+          setCheck(c);
+          setCheckedFor(readKey);
+        }
+      },
+      (e) => {
+        if (alive) {
+          setProblem(errorText(e));
+          setCheckedFor(readKey);
+        }
+      },
     );
     return () => {
       alive = false;
     };
-  }, [request, signedIn, user?.id, isFramed]);
+  }, [request, readKey, isFramed]);
 
   useEffect(() => {
     // Signed out: kept for this tab, in case signing in leaves the page (a
@@ -214,7 +229,7 @@ export function OAuthConsentPage({
       </Shell>
     );
 
-  if (problem)
+  if (problem && checkedFor === readKey)
     return (
       <Shell>
         <span className="eyebrow">CONNECT AN APP</span>
@@ -226,7 +241,7 @@ export function OAuthConsentPage({
       </Shell>
     );
 
-  if (!check)
+  if (!check || checkedFor !== readKey)
     return (
       <Shell>
         <p className="muted">Checking the app…</p>
@@ -251,6 +266,7 @@ export function OAuthConsentPage({
 
   return (
     <Consent
+      key={readKey}
       request={request}
       check={check}
       account={check.account}
@@ -287,6 +303,12 @@ function Consent({
   );
   const [personal, setPersonal] = useState(existing?.personal ?? true);
   const usable = account.teams.filter((t) => t.agent_access !== "off");
+  const [teamSearch, setTeamSearch] = useState("");
+  const matchingTeams = account.teams.filter((team) =>
+    team.name
+      .toLocaleLowerCase()
+      .includes(teamSearch.trim().toLocaleLowerCase()),
+  );
   const [teamIds, setTeamIds] = useState<string[]>(
     existing?.team_ids?.filter((id) => usable.some((t) => t.id === id)) ?? [],
   );
@@ -317,16 +339,42 @@ function Consent({
     new Date(account.reauth_until).getTime() > Date.now();
   const needsReauth = (access === "write" || bookings) && !fresh;
 
-  const go = (to: string) => window.location.assign(to);
-
-  const allow = async () => {
-    if (!personal && !teamIds.length) {
-      setError("Choose at least one space: Personal or a team.");
-      return;
-    }
+  const owner = session.get();
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const current = () => mounted.current && session.get() === owner;
+  const run = async (fn: () => Promise<void>) => {
+    if (pending.current || !current()) return;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
+      await fn();
+    } catch (e) {
+      if (!current()) return;
+      if (e instanceof HttpError && e.message === "totp_required") {
+        setNeedCode(true);
+        setError("Enter your authenticator code too.");
+      } else if (e instanceof HttpError && e.message === "reauth_required")
+        setError("Confirm it’s you below, then allow.");
+      else setError(errorText(e));
+    } finally {
+      pending.current = false;
+      if (current()) setBusy(false);
+    }
+  };
+  const allow = () =>
+    run(async () => {
+      if (!personal && !teamIds.length) {
+        setError("Choose Personal or at least one team.");
+        return;
+      }
       const { redirect_to } = await client.oauthAllow({
         request,
         access,
@@ -338,69 +386,41 @@ function Consent({
         hide_outside_content: hideOutside,
         expires_in_days: days,
       });
-      go(redirect_to);
-    } catch (e) {
-      if (e instanceof HttpError && e.message === "reauth_required")
-        setError("Confirm it’s you first (below), then allow.");
-      else setError(errorText(e));
-      setBusy(false);
-    }
-  };
-
-  const deny = async () => {
-    setBusy(true);
-    try {
+      if (current()) window.location.assign(redirect_to);
+    });
+  const deny = () =>
+    run(async () => {
       const { redirect_to } = await client.oauthDeny(request);
-      go(redirect_to);
-    } catch (e) {
-      setError(errorText(e));
-      setBusy(false);
-    }
-  };
-
-  const confirmPassword = async () => {
-    setBusy(true);
-    setError("");
-    try {
+      if (current()) window.location.assign(redirect_to);
+    });
+  const confirmPassword = () =>
+    run(async () => {
       const r = await client.reauth({
         password,
         ...(code.trim() ? { code: code.trim() } : {}),
       });
+      if (!current()) return;
       setPassword("");
       setCode("");
       setNeedCode(false);
       onReauthed(r.reauth_until);
-    } catch (e) {
-      if (e instanceof HttpError && e.message === "totp_required") {
-        setNeedCode(true);
-        setError("Enter the code from your authenticator app too.");
-      } else setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const confirmPasskey = async () => {
-    setBusy(true);
-    setError("");
-    try {
+    });
+  const confirmPasskey = () =>
+    run(async () => {
       const { handle, options } = await client.reauthOptions();
+      if (!current()) return;
       const response = await startAuthentication({
         optionsJSON: options as Parameters<
           typeof startAuthentication
         >[0]["optionsJSON"],
       });
+      if (!current()) return;
       const r = await client.reauth({
         handle,
         response: response as unknown as Record<string, unknown>,
       });
-      onReauthed(r.reauth_until);
-    } catch (e) {
-      setError(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
+      if (current()) onReauthed(r.reauth_until);
+    });
 
   const toggleTeam = (id: string, on: boolean) =>
     setTeamIds((ids) => (on ? [...ids, id] : ids.filter((x) => x !== id)));
@@ -408,22 +428,27 @@ function Consent({
   return (
     <Shell>
       <span className="eyebrow">CONNECT AN APP</span>
-      <h2>{check.client.name} wants to use your Orbyn</h2>
+      <h2>Connect {check.client.name}</h2>
       <WhoAsks check={check} />
       <p className="oauth-account muted">
         Signed in as <strong>{account.name}</strong> ({account.email}).{" "}
-        <button type="button" className="link-button" onClick={onSwitchAccount}>
-          Not you? Switch account
+        <button
+          type="button"
+          className="link-button"
+          disabled={busy}
+          onClick={onSwitchAccount}
+        >
+          Switch account
         </button>
       </p>
       {existing && (
         <p className="oauth-existing">
-          You’ve connected {check.client.name} before. Allowing again replaces
-          its choices with these.
+          This replaces the permissions for your existing {check.client.name}{" "}
+          connection.
         </p>
       )}
 
-      <fieldset className="oauth-group">
+      <fieldset className="oauth-group" disabled={busy}>
         <legend>What it may do</legend>
         <p className="oauth-hint muted">
           {check.client.name} asked to{" "}
@@ -450,7 +475,7 @@ function Consent({
               <strong>{AGENT_ACCESS_LABELS[a].name}</strong>
               <small>
                 {a === "write"
-                  ? "Full power: it works for you directly, deletes of your own things included (30 days to undo). It asks you first about a teammate’s work, inviting people, publishing and more than 50 changes at once. Change this any time in Settings → Connected agents."
+                  ? "Can change and delete your items (30 days to undo). Teammates’ work, invitations, publishing and batches over 50 changes need your approval."
                   : AGENT_ACCESS_LABELS[a].blurb}
               </small>
             </span>
@@ -458,7 +483,7 @@ function Consent({
         ))}
       </fieldset>
 
-      <fieldset className="oauth-group">
+      <fieldset className="oauth-group" disabled={busy}>
         <legend>In these spaces</legend>
         <label className="oauth-check">
           <input
@@ -468,30 +493,48 @@ function Consent({
           />
           <span>Personal</span>
         </label>
-        {account.teams.map((t) => {
-          const note = teamNote(t);
-          const off = t.agent_access === "off";
-          return (
-            <label
-              key={t.id}
-              className={"oauth-check" + (off ? " is-off" : "")}
-            >
-              <input
-                type="checkbox"
-                disabled={off}
-                checked={!off && teamIds.includes(t.id)}
-                onChange={(e) => toggleTeam(t.id, e.target.checked)}
-              />
-              <span>
-                {t.name} <span className="muted">· {t.role}</span>
-                {note && <small>{note}</small>}
-              </span>
-            </label>
-          );
-        })}
+        {account.teams.length > 6 && (
+          <label className="oauth-team-search">
+            Find a team
+            <input
+              type="search"
+              value={teamSearch}
+              onChange={(e) => setTeamSearch(e.target.value)}
+            />
+          </label>
+        )}
+        {account.teams.length > 0 && (
+          <p className="muted oauth-hint">{teamIds.length} teams selected</p>
+        )}
+        <div className="oauth-teams">
+          {matchingTeams.map((t) => {
+            const note = teamNote(t);
+            const off = t.agent_access === "off";
+            return (
+              <label
+                key={t.id}
+                className={"oauth-check" + (off ? " is-off" : "")}
+              >
+                <input
+                  type="checkbox"
+                  disabled={off}
+                  checked={!off && teamIds.includes(t.id)}
+                  onChange={(e) => toggleTeam(t.id, e.target.checked)}
+                />
+                <span>
+                  {t.name} <span className="muted">· {t.role}</span>
+                  {note && <small>{note}</small>}
+                </span>
+              </label>
+            );
+          })}
+          {account.teams.length > 0 && !matchingTeams.length && (
+            <p className="muted">No matching teams. Change your search.</p>
+          )}
+        </div>
       </fieldset>
 
-      <fieldset className="oauth-group">
+      <fieldset className="oauth-group" disabled={busy}>
         <legend>Also let it use</legend>
         <p className="muted oauth-hint">
           {AGENT_TOOLSET_LABELS.core.name} are always on.
@@ -528,7 +571,7 @@ function Consent({
         </label>
       </fieldset>
 
-      <fieldset className="oauth-group">
+      <fieldset className="oauth-group" disabled={busy}>
         <legend>Choices</legend>
         <label className="oauth-switch">
           <input
@@ -558,7 +601,44 @@ function Consent({
             <small>{AGENT_HIDE_OUTSIDE_TEXT}</small>
           </span>
         </label>
-        <div className="oauth-days" role="radiogroup" aria-label="Lasts">
+        <div
+          className="oauth-days"
+          role="radiogroup"
+          aria-label="Lasts"
+          onKeyDown={(event) => {
+            if (
+              ![
+                "ArrowLeft",
+                "ArrowRight",
+                "ArrowUp",
+                "ArrowDown",
+                "Home",
+                "End",
+              ].includes(event.key)
+            )
+              return;
+            const buttons = Array.from(
+              event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                'button[role="radio"]:not(:disabled)',
+              ),
+            );
+            if (!buttons.length) return;
+            const index = buttons.indexOf(event.target as HTMLButtonElement);
+            if (index < 0) return;
+            event.preventDefault();
+            const next =
+              event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? buttons.length - 1
+                  : (index +
+                      (["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1) +
+                      buttons.length) %
+                    buttons.length;
+            buttons[next].click();
+            buttons[next].focus();
+          }}
+        >
           <span>Lasts</span>
           {dayChoices.map((d) => (
             <button
@@ -566,6 +646,7 @@ function Consent({
               type="button"
               role="radio"
               aria-checked={days === d}
+              tabIndex={days === d ? 0 : -1}
               className={"oauth-chip" + (days === d ? " is-on" : "")}
               onClick={() => setDays(d)}
             >
@@ -594,6 +675,7 @@ function Consent({
               autoComplete="current-password"
               placeholder="Your password"
               aria-label="Your password"
+              disabled={busy}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               maxLength={128}
@@ -604,6 +686,7 @@ function Consent({
                 autoComplete="one-time-code"
                 placeholder="Authenticator code"
                 aria-label="Authenticator code"
+                disabled={busy}
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
                 maxLength={20}
@@ -656,7 +739,7 @@ function Consent({
         </button>
       </div>
       <p className="muted oauth-foot">
-        We'll email you about this connection. Manage it in Settings → Connected
+        We'll email you a confirmation. Manage access in Settings → Connected
         agents.
       </p>
     </Shell>

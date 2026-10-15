@@ -4,20 +4,13 @@ import { ChatgptUsage } from "./ChatgptUsage";
 import { ManagedAiUsage } from "./ManagedAiUsage";
 import { CHATGPT_USAGE_URL, chatgptExecutorDeviceLabel } from "@orbyn/core";
 import React, { useEffect, useRef, useState } from "react";
-import {
-  Platform,
-  Linking,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { Alert } from "../../lib/alert";
-import { Pressable } from "../../motion";
+import { Platform, Linking, ScrollView, Text, View } from "react-native";
 import { useChatgptRemote } from "../../hooks/useChatgptRemote";
 import { MoreMenu } from "../../components/MoreMenu";
 import { SmallAction } from "../../components/SmallAction";
 import { colors } from "../../theme";
+import { ChoicePicker } from "../../components/ChoicePicker";
+import { InlineDetails } from "../../components/InlineDetails";
 import { shared } from "../../styles";
 import { session } from "../../lib/session";
 import { errorText } from "../../lib/errors";
@@ -98,7 +91,6 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       }),
     [userId],
   );
-  const [query, setQuery] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const [choosing, setChoosing] = useState(false);
@@ -266,11 +258,12 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
   const busy = state.status === "loading" || state.saving;
   const catalog = state.catalog;
   const models = catalog?.models ?? [];
-  const filtered = models.filter((m) =>
-    `${m.display_name} ${m.slug}`
-      .toLowerCase()
-      .includes(query.trim().toLowerCase()),
-  );
+  const modelNameCounts = new Map<string, number>();
+  for (const model of models)
+    modelNameCounts.set(
+      model.display_name,
+      (modelNameCounts.get(model.display_name) ?? 0) + 1,
+    );
   const available = state.status === "ready" && catalog?.status === "ready";
   const providerReady =
     available &&
@@ -302,7 +295,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
                 ? "Connecting…"
                 : savedAccounts?.selected
                   ? "Reconnect current account"
-                  : "Connect to ChatGPT"
+                  : "Connect ChatGPT"
             }
             disabled={
               !userId ||
@@ -328,9 +321,9 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         (account?.status !== "saved" || !account.planUseAllowed) && (
           <Text style={shared.small}>
             {account?.status === "reconnect"
-              ? "This ChatGPT session has ended. Connect again to continue."
+              ? "Session ended. Reconnect to continue."
               : account?.status === "unreadable"
-                ? "Saved connection needs attention. Reconnect or disconnect it."
+                ? "Reconnect or disconnect this account."
                 : account?.status === "saved" && !account.planUseAllowed
                   ? "ChatGPT plan use is off."
                   : "Account saved on this device."}
@@ -379,7 +372,9 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
             <Text style={shared.small}>Accounts on this device</Text>
             <ScrollView
               style={{ maxHeight: 200 }}
-              contentContainerStyle={{ gap: 16, paddingVertical: 8 }}
+              contentContainerStyle={{ gap: 8, paddingVertical: 8 }}
+              keyboardShouldPersistTaps="handled"
+              nestedScrollEnabled
             >
               {savedAccounts.accounts.map((entry, index) => (
                 <View
@@ -387,7 +382,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
                   style={{
                     flexDirection: "row",
                     alignItems: "center",
-                    gap: 16,
+                    gap: 8,
                   }}
                 >
                   <View style={{ flex: 1, minWidth: 0 }}>
@@ -486,7 +481,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
       )}
       <SmallAction
         label="Refresh devices & models"
-        disabled={busy || !userId}
+        disabled={busy || localBusy || !userId}
         onPress={refresh}
       />
       {state.status === "loading" && (
@@ -506,50 +501,27 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         <Text style={shared.small}>No connected devices yet.</Text>
       )}
       {!!state.devices.length && (
-        <>
-          <Text style={shared.body}>Connected device</Text>
-          <ScrollView
-            nestedScrollEnabled
-            style={{ maxHeight: 160 }}
-            contentContainerStyle={{ gap: 8 }}
-            accessibilityLabel="ChatGPT devices"
-          >
-            {state.devices.map((d, i) => (
-              <Pressable
-                key={d.executor_id}
-                accessibilityRole="radio"
-                accessibilityState={{
-                  checked: state.selection?.executor_id === d.executor_id,
-                  disabled: busy,
-                }}
-                disabled={busy}
-                style={[
-                  shared.card,
-                  {
-                    padding: 12,
-                    backgroundColor:
-                      state.selection?.executor_id === d.executor_id
-                        ? colors.surfaceMuted
-                        : colors.surface,
-                  },
-                ]}
-                onPress={() => {
-                  setQuery("");
-                  select({
-                    executor_id: d.executor_id,
-                    connection_id: d.connection_id,
-                  });
-                }}
-              >
-                <Text style={shared.body}>
-                  {d.device
-                    ? chatgptExecutorDeviceLabel(d.device)
-                    : `Device ${i + 1} · ${d.host_id.slice(0, 8)}`}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </>
+        <ChoicePicker
+          label="Connected device"
+          value={state.selection?.executor_id ?? ""}
+          options={state.devices.map((device, index) => ({
+            value: device.executor_id,
+            label: device.device
+              ? chatgptExecutorDeviceLabel(device.device)
+              : `Device ${index + 1}`,
+          }))}
+          disabled={busy || localBusy}
+          onChange={(executorId) => {
+            const device = state.devices.find(
+              (entry) => entry.executor_id === executorId,
+            );
+            if (!device || busy || localBusy) return;
+            select({
+              executor_id: device.executor_id,
+              connection_id: device.connection_id,
+            });
+          }}
+        />
       )}
       {catalog && (
         <>
@@ -557,86 +529,52 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
             {catalog.status === "ready"
               ? `${models.length} models available.`
               : catalog.status === "offline"
-                ? "This device is offline. Reconnect it before choosing a model."
+                ? "Device offline. Reconnect to choose a model."
                 : catalog.status === "stale"
-                  ? "Refresh the catalog from the connected device."
+                  ? "Refresh models on the connected device."
                   : "This device has not published a model catalog."}
           </Text>
-          <Text style={shared.body}>
-            Default model:{" "}
-            {selected?.display_name ??
-              catalog.preference.model ??
-              "None selected"}
-            {catalog.preference.model && !selected ? " · unavailable" : ""}
-          </Text>
-          <TextInput
-            accessibilityLabel="Find a ChatGPT model"
-            style={shared.input}
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search name or model ID"
-            placeholderTextColor={colors.muted}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <ScrollView
-            nestedScrollEnabled
-            style={{ maxHeight: 280 }}
-            contentContainerStyle={{ gap: 8 }}
-            accessibilityLabel="ChatGPT models"
-          >
-            {filtered.slice(0, 50).map((m) => (
-              <Pressable
-                key={m.slug}
-                accessibilityRole="radio"
-                accessibilityState={{
-                  checked: catalog.preference.model === m.slug,
-                  disabled: busy || !available,
-                }}
-                disabled={busy || !available}
-                style={[
-                  shared.card,
-                  {
-                    padding: 12,
-                    backgroundColor:
-                      catalog.preference.model === m.slug
-                        ? colors.surfaceMuted
-                        : colors.surface,
-                  },
-                ]}
-                onPress={() => save(m.slug)}
-              >
-                <View style={{ gap: 4 }}>
-                  <Text style={shared.body}>{m.display_name}</Text>
-                  <Text style={shared.small}>{m.slug}</Text>
-                </View>
-              </Pressable>
-            ))}
-          </ScrollView>
-          {filtered.length > 50 && (
-            <Text style={shared.small}>
-              Showing 50 of {filtered.length} matches. Narrow your search to
-              find a model.
-            </Text>
-          )}
-          {!filtered.length && (
-            <Text style={shared.small}>No models match your search.</Text>
-          )}
-          <SmallAction
-            label="Clear default model"
-            disabled={busy || !available || !catalog.preference.model}
-            onPress={() => save(null)}
+          <ChoicePicker
+            label="Default model"
+            value={catalog.preference.model ?? ""}
+            options={[
+              { value: "", label: "No default model" },
+              ...models.map((model) => ({
+                value: model.slug,
+                label:
+                  (modelNameCounts.get(model.display_name) ?? 0) > 1
+                    ? `${model.display_name} (${model.slug})`
+                    : model.display_name,
+                detail:
+                  model.display_name === model.slug ? undefined : model.slug,
+              })),
+            ]}
+            disabled={busy || localBusy || !available}
+            onChange={(model) => {
+              if (!busy && !localBusy && available) void save(model || null);
+            }}
           />
           {state.saving && (
             <Text accessibilityLiveRegion="polite" style={shared.small}>
               Saving default model…
             </Text>
           )}
-          {catalog.published_at && (
-            <Text style={shared.small}>
-              Catalog updated {new Date(catalog.published_at).toLocaleString()}.
-            </Text>
-          )}
+          <InlineDetails title="Connection details">
+            {!!catalog.preference.model && (
+              <Text selectable style={shared.small}>
+                Model: {catalog.preference.model}
+              </Text>
+            )}
+            {catalog.preference.model && !selected && (
+              <Text style={shared.small}>Selected model is unavailable.</Text>
+            )}
+            {catalog.published_at && (
+              <Text style={shared.small}>
+                Models updated {new Date(catalog.published_at).toLocaleString()}
+                .
+              </Text>
+            )}
+          </InlineDetails>
         </>
       )}
       <AiProviderChoiceControls
@@ -657,10 +595,7 @@ export function ChatgptModelsSection({ userId }: { userId: string }) {
         disabled={!userId}
         onPress={() => {
           void Linking.openURL(CHATGPT_USAGE_URL).catch(() =>
-            Alert.alert(
-              "Could not open ChatGPT",
-              "Open ChatGPT Settings → Usage in your browser.",
-            ),
+            setConnectError("Open ChatGPT Settings → Usage in your browser."),
           );
         }}
       />

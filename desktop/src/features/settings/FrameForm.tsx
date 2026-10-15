@@ -1,5 +1,11 @@
 import { Select } from "../../components/Select";
-import { useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { Undo2 } from "lucide-react";
 import {
   PRIORITIES,
@@ -135,6 +141,7 @@ type Props = {
   onSaved: (frame: Frame) => void;
   onCancel: () => void;
   heading?: ReactNode;
+  onPendingChange?: (pending: boolean) => void;
 };
 
 /**
@@ -149,15 +156,44 @@ export function FrameForm({
   onSaved,
   onCancel,
   heading,
+  onPendingChange,
 }: Props) {
   const { lists, tags } = usePlanning();
   const [draft, setDraft] = useState(() => draftOf(frame));
   const [skipped, setSkipped] = useState(frame?.exdates ?? []);
   const action = useAction(report);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    onPendingChange?.(action.pending);
+    return () => onPendingChange?.(false);
+  }, [action.pending, onPendingChange]);
   const zones = timeZones();
   const needsDays = draft.mode === "days" || draft.mode === "biweekly";
+  const filterCount =
+    draft.filters.priorities.length +
+    draft.filters.list_ids.length +
+    draft.filters.tag_ids.length +
+    draft.filters.team_ids.length;
+  const filterSummary = [
+    filterCount ? `${filterCount} selected` : "All tasks",
+    draft.filters.min_minutes !== null
+      ? `at least ${draft.filters.min_minutes} min`
+      : "",
+    draft.filters.max_minutes !== null
+      ? `at most ${draft.filters.max_minutes} min`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   const set = (patch: Partial<Draft>) => {
+    if (action.pending) return;
     setDraft((d) => ({ ...d, ...patch }));
     action.setOutcome(null);
   };
@@ -190,11 +226,10 @@ export function FrameForm({
       timezone: draft.timezone || null,
     };
     void action.run(async () => {
-      onSaved(
-        frame
-          ? await client.updateFrame(frame.id, body)
-          : await client.createFrame(body),
-      );
+      const saved = frame
+        ? await client.updateFrame(frame.id, body)
+        : await client.createFrame(body);
+      if (mounted.current) onSaved(saved);
     });
   };
 
@@ -202,7 +237,7 @@ export function FrameForm({
     if (!frame) return;
     void action.run(async () => {
       const next = await client.unskipFrame(frame.id, date);
-      setSkipped(next.exdates ?? []);
+      if (mounted.current) setSkipped(next.exdates ?? []);
       return `${longDay(date)} is back.`;
     });
   };
@@ -235,216 +270,242 @@ export function FrameForm({
   return (
     <form className="settings-subform frame-form" onSubmit={submit}>
       {heading && <h3 className="settings-subtitle">{heading}</h3>}
-      <div className="settings-grid">
-        <div className="settings-field wide">
-          <label htmlFor="frame-name">Name</label>
-          <input
-            id="frame-name"
-            required
-            maxLength={60}
-            autoFocus
-            value={draft.name}
-            placeholder="Deep work"
-            onChange={(e) => set({ name: e.target.value })}
-          />
-        </div>
-        <div className="settings-field wide">
-          <label htmlFor="frame-repeat">Repeats</label>
-          <Select
-            id="frame-repeat"
-            value={draft.mode}
-            onChange={(e) => set({ mode: e.target.value as RepeatMode })}
-          >
-            {REPEAT_OPTIONS.map((o) => (
-              <option key={o.id} value={o.id}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-        {needsDays && (
+      <fieldset disabled={action.pending}>
+        <div className="settings-grid">
           <div className="settings-field wide">
-            <span className="settings-label">Days</span>
-            <DayPicker
-              label="Frame days"
-              value={draft.days}
-              onChange={(days) => set({ days })}
-            />
-          </div>
-        )}
-        {draft.mode === "custom" && (
-          <div className="settings-field wide">
-            <label htmlFor="frame-rule">Repeat rule</label>
+            <label htmlFor="frame-name">Name</label>
             <input
-              id="frame-rule"
-              maxLength={200}
-              spellCheck={false}
-              value={draft.custom}
-              placeholder="FREQ=MONTHLY;BYMONTHDAY=1,15"
-              aria-describedby="frame-rule-hint"
-              onChange={(e) => set({ custom: e.target.value })}
+              id="frame-name"
+              required
+              maxLength={60}
+              autoFocus
+              value={draft.name}
+              placeholder="Deep work"
+              onChange={(e) => set({ name: e.target.value })}
             />
-            <small id="frame-rule-hint" className="field-hint">
-              An iCalendar RRULE. It&apos;s checked when you save.
-            </small>
+          </div>
+          <div className="settings-field wide">
+            <label htmlFor="frame-repeat">Repeats</label>
+            <Select
+              disabled={action.pending}
+              id="frame-repeat"
+              value={draft.mode}
+              onChange={(e) => set({ mode: e.target.value as RepeatMode })}
+            >
+              {REPEAT_OPTIONS.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+          {needsDays && (
+            <div className="settings-field wide">
+              <span className="settings-label">Days</span>
+              <DayPicker
+                label="Frame days"
+                value={draft.days}
+                onChange={(days) => set({ days })}
+              />
+            </div>
+          )}
+          {draft.mode === "custom" && (
+            <div className="settings-field wide">
+              <label htmlFor="frame-rule">Repeat rule</label>
+              <input
+                id="frame-rule"
+                maxLength={200}
+                spellCheck={false}
+                value={draft.custom}
+                placeholder="FREQ=MONTHLY;BYMONTHDAY=1,15"
+                aria-describedby="frame-rule-hint"
+                onChange={(e) => set({ custom: e.target.value })}
+              />
+              <small id="frame-rule-hint" className="field-hint">
+                An iCalendar RRULE. It&apos;s checked when you save.
+              </small>
+            </div>
+          )}
+          <div className="settings-field">
+            <label htmlFor="frame-start">Starts</label>
+            <DateField
+              disabled={action.pending}
+              id="frame-start"
+              type="time"
+              required
+              value={draft.start_time}
+              onChange={(e) => set({ start_time: e.target.value })}
+            />
+          </div>
+          <div className="settings-field">
+            <label htmlFor="frame-end">Ends</label>
+            <DateField
+              disabled={action.pending}
+              id="frame-end"
+              type="time"
+              required
+              value={draft.end_time}
+              onChange={(e) => set({ end_time: e.target.value })}
+            />
+          </div>
+          <div className="settings-field">
+            <label htmlFor="frame-zone">Time zone</label>
+            <Select
+              disabled={action.pending}
+              id="frame-zone"
+              value={draft.timezone}
+              onChange={(e) => set({ timezone: e.target.value })}
+            >
+              <option value="">Your planner time zone</option>
+              {draft.timezone && !zones.includes(draft.timezone) && (
+                <option value={draft.timezone}>{draft.timezone}</option>
+              )}
+              {zones.map((z) => (
+                <option key={z} value={z}>
+                  {z.replaceAll("_", " ")}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <label className="switch-line settings-field">
+            <input
+              type="checkbox"
+              role="switch"
+              className="ai-switch"
+              checked={draft.busy}
+              onChange={(e) => set({ busy: e.target.checked })}
+            />
+            <span>
+              Busy
+              <small>
+                Busy frames block booking pages and team suggestions.
+              </small>
+            </span>
+          </label>
+          <div className="settings-field wide">
+            <span className="settings-label">Colour</span>
+            <Swatches
+              label="Frame colour"
+              value={draft.color}
+              onChange={(color) => set({ color })}
+            />
+          </div>
+        </div>
+        <details
+          className="frame-filters"
+          onInvalidCapture={(e) => {
+            e.currentTarget.open = true;
+          }}
+        >
+          <summary>Task filters · {filterSummary}</summary>
+          <div className="frame-filter-fields">
+            <p className="muted">Unselected categories allow any task.</p>
+            <fieldset className="check-group">
+              <legend>Priorities</legend>
+              <div className="check-grid">
+                {PRIORITIES.map((p: Priority) => (
+                  <label key={p} className="check-line">
+                    <input
+                      type="checkbox"
+                      checked={draft.filters.priorities.includes(p)}
+                      onChange={() =>
+                        setFilter(
+                          "priorities",
+                          toggle(draft.filters.priorities, p),
+                        )
+                      }
+                    />
+                    <span className="capitalize">{p}</span>
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            {checks(
+              lists.map((l) => ({
+                id: l.id,
+                name: l.team_name ? `${l.name} · ${l.team_name}` : l.name,
+              })),
+              "list_ids",
+              "Lists",
+            )}
+            {checks(
+              tags.map((t) => ({ id: t.id, name: t.name })),
+              "tag_ids",
+              "Tags",
+            )}
+            {checks(
+              teams.map((t) => ({ id: t.id, name: t.name })),
+              "team_ids",
+              "Teams",
+            )}
+            <div className="settings-grid">
+              <div className="settings-field">
+                <label htmlFor="frame-min">At least (min)</label>
+                <input
+                  id="frame-min"
+                  type="number"
+                  min={1}
+                  max={10080}
+                  value={draft.filters.min_minutes ?? ""}
+                  placeholder="Any"
+                  onChange={(e) =>
+                    setFilter(
+                      "min_minutes",
+                      e.target.value ? Number(e.target.value) : null,
+                    )
+                  }
+                />
+              </div>
+              <div className="settings-field">
+                <label htmlFor="frame-max">At most (min)</label>
+                <input
+                  id="frame-max"
+                  type="number"
+                  min={1}
+                  max={10080}
+                  value={draft.filters.max_minutes ?? ""}
+                  placeholder="Any"
+                  onChange={(e) =>
+                    setFilter(
+                      "max_minutes",
+                      e.target.value ? Number(e.target.value) : null,
+                    )
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        </details>
+        {frame && skipped.length > 0 && (
+          <div className="settings-field">
+            <span className="settings-label">Skipped days</span>
+            <ul className="chip-list">
+              {skipped.map((d) => (
+                <li key={d} className="chip">
+                  {longDay(d)}
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label={`Bring back ${longDay(d)}`}
+                    title="Bring back"
+                    disabled={action.pending}
+                    onClick={() => bringBack(d)}
+                  >
+                    <Undo2 size={12} />
+                  </button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
-        <div className="settings-field">
-          <label htmlFor="frame-start">Starts</label>
-          <DateField
-            id="frame-start"
-            type="time"
-            required
-            value={draft.start_time}
-            onChange={(e) => set({ start_time: e.target.value })}
-          />
-        </div>
-        <div className="settings-field">
-          <label htmlFor="frame-end">Ends</label>
-          <DateField
-            id="frame-end"
-            type="time"
-            required
-            value={draft.end_time}
-            onChange={(e) => set({ end_time: e.target.value })}
-          />
-        </div>
-        <div className="settings-field">
-          <label htmlFor="frame-zone">Time zone</label>
-          <Select
-            id="frame-zone"
-            value={draft.timezone}
-            onChange={(e) => set({ timezone: e.target.value })}
-          >
-            <option value="">Your planner time zone</option>
-            {draft.timezone && !zones.includes(draft.timezone) && (
-              <option value={draft.timezone}>{draft.timezone}</option>
-            )}
-            {zones.map((z) => (
-              <option key={z} value={z}>
-                {z.replaceAll("_", " ")}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <label className="switch-line settings-field">
-          <input
-            type="checkbox"
-            role="switch"
-            className="ai-switch"
-            checked={draft.busy}
-            onChange={(e) => set({ busy: e.target.checked })}
-          />
-          <span>
-            Busy
-            <small>Busy frames block booking pages and team suggestions.</small>
-          </span>
-        </label>
-        <div className="settings-field wide">
-          <span className="settings-label">Colour</span>
-          <Swatches
-            label="Frame colour"
-            value={draft.color}
-            onChange={(color) => set({ color })}
-          />
-        </div>
-      </div>
-      <p className="muted">Which tasks go here (leave blank for any task):</p>
-      <fieldset className="check-group">
-        <legend>Priorities</legend>
-        <div className="check-grid">
-          {PRIORITIES.map((p: Priority) => (
-            <label key={p} className="check-line">
-              <input
-                type="checkbox"
-                checked={draft.filters.priorities.includes(p)}
-                onChange={() =>
-                  setFilter("priorities", toggle(draft.filters.priorities, p))
-                }
-              />
-              <span className="capitalize">{p}</span>
-            </label>
-          ))}
-        </div>
       </fieldset>
-      {checks(
-        lists.map((l) => ({
-          id: l.id,
-          name: l.team_name ? `${l.name} · ${l.team_name}` : l.name,
-        })),
-        "list_ids",
-        "Lists",
-      )}
-      {checks(
-        tags.map((t) => ({ id: t.id, name: t.name })),
-        "tag_ids",
-        "Tags",
-      )}
-      {checks(
-        teams.map((t) => ({ id: t.id, name: t.name })),
-        "team_ids",
-        "Teams",
-      )}
-      <div className="settings-grid">
-        <div className="settings-field">
-          <label htmlFor="frame-min">At least (min)</label>
-          <input
-            id="frame-min"
-            type="number"
-            min={1}
-            max={10080}
-            value={draft.filters.min_minutes ?? ""}
-            placeholder="Any"
-            onChange={(e) =>
-              setFilter(
-                "min_minutes",
-                e.target.value ? Number(e.target.value) : null,
-              )
-            }
-          />
-        </div>
-        <div className="settings-field">
-          <label htmlFor="frame-max">At most (min)</label>
-          <input
-            id="frame-max"
-            type="number"
-            min={1}
-            max={10080}
-            value={draft.filters.max_minutes ?? ""}
-            placeholder="Any"
-            onChange={(e) =>
-              setFilter(
-                "max_minutes",
-                e.target.value ? Number(e.target.value) : null,
-              )
-            }
-          />
-        </div>
-      </div>
-      {frame && skipped.length > 0 && (
-        <div className="settings-field">
-          <span className="settings-label">Skipped days</span>
-          <ul className="chip-list">
-            {skipped.map((d) => (
-              <li key={d} className="chip">
-                {longDay(d)}
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label={`Bring back ${longDay(d)}`}
-                  title="Bring back"
-                  disabled={action.pending}
-                  onClick={() => bringBack(d)}
-                >
-                  <Undo2 size={12} />
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
       <div className="button-row">
-        <button type="button" className="secondary" onClick={onCancel}>
+        <button
+          type="button"
+          className="secondary"
+          disabled={action.pending}
+          onClick={onCancel}
+        >
           Cancel
         </button>
         <button className="primary" disabled={action.pending}>

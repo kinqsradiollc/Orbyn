@@ -150,10 +150,9 @@ export function DocContainerBody({
                             )
                         : undefined
                     }
-                    hitSlop={5}
                     style={{
-                      minWidth: 34,
-                      minHeight: 34,
+                      minWidth: 44,
+                      minHeight: 44,
                       alignItems: "center",
                       justifyContent: "center",
                     }}
@@ -198,8 +197,7 @@ function ContainerCallout({
         accessibilityRole="button"
         accessibilityState={{ expanded: open }}
         onPress={() => setOpen((value) => !value)}
-        hitSlop={8}
-        style={{ minHeight: 34, justifyContent: "center", paddingVertical: 4 }}
+        style={{ minHeight: 44, justifyContent: "center", paddingVertical: 4 }}
       >
         <Text style={{ fontFamily: fonts.semibold, color: colors.text }}>
           {open ? "▾" : "▸"} {CALLOUT_LABELS[tone]}

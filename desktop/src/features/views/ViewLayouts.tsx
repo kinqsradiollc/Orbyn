@@ -1,5 +1,6 @@
 import { useState, type DragEvent } from "react";
 import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useElementWidth } from "../../hooks/useElementWidth";
 import {
   addDays,
   calendarDay,
@@ -215,7 +216,7 @@ export function ViewBoard({
     if (!movable || !field) return;
     const id = e.dataTransfer.getData(VIEW_ROW_MIME);
     const row = groups.flatMap((g) => g.rows).find((r) => r.id === id);
-    if (!row) return;
+    if (!row || !row.can_write) return;
     e.preventDefault();
     const now = row.fields[field.id] ?? null;
     const next = valueOf(key);
@@ -286,6 +287,7 @@ export function ViewCalendar({
   def: ViewDefinition;
   onMoveDay: (row: ViewRow, day: string) => void;
 }) {
+  const { ref, width } = useElementWidth();
   const today = localDateKey(new Date(), timeZone);
   const [month, setMonth] = useState(() => today.slice(0, 7));
   const [over, setOver] = useState<string | null>(null);
@@ -314,7 +316,7 @@ export function ViewCalendar({
   });
   const movable = def.source === "tasks" || !!fieldKeyId(def.date_by ?? "");
   return (
-    <div className="view-calendar">
+    <div className="view-calendar" ref={ref}>
       <div className="view-calendar-head">
         <button
           className="icon-button"
@@ -343,63 +345,97 @@ export function ViewCalendar({
           </small>
         )}
       </div>
-      <div className="view-calendar-grid" role="grid" aria-label={label}>
-        {WEEKDAYS.map((d) => (
-          <div key={d} className="view-calendar-weekday" role="columnheader">
-            {d}
-          </div>
-        ))}
-        {days.map((day) => (
-          <div
-            key={day}
-            role="gridcell"
-            aria-label={day}
-            className={
-              "view-calendar-day" +
-              (day.slice(0, 7) !== month ? " is-other" : "") +
-              (day === today ? " is-today" : "") +
-              (over === day ? " is-over" : "")
-            }
-            onDragOver={(e) => {
-              if (!movable || !e.dataTransfer.types.includes(VIEW_ROW_MIME))
-                return;
-              e.preventDefault();
-              setOver(day);
-            }}
-            onDragLeave={() => setOver((o) => (o === day ? null : o))}
-            onDrop={(e) => {
-              setOver(null);
-              const id = e.dataTransfer.getData(VIEW_ROW_MIME);
-              const row = rows.find((r) => r.id === id);
-              if (!row) return;
-              e.preventDefault();
-              if (calendarDay(row, def, timeZone) !== day) onMoveDay(row, day);
-            }}
-          >
-            <span className="view-calendar-date">
-              {Number(day.slice(8, 10))}
-            </span>
-            {(byDay.get(day) ?? []).map((row) => (
-              <button
-                key={row.id}
-                className={
-                  "view-calendar-chip" +
-                  (row.status === "done" ? " is-done" : "")
-                }
-                draggable={movable && row.can_write}
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(VIEW_ROW_MIME, row.id);
-                  e.dataTransfer.effectAllowed = "move";
-                }}
-                onClick={() => onOpen(row)}
-                title={row.title}
-              >
-                {row.title || "Untitled"}
-              </button>
+      {width < 560 ? (
+        <div className="view-calendar-agenda" role="group" aria-label={label}>
+          {[...byDay]
+            .filter(([day]) => day.slice(0, 7) === month)
+            .sort(([a], [b]) => a.localeCompare(b))
+            .map(([day, list]) => (
+              <section key={day}>
+                <h4>
+                  {new Date(`${day}T12:00:00Z`).toLocaleDateString([], {
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    timeZone: "UTC",
+                  })}
+                </h4>
+                {list.map((row) => (
+                  <button
+                    key={row.id}
+                    className="view-calendar-agenda-row"
+                    onClick={() => onOpen(row)}
+                  >
+                    <span>{row.title || "Untitled"}</span>
+                    {row.status && <small>{statusText(row.status)}</small>}
+                  </button>
+                ))}
+              </section>
             ))}
-          </div>
-        ))}
-      </div>
+          {![...byDay.keys()].some((day) => day.slice(0, 7) === month) && (
+            <p className="muted">No dated items this month</p>
+          )}
+        </div>
+      ) : (
+        <div className="view-calendar-grid" role="group" aria-label={label}>
+          {WEEKDAYS.map((d) => (
+            <div key={d} className="view-calendar-weekday" aria-hidden="true">
+              {d}
+            </div>
+          ))}
+          {days.map((day) => (
+            <div
+              key={day}
+              role="group"
+              aria-label={day}
+              className={
+                "view-calendar-day" +
+                (day.slice(0, 7) !== month ? " is-other" : "") +
+                (day === today ? " is-today" : "") +
+                (over === day ? " is-over" : "")
+              }
+              onDragOver={(e) => {
+                if (!movable || !e.dataTransfer.types.includes(VIEW_ROW_MIME))
+                  return;
+                e.preventDefault();
+                setOver(day);
+              }}
+              onDragLeave={() => setOver((o) => (o === day ? null : o))}
+              onDrop={(e) => {
+                setOver(null);
+                const id = e.dataTransfer.getData(VIEW_ROW_MIME);
+                const row = rows.find((r) => r.id === id);
+                if (!row || !row.can_write || !movable) return;
+                e.preventDefault();
+                if (calendarDay(row, def, timeZone) !== day)
+                  onMoveDay(row, day);
+              }}
+            >
+              <span className="view-calendar-date">
+                {Number(day.slice(8, 10))}
+              </span>
+              {(byDay.get(day) ?? []).map((row) => (
+                <button
+                  key={row.id}
+                  className={
+                    "view-calendar-chip" +
+                    (row.status === "done" ? " is-done" : "")
+                  }
+                  draggable={movable && row.can_write}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(VIEW_ROW_MIME, row.id);
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
+                  onClick={() => onOpen(row)}
+                  title={row.title}
+                >
+                  {row.title || "Untitled"}
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

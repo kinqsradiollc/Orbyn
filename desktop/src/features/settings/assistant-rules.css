@@ -15,7 +15,7 @@
 }
 .assistant-rule-editor {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
   gap: 10px;
 }
 .assistant-rule-editor label {
@@ -66,4 +66,29 @@
 }
 .assistant-budget-fields .assistant-rule-actions {
   grid-column: 1 / -1;
+}
+
+fieldset.assistant-rule-editor {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.assistant-budget-summary {
+  overflow-wrap: anywhere;
+}
+.assistant-rule-list li {
+  min-width: 0;
+}
+.assistant-rule-actions > * {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (pointer: coarse) {
+  .assistant-rule-actions button,
+  .assistant-budget-lanes button {
+    min-height: 44px;
+  }
 }

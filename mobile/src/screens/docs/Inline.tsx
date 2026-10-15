@@ -1,6 +1,5 @@
-import React, { useContext } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { Linking, StyleSheet, Text } from "react-native";
-import { Alert } from "../../lib/alert";
 import {
   layoutMath,
   docLinkDestination,
@@ -18,6 +17,7 @@ import { FootnoteContext } from "./footnotes";
 import { MathView } from "./MathView";
 import { DocNavigationContext } from "./doc-navigation";
 import { webOrigin } from "../../lib/api";
+import { session } from "../../lib/session";
 import { openAppUrl } from "../../hooks/useAppLinks";
 
 /** Maths that is more than a row of symbols: it is typeset, not spelled out. */
@@ -57,23 +57,60 @@ export function Inline({
     (run) => tagRuns(run, text),
   );
   const navigation = useContext(DocNavigationContext);
+  const owner = session.token;
+  const scope = useRef({ owner, text });
+  scope.current = { owner, text };
+  const alive = useRef(true);
+  const opening = useRef(false);
+  const [linkError, setLinkError] = useState<{
+    owner: string;
+    text: string;
+    message: string;
+  } | null>(null);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const followLink = (href: string) => {
+    if (opening.current || session.token !== owner) return;
+    setLinkError(null);
+    const current = () =>
+      alive.current &&
+      scope.current.owner === owner &&
+      scope.current.text === text &&
+      session.token === owner;
+    const report = (error: unknown) => {
+      if (!current()) return;
+      if (navigation?.report) navigation.report(error);
+      else
+        setLinkError({
+          owner,
+          text,
+          message: "Couldn't open this link. Try again.",
+        });
+    };
     const destination = docLinkDestination(href, webOrigin);
-    const report =
-      navigation?.report ??
-      ((error: unknown) =>
-        Alert.alert(
-          "Could not open link",
-          error instanceof Error ? error.message : "Please try again.",
-        ));
     if (!destination)
       return report(new Error("This link cannot be opened safely."));
-    if (destination.kind === "fragment") {
-      if (navigation) navigation.onFragment(destination.fragment);
-      else report(new Error("Open this page to follow its heading link."));
-    } else if (destination.kind === "app") {
-      (navigation?.onAppLink ?? openAppUrl)(destination.url);
-    } else void Linking.openURL(destination.url).catch(report);
+    try {
+      if (destination.kind === "fragment") {
+        if (navigation) navigation.onFragment(destination.fragment);
+        else report(new Error("Open this page to follow its heading link."));
+      } else if (destination.kind === "app") {
+        (navigation?.onAppLink ?? openAppUrl)(destination.url);
+      } else {
+        opening.current = true;
+        void Linking.openURL(destination.url)
+          .catch(report)
+          .finally(() => {
+            opening.current = false;
+          });
+      }
+    } catch (error) {
+      report(error);
+    }
   };
   return (
     <>
@@ -105,9 +142,12 @@ export function Inline({
             <Text
               key={i}
               style={[formatting, s.footnote]}
+              accessibilityRole={words && notes.onShow ? "button" : undefined}
               accessibilityLabel={`Footnote ${n}${words ? `: ${words}` : ""}`}
               onPress={
-                words ? () => notes.onShow?.(String(n), words) : undefined
+                words && notes.onShow
+                  ? () => notes.onShow?.(String(n), words)
+                  : undefined
               }
             >
               {` ${n}`}
@@ -158,6 +198,7 @@ export function Inline({
               !!run.tag && s.tag,
               lit && s.marked,
             ]}
+            accessibilityRole={run.link && !person ? "link" : undefined}
             accessibilityHint={run.linkTitle}
             onPress={
               run.link && !person ? () => followLink(run.link!) : undefined
@@ -167,12 +208,19 @@ export function Inline({
           </Text>
         );
       })}
+      {linkError?.owner === owner && linkError.text === text && (
+        <Text accessibilityRole="alert" style={s.error}>
+          {" "}
+          {linkError.message}
+        </Text>
+      )}
     </>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
+    error: { color: colors.danger, fontSize: 13 },
     bold: { fontFamily: fonts.semibold },
     italic: { fontStyle: "italic" },
     // There is no monospace face bundled, so code is set apart by its

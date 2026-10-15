@@ -38,7 +38,7 @@ const reveal = (id: string) =>
   requestAnimationFrame(() => {
     const card = document.getElementById(releaseAnchor(id));
     if (!card) return;
-    card.scrollIntoView({ block: "start", behavior: "smooth" });
+    card.scrollIntoView({ block: "start", behavior: "auto" });
     card.querySelector<HTMLButtonElement>(".release-toggle")?.focus({
       preventScroll: true,
     });
@@ -105,7 +105,7 @@ export function ChangelogPage({ signedIn, onNavigate, onHome }: Props) {
         </a>
         {signedIn ? (
           <a href="/app" className="primary" onClick={go("/app")}>
-            Open your planner <ArrowUpRight size={15} />
+            Open planner <ArrowUpRight size={15} />
           </a>
         ) : (
           <a href="/login" className="text-button" onClick={go("/login")}>
@@ -116,19 +116,13 @@ export function ChangelogPage({ signedIn, onNavigate, onHome }: Props) {
       <main className="status-main legal-main">
         <article className="legal-text changelog">
           <h1>What's new</h1>
-          <p>Everything that changed in Orbyn, newest first.</p>
           <div className="changelog-tools">
-            <div
-              className="changelog-filter"
-              role="radiogroup"
-              aria-label="Show"
-            >
+            <div className="changelog-filter" role="group" aria-label="Show">
               {FILTERS.map((f) => (
                 <button
                   key={f}
                   type="button"
-                  role="radio"
-                  aria-checked={filter === f}
+                  aria-pressed={filter === f}
                   onClick={() => chooseFilter(f)}
                 >
                   {filterLabel(f)}

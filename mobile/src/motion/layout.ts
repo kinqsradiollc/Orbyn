@@ -12,10 +12,10 @@ if (
 
 /**
  * Animate the next layout commit (rows added, removed or reordered) over
- * `motion.base`. Call right before the state change. No-op under reduced motion.
+ * `motion.base`. No-op on web or under reduced motion.
  */
 export function animateLayout() {
-  if (isReducedMotion()) return;
+  if (Platform.OS === "web" || isReducedMotion()) return;
   LayoutAnimation.configureNext(
     LayoutAnimation.create(motion.base, "easeInEaseOut", "opacity"),
   );

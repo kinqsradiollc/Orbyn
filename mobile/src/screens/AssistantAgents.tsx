@@ -1,14 +1,9 @@
-import React, {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
-import { AppState, Pressable, Text, View } from "react-native";
+import React, { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { AppState, Text, View } from "react-native";
 import { AssistantProfileStore } from "@orbyn/api-client";
 import { ASSISTANT_ACTIVITY_LABELS } from "@orbyn/core";
 import { BottomSheet } from "../components/BottomSheet";
+import { InlineDetails } from "../components/InlineDetails";
 import { Character } from "../components/Character";
 import { Button } from "../components/Button";
 import { AssistantHandoffAction } from "./settings/AssistantHandoffAction";
@@ -35,10 +30,8 @@ export function AssistantAgents({
     [],
   );
   const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
-  const pendingChat = useRef<string | null>(null);
-  const [expanded, setExpanded] = useState<"background" | "overnight" | null>(
-    null,
-  );
+  const owner = session.token;
+  const pendingChat = useRef<{ id: string; owner: string } | null>(null);
   useEffect(() => {
     if (!visible) return;
     void store.refresh();
@@ -54,7 +47,7 @@ export function AssistantAgents({
       clearInterval(timer);
       listener.remove();
     };
-  }, [visible, store]);
+  }, [visible, store, owner]);
   return (
     <BottomSheet
       title={
@@ -67,9 +60,10 @@ export function AssistantAgents({
       visible={visible}
       onClose={onClose}
       afterClose={() => {
-        const id = pendingChat.current;
+        const choice = pendingChat.current;
         pendingChat.current = null;
-        if (id) onOpenChat(id);
+        if (choice && choice.owner === session.token && canOpen)
+          onOpenChat(choice.id);
       }}
       footer={
         <Button
@@ -85,7 +79,7 @@ export function AssistantAgents({
         </Text>
       )}
       {visible && !snapshot.data && !snapshot.error && (
-        <Text style={shared.small}>Loading agent profiles…</Text>
+        <Text style={shared.small}>Loading activity…</Text>
       )}
       {snapshot.data?.profiles
         .filter((profile) => !lane || profile.lane === lane)
@@ -110,10 +104,10 @@ export function AssistantAgents({
                       ? "waiting"
                       : "ready"
                 }
-                size={56}
+                size={32}
               />
-              <View style={{ flex: 1 }}>
-                <Text style={shared.sectionTitle}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Text style={shared.label}>
                   {profile.identity?.name ??
                     (profile.lane === "background"
                       ? "Background"
@@ -141,9 +135,11 @@ export function AssistantAgents({
               </View>
             </View>
             {profile.last_activity_at && (
-              <Text style={shared.small}>
-                Last work {new Date(profile.last_activity_at).toLocaleString()}
-              </Text>
+              <InlineDetails title="Last activity">
+                <Text style={shared.small}>
+                  {new Date(profile.last_activity_at).toLocaleString()}
+                </Text>
+              </InlineDetails>
             )}
             {!profile.runtime.reporting && (
               <Text accessibilityLiveRegion="polite" style={shared.small}>
@@ -191,61 +187,47 @@ export function AssistantAgents({
             )}
             {(profile.recent_activity.length > 0 ||
               profile.outputs.length > 0) && (
-              <>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: expanded === profile.lane }}
-                  onPress={() =>
-                    setExpanded(expanded === profile.lane ? null : profile.lane)
-                  }
-                  hitSlop={10}
-                >
-                  <Text style={shared.small}>
-                    {expanded === profile.lane ? "Hide" : "Show"} activity and
-                    results
-                  </Text>
-                </Pressable>
-                {expanded === profile.lane && (
-                  <>
-                    {profile.recent_activity.map((event) => (
-                      <View key={event.sequence} style={{ gap: 4 }}>
-                        <Text style={shared.small}>
-                          {ASSISTANT_ACTIVITY_LABELS[event.kind]}
-                        </Text>
-                        <Text style={shared.small}>
-                          {new Date(event.created_at).toLocaleString()}
-                        </Text>
-                      </View>
-                    ))}
-                    {profile.outputs.map((output) => (
-                      <View key={output.job_id} style={{ gap: 4 }}>
-                        <Button
-                          title={output.title || "Completed work"}
-                          secondary
-                          disabled={!canOpen}
-                          onPress={() => {
-                            pendingChat.current = output.chat_id;
-                            onClose();
-                          }}
-                        />
-                        <Text style={shared.small}>
-                          {new Date(output.completed_at).toLocaleString()}
-                        </Text>
-                        <AssistantHandoffAction
-                          jobId={output.job_id}
-                          title={output.title}
-                          lane={profile.lane}
-                          existing={output.handoff}
-                          onOpenChat={(id) => {
-                            pendingChat.current = id;
-                            onClose();
-                          }}
-                        />
-                      </View>
-                    ))}
-                  </>
-                )}
-              </>
+              <InlineDetails title="Activity and results">
+                {profile.recent_activity.map((event) => (
+                  <View key={event.sequence} style={{ gap: 4 }}>
+                    <Text style={shared.small}>
+                      {ASSISTANT_ACTIVITY_LABELS[event.kind]}
+                    </Text>
+                    <Text style={shared.small}>
+                      {new Date(event.created_at).toLocaleString()}
+                    </Text>
+                  </View>
+                ))}
+                {profile.outputs.map((output) => (
+                  <View key={output.job_id} style={{ gap: 4 }}>
+                    <Button
+                      title={output.title || "Completed work"}
+                      secondary
+                      disabled={!canOpen}
+                      onPress={() => {
+                        pendingChat.current = {
+                          id: output.chat_id,
+                          owner: session.token,
+                        };
+                        onClose();
+                      }}
+                    />
+                    <Text style={shared.small}>
+                      {new Date(output.completed_at).toLocaleString()}
+                    </Text>
+                    <AssistantHandoffAction
+                      jobId={output.job_id}
+                      title={output.title}
+                      lane={profile.lane}
+                      existing={output.handoff}
+                      onOpenChat={(id) => {
+                        pendingChat.current = { id, owner: session.token };
+                        onClose();
+                      }}
+                    />
+                  </View>
+                ))}
+              </InlineDetails>
             )}
           </View>
         ))}

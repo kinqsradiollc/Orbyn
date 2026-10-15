@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Alert } from "../lib/alert";
 import {
@@ -10,16 +10,20 @@ import {
   type PresenceSettings,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { InlineDetails } from "../components/InlineDetails";
+import { MoreMenu } from "../components/MoreMenu";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { Icon } from "../components/Icon";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
 import { SwitchRow } from "./booking/ui";
 import { client } from "../lib/api";
+import { session } from "../lib/session";
 import { confirmAction } from "../lib/confirm";
 import { deviceId } from "../lib/device";
 import { onLive } from "../lib/live";
 import * as outbox from "../lib/outbox";
-import { colors, fonts, themed } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
 
@@ -66,26 +70,73 @@ function Body({ state }: { state: Outbox }) {
   const [devices, setDevices] = useState<DevicePresence[] | null>(null);
   const [settings, setSettings] = useState<PresenceSettings | null>(null);
   const [reachable, setReachable] = useState(true);
-  const load = useCallback(() => {
-    client.listDevices().then(
-      (d) => {
-        setDevices(d);
-        setReachable(true);
-      },
-      () => setReachable(false),
-    );
-    client.presenceSettings().then(setSettings, () => {});
+  const [problem, setProblem] = useState("");
+  const [settingsFailed, setSettingsFailed] = useState(false);
+  const [pending, setPending] = useState(false);
+  const mutation = useRef(false);
+  const ticket = useRef(0);
+  const mounted = useRef(true);
+  const load = useCallback(async () => {
+    const request = ++ticket.current;
+    const account = session.token;
+    const [deviceResult, settingsResult] = await Promise.allSettled([
+      client.listDevices(),
+      client.presenceSettings(),
+    ]);
+    if (
+      !mounted.current ||
+      request !== ticket.current ||
+      account !== session.token
+    )
+      return;
+    setReachable(deviceResult.status === "fulfilled");
+    if (deviceResult.status === "fulfilled") setDevices(deviceResult.value);
+    setSettingsFailed(settingsResult.status === "rejected");
+    if (settingsResult.status === "fulfilled" && !mutation.current)
+      setSettings(settingsResult.value);
   }, []);
   useEffect(() => {
-    load();
-    return onLive((news) => news.kind === "presence" && load());
+    mounted.current = true;
+    void load();
+    const unsubscribe = onLive((news) => {
+      if (news.kind === "presence") void load();
+    });
+    return () => {
+      mounted.current = false;
+      ticket.current++;
+      unsubscribe();
+    };
   }, [load]);
+  const change = async <T,>(
+    fn: () => Promise<T>,
+    onSaved?: (result: T) => void,
+  ) => {
+    if (mutation.current || !mounted.current) return;
+    const account = session.token;
+    mutation.current = true;
+    setPending(true);
+    setProblem("");
+    try {
+      const result = await fn();
+      if (mounted.current && account === session.token) {
+        onSaved?.(result);
+        await load();
+      }
+    } catch (e) {
+      if (mounted.current && account === session.token)
+        setProblem(errorText(e));
+    } finally {
+      mutation.current = false;
+      if (mounted.current && account === session.token) setPending(false);
+    }
+  };
 
   const self = deviceId();
   return (
     <ScrollView contentContainerStyle={sheetStyles.body}>
       <View style={sheetStyles.column}>
-        <Text style={[shared.eyebrow, s.eyebrow]}>ON THIS PHONE</Text>
+        <ErrorBanner error={problem} onDismiss={() => setProblem("")} />
+        <Text style={[shared.eyebrow, s.eyebrow]}>THIS DEVICE</Text>
         <View style={shared.card}>
           <View style={s.headRow}>
             <Icon
@@ -103,10 +154,10 @@ function Body({ state }: { state: Outbox }) {
               </Text>
               <Text style={shared.small}>
                 {state.entries.length
-                  ? "Changes made here are kept until the server has them, in the order you made them."
+                  ? "Changes wait here until they reach the server."
                   : state.syncedAt
                     ? `Last in sync ${ago(state.syncedAt)}.`
-                    : "Changes you make without a connection wait here."}
+                    : "Offline changes wait here."}
               </Text>
             </View>
           </View>
@@ -124,15 +175,26 @@ function Body({ state }: { state: Outbox }) {
             />
           )}
         </View>
-        <Text style={[shared.small, s.note]}>
-          Tasks, events, habits and booking replies work offline. Assistant,
-          search and planning need a connection.
-        </Text>
+        <InlineDetails title="What works offline">
+          <Text style={shared.small}>
+            Tasks, events, habits and booking replies work offline. Assistant,
+            search and planning need a connection.
+          </Text>
+        </InlineDetails>
 
         <Text style={[shared.eyebrow, s.eyebrow]}>YOUR DEVICES</Text>
         <View style={shared.card}>
           {!reachable ? (
-            <Text style={shared.small}>Connect to see your other devices.</Text>
+            <View>
+              <Text accessibilityRole="alert" style={shared.small}>
+                Couldn't load devices.
+              </Text>
+              <SmallAction
+                label="Retry"
+                disabled={pending}
+                onPress={() => void load()}
+              />
+            </View>
           ) : devices === null ? (
             <Text style={shared.small}>Loading…</Text>
           ) : (
@@ -155,9 +217,9 @@ function Body({ state }: { state: Outbox }) {
                   color={colors.textSoft}
                 />
                 <View style={{ flex: 1 }}>
-                  <Text style={s.title} numberOfLines={1}>
+                  <Text style={s.title}>
                     {d.label ?? d.platform}
-                    {d.device_id === self ? " · this phone" : ""}
+                    {d.device_id === self ? " · this device" : ""}
                   </Text>
                   <Text style={shared.small}>
                     {d.active
@@ -172,38 +234,58 @@ function Body({ state }: { state: Outbox }) {
                   </Text>
                 </View>
                 {d.device_id !== self && (
-                  <SmallAction
-                    label="Forget"
-                    disabled={false}
-                    onPress={() =>
-                      confirmAction(
-                        `Forget ${d.label ?? d.platform}?`,
-                        "It leaves this list. If it's still signed in, it shows up again next time it's used.",
-                        "Forget",
-                        () =>
-                          void client
-                            .forgetDevice(d.device_id)
-                            .then(load, () => {}),
-                      )
-                    }
+                  <MoreMenu
+                    label={`${d.label ?? d.platform} options`}
+                    title={d.label ?? d.platform}
+                    disabled={pending}
+                    actions={[
+                      {
+                        label: "Forget device",
+                        destructive: true,
+                        disabled: pending,
+                        onPress: () =>
+                          confirmAction(
+                            `Forget ${d.label ?? d.platform}?`,
+                            "Removes it from this list. It returns if used while still signed in.",
+                            "Forget",
+                            () => {
+                              void change(() =>
+                                client.forgetDevice(d.device_id),
+                              );
+                            },
+                          ),
+                      },
+                    ]}
                   />
                 )}
               </View>
             ))
           )}
+          {settingsFailed && (
+            <View>
+              <Text accessibilityRole="alert" style={shared.small}>
+                Couldn't load activity sharing.
+              </Text>
+              <SmallAction
+                label="Retry"
+                disabled={pending}
+                onPress={() => void load()}
+              />
+            </View>
+          )}
           {settings && (
             <View style={[s.divider, s.switch]}>
               <SwitchRow
-                title="Let my teams see when I’m active"
-                hint="They see “active” or “away” — never when you were last on, or what you’re working on."
+                title="Share activity with teams"
+                disabled={pending || settingsFailed}
+                hint="Shows active or away; hides your work and last-seen time."
                 value={settings.share_presence}
-                onValueChange={(on) =>
-                  void client
-                    .updatePresenceSettings({ share_presence: on })
-                    .then(setSettings, (e: Error) =>
-                      Alert.alert("Not saved", errorText(e)),
-                    )
-                }
+                onValueChange={(on) => {
+                  void change(
+                    () => client.updatePresenceSettings({ share_presence: on }),
+                    setSettings,
+                  );
+                }}
               />
             </View>
           )}
@@ -217,9 +299,7 @@ function Entry({ entry, first }: { entry: OutboxEntry; first: boolean }) {
   const failed = entry.state === "failed";
   return (
     <View style={[s.entry, !first && s.divider, first && s.firstEntry]}>
-      <Text style={s.entryTitle} numberOfLines={2}>
-        {describeOp(entry.op)}
-      </Text>
+      <Text style={s.entryTitle}>{describeOp(entry.op)}</Text>
       <Text style={[shared.small, failed && s.failed]}>
         {entry.conflict
           ? `Changed on another device too: ${fieldsLabel(entry.conflict.fields)}.`
@@ -287,7 +367,7 @@ const s = themed(() =>
     firstEntry: { marginTop: 12 },
     entryTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     failed: { color: colors.danger },
-    actions: { flexDirection: "row", gap: 8, marginTop: 6 },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 6 },
     divider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
@@ -301,7 +381,7 @@ const s = themed(() =>
     dot: {
       width: 8,
       height: 8,
-      borderRadius: 4,
+      borderRadius: radii.pill,
       borderWidth: 1.5,
       borderColor: colors.faint,
     },

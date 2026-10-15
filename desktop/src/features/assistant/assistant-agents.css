@@ -52,7 +52,7 @@
 }
 .assistant-agent-card h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 500;
 }
 .assistant-agent-card p {
@@ -69,6 +69,8 @@
   margin-top: 16px;
 }
 .assistant-agent-card summary {
+  min-height: 44px;
+  align-content: center;
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
@@ -111,7 +113,7 @@
 }
 .assistant-handoff-action {
   min-width: 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .assistant-handoff-status {
   display: flex;
@@ -120,7 +122,7 @@
   gap: 8px;
 }
 .assistant-handoff-action > button {
-  font-size: 12px;
+  font-size: 13px;
   padding: 6px 10px;
 }
 .assistant-handoff-form {
@@ -135,7 +137,9 @@
 .assistant-handoff-form textarea {
   width: 100%;
   min-height: 64px;
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
   font: inherit;
 }
 .assistant-handoff-form > div {
@@ -144,7 +148,7 @@
   gap: 8px;
 }
 .assistant-handoff-form button {
-  font-size: 12px;
+  font-size: 13px;
 }
 .assistant-background-workspace {
   display: grid;
@@ -167,8 +171,8 @@
 }
 .assistant-background-columns {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: 16px;
 }
 .assistant-background-columns > section {
   display: grid;
@@ -183,4 +187,38 @@
   .assistant-background-columns {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+@media (max-width: 420px) {
+  .assistant-agents-dialog {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .assistant-agents-head,
+  .assistant-agents-body {
+    padding: 12px;
+  }
+  .assistant-agents-body {
+    max-height: calc(100dvh - 84px);
+    gap: 12px;
+  }
+  .assistant-agent-card {
+    padding: 12px;
+  }
+}
+
+.assistant-handoff-dialog {
+  width: min(480px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+}
+.assistant-handoff-dialog h2 {
+  font-size: 18px;
+  font-weight: 500;
+}
+.assistant-handoff-dialog .assistant-handoff-form {
+  width: 100%;
+}
+.assistant-handoff-dialog::backdrop {
+  background: color-mix(in srgb, var(--color-text) 35%, transparent);
 }

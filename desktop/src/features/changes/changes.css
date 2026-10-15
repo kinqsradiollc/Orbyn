@@ -1,6 +1,6 @@
 /* Recent changes per team (SHR-02). Nothing touches the card's edge. */
 .recent-changes {
-  padding: 18px 21px;
+  padding: 14px 16px;
 }
 /* Inside a team's card it is a section of that card, not a card in a card. */
 .team-detail .recent-changes {
@@ -8,7 +8,7 @@
   border: 0;
   border-top: 1px solid var(--color-divider);
   border-radius: 0;
-  padding: 18px 23px;
+  padding: 14px 16px;
 }
 @media (max-width: 480px) {
   .team-detail .recent-changes {
@@ -93,7 +93,7 @@
 }
 .changes-dialog {
   position: relative;
-  width: 600px;
+  width: min(600px, calc(100vw - 24px));
 }
 .changes-dialog .recent-changes {
   box-shadow: none;
@@ -107,4 +107,25 @@
   position: absolute;
   top: 14px;
   right: 14px;
+}
+
+.recent-changes {
+  container: changes-pane / inline-size;
+  min-width: 0;
+}
+.recent-changes-head h2 {
+  font-size: 15px;
+}
+.change-row {
+  min-height: 44px;
+}
+@container changes-pane (max-width: 360px) {
+  .change-row {
+    display: grid;
+    grid-template-columns: 14px minmax(0, 1fr);
+    gap: 4px 8px;
+  }
+  .change-row time {
+    grid-column: 2;
+  }
 }

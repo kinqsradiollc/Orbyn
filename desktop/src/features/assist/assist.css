@@ -5,6 +5,10 @@
   gap: 6px;
 }
 .assist-chip {
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -23,23 +27,40 @@
 }
 .assist-dialog {
   width: 560px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.assist-dialog > .section-heading,
+.assist-foot {
+  flex-shrink: 0;
 }
 .assist-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   display: grid;
+  align-content: start;
   gap: 12px;
   padding: 12px 23px 8px;
 }
 .assist-body p {
   margin: 0;
 }
-.assist-summary {
-  white-space: pre-wrap;
-  padding: 12px 14px;
-  border-radius: var(--radius-sm);
-  background: var(--color-surfaceMuted);
-  font-size: 15px;
-  line-height: 1.6;
+.assist-summary-edit {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
 }
+.assist-summary-edit textarea {
+  resize: none;
+  min-height: 144px;
+  max-height: 240px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
 .assist-tasks {
   list-style: none;
   margin: 0;
@@ -51,6 +72,7 @@
   display: flex;
   gap: 10px;
   align-items: flex-start;
+  min-height: 44px;
   padding: 8px 0;
   border-top: 1px solid var(--color-divider);
   margin: 0;
@@ -68,11 +90,62 @@
 .assist-foot {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 8px;
   padding: 12px 23px 20px;
 }
 
 .assist-provider {
   display: block;
   overflow-wrap: anywhere;
+}
+
+.assist-tasks label > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.assist-tasks input {
+  flex-shrink: 0;
+}
+.assist-foot button {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.assist-body {
+  overflow-wrap: anywhere;
+}
+.assist-tasks details {
+  margin-top: 6px;
+}
+.assist-tasks summary {
+  min-height: 32px;
+  cursor: pointer;
+  color: var(--color-muted);
+}
+.assist-tasks details p {
+  margin-top: 6px;
+  white-space: pre-wrap;
+}
+.assist-chip svg {
+  flex-shrink: 0;
+}
+@media (pointer: coarse) {
+  .assist-chip,
+  .assist-tasks summary {
+    min-height: 44px;
+  }
+}
+@media (max-width: 480px) {
+  .assist-body {
+    padding-inline: 16px;
+  }
+  .assist-foot {
+    padding-inline: 16px;
+  }
+  .assist-foot button {
+    flex-grow: 1;
+    flex-basis: 120px;
+  }
 }

@@ -157,3 +157,116 @@
   background: var(--color-surface);
   border: 1px solid var(--color-border);
 }
+
+/* One focused catalogue at a time, with labels readable at actual pane width. */
+.look-dialog {
+  container-type: inline-size;
+}
+.look-context {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.look-body fieldset {
+  min-width: 0;
+}
+.look-categories {
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.look-grid {
+  grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  max-height: 220px;
+  overflow: auto;
+  padding: 2px;
+}
+.look-choice {
+  min-height: 44px;
+  height: auto;
+}
+.look-typed,
+.look-reset {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.look-typed input {
+  flex: 1 1 140px;
+}
+.look-library,
+.look-removals {
+  margin-top: 12px;
+}
+.look-library > summary,
+.look-removals > summary {
+  min-height: 44px;
+  cursor: pointer;
+  font-size: 13px;
+  padding-block: 8px;
+}
+.look-library > summary:focus-visible,
+.look-removals > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.look-pictures {
+  grid-template-columns: repeat(auto-fill, minmax(min(130px, 100%), 1fr));
+  max-height: 320px;
+  overflow: auto;
+  padding: 2px;
+}
+.look-picture {
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  min-height: 104px;
+  overflow: visible;
+}
+.look-picture img {
+  height: 64px;
+  flex: none;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.look-picture > svg {
+  margin: 20px auto;
+}
+.look-picture-caption {
+  width: 100%;
+  padding: 8px;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  color: var(--color-textSoft);
+}
+.look-picture-caption small {
+  display: block;
+  color: var(--color-muted);
+}
+.look-body .button-row {
+  position: sticky;
+  bottom: -22px;
+  padding-block: 12px;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+}
+@container (max-width: 25rem) {
+  .look-context {
+    flex-basis: 100%;
+    order: 3;
+  }
+}
+
+.look-dialog .section-heading {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+dialog.look-dialog {
+  margin: auto;
+  padding: 0;
+}
+dialog.look-dialog::backdrop {
+  background: var(--color-backdrop);
+}

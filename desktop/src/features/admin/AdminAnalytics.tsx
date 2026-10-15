@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { BarChart3 } from "lucide-react";
 import type { AdminAnalytics as Data, AnalyticsDay } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { useRemote } from "../../hooks/useRemote";
@@ -58,14 +57,19 @@ export function AdminAnalytics({ report }: { report: (e: unknown) => void }) {
     ],
     ["Projects started", t?.projects_created, `in ${days} days`],
   ];
+  const metrics = (entries: typeof tiles) =>
+    entries.map(([label, value, note]) => (
+      <div className="card admin-tile" key={label}>
+        <span>{label}</span>
+        <strong>{value === undefined ? "–" : value.toLocaleString()}</strong>
+        <small>{note}</small>
+      </div>
+    ));
   return (
     <section className="admin-analytics">
       <div className="card admin-requests-head">
         <div>
-          <span className="db-eyebrow">
-            <BarChart3 size={14} /> ANALYTICS
-          </span>
-          <h2>How Orbyn is being used</h2>
+          <h2>Analytics</h2>
           <p className="muted">
             Counts only — never what anyone wrote. Days are UTC.
           </p>
@@ -84,55 +88,52 @@ export function AdminAnalytics({ report }: { report: (e: unknown) => void }) {
         </div>
       </div>
 
-      <div className="admin-tiles">
-        {tiles.map(([label, value, note]) => (
-          <div className="card admin-tile" key={label}>
-            <span>{label}</span>
-            <strong>
-              {value === undefined ? "–" : value.toLocaleString()}
-            </strong>
-            <small>{note}</small>
-          </div>
-        ))}
-      </div>
+      <div className="admin-tiles">{metrics(tiles.slice(0, 4))}</div>
+      <details className="admin-analytics-details">
+        <summary>More metrics</summary>
+        <div className="admin-tiles">{metrics(tiles.slice(4))}</div>
+      </details>
 
       {data && (
-        <div className="admin-chart-grid">
-          <Chart
-            title="Active people"
-            data={series(data, (d) => d.active_users)}
-          />
-          <Chart
-            title="Requests"
-            legend="Server errors"
-            data={series(
-              data,
-              (d) => d.requests,
-              (d) => d.server_errors,
-            )}
-          />
-          <Chart
-            title="Items created"
-            data={series(data, (d) => d.items_created)}
-          />
-          <Chart
-            title="Tasks finished"
-            data={series(data, (d) => d.tasks_done)}
-          />
-          <Chart
-            title="Assistant requests"
-            data={series(data, (d) => d.ai_requests)}
-          />
-          <Chart title="New accounts" data={series(data, (d) => d.signups)} />
-          <Chart
-            title="Pages written"
-            data={series(data, (d) => d.docs_created)}
-          />
-          <Chart
-            title="Focus minutes"
-            data={series(data, (d) => d.focus_minutes)}
-          />
-        </div>
+        <details className="admin-analytics-details">
+          <summary>Activity trends</summary>
+          <div className="admin-chart-grid">
+            <Chart
+              title="Active people"
+              data={series(data, (d) => d.active_users)}
+            />
+            <Chart
+              title="Requests"
+              legend="Server errors"
+              data={series(
+                data,
+                (d) => d.requests,
+                (d) => d.server_errors,
+              )}
+            />
+            <Chart
+              title="Items created"
+              data={series(data, (d) => d.items_created)}
+            />
+            <Chart
+              title="Tasks finished"
+              data={series(data, (d) => d.tasks_done)}
+            />
+            <Chart
+              title="Assistant requests"
+              data={series(data, (d) => d.ai_requests)}
+            />
+            <Chart title="New accounts" data={series(data, (d) => d.signups)} />
+            <Chart
+              title="Pages written"
+              data={series(data, (d) => d.docs_created)}
+            />
+            <Chart
+              title="Focus minutes"
+              data={series(data, (d) => d.focus_minutes)}
+            />
+          </div>
+        </details>
       )}
 
       {data && (

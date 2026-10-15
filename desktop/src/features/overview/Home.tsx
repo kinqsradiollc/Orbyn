@@ -1,3 +1,5 @@
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ArrowDown,
@@ -83,6 +85,7 @@ export function HomeTop({
       return;
     }
     let live = true;
+    setQuote(null);
     client.getDoc(doc_id).then(
       (doc) => live && setQuote(pickQuote(doc.content)),
       () => live && setQuote(null),
@@ -329,7 +332,7 @@ function EditHubDialog({
   hub: HomeHub;
   sources: Sources;
   isNew: boolean;
-  onSave: (hub: HomeHub) => void;
+  onSave: (hub: HomeHub) => Promise<boolean>;
   onClose: () => void;
   report: (e: unknown) => void;
 }) {
@@ -344,21 +347,19 @@ function EditHubDialog({
   const [kind, setKind] = useState<HubLinkKind>("project");
   const [q, setQ] = useState("");
   const [lookOpen, setLookOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const mutation = useRef(false);
+  const focus = useModalFocus(onClose, lookOpen || busy);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented || lookOpen) return;
-      if (document.querySelector(".popover")) return;
-      onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, lookOpen]);
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
 
   const full = links.length >= MAX_HUB_LINKS;
   const shown = candidates(kind, sources)
     .filter((c) => !links.some((l) => l.kind === kind && l.id === c.id))
-    .filter((c) => c.label.toLowerCase().includes(q.trim().toLowerCase()))
-    .slice(0, 8);
+    .filter((c) => c.label.toLowerCase().includes(q.trim().toLowerCase()));
   const move = (i: number, by: -1 | 1) =>
     setLinks((ls) => {
       const j = i + by;
@@ -368,192 +369,212 @@ function EditHubDialog({
       return next;
     });
 
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <section
-        className="modal home-hub-dialog scale-in"
-        role="dialog"
-        aria-modal="true"
+  return createPortal(
+    <>
+      <dialog
+        ref={(node) => {
+          focus.ref.current = node;
+        }}
+        data-modal-focus={focus.id}
+        className="modal home-hub-dialog"
         aria-labelledby="home-hub-dialog-title"
+        onCancel={(event) => {
+          event.preventDefault();
+          if (!lookOpen && !busy) onClose();
+        }}
       >
         <div className="section-heading">
           <h2 id="home-hub-dialog-title">{isNew ? "New hub" : "Edit hub"}</h2>
-          <button className="icon-button" aria-label="Close" onClick={onClose}>
+          <button
+            className="icon-button"
+            aria-label="Close"
+            disabled={busy}
+            onClick={onClose}
+          >
             <X size={20} />
           </button>
         </div>
         <form
           className="home-hub-form"
-          onSubmit={(e) => {
+          onSubmit={async (e) => {
             e.preventDefault();
-            if (!title.trim()) return;
-            onSave({
-              ...hub,
-              title: title.trim().slice(0, 40),
-              icon: look.icon,
-              cover_file_id: look.cover_file_id,
-              links,
-            });
+            if (!title.trim() || mutation.current) return;
+            mutation.current = true;
+            setBusy(true);
+            try {
+              await onSave({
+                ...hub,
+                title: title.trim().slice(0, 40),
+                icon: look.icon,
+                cover_file_id: look.cover_file_id,
+                links,
+              });
+            } finally {
+              mutation.current = false;
+              setBusy(false);
+            }
           }}
         >
-          <label>
-            Title
-            <input
-              autoFocus
-              required
-              maxLength={40}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </label>
-          <div className="home-hub-look">
-            <span className="home-hub-look-icon">
-              {look.icon ? (
-                <LookIcon icon={look.icon} size={18} />
-              ) : (
-                <small className="muted">No icon</small>
-              )}
-            </span>
-            <span className="muted">
-              {look.cover_file_id ? "Has a cover picture" : "No cover picture"}
-            </span>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => setLookOpen(true)}
-            >
-              Cover and icon
-            </button>
-          </div>
+          <fieldset disabled={busy} className="home-hub-fields">
+            <label>
+              Title
+              <input
+                autoFocus
+                required
+                maxLength={40}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </label>
+            <div className="home-hub-look">
+              <span className="home-hub-look-icon">
+                {look.icon ? (
+                  <LookIcon icon={look.icon} size={18} />
+                ) : (
+                  <small className="muted">No icon</small>
+                )}
+              </span>
+              <span className="muted">
+                {look.cover_file_id
+                  ? "Has a cover picture"
+                  : "No cover picture"}
+              </span>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => setLookOpen(true)}
+              >
+                Cover and icon
+              </button>
+            </div>
 
-          <h3 className="home-hub-sub">
-            Links{" "}
-            <small>
-              {links.length} of {MAX_HUB_LINKS}
-            </small>
-          </h3>
-          {links.length ? (
-            <ul className="home-hub-edit-list">
-              {links.map((l, i) => (
-                <li key={`${l.kind}:${l.id}`}>
-                  <span className="home-hub-name">{nameOf(l, sources)}</span>
-                  <input
-                    className="home-hub-tag"
-                    aria-label={`Tag for ${l.label}`}
-                    placeholder={HUB_LINK_KIND_LABELS[l.kind]}
-                    maxLength={24}
-                    value={l.tag ?? ""}
-                    onChange={(e) =>
-                      setLinks((ls) =>
-                        ls.map((x, j) =>
-                          j === i
-                            ? { ...x, tag: e.target.value || undefined }
-                            : x,
-                        ),
-                      )
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="icon-button"
-                    aria-label={`Move ${l.label} up`}
-                    disabled={i === 0}
-                    onClick={() => move(i, -1)}
-                  >
-                    <ArrowUp size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    aria-label={`Move ${l.label} down`}
-                    disabled={i === links.length - 1}
-                    onClick={() => move(i, 1)}
-                  >
-                    <ArrowDown size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    aria-label={`Remove ${l.label}`}
-                    onClick={() =>
-                      setLinks((ls) => ls.filter((_, j) => j !== i))
-                    }
-                  >
-                    <X size={14} />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">
-              {hub.auto
-                ? "No links chosen: the hub shows your latest ones."
-                : "No links yet."}
-            </p>
-          )}
+            <h3 className="home-hub-sub">
+              Links{" "}
+              <small>
+                {links.length} of {MAX_HUB_LINKS}
+              </small>
+            </h3>
+            {links.length ? (
+              <ul className="home-hub-edit-list">
+                {links.map((l, i) => (
+                  <li key={`${l.kind}:${l.id}`}>
+                    <span className="home-hub-name">{nameOf(l, sources)}</span>
+                    <input
+                      className="home-hub-tag"
+                      aria-label={`Tag for ${l.label}`}
+                      placeholder={HUB_LINK_KIND_LABELS[l.kind]}
+                      maxLength={24}
+                      value={l.tag ?? ""}
+                      onChange={(e) =>
+                        setLinks((ls) =>
+                          ls.map((x, j) =>
+                            j === i
+                              ? { ...x, tag: e.target.value || undefined }
+                              : x,
+                          ),
+                        )
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Move ${l.label} up`}
+                      disabled={i === 0}
+                      onClick={() => move(i, -1)}
+                    >
+                      <ArrowUp size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Move ${l.label} down`}
+                      disabled={i === links.length - 1}
+                      onClick={() => move(i, 1)}
+                    >
+                      <ArrowDown size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-button"
+                      aria-label={`Remove ${l.label}`}
+                      onClick={() =>
+                        setLinks((ls) => ls.filter((_, j) => j !== i))
+                      }
+                    >
+                      <X size={14} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">
+                {hub.auto
+                  ? "No links chosen: the hub shows your latest ones."
+                  : "No links yet."}
+              </p>
+            )}
 
-          <h3 className="home-hub-sub">Add a link</h3>
-          <div className="home-hub-add">
-            <Select
-              aria-label="Kind of link"
-              value={kind}
-              onChange={(e) => setKind(e.target.value as HubLinkKind)}
-            >
-              <option value="project">Projects</option>
-              <option value="deck">Study decks</option>
-              <option value="page">Pages</option>
-              <option value="view">Views</option>
-            </Select>
-            <input
-              aria-label="Find one"
-              placeholder="Find one…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-            />
-          </div>
-          {full ? (
-            <p className="muted">
-              A hub holds six links. Remove one to add another.
-            </p>
-          ) : shown.length ? (
-            <ul className="home-hub-pick">
-              {shown.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setLinks((ls) => [
-                        ...ls,
-                        { kind, id: c.id, label: c.label.slice(0, 80) },
-                      ])
-                    }
-                  >
-                    <Plus size={14} aria-hidden="true" />
-                    <span>{c.label}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="muted">Nothing to add here.</p>
-          )}
+            <h3 className="home-hub-sub">Add a link</h3>
+            <div className="home-hub-add">
+              <Select
+                aria-label="Kind of link"
+                value={kind}
+                onChange={(e) => setKind(e.target.value as HubLinkKind)}
+              >
+                <option value="project">Projects</option>
+                <option value="deck">Study decks</option>
+                <option value="page">Pages</option>
+                <option value="view">Views</option>
+              </Select>
+              <input
+                aria-label="Find one"
+                placeholder="Find one…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+              />
+            </div>
+            {full ? (
+              <p className="muted">
+                A hub holds six links. Remove one to add another.
+              </p>
+            ) : shown.length ? (
+              <ul className="home-hub-pick">
+                {shown.map((c) => (
+                  <li key={c.id}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLinks((ls) => [
+                          ...ls,
+                          { kind, id: c.id, label: c.label.slice(0, 80) },
+                        ])
+                      }
+                    >
+                      <Plus size={14} aria-hidden="true" />
+                      <span>{c.label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="muted">Nothing to add here.</p>
+            )}
 
-          <div className="button-row">
-            <button type="button" className="secondary" onClick={onClose}>
-              Cancel
-            </button>
-            <button type="submit" className="primary">
-              Save
-            </button>
-          </div>
+            <div className="button-row">
+              <button type="button" className="secondary" onClick={onClose}>
+                Cancel
+              </button>
+              <button type="submit" className="primary">
+                Save
+              </button>
+            </div>
+          </fieldset>
         </form>
-      </section>
+      </dialog>
       {lookOpen && (
         <LookDialog
-          title="Hub cover and icon"
+          scope={hub.id}
+          title={title || "Untitled hub"}
           look={look}
           uploadTo={null}
           report={report}
@@ -561,7 +582,8 @@ function EditHubDialog({
           onClose={() => setLookOpen(false)}
         />
       )}
-    </div>
+    </>,
+    document.body,
   );
 }
 
@@ -574,7 +596,7 @@ function HubRow({
   layout: HomeLayout;
   sources: Sources;
   open: Openers;
-  save: (home: HomeLayout) => void;
+  save: (home: HomeLayout) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState<{
     hub: HomeHub;
@@ -639,12 +661,13 @@ function HubRow({
           sources={sources}
           report={open.report}
           onClose={() => setEditing(null)}
-          onSave={(hub) => {
+          onSave={async (hub) => {
             const next = editing.isNew
               ? [...hubs, { ...hub, id: newHubId(hubs, hub.title) }]
               : hubs.map((h) => (h.id === hub.id ? hub : h));
-            setHubs(next);
-            setEditing(null);
+            const saved = await setHubs(next);
+            if (saved) setEditing(null);
+            return saved;
           }}
         />
       )}
@@ -719,10 +742,7 @@ function GoalsPanel({
           ))}
         </ul>
       ) : (
-        <p className="muted">
-          No active goals. Add one in Upcoming and the assistant checks in each
-          week.
-        </p>
+        <p className="muted">No active goals yet.</p>
       )}
     </Panel>
   );
@@ -768,10 +788,7 @@ function RoutinesPanel({
           ))}
         </ul>
       ) : (
-        <p className="muted">
-          No routines scheduled. Set one in Upcoming to have the assistant run
-          it for you.
-        </p>
+        <p className="muted">No routines scheduled.</p>
       )}
     </Panel>
   );
@@ -791,9 +808,11 @@ function ReflectionPanel({
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const toast = useToast();
+  const mutation = useRef(false);
   const add = async () => {
     const line = text.trim();
-    if (!line || busy) return;
+    if (!data || !line || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       const saved = await client.addReflection(line);
@@ -806,6 +825,7 @@ function ReflectionPanel({
     } catch (e) {
       report(e);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -834,11 +854,12 @@ function ReflectionPanel({
         <input
           aria-label="How did today go?"
           placeholder="How did today go?"
+          disabled={busy || !data}
           maxLength={500}
           value={text}
           onChange={(e) => setText(e.target.value)}
         />
-        <button className="secondary" disabled={busy || !text.trim()}>
+        <button className="secondary" disabled={busy || !data || !text.trim()}>
           Add
         </button>
       </form>
@@ -865,7 +886,13 @@ function ReflectionPanel({
 
 /** Hubs and the three panels, in the order chosen; hidden ones left out. */
 export function HomeSections(open: Openers) {
-  const { prefs, save } = usePrefs();
+  const {
+    prefs,
+    save,
+    ready: prefsReady,
+    failed: prefsFailed,
+    reload: reloadPrefs,
+  } = usePrefs();
   const layout = prefs.home ?? DEFAULT_HOME;
   const [sources, setSources] = useState<Sources>({
     projects: [],
@@ -876,36 +903,38 @@ export function HomeSections(open: Openers) {
   const [data, setData] = useState<HomeSummary | null>(null);
   const reportRef = useRef(open.report);
   reportRef.current = open.report;
+  const [retry, setRetry] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let live = true;
+    setFailed(false);
     void Promise.all([
-      client.listProjects().catch(() => [] as Project[]),
-      client.listDocs().catch(() => [] as DocSummary[]),
-      client.study().catch(() => null),
-      client.listViews().catch(() => [] as SavedView[]),
+      client.listProjects(),
+      client.listDocs(),
+      client.study(),
+      client.listViews(),
+      client.getHome(),
     ]).then(
-      ([projects, docs, study, views]) =>
-        live && setSources({ projects, docs, study, views }),
-    );
-    client.getHome().then(
-      (d) => live && setData(d),
-      () =>
-        live &&
-        setData({
-          today: "",
-          timezone: "UTC",
-          goals: [],
-          routines: [],
-          brief: null,
-          agenda_doc_id: null,
-          reflection: [],
-        }),
+      ([projects, docs, study, views, summary]) => {
+        if (live) {
+          setSources({ projects, docs, study, views });
+          setData(summary);
+          setReady(true);
+        }
+      },
+      (error) => {
+        if (live) {
+          setFailed(true);
+          reportRef.current(error);
+        }
+      },
     );
     return () => {
       live = false;
     };
-  }, []);
+  }, [retry]);
 
   const panels = homePanels(layout);
   // Consecutive panels share a row; hubs take a row of their own.
@@ -948,28 +977,58 @@ export function HomeSections(open: Openers) {
 
   return (
     <>
+      {prefsFailed && (
+        <p role="alert">
+          Couldn't load Home layout.{" "}
+          <button type="button" className="text-button" onClick={reloadPrefs}>
+            Retry layout
+          </button>
+        </p>
+      )}
+      {!prefsReady && !prefsFailed && (
+        <p className="muted" role="status">
+          Loading Home layout…
+        </p>
+      )}
+      {failed && (
+        <p role="status">
+          Home details unavailable.{" "}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            Retry
+          </button>
+        </p>
+      )}
+      {prefsReady && !ready && !failed && (
+        <p className="muted">Loading Home…</p>
+      )}
+      {prefsReady &&
+        ready &&
+        rows.map((row) =>
+          row[0] === "hubs" ? (
+            <HubRow
+              key="hubs"
+              layout={layout}
+              sources={sources}
+              open={open}
+              save={saveHome}
+            />
+          ) : (
+            <div
+              key={row.join("-")}
+              className={`home-panels home-panels-${row.length}`}
+            >
+              {row.map(panel)}
+            </div>
+          ),
+        )}
       <HomeCompanions
         canOpen={open.canOpenAgentOutput}
         onOpenChat={open.onOpenAgentOutput}
       />
-      {rows.map((row) =>
-        row[0] === "hubs" ? (
-          <HubRow
-            key="hubs"
-            layout={layout}
-            sources={sources}
-            open={open}
-            save={saveHome}
-          />
-        ) : (
-          <div
-            key={row.join("-")}
-            className={`home-panels home-panels-${row.length}`}
-          >
-            {row.map(panel)}
-          </div>
-        ),
-      )}
     </>
   );
 }

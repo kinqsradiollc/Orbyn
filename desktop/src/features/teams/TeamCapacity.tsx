@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import {
   dayTime,
@@ -11,7 +11,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { onLive } from "../../lib/live";
-import { useRemote } from "../../hooks/useRemote";
+import { useSettingsRead } from "../settings/useSettingsRead";
 import { addDays } from "../calendar/dates";
 import "./team-capacity.css";
 
@@ -62,35 +62,48 @@ export function TeamCapacity({
 }) {
   const from = weekStart;
   const to = addDays(weekStart, 7);
-  const capacity = useRemote<Capacity>(
+  const capacityRead = useSettingsRead<Capacity>(
     () => client.teamCapacity(teamId, from, to),
-    [teamId, from.toISOString()],
     report,
   );
-  const [presence, setPresence] = useState<Map<string, MemberPresence>>(
-    new Map(),
+  const capacity = capacityRead.data;
+  const presenceRead = useSettingsRead<MemberPresence[]>(
+    () => client.teamPresence(teamId),
+    report,
   );
-  const loadPresence = useCallback(() => {
-    client.teamPresence(teamId).then(
-      (rows) => setPresence(new Map(rows.map((r) => [r.user_id, r]))),
-      () => {},
-    );
-  }, [teamId]);
-  useEffect(() => {
-    loadPresence();
-    return onLive(
-      (news) =>
-        news.kind === "presence" &&
-        (!news.team || news.team === teamId) &&
-        loadPresence(),
-    );
-  }, [teamId, loadPresence]);
+  const presence = new Map(
+    (presenceRead.data ?? []).map((row) => [row.user_id, row]),
+  );
+  useEffect(
+    () =>
+      onLive((news) => {
+        if (news.kind === "presence" && (!news.team || news.team === teamId))
+          void presenceRead.reload();
+      }),
+    [teamId, presenceRead.reload],
+  );
   const [picked, setPicked] = useState<{
     member: MemberCapacity;
     day: CapacityDay;
   } | null>(null);
 
-  if (!capacity) return <p className="muted team-block-lead">Loading…</p>;
+  if (!capacity)
+    return (
+      <div className="team-block-lead">
+        <p className="muted">
+          {capacityRead.failed ? "Capacity unavailable." : "Loading…"}
+        </p>
+        {capacityRead.failed && (
+          <button
+            type="button"
+            disabled={capacityRead.loading}
+            onClick={() => void capacityRead.reload()}
+          >
+            Retry
+          </button>
+        )}
+      </div>
+    );
   // Leave out days nobody works, such as the weekend.
   const shown = capacity.days
     .map((day, n) => ({ day, n }))

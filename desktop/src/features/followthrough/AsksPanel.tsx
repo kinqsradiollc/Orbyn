@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { TaskAsk } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { onLive } from "../../lib/live";
+import { errorText } from "../../lib/errors";
 import { AskCard } from "./AskBox";
 
 /**
@@ -17,14 +18,46 @@ export function AsksPanel({
     to_me: TaskAsk[];
     from_me: TaskAsk[];
   } | null>(null);
-  const load = useCallback(() => {
-    client.listAsks().then(setLists, () => setLists(null));
+  const [error, setError] = useState("");
+  const request = useRef(0);
+  const load = useCallback(async () => {
+    const version = ++request.current;
+    try {
+      const rows = await client.listAsks();
+      if (version === request.current) {
+        setLists(rows);
+        setError("");
+      }
+    } catch (reason) {
+      if (version === request.current) setError(errorText(reason));
+    }
   }, []);
   useEffect(() => {
-    load();
-    return onLive((news) => news.kind === "changed" && load());
+    void load();
+    const unsubscribe = onLive((news) => {
+      if (news.kind === "changed") void load();
+    });
+    return () => {
+      request.current += 1;
+      unsubscribe();
+    };
   }, [load]);
-  if (!lists || (!lists.to_me.length && !lists.from_me.length)) return null;
+  if (error && !lists)
+    return (
+      <p className="error" role="alert">
+        {error}
+        <button
+          className="text-button"
+          onClick={() => {
+            void load();
+          }}
+        >
+          Retry
+        </button>
+      </p>
+    );
+  if (!lists || (!lists.to_me.length && !lists.from_me.length && !error))
+    return null;
   const group = (title: string, asks: TaskAsk[], turn: "mine" | "theirs") =>
     asks.length > 0 && (
       <div className="asks-group">
@@ -46,6 +79,19 @@ export function AsksPanel({
     );
   return (
     <section className="card asks-panel" aria-label="Asks">
+      {!!error && (
+        <p className="error" role="alert">
+          {error}
+          <button
+            className="text-button"
+            onClick={() => {
+              void load();
+            }}
+          >
+            Retry
+          </button>
+        </p>
+      )}
       {group("Waiting for your answer", lists.to_me, "mine")}
       {group("Waiting on others", lists.from_me, "theirs")}
     </section>

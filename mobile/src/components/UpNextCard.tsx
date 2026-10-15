@@ -2,8 +2,9 @@ import React, { useEffect, useRef, useState } from "react";
 import { AppState, StyleSheet, Text, View } from "react-native";
 import type { Item, UpNext } from "@orbyn/core";
 import { Button } from "./Button";
+import { InlineDetails } from "./InlineDetails";
 import { client } from "../lib/api";
-import { FadeIn, Pressable } from "../motion";
+import { Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -49,15 +50,17 @@ export function UpNextCard({
   // and when the app comes back to the front.
   useEffect(() => {
     let alive = true;
+    let version = 0;
     const load = () => {
+      const current = ++version;
       fetched.current = Date.now();
       client.getUpNext().then(
         (n) => {
-          if (!alive) return;
+          if (!alive || current !== version) return;
           setNext(n);
           setFailed(false);
         },
-        () => alive && setFailed(true),
+        () => alive && current === version && setFailed(true),
       );
     };
     const wait = Math.max(0, 15_000 - (Date.now() - fetched.current));
@@ -84,7 +87,7 @@ export function UpNextCard({
   const firstItem = first && byId.get(first.item_id);
 
   return (
-    <FadeIn style={shared.card}>
+    <View style={shared.card}>
       <Text style={shared.sectionTitle} accessibilityRole="header">
         Up next
       </Text>
@@ -98,13 +101,15 @@ export function UpNextCard({
           >
             <Text style={s.title}>{first.title}</Text>
           </Pressable>
-          <View style={s.reasons}>
-            {first.reasons.map((r) => (
-              <Text key={r} style={s.reason}>
-                {r}
-              </Text>
-            ))}
-          </View>
+          <InlineDetails title="Why this task?">
+            <View style={s.reasons}>
+              {first.reasons.map((r) => (
+                <Text key={r} style={s.reason}>
+                  {r}
+                </Text>
+              ))}
+            </View>
+          </InlineDetails>
           <View style={s.actions}>
             <Button
               title="Start focus"
@@ -112,17 +117,11 @@ export function UpNextCard({
               style={s.action}
               onPress={() => onFocus(firstItem)}
             />
-            <Button
-              title="Open"
-              secondary
-              style={s.action}
-              onPress={() => onOpen(firstItem)}
-            />
           </View>
           <Text style={[shared.small, s.session]}>
             {first.planned_now
-              ? `${first.minutes} min left of its time`
-              : `About ${first.minutes} min is a good start`}
+              ? `${first.minutes} min remaining`
+              : `${first.minutes} min suggested`}
           </Text>
           {rest.map((r) => (
             <Pressable
@@ -131,22 +130,15 @@ export function UpNextCard({
               onPress={() => onOpen(byId.get(r.item_id)!)}
               style={({ pressed }) => [s.row, pressed && s.rowPressed]}
             >
-              <Text style={s.rowTitle} numberOfLines={2}>
-                {r.title}
-              </Text>
-              <Text style={shared.small} numberOfLines={2}>
-                {r.reasons[0]}
-              </Text>
+              <Text style={s.rowTitle}>{r.title}</Text>
+              <Text style={shared.small}>{r.reasons[0]}</Text>
             </Pressable>
           ))}
         </>
       ) : (
-        <Text style={shared.small}>
-          Nothing is waiting on you right now. Enjoy the space, or plan
-          something new.
-        </Text>
+        <Text style={shared.small}>No suggested task right now.</Text>
       )}
-    </FadeIn>
+    </View>
   );
 }
 
@@ -155,8 +147,8 @@ const s = themed(() =>
     window: { marginTop: 2, marginBottom: 12 },
     title: {
       fontFamily: fonts.semibold,
-      fontSize: 18,
-      lineHeight: 23,
+      fontSize: 16,
+      lineHeight: 21,
       color: colors.text,
     },
     reasons: {
@@ -175,8 +167,8 @@ const s = themed(() =>
       paddingVertical: 4,
       overflow: "hidden",
     },
-    actions: { flexDirection: "row", gap: 8, marginTop: 14 },
-    action: { flex: 1, marginBottom: 0 },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+    action: { marginBottom: 0 },
     session: { marginTop: 8 },
     row: {
       marginTop: 12,
@@ -188,7 +180,7 @@ const s = themed(() =>
     rowPressed: { opacity: 0.7 },
     rowTitle: {
       fontFamily: fonts.semibold,
-      fontSize: 15,
+      fontSize: 13,
       color: colors.text,
     },
   }),

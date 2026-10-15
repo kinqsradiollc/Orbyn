@@ -134,3 +134,104 @@
   font-style: normal;
   white-space: nowrap;
 }
+
+dialog.scope-dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+.scope-dialog h2 {
+  font-size: 18px;
+  overflow-wrap: anywhere;
+}
+.scope-options .secondary {
+  min-height: 44px;
+  white-space: normal;
+}
+.scope-options small {
+  font-size: 12px;
+}
+
+dialog.scope-dialog::backdrop {
+  background: var(--color-backdrop);
+}
+
+/* Focused item editing: optional content stays in the form and retains drafts. */
+.item-editor-modal {
+  width: min(640px, calc(100vw - 32px));
+  container-type: inline-size;
+}
+.item-editor-details {
+  margin-block: 8px 16px;
+}
+.item-editor-details > summary,
+.item-editor-options > summary {
+  min-height: 44px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--color-textSoft);
+  font-size: 13px;
+  border-radius: var(--radius-sm);
+}
+.item-editor-details > summary {
+  margin-bottom: 10px;
+}
+.item-editor-details > summary:focus-visible,
+.item-editor-options > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+.item-editor-options > summary {
+  width: 44px;
+  justify-content: center;
+}
+.item-editor-options {
+  margin-right: auto;
+}
+.item-editor-options .danger {
+  margin-block: 4px;
+}
+.item-editor-modal .button-row {
+  position: sticky;
+  bottom: -22px;
+  background: var(--color-surface);
+  padding-block: 12px;
+  border-top: 1px solid var(--color-border);
+  z-index: 1;
+}
+.item-editor-modal textarea {
+  resize: none;
+  min-height: 88px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+.modal .event-add-row .select {
+  flex: 1 1 150px;
+  min-width: 0;
+}
+.event-chips .chip > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.event-chips .chip .field-hint {
+  display: block;
+}
+.item-editor-modal .tag-options {
+  max-height: 220px;
+  overflow: auto;
+  padding-block: 4px;
+}
+@container (max-width: 30rem) {
+  .item-editor-modal .form-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (pointer: coarse) {
+  .event-chips .icon-button,
+  .event-field .text-button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

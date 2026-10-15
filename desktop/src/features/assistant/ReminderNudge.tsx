@@ -1,9 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { localDateKey, type ReminderNudgeCard } from "@orbyn/core";
 import {
   performReminderAction,
   type ReminderActionReceipt,
 } from "@orbyn/api-client";
+import { createPortal } from "react-dom";
+import type { ReactNode } from "react";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import { MoreHorizontal } from "lucide-react";
@@ -12,7 +15,11 @@ import "./reminder-nudge.css";
 import { DateField } from "../../components/DateField";
 
 /** Explicit work choices and Undo on a saved personal reminder. */
-export function ReminderNudge({
+export function ReminderNudge(props: Parameters<typeof ReminderNudgeBody>[0]) {
+  return <ReminderNudgeBody key={props.card.id} {...props} />;
+}
+
+function ReminderNudgeBody({
   card,
   busy,
   chatId,
@@ -26,6 +33,9 @@ export function ReminderNudge({
   skipped: boolean;
 }) {
   const [menu, setMenu] = useState<DOMRect | null>(null);
+  const mutation = useRef(false);
+  const [receiptFailed, setReceiptFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [pending, setPending] = useState(false);
   const [stopped, setStopped] = useState(false);
   const [error, setError] = useState("");
@@ -34,6 +44,7 @@ export function ReminderNudge({
   useEffect(() => {
     let cancelled = false;
     setReceiptLoading(true);
+    setReceiptFailed(false);
     void client
       .reminderActionReceipt(card.id)
       .then(
@@ -50,12 +61,14 @@ export function ReminderNudge({
             );
         },
         (error) => {
-          if (!cancelled)
+          if (!cancelled) {
+            setReceiptFailed(true);
             setError(
               error instanceof Error
                 ? error.message
                 : "Could not restore this reminder action.",
             );
+          }
         },
       )
       .finally(() => {
@@ -64,7 +77,7 @@ export function ReminderNudge({
     return () => {
       cancelled = true;
     };
-  }, [card.id]);
+  }, [card.id, retry]);
   const [choosing, setChoosing] = useState<"move" | "book" | null>(null);
   const [day, setDay] = useState("");
   const [minutes, setMinutes] = useState(30);
@@ -75,6 +88,8 @@ export function ReminderNudge({
     );
   }, []);
   const run = async (work: () => Promise<void>) => {
+    if (busy || mutation.current || receiptLoading || receiptFailed) return;
+    mutation.current = true;
     setPending(true);
     setError("");
     try {
@@ -82,6 +97,7 @@ export function ReminderNudge({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      mutation.current = false;
       setPending(false);
     }
   };
@@ -105,7 +121,7 @@ export function ReminderNudge({
           <button
             type="button"
             className="secondary"
-            disabled={busy || pending || receiptLoading}
+            disabled={busy || pending || receiptLoading || receiptFailed}
             onClick={() =>
               void run(async () => {
                 await receipt.undo();
@@ -123,7 +139,7 @@ export function ReminderNudge({
               type="button"
               className="secondary"
               key={action}
-              disabled={busy || pending || receiptLoading}
+              disabled={busy || pending || receiptLoading || receiptFailed}
               onClick={() =>
                 action === "move" || action === "book"
                   ? setChoosing(action)
@@ -140,57 +156,78 @@ export function ReminderNudge({
         </div>
       )}
       {choosing && (
-        <div className="agents-identity-form">
-          <label htmlFor={`nudge-day-${card.id}`}>
-            {choosing === "move" ? "New deadline day" : "Day to book time"}
-          </label>
-          <DateField
-            id={`nudge-day-${card.id}`}
-            type="date"
-            value={day}
-            onChange={(event) => setDay(event.target.value)}
-          />
-          {choosing === "book" && card.entity_kind !== "habit" && (
-            <label>
-              Minutes
-              <input
-                type="number"
-                min={5}
-                max={1440}
-                value={minutes}
-                onChange={(event) => setMinutes(Number(event.target.value))}
-              />
+        <NudgeDialog
+          title={choosing === "move" ? "Move deadline" : "Book time"}
+          busy={pending}
+          onClose={() => {
+            if (!mutation.current) setChoosing(null);
+          }}
+        >
+          <div className="agents-identity-form">
+            <label htmlFor={`nudge-day-${card.id}`}>
+              {choosing === "move" ? "New deadline day" : "Day to book time"}
             </label>
-          )}
-          <div className="button-row start">
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy || pending || !day}
-              onClick={() => act(choosing)}
-            >
-              {choosing === "move" ? "Move deadline" : "Book time"}
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={pending}
-              onClick={() => setChoosing(null)}
-            >
-              Cancel
-            </button>
+            <DateField
+              disabled={pending || busy}
+              id={`nudge-day-${card.id}`}
+              type="date"
+              value={day}
+              onChange={(event) => setDay(event.target.value)}
+            />
+            {choosing === "book" && card.entity_kind !== "habit" && (
+              <label>
+                Minutes
+                <input
+                  type="number"
+                  disabled={pending || busy}
+                  min={5}
+                  max={1440}
+                  value={minutes}
+                  onChange={(event) => setMinutes(Number(event.target.value))}
+                />
+              </label>
+            )}
+            <div className="button-row start">
+              <button
+                type="button"
+                className="secondary"
+                disabled={
+                  busy ||
+                  pending ||
+                  receiptFailed ||
+                  !day ||
+                  (choosing === "book" &&
+                    card.entity_kind !== "habit" &&
+                    (!Number.isFinite(minutes) ||
+                      minutes < 5 ||
+                      minutes > 1440))
+                }
+                onClick={() => act(choosing)}
+              >
+                {choosing === "move" ? "Move deadline" : "Book time"}
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                disabled={pending}
+                onClick={() => setChoosing(null)}
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-        </div>
+          {error && <p role="alert">{error}</p>}
+        </NudgeDialog>
       )}
       <div className="button-row start">
         {stopped ? (
-          <span role="status">Reminders stopped for this thing.</span>
+          <span role="status">Reminders stopped for this item.</span>
         ) : (
           <button
             type="button"
             className="icon-button"
             aria-label="Reminder options"
-            disabled={busy || pending || receiptLoading}
+            disabled={busy || pending || receiptLoading || receiptFailed}
             onClick={(event) =>
               setMenu(event.currentTarget.getBoundingClientRect())
             }
@@ -217,11 +254,56 @@ export function ReminderNudge({
               });
             }}
           >
-            Stop reminders for this thing
+            Stop reminders for this item
           </button>
         </Popover>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && !choosing && <p role="alert">{error}</p>}
+      {receiptFailed && (
+        <button
+          className="text-button"
+          onClick={() => setRetry((value) => value + 1)}
+        >
+          Retry action status
+        </button>
+      )}
     </div>
+  );
+}
+
+function NudgeDialog({
+  title,
+  busy,
+  onClose,
+  children,
+}: {
+  title: string;
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      data-modal-focus={focus.id}
+      className="modal modal-small nudge-dialog"
+      aria-labelledby="nudge-dialog-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <h2 id="nudge-dialog-title">{title}</h2>
+      {children}
+    </dialog>,
+    document.body,
   );
 }

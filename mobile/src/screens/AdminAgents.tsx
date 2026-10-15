@@ -9,6 +9,7 @@ import {
   type AgentSettingsUpdate,
 } from "@orbyn/core";
 import { Button } from "../components/Button";
+import { InlineDetails } from "../components/InlineDetails";
 import { Pill } from "../components/Pill";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
@@ -46,15 +47,19 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
     null,
   );
 
-  const adopt = (s: AgentSettings) => {
+  // Only refresh the saved form; unrelated drafts survive access/app changes.
+  const adopt = (s: AgentSettings, saved?: AgentSettingsUpdate) => {
     setSettings(s);
-    setHosts(s.allowed_client_hosts.join("\n"));
-    setMaxDays(String(s.max_grant_days));
-    setLimits(
-      Object.fromEntries(
-        LIMITS.map(({ key }) => [key, String(s.agent_limits[key])]),
-      ),
-    );
+    if (!saved || "allowed_client_hosts" in saved)
+      setHosts(s.allowed_client_hosts.join("\n"));
+    if (!saved || "agent_limits" in saved || "max_grant_days" in saved) {
+      setMaxDays(String(s.max_grant_days));
+      setLimits(
+        Object.fromEntries(
+          LIMITS.map(({ key }) => [key, String(s.agent_limits[key])]),
+        ),
+      );
+    }
   };
   const load = () =>
     act(async () => {
@@ -74,7 +79,7 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
 
   const update = (body: AgentSettingsUpdate, where: string, done: string) =>
     act(async () => {
-      adopt(await client.adminUpdateAgentSettings(body));
+      adopt(await client.adminUpdateAgentSettings(body), body);
       setNote({ where, text: done });
     });
 
@@ -143,6 +148,7 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
           await client.adminUpdateAgentSettings({
             blocked_client_ids: blocked ? [...rest, app.id] : rest,
           }),
+          { blocked_client_ids: blocked ? [...rest, app.id] : rest },
         );
         setApps(await client.adminAgentClients());
         setNote({
@@ -191,11 +197,11 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
       <View style={[shared.card, s.card]}>
         <Text style={s.title}>Outside agents</Text>
         <Text style={[shared.small, s.lead]}>
-          Control MCP agents for everyone. Changes apply within seconds.
+          Workspace-wide MCP access. Changes apply within seconds.
         </Text>
         <Toggle
           label="Outside agents"
-          hint="Off: every agent is refused, and none can sign in."
+          hint="Off blocks all connections and new sign-ins."
           on={settings.agents_enabled}
           disabled={busy}
           onChange={(on) =>
@@ -207,8 +213,8 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
           }
         />
         <Toggle
-          label="Let agents make changes"
-          hint="Off: agents can still read, but every change is refused (for incidents)."
+          label="Allow changes"
+          hint="Off keeps reading available and blocks changes."
           on={settings.agents_writes_enabled}
           disabled={busy}
           onChange={(on) =>
@@ -220,8 +226,8 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
           }
         />
         <Toggle
-          label="Apps can register themselves"
-          hint="For apps without a client metadata document. Limited per address; unused registrations are cleared after a week."
+          label="App registration"
+          hint="Allows apps without website metadata to register."
           on={settings.dcr_enabled}
           disabled={busy}
           onChange={(on) =>
@@ -233,8 +239,8 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
           }
         />
         <Toggle
-          label="Cards in agents (preview)"
-          hint="Agents that can show cards get Today, a plan preview with Apply, and changes waiting for review. Approving still happens only in Orbyn."
+          label="Interactive cards"
+          hint="Shows supported previews. Approvals stay in Orbyn."
           on={settings.mcp_apps_enabled}
           disabled={busy}
           onChange={(on) =>
@@ -246,7 +252,7 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
           }
         />
         <Toggle
-          label="Old personal API keys reach agents"
+          label="Legacy API key access"
           hint={
             settings.legacy_keys_until
               ? `Until ${new Date(settings.legacy_keys_until).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" })}, then never again. They always keep working with the API and CalDAV.`
@@ -261,29 +267,32 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
 
       <View style={[shared.card, s.card]}>
         <Text style={s.title}>Apps</Text>
-        <Text style={shared.label}>Only allow apps from these websites</Text>
-        <TextInput
-          style={[shared.input, s.multiline]}
-          value={hosts}
-          onChangeText={setHosts}
-          multiline
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-          placeholder={"Empty: any website.\nclaude.ai\nchatgpt.com"}
-          placeholderTextColor={colors.faint}
-          accessibilityLabel="Only allow apps from these websites"
-        />
-        <Text style={[shared.small, s.lead]}>
-          One address per line. Include every redirect address an app uses.
-        </Text>
-        <Button
-          secondary
-          title="Save websites"
-          disabled={busy}
-          style={s.flush}
-          onPress={saveHosts}
-        />
+        <InlineDetails title="Allowed websites">
+          <Text style={shared.label}>Only allow apps from these websites</Text>
+          <TextInput
+            style={[shared.input, s.multiline]}
+            value={hosts}
+            editable={!busy}
+            onChangeText={setHosts}
+            multiline
+            autoCapitalize="none"
+            autoCorrect={false}
+            keyboardType="url"
+            placeholder={"Empty: any website.\nclaude.ai\nchatgpt.com"}
+            placeholderTextColor={colors.faint}
+            accessibilityLabel="Only allow apps from these websites"
+          />
+          <Text style={[shared.small, s.lead]}>
+            Leave empty to allow any website. Include all app redirect hosts.
+          </Text>
+          <Button
+            secondary
+            title="Save websites"
+            disabled={busy}
+            style={s.flush}
+            onPress={saveHosts}
+          />
+        </InlineDetails>
         {noteFor("apps")}
         {apps === null ? (
           <Text style={shared.small}>Loading apps…</Text>
@@ -293,16 +302,14 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
               <View key={a.id} style={[s.row, n > 0 && s.divider]}>
                 <View style={s.rowMain}>
                   <View style={s.rowTitle}>
-                    <Text style={[s.name, { flexShrink: 1 }]} numberOfLines={1}>
-                      {a.name}
-                    </Text>
+                    <Text style={[s.name, { flexShrink: 1 }]}>{a.name}</Text>
                     {a.blocked && <Pill label="Blocked" tone="danger" />}
                   </View>
-                  <Text style={shared.small} numberOfLines={1}>
+                  <Text style={shared.small}>
                     {a.host} ·{" "}
                     {a.kind === "cimd" ? "Its website" : "Registered itself"}
                   </Text>
-                  <Text style={shared.small} numberOfLines={1}>
+                  <Text style={shared.small}>
                     {a.connections} connection{a.connections === 1 ? "" : "s"} ·{" "}
                     {a.last_used_at
                       ? `used ${timeAgo(a.last_used_at)}`
@@ -325,26 +332,33 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
 
       <View style={[shared.card, s.card]}>
         <Text style={s.title}>Limits</Text>
-        <NumberField
-          label="Longest a connection may last (days)"
-          value={maxDays}
-          onChange={setMaxDays}
-        />
-        {LIMITS.map(({ key, label }) => (
+        <InlineDetails
+          title="Connection limits"
+          reveal={note?.where === "limits"}
+        >
           <NumberField
-            key={key}
-            label={label}
-            value={limits[key] ?? ""}
-            onChange={(v) => setLimits((l) => ({ ...l, [key]: v }))}
+            disabled={busy}
+            label="Connection lifetime (days)"
+            value={maxDays}
+            onChange={setMaxDays}
           />
-        ))}
-        <Button
-          title="Save limits"
-          disabled={busy}
-          style={s.flush}
-          onPress={saveLimits}
-        />
-        {noteFor("limits")}
+          {LIMITS.map(({ key, label }) => (
+            <NumberField
+              key={key}
+              disabled={busy}
+              label={label}
+              value={limits[key] ?? ""}
+              onChange={(v) => setLimits((l) => ({ ...l, [key]: v }))}
+            />
+          ))}
+          <Button
+            title="Save limits"
+            disabled={busy}
+            style={s.flush}
+            onPress={saveLimits}
+          />
+          {noteFor("limits")}
+        </InlineDetails>
       </View>
 
       {usage && (
@@ -362,9 +376,7 @@ export function AdminAgents({ act, busy }: { act: Act; busy: boolean }) {
                   style={[s.row, n > 0 && s.divider]}
                 >
                   <View style={s.rowMain}>
-                    <Text style={s.name} numberOfLines={1}>
-                      {u.app}
-                    </Text>
+                    <Text style={s.name}>{u.app}</Text>
                     <Text style={shared.small}>
                       {u.people} {u.people === 1 ? "person" : "people"} ·{" "}
                       {u.calls} calls · {u.writes} changes
@@ -421,9 +433,11 @@ function NumberField({
   label,
   value,
   onChange,
+  disabled,
 }: {
   label: string;
   value: string;
+  disabled: boolean;
   onChange: (value: string) => void;
 }) {
   return (
@@ -432,6 +446,7 @@ function NumberField({
       <TextInput
         style={[shared.input, s.number]}
         value={value}
+        editable={!disabled}
         onChangeText={onChange}
         keyboardType="number-pad"
         accessibilityLabel={label}
@@ -474,7 +489,12 @@ const s = themed(() =>
       borderTopColor: colors.border,
     },
     rowMain: { flex: 1, minWidth: 0, gap: 2 },
-    rowTitle: { flexDirection: "row", alignItems: "center", gap: 8 },
+    rowTitle: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
     name: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     field: { flexDirection: "row", alignItems: "center", gap: 12 },
     fieldLabel: { flex: 1 },

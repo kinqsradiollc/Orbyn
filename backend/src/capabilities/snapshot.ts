@@ -37,6 +37,7 @@ export const SNAPSHOT_SPECS = {
       ["item_dependencies", "prerequisite_id"],
       ["doc_task_links", "item_id"],
       ["item_updates", "item_id"],
+      ["item_completions", "item_id"],
       ["task_asks", "item_id"],
       ["item_proofs", "item_id"],
       ["item_deadline_moves", "item_id"],

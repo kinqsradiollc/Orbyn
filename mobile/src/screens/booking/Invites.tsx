@@ -25,7 +25,7 @@ import {
   shortDay,
 } from "../../lib/planning";
 import { useRun } from "../../hooks/useRun";
-import { FadeIn, animateLayout } from "../../motion";
+import { InlineDetails } from "../../components/InlineDetails";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 import { DURATIONS, MEETING_URL, dayKeyOf, newKey } from "./helpers";
@@ -94,7 +94,6 @@ export function InviteList({ onNew }: { onNew: () => void }) {
           onPress: () =>
             void run(async () => {
               await client.cancelOpenInvite(invite.id);
-              animateLayout();
               setInvites(await client.listOpenInvites());
             }),
         },
@@ -105,12 +104,21 @@ export function InviteList({ onNew }: { onNew: () => void }) {
     <>
       <ErrorBanner error={error} onDismiss={() => setError("")} />
       <Text style={[shared.subtitle, s.intro]}>
-        Offer times to one person. Their choice books immediately; the link
-        works once.
+        Their chosen time books immediately. Each link works once.
       </Text>
       <Button title="Offer times" icon="plus" onPress={onNew} />
       {invites === null ? (
-        <Text style={shared.small}>{busy ? "Loading…" : ""}</Text>
+        busy ? (
+          <Text style={shared.small}>Loading…</Text>
+        ) : (
+          <Button
+            secondary
+            title="Retry"
+            onPress={() =>
+              void run(async () => setInvites(await client.listOpenInvites()))
+            }
+          />
+        )
       ) : invites.length === 0 ? (
         <View style={[shared.card, shared.empty]}>
           <View style={shared.emptyIcon}>
@@ -118,7 +126,7 @@ export function InviteList({ onNew }: { onNew: () => void }) {
           </View>
           <Text style={shared.sectionTitle}>No invites yet.</Text>
           <Text style={[shared.subtitle, s.center]}>
-            Pick a few windows that suit you and send the link to someone.
+            Offer times to share a private booking link.
           </Text>
         </View>
       ) : (
@@ -128,10 +136,10 @@ export function InviteList({ onNew }: { onNew: () => void }) {
             const open = invite.status === "open";
             const canWithdraw = open || invite.status === "booked";
             return (
-              <FadeIn key={invite.id} index={n} style={n > 0 && bs.divider}>
+              <View key={invite.id} style={n > 0 && bs.divider}>
                 <View style={s.row}>
                   <View style={s.rowTop}>
-                    <Text style={[bs.rowTitle, { flex: 1 }]} numberOfLines={2}>
+                    <Text style={[bs.rowTitle, { flex: 1 }]}>
                       {invite.title}
                     </Text>
                     <Pill label={status.label} tone={status.tone} />
@@ -141,6 +149,14 @@ export function InviteList({ onNew }: { onNew: () => void }) {
                     {invite.co_hosts.length > 0 &&
                       ` · with ${invite.co_hosts.map((h) => h.name).join(", ")}`}
                   </Text>
+                  <InlineDetails title="Offered windows">
+                    {invite.windows.map((w) => (
+                      <Text key={w.start_at} style={shared.small}>
+                        {shortDay(w.start_at)} ·{" "}
+                        {rangeLabel(w.start_at, w.end_at)}
+                      </Text>
+                    ))}
+                  </InlineDetails>
                   {invite.booking ? (
                     <Text style={[shared.small, s.line]}>
                       {invite.booking.name} booked{" "}
@@ -172,7 +188,7 @@ export function InviteList({ onNew }: { onNew: () => void }) {
                     )}
                   </View>
                 </View>
-              </FadeIn>
+              </View>
             );
           })}
         </View>
@@ -189,13 +205,21 @@ export function InviteEditor({
   teams,
   userId,
   onDone,
+  onBusyChange,
+  visible = true,
 }: {
   /** Your teams: people you share one with can co-host. */
   teams: Team[];
   userId: string | undefined;
   onDone: () => void;
+  onBusyChange?: (busy: boolean) => void;
+  visible?: boolean;
 }) {
   const { busy, error, setError, run } = useRun();
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   const [coHosts, setCoHosts] = useState<string[]>([]);
   const [people, setPeople] = useState<{ user_id: string; name: string }[]>([]);
   // Everyone you share a team with, once each, by name.
@@ -240,7 +264,7 @@ export function InviteEditor({
       list.map((w) => (w.key === key ? { ...w, ...change } : w)),
     );
   const addWindow = () => {
-    animateLayout();
+    if (busy || windows.length >= MAX_WINDOWS) return;
     const last = windows[windows.length - 1];
     setWindows([
       ...windows,
@@ -268,6 +292,7 @@ export function InviteEditor({
   })();
 
   const save = () => {
+    if (busy) return;
     if (problem) {
       setTried(true);
       return;
@@ -288,20 +313,19 @@ export function InviteEditor({
         co_host_ids: coHosts,
         ...(expiry ? { expires_at: at(expiry, "23:59").toISOString() } : {}),
       });
-      animateLayout();
       setCreated(invite);
     });
   };
 
+  if (!visible) return null;
   if (created)
     return (
       <ScrollView contentContainerStyle={sheetStyles.body}>
         <View style={sheetStyles.column}>
-          <FadeIn style={[shared.softCard, s.done]}>
+          <View style={[shared.softCard, s.done]}>
             <Text style={shared.sectionTitle}>Your invite is ready</Text>
             <Text style={[shared.small, s.line]}>
-              Send this link to the person you’re meeting. They pick a time
-              inside your windows and it’s booked.
+              Share this link. Their chosen time books immediately.
             </Text>
             <Text selectable style={s.link}>
               {created.url}
@@ -312,8 +336,26 @@ export function InviteEditor({
               style={bs.last}
               onPress={() => void shareText(created.url)}
             />
-          </FadeIn>
-          <Button secondary title="Back to invites" onPress={onDone} />
+          </View>
+          <Button
+            secondary
+            title="Back to invites"
+            onPress={() => {
+              setCreated(null);
+              setTitle("");
+              setDuration(30);
+              setWindows([
+                { key: newKey(), day: tomorrow, start: "09:00", end: "12:00" },
+              ]);
+              setLocation("");
+              setMeetingUrl("");
+              setCoHosts([]);
+              setReminders(DEFAULT_BOOKER_REMINDERS);
+              setExpiry(null);
+              setTried(false);
+              onDone();
+            }}
+          />
         </View>
       </ScrollView>
     );
@@ -329,6 +371,7 @@ export function InviteEditor({
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Field label="Title">
           <TextInput
+            editable={!busy}
             style={shared.input}
             value={title}
             onChangeText={setTitle}
@@ -345,6 +388,7 @@ export function InviteEditor({
                 key={d}
                 label={minutesLabel(d)}
                 selected={duration === d}
+                disabled={busy}
                 onPress={() => setDuration(d)}
               />
             ))}
@@ -353,8 +397,7 @@ export function InviteEditor({
 
         <Text style={shared.label}>Times you’re free</Text>
         <Text style={[shared.small, bs.gap]}>
-          They can start anywhere inside these, on the quarter hour, while
-          you’re free. Up to {MAX_WINDOWS}.
+          Available starts are every 15 minutes. Up to {MAX_WINDOWS} windows.
         </Text>
         {windows.map((w, n) => (
           <View key={w.key} style={[shared.card, s.window]}>
@@ -364,15 +407,16 @@ export function InviteEditor({
               </Text>
               {windows.length > 1 && (
                 <RemoveButton
+                  disabled={busy}
                   label={`Remove time ${n + 1}`}
                   onPress={() => {
-                    animateLayout();
                     setWindows(windows.filter((x) => x.key !== w.key));
                   }}
                 />
               )}
             </View>
             <DateField
+              disabled={busy}
               label={`Day of time ${n + 1}`}
               value={w.day}
               minimumDate={new Date()}
@@ -382,6 +426,7 @@ export function InviteEditor({
               <View style={bs.half}>
                 <Text style={shared.small}>From</Text>
                 <ClockField
+                  disabled={busy}
                   label={`Time ${n + 1} from`}
                   value={w.start}
                   onChange={(start) => patch(w.key, { start })}
@@ -390,6 +435,7 @@ export function InviteEditor({
               <View style={bs.half}>
                 <Text style={shared.small}>To</Text>
                 <ClockField
+                  disabled={busy}
                   label={`Time ${n + 1} to`}
                   value={w.end}
                   onChange={(end) => patch(w.key, { end })}
@@ -407,82 +453,98 @@ export function InviteEditor({
           <View style={s.addWindow}>
             <SmallAction
               label="Add another time"
-              disabled={false}
+              disabled={busy}
               onPress={addWindow}
             />
           </View>
         )}
 
-        <Field label="Location (optional)">
-          <TextInput
-            style={shared.input}
-            value={location}
-            onChangeText={setLocation}
-            maxLength={300}
-            placeholder="Where you’ll meet"
-            placeholderTextColor={colors.faint}
-            accessibilityLabel="Location"
-          />
-        </Field>
-        <Field label="Meeting link (optional)" hint="Sent once they book.">
-          <TextInput
-            style={shared.input}
-            value={meetingUrl}
-            onChangeText={setMeetingUrl}
-            maxLength={500}
-            keyboardType="url"
-            autoCapitalize="none"
-            autoCorrect={false}
-            placeholder="https://"
-            placeholderTextColor={colors.faint}
-            accessibilityLabel="Meeting link"
-          />
-        </Field>
-        {people.length > 0 && (
-          <Field
-            label="Co-hosts (optional)"
-            hint={`Only times when every co-host is free too are offered, and the booking goes on their calendars. Up to ${MAX_CO_HOSTS}.`}
-          >
-            <ChipRow label="Co-hosts" multi>
-              {people.map((p) => {
-                const on = coHosts.includes(p.user_id);
-                return (
-                  <Chip
-                    key={p.user_id}
-                    multi
-                    label={p.name}
-                    selected={on}
-                    disabled={!on && coHosts.length >= MAX_CO_HOSTS}
-                    onPress={() =>
-                      setCoHosts(
-                        on
-                          ? coHosts.filter((id) => id !== p.user_id)
-                          : [...coHosts, p.user_id],
-                      )
-                    }
-                  />
-                );
-              })}
-            </ChipRow>
-          </Field>
-        )}
-        <Field label="Reminder emails">
-          <ReminderChips value={reminders} onChange={setReminders} />
-        </Field>
-        <Field
-          label="Link works until (optional)"
-          hint="It stops at the end of your last time anyway."
+        <InlineDetails
+          title="Meeting details"
+          reveal={
+            tried &&
+            !!problem &&
+            (problem.includes("Meeting links") ||
+              problem.includes("later date"))
+          }
         >
-          <DateField
-            label="Link works until"
-            value={expiry}
-            placeholder="The end of the last time"
-            clearable
-            minimumDate={new Date()}
-            onChange={setExpiry}
-          />
-        </Field>
-
+          <Field label="Location (optional)">
+            <TextInput
+              editable={!busy}
+              style={shared.input}
+              value={location}
+              onChangeText={setLocation}
+              maxLength={300}
+              placeholder="Where you’ll meet"
+              placeholderTextColor={colors.faint}
+              accessibilityLabel="Location"
+            />
+          </Field>
+          <Field label="Meeting link (optional)" hint="Sent once they book.">
+            <TextInput
+              editable={!busy}
+              style={shared.input}
+              value={meetingUrl}
+              onChangeText={setMeetingUrl}
+              maxLength={500}
+              keyboardType="url"
+              autoCapitalize="none"
+              autoCorrect={false}
+              placeholder="https://"
+              placeholderTextColor={colors.faint}
+              accessibilityLabel="Meeting link"
+            />
+          </Field>
+          {people.length > 0 && (
+            <Field
+              label="Co-hosts (optional)"
+              hint={`All co-hosts must be free and receive the calendar event. Up to ${MAX_CO_HOSTS}.`}
+            >
+              <ChipRow label="Co-hosts" multi>
+                {people.map((p) => {
+                  const on = coHosts.includes(p.user_id);
+                  return (
+                    <Chip
+                      key={p.user_id}
+                      multi
+                      label={p.name}
+                      selected={on}
+                      disabled={busy || (!on && coHosts.length >= MAX_CO_HOSTS)}
+                      onPress={() =>
+                        setCoHosts(
+                          on
+                            ? coHosts.filter((id) => id !== p.user_id)
+                            : [...coHosts, p.user_id],
+                        )
+                      }
+                    />
+                  );
+                })}
+              </ChipRow>
+            </Field>
+          )}
+          <Field label="Reminder emails">
+            <ReminderChips
+              disabled={busy}
+              value={reminders}
+              onChange={setReminders}
+            />
+          </Field>
+          <Field
+            label="Link works until (optional)"
+            hint="It stops at the end of your last time anyway."
+          >
+            <DateField
+              disabled={busy}
+              label="Link works until"
+              value={expiry}
+              placeholder="The end of the last time"
+              clearable
+              minimumDate={new Date()}
+              onChange={setExpiry}
+            />
+          </Field>
+        </InlineDetails>
         {!!problem && (
           <Text
             style={[shared.small, s.problem, tried && bs.warn]}
@@ -492,7 +554,7 @@ export function InviteEditor({
           </Text>
         )}
         <Button
-          title={busy ? "Making the link…" : "Make invite link"}
+          title={busy ? "Creating…" : "Create link"}
           icon="link"
           disabled={busy}
           onPress={save}

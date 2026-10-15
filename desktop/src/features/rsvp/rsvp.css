@@ -38,3 +38,23 @@
 .rsvp-answers button {
   flex: 1 1 120px;
 }
+
+.rsvp-card {
+  overflow-wrap: anywhere;
+}
+.rsvp-card h1 {
+  font-size: clamp(20px, 4vw, 28px);
+}
+.rsvp-card .eyebrow {
+  text-transform: none;
+  letter-spacing: normal;
+}
+.rsvp-for {
+  flex-wrap: wrap;
+}
+.rsvp-answers button {
+  min-height: 44px;
+}
+.rsvp-facts svg {
+  color: var(--color-muted);
+}

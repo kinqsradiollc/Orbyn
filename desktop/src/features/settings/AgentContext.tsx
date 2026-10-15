@@ -1,6 +1,12 @@
 import { Character } from "../../components/Character";
 import { CharacterEditor } from "../../components/CharacterEditor";
-import { useEffect, useState, type FormEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { FileText, Pencil } from "lucide-react";
 import {
   MAX_AGENT_INSTRUCTIONS,
@@ -34,6 +40,13 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
   const [lane, setLane] = useState<AutomationAgentLane>("background");
   const [editingLook, setEditingLook] = useState(false);
   const [reload, setReload] = useState(0);
+  const [identityError, setIdentityError] = useState(false);
+  const [contextError, setContextError] = useState(false);
+  const [contextLoading, setContextLoading] = useState(false);
+  const mounted = useRef(false);
+  const contextRequest = useRef(0);
+  const reportRef = useRef(report);
+  reportRef.current = report;
   const [identityName, setIdentityName] = useState("Orbyn");
   const [identityPersona, setIdentityPersona] = useState("");
   const [appearance, setAppearance] = useState(() => characterAppearance({}));
@@ -43,20 +56,37 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
   } | null>(null);
   const action = useAction(report);
 
-  const load = () =>
-    client.agentContext().then(setData, (e) => {
-      setData({ profile: null, instructions: [] });
-      report(e);
-    });
-  useEffect(() => {
-    void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  const load = useCallback(async () => {
+    const request = ++contextRequest.current;
+    setContextLoading(true);
+    setContextError(false);
+    try {
+      const value = await client.agentContext();
+      if (mounted.current && request === contextRequest.current) setData(value);
+    } catch (error) {
+      if (mounted.current && request === contextRequest.current) {
+        setContextError(true);
+        reportRef.current(error);
+      }
+    } finally {
+      if (mounted.current && request === contextRequest.current)
+        setContextLoading(false);
+    }
   }, []);
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      contextRequest.current++;
+    };
+  }, [load]);
 
   useEffect(() => {
     let live = true;
     const token = session.get();
     setIdentity(null);
+    setIdentityError(false);
     setEditingLook(false);
     void client.automationAgentIdentity(lane).then(
       (value) => {
@@ -67,7 +97,10 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
         setAppearance(characterAppearance(value.character));
       },
       (error) => {
-        if (live && token === session.get()) report(error);
+        if (live && token === session.get()) {
+          setIdentityError(true);
+          reportRef.current(error);
+        }
       },
     );
     return () => {
@@ -78,16 +111,19 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
   const openProfile = () =>
     void action.run(async () => {
       const made = await client.openAgentProfile();
+      if (!mounted.current) return;
       openObject({ kind: "doc", id: made.doc_id });
       await load();
     });
 
   const save = (e: FormEvent) => {
     e.preventDefault();
-    if (!editing) return;
+    if (!editing || action.pending || contextLoading || contextError) return;
     const d = editing;
     void action.run(async () => {
-      setData(await client.setAgentInstructions(d.team_id, d.text.trim()));
+      const value = await client.setAgentInstructions(d.team_id, d.text.trim());
+      if (!mounted.current) return;
+      setData(value);
       setEditing(null);
     });
   };
@@ -103,7 +139,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
         persona: identityPersona,
         character: appearance,
       });
-      if (token === session.get()) setIdentity(value);
+      if (mounted.current && token === session.get()) setIdentity(value);
     });
   };
 
@@ -115,6 +151,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
           <textarea
             aria-label={`Instructions for ${i.space}`}
             rows={3}
+            disabled={action.pending || contextLoading || contextError}
             maxLength={MAX_AGENT_INSTRUCTIONS}
             placeholder={
               i.team_id
@@ -131,6 +168,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
             <button
               type="button"
               className="secondary"
+              disabled={action.pending}
               onClick={() => setEditing(null)}
             >
               Cancel
@@ -160,6 +198,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
             className="icon-button"
             aria-label={`Change the instructions for ${i.space}`}
             title="Change"
+            disabled={action.pending || contextLoading || contextError}
             onClick={() => setEditing({ team_id: i.team_id, text: i.text })}
           >
             <Pencil size={13} />
@@ -188,23 +227,24 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
           </button>
         ))}
       </div>
-      <button
-        type="button"
-        className="text-button"
-        disabled={action.pending}
-        onClick={() => setReload((value) => value + 1)}
-      >
-        Reload agent profile
-      </button>
-      {identity === null && (
-        <p role="status">
-          Agent profile is loading or unavailable. Reload to try again.
+      {identityError && (
+        <button
+          type="button"
+          className="text-button"
+          disabled={action.pending}
+          onClick={() => setReload((value) => value + 1)}
+        >
+          Retry agent profile
+        </button>
+      )}
+      {identity === null && !identityError && (
+        <p role="status">Loading agent profile…</p>
+      )}
+      {identityError && (
+        <p role="alert" className="error">
+          Couldn't load agent profile.
         </p>
       )}
-      <p className="muted">
-        {lane === "background" ? "Background" : "Overnight"} has its own name,
-        character and communication style.
-      </p>
       <form className="agents-identity-form" onSubmit={saveIdentity}>
         <div className="settings-field">
           <label htmlFor="agent-identity-name">Name</label>
@@ -218,7 +258,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
           />
         </div>
         <div className="settings-field">
-          <label htmlFor="agent-identity-persona">Persona</label>
+          <label htmlFor="agent-identity-persona">Communication style</label>
           <textarea
             id="agent-identity-persona"
             maxLength={1000}
@@ -228,9 +268,7 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
             onChange={(e) => setIdentityPersona(e.target.value)}
             placeholder="Warm, direct, and concise"
           />
-          <small className="field-hint">
-            How it should come across. Optional.
-          </small>
+          <small className="field-hint">Optional.</small>
         </div>
         <div className="character-personas" aria-label="Communication presets">
           {CHARACTER_PERSONAS.map((preset) => (
@@ -280,18 +318,32 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
       <NightShift report={report} />
       <ReminderNudges report={report} />
       <h3>About me for agents</h3>
-      <p className="muted">
-        A page of context for your agents. Edit it like any other page.
-      </p>
+      {contextError && (
+        <div>
+          <p role="alert" className="error">
+            Couldn't load agent context.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            disabled={action.pending || contextLoading}
+            onClick={() => void load()}
+          >
+            Retry context
+          </button>
+        </div>
+      )}
       <div className="agents-about">
         <button
           type="button"
           className="secondary"
-          disabled={action.pending || data === null}
+          disabled={
+            action.pending || data === null || contextLoading || contextError
+          }
           onClick={openProfile}
         >
           <FileText size={13} />
-          {data?.profile ? "Open the page" : "Make the page"}
+          {data?.profile ? "Open context page" : "Create context page"}
         </button>
         {data?.profile && (
           <span className="muted">
@@ -305,10 +357,12 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
         Space-specific rules for agents. Team rules apply to every member’s
         agents.
       </p>
-      {data === null ? (
-        <p className="muted">Loading…</p>
+      {data === null && !contextError ? (
+        <p className="muted" role="status">
+          Loading context…
+        </p>
       ) : (
-        <ul className="agents-rules-list">{data.instructions.map(row)}</ul>
+        <ul className="agents-rules-list">{data?.instructions.map(row)}</ul>
       )}
       <OutcomeNote outcome={action.outcome} />
     </div>

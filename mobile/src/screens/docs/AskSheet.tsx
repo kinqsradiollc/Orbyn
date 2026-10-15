@@ -1,14 +1,10 @@
 import React, { useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
-import {
-  DOC_AI_ACTIONS,
-  DOC_AI_LABELS,
-  plainText,
-  type DocAiAction,
-} from "@orbyn/core";
+import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { DOC_AI_ACTIONS, DOC_AI_LABELS, type DocAiAction } from "@orbyn/core";
+import { InlineDetails } from "../../components/InlineDetails";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
-import { colors, fonts, radii, themed } from "../../theme";
+import { inputFontSize, colors, fonts, radii, themed } from "../../theme";
 
 /**
  * What to ask the assistant for, once some words are chosen.
@@ -31,7 +27,13 @@ export function AskSheet({
 
   return (
     <View style={s.wrap}>
-      <Text style={s.quote}>“{plainText(quote)}”</Text>
+      <InlineDetails title="Selected text">
+        <ScrollView style={{ maxHeight: 160 }}>
+          <Text selectable style={s.quote}>
+            {quote}
+          </Text>
+        </ScrollView>
+      </InlineDetails>
       <View style={s.actions}>
         {DOC_AI_ACTIONS.filter((a) => a !== "custom").map((a) => (
           <SmallAction
@@ -45,14 +47,14 @@ export function AskSheet({
       <TextInput
         style={s.input}
         value={custom}
-        placeholder="Or say what to do with them…"
+        placeholder="What should change?"
         placeholderTextColor={colors.faint}
         maxLength={500}
         onChangeText={setCustom}
         accessibilityLabel="What the assistant should do"
       />
       <View style={s.foot}>
-        <SmallAction label="Cancel" disabled={false} onPress={onCancel} />
+        <SmallAction label="Cancel" disabled={busy} onPress={onCancel} />
         <Button
           title="Ask"
           disabled={busy || !custom.trim()}
@@ -84,7 +86,7 @@ const s = themed(() =>
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
     input: {
       color: colors.text,
-      fontSize: 15,
+      fontSize: inputFontSize,
       minHeight: 40,
       borderWidth: 1,
       borderColor: colors.border,

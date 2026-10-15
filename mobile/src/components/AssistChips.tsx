@@ -1,14 +1,19 @@
-import React, { useEffect, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Pressable } from "../motion";
 import {
   aiFeatureProviderLabel,
   ASSIST_CHIPS,
   CHIP_CARDS,
-  withSummary,
+  withDocumentSummary,
+  HttpError,
+  type DocEditorUpdate,
   type AssistChip,
   type CaptureAssistResult,
 } from "@orbyn/core";
+import * as Crypto from "expo-crypto";
+import { InlineDetails } from "./InlineDetails";
+import { session } from "../lib/session";
 import { BottomSheet } from "./BottomSheet";
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
@@ -37,11 +42,19 @@ const dueText = (iso: string) =>
 /**
  * The assistant's chips when sharing, importing or scanning (AI-01):
  * Summarise, Pull out deadlines as tasks, Make 10 flashcards. Optional,
- * through Orbyn's hosted assistant only, and each comes back as a
+ * through the selected provider, and each comes back as a
  * suggestion: nothing changes until you take it. Works on a page (just
  * imported or scanned) or on words shared in.
  */
-export function AssistChips({
+export function AssistChips(props: Parameters<typeof AssistChipsBody>[0]) {
+  return (
+    <AssistChipsBody
+      key={`${session.token}:${props.docId ?? ""}:${props.text ?? ""}`}
+      {...props}
+    />
+  );
+}
+function AssistChipsBody({
   docId,
   text,
   title,
@@ -86,6 +99,7 @@ export function AssistChips({
       </View>
       {open && (
         <AssistResult
+          key={open}
           action={open}
           docId={docId}
           text={text}
@@ -115,64 +129,137 @@ function AssistResult({
   onClose: (changed: boolean) => void;
 }) {
   const [visible, setVisible] = useState(true);
-  const [changed, setChanged] = useState(false);
+  const changed = useRef(false);
   const [result, setResult] = useState<CaptureAssistResult | null>(null);
   const [keep, setKeep] = useState<boolean[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    client
-      .assistCapture(
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState("");
+  const [added, setAdded] = useState<number[]>([]);
+  const addedTasks = useRef(new Set<number>());
+  const taskKeys = useRef<string[]>([]);
+  const summaryWrite = useRef<{ key: string; input: DocEditorUpdate } | null>(
+    null,
+  );
+  const mounted = useRef(true);
+  const pending = useRef(false);
+  const owner = session.token;
+  const current = () => mounted.current && session.token === owner;
+  const read = useRef<Promise<CaptureAssistResult> | null>(null);
+  const load = async () => {
+    if (!current() || pending.current) return;
+    setLoading(true);
+    setError("");
+    try {
+      const r = await (read.current ??= client.assistCapture(
         docId ? { action, doc_id: docId } : { action, text: text ?? "", title },
-      )
-      .then(
-        (r) => {
-          setResult(r);
-          setKeep(r.tasks.map(() => true));
-        },
-        (e) => setError(errorText(e)),
-      );
-  }, [action, docId, text, title]);
-
-  const leave = (didChange = false) => {
-    setChanged(didChange);
-    setVisible(false);
+      ));
+      if (!current()) return;
+      if (r.action !== action)
+        throw new Error("Unexpected suggestion. Try again.");
+      setResult(r);
+      setSummary(r.summary);
+      setKeep(r.tasks.map(() => true));
+      taskKeys.current = r.tasks.map(() => Crypto.randomUUID());
+    } catch (e) {
+      if (current()) {
+        read.current = null;
+        setError(errorText(e));
+      }
+    } finally {
+      if (current()) setLoading(false);
+    }
+  };
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const leave = () => {
+    if (!pending.current && current()) setVisible(false);
   };
   const take = async () => {
-    if (!result) return;
+    if (!result || pending.current || !current()) return;
+    pending.current = true;
     setBusy(true);
     setError("");
     try {
       if (action === "summarise") {
         if (!docId) {
-          await copyText(result.summary, "Summary copied");
-          return leave(false);
-        }
-        const doc = await client.getDoc(docId);
-        await client.updateDoc(docId, {
-          version: doc.version,
-          content: withSummary(doc.content, result.summary),
-        });
-        showToast({ text: "Summary added to the top of the page" });
-      } else {
-        let added = 0;
-        for (const [n, t] of result.tasks.entries())
-          if (keep[n]) {
-            await client.createItem({
-              title: t.title,
-              kind: "task",
-              due_at: t.due_at,
-              notes: t.source ? `From “${title}”: ${t.source}` : "",
-            });
-            added++;
+          const copied = await copyText(summary, "Summary copied");
+          if (current()) {
+            if (copied) setVisible(false);
+            else setError("Couldn't copy the summary. Try again.");
           }
-        showToast({ text: `Added ${added} task${added === 1 ? "" : "s"}` });
+          return;
+        }
+        if (!summaryWrite.current) {
+          const doc = await client.getDocForEditor(docId);
+          if (!current()) return;
+          summaryWrite.current = {
+            key: Crypto.randomUUID(),
+            input: {
+              version: doc.version,
+              document: withDocumentSummary(
+                doc.document ?? { format: 1, blocks: doc.content },
+                summary,
+              ),
+            },
+          };
+        }
+        const snapshot = summaryWrite.current;
+        await client.once(snapshot.key, () =>
+          client.updateDocForEditor(docId, snapshot.input),
+        );
+        if (!current()) return;
+        changed.current = true;
+        showToast({ text: "Summary added" });
+      } else {
+        for (const [n, task] of result.tasks.entries()) {
+          if (!keep[n] || addedTasks.current.has(n)) continue;
+          if (!current()) return;
+          await client.once(taskKeys.current[n], () =>
+            client.createItem({
+              id: taskKeys.current[n],
+              title: task.title,
+              kind: "task",
+              due_at: task.due_at,
+              notes: task.source ? `From “${title}”: ${task.source}` : "",
+            }),
+          );
+          if (!current()) return;
+          addedTasks.current.add(n);
+          changed.current = true;
+          setAdded([...addedTasks.current]);
+          setKeep((all) =>
+            all.map((value, index) => (index === n ? false : value)),
+          );
+        }
+        if (current())
+          showToast({ text: `Added ${addedTasks.current.size} tasks` });
       }
-      leave(true);
+      if (current()) setVisible(false);
     } catch (e) {
-      setError(errorText(e));
+      if (
+        e instanceof HttpError &&
+        (e.status === 400 ||
+          (e.status === 409 &&
+            e.message ===
+              "This document changed somewhere else. Refresh and try again."))
+      )
+        summaryWrite.current = null;
+      if (current())
+        setError(
+          addedTasks.current.size
+            ? `${addedTasks.current.size} tasks added. ${errorText(e)} Retry the remaining tasks.`
+            : errorText(e),
+        );
     } finally {
-      setBusy(false);
+      pending.current = false;
+      if (current()) setBusy(false);
     }
   };
   const chosen = keep.filter(Boolean).length;
@@ -180,21 +267,25 @@ function AssistResult({
     <BottomSheet
       visible={visible}
       title={action === "summarise" ? "Summary" : "Deadlines found"}
-      onClose={() => leave(false)}
-      afterClose={() => onClose(changed)}
+      closeDisabled={busy}
+      onClose={leave}
+      afterClose={() => {
+        if (current()) onClose(changed.current);
+      }}
       footer={
         <View style={s.foot}>
           <Button
             secondary
-            title="Leave it"
+            title="Cancel"
             style={s.footButton}
-            onPress={() => leave(false)}
+            disabled={busy}
+            onPress={leave}
           />
           {result &&
             (action === "summarise" ? (
               <Button
-                title={docId ? "Add to the top of the page" : "Copy it"}
-                disabled={busy}
+                title={docId ? "Add summary" : "Copy summary"}
+                disabled={busy || !summary.trim()}
                 style={s.footButton}
                 onPress={() => void take()}
               />
@@ -212,20 +303,29 @@ function AssistResult({
       }
     >
       <View style={s.body}>
-        <Text style={s.muted}>
-          From “{title}”, by Orbyn's assistant. Nothing changes until you take
-          it.
-        </Text>
+        <Text style={s.muted}>From “{title}”</Text>
         {result?.provider && (
           <Text style={s.muted}>{aiFeatureProviderLabel(result.provider)}</Text>
         )}
-        {!result && !error && (
+        {loading && !result && (
           <Text style={s.muted} accessibilityLiveRegion="polite">
             Reading it…
           </Text>
         )}
         {result && action === "summarise" && (
-          <Text style={s.summary}>{result.summary}</Text>
+          <View>
+            <Text style={s.muted}>Review summary</Text>
+            <TextInput
+              maxLength={4000}
+              accessibilityLabel="Review summary"
+              multiline
+              scrollEnabled
+              value={summary}
+              editable={!busy && !summaryWrite.current}
+              onChangeText={setSummary}
+              style={s.summaryInput}
+            />
+          </View>
         )}
         {result && action === "deadlines" && !result.tasks.length && (
           <Text style={s.muted}>No deadlines were found.</Text>
@@ -233,29 +333,54 @@ function AssistResult({
         {result &&
           action === "deadlines" &&
           result.tasks.map((t, n) => (
-            <Pressable
-              key={n}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: !!keep[n] }}
-              onPress={() =>
-                setKeep((k) => k.map((v, i) => (i === n ? !v : v)))
-              }
-              style={({ pressed }) => [s.task, pressed && { opacity: 0.7 }]}
-            >
-              <View style={[s.box, keep[n] && s.boxOn]}>
-                {keep[n] && (
-                  <Icon name="check" size={13} color={colors.white} />
-                )}
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={s.taskTitle}>{t.title}</Text>
-                <Text style={s.muted} numberOfLines={2}>
-                  {t.due_at ? `Due ${dueText(t.due_at)}` : "No date"}
-                  {t.source ? ` · “${t.source}”` : ""}
-                </Text>
-              </View>
-            </Pressable>
+            <View key={n}>
+              <Pressable
+                accessibilityRole="checkbox"
+                disabled={busy || added.includes(n)}
+                accessibilityState={{
+                  checked: added.includes(n) || !!keep[n],
+                  disabled: busy || added.includes(n),
+                }}
+                onPress={() =>
+                  setKeep((k) => k.map((v, i) => (i === n ? !v : v)))
+                }
+                style={({ pressed }) => [s.task, pressed && { opacity: 0.7 }]}
+              >
+                <View
+                  style={[s.box, (keep[n] || added.includes(n)) && s.boxOn]}
+                >
+                  {(keep[n] || added.includes(n)) && (
+                    <Icon name="check" size={13} color={colors.onAccent} />
+                  )}
+                </View>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={s.taskTitle}>{t.title}</Text>
+                  {added.includes(n) && <Text style={s.muted}>Added</Text>}
+                  <Text style={s.muted}>
+                    {t.due_at ? `Due ${dueText(t.due_at)}` : "No date"}
+                  </Text>
+                </View>
+              </Pressable>
+              {t.source && (
+                <InlineDetails title="Source">
+                  <Text style={s.muted}>{t.source}</Text>
+                </InlineDetails>
+              )}
+            </View>
           ))}
+        {!result && error && (
+          <Button
+            title="Retry"
+            secondary
+            disabled={loading}
+            onPress={() => void load()}
+          />
+        )}
+        {!!error && summaryWrite.current && (
+          <Text style={s.muted}>
+            Retry this save before changing the summary.
+          </Text>
+        )}
         {!!error && (
           <Text style={s.error} accessibilityRole="alert">
             {error}
@@ -273,18 +398,33 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      minHeight: 32,
+      minHeight: 44,
       paddingHorizontal: 12,
+      paddingVertical: 6,
+      maxWidth: "100%",
       borderRadius: radii.pill,
       borderWidth: 1,
       borderColor: colors.softBorder,
       backgroundColor: colors.soft,
     },
     chipPressed: { backgroundColor: colors.accentSoft },
-    chipText: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
+    chipText: {
+      flexShrink: 1,
+      fontFamily: fonts.medium,
+      fontSize: 13,
+      color: colors.text,
+    },
     body: { gap: 12 },
     muted: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
-    summary: {
+    summaryInput: {
+      height: 160,
+      maxHeight: 240,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radii.input,
+      textAlignVertical: "top",
+
       fontFamily: fonts.regular,
       fontSize: 15,
       lineHeight: 22,
@@ -299,6 +439,7 @@ const s = themed(() =>
     box: {
       width: 22,
       height: 22,
+      flexShrink: 0,
       borderRadius: radii.check,
       borderWidth: 1.5,
       borderColor: colors.checkBorder,
@@ -308,7 +449,7 @@ const s = themed(() =>
     boxOn: { backgroundColor: colors.accent, borderColor: colors.accent },
     taskTitle: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     error: { fontFamily: fonts.regular, fontSize: 13, color: colors.danger },
-    foot: { flexDirection: "row", gap: 8 },
-    footButton: { flex: 1, marginTop: 0, marginBottom: 0 },
+    foot: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+    footButton: { flexGrow: 1, flexBasis: 120, marginTop: 0, marginBottom: 0 },
   }),
 );

@@ -1,5 +1,5 @@
 import { Select } from "../components/Select";
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { Check, Plus, X } from "lucide-react";
 import type { AttendeeStatus } from "@orbyn/core";
 import { plural, SWATCHES } from "../lib/planning";
@@ -33,23 +33,37 @@ export function AlertsPicker({
   value,
   onChange,
   hint,
+  onDraftChange,
 }: {
   value: number[];
   onChange: (next: number[]) => void;
   /** Shown under the list, e.g. that these are your defaults. */
   hint?: string;
+  onDraftChange?: (pending: boolean) => void;
 }) {
   const [adding, setAdding] = useState(false);
   const [choice, setChoice] = useState("30");
-  const [amount, setAmount] = useState(20);
+  const [amount, setAmount] = useState("20");
+  const [error, setError] = useState("");
+  useEffect(() => {
+    onDraftChange?.(adding);
+  }, [adding, onDraftChange]);
   const [unit, setUnit] = useState<keyof typeof UNITS>("min");
   const free = ALERT_PRESETS.filter((m) => !value.includes(m));
 
   const add = () => {
     const minutes =
-      choice === "custom"
-        ? Math.min(MAX_ALERT_MINUTES, Math.max(0, amount * UNITS[unit]))
-        : Number(choice);
+      choice === "custom" ? Number(amount) * UNITS[unit] : Number(choice);
+    if (value.length >= MAX_ALERTS) return setError("Up to five alerts.");
+    if (
+      !Number.isInteger(minutes) ||
+      minutes < 0 ||
+      minutes > MAX_ALERT_MINUTES ||
+      (choice === "custom" && (!amount.trim() || Number(amount) < 1))
+    )
+      return setError("Use a whole number, up to four weeks before.");
+    setError("");
+    onDraftChange?.(false);
     onChange([...new Set([...value, minutes])].sort((a, b) => a - b));
     setAdding(false);
   };
@@ -95,11 +109,15 @@ export function AlertsPicker({
               <input
                 type="number"
                 min={1}
-                max={999}
+                max={Math.floor(MAX_ALERT_MINUTES / UNITS[unit])}
+                step={1}
                 aria-label="How many"
                 value={amount}
                 onKeyDown={onEnter(add)}
-                onChange={(e) => setAmount(Number(e.target.value))}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                  setError("");
+                }}
               />
               <Select
                 aria-label="Unit"
@@ -118,7 +136,11 @@ export function AlertsPicker({
           <button
             type="button"
             className="text-button"
-            onClick={() => setAdding(false)}
+            onClick={() => {
+              onDraftChange?.(false);
+              setAdding(false);
+              setError("");
+            }}
           >
             Cancel
           </button>
@@ -136,6 +158,11 @@ export function AlertsPicker({
             <Plus size={13} /> Add alert
           </button>
         )
+      )}
+      {!!error && (
+        <small className="field-hint" role="alert">
+          {error}
+        </small>
       )}
       {hint && <small className="field-hint">{hint}</small>}
     </fieldset>
@@ -158,22 +185,29 @@ export function InviteesPicker({
   value,
   onChange,
   state,
+  onDraftChange,
 }: {
   value: Invitee[];
   onChange: (next: Invitee[]) => void;
   /** Saved invitees load with the event; they can't be changed until then. */
   state: "loading" | "ready" | "failed";
+  onDraftChange?: (pending: boolean) => void;
 }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
 
+  useEffect(() => {
+    onDraftChange?.(!!email.trim() || !!name.trim());
+  }, [email, name, onDraftChange]);
   const add = () => {
+    if (state !== "ready") return;
     const address = email.trim().toLowerCase();
     if (!EMAIL.test(address)) return setError("Enter an email address.");
     if (value.some((v) => v.email === address))
       return setError("They're already invited.");
     if (value.length >= 50) return setError("Up to 50 people.");
+    onDraftChange?.(false);
     onChange([...value, { email: address, name: name.trim() || undefined }]);
     setEmail("");
     setName("");
@@ -231,7 +265,11 @@ export function InviteesPicker({
           value={email}
           maxLength={254}
           onKeyDown={onEnter(add)}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(e) => {
+            onDraftChange?.(!!e.target.value.trim() || !!name.trim());
+            setEmail(e.target.value);
+            setError("");
+          }}
         />
         <input
           placeholder="Name (optional)"
@@ -239,7 +277,10 @@ export function InviteesPicker({
           value={name}
           maxLength={120}
           onKeyDown={onEnter(add)}
-          onChange={(e) => setName(e.target.value)}
+          onChange={(e) => {
+            onDraftChange?.(!!email.trim() || !!e.target.value.trim());
+            setName(e.target.value);
+          }}
         />
         <button type="button" className="secondary" onClick={add}>
           <Plus size={13} /> Invite

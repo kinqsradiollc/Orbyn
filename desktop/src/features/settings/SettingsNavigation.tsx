@@ -23,13 +23,17 @@ export type SettingsTab = (typeof SETTINGS_CATEGORIES)[number]["id"];
 export function SettingsNavigation({
   selected,
   onSelect,
+  contentId,
+  labelId,
 }: {
   selected: SettingsTab;
   onSelect: (tab: SettingsTab) => void;
+  contentId: string;
+  labelId: string;
 }) {
   return (
     <nav className="settings-navigation" aria-label="Settings categories">
-      <span className="sr-only" id={"settings-category-" + selected}>
+      <span className="sr-only" id={labelId}>
         {
           SETTINGS_CATEGORIES.find((category) => category.id === selected)
             ?.label
@@ -39,6 +43,7 @@ export function SettingsNavigation({
         <Select
           value={selected}
           aria-label="Settings category"
+          aria-controls={contentId}
           onChange={(event) => {
             const category = SETTINGS_CATEGORIES.find(
               (entry) => entry.id === event.target.value,
@@ -60,7 +65,7 @@ export function SettingsNavigation({
             key={id}
             className="settings-category-button"
             aria-current={selected === id ? "page" : undefined}
-            aria-controls="settings-content"
+            aria-controls={contentId}
             onClick={() => onSelect(id)}
           >
             <Icon size={16} aria-hidden="true" />

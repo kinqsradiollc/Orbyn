@@ -52,3 +52,139 @@
     height: 35dvh;
   }
 }
+
+.doc-source-jump {
+  min-height: 44px;
+}
+@media (max-width: 700px) {
+  .doc-source-dialog {
+    padding: 16px;
+  }
+  .doc-source-columns {
+    gap: 16px;
+  }
+  .doc-source-columns textarea {
+    font-size: 16px;
+    line-height: 22px;
+    padding: 12px;
+  }
+  .doc-source-rendered {
+    padding: 12px;
+  }
+}
+
+.doc-source-view {
+  margin: 12px 0;
+}
+.doc-source-columns[data-view="source"],
+.doc-source-columns[data-view="preview"] {
+  grid-template-columns: minmax(0, 1fr);
+}
+.doc-source-columns [hidden] {
+  display: none;
+}
+
+.doc-source-columns[hidden] {
+  display: none;
+}
+.doc-source-pdf {
+  width: 100%;
+  height: calc(100% - 44px);
+  border: 0;
+}
+.doc-source-ask {
+  width: min(520px, calc(100vw - 32px));
+}
+.doc-source-ask form {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+.doc-source-ask textarea {
+  resize: none;
+  max-height: 140px;
+  overflow: auto;
+}
+.doc-source-quote {
+  max-height: 160px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.doc-source-ask summary {
+  min-height: 44px;
+  padding: 12px 0;
+  cursor: pointer;
+}
+
+/* Keep dismissal reachable while source/tools scroll in short windows. */
+.doc-source-dialog > .section-heading {
+  position: sticky;
+  top: -24px;
+  z-index: 1;
+  background: var(--color-surface);
+  padding-block: 8px;
+  gap: 12px;
+}
+.doc-source-dialog > .section-heading h2 {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.doc-source-dialog .segmented {
+  flex-wrap: wrap;
+}
+.doc-source-dialog .doc-source-view {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.doc-source-dialog p {
+  overflow-wrap: anywhere;
+}
+.doc-source-columns textarea,
+.doc-source-rendered {
+  overscroll-behavior: contain;
+}
+@media (max-width: 700px) {
+  .doc-source-dialog > .section-heading {
+    top: -16px;
+  }
+}
+
+/* Persistent chrome and one remaining-height editor region. */
+.doc-source-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  height: min(860px, calc(100dvh - 32px));
+  overflow: hidden;
+  gap: 12px;
+}
+.doc-source-dialog[open] > .section-heading,
+.app.workspace .doc-source-dialog[open] > .section-heading {
+  position: static;
+  flex: none;
+  padding: 0 0 8px;
+  margin: 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+.doc-source-tools {
+  min-width: 0;
+  flex: 0 1 auto;
+  max-height: 40dvh;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+.doc-source-dialog[open] > .doc-source-columns {
+  min-height: 0;
+  flex: 1 1 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+.doc-source-dialog[open] > .doc-source-columns[hidden] {
+  display: none;
+}
+.doc-source-dialog[open] .doc-source-columns textarea,
+.doc-source-dialog[open] .doc-source-rendered {
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}

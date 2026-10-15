@@ -16,7 +16,7 @@ import type { AiChatSummary } from "@orbyn/core";
 import { Icon, type IconName } from "./Icon";
 import { ActionSheet, type MoreAction } from "./MoreMenu";
 import { ToastHost } from "./Toast";
-import { Pressable, PressableScale, isReducedMotion } from "../motion";
+import { Pressable, isReducedMotion } from "../motion";
 import {
   colors,
   controls,
@@ -30,7 +30,7 @@ import { shared } from "../styles";
 
 /**
  * The assistant's side menu: shortcuts, then pinned and recent chats, with
- * New chat at the bottom. It slides in from the left over the screen; a tap
+ * New chat above the history. It slides in from the left over the screen; a tap
  * on the dimmed side, a swipe to the left or Back closes it. `afterClose`
  * runs once it has gone, for a sheet that opens next (iOS shows one at a
  * time).
@@ -49,6 +49,7 @@ export function AssistantDrawer({
   onOpenChat,
   onNewChat,
   shortcuts,
+  agents,
   onSettings,
 }: {
   visible: boolean;
@@ -64,6 +65,7 @@ export function AssistantDrawer({
   chatActions: (chat: AiChatSummary) => MoreAction[];
   onOpenChat: (chat: AiChatSummary) => void;
   onNewChat: () => void;
+  agents: { label: string; kind: string; onPress: () => void }[];
   shortcuts: { icon: IconName; label: string; onPress: () => void }[];
   onSettings?: () => void;
 }) {
@@ -80,28 +82,36 @@ export function AssistantDrawer({
   close.current = onClose;
 
   useEffect(() => {
-    const duration = isReducedMotion() ? 0 : 220;
+    const duration = Platform.OS === "web" || isReducedMotion() ? 0 : 160;
+    let animation: Animated.CompositeAnimation | undefined;
     if (visible) {
       setMounted(true);
       offset.setValue(-panel);
-      Animated.timing(offset, {
+      animation = Animated.timing(offset, {
         toValue: 0,
         duration,
         useNativeDriver: true,
-      }).start();
+      });
+      animation.start();
     } else if (mounted) {
-      Animated.timing(offset, {
+      animation = Animated.timing(offset, {
         toValue: -panel,
-        duration: isReducedMotion() ? 0 : 180,
+        duration,
         useNativeDriver: true,
-      }).start(() => {
+      });
+      animation.start(({ finished }) => {
+        if (!finished) return;
         setMounted(false);
         setSearching(false);
         if (Platform.OS !== "ios") after.current?.();
       });
     }
+    return () => animation?.stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible]);
+  }, [visible, panel, offset]);
+  useEffect(() => {
+    if (!visible || locked) setMenuFor(null);
+  }, [visible, locked]);
 
   // Swiping the panel to the left closes it, as a drawer does.
   const swipe = useMemo(
@@ -113,15 +123,16 @@ export function AssistantDrawer({
         onPanResponderRelease: (_e, g) => {
           if (g.dx < -80 || g.vx < -0.6) close.current();
           else
-            Animated.spring(offset, {
+            Animated.timing(offset, {
               toValue: 0,
+              duration: Platform.OS === "web" || isReducedMotion() ? 0 : 120,
               useNativeDriver: true,
-              bounciness: 4,
             }).start();
         },
         onPanResponderTerminate: () =>
-          Animated.spring(offset, {
+          Animated.timing(offset, {
             toValue: 0,
+            duration: Platform.OS === "web" || isReducedMotion() ? 0 : 120,
             useNativeDriver: true,
           }).start(),
       }),
@@ -130,6 +141,7 @@ export function AssistantDrawer({
 
   const pinned = chats?.filter((c) => c.pinned) ?? [];
   const recents = chats?.filter((c) => !c.pinned) ?? [];
+  const menuChat = chats?.find((chat) => chat.id === menuFor?.id) ?? null;
   const backdrop = offset.interpolate({
     inputRange: [-panel, 0],
     outputRange: [0, 1],
@@ -137,36 +149,42 @@ export function AssistantDrawer({
   });
 
   const row = (chat: AiChatSummary, icon: boolean) => (
-    <Pressable
+    <View
       key={chat.id}
-      accessibilityRole="button"
-      accessibilityLabel={`Open the chat “${chat.title}”`}
-      accessibilityHint="Hold for more options"
-      disabled={locked}
-      delayLongPress={350}
-      onPress={() => onOpenChat(chat)}
-      onLongPress={() => setMenuFor(chat)}
-      style={({ pressed }) => [
-        s.chat,
-        chat.id === activeChatId && s.chatActive,
-        pressed && { backgroundColor: colors.surfaceMuted },
-        locked && { opacity: 0.5 },
-      ]}
+      style={[s.chat, chat.id === activeChatId && s.chatActive]}
     >
-      {icon && <Icon name="comment" size={18} color={colors.textSoft} />}
-      <Text style={s.chatTitle} numberOfLines={1}>
-        {chat.title}
-      </Text>
-      {chat.active && (
-        <Text style={s.activeJob} accessibilityRole="text">
-          {chat.active === "needs_you" ? "Needs you" : "Working"}
-        </Text>
-      )}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={`Open the chat “${chat.title}”`}
+        accessibilityState={{
+          selected: chat.id === activeChatId,
+          disabled: locked,
+        }}
+        accessibilityHint="Hold for more options"
+        disabled={locked}
+        delayLongPress={350}
+        onPress={() => onOpenChat(chat)}
+        onLongPress={() => setMenuFor(chat)}
+        style={({ pressed }) => [
+          s.chatOpen,
+          pressed && { backgroundColor: colors.surfaceMuted },
+          locked && { opacity: 0.5 },
+        ]}
+      >
+        {icon && <Icon name="comment" size={18} color={colors.textSoft} />}
+        <View style={s.chatMain}>
+          <Text style={s.chatTitle}>{chat.title}</Text>
+          {chat.active && (
+            <Text style={s.activeJob} accessibilityRole="text">
+              {chat.active === "needs_you" ? "Needs you" : "Working"}
+            </Text>
+          )}
+        </View>
+      </Pressable>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel={`Options for ${chat.title}`}
         disabled={locked}
-        hitSlop={6}
         onPress={() => setMenuFor(chat)}
         style={({ pressed }) => [
           s.more,
@@ -175,7 +193,7 @@ export function AssistantDrawer({
       >
         <Icon name="more" size={18} color={colors.muted} />
       </Pressable>
-    </Pressable>
+    </View>
   );
 
   return (
@@ -211,7 +229,7 @@ export function AssistantDrawer({
           accessibilityLabel="Chats and more"
         >
           <View style={s.head}>
-            <Text style={s.name} numberOfLines={1} accessibilityRole="header">
+            <Text style={s.name} accessibilityRole="header">
               {agentName}
             </Text>
             <Pressable
@@ -233,6 +251,21 @@ export function AssistantDrawer({
               />
             </Pressable>
           </View>
+          <View style={s.start}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={locked}
+              onPress={onNewChat}
+              style={({ pressed }) => [
+                s.newChat,
+                pressed && { backgroundColor: colors.border },
+                locked && { opacity: 0.5 },
+              ]}
+            >
+              <Icon name="squarePen" size={18} color={colors.text} />
+              <Text style={s.newChatText}>New chat</Text>
+            </Pressable>
+          </View>
           {searching && (
             <TextInput
               autoFocus
@@ -250,11 +283,40 @@ export function AssistantDrawer({
             contentContainerStyle={s.list}
             keyboardShouldPersistTaps="handled"
           >
+            {agents
+              .filter((agent) =>
+                `${agent.label} ${agent.kind}`
+                  .toLowerCase()
+                  .includes(search.trim().toLowerCase()),
+              )
+              .map((agent) => (
+                <Pressable
+                  key={agent.kind}
+                  accessibilityRole="button"
+                  disabled={locked}
+                  accessibilityLabel={`Open ${agent.label}, ${agent.kind} agent`}
+                  onPress={agent.onPress}
+                  style={({ pressed }) => [
+                    s.chat,
+                    pressed && { backgroundColor: colors.surfaceMuted },
+                    locked && { opacity: 0.5 },
+                  ]}
+                >
+                  <Icon name="sparkles" size={18} color={colors.textSoft} />
+                  <View style={s.chatMain}>
+                    <Text style={s.chatTitle}>{agent.label}</Text>
+                    {agent.label !== agent.kind && (
+                      <Text style={s.activeJob}>{agent.kind}</Text>
+                    )}
+                  </View>
+                </Pressable>
+              ))}
             {!searching &&
               shortcuts.map((item) => (
                 <Pressable
                   key={item.label}
                   accessibilityRole="button"
+                  disabled={locked}
                   onPress={item.onPress}
                   style={({ pressed }) => [
                     s.shortcut,
@@ -289,19 +351,6 @@ export function AssistantDrawer({
             )}
           </ScrollView>
           <View style={s.foot}>
-            <PressableScale
-              accessibilityRole="button"
-              disabled={locked}
-              onPress={onNewChat}
-              style={({ pressed }) => [
-                s.newChat,
-                pressed && { backgroundColor: colors.accentPressed },
-                locked && { opacity: 0.5 },
-              ]}
-            >
-              <Icon name="squarePen" size={18} color={colors.white} />
-              <Text style={s.newChatText}>New chat</Text>
-            </PressableScale>
             {onSettings && (
               <Pressable
                 accessibilityRole="button"
@@ -319,10 +368,10 @@ export function AssistantDrawer({
           </View>
         </Animated.View>
         <ActionSheet
-          visible={!!menuFor}
+          visible={!!menuChat && !locked}
           label={menuFor ? `Options for ${menuFor.title}` : "Chat options"}
           title={menuFor?.title}
-          actions={menuFor ? chatActions(menuFor) : []}
+          actions={menuChat ? chatActions(menuChat) : []}
           onClose={() => setMenuFor(null)}
         />
         <ToastHost />
@@ -361,6 +410,7 @@ const s = themed(() =>
     },
     name: {
       flex: 1,
+      minWidth: 0,
       fontFamily: fonts.bold,
       fontSize: 18,
       color: colors.text,
@@ -412,20 +462,20 @@ const s = themed(() =>
     },
     chatActive: { backgroundColor: colors.surfaceMuted },
     chatTitle: {
-      flex: 1,
       minWidth: 0,
       fontFamily: fonts.regular,
       fontSize: 15,
       color: colors.text,
     },
     more: {
-      width: 36,
-      height: 36,
+      width: 44,
+      height: 44,
       borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },
     activeJob: {
+      alignSelf: "flex-start",
       fontFamily: fonts.medium,
       fontSize: 11,
       color: colors.textSoft,
@@ -443,12 +493,14 @@ const s = themed(() =>
     },
     foot: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       justifyContent: "space-between",
       gap: 10,
       paddingHorizontal: spacing.page,
       paddingTop: 10,
     },
+    start: { paddingHorizontal: spacing.page, paddingVertical: 8 },
     newChat: {
       flexDirection: "row",
       alignItems: "center",
@@ -456,12 +508,22 @@ const s = themed(() =>
       minHeight: controls.tap,
       paddingHorizontal: 18,
       borderRadius: radii.pill,
-      backgroundColor: colors.accent,
+      backgroundColor: colors.surfaceMuted,
     },
     newChatText: {
       fontFamily: fonts.bold,
       fontSize: 15,
-      color: colors.white,
+      color: colors.text,
     },
+    chatOpen: {
+      flex: 1,
+      minWidth: 0,
+      minHeight: 44,
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 10,
+      paddingVertical: 6,
+    },
+    chatMain: { flex: 1, minWidth: 0, gap: 3 },
   }),
 );

@@ -5,6 +5,7 @@ import {
   Download,
   KeyRound,
   LogOut,
+  MoreHorizontal,
   Pencil,
   ShieldOff,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import {
 import { client } from "../../lib/api";
 import { useRemote } from "../../hooks/useRemote";
 import { useConfirm } from "../../components/Confirm";
+import { Popover } from "../../components/Popover";
 import { Bars } from "./Bars";
 import "./database.css";
 import "./insights.css";
@@ -98,6 +100,7 @@ export function AdminUserDetail({
   } | null>(null);
   const [link, setLink] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [menu, setMenu] = useState<DOMRect | null>(null);
   const self = userId === selfId;
 
   const run = async (fn: () => Promise<unknown>) => {
@@ -275,6 +278,7 @@ export function AdminUserDetail({
             <label>
               Name
               <input
+                disabled={busy}
                 value={editing.name}
                 maxLength={100}
                 onChange={(e) =>
@@ -286,6 +290,7 @@ export function AdminUserDetail({
               Email
               <input
                 type="email"
+                disabled={busy}
                 value={editing.email}
                 maxLength={254}
                 onChange={(e) =>
@@ -327,11 +332,16 @@ export function AdminUserDetail({
               </p>
             </div>
             <button
-              className="secondary"
+              className="icon-button"
               disabled={busy}
-              onClick={() => setEditing({ name: d.name, email: d.email })}
+              aria-label="Account options"
+              aria-haspopup="dialog"
+              aria-expanded={!!menu}
+              onClick={(event) =>
+                setMenu(event.currentTarget.getBoundingClientRect())
+              }
             >
-              <Pencil size={14} /> Edit
+              <MoreHorizontal size={18} />
             </button>
           </div>
         )}
@@ -379,40 +389,69 @@ export function AdminUserDetail({
         </dl>
       </div>
 
-      <div className="card admin-user-actions">
-        <h3>Account actions</h3>
-        <div>
-          <button
-            className="secondary"
-            disabled={busy || self || !d.sessions.length}
-            title={self ? "Sign yourself out from Settings" : undefined}
-            onClick={() => void signOut()}
-          >
-            <LogOut size={14} /> Sign out everywhere
-          </button>
-          <button
-            className="secondary"
-            disabled={busy || d.disabled}
-            onClick={() => void resetLink()}
-          >
-            <KeyRound size={14} /> Password reset link
-          </button>
-          <button
-            className="secondary"
-            disabled={busy || !d.two_factor}
-            title={d.two_factor ? undefined : "Two-step verification is off"}
-            onClick={() => void reset2fa()}
-          >
-            <ShieldOff size={14} /> Turn off two-step
-          </button>
-          <button
-            className="secondary"
-            disabled={busy}
-            onClick={() => void exportData()}
-          >
-            <Download size={14} /> Export their data
-          </button>
-        </div>
+      {menu && (
+        <Popover
+          anchor={menu}
+          label="Account options"
+          onClose={() => setMenu(null)}
+        >
+          <div className="admin-user-options">
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() => {
+                setMenu(null);
+                setEditing({ name: d.name, email: d.email });
+              }}
+            >
+              <Pencil size={14} /> Edit profile
+            </button>
+            <button
+              className="secondary"
+              disabled={busy || self || !d.sessions.length}
+              title={self ? "Sign yourself out from Settings" : undefined}
+              onClick={() => {
+                setMenu(null);
+                void signOut();
+              }}
+            >
+              <LogOut size={14} /> Sign out everywhere
+            </button>
+            <button
+              className="secondary"
+              disabled={busy || d.disabled}
+              onClick={() => {
+                setMenu(null);
+                void resetLink();
+              }}
+            >
+              <KeyRound size={14} /> Password reset link
+            </button>
+            <button
+              className="secondary"
+              disabled={busy || !d.two_factor}
+              title={d.two_factor ? undefined : "Two-step verification is off"}
+              onClick={() => {
+                setMenu(null);
+                void reset2fa();
+              }}
+            >
+              <ShieldOff size={14} /> Turn off two-step
+            </button>
+            <button
+              className="secondary"
+              disabled={busy}
+              onClick={() => {
+                setMenu(null);
+                void exportData();
+              }}
+            >
+              <Download size={14} /> Export their data
+            </button>
+          </div>
+        </Popover>
+      )}
+      <div className="admin-user-reset-result">
         {link && (
           <div className="admin-link">
             <code>{link}</code>
@@ -448,6 +487,12 @@ export function AdminUserDetail({
                 <li key={s.id}>
                   <span>
                     <strong>{device(s.user_agent)}</strong>
+                    {s.user_agent && (
+                      <details className="admin-audit-detail">
+                        <summary>Device details</summary>
+                        <p>{s.user_agent}</p>
+                      </details>
+                    )}
                     <small className="muted">
                       Last seen {when(s.last_seen_at)}
                     </small>

@@ -1,9 +1,11 @@
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { SlidersHorizontal } from "lucide-react";
 import { TEAM_POLICY_TEXT, type TeamPolicies as Policies } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/errors";
 import "../publish/publish.css";
+import { useSettingsRead } from "../settings/useSettingsRead";
+import { usePaneLeaveGuard } from "../../app/page-commands";
 
 /**
  * A team's switches (OTH-04), together: publishing its pages to the web,
@@ -11,32 +13,53 @@ import "../publish/publish.css";
  * Everyone in the team sees them; owners and admins change them.
  */
 export function TeamPolicies({ teamId }: { teamId: string }) {
-  const [state, setState] = useState<Policies | null>(null);
   const [error, setError] = useState("");
-  useEffect(() => {
-    client.getTeamPolicies(teamId).then(setState, () => setState(null));
-  }, [teamId]);
-  if (!state) return null;
-  const change = (key: "publishing" | "assistant" | "booking", on: boolean) => {
-    setState({ ...state, [key]: on });
-    client.setTeamPolicies(teamId, { [key]: on }).then(
-      (next) => {
-        setError("");
-        setState(next);
-      },
-      (e) => {
-        setError(errorText(e));
-        setState(state);
-      },
-    );
+  const [saving, setSaving] = useState(false);
+  const mutation = useRef(false);
+  const read = useSettingsRead<Policies>(
+    () => client.getTeamPolicies(teamId),
+    (e) => setError(errorText(e)),
+  );
+  const state = read.data;
+  usePaneLeaveGuard(async () => !mutation.current);
+  const change = async (
+    key: "publishing" | "assistant" | "booking",
+    on: boolean,
+  ) => {
+    if (!read.current() || !state?.can_change || mutation.current) return;
+    mutation.current = true;
+    setSaving(true);
+    setError("");
+    try {
+      const next = await client.setTeamPolicies(teamId, { [key]: on });
+      if (read.current()) read.commit(next);
+    } catch (e) {
+      if (read.current()) setError(errorText(e));
+    } finally {
+      mutation.current = false;
+      if (read.current()) setSaving(false);
+    }
   };
+  if (!state)
+    return read.failed ? (
+      <p role="alert">
+        Team permissions couldn’t be loaded.{" "}
+        <button className="text-button" onClick={() => void read.reload()}>
+          Retry
+        </button>
+      </p>
+    ) : (
+      <p className="muted" role="status">
+        Loading team permissions…
+      </p>
+    );
   return (
     <section
       className="card team-publishing team-policies"
       aria-labelledby="team-policies-title"
     >
       <h3 id="team-policies-title">
-        <SlidersHorizontal size={15} aria-hidden="true" /> Team switches
+        <SlidersHorizontal size={15} aria-hidden="true" /> Team permissions
       </h3>
       {(["publishing", "assistant", "booking"] as const).map((key) => (
         <label key={key} className="switch-line">
@@ -45,7 +68,9 @@ export function TeamPolicies({ teamId }: { teamId: string }) {
             role="switch"
             className="ai-switch"
             checked={state[key]}
-            disabled={!state.can_change}
+            disabled={
+              !state.can_change || saving || read.loading || read.failed
+            }
             onChange={(e) => change(key, e.target.checked)}
           />
           <span>
@@ -56,6 +81,11 @@ export function TeamPolicies({ teamId }: { teamId: string }) {
       ))}
       {!state.can_change && (
         <p className="muted">Owners and admins can change these.</p>
+      )}
+      {saving && (
+        <p className="muted" role="status">
+          Saving…
+        </p>
       )}
       {error && (
         <p role="alert" className="publish-error">

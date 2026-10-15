@@ -207,7 +207,7 @@ const s = themed(() =>
     },
     headText: { flex: 1, minWidth: 0, gap: 2 },
     date: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
-    title: { fontFamily: fonts.display, fontSize: 18, color: colors.text },
+    title: { fontFamily: fonts.semibold, fontSize: 16, color: colors.text },
     summary: {
       marginTop: 6,
       fontFamily: fonts.regular,

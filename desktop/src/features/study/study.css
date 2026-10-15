@@ -1,7 +1,9 @@
 /* Study: today's cards, exams, pages with cards, and reviewing. */
 .study {
   display: grid;
-  gap: 28px;
+  gap: 16px;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .study-section {
   display: grid;
@@ -17,7 +19,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 24px;
-  padding: 24px 26px;
+  padding: 16px 20px;
 }
 .study-hero-main {
   display: grid;
@@ -28,15 +30,13 @@
 .study-eyebrow {
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--color-muted);
 }
 .study-hero-count {
   margin: 0;
   font-family: "Manrope", sans-serif;
-  font-size: 24px;
-  font-weight: 750;
+  font-size: 18px;
+  font-weight: 600;
   line-height: 1.2;
   color: var(--color-text);
   text-wrap: balance;
@@ -54,13 +54,15 @@
 }
 .study-stats {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin: 0;
 }
 .study-stats > div {
   display: grid;
   gap: 2px;
-  min-width: 112px;
+  min-width: 0;
+  flex: 1 1 100px;
   padding: 12px 14px;
   border-radius: var(--radius-md);
   background: var(--color-sunken);
@@ -75,8 +77,8 @@
   align-items: center;
   gap: 6px;
   font-family: "Manrope", sans-serif;
-  font-size: 24px;
-  font-weight: 750;
+  font-size: 18px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   color: var(--color-text);
 }
@@ -134,7 +136,7 @@
 .study-date b {
   font-family: "Manrope", sans-serif;
   font-size: 18px;
-  font-weight: 750;
+  font-weight: 600;
 }
 .study-date span {
   font-size: 11px;
@@ -154,13 +156,14 @@
 }
 .study-exam-ready {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   max-width: 360px;
   margin-top: 4px;
 }
 .study-exam-ready .study-bar {
-  flex: 1;
+  flex: 1 1 100px;
 }
 .study-exam-ready span {
   font-size: 13px;
@@ -226,7 +229,8 @@
   background: var(--color-sunken);
 }
 .study-pick-row .select {
-  min-width: 260px;
+  min-width: 0;
+  width: min(100%, 320px);
 }
 .study-weak {
   list-style: none;
@@ -258,8 +262,8 @@
   margin: 0 auto;
 }
 .study-review-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   font-size: 13px;
@@ -268,10 +272,10 @@
   justify-self: start;
 }
 .study-review-title {
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--color-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   max-width: 320px;
 }
 .study-review-count {
@@ -290,6 +294,7 @@
 }
 .study-from {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
@@ -305,14 +310,12 @@
   border-radius: var(--radius-pill);
   background: var(--color-surface);
   color: var(--color-muted);
-  font-size: 11px;
+  font-size: 13px;
+  overflow-wrap: anywhere;
   cursor: pointer;
 }
 .study-from-line {
   justify-self: center;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .study-source:hover {
   color: var(--color-text);
@@ -334,15 +337,13 @@
 .study-face-label {
   font-size: 11px;
   font-weight: 650;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
   color: var(--color-muted);
 }
 .study-question {
   margin: 0;
   max-width: 520px;
   font-family: "Manrope", sans-serif;
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 700;
   line-height: 1.35;
   color: var(--color-text);
@@ -355,7 +356,7 @@
 .study-answer {
   margin: 0;
   max-width: 520px;
-  font-size: 18px;
+  font-size: 15px;
   line-height: 1.5;
   color: var(--color-text);
   overflow-wrap: anywhere;
@@ -367,7 +368,7 @@
   justify-items: center;
 }
 .study-show {
-  min-width: 220px;
+  min-width: min(100%, 220px);
   padding-block: 12px;
   font-size: 13px;
 }
@@ -381,7 +382,9 @@
 }
 .study-quiz textarea {
   width: 100%;
-  resize: vertical;
+  resize: none;
+  max-height: 240px;
+  overflow-y: auto;
 }
 .study-quiz-actions {
   display: flex;
@@ -440,7 +443,7 @@
 .study-rate {
   justify-self: stretch;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 96px), 1fr));
   gap: 8px;
 }
 .study-rate button {
@@ -491,6 +494,7 @@
 }
 .study-after {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -502,7 +506,7 @@
 .study-finished {
   display: grid;
   gap: 10px;
-  padding: 36px 28px;
+  padding: 24px 20px;
   justify-items: center;
   text-align: center;
 }
@@ -547,6 +551,25 @@
 .study-suggested li > div {
   display: grid;
   gap: 6px;
+  min-width: 0;
+}
+.study-suggested label {
+  display: grid;
+  gap: 4px;
+  font-size: 13px;
+}
+.study-suggested textarea {
+  min-width: 0;
+  width: 100%;
+  max-height: 160px;
+  resize: none;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.study-suggested details p {
+  margin: 6px 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 .study-suggested li > div input {
   margin-top: 0;
@@ -678,7 +701,8 @@
   gap: 8px;
 }
 .study-search {
-  width: 180px;
+  min-width: 0;
+  width: min(100%, 240px);
 }
 .study-deck-list {
   list-style: none;
@@ -716,7 +740,7 @@
   border-radius: 50%;
   background: var(--color-surface);
   font-size: 11px;
-  font-weight: 750;
+  font-weight: 600;
   color: var(--color-accentText);
   font-variant-numeric: tabular-nums;
 }
@@ -733,9 +757,7 @@
 .study-deck-main strong {
   font-size: 15px;
   color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .study-deck-main:hover strong {
   text-decoration: underline;
@@ -743,9 +765,7 @@
 .study-deck-main small {
   font-size: 13px;
   color: var(--color-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .study-deck-chips {
   display: flex;
@@ -778,37 +798,6 @@
 .study-menu {
   position: relative;
 }
-.study-menu-list {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 4px);
-  z-index: 10;
-  display: grid;
-  min-width: 170px;
-  padding: 6px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.12);
-}
-.study-menu-list button {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border: 0;
-  border-radius: var(--radius-sm);
-  background: none;
-  color: var(--color-text);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-}
-.study-menu-list button:hover,
-.study-menu-list button:focus-visible {
-  background: var(--color-hover);
-}
-
 /* Imports that just became pages: make cards from them. */
 .study-uploads {
   display: grid;
@@ -824,6 +813,7 @@
 }
 .study-uploads li {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   align-items: center;
   gap: 12px;
@@ -845,7 +835,8 @@
 }
 .study-syntax code {
   font-size: 13px;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .study-picker-list {
   list-style: none;
@@ -882,15 +873,11 @@
 .study-picker-list strong {
   color: var(--color-text);
   font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .study-picker-list small {
   font-size: 13px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 @media (max-width: 760px) {
   .study-deck-row {
@@ -909,4 +896,94 @@
 .study-provider-label {
   display: block;
   overflow-wrap: anywhere;
+}
+
+/* Remaining pane width controls these layouts without containing fixed dialogs. */
+
+.study.is-compact .study-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+.study.is-compact .study-hero-side {
+  justify-items: start;
+}
+.study.is-compact .study-exam-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.study.is-compact .study-exam-actions {
+  grid-column: 1 / -1;
+}
+.study.is-compact .study-exam-pages,
+.study.is-compact .study-choose {
+  padding-left: 0;
+  margin-left: 0;
+}
+
+.study-review.is-small .study-rate,
+.study.is-small .study-rate {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.study-review.is-small .study-flash,
+.study.is-small .study-flash {
+  padding: 18px 18px 22px;
+}
+.study.is-small .study-question {
+  font-size: 18px;
+}
+
+.study.is-compact .study-deck-row {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+.study.is-compact .study-deck-chips {
+  grid-column: 2;
+  justify-content: flex-start;
+}
+.study.is-compact .study-deck-go {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+}
+
+.study-pick-row {
+  min-width: 0;
+  width: 100%;
+}
+.study-pick-row .select {
+  flex: 1 1 200px;
+}
+.study-hero-main,
+.study-hero-side {
+  min-width: 0;
+}
+.study-source {
+  min-height: 44px;
+  white-space: normal;
+}
+.study-review .study-review-title {
+  white-space: normal;
+}
+.study-quiz-actions {
+  flex-wrap: wrap;
+}
+.study-tools,
+.study-section-head > *,
+.study-forecast,
+.study-stats dd {
+  min-width: 0;
+  max-width: 100%;
+}
+.study-deck-go {
+  flex-wrap: wrap;
+}
+.study-picker-list button > svg,
+.study-source > svg {
+  flex-shrink: 0;
+}
+.study-exam-info > strong {
+  overflow-wrap: anywhere;
+}
+@media (pointer: coarse) {
+  .study button,
+  .study-picker-list button,
+  .study-plan-length button {
+    min-height: 44px;
+  }
 }

@@ -57,13 +57,13 @@ export function SemanticSetup({
     {
       done: settings.semantic_possible,
       text: settings.semantic_possible
-        ? "The database can store measurements."
+        ? "Database ready."
         : "Database measurements are unavailable.",
     },
     {
       done: !!settings.measure_running,
       text: settings.measure_running
-        ? "The measuring service is running."
+        ? "Indexing service ready."
         : "The measuring service is offline.",
     },
     {
@@ -71,7 +71,7 @@ export function SemanticSetup({
         !!selected && eligible.some((provider) => provider.id === selected.id),
       text:
         selected && eligible.some((provider) => provider.id === selected.id)
-          ? "An independent embedding provider is selected."
+          ? "Embedding provider selected."
           : "Select an embedding provider.",
     },
   ];
@@ -98,7 +98,7 @@ export function SemanticSetup({
     });
   return (
     <details
-      className="card semantic-setup fade-up"
+      className="card semantic-setup"
       open={on || settings.embedding_needs_validation}
     >
       <summary className="semantic-summary">
@@ -158,16 +158,19 @@ export function SemanticSetup({
           >
             Refresh indexing status
           </button>
-          <p>
-            Measuring with <strong>{settings.embedding_model}</strong>
-            {providerName ? ` on ${providerName}` : ""}. Turned on{" "}
-            {new Date(settings.semantic_accepted_at!).toLocaleDateString()}.{" "}
-            {settings.embedding_dimensions
-              ? `${settings.embedding_dimensions} dimensions verified.`
-              : ""}
-            {settings.embedding_search_strategy === "exact" &&
-              " Exact vector search."}
-          </p>
+          <details>
+            <summary>Index configuration</summary>
+            <p>
+              Measuring with <strong>{settings.embedding_model}</strong>
+              {providerName ? ` on ${providerName}` : ""}. Turned on{" "}
+              {new Date(settings.semantic_accepted_at!).toLocaleDateString()}.{" "}
+              {settings.embedding_dimensions
+                ? `${settings.embedding_dimensions} dimensions verified.`
+                : ""}
+              {settings.embedding_search_strategy === "exact" &&
+                " Exact vector search."}
+            </p>
+          </details>
           <button
             className="secondary"
             disabled={busy}
@@ -210,7 +213,7 @@ export function SemanticSetup({
             </p>
           )}
           <label>
-            Model that measures text
+            Embedding model
             <input
               value={model}
               maxLength={200}
@@ -235,9 +238,7 @@ export function SemanticSetup({
             }
             onClick={() => void discovery.load()}
           >
-            {discovery.loading
-              ? "Loading models…"
-              : "Load embedding model catalog"}
+            {discovery.loading ? "Loading models…" : "Load models"}
           </button>
           {discovery.error && (
             <p role="alert" className="muted">
@@ -289,7 +290,7 @@ export function SemanticSetup({
             <input
               type="checkbox"
               checked={accept}
-              disabled={!ready}
+              disabled={busy || !ready}
               onChange={(e) => setAccept(e.target.checked)}
             />
             <span>
@@ -302,7 +303,7 @@ export function SemanticSetup({
             className="primary"
             disabled={busy || !ready || !accept || !model.trim()}
           >
-            Validate and turn on search by meaning
+            Validate and enable
           </button>
         </form>
       )}

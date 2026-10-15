@@ -1,11 +1,15 @@
-import React, { useCallback, useEffect, useState } from "react";
+import { InlineDetails } from "../InlineDetails";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   hoursLabel,
   type AttentionCheck,
   type TeamAttention as Attention,
 } from "@orbyn/core";
+import { SmallAction } from "../SmallAction";
+import { errorText } from "../../lib/errors";
 import { Chip, ChipRow } from "../Chip";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
@@ -15,31 +19,73 @@ const dayKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 /** How much of each person's week meetings take, against the budget. */
-export function TeamAttention({
+export function TeamAttention(props: Parameters<typeof TeamAttentionBody>[0]) {
+  return (
+    <TeamAttentionBody
+      key={`${props.teamId}:${dayKey(props.weekStart)}`}
+      {...props}
+    />
+  );
+}
+
+function TeamAttentionBody({
   teamId,
   weekStart,
   canManage,
+  disabled = false,
+  onBusyChange,
 }: {
   teamId: string;
   weekStart: Date;
   canManage: boolean;
+  disabled?: boolean;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [data, setData] = useState<Attention | null>(null);
   const [failed, setFailed] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const alive = useRef(true);
+  const owner = useRef(session.token).current;
+  const reporter = useRef(onBusyChange);
+  reporter.current = onBusyChange;
+  const current = () => alive.current && session.token === owner;
   const week = dayKey(weekStart);
-  const load = useCallback(() => {
-    client.teamAttention(teamId, week).then(
-      (d) => {
-        setData(d);
-        setFailed(false);
-      },
-      () => setFailed(true),
-    );
+  const load = useCallback(async () => {
+    if (!current()) return;
+    const version = ++request.current;
+    setFailed(false);
+    try {
+      const next = await client.teamAttention(teamId, week);
+      if (current() && version === request.current) setData(next);
+    } catch {
+      if (current() && version === request.current) setFailed(true);
+    }
   }, [teamId, week]);
-  useEffect(load, [load]);
-  if (failed)
-    return <Text style={shared.small}>Connect to see meeting time.</Text>;
-  if (!data) return <Text style={shared.small}>Loading…</Text>;
+  useEffect(() => {
+    alive.current = true;
+    void load();
+    return () => {
+      alive.current = false;
+      request.current++;
+      reporter.current?.(false);
+    };
+  }, [load]);
+  if (!data)
+    return failed ? (
+      <View>
+        <Text style={shared.small}>Meeting time couldn’t be loaded.</Text>
+        <SmallAction
+          label="Retry"
+          disabled={false}
+          onPress={() => void load()}
+        />
+      </View>
+    ) : (
+      <Text style={shared.small}>Loading meeting time…</Text>
+    );
   const budget = data.budget_minutes;
   const most = Math.max(
     budget ?? 0,
@@ -48,11 +94,31 @@ export function TeamAttention({
   );
   return (
     <View style={s.wrap}>
+      {!!error && (
+        <Text style={shared.small} accessibilityRole="alert">
+          {error}
+        </Text>
+      )}
+      {failed && (
+        <View>
+          <Text style={shared.small}>Meeting time couldn’t be refreshed.</Text>
+          <SmallAction
+            label="Retry"
+            disabled={busy || disabled}
+            onPress={() => void load()}
+          />
+        </View>
+      )}
       <Text style={shared.small}>
         {budget
-          ? `Meetings are kept to ${hoursLabel(budget)} a person a week. Team events and events with people invited count.`
-          : "No meeting budget yet. Team events and events with people invited count as meetings."}
+          ? `Budget: ${hoursLabel(budget)} per person each week.`
+          : "No meeting budget set."}
       </Text>
+      <InlineDetails title="What counts as a meeting">
+        <Text style={shared.small}>
+          Team events and events with invited people count toward this budget.
+        </Text>
+      </InlineDetails>
       {canManage && (
         <ChipRow label="Meeting budget">
           {BUDGETS.map((b) => (
@@ -61,9 +127,27 @@ export function TeamAttention({
               compact
               label={b ? `${hoursLabel(b)}` : "None"}
               selected={budget === b}
-              onPress={() =>
-                void client.setMeetingBudget(teamId, b).then(load, () => {})
-              }
+              disabled={busy || disabled}
+              onPress={() => {
+                if (!canManage || disabled || !current() || mutation.current)
+                  return;
+                mutation.current = true;
+                reporter.current?.(true);
+                setBusy(true);
+                setError("");
+                void client
+                  .setMeetingBudget(teamId, b)
+                  .then(load, (error) => {
+                    if (current()) setError(errorText(error));
+                  })
+                  .finally(() => {
+                    mutation.current = false;
+                    if (current()) {
+                      setBusy(false);
+                      reporter.current?.(false);
+                    }
+                  });
+              }}
             />
           ))}
         </ChipRow>
@@ -75,9 +159,7 @@ export function TeamAttention({
           accessible
           accessibilityLabel={`${m.name}: ${hoursLabel(m.meeting_minutes)} of meetings${budget ? ` of ${hoursLabel(budget)}` : ""}${m.over ? ", over budget" : ""}`}
         >
-          <Text style={s.name} numberOfLines={1}>
-            {m.name}
-          </Text>
+          <Text style={s.name}>{m.name}</Text>
           <View style={s.track}>
             <View
               style={[
@@ -152,21 +234,25 @@ export function AttentionWarning({
 const s = themed(() =>
   StyleSheet.create({
     wrap: { gap: 10 },
-    row: { flexDirection: "row", alignItems: "center", gap: 10 },
+    row: { gap: 6 },
     name: {
-      width: 90,
+      minWidth: 0,
       fontFamily: fonts.medium,
       fontSize: 13,
       color: colors.text,
     },
     track: {
-      flex: 1,
+      width: "100%",
       height: 8,
-      borderRadius: 4,
+      borderRadius: radii.check,
       backgroundColor: colors.surfaceMuted,
       overflow: "hidden",
     },
-    fill: { height: "100%", borderRadius: 4, backgroundColor: colors.accent },
+    fill: {
+      height: "100%",
+      borderRadius: radii.check,
+      backgroundColor: colors.accent,
+    },
     fillOver: { backgroundColor: colors.danger },
     over: { color: colors.danger, fontFamily: fonts.semibold },
     warning: {

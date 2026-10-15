@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
 import {
   DOC_KINDS,
@@ -82,6 +82,8 @@ export function ViewFilters({
   onChange: (filters: Filters) => void;
 }) {
   const f = def.filters;
+  const currentFilters = useRef(f);
+  currentFilters.current = f;
   const [words, setWords] = useState(f.text ?? "");
   useEffect(() => setWords(f.text ?? ""), [f.text]);
   useEffect(() => {
@@ -93,7 +95,8 @@ export function ViewFilters({
     return () => window.clearTimeout(timer);
   }, [words]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const set = (next: Partial<Filters>) => onChange(tidy({ ...f, ...next }));
+  const set = (next: Partial<Filters>) =>
+    onChange(tidy({ ...currentFilters.current, ...next }));
   const setDue = (due: Due) =>
     set({
       overdue: due === "overdue" || undefined,

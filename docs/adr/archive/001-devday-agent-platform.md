@@ -1,3 +1,10 @@
+# ADR 001 — Agent platform (archived)
+
+Status: completed under the owner-approved scope on 12 October 2026.
+The [final acceptance report](../../reviews/final-integration-2026-10-12.md)
+records delivered checkpoints and explicit follow-ups. The entries below are
+historical and retain their original time-specific wording; the new UI/UX scope is [ADR 003](../003-product-ui-ux-redesign.md).
+
 ## Current integration direction — 11 October 2026
 
 [ADR 002](002-unified-mcp-integration.md) adds a single canonical `/mcp`
@@ -17,7 +24,7 @@ This supersedes the previous Docs-first continuation queue. C1 is active; normal
 Docs editor activation remains queued under C4. Existing implementations and
 completed task-panel main checkpoints are retained. Partial foundations, focused
 checks and sampled screenshots do not close a canonical stage. See the
-[ordered queue](../reviews/adr-execution-order.md) for exit conditions.
+[ordered queue](../../reviews/adr-execution-order.md) for exit conditions.
 
 ## Task-panel controls checkpoint — 7 October 2026
 
@@ -36,7 +43,7 @@ confirmation and visual busy/read-only races remain unverified; automated guards
 are separate evidence. The frozen5523afe1 full regression passes3969/3969 with
 zero failures/skips; it excludes this later task-panel patch.
 
-Follow [the ordered ADR queue](../reviews/adr-execution-order.md). This finishes
+Follow [the ordered ADR queue](../../reviews/adr-execution-order.md). This finishes
 the scoped task-panel browser repair, not U1 or the full ADR. Normal Docs editor
 ownership activation is next. Orbyn Visual Check writes steps, screenshots,
 findings and limits in its Markdown report and sends short handoffs only.
@@ -428,7 +435,7 @@ context.94 focused and11 fresh mounted library-hierarchy cases pass; types and
 backend/web builds and full formatting pass. Fresh immutable full DB41 is running
 (`/tmp/orbyn-channel-container-20752130-full.log`); keep source frozen.
 Storage/API versioning, CRDT and both editors/export
-integration remain required. See [container integration gates](../reviews/docs-container-audit.md#structured-container-candidate--6-october-2026).
+integration remain required. See [container integration gates](../../reviews/docs-container-audit.md#structured-container-candidate--6-october-2026).
 This source candidate is not a shipped D1 feature.
 
 Versioned content/source contract `04da502e` is pushed separately on
@@ -549,7 +556,7 @@ existing ACL contract. Earlier fixture failures remain recorded.
 
 No public structured editing API or normal format2 creation is enabled. Capability
 headers, both editors, task-item mapping, CRDT, imports and HTML/PDF/Word export
-adoption remain required. See [container storage gates](../reviews/docs-container-audit.md#backend-storage-adoption-candidate).
+adoption remain required. See [container storage gates](../../reviews/docs-container-audit.md#backend-storage-adoption-candidate).
 All D1/U1 and governing provider/agent/page requirements remain in scope.
 
 ChatGPT handoff/routing/catalog/defaults are already on main. Real web-to-desktop
@@ -603,10 +610,10 @@ Next: D1 and U1 matrices and the remaining governing agent/provider acceptance
 audit. PR208 is merged: exact `4c9edf00`, all four CI37346372738 jobs passed and
 fresh local full suite3383/0/1. Balanced-link PR209 exact `4c3dffb4` is merged after
 all four CI37348529721 jobs passed and fresh local full suite3403/0/1, terminal0. Paragraph/break behavior, full Markdown matrices and
-visual/native acceptance remain open; see the [paragraph audit](../reviews/docs-paragraph-break-audit.md).
+visual/native acceptance remain open; see the [paragraph audit](../../reviews/docs-paragraph-break-audit.md).
 Full C1–C6/M1/D1/U1 remains active and incomplete. See the
-[implementation pipeline](../reviews/task.md#authoritative-implementation-pipeline--6-october-2026)
-and [Teams evidence](../reviews/evidence/teams-agent-channels.md).
+[implementation pipeline](../../reviews/task.md#authoritative-implementation-pipeline--6-october-2026)
+and [Teams evidence](../../reviews/evidence/teams-agent-channels.md).
 
 ### Historical checkpoint — 5 October 2026
 
@@ -642,7 +649,7 @@ exchanges. Stale captured OAuth results cannot overwrite a later canonical
 refresh or reviewed reconnect. Signed exact-card replies, Teams, exact-head
 full/CI and authorized
 workspace/native/visual acceptance remain open. Channel runtime/UI is not on main.
-Current source and retained failures: [agent channels](../reviews/evidence/agent-channels.md).
+Current source and retained failures: [agent channels](../../reviews/evidence/agent-channels.md).
 
 Main429f2de2 passed all four jobs in CI37308099452:2976 backend passes, zero
 failures and one existing Tesseract skip. This qualifies the retention/docs
@@ -657,7 +664,7 @@ untracked preview files remain preserved. This is a process/source correction,
 not visual or native acceptance.
 
 Full C1–C6/M1/D1/U1 remains active and incomplete. The current pipeline is in
-[implementation handoff](../reviews/task.md). Checkpoints below are historical
+[implementation handoff](../../reviews/task.md). Checkpoints below are historical
 evidence for their named source and do not supersede this current state.
 
 ### Historical combined candidate verification — 5 October 2026
@@ -704,7 +711,7 @@ Focused routing/security checks pass; this candidate is not production-qualified
 or merged. Full-suite stability, real-account inference and measured usage display,
 cross-client visual acceptance and the full governing C1-C6/M1/D1/U1 contract
 remain required. Current evidence and limitations are recorded in
-[the task handoff](../reviews/task.md#chatgpt-dispatch-and-provider-choice-candidate--4-october-2026).
+[the task handoff](../../reviews/task.md#chatgpt-dispatch-and-provider-choice-candidate--4-october-2026).
 
 The preceding dispatch/replay source passed2701/2701 full local checks with
 normal PostgreSQL settings. A subsequent upgrade safeguard requires signed
@@ -738,7 +745,7 @@ main promotion.
 
 ## Context and scope
 
-The user authorized implementation of the revised DevDay plan with production checkpoints on main. Voice, computer use and the speculative Decisions API integration are excluded. The existing durable assistant, source visibility, approvals, receipts, Docs and managed connections remain the foundation. The governing acceptance contract is [the revised implementation review](../reviews/devday-2026-implementation-review.md), including M1, D1 and U1. No removed feature is required to finish this ADR's scope.
+The user authorized implementation of the revised DevDay plan with production checkpoints on main. Voice, computer use and the speculative Decisions API integration are excluded. The existing durable assistant, source visibility, approvals, receipts, Docs and managed connections remain the foundation. The governing acceptance contract is [the revised implementation review](../../reviews/devday-2026-implementation-review.md), including M1, D1 and U1. No removed feature is required to finish this ADR's scope.
 
 ## Decisions
 
@@ -1151,7 +1158,7 @@ remains active; no deployment, release or cleanup is performed.
 
 ## Qualification correction — 3 October 2026
 
-- Main21c6c076 full local suite is terminal:2,245/2,246, one old clipboard expectation for `<h2>Plan</h2>` after authored level1 correctly becameh1. Updated that expectation and added exact all-six-level HTML/clipboard regressions; no h7. h4–h6 print at readable body size. [Heading fixture](pdf-heading-levels.png) inspected with no overlap or clipping.
+- Main21c6c076 full local suite is terminal:2,245/2,246, one old clipboard expectation for `<h2>Plan</h2>` after authored level1 correctly becameh1. Updated that expectation and added exact all-six-level HTML/clipboard regressions; no h7. h4–h6 print at readable body size. [Heading fixture](../../reviews/evidence/pdf-heading-levels.png) inspected with no overlap or clipping.
 - Combineda039f271 CI37057124805 failed one all-family PDF text assertion despite local2,488/2,488. Reproduced in a hardened offline Linux renderer: “flowchart” prints correctly but pdf.js returns adjacent `fl`/`owchart` font runs. The test inserted a false space. Position-based line reconstruction and normalization now recover all ten exact headings and all six required SVG labels from the Linux file. A regression covers split font runs and ligatures; expected headings are exact line checks.
   -Current57 browser/helper/service/primary/deployment units and63 actual export/rich-page/heading/text checks pass. All workspace types/build/full formatting pass after the fix. Linux diagnostic artifact is `/tmp/orbyn-pdf-linux-api-batch.pdf`; its older image isolates printing/font behavior and is not current-head image qualification.
   -New full exact-head local and CI qualification required after committing this correction. Previous main/combined CI failures are not passing evidence. PR161 stays draft until corrected full local/all CI pass; no main merge/deploy/release/cleanup.
@@ -2507,7 +2514,7 @@ change has four pure cases but its new PostgreSQL regression is unexecuted while
 the test container is stopped. It must not be treated as qualified yet.
 User/character changes and unrelated candidates remain preserved. No deployment
 or cleanup occurred. Current evidence is recorded in
-[the implementation handoff](../reviews/task.md#latest-qualification-and-top-three-work).
+[the implementation handoff](../../reviews/task.md#latest-qualification-and-top-three-work).
 
 ### Qualified October 5 checkpoints and remaining P1 execution
 
@@ -2728,7 +2735,7 @@ not answer; approval remains in Orbyn. Fixed expiry is independent of transport
 configuration. Cold testing also repairs the sweeper to reuse its held advisory
 lock connection instead of requiring a second pool checkout. Current focused
 channel/sweep/cold cases pass; full immutable qualification, CI and promotion
-remain required. See [Teams evidence](../reviews/evidence/teams-agent-channels.md).
+remain required. See [Teams evidence](../../reviews/evidence/teams-agent-channels.md).
 This does not close C6, D1, U1 or the full ADR scope.
 
 ### ChatGPT connection correction — 6 October 2026

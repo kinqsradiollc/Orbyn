@@ -33,7 +33,7 @@ export function AlertHost() {
       accessibilityLabel={request.title}
       transparent
       visible
-      animationType="fade"
+      animationType="none"
       onRequestClose={dismiss}
     >
       <View style={s.backdrop}>

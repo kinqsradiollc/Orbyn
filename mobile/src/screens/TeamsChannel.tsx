@@ -1,4 +1,10 @@
-import React, { useEffect, useMemo, useSyncExternalStore } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { Linking, StyleSheet, Text, View } from "react-native";
 import { TeamsChannelStore } from "@orbyn/api-client";
 import { client } from "../lib/api";
@@ -10,6 +16,7 @@ import {
 import { Switch } from "../components/Switch";
 import { MoreMenu } from "../components/MoreMenu";
 import { SmallAction } from "../components/SmallAction";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { shared } from "../styles";
 import { colors, radii, themed } from "../theme";
 /** Review the same owned Microsoft identity and personal conversation as the web client. */
@@ -27,6 +34,15 @@ export function TeamsChannelSettings() {
     [token],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const [openError, setOpenError] = useState("");
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    setOpenError("");
+    return () => {
+      live.current = false;
+    };
+  }, [store]);
   useEffect(() => {
     let active = true;
     void loadTeamsInstallation().then((id) => {
@@ -59,14 +75,27 @@ export function TeamsChannelSettings() {
   }, [store, pending, state.challenge, state.busy]);
   const active = connection && connection.state !== "disconnected";
   const open = async (url: string) => {
-    await Linking.openURL(url);
+    if (live.current && token === session.token) setOpenError("");
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      if (live.current && token === session.token)
+        setOpenError("Couldn't open Microsoft sign-in. Try again.");
+      throw error;
+    }
   };
   return (
     <View style={s.body}>
       <View style={s.row}>
-        <Text style={shared.body}>Microsoft Teams</Text>
+        <Text style={shared.label}>Microsoft Teams</Text>
         <Text style={[shared.small, s.wrap]}>
-          {active ? connection.display_name : "Not connected"}
+          {active
+            ? connection.display_name
+            : state.status
+              ? "Not connected"
+              : state.error
+                ? "Unavailable"
+                : "Loading…"}
         </Text>
         {active && (
           <MoreMenu
@@ -117,14 +146,13 @@ export function TeamsChannelSettings() {
                 />
               </View>
               <Text style={shared.small}>
-                Background updates, questions and morning Overnight results.
+                Background questions and updates; Overnight results.
               </Text>
             </>
           )}
           {state.status && !state.status.delivery_available && (
             <Text style={shared.small}>
-              Messaging is unavailable until your administrator configures the
-              Teams bot.
+              Ask your administrator to configure Teams messaging.
             </Text>
           )}
         </>
@@ -155,7 +183,7 @@ export function TeamsChannelSettings() {
       {state.challenge && (
         <View style={s.review}>
           <Text style={shared.small}>
-            Send this command in your personal chat with the Orbyn bot.
+            Send this command to Orbyn in your personal Teams chat.
           </Text>
           <Text selectable style={shared.body}>
             {state.challenge.command}
@@ -205,7 +233,7 @@ export function TeamsChannelSettings() {
             />
           )}
         <SmallAction
-          label="Refresh Teams"
+          label="Refresh"
           disabled={state.busy}
           onPress={() => void store.refresh()}
         />
@@ -217,6 +245,7 @@ export function TeamsChannelSettings() {
           />
         )}
       </View>
+      <ErrorBanner error={openError} onDismiss={() => setOpenError("")} />
       {state.error && (
         <Text
           accessibilityRole="alert"
@@ -236,12 +265,17 @@ const s = themed(() =>
       borderTopWidth: 1,
       borderTopColor: colors.border,
     },
-    row: { flexDirection: "row", alignItems: "center", gap: 12 },
-    wrap: { flex: 1, flexShrink: 1 },
+    row: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 10,
+    },
+    wrap: { flex: 1, flexShrink: 1, minWidth: 0, flexBasis: 140 },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
     review: {
-      gap: 12,
-      padding: 16,
+      gap: 10,
+      padding: 12,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.card,

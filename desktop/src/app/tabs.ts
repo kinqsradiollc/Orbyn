@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import {
   restoreTabs,
+  initialTabs,
   saveTabs,
   tabsReducer,
   type TabAction,
   type TabsState,
+  type TabPlace,
 } from "@orbyn/core";
 import { SCREENS, type View } from "./views";
 
@@ -91,9 +93,9 @@ export function useWideEnoughForTabs(): boolean {
 const knownView = (view: string) =>
   Object.prototype.hasOwnProperty.call(SCREENS, view);
 
-function readSaved(): string | null {
+function readSaved(key: string): string | null {
   try {
-    return localStorage.getItem(TABS_KEY);
+    return localStorage.getItem(key);
   } catch {
     return null;
   }
@@ -103,10 +105,17 @@ function readSaved(): string | null {
  * The tabs, kept on this device. `act` changes them at once and returns the
  * new state, so the app can show what came to the front.
  */
-export function useTabState() {
-  const [state, setState] = useState<TabsState>(() =>
-    restoreTabs(readSaved(), knownView),
-  );
+export function useTabState({
+  storageKey = TABS_KEY,
+  initialPlace,
+}: { storageKey?: string | null; initialPlace?: TabPlace } = {}) {
+  // A secondary pane can remain session-local without overwriting main tabs.
+  // The key/initial place belong to this mounted controller's lifetime.
+  const key = useRef(storageKey);
+  const [state, setState] = useState<TabsState>(() => {
+    const saved = storageKey ? readSaved(storageKey) : null;
+    return saved ? restoreTabs(saved, knownView) : initialTabs(initialPlace);
+  });
   const ref = useRef(state);
   const act = useCallback((action: TabAction) => {
     const next = tabsReducer(ref.current, action);
@@ -117,8 +126,9 @@ export function useTabState() {
     return next;
   }, []);
   useEffect(() => {
+    if (!key.current) return;
     try {
-      localStorage.setItem(TABS_KEY, saveTabs(state));
+      localStorage.setItem(key.current, saveTabs(state));
     } catch {
       // Nothing to keep them in: they last this visit.
     }

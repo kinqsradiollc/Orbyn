@@ -28,18 +28,19 @@ export function TeammatesSheet({
     <Sheet visible={visible} title="Show teammates" onClose={onClose}>
       <ScrollView contentContainerStyle={sheetStyles.body}>
         <View style={sheetStyles.column}>
-          <ErrorBanner error={t.error} onDismiss={() => {}} />
-          <Text style={[shared.subtitle, s.intro]}>
-            Their busy times show as thin strips beside each day, never what
-            they are. Up to {MAX_MATES} people; this device remembers who.
+          <ErrorBanner error={t.error} />
+          {!!t.error && <Button secondary title="Retry" onPress={t.retry} />}
+          <Text style={[shared.small, s.intro]}>
+            Show busy times for up to {MAX_MATES} people. Event details stay
+            private.
           </Text>
-          {t.mates === null ? (
+          {t.membersLoading ? (
             <Text style={shared.small}>Loading your teams…</Text>
-          ) : t.mates.length === 0 ? (
-            <Text style={shared.small}>No one else is in your teams yet.</Text>
+          ) : t.memberError ? null : !t.mates?.length ? (
+            <Text style={shared.small}>No teammates available.</Text>
           ) : (
             <View style={s.list}>
-              {t.mates.map((m, n) => {
+              {t.mates?.map((m, n) => {
                 const on = t.selected.includes(m.user_id);
                 const blocked = !on && full;
                 return (
@@ -59,12 +60,10 @@ export function TeammatesSheet({
                   >
                     <View style={[s.check, on && s.checkOn]}>
                       {on && (
-                        <Icon name="check" size={14} color={colors.white} />
+                        <Icon name="check" size={14} color={colors.onAccent} />
                       )}
                     </View>
-                    <Text style={s.name} numberOfLines={1}>
-                      {m.name}
-                    </Text>
+                    <Text style={s.name}>{m.name}</Text>
                     {m.pinned && (
                       <Icon name="pin" size={13} color={colors.muted} />
                     )}
@@ -84,7 +83,6 @@ export function TeammatesSheet({
           {t.selected.length > 0 && (
             <Button secondary title="Hide everyone" onPress={t.clear} />
           )}
-          <Button title="Done" icon="check" onPress={onClose} />
         </View>
       </ScrollView>
     </Sheet>
@@ -93,7 +91,7 @@ export function TeammatesSheet({
 
 const s = themed(() =>
   StyleSheet.create({
-    intro: { marginTop: 0, marginBottom: 18 },
+    intro: { marginTop: 0, marginBottom: 12 },
     list: {
       backgroundColor: colors.surface,
       borderWidth: 1,
@@ -106,7 +104,8 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 12,
-      minHeight: 52,
+      minHeight: 44,
+      paddingVertical: 10,
       paddingHorizontal: 14,
     },
     divider: {
@@ -118,7 +117,7 @@ const s = themed(() =>
     check: {
       width: 22,
       height: 22,
-      borderRadius: 6,
+      borderRadius: radii.check,
       borderWidth: 1.5,
       borderColor: colors.checkBorder,
       alignItems: "center",
@@ -127,10 +126,11 @@ const s = themed(() =>
     checkOn: { backgroundColor: colors.accent, borderColor: colors.accent },
     name: {
       flex: 1,
-      fontFamily: fonts.semibold,
+      minWidth: 0,
+      fontFamily: fonts.medium,
       fontSize: 15,
       color: colors.text,
     },
-    swatch: { width: 12, height: 12, borderRadius: 6 },
+    swatch: { width: 12, height: 12, borderRadius: radii.pill },
   }),
 );

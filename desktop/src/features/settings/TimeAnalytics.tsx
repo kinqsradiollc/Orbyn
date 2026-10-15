@@ -11,28 +11,42 @@ const hours = (m: number) =>
 export function TimeAnalytics({ report }: { report: (e: unknown) => void }) {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<PlannerAnalytics | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let live = true;
-    client.getAnalytics(days).then(
-      (a) => live && setData(a),
-      (e) => {
-        if (live) report(e);
-      },
-    );
+    setLoading(true);
+    setFailed(false);
+    setData(null);
+    client
+      .getAnalytics(days)
+      .then(
+        (a) => live && setData(a),
+        (e) => {
+          if (live) {
+            setFailed(true);
+            report(e);
+          }
+        },
+      )
+      .finally(() => {
+        if (live) setLoading(false);
+      });
     return () => {
       live = false;
     };
-  }, [days, report]);
+  }, [days, report, attempt]);
 
   const bars = (rows: { name: string; minutes: number }[]) => {
     const max = Math.max(1, ...rows.map((r) => r.minutes));
     return (
       <ul className="analytics-bars">
-        {rows.map((r) => (
-          <li key={r.name}>
+        {rows.map((r, n) => (
+          <li key={`${r.name}-${n}`}>
             <span className="analytics-name">{r.name}</span>
-            <span className="analytics-track">
+            <span className="analytics-track" aria-hidden="true">
               <span
                 className="analytics-fill"
                 style={{ width: `${(r.minutes / max) * 100}%` }}
@@ -48,13 +62,11 @@ export function TimeAnalytics({ report }: { report: (e: unknown) => void }) {
   return (
     <SettingsSection
       className="card settings-card"
-      title="Where your time goes"
+      title="Time by list and tag"
     >
       <div className="settings-head">
         <div>
-          <p className="muted">
-            Your sessions on the calendar, by list and tag. Private to you.
-          </p>
+          <p className="muted">Planned sessions · private to you.</p>
         </div>
         <div className="segmented" role="group" aria-label="Range">
           {RANGES.map((d) => (
@@ -70,13 +82,20 @@ export function TimeAnalytics({ report }: { report: (e: unknown) => void }) {
         </div>
       </div>
 
-      {!data ? (
+      {failed ? (
+        <div>
+          <p role="alert">Couldn’t load time analytics.</p>
+          <button
+            className="secondary"
+            onClick={() => setAttempt((n) => n + 1)}
+          >
+            Retry
+          </button>
+        </div>
+      ) : loading || !data ? (
         <p className="muted">Loading…</p>
       ) : data.planned_minutes === 0 ? (
-        <p className="muted">
-          No sessions in this range yet. Plan your day, or plan a session for a
-          task, and it’ll show here.
-        </p>
+        <p className="muted">No sessions in this range.</p>
       ) : (
         <>
           <div className="analytics-totals">

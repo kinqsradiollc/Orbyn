@@ -28,7 +28,8 @@ import {
 import { LiveList } from "../views/LiveList";
 import { Icon } from "../../components/Icon";
 import type { Mark } from "./marks";
-import { colors, fonts, radii, themed } from "../../theme";
+import { colors, fonts, inputFontSize, radii, themed } from "../../theme";
+import { usePaneWidth } from "../../hooks/usePaneWidth";
 
 /**
  * A document as it reads on a phone. Formulas are typeset on the phone
@@ -129,6 +130,7 @@ export function DocBody({
   /** Open a table's cells to edit. */
   onEditTable?: (index: number) => void;
 }) {
+  const { width, onLayout } = usePaneWidth();
   const offset = pageIndex ?? 0;
   const wholePage = pageContent ?? content;
   if (
@@ -180,10 +182,6 @@ export function DocBody({
           {count > 0 && (
             <Pressable
               onPress={() => id && onOpenComments?.(id)}
-              // The way into a line's remarks. A 24pt pill is the right size
-              // beside a line of text and the wrong size for a thumb, so the
-              // target grows without the pill doing the same.
-              hitSlop={10}
               accessibilityRole="button"
               accessibilityLabel={`${count} comment${count === 1 ? "" : "s"} on this line`}
               style={({ pressed }) => [
@@ -285,10 +283,17 @@ export function DocBody({
     : content.map(() => false);
   const notes = footnoteNumbers(wholePage);
   const inset = (index: number) =>
-    layout[index].depth ? { marginLeft: layout[index].depth * NEST } : null;
+    layout[index].depth
+      ? {
+          marginLeft: Math.min(
+            layout[index].depth * NEST,
+            Math.max(0, width - 180),
+          ),
+        }
+      : null;
 
   return (
-    <View style={styles.body}>
+    <View style={styles.body} onLayout={onLayout}>
       {content.map((block, index) => {
         // Under a folded heading.
         if (hidden[index] && position(index) !== editing) return null;
@@ -351,7 +356,6 @@ export function DocBody({
                     folded ? `Unfold ${block.text}` : `Fold ${block.text}`
                   }
                   accessibilityState={{ expanded: !folded }}
-                  hitSlop={12}
                   onPress={() => onToggleFold?.(block.id!)}
                   style={styles.fold}
                 >
@@ -445,22 +449,25 @@ export function DocBody({
                 <Pressable
                   onPress={() => onToggleTodo?.(position(index))}
                   disabled={!onToggleTodo}
-                  hitSlop={12}
                   accessibilityRole="checkbox"
                   accessibilityState={{
                     checked: block.done,
                     disabled: !onToggleTodo,
                   }}
                   accessibilityLabel={block.text || "Checklist item"}
-                  style={[
-                    styles.check,
-                    block.done && styles.checkDone,
-                    !onToggleTodo && styles.checkLocked,
-                  ]}
+                  style={styles.checkTarget}
                 >
-                  {block.done && (
-                    <Icon name="check" size={14} color={colors.white} />
-                  )}
+                  <View
+                    style={[
+                      styles.check,
+                      block.done && styles.checkDone,
+                      !onToggleTodo && styles.checkLocked,
+                    ]}
+                  >
+                    {block.done && (
+                      <Icon name="check" size={14} color={colors.onAccent} />
+                    )}
+                  </View>
                 </Pressable>
                 {/* The tag sits beside the label, not inside it, so a done
                     line does not strike through the tag as well. */}
@@ -597,10 +604,10 @@ const styles = themed(() =>
     commentedRow: { flexDirection: "row", alignItems: "flex-start", gap: 8 },
     commentedBody: { flex: 1, minWidth: 0 },
     badge: {
-      minWidth: 24,
-      height: 24,
+      minWidth: 44,
+      minHeight: 44,
       paddingHorizontal: 6,
-      borderRadius: 12,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
       backgroundColor: colors.accentSoft,
@@ -615,7 +622,7 @@ const styles = themed(() =>
     input: {
       alignSelf: "stretch",
       color: colors.text,
-      fontSize: 15,
+      fontSize: inputFontSize,
       lineHeight: 22,
       borderWidth: 1,
       borderColor: colors.accent,
@@ -624,14 +631,21 @@ const styles = themed(() =>
       paddingVertical: 8,
       minHeight: 44,
     },
-    heading: { color: colors.text, fontFamily: fonts.display },
+    heading: { color: colors.text, fontFamily: fonts.bold },
     h1: { fontSize: 18 },
     h2: { fontSize: 15 },
     deepHeading: { fontFamily: fonts.semibold },
-    text: { color: colors.text, fontSize: 15, lineHeight: 22, flex: 1 },
+    text: {
+      color: colors.text,
+      fontSize: 15,
+      lineHeight: 22,
+      flex: 1,
+      minWidth: 0,
+    },
     done: { color: colors.muted, textDecorationLine: "line-through" },
     todoText: {
       flex: 1,
+      minWidth: 0,
       flexDirection: "row",
       alignItems: "center",
       flexWrap: "wrap",
@@ -642,10 +656,17 @@ const styles = themed(() =>
     marker: { color: colors.muted, fontSize: 15, lineHeight: 22, width: 16 },
     // Room for two digits, lined up on their dots.
     number: { width: 24, textAlign: "right", fontVariant: ["tabular-nums"] },
+    checkTarget: {
+      width: 44,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "flex-start",
+      paddingTop: 1,
+    },
     check: {
       width: 22,
       height: 22,
-      borderRadius: 7,
+      borderRadius: radii.check,
       borderWidth: 1.5,
       borderColor: colors.checkBorder,
       backgroundColor: colors.surface,
@@ -674,7 +695,7 @@ const styles = themed(() =>
       marginTop: 4,
       paddingHorizontal: 8,
       paddingVertical: 1,
-      borderRadius: 999,
+      borderRadius: radii.pill,
       overflow: "hidden",
       backgroundColor: colors.warningSoft,
       color: colors.warningStrong,
@@ -691,8 +712,8 @@ const styles = themed(() =>
     headingRow: { flexDirection: "row", alignItems: "center", gap: 2 },
     headingBody: { flex: 1, minWidth: 0 },
     fold: {
-      width: 28,
-      height: 28,
+      width: 44,
+      height: 44,
       borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",

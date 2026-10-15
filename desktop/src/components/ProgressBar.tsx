@@ -20,7 +20,9 @@ export function ProgressBar({
   label,
   hideValue,
 }: Props) {
-  const pct = Math.round(Math.max(0, Math.min(100, value)));
+  const pct = Number.isFinite(value)
+    ? Math.round(Math.max(0, Math.min(100, value)))
+    : 0;
   return (
     <span
       className={`progress-bar ${size} ${status ? "tone-" + status : ""}`}

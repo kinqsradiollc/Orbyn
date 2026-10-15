@@ -40,7 +40,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { formatDateTime } from "../../lib/format";
-import { stagger } from "../../lib/motion";
+import { Select } from "../../components/Select";
 import "./status.css";
 import { errorText } from "../../lib/errors";
 
@@ -214,7 +214,7 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
         </a>
         {signedIn ? (
           <a href="/app" className="primary" onClick={go("/app")}>
-            Open your planner <ArrowUpRight size={15} />
+            Open planner <ArrowUpRight size={15} />
           </a>
         ) : (
           <a href="/login" className="text-button" onClick={go("/login")}>
@@ -224,11 +224,11 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
       </header>
 
       <main className="status-main" aria-busy={loading && !report}>
-        <span className="eyebrow">SERVICE STATUS</span>
+        <span className="eyebrow">Service status</span>
 
         {report?.maintenance && report.maintenance.enabled !== false && (
           <section
-            className="status-maintenance fade-up"
+            className="status-maintenance"
             role="status"
             aria-labelledby="status-maintenance-title"
           >
@@ -240,10 +240,7 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
                   {report.maintenance.message}
                 </p>
               )}
-              <p>
-                You can still sign in and view everything. Changes are paused
-                until it&apos;s over.
-              </p>
+              <p>Viewing is available; edits are paused.</p>
               {report.maintenance.until && (
                 <p>
                   <strong>
@@ -260,7 +257,7 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
 
         {report?.clock && (
           <section
-            className="status-maintenance fade-up"
+            className="status-maintenance"
             role="status"
             aria-labelledby="status-clock-title"
           >
@@ -283,7 +280,7 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
 
         {report && (
           <section
-            className={`status-banner is-${state} fade-up motion-slow`}
+            className={`status-banner is-${state}`}
             aria-labelledby="status-headline"
           >
             <StateIcon size={26} aria-hidden="true" />
@@ -297,7 +294,7 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
                 {error && (
                   <span className="status-stale" role="status">
                     {" "}
-                    · Couldn&apos;t refresh just now, showing the last results.
+                    · Refresh failed. Showing the last results.
                   </span>
                 )}
               </p>
@@ -334,19 +331,16 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
         )}
 
         {!report && error && (
-          <section className="card status-error fade-up" role="alert">
+          <section className="card status-error" role="alert">
             <CircleX size={24} aria-hidden="true" />
-            <h1>We couldn&apos;t load the status right now.</h1>
-            <p>
-              {/[.!?]$/.test(error) ? error : error + "."} We&apos;ll keep
-              trying every 30 seconds, or you can try again now.
-            </p>
+            <h1>Couldn&apos;t load status.</h1>
+            <p>{error}</p>
             <button
               className="primary"
               disabled={loading}
               onClick={() => void load()}
             >
-              <RefreshCw size={14} /> {loading ? "Checking…" : "Try again"}
+              <RefreshCw size={14} /> {loading ? "Checking…" : "Retry"}
             </button>
           </section>
         )}
@@ -364,8 +358,8 @@ export function StatusPage({ signedIn, onNavigate, onHome }: Props) {
               <h2 id="status-components-title" className="status-section-title">
                 Components
               </h2>
-              {groupStatusComponents(report.components).map((g, n) => (
-                <GroupCard key={g.id} group={g} index={n} />
+              {groupStatusComponents(report.components).map((g) => (
+                <GroupCard key={g.id} group={g} />
               ))}
               {!report.components.length && (
                 <p className="muted status-none">
@@ -399,7 +393,7 @@ function ActiveIncidents({
   if (!incidents.length) return null;
   return (
     <section
-      className="card status-incidents is-active fade-up"
+      className="card status-incidents is-active"
       aria-labelledby="status-active-title"
     >
       <div className="section-heading">
@@ -434,7 +428,7 @@ function PastIncidents({
   const rest = incidents.length - shown;
   return (
     <section
-      className="card status-incidents is-past fade-up"
+      className="card status-incidents is-past"
       aria-labelledby="status-past-title"
     >
       <div className="section-heading">
@@ -542,7 +536,7 @@ function IncidentRow({
  * A group of components: one line when all is well, open by itself when
  * something in it is slow or down.
  */
-function GroupCard({ group: g, index }: { group: StatusGroup; index: number }) {
+function GroupCard({ group: g }: { group: StatusGroup }) {
   const problem = isProblemState(g.state);
   const [open, setOpen] = useState(problem);
   // A group that runs into trouble opens itself, once.
@@ -552,8 +546,7 @@ function GroupCard({ group: g, index }: { group: StatusGroup; index: number }) {
   const body = `status-group-${g.id}`;
   return (
     <article
-      className={`card status-group fade-up stagger${open ? " is-open" : ""}`}
-      style={stagger(index + 1)}
+      className={`card status-group${open ? " is-open" : ""}`}
       aria-labelledby={`${body}-title`}
     >
       <h3 id={`${body}-title`} className="status-group-heading">
@@ -626,28 +619,45 @@ function History({
   days: StatusComponent["history"];
 }) {
   const [active, setActive] = useState<number | null>(null);
-  const day = active === null ? null : days[active];
+  const [picked, setPicked] = useState<number | null>(null);
+  const day =
+    active === null ? (picked === null ? null : days[picked]) : days[active];
   if (!days.length) return null;
   return (
     <div className="status-history">
       <div
         className="status-bars"
-        role="list"
-        aria-label={`${name} daily uptime`}
+        aria-hidden="true"
         onMouseLeave={() => setActive(null)}
       >
         {days.map((d, i) => (
           <span
             key={d.date}
-            role="listitem"
-            aria-label={dayLabel(d)}
             title={dayLabel(d)}
             className={`bar is-${barLevel(d.uptime)}${active === i ? " is-active" : ""}`}
             onMouseEnter={() => setActive(i)}
-            onClick={() => setActive(active === i ? null : i)}
           />
         ))}
       </div>
+      <details className="status-daily-details">
+        <summary>Daily uptime</summary>
+        <Select
+          aria-label={`${name} daily uptime`}
+          value={picked === null ? "" : String(picked)}
+          onChange={(event) =>
+            setPicked(
+              event.target.value === "" ? null : Number(event.target.value),
+            )
+          }
+        >
+          <option value="">Choose a day</option>
+          {days.map((value, index) => (
+            <option key={value.date} value={index}>
+              {dayLabel(value)}
+            </option>
+          ))}
+        </Select>
+      </details>
       <div className="status-axis" aria-hidden="true">
         {day ? (
           <span className="status-axis-day">{dayLabel(day)}</span>

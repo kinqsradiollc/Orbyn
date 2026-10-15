@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { Pressable } from "../motion";
 import {
@@ -38,26 +38,49 @@ export function RecentChangesList({
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState("");
   const zone = deviceTimeZone();
+  const request = useRef(0);
+  const fetching = useRef(false);
+  const [loading, setLoading] = useState(false);
   const load = useCallback(
-    (before?: string) =>
-      client
-        .listChanges({ team_id: teamId, hide_mine: hideMine, before, limit })
-        .then(
-          (page) => {
-            setError("");
-            setChanges((was) =>
-              before ? [...(was ?? []), ...page.changes] : page.changes,
-            );
-            setNext(page.next);
-          },
-          (e) => setError(errorText(e)),
-        ),
+    async (before?: string) => {
+      if (before && fetching.current) return;
+      const version = ++request.current;
+      fetching.current = true;
+      setLoading(true);
+      setError("");
+      try {
+        const page = await client.listChanges({
+          team_id: teamId,
+          hide_mine: hideMine,
+          before,
+          limit,
+        });
+        if (version !== request.current) return;
+        setChanges((was) =>
+          before ? [...(was ?? []), ...page.changes] : page.changes,
+        );
+        setNext(page.next);
+      } catch (error) {
+        if (version === request.current) setError(errorText(error));
+      } finally {
+        if (version === request.current) {
+          fetching.current = false;
+          setLoading(false);
+        }
+      }
+    },
     [teamId, hideMine, limit],
   );
   useEffect(() => {
     setChanges(null);
+    setNext(null);
     void load();
+    return () => {
+      request.current++;
+      fetching.current = false;
+    };
   }, [load]);
+
   const days = groupChangesByDay(changes ?? [], zone);
   return (
     <View style={s.list}>
@@ -73,13 +96,25 @@ export function RecentChangesList({
           }}
         />
       </View>
-      {!!error && <Text style={s.error}>{error}</Text>}
+      {!!error && (
+        <View>
+          <Text style={s.error} accessibilityRole="alert">
+            {error}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={loading}
+            onPress={() => void load(changes ? (next ?? undefined) : undefined)}
+            style={s.more}
+          >
+            <Text style={s.moreText}>Retry</Text>
+          </Pressable>
+        </View>
+      )}
       {changes === null && !error && <Text style={s.muted}>Loading…</Text>}
       {changes && !changes.length && (
         <Text style={s.muted}>
-          {hideMine
-            ? "Nothing changed by anyone else lately."
-            : "Nothing changed lately."}
+          {hideMine ? "No recent changes from others." : "No recent changes."}
         </Text>
       )}
       {days.map((day) => (
@@ -124,18 +159,19 @@ export function RecentChangesList({
                       {changeVerb(c)}
                       {c.via_agent ? ` via ${c.via_agent}` : ""}
                     </Text>
-                    <Text style={s.title} numberOfLines={2}>
-                      {c.title || "Untitled"}
-                    </Text>
+                    <Text style={s.title}>{c.title || "Untitled"}</Text>
                     {(!!edits || !teamId) && (
-                      <Text style={s.muted} numberOfLines={1}>
+                      <Text style={s.muted}>
                         {[edits, teamId ? "" : c.team_name]
                           .filter(Boolean)
                           .join(" · ")}
                       </Text>
                     )}
+                    <Text style={s.time}>
+                      {changeTime(c.at, zone)}
+                      {!c.open ? " · Deleted" : ""}
+                    </Text>
                   </View>
-                  <Text style={s.time}>{changeTime(c.at, zone)}</Text>
                 </Pressable>
               );
             })}
@@ -145,10 +181,14 @@ export function RecentChangesList({
       {next && (
         <Pressable
           accessibilityRole="button"
+          accessibilityState={{ disabled: loading }}
+          disabled={loading}
           onPress={() => void load(next)}
           style={s.more}
         >
-          <Text style={s.moreText}>Show earlier changes</Text>
+          <Text style={s.moreText}>
+            {loading ? "Loading…" : "Earlier changes"}
+          </Text>
         </Pressable>
       )}
     </View>
@@ -211,13 +251,18 @@ const s = themed(() =>
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.divider,
     },
-    rowText: { flex: 1, gap: 2 },
+    rowText: { flex: 1, minWidth: 0, gap: 2 },
     who: { fontFamily: fonts.regular, fontSize: 13, color: colors.textSoft },
-    title: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+    title: { fontFamily: fonts.semibold, fontSize: 13, color: colors.text },
     time: { fontFamily: fonts.regular, fontSize: 11, color: colors.muted },
     muted: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     error: { fontFamily: fonts.regular, fontSize: 13, color: colors.danger },
-    more: { alignSelf: "center", paddingVertical: 10 },
+    more: {
+      alignSelf: "center",
+      minHeight: 44,
+      justifyContent: "center",
+      paddingVertical: 10,
+    },
     moreText: { fontFamily: fonts.medium, fontSize: 15, color: colors.accent },
   }),
 );

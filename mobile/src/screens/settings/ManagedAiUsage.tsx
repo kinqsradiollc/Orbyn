@@ -4,6 +4,7 @@ import { client } from "../../lib/api";
 import { session } from "../../lib/session";
 import { Text, View } from "react-native";
 import { SmallAction } from "../../components/SmallAction";
+import { ErrorBanner } from "../../components/ErrorBanner";
 import { shared } from "../../styles";
 import { errorText } from "../../lib/errors";
 /** On-demand owner metrics; account/token changes discard pending responses. */
@@ -38,14 +39,14 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
   return (
     <View style={{ gap: 10 }}>
       <SmallAction
-        label="Workspace usage"
+        label={expanded ? "Hide workspace usage" : "Workspace usage"}
         disabled={!userId || !token}
         onPress={() => setOpen(expanded ? null : identity)}
       />
       {expanded && (
         <View style={{ gap: 10 }}>
           {!current && <Text style={shared.small}>Loading usage…</Text>}
-          {current?.error && <Text style={shared.small}>{current.error}</Text>}
+          <ErrorBanner error={current?.error ?? ""} />
           {current?.data && (
             <>
               <Text style={shared.small}>
@@ -66,8 +67,8 @@ export function ManagedAiUsage({ userId }: { userId: string }) {
             </>
           )}
           <SmallAction
-            label="Refresh usage"
-            disabled={!userId || !token}
+            label={current?.error ? "Retry usage" : "Refresh usage"}
+            disabled={!userId || !token || !current}
             onPress={() => setReload((v) => v + 1)}
           />
         </View>

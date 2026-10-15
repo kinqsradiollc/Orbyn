@@ -1,3 +1,5 @@
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import {
@@ -5,6 +7,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
   type PointerEvent,
 } from "react";
 import {
@@ -84,7 +87,7 @@ type Props = {
  * are free, and it's booked at once.
  */
 export function OpenInvites({ user, teams, report }: Props) {
-  const { ask, tell } = useConfirm();
+  const { ask } = useConfirm();
   const [invites, setInvites] = useState<OpenInvite[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
@@ -103,6 +106,7 @@ export function OpenInvites({ user, teams, report }: Props) {
   const copy = (inv: OpenInvite) =>
     void copyText(inv.url).then((ok) => ok && setCopied(inv.id));
   const withdraw = async (inv: OpenInvite) => {
+    if (action.pending) return;
     if (
       !(await ask({
         title: `Withdraw “${inv.title}”? Its link stops working${inv.booking ? " and the booking is cancelled" : ""}.`,
@@ -118,23 +122,24 @@ export function OpenInvites({ user, teams, report }: Props) {
 
   return (
     <>
-      {creating && (
-        <InviteForm
-          user={user}
-          teams={teams}
-          report={report}
-          onClose={() => setCreating(false)}
-          onCreated={(inv) => {
-            setCreating(false);
-            void load();
-            void copyText(inv.url).then((ok) => ok && setCopied(inv.id));
+      <InviteForm
+        visible={creating}
+        user={user}
+        teams={teams}
+        report={report}
+        onClose={() => setCreating(false)}
+        onCreated={(inv) => {
+          setCreating(false);
+          void load();
+          void copyText(inv.url).then((ok) => {
+            if (ok) setCopied(inv.id);
             action.setOutcome({
               ok: true,
-              text: "Your link is ready and copied. Send it to the person you're meeting.",
+              text: ok ? "Link copied." : "Link ready. Copy it below.",
             });
-          }}
-        />
-      )}
+          });
+        }}
+      />
       <section className="card">
         <div className="section-heading">
           <h2>
@@ -147,8 +152,7 @@ export function OpenInvites({ user, teams, report }: Props) {
           )}
         </div>
         <p className="muted pad invite-lead">
-          Pick a few windows and send one private link. The time they choose is
-          booked straight away.
+          A private link books their chosen time immediately.
         </p>
         <OutcomeNote outcome={action.outcome} />
         {invites === null ? (
@@ -215,12 +219,14 @@ export function OpenInvites({ user, teams, report }: Props) {
  * free, reminders and expiry.
  */
 function InviteForm({
+  visible,
   user,
   teams,
   report,
   onClose,
   onCreated,
 }: {
+  visible: boolean;
   user: User | null;
   teams: Team[];
   report: (e: unknown) => void;
@@ -277,6 +283,7 @@ function InviteForm({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
+    if (action.pending) return;
     const problem = !windows.length
       ? "Mark at least one window when you're free."
       : windows.length > 20
@@ -307,123 +314,187 @@ function InviteForm({
           ...(expiresAt ? { expires_at: expiresAt } : {}),
         }),
       );
+      setTitle("");
+      setDuration(30);
+      setWindows([]);
+      setLocation("");
+      setMeetingUrl("");
+      setCoHosts([]);
+      setReminders([...DEFAULT_BOOKER_REMINDERS]);
+      setExpires("");
     });
   };
 
+  if (!visible) return null;
   return (
-    <section className="card booking-form-card" aria-labelledby="invite-form">
-      <div className="section-heading">
-        <h2 id="invite-form">Offer times</h2>
-        <button
-          className="icon-button"
-          aria-label="Close form"
-          onClick={onClose}
-        >
-          <X size={18} />
-        </button>
-      </div>
-      <form className="settings-form invite-form" onSubmit={submit}>
-        <div className="settings-grid">
-          <div className="settings-field wide">
-            <label htmlFor="inv-title">What&apos;s it for?</label>
-            <input
-              id="inv-title"
-              required
-              autoFocus
-              maxLength={120}
-              placeholder="Coffee catch-up"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-            />
-          </div>
-          <div className="settings-field">
-            <label htmlFor="inv-length">Length</label>
-            <Select
-              id="inv-length"
-              value={duration}
-              onChange={(e) => setDuration(Number(e.target.value))}
-            >
-              {LENGTHS.map((m) => (
-                <option key={m} value={m}>
-                  {minutesLabel(m)}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="settings-field">
-            <label htmlFor="inv-expires">Link works until (optional)</label>
-            <DateField
-              id="inv-expires"
-              type="datetime-local"
-              value={expires}
-              aria-describedby="inv-expires-hint"
-              onChange={(e) => setExpires(e.target.value)}
-            />
-            <small id="inv-expires-hint" className="field-hint">
-              At the latest, the end of the last window.
-            </small>
-          </div>
-          <div className="settings-field">
-            <label htmlFor="inv-location">Location (optional)</label>
-            <input
-              id="inv-location"
-              maxLength={300}
-              value={location}
-              onChange={(e) => setLocation(e.target.value)}
-            />
-          </div>
-          <div className="settings-field">
-            <label htmlFor="inv-link">Meeting link (optional)</label>
-            <input
-              id="inv-link"
-              type="url"
-              maxLength={500}
-              pattern="https?://\S+"
-              placeholder="https://"
-              value={meetingUrl}
-              onChange={(e) => setMeetingUrl(e.target.value)}
-            />
-          </div>
+    <InviteEditor busy={action.pending} onClose={onClose}>
+      <section className="booking-form-card" aria-labelledby="invite-form">
+        <div className="section-heading">
+          <h2 id="invite-form">Offer times</h2>
+          <button
+            className="icon-button"
+            aria-label="Close form"
+            disabled={action.pending}
+            onClick={onClose}
+          >
+            <X size={18} />
+          </button>
         </div>
-        <h3 className="settings-subtitle">When you&apos;re free</h3>
-        <WindowPicker value={windows} onChange={setWindows} />
-        {people && people.length > 0 && (
-          <fieldset className="check-group">
-            <legend>Co-hosts (optional)</legend>
-            <div className="check-grid">
-              {people.map((p) => (
-                <label key={p.user_id} className="check-line">
-                  <input
-                    type="checkbox"
-                    checked={coHosts.includes(p.user_id)}
-                    disabled={
-                      !coHosts.includes(p.user_id) &&
-                      coHosts.length >= MAX_CO_HOSTS
-                    }
-                    onChange={() => toggleCoHost(p.user_id)}
-                  />
-                  {p.name}
-                </label>
-              ))}
+        <form className="settings-form invite-form" onSubmit={submit}>
+          <fieldset
+            className="booking-pending-fields"
+            disabled={action.pending}
+          >
+            <div className="settings-grid">
+              <div className="settings-field wide">
+                <label htmlFor="inv-title">What&apos;s it for?</label>
+                <input
+                  id="inv-title"
+                  required
+                  autoFocus
+                  maxLength={120}
+                  placeholder="Coffee catch-up"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                />
+              </div>
+              <div className="settings-field">
+                <label htmlFor="inv-length">Length</label>
+                <Select
+                  id="inv-length"
+                  value={duration}
+                  onChange={(e) => setDuration(Number(e.target.value))}
+                >
+                  {LENGTHS.map((m) => (
+                    <option key={m} value={m}>
+                      {minutesLabel(m)}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <div className="settings-field">
+                <label htmlFor="inv-expires">Link works until (optional)</label>
+                <DateField
+                  id="inv-expires"
+                  type="datetime-local"
+                  value={expires}
+                  aria-describedby="inv-expires-hint"
+                  onChange={(e) => setExpires(e.target.value)}
+                />
+                <small id="inv-expires-hint" className="field-hint">
+                  At the latest, the end of the last window.
+                </small>
+              </div>
+              <div className="settings-field">
+                <label htmlFor="inv-location">Location (optional)</label>
+                <input
+                  id="inv-location"
+                  maxLength={300}
+                  value={location}
+                  onChange={(e) => setLocation(e.target.value)}
+                />
+              </div>
+              <div className="settings-field">
+                <label htmlFor="inv-link">Meeting link (optional)</label>
+                <input
+                  id="inv-link"
+                  type="url"
+                  maxLength={500}
+                  pattern="https?://\S+"
+                  placeholder="https://"
+                  value={meetingUrl}
+                  onChange={(e) => setMeetingUrl(e.target.value)}
+                />
+              </div>
             </div>
-            <small className="field-hint">
-              Everyone you add must also be free at the time picked, and gets
-              the event on their calendar. Up to {MAX_CO_HOSTS}.
-            </small>
+            <h3 className="settings-subtitle">When you&apos;re free</h3>
+            <WindowPicker
+              disabled={action.pending}
+              value={windows}
+              onChange={setWindows}
+            />
+            {people && people.length > 0 && (
+              <fieldset className="check-group">
+                <legend>Co-hosts (optional)</legend>
+                <div className="check-grid">
+                  {people.map((p) => (
+                    <label key={p.user_id} className="check-line">
+                      <input
+                        type="checkbox"
+                        checked={coHosts.includes(p.user_id)}
+                        disabled={
+                          !coHosts.includes(p.user_id) &&
+                          coHosts.length >= MAX_CO_HOSTS
+                        }
+                        onChange={() => toggleCoHost(p.user_id)}
+                      />
+                      {p.name}
+                    </label>
+                  ))}
+                </div>
+                <small className="field-hint">
+                  Everyone you add must also be free at the time picked, and
+                  gets the event on their calendar. Up to {MAX_CO_HOSTS}.
+                </small>
+              </fieldset>
+            )}
+            <RemindersField
+              disabled={action.pending}
+              value={reminders}
+              onChange={setReminders}
+            />
           </fieldset>
-        )}
-        <RemindersField value={reminders} onChange={setReminders} />
-        <div className="settings-footer">
-          <button className="primary" disabled={action.pending}>
-            {action.pending ? "Creating…" : "Create link"}
-          </button>
-          <button type="button" className="secondary" onClick={onClose}>
-            Cancel
-          </button>
-          <OutcomeNote outcome={action.outcome} />
-        </div>
-      </form>
-    </section>
+          <div className="settings-footer">
+            <button className="primary" disabled={action.pending}>
+              {action.pending ? "Creating…" : "Create link"}
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={action.pending}
+              onClick={onClose}
+            >
+              Cancel
+            </button>
+            <OutcomeNote outcome={action.outcome} />
+          </div>
+        </form>
+      </section>
+    </InviteEditor>
+  );
+}
+
+function InviteEditor({
+  busy,
+  onClose,
+  children,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const node = focus.ref.current as HTMLDialogElement;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      className="modal invite-editor"
+      data-modal-focus={focus.id}
+      aria-labelledby="invite-form"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      {children}
+    </dialog>,
+    document.body,
   );
 }
 
@@ -439,9 +510,11 @@ const CELL_PX = 18;
  * adds one by typing.
  */
 function WindowPicker({
+  disabled = false,
   value,
   onChange,
 }: {
+  disabled?: boolean;
   value: Win[];
   onChange: (next: Win[]) => void;
 }) {
@@ -458,7 +531,7 @@ function WindowPicker({
   const [addTo, setAddTo] = useState("12:00");
   const [addError, setAddError] = useState("");
   const latest = useRef({ drag, value, onChange, days });
-  latest.current = { drag, value, onChange, days };
+  latest.current = { drag: disabled ? null : drag, value, onChange, days };
   const dragging = drag !== null;
   const now = Date.now();
 
@@ -525,126 +598,131 @@ function WindowPicker({
   const lastDay = addDays(today, 83);
   return (
     <div className="window-picker-wrap">
-      <div className="wp-toolbar">
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Previous week"
-          disabled={first <= today}
-          onClick={() => setFirst(addDays(first, -7))}
-        >
-          <ChevronLeft size={17} />
-        </button>
-        <strong>
-          {shortDay(days[0])} – {shortDay(days[6])}
-        </strong>
-        <button
-          type="button"
-          className="icon-button"
-          aria-label="Next week"
-          disabled={first >= lastDay}
-          onClick={() => setFirst(addDays(first, 7))}
-        >
-          <ChevronRight size={17} />
-        </button>
-      </div>
-      <div
-        className="window-picker"
-        style={{ "--wp-cell": CELL_PX + "px" } as never}
-        aria-hidden="true"
-      >
-        <div className="wp-head">
-          <span />
-          {days.map((d) => (
-            <span key={d.toISOString()}>
-              {d.toLocaleDateString([], { weekday: "short" })} {d.getDate()}
-            </span>
-          ))}
+      <details className="wp-grid-detail">
+        <summary>Choose times on grid</summary>
+        <div className="wp-toolbar">
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Previous week"
+            disabled={first <= today}
+            onClick={() => setFirst(addDays(first, -7))}
+          >
+            <ChevronLeft size={17} />
+          </button>
+          <strong>
+            {shortDay(days[0])} – {shortDay(days[6])}
+          </strong>
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Next week"
+            disabled={first >= lastDay}
+            onClick={() => setFirst(addDays(first, 7))}
+          >
+            <ChevronRight size={17} />
+          </button>
         </div>
-        <div className="wp-body" onPointerMove={follow}>
-          <div className="wp-hours">
-            {Array.from({ length: ROWS / 2 }, (_, h) => (
-              <span key={h}>{timeLabel(at(days[0], h * 2))}</span>
+        <div
+          className="window-picker"
+          style={{ "--wp-cell": CELL_PX + "px" } as never}
+          aria-hidden="true"
+        >
+          <div className="wp-head">
+            <span />
+            {days.map((d) => (
+              <span key={d.toISOString()}>
+                {d.toLocaleDateString([], { weekday: "short" })} {d.getDate()}
+              </span>
             ))}
           </div>
-          {days.map((day, n) => {
-            const draft =
-              drag?.day === n
-                ? {
-                    lo: Math.min(drag.from, drag.to),
-                    hi: Math.max(drag.from, drag.to) + 1,
-                  }
-                : null;
-            return (
-              <div key={day.toISOString()} className="wp-col">
-                {Array.from({ length: ROWS }, (_, i) => {
-                  const past = at(day, i + 1).getTime() <= now;
-                  return (
-                    <div
-                      key={i}
-                      data-day={n}
-                      data-cell={i}
-                      className={"wp-cell" + (past ? " is-past" : "")}
-                      onPointerDown={(e) => {
-                        if (past || e.button !== 0) return;
-                        e.preventDefault();
-                        setDrag({ day: n, from: i, to: i });
-                      }}
-                    />
-                  );
-                })}
-                {value
-                  .filter((w) => sameDay(w.start, day))
-                  .map((w) => {
-                    const top =
-                      ((w.start.getHours() * 60 +
-                        w.start.getMinutes() -
-                        WP_START * 60) /
-                        WP_STEP) *
-                      CELL_PX;
-                    const height =
-                      ((w.end.getTime() - w.start.getTime()) /
-                        60_000 /
-                        WP_STEP) *
-                      CELL_PX;
+          <div className="wp-body" onPointerMove={follow}>
+            <div className="wp-hours">
+              {Array.from({ length: ROWS / 2 }, (_, h) => (
+                <span key={h}>{timeLabel(at(days[0], h * 2))}</span>
+              ))}
+            </div>
+            {days.map((day, n) => {
+              const draft =
+                drag?.day === n
+                  ? {
+                      lo: Math.min(drag.from, drag.to),
+                      hi: Math.max(drag.from, drag.to) + 1,
+                    }
+                  : null;
+              return (
+                <div key={day.toISOString()} className="wp-col">
+                  {Array.from({ length: ROWS }, (_, i) => {
+                    const past = at(day, i + 1).getTime() <= now;
                     return (
                       <div
-                        key={w.start.toISOString()}
-                        className="wp-window"
-                        style={{
-                          top: Math.max(0, top),
-                          height: Math.max(CELL_PX, height),
+                        key={i}
+                        data-day={n}
+                        data-cell={i}
+                        className={"wp-cell" + (past ? " is-past" : "")}
+                        onPointerDown={(e) => {
+                          if (disabled || past || e.button !== 0) return;
+                          e.preventDefault();
+                          setDrag({ day: n, from: i, to: i });
                         }}
-                      >
-                        {timeLabel(w.start)} – {timeLabel(w.end)}
-                        <button
-                          type="button"
-                          tabIndex={-1}
-                          onPointerDown={(e) => e.stopPropagation()}
-                          onClick={() => onChange(value.filter((x) => x !== w))}
-                        >
-                          <X size={11} />
-                        </button>
-                      </div>
+                      />
                     );
                   })}
-                {draft && (
-                  <div
-                    className="wp-window is-draft"
-                    style={{
-                      top: draft.lo * CELL_PX,
-                      height: (draft.hi - draft.lo) * CELL_PX,
-                    }}
-                  >
-                    {timeLabel(at(day, draft.lo))} –{" "}
-                    {timeLabel(at(day, draft.hi))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  {value
+                    .filter((w) => sameDay(w.start, day))
+                    .map((w) => {
+                      const top =
+                        ((w.start.getHours() * 60 +
+                          w.start.getMinutes() -
+                          WP_START * 60) /
+                          WP_STEP) *
+                        CELL_PX;
+                      const height =
+                        ((w.end.getTime() - w.start.getTime()) /
+                          60_000 /
+                          WP_STEP) *
+                        CELL_PX;
+                      return (
+                        <div
+                          key={w.start.toISOString()}
+                          className="wp-window"
+                          style={{
+                            top: Math.max(0, top),
+                            height: Math.max(CELL_PX, height),
+                          }}
+                        >
+                          {timeLabel(w.start)} – {timeLabel(w.end)}
+                          <button
+                            type="button"
+                            tabIndex={-1}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={() =>
+                              onChange(value.filter((x) => x !== w))
+                            }
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  {draft && (
+                    <div
+                      className="wp-window is-draft"
+                      style={{
+                        top: draft.lo * CELL_PX,
+                        height: (draft.hi - draft.lo) * CELL_PX,
+                      }}
+                    >
+                      {timeLabel(at(day, draft.lo))} –{" "}
+                      {timeLabel(at(day, draft.hi))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </div>
-      </div>
+      </details>
       <div className="wp-add" role="group" aria-label="Add a window">
         <label>
           Day
@@ -698,7 +776,7 @@ function WindowPicker({
         </ul>
       ) : (
         <p className="field-hint">
-          Drag down a day on the grid, or add a window above.
+          Add a window, or open the grid to drag a time range.
         </p>
       )}
     </div>

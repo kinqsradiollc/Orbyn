@@ -182,14 +182,14 @@ export function TeammatesMenu({
       <div className="popover-head">
         <small className="eyebrow">SHOW TEAMMATES</small>
         <small>
-          Their busy times show beside each day, never what they are. Up to{" "}
-          {MAX_MATES} people.
+          Show busy times for up to {MAX_MATES} people. Event details stay
+          private.
         </small>
       </div>
       {t.mates === null ? (
         <p className="popover-note">Loading your teams…</p>
       ) : !t.mates.length ? (
-        <p className="popover-note">No one else is in your teams yet.</p>
+        <p className="popover-note">No teammates available.</p>
       ) : (
         <div className="popover-actions mates-list">
           {t.mates.map((m) => {

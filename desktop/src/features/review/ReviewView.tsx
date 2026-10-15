@@ -60,39 +60,83 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
   const [open, setOpen] = useState<ReviewItem | null>(null);
   const [chosen, setChosen] = useState<Set<number>>(new Set());
   const action = useAction(report);
+  const pendingRef = useRef(action.pending);
+  pendingRef.current = action.pending;
   const detailRef = useRef<HTMLDivElement>(null);
 
-  const load = () =>
-    client.reviewInbox().then((next) => {
+  const mounted = useRef(true);
+  const inboxEpoch = useRef(0);
+  const itemEpoch = useRef(0);
+  const selectedId = useRef(openId);
+  selectedId.current = openId;
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const countRef = useRef(onCount);
+  countRef.current = onCount;
+  const [listError, setListError] = useState(false);
+  const [detailError, setDetailError] = useState(false);
+  const [detailPending, setDetailPending] = useState(false);
+
+  const load = async () => {
+    const epoch = ++inboxEpoch.current;
+    setListError(false);
+    try {
+      const next = await client.reviewInbox();
+      if (!mounted.current || epoch !== inboxEpoch.current) return;
       setInbox(next);
-      onCount?.(next.pending.length);
-    }, report);
-  const loadOne = (id: string) =>
-    client.reviewItem(id).then(
-      (item) => {
-        setOpen(item);
-        setChosen(new Set(item.changes.map((c) => c.index)));
-      },
-      (e) => {
-        setOpen(null);
-        setOpenId(null);
-        report(e);
-      },
-    );
+      countRef.current?.(next.pending.length);
+    } catch (error) {
+      if (mounted.current && epoch === inboxEpoch.current) {
+        setListError(true);
+        reportRef.current(error);
+      }
+    }
+  };
+  const loadOne = async (id: string) => {
+    const epoch = ++itemEpoch.current;
+    setDetailPending(true);
+    setDetailError(false);
+    try {
+      const item = await client.reviewItem(id);
+      if (
+        !mounted.current ||
+        epoch !== itemEpoch.current ||
+        selectedId.current !== id
+      )
+        return;
+      setOpen(item);
+      setChosen(new Set(item.changes.map((change) => change.index)));
+    } catch (error) {
+      if (
+        mounted.current &&
+        epoch === itemEpoch.current &&
+        selectedId.current === id
+      ) {
+        setDetailError(true);
+        reportRef.current(error);
+      }
+    } finally {
+      if (mounted.current && epoch === itemEpoch.current)
+        setDetailPending(false);
+    }
+  };
 
   useEffect(() => {
+    mounted.current = true;
     void load();
-    // Someone (you on another device, or an agent) changed the inbox.
     const stop = onLive((news) => {
       if (news.kind !== "changed" || (news.area && news.area !== "review"))
         return;
       void load();
-      setOpenId((id) => {
-        if (id) void loadOne(id);
-        return id;
-      });
+      if (selectedId.current && !pendingRef.current)
+        void loadOne(selectedId.current);
     });
-    return stop;
+    return () => {
+      mounted.current = false;
+      inboxEpoch.current++;
+      itemEpoch.current++;
+      stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -104,8 +148,10 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
   }, [focusId]);
 
   useEffect(() => {
+    itemEpoch.current++;
+    setOpen(null);
+    setDetailError(false);
     if (!openId) {
-      setOpen(null);
       return;
     }
     void loadOne(openId).then(() =>
@@ -114,8 +160,19 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openId]);
 
-  const approve = (item: ReviewItem) =>
-    action.run(async () => {
+  const approve = (item: ReviewItem) => {
+    if (
+      detailPending ||
+      detailError ||
+      selectedId.current !== item.id ||
+      item.status !== "pending" ||
+      !chosen.size ||
+      item.changes.some(
+        (c) => c.stale && (!item.partial || chosen.has(c.index)),
+      )
+    )
+      return;
+    return action.run(async () => {
       const only =
         item.partial && chosen.size < item.changes.length
           ? [...chosen]
@@ -124,10 +181,18 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
       await Promise.all([load(), loadOne(item.id)]);
       return only
         ? `Approved ${only.length} of ${item.changes.length} changes.`
-        : "Approved. The changes are made.";
+        : "Changes approved.";
     });
+  };
 
   const decline = async (item: ReviewItem) => {
+    if (
+      action.pending ||
+      detailPending ||
+      detailError ||
+      item.status !== "pending"
+    )
+      return;
     if (
       !(await ask({
         title: `Decline what ${item.proposer} suggests?`,
@@ -137,10 +202,17 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
       }))
     )
       return;
+    if (
+      selectedId.current !== item.id ||
+      !mounted.current ||
+      detailPending ||
+      detailError
+    )
+      return;
     await action.run(async () => {
       await client.declineReview(item.id);
       await Promise.all([load(), loadOne(item.id)]);
-      return "Declined. Nothing changed.";
+      return "Suggestion declined.";
     });
   };
 
@@ -152,13 +224,26 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
       return next;
     });
 
-  if (!inbox) return <p className="muted review-loading">Loading…</p>;
+  if (!inbox)
+    return listError ? (
+      <div role="alert">
+        <p>Couldn't load suggestions.</p>
+        <button className="secondary" onClick={() => void load()}>
+          Retry
+        </button>
+      </div>
+    ) : (
+      <p className="muted review-loading" role="status">
+        Loading…
+      </p>
+    );
 
   const card = (item: ReviewItem) => (
     <li key={item.id}>
       <button
         className={"review-card" + (openId === item.id ? " active" : "")}
         aria-current={openId === item.id ? "true" : undefined}
+        disabled={action.pending}
         onClick={() => setOpenId(item.id)}
       >
         <span className="review-card-icon" aria-hidden>
@@ -197,18 +282,26 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
       }
     >
       <section className="review-list" aria-label="Waiting for you">
+        {listError && (
+          <div role="alert">
+            <p>Couldn't refresh suggestions.</p>
+            <button className="secondary" onClick={() => void load()}>
+              Retry
+            </button>
+          </div>
+        )}
         {inbox.pending.length ? (
           <ul>{inbox.pending.map(card)}</ul>
         ) : (
           <EmptyState
             icon={Inbox}
-            title="Nothing waits for you"
-            body="Risky agent suggestions, like deleting a task, wait here for your approval."
+            title="No pending suggestions"
+            body="Agent changes wait here for your approval."
           />
         )}
         {inbox.recent.length > 0 && (
           <>
-            <h2 className="review-list-heading">Decided lately</h2>
+            <h2 className="review-list-heading">Recent decisions</h2>
             <ul>{inbox.recent.map(card)}</ul>
           </>
         )}
@@ -220,17 +313,33 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
         aria-live="polite"
         aria-label="Changes"
       >
+        {detailError && (
+          <div role="alert">
+            <p>Couldn't load these changes.</p>
+            <button
+              className="secondary"
+              disabled={action.pending || detailPending}
+              onClick={() => openId && void loadOne(openId)}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+        {detailPending && (
+          <p className="muted" role="status">
+            Loading changes…
+          </p>
+        )}
         {!open ? (
           <p className="muted review-pick">
-            Choose a suggestion to see what it would change.
+            {openId ? "" : "Choose a suggestion to review."}
           </p>
         ) : (
           <>
             <header className="review-detail-head">
               <span className="eyebrow">
-                {open.kind === "idea" ? "IDEA · " : ""}
-                {open.proposer.toUpperCase()} ·{" "}
-                {STATUS[open.status].toUpperCase()}
+                {open.kind === "idea" ? "Idea · " : ""}
+                {open.proposer} · {STATUS[open.status]}
               </span>
               <h2>{open.summary}</h2>
               <p className="muted">
@@ -251,6 +360,9 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
                         type="checkbox"
                         aria-label={`Include: ${c.headline}`}
                         checked={chosen.has(c.index)}
+                        disabled={
+                          action.pending || detailPending || detailError
+                        }
                         onChange={() => toggle(c.index)}
                       />
                     )}
@@ -293,7 +405,7 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
               <div className="review-actions">
                 <button
                   className="secondary"
-                  disabled={action.pending}
+                  disabled={action.pending || detailPending || detailError}
                   onClick={() => void decline(open)}
                 >
                   <X size={15} /> Decline
@@ -302,6 +414,8 @@ export function ReviewView({ report, focusId, onFocused, onCount }: Props) {
                   className="primary"
                   disabled={
                     action.pending ||
+                    detailPending ||
+                    detailError ||
                     chosen.size === 0 ||
                     chosenStale ||
                     (!open.partial && anyStale)

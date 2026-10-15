@@ -1,6 +1,7 @@
 import React, {
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
 } from "react";
@@ -15,6 +16,8 @@ import {
 import { Switch } from "../components/Switch";
 import { MoreMenu } from "../components/MoreMenu";
 import { SmallAction } from "../components/SmallAction";
+import { ErrorBanner } from "../components/ErrorBanner";
+import { InlineDetails } from "../components/InlineDetails";
 import { shared } from "../styles";
 import { colors, radii, themed } from "../theme";
 import { TeamsChannelSettings } from "./TeamsChannel";
@@ -33,6 +36,15 @@ export function AgentChannelsCard() {
     [token],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const [openError, setOpenError] = useState("");
+  const live = useRef(true);
+  useEffect(() => {
+    live.current = true;
+    setOpenError("");
+    return () => {
+      live.current = false;
+    };
+  }, [store]);
   const [dm, setDm] = useState(false);
   useEffect(() => {
     let active = true;
@@ -62,7 +74,14 @@ export function AgentChannelsCard() {
   const connection = state.status?.connection;
   const connected = connection && !connection.disconnected;
   const open = async (url: string) => {
-    await Linking.openURL(url);
+    if (live.current && token === session.token) setOpenError("");
+    try {
+      await Linking.openURL(url);
+    } catch (error) {
+      if (live.current && token === session.token)
+        setOpenError("Couldn't open Slack sign-in. Try again.");
+      throw error;
+    }
   };
   return (
     <View style={[shared.card, s.card]}>
@@ -70,7 +89,13 @@ export function AgentChannelsCard() {
       <View style={s.row}>
         <Text style={shared.body}>Slack</Text>
         <Text style={[shared.small, s.wrap]}>
-          {connected ? connection.workspace_name : "Not connected"}
+          {connected
+            ? connection.workspace_name
+            : state.status
+              ? "Not connected"
+              : state.error
+                ? "Unavailable"
+                : "Loading…"}
         </Text>
         {connected && (
           <MoreMenu
@@ -104,19 +129,21 @@ export function AgentChannelsCard() {
       )}
       {connected && (
         <>
-          <Text selectable style={shared.small}>
-            Slack account: {connection.external_user_id}
-            {"\n"}Workspace: {connection.workspace_id}
-            {"\n"}
-            {connection.token_state === "unknown" ||
-            connection.token_state === "reconnect"
-              ? "Reconnect required"
-              : connection.token_state === "refreshing"
-                ? "Refreshing token…"
-                : connection.token_expires_at
-                  ? `Token expires ${new Date(connection.token_expires_at).toLocaleString()}`
-                  : "No token expiry reported"}
-          </Text>
+          <InlineDetails title="Slack connection details">
+            <Text selectable style={shared.small}>
+              Slack account: {connection.external_user_id}
+              {"\n"}Workspace: {connection.workspace_id}
+              {"\n"}
+              {connection.token_state === "unknown" ||
+              connection.token_state === "reconnect"
+                ? "Reconnect required"
+                : connection.token_state === "refreshing"
+                  ? "Refreshing token…"
+                  : connection.token_expires_at
+                    ? `Token expires ${new Date(connection.token_expires_at).toLocaleString()}`
+                    : "No token expiry reported"}
+            </Text>
+          </InlineDetails>
           <View style={s.row}>
             <Text style={[shared.body, s.wrap]}>Send agent DMs to me</Text>
             <Switch
@@ -214,6 +241,7 @@ export function AgentChannelsCard() {
         )}
       </View>
       <TeamsChannelSettings />
+      <ErrorBanner error={openError} onDismiss={() => setOpenError("")} />
       {state.error && (
         <Text
           accessibilityRole="alert"
@@ -231,14 +259,15 @@ const s = themed(() =>
     row: {
       flexDirection: "row",
       alignItems: "center",
+      flexWrap: "wrap",
       justifyContent: "space-between",
       gap: 12,
     },
-    wrap: { flex: 1, flexShrink: 1 },
+    wrap: { flex: 1, flexShrink: 1, minWidth: 120 },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
     review: {
       gap: 12,
-      padding: 16,
+      padding: 12,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.card,

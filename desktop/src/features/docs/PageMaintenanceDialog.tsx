@@ -5,6 +5,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { PageMaintenanceStore, watchDocRefresh } from "@orbyn/api-client";
 import {
   blockText,
@@ -19,7 +20,13 @@ import { session } from "../../lib/session";
 import "./page-maintenance.css";
 
 /** Scoped updates over the existing page; review always shows the saved proposal. */
-export function PageMaintenanceDialog({
+export function PageMaintenanceDialog(
+  props: Parameters<typeof PageMaintenanceBody>[0],
+) {
+  return <PageMaintenanceBody key={props.id} {...props} />;
+}
+
+function PageMaintenanceBody({
   id,
   onChanged,
   onClose,
@@ -28,7 +35,6 @@ export function PageMaintenanceDialog({
   onChanged: (doc: Doc) => void;
   onClose: () => void;
 }) {
-  const dialog = useRef<HTMLDialogElement>(null);
   const changed = useRef(onChanged);
   changed.current = onChanged;
   const store = useMemo(
@@ -42,6 +48,7 @@ export function PageMaintenanceDialog({
     [id],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const focus = useModalFocus(onClose, state.busy);
   const [showForm, setShowForm] = useState(false);
   useEffect(() => {
     if (state.bindings.length) setShowForm(false);
@@ -54,10 +61,10 @@ export function PageMaintenanceDialog({
   );
   const [editing, setEditing] = useState<MaintainedPageBinding>();
   useEffect(() => {
-    dialog.current?.showModal();
+    (focus.ref.current as HTMLDialogElement)?.showModal();
     void store.prepare();
     return () => {
-      dialog.current?.close();
+      (focus.ref.current as HTMLDialogElement)?.close();
       store.dispose();
     };
   }, [store]);
@@ -84,7 +91,10 @@ export function PageMaintenanceDialog({
   };
   return (
     <dialog
-      ref={dialog}
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      data-modal-owner={focus.id}
       className="page-maintenance modal"
       aria-labelledby="page-maintenance-title"
       onCancel={(event) => {
@@ -104,16 +114,35 @@ export function PageMaintenanceDialog({
         </button>
       </header>
       <div className="page-maintenance-body">
-        {state.error && <p role="alert">{state.error}</p>}
-        {!state.doc && <p className="muted">Loading…</p>}
+        {state.error && (
+          <p role="alert">
+            {state.error}{" "}
+            <button
+              className="text-button"
+              disabled={state.busy}
+              onClick={() =>
+                void (state.doc ? store.refresh() : store.prepare())
+              }
+            >
+              Retry
+            </button>
+          </p>
+        )}
+        {!state.doc && !state.error && (
+          <p className="muted" role="status">
+            Loading…
+          </p>
+        )}
         {!showForm && (
           <button
             className="secondary"
-            disabled={state.busy}
+            disabled={state.busy || !state.doc}
             onClick={() => {
               setEditing(undefined);
               setSelected([]);
               setInstruction("");
+              setFrequency("FREQ=DAILY");
+              setBudget(String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET));
               setShowForm(true);
             }}
           >
@@ -125,8 +154,7 @@ export function PageMaintenanceDialog({
             <section>
               <h3>{editing ? "Edit schedule" : "New schedule"}</h3>
               <p className="muted">
-                Choose the blocks your assistant may update using your
-                configured model.
+                Your configured model may update only the selected blocks.
               </p>
               <fieldset disabled={state.busy}>
                 <legend>Blocks to maintain</legend>
@@ -147,8 +175,7 @@ export function PageMaintenanceDialog({
                             }
                           />
                           <span>
-                            {index + 1}.{" "}
-                            {blockText(block).slice(0, 140) || block.type}
+                            {index + 1}. {blockText(block) || block.type}
                           </span>
                         </label>
                       ),
@@ -196,8 +223,8 @@ export function PageMaintenanceDialog({
                   <p className="muted">Current rule: {frequency}</p>
                 )}
                 <p className="muted">
-                  Starts when enabled. Overnight handles these updates when
-                  follow-through is enabled.
+                  Starts now; runs through Overnight when follow-through is
+                  enabled.
                 </p>
                 <button
                   className="primary"
@@ -228,6 +255,12 @@ export function PageMaintenanceDialog({
                 >
                   {editing ? "Save and enable" : "Enable updates"}
                 </button>
+                <button
+                  className="secondary"
+                  onClick={() => setShowForm(false)}
+                >
+                  Cancel
+                </button>
                 {editing && (
                   <button
                     className="secondary"
@@ -235,6 +268,7 @@ export function PageMaintenanceDialog({
                       setEditing(undefined);
                       setSelected([]);
                       setInstruction("");
+                      setFrequency("FREQ=DAILY");
                       setBudget(String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET));
                     }}
                   >
@@ -249,7 +283,7 @@ export function PageMaintenanceDialog({
           <>
             <section>
               <h3>Schedules</h3>
-              {!state.bindings.length && (
+              {state.doc && !state.bindings.length && (
                 <p className="muted">No schedules yet.</p>
               )}
               {state.bindings.map((binding) => (

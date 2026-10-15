@@ -10,8 +10,8 @@ I froze `c1aedfb9` before verification. The commit is documents only; the worktr
 
 ## Document and status checks
 
-- `git diff --name-status ac1ef39507b3af7951557c98ae6a5f0dfbdf26a3..HEAD` — exit **0**. The candidate diff contains only `docs/adr/002-unified-mcp-integration.md`, `docs/reviews/devday-2026-implementation-review.md`, `docs/reviews/final-cleanup-tester.md`, and the new `docs/reviews/final-integration-2026-10-12.md`.
-- `git diff --check ac1ef39507b3af7951557c98ae6a5f0dfbdf26a3..HEAD -- docs/reviews/final-integration-2026-10-12.md docs/adr/002-unified-mcp-integration.md docs/reviews/devday-2026-implementation-review.md` — exit **0**.
+- `git diff --name-status ac1ef39507b3af7951557c98ae6a5f0dfbdf26a3..HEAD` — exit **0**. The candidate diff contains only `docs/adr/archive/002-unified-mcp-integration.md`, `docs/reviews/devday-2026-implementation-review.md`, `docs/reviews/final-cleanup-tester.md`, and the new `docs/reviews/final-integration-2026-10-12.md`.
+- `git diff --check ac1ef39507b3af7951557c98ae6a5f0dfbdf26a3..HEAD -- docs/reviews/final-integration-2026-10-12.md docs/adr/archive/002-unified-mcp-integration.md docs/reviews/devday-2026-implementation-review.md` — exit **0**.
 - Bounded Python 3 standard-library local-link scan (`python3 -` heredoc) — exit **0**: 16 local links in the new final-integration document, 2 local links in ADR 002's changed lines, and 3 local links in the active override section (lines 1–26) resolve. No historical sections or external links were treated as new acceptance gates.
 - `node scripts/check-env-examples.mjs` — exit **0**. Output: `Environment templates cover 131 backend/Compose variables and both clients (...)`. The script reads template/schema key names only and emitted no secret values.
 

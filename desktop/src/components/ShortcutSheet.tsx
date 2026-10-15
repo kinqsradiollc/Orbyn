@@ -1,4 +1,9 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useState } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../hooks/useModalFocus";
+import { hasHigherDialog } from "../lib/dialogLayers";
+import { isTyping } from "../lib/keys";
+import { Select } from "./Select";
 import { X } from "lucide-react";
 import { commandShortcuts } from "../app/commands";
 import { usePrefs } from "../app/prefs";
@@ -20,8 +25,7 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
       { keys: ["M", "W", "D", "A"], label: "Month, week, day or agenda" },
       {
         keys: ["C"],
-        label:
-          "New event at the selected time. Click an empty spot in week or day view to pick one.",
+        label: "New event at the selected time",
       },
       { keys: ["P"], label: "Open or close the planner" },
       { keys: ["1–9"], label: "Show a calendar set" },
@@ -36,15 +40,15 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
       { keys: [MOD, "⇧", "H"], label: "Highlight" },
       { keys: [MOD, "E"], label: "Code" },
       { keys: [MOD, "K"], label: "Link the selected words" },
-      { keys: ["Tab", "⇧Tab"], label: "Tuck a list item in, or bring it out" },
+      { keys: ["Tab", "⇧Tab"], label: "Indent or outdent a list item" },
       { keys: [MOD, "Enter"], label: "Tick or untick a checklist line" },
-      { keys: [MOD, "⇧", "V"], label: "Paste the words without their styles" },
-      { keys: ["/"], label: "Change a line, or add a date or a task" },
+      { keys: [MOD, "⇧", "V"], label: "Paste without formatting" },
+      { keys: ["/"], label: "Open block actions" },
       { keys: [MOD + "-click"], label: "Open a link beside the page" },
     ],
   },
   {
-    title: "Quick add, typed in the command bar",
+    title: "Quick add",
     keys: [
       { keys: [";"], label: "A place: ;Cafe Roma" },
       { keys: ["@"], label: "Someone: @anna, or an email to invite" },
@@ -65,7 +69,7 @@ const GROUPS: { title: string; keys: { keys: string[]; label: string }[] }[] = [
       { keys: ["Enter"], label: "Open or run the highlighted result" },
       {
         keys: ["⇧", "Enter"],
-        label: "Make what you typed: a page, or a task on My tasks and Lists",
+        label: "Create the typed page or task",
       },
       { keys: [MOD, "Enter"], label: "Open the result beside, in a side peek" },
       { keys: ["tag:"], label: "Pages with a tag: tag:physics" },
@@ -81,7 +85,10 @@ type Props = { onClose: () => void };
 
 /** The "?" sheet. Escape, "?" or a click outside closes it. */
 export function ShortcutSheet({ onClose }: Props) {
-  const closeButton = useRef<HTMLButtonElement>(null);
+  const focus = useModalFocus(onClose);
+  const titleId = useId();
+  const [query, setQuery] = useState("");
+  const [section, setSection] = useState("Anywhere");
   const { prefs } = usePrefs();
   // "Anywhere" is the command list with your own changes (NAV-09).
   const groups = [
@@ -96,74 +103,114 @@ export function ShortcutSheet({ onClose }: Props) {
   ];
 
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
-    closeButton.current?.focus();
-    return () => opener?.focus?.();
+    const dialog = focus.ref.current as HTMLDialogElement | null;
+    dialog?.showModal();
+    return () => dialog?.close();
   }, []);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" || e.key === "?") {
-        e.preventDefault();
-        onClose();
-      }
-      // The close button is the only stop: keep Tab inside.
-      if (e.key === "Tab") {
-        e.preventDefault();
-        closeButton.current?.focus();
-      }
+    const key = (event: KeyboardEvent) => {
+      if (
+        event.key !== "?" ||
+        event.defaultPrevented ||
+        isTyping(event) ||
+        hasHigherDialog(focus.ref.current)
+      )
+        return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      onClose();
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
   }, [onClose]);
+  const needle = query.trim().toLowerCase();
+  const shown = groups
+    .filter((group) => needle || section === "all" || section === group.title)
+    .map((group) => ({
+      ...group,
+      keys: group.keys.filter(
+        (row) =>
+          !needle ||
+          `${group.title} ${row.label} ${row.keys.join(" ")}`
+            .toLowerCase()
+            .includes(needle),
+      ),
+    }))
+    .filter((group) => group.keys.length);
 
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+  return createPortal(
+    <dialog
+      ref={focus.ref as React.RefObject<HTMLDialogElement>}
+      data-modal-focus={focus.id}
+      tabIndex={-1}
+      aria-modal="true"
+      className="modal shortcut-sheet"
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
       }}
     >
-      <section
-        className="modal shortcut-sheet scale-in"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="shortcuts-title"
-      >
-        <div className="section-heading">
-          <h2 id="shortcuts-title">Keyboard shortcuts</h2>
-          <button
-            ref={closeButton}
-            className="icon-button"
-            aria-label="Close shortcuts"
-            onClick={onClose}
-          >
-            <X size={20} />
-          </button>
-        </div>
-        <div className="shortcut-groups">
-          {groups.map((g) => (
-            <section key={g.title} className="shortcut-group">
-              <h3>{g.title}</h3>
-              <dl>
-                {g.keys.map((k) => (
-                  <div key={k.label}>
-                    <dt>
-                      {k.keys.map((key) => (
-                        <kbd key={key}>{key}</kbd>
-                      ))}
-                    </dt>
-                    <dd>{k.label}</dd>
-                  </div>
-                ))}
-              </dl>
-            </section>
+      <div className="section-heading">
+        <h2 id={titleId}>Keyboard shortcuts</h2>
+        <button
+          type="button"
+          className="icon-button"
+          aria-label="Close shortcuts"
+          onClick={onClose}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      <div className="shortcut-filters">
+        <input
+          autoFocus
+          aria-label="Find a shortcut"
+          placeholder="Find a shortcut"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <Select
+          aria-label="Shortcut section"
+          value={section}
+          onChange={(event) => setSection(event.target.value)}
+        >
+          <option value="all">All shortcuts</option>
+          {groups.map((group) => (
+            <option key={group.title} value={group.title}>
+              {group.title}
+            </option>
           ))}
-        </div>
-        <p className="shortcut-note">
-          Single-key shortcuts pause while you type in a field. Change them in
-          Settings → Keyboard shortcuts.
-        </p>
-      </section>
-    </div>
+        </Select>
+      </div>
+      <div className="shortcut-groups">
+        {!shown.length && <p role="status">No matching shortcuts.</p>}
+        {shown.map((g) => (
+          <section key={g.title} className="shortcut-group">
+            <h3>{g.title}</h3>
+            <dl>
+              {g.keys.map((k) => (
+                <div key={k.label}>
+                  <dt>
+                    {k.keys.map((key, index) => (
+                      <kbd key={`${index}:${key}`}>{key}</kbd>
+                    ))}
+                  </dt>
+                  <dd>{k.label}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ))}
+      </div>
+      <p className="shortcut-note">
+        Single-key shortcuts pause while you type in a field. Change them in
+        Settings → Keyboard shortcuts.
+      </p>
+    </dialog>,
+    document.body,
   );
 }

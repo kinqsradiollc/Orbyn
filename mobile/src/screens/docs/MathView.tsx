@@ -281,7 +281,8 @@ export function MathView({
   return (
     <ScrollView
       horizontal
-      showsHorizontalScrollIndicator={false}
+      style={{ maxWidth: "100%", minWidth: 0 }}
+      showsHorizontalScrollIndicator
       contentContainerStyle={s.display}
       accessible
       accessibilityRole="image"

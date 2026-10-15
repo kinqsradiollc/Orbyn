@@ -1,9 +1,20 @@
+import { usePaneLeaveGuard } from "../../app/page-commands";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { Select } from "../../components/Select";
 import { ProjectNotes } from "./ProjectNotes";
+import { ProjectChats } from "./ProjectChats";
 import { ProjectRecords } from "./ProjectRecords";
 import { ProjectTimeMachine } from "./ProjectTimeMachine";
 import { useConfirm } from "../../components/Confirm";
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   ArrowLeft,
   CalendarRange,
@@ -41,6 +52,7 @@ import {
   type Look,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session as appearanceSession } from "../../lib/session";
 import { Timeline } from "./Timeline";
 import { ProjectMilestones } from "./ProjectMilestones";
 import { DateField } from "../../components/DateField";
@@ -144,7 +156,12 @@ function group(items: Item[], project: Project) {
   return byStage;
 }
 
-export function ProjectDetail({
+export function ProjectDetail(props: Parameters<typeof ProjectDetailBody>[0]) {
+  return (
+    <ProjectDetailBody key={`${props.project.id}:${props.userId}`} {...props} />
+  );
+}
+function ProjectDetailBody({
   project,
   initialSection = "home",
   initialSourceId = null,
@@ -175,36 +192,78 @@ export function ProjectDetail({
   /** Opens a note of this project's in the documents view. */
   onOpenNote?: (docId: string, blockId?: string | null) => void;
   onOpenPlan: (plan: Plan) => void;
-  onAskProject?: (project: Project, question?: string) => void;
+  onAskProject?: (project: Project, question?: string, chatId?: string) => void;
   userId: string;
   canWrite: boolean;
   /** Owners and admins (the owner, for a personal project): keep it out of the assistant. */
   canManageAi?: boolean;
 }) {
-  const { ask, tell } = useConfirm();
+  const { ask } = useConfirm();
   const toast = useToast();
   // Opened: it leads the quick switcher's recent list, on every device.
   useEffect(() => {
     void client.recordRecent("project", project.id).catch(() => {});
   }, [project.id]);
   const [busy, setBusy] = useState(false);
+  const mutation = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const menu = useRef<HTMLDivElement>(null);
+  const historyRequest = useRef(0);
+  const [historyFailed, setHistoryFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [homeFailed, setHomeFailed] = useState(false);
+  const [homeLoading, setHomeLoading] = useState(true);
+  const [planningFailed, setPlanningFailed] = useState(false);
+  const [sessionsFailed, setSessionsFailed] = useState(false);
+  const [stageDraft, setStageDraft] = useState<{
+    id: string | null;
+    name: string;
+  } | null>(null);
+  const [taskPicker, setTaskPicker] = useState<{
+    stageId: string | null;
+    itemId: string;
+  } | null>(null);
+
   const [menuOpen, setMenuOpen] = useState(false);
+  const [chatsOpen, setChatsOpen] = useState(false);
   /** The ⋯ menu's Cover and icon dialog (W6). */
   const [lookOpen, setLookOpen] = useState(false);
   const saveLook = async (look: Look) => {
-    const before: Look = {
-      cover_file_id: project.cover_file_id ?? null,
-      icon: project.icon ?? null,
-    };
-    onChanged(await client.updateProject(project.id, look));
-    toast({
-      text: "Cover and icon saved",
-      action: {
-        label: "Undo",
-        run: () =>
-          void client.updateProject(project.id, before).then(onChanged, report),
-      },
-    });
+    if (!canWrite) throw new Error("This project is view only.");
+    if (mutation.current)
+      throw new Error("Wait for the pending project change.");
+    const account = appearanceSession.get();
+    const owns = () => mounted.current && appearanceSession.get() === account;
+    mutation.current = true;
+    setBusy(true);
+    try {
+      const before: Look = {
+        cover_file_id: project.cover_file_id ?? null,
+        icon: project.icon ?? null,
+      };
+      const saved = await client.updateProject(project.id, look);
+      if (!owns()) return;
+      onChanged(saved);
+      toast({
+        text: "Cover and icon saved",
+        action: {
+          label: "Undo",
+          run: () =>
+            void client
+              .updateProject(project.id, before)
+              .then(onChanged, report),
+        },
+      });
+    } finally {
+      mutation.current = false;
+      if (owns()) setBusy(false);
+    }
   };
   /** Unassigned team tasks ticked to claim with "Plan this project". */
   const [claiming, setClaiming] = useState<string[]>([]);
@@ -217,10 +276,6 @@ export function ProjectDetail({
     "home" | "list" | "board" | "timeline" | "notes" | "decisions" | "history"
   >(initialSection);
   const [activity, setActivity] = useState<ProjectActivity[] | null>(null);
-  useEffect(() => {
-    if (initialSection === "history")
-      client.projectActivity(project.id).then(setActivity).catch(report);
-  }, [initialSection, project.id, report]);
   const [lastSeen, setLastSeen] = useState<string | null>(null);
   const [reentry, setReentry] = useState<ReturnType<
     typeof projectReentry
@@ -250,10 +305,71 @@ export function ProjectDetail({
   const [linkUrl, setLinkUrl] = useState("");
   const [linkTitle, setLinkTitle] = useState("");
   const [addingLink, setAddingLink] = useState(false);
+  const departure = useRef(false);
+  const projectDrafts = useRef({
+    editing,
+    stageDraft,
+    linkUrl,
+    linkTitle,
+    addingLink,
+  });
+  projectDrafts.current = {
+    editing,
+    stageDraft,
+    linkUrl,
+    linkTitle,
+    addingLink,
+  };
+  usePaneLeaveGuard(async () => {
+    if (mutation.current || departure.current || lookOpen) return false;
+    const snapshot = projectDrafts.current;
+    if (
+      !snapshot.editing &&
+      !snapshot.stageDraft &&
+      !snapshot.linkUrl.trim() &&
+      !snapshot.linkTitle.trim()
+    )
+      return true;
+    const account = appearanceSession.get();
+    departure.current = true;
+    try {
+      if (
+        !(await ask({
+          title: "Discard project changes?",
+          body: "Your unsaved project edits will be lost.",
+          confirmLabel: "Discard changes",
+          cancelLabel: "Keep editing",
+        }))
+      )
+        return false;
+      const now = projectDrafts.current;
+      if (
+        !mounted.current ||
+        appearanceSession.get() !== account ||
+        mutation.current ||
+        now.editing !== snapshot.editing ||
+        now.stageDraft !== snapshot.stageDraft ||
+        now.linkUrl !== snapshot.linkUrl ||
+        now.linkTitle !== snapshot.linkTitle
+      )
+        return false;
+      setEditing(null);
+      setStageDraft(null);
+      setAddingLink(false);
+      setLinkUrl("");
+      setLinkTitle("");
+      return true;
+    } finally {
+      departure.current = false;
+    }
+  });
+
   const [searchQuery, setSearchQuery] = useState("");
   const [searchHits, setSearchHits] = useState<SearchHit[]>([]);
   const [searchRecords, setSearchRecords] = useState<SearchHit[]>([]);
   const [searchIndex, setSearchIndex] = useState(0);
+  const [searching, setSearching] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
   useEffect(() => {
     setSearchQuery("");
     setSearchHits([]);
@@ -264,8 +380,12 @@ export function ProjectDetail({
     () =>
       void client
         .listDocs({ project: project.id })
-        .then(setHomeNotes)
-        .catch(report),
+        .then((value) => {
+          if (mounted.current) setHomeNotes(value);
+        })
+        .catch((error) => {
+          if (mounted.current) report(error);
+        }),
     project.id,
     project.team_id,
   );
@@ -339,7 +459,9 @@ export function ProjectDetail({
             : null,
         );
       })
-      .catch(report);
+      .catch((error) => {
+        if (active) report(error);
+      });
     return () => {
       active = false;
     };
@@ -347,42 +469,48 @@ export function ProjectDetail({
 
   useEffect(() => {
     let active = true;
-    setPlanning(null);
+    setPlanningFailed(false);
     client.projectPlanning(project.id).then(
       (summary) => {
         if (active) setPlanning(summary);
       },
       (error) => {
-        if (active) report(error);
+        if (active) {
+          setPlanningFailed(true);
+          report(error);
+        }
       },
     );
     return () => {
       active = false;
     };
-  }, [project.id, project.deadline, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [project.id, project.deadline, items, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (mode !== "timeline" && mode !== "home") return;
     let active = true;
+    setSessionsFailed(false);
     client.projectSessions(project.id).then(
       (rows) => {
         if (active) setSessions(rows);
       },
       (error) => {
-        if (active) report(error);
+        if (active) {
+          setSessionsFailed(true);
+          report(error);
+        }
       },
     );
     return () => {
       active = false;
     };
-  }, [mode, project.id, items]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, project.id, items, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (mode !== "home") return;
     let active = true;
-    setHomeNotes([]);
-    setHomeRecords([]);
-    setHomeLinks([]);
+    setHomeFailed(false);
+    setHomeLoading(true);
     Promise.all([
       client.listDocs({ project: project.id }),
       client.listWorkRecords({ project_id: project.id }),
@@ -393,20 +521,27 @@ export function ProjectDetail({
           setHomeNotes(notes);
           setHomeRecords(records);
           setHomeLinks(links);
+          setHomeLoading(false);
         }
       },
       (error) => {
-        if (active) report(error);
+        if (active) {
+          setHomeFailed(true);
+          setHomeLoading(false);
+          report(error);
+        }
       },
     );
     return () => {
       active = false;
     };
-  }, [mode, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mode, project.id, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const q = searchQuery.trim();
     if (q.length < 2) {
+      setSearching(false);
+      setSearchFailed(false);
       setSearchHits([]);
       setSearchRecords([]);
       return;
@@ -414,6 +549,8 @@ export function ProjectDetail({
     setSearchHits([]);
     setSearchRecords([]);
     setSearchIndex(0);
+    setSearching(true);
+    setSearchFailed(false);
     let active = true;
     const timer = setTimeout(() => {
       // One server search: pages, tasks and the project's decisions.
@@ -427,9 +564,14 @@ export function ProjectDetail({
             ),
           );
           setSearchIndex(0);
+          setSearching(false);
         },
         (error) => {
-          if (active) report(error);
+          if (active) {
+            setSearching(false);
+            setSearchFailed(true);
+            report(error);
+          }
         },
       );
     }, 180);
@@ -437,7 +579,7 @@ export function ProjectDetail({
       active = false;
       clearTimeout(timer);
     };
-  }, [searchQuery, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [searchQuery, project.id, retry]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openSearchHit = (hit: SearchHit) => {
     if (hit.type === "doc") onOpenNote?.(hit.id, hit.block_id);
@@ -487,22 +629,67 @@ export function ProjectDetail({
     </li>
   );
 
-  const openHistory = () => {
-    setMode("history");
-    client.projectActivity(project.id).then(setActivity).catch(report);
+  const loadHistory = async () => {
+    const epoch = ++historyRequest.current;
+    setHistoryFailed(false);
+    try {
+      const rows = await client.projectActivity(project.id);
+      if (epoch === historyRequest.current) setActivity(rows);
+    } catch (e) {
+      if (epoch === historyRequest.current) {
+        setHistoryFailed(true);
+        report(e);
+      }
+    }
   };
+  useEffect(() => {
+    if (mode === "history") void loadHistory();
+    return () => {
+      historyRequest.current++;
+    };
+  }, [mode, project.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!menuOpen) return;
+    const outside = (event: PointerEvent) => {
+      if (!menu.current?.contains(event.target as Node)) setMenuOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setMenuOpen(false);
+        menu.current
+          ?.querySelector<HTMLButtonElement>("button[aria-expanded]")
+          ?.focus();
+      }
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [menuOpen]);
+  const openHistory = () => setMode("history");
 
-  const save = (patch: Parameters<typeof client.updateProject>[1]) => {
+  const save = async (patch: Parameters<typeof client.updateProject>[1]) => {
+    if (!canWrite || mutation.current) return false;
+    mutation.current = true;
     setBusy(true);
-    client
-      .updateProject(project.id, patch)
-      .then(onChanged)
-      .catch(report)
-      .finally(() => setBusy(false));
+    try {
+      onChanged(await client.updateProject(project.id, patch));
+      return true;
+    } catch (e) {
+      report(e);
+      return false;
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+    }
   };
 
   const createProjectPage = async (asBrief: boolean) => {
-    if (!canWrite || !onOpenNote || busy) return;
+    if (!canWrite || !onOpenNote || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       const doc = await client.createDoc({
@@ -519,12 +706,14 @@ export function ProjectDetail({
     } catch (error) {
       report(error);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
 
   const saveLink = async () => {
-    if (!canWrite || !linkUrl.trim() || busy) return;
+    if (!canWrite || !linkUrl.trim() || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       await client.addProjectLink(project.id, {
@@ -538,12 +727,14 @@ export function ProjectDetail({
     } catch (error) {
       report(error);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
 
   const removeLink = async (linkId: string) => {
-    if (!canWrite || busy) return;
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     try {
       await client.removeProjectLink(project.id, linkId);
@@ -551,6 +742,7 @@ export function ProjectDetail({
     } catch (error) {
       report(error);
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -571,7 +763,8 @@ export function ProjectDetail({
 
   /** Plans your tasks, and the unassigned ones ticked (they become yours). */
   const planProject = () => {
-    if (!canWrite) return;
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     const claimed = claiming.filter((id) =>
       unassigned.some((item) => item.id === id),
@@ -583,32 +776,38 @@ export function ProjectDetail({
         if (claimed.length) onItemsChanged();
         onOpenPlan(plan);
       }, report)
-      .finally(() => setBusy(false));
+      .finally(() => {
+        mutation.current = false;
+        setBusy(false);
+      });
   };
 
   const addStage = () => {
-    const name = prompt("Name the new stage")?.trim();
-    if (!name) return;
-    save({
-      stages: [
-        ...project.stages.map((s) => ({ id: s.id, name: s.name })),
-        { name },
-      ],
-    });
+    if (canWrite && !busy) setStageDraft({ id: null, name: "" });
   };
-
   const renameStage = (stage: ProjectStage) => {
-    const name = prompt("Rename this stage", stage.name)?.trim();
-    if (!name || name === stage.name) return;
-    save({
-      stages: project.stages.map((s) => ({
-        id: s.id,
-        name: s.id === stage.id ? name : s.name,
-      })),
-    });
+    if (canWrite && !busy) setStageDraft({ id: stage.id, name: stage.name });
+  };
+  const saveStage = async () => {
+    if (!stageDraft?.name.trim()) return;
+    const stages = stageDraft.id
+      ? project.stages.map((stage) => ({
+          id: stage.id,
+          name:
+            stage.id === stageDraft.id ? stageDraft.name.trim() : stage.name,
+        }))
+      : [
+          ...project.stages.map((stage) => ({
+            id: stage.id,
+            name: stage.name,
+          })),
+          { name: stageDraft.name.trim() },
+        ];
+    if (await save({ stages })) setStageDraft(null);
   };
 
   const removeStage = async (stage: ProjectStage) => {
+    if (!canWrite || mutation.current) return;
     if (
       !(await ask({
         title: `Remove the “${stage.name}” stage? Its tasks stay in the project.`,
@@ -624,42 +823,54 @@ export function ProjectDetail({
     });
   };
 
-  const moveTo = (item: Item, stageId: string | null) => {
+  const moveTo = async (item: Item, stageId: string | null) => {
+    if (
+      !canWrite ||
+      mutation.current ||
+      (item.project_id !== project.id &&
+        !unfiledPool.some((candidate) => candidate.id === item.id))
+    )
+      return false;
+    mutation.current = true;
     setBusy(true);
-    client
-      .setItemProject(item.id, { project_id: project.id, stage_id: stageId })
-      .then(onItemsChanged)
-      .catch(report)
-      .finally(() => setBusy(false));
+    try {
+      await client.setItemProject(item.id, {
+        project_id: project.id,
+        stage_id: stageId,
+      });
+      onItemsChanged();
+      return true;
+    } catch (e) {
+      report(e);
+      return false;
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+    }
   };
 
-  const addExisting = async (stageId: string | null) => {
-    if (!unfiledPool.length) {
-      await tell({ title: "Every task is already in a project." });
-      return;
-    }
-    const list = unfiledPool
-      .slice(0, 20)
-      .map((t, n) => `${n + 1}. ${t.title}`)
-      .join("\n");
-    const pick = prompt(`Which task should join this stage?\n\n${list}`);
-    const index = Number(pick) - 1;
-    const chosen = unfiledPool[index];
-    if (!chosen) return;
-    moveTo(chosen, stageId);
+  const addExisting = (stageId: string | null) => {
+    if (!canWrite || busy) return;
+    setTaskPicker({ stageId, itemId: "" });
   };
 
   const unfile = (item: Item) => {
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     client
       .setItemProject(item.id, { project_id: null })
       .then(onItemsChanged)
       .catch(report)
-      .finally(() => setBusy(false));
+      .finally(() => {
+        mutation.current = false;
+        setBusy(false);
+      });
   };
 
   /** Keep the project out of the assistant, or let it back in. */
   const keepOut = async (off: boolean) => {
+    if (!canManageAi || mutation.current) return;
     if (
       off &&
       !(await ask({
@@ -669,14 +880,20 @@ export function ProjectDetail({
       }))
     )
       return;
+    mutation.current = true;
+    setBusy(true);
     try {
       onChanged(await client.setProjectAssistant(project.id, off));
     } catch (e) {
       report(e);
+    } finally {
+      mutation.current = false;
+      setBusy(false);
     }
   };
 
   const remove = async () => {
+    if (!canWrite || mutation.current) return;
     if (
       !(await ask({
         title: `Delete “${project.name}”? Its tasks stay, unfiled.`,
@@ -685,7 +902,16 @@ export function ProjectDetail({
       }))
     )
       return;
-    client.deleteProject(project.id).then(onDeleted).catch(report);
+    mutation.current = true;
+    setBusy(true);
+    client
+      .deleteProject(project.id)
+      .then(onDeleted)
+      .catch(report)
+      .finally(() => {
+        mutation.current = false;
+        setBusy(false);
+      });
   };
 
   // The deadline's day and time where the viewer is, never the UTC date.
@@ -700,10 +926,55 @@ export function ProjectDetail({
 
   return (
     <div className="project-detail">
+      {chatsOpen && onAskProject && (
+        <ProjectEditorDialog
+          title="Project chats"
+          busy={false}
+          onClose={() => setChatsOpen(false)}
+        >
+          <ProjectChats
+            key={project.id}
+            projectId={project.id}
+            onOpen={(id) => {
+              setChatsOpen(false);
+              onAskProject(project, undefined, id);
+            }}
+          />
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => setChatsOpen(false)}
+          >
+            Close
+          </button>
+        </ProjectEditorDialog>
+      )}
       <div className="project-bar-top">
         <button className="text-button" onClick={onBack}>
           <ArrowLeft size={15} /> All projects
         </button>
+        <Select
+          className="project-mode-picker"
+          aria-label="Project view"
+          value={mode}
+          onChange={(event) => setMode(event.target.value as typeof mode)}
+        >
+          {(
+            [
+              ["home", "Home"],
+              ["list", "List"],
+              ["board", "Board"],
+              ["timeline", "Timeline"],
+              ["notes", "Pages & files"],
+              ["decisions", "Decisions"],
+              ["history", "History"],
+            ] as const
+          ).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </Select>
         <div
           className="pboard-toggle"
           role="group"
@@ -765,19 +1036,31 @@ export function ProjectDetail({
           onError={report}
         />
         {onAskProject && !project.assistant_off && (
-          <button className="text-button" onClick={() => onAskProject(project)}>
-            <Sparkles size={15} aria-hidden="true" /> Ask
-          </button>
+          <>
+            <button
+              className="text-button"
+              onClick={() => onAskProject(project)}
+            >
+              <Sparkles size={15} aria-hidden="true" /> New chat
+            </button>
+            <button
+              type="button"
+              className="text-button"
+              onClick={() => setChatsOpen(true)}
+            >
+              <History size={15} aria-hidden="true" /> Chats
+            </button>
+          </>
         )}
         {project.assistant_off && (
           <span
             className="plan-chip project-ai-off"
             title="No AI reads this project: not the assistant, Study, the agenda, search by meaning or connected agents."
           >
-            Kept out of the assistant
+            AI excluded
           </span>
         )}
-        <div className="project-manage">
+        <div className="project-manage" ref={menu}>
           <StarButton kind="project" id={project.id} name={project.name} />
           <button
             className="icon-button"
@@ -845,7 +1128,7 @@ export function ProjectDetail({
                   {(["active", "done", "archived"] as const).map((status) => (
                     <button
                       key={status}
-                      disabled={status === project.status}
+                      disabled={busy || status === project.status}
                       onClick={() => {
                         setMenuOpen(false);
                         save({ status });
@@ -857,15 +1140,17 @@ export function ProjectDetail({
                   <button
                     onClick={() => {
                       setMenuOpen(false);
+                      if (mutation.current || !canWrite) return;
+                      mutation.current = true;
+                      setBusy(true);
                       void client
                         .templateFromProject(project.id)
-                        .then((template) =>
-                          tell({
-                            title: `Saved “${template.name}” as a template.`,
-                            body: "Start a project from it with Templates, on the projects page.",
-                          }),
-                        )
-                        .catch(report);
+                        .then(() => toast({ text: "Template saved" }))
+                        .catch(report)
+                        .finally(() => {
+                          mutation.current = false;
+                          setBusy(false);
+                        });
                     }}
                   >
                     Save as template
@@ -902,7 +1187,8 @@ export function ProjectDetail({
 
       {lookOpen && (
         <LookDialog
-          title="Project cover and icon"
+          scope={project.id}
+          title={project.name}
           look={{
             cover_file_id: project.cover_file_id ?? null,
             icon: project.icon ?? null,
@@ -914,100 +1200,232 @@ export function ProjectDetail({
         />
       )}
       {editing && (
-        <div
-          className="modal-backdrop"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setEditing(null);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setEditing(null);
-          }}
+        <ProjectEditorDialog
+          title={
+            editing.kind === "rename" ? "Rename project" : "Summary & brief"
+          }
+          busy={busy}
+          onClose={() => setEditing(null)}
         >
           <form
-            className="modal modal-small"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="project-edit-title"
-            onSubmit={(event) => {
+            className="project-record-form"
+            onSubmit={async (event) => {
               event.preventDefault();
               const text = editing.text.trim();
-              setEditing(null);
-              if (editing.kind === "rename") {
-                if (text && text !== project.name) save({ name: text });
-              } else if (text !== project.summary) save({ summary: text });
+              if (editing.kind === "rename" && !text) return;
+              if (
+                await save(
+                  editing.kind === "rename"
+                    ? { name: text }
+                    : { summary: text },
+                )
+              )
+                setEditing(null);
             }}
           >
-            <div className="section-heading">
-              <h2 id="project-edit-title">
-                {editing.kind === "rename"
-                  ? "Rename project"
-                  : "Summary & brief"}
-              </h2>
-              <button
-                type="button"
-                className="icon-button"
-                aria-label="Cancel"
-                onClick={() => setEditing(null)}
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <label>
-              {editing.kind === "rename" ? "Name" : "Summary"}
-              {editing.kind === "rename" ? (
-                <input
-                  autoFocus
-                  required
-                  maxLength={200}
-                  value={editing.text}
-                  onChange={(event) =>
-                    setEditing({ ...editing, text: event.target.value })
-                  }
-                />
-              ) : (
-                <textarea
-                  autoFocus
-                  rows={3}
-                  maxLength={2000}
-                  placeholder="One or two lines on what this project is for"
-                  value={editing.text}
-                  onChange={(event) =>
-                    setEditing({ ...editing, text: event.target.value })
-                  }
-                />
-              )}
-            </label>
-            {editing.kind === "summary" && onOpenNote && (
-              <p className="muted modal-lead">
-                The brief is the project's page, for everything longer.{" "}
+            <fieldset
+              disabled={busy || !canWrite}
+              className="project-record-fields"
+            >
+              <div className="section-heading">
                 <button
                   type="button"
-                  className="text-button"
-                  disabled={busy}
-                  onClick={() => {
-                    setEditing(null);
-                    if (project.doc_id) onOpenNote(project.doc_id);
-                    else void createProjectPage(true);
-                  }}
+                  className="icon-button"
+                  aria-label="Cancel"
+                  onClick={() => setEditing(null)}
                 >
-                  {project.doc_id ? "Open the brief" : "Write a brief"}
+                  <X size={20} />
                 </button>
-              </p>
-            )}
+              </div>
+              <label>
+                {editing.kind === "rename" ? "Name" : "Summary"}
+                {editing.kind === "rename" ? (
+                  <input
+                    autoFocus
+                    required
+                    maxLength={200}
+                    value={editing.text}
+                    onChange={(event) =>
+                      setEditing({ ...editing, text: event.target.value })
+                    }
+                  />
+                ) : (
+                  <textarea
+                    autoFocus
+                    rows={3}
+                    maxLength={2000}
+                    placeholder="One or two lines on what this project is for"
+                    value={editing.text}
+                    onChange={(event) =>
+                      setEditing({ ...editing, text: event.target.value })
+                    }
+                  />
+                )}
+              </label>
+              {editing.kind === "summary" && onOpenNote && (
+                <p className="muted modal-lead">
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy || !canWrite}
+                    onClick={() => {
+                      setEditing(null);
+                      if (project.doc_id) onOpenNote(project.doc_id);
+                      else void createProjectPage(true);
+                    }}
+                  >
+                    {project.doc_id ? "Open the brief" : "Write a brief"}
+                  </button>
+                </p>
+              )}
+              <div className="confirm-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => setEditing(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="primary"
+                  disabled={busy || !canWrite}
+                >
+                  Save
+                </button>
+              </div>
+            </fieldset>
+          </form>
+        </ProjectEditorDialog>
+      )}
+
+      {stageDraft && (
+        <ProjectEditorDialog
+          title={stageDraft.id ? "Rename stage" : "New stage"}
+          busy={busy}
+          onClose={() => setStageDraft(null)}
+        >
+          <form
+            className="project-record-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveStage();
+            }}
+          >
+            <label>
+              Name
+              <input
+                autoFocus
+                required
+                maxLength={120}
+                disabled={busy}
+                value={stageDraft.name}
+                onChange={(event) =>
+                  setStageDraft({ ...stageDraft, name: event.target.value })
+                }
+              />
+            </label>
             <div className="confirm-actions">
               <button
                 type="button"
-                className="ghost"
-                onClick={() => setEditing(null)}
+                className="secondary"
+                disabled={busy}
+                onClick={() => setStageDraft(null)}
               >
                 Cancel
               </button>
-              <button type="submit" className="primary" disabled={busy}>
+              <button
+                className="primary"
+                disabled={busy || !stageDraft.name.trim()}
+              >
                 Save
               </button>
             </div>
           </form>
-        </div>
+        </ProjectEditorDialog>
+      )}
+      {taskPicker && (
+        <ProjectEditorDialog
+          title="Add task to stage"
+          busy={busy}
+          onClose={() => setTaskPicker(null)}
+        >
+          <form
+            className="project-record-form"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const item = unfiledPool.find(
+                (item) => item.id === taskPicker.itemId,
+              );
+              if (item && (await moveTo(item, taskPicker.stageId)))
+                setTaskPicker(null);
+            }}
+          >
+            {!unfiledPool.length ? (
+              <p className="muted">Every task is already in a project.</p>
+            ) : (
+              <label>
+                Task
+                <Select
+                  disabled={busy}
+                  value={taskPicker.itemId}
+                  onChange={(event) =>
+                    setTaskPicker({ ...taskPicker, itemId: event.target.value })
+                  }
+                >
+                  <option value="">Choose a task</option>
+                  {unfiledPool.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.title}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            )}
+            <div className="confirm-actions">
+              <button
+                type="button"
+                className="secondary"
+                disabled={busy}
+                onClick={() => setTaskPicker(null)}
+              >
+                Cancel
+              </button>
+              <button className="primary" disabled={busy || !taskPicker.itemId}>
+                Add task
+              </button>
+            </div>
+          </form>
+        </ProjectEditorDialog>
+      )}
+      {(homeFailed || planningFailed || sessionsFailed) && (
+        <p role="status">
+          Some project details are unavailable.{" "}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => setRetry((value) => value + 1)}
+          >
+            Retry
+          </button>
+        </p>
+      )}
+      {imports.loadError && (
+        <p role="status">
+          Files unavailable.{" "}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => void imports.refresh()}
+          >
+            Retry
+          </button>
+        </p>
+      )}
+      {mode === "home" && homeLoading && (
+        <p className="muted" role="status">
+          Loading project details…
+        </p>
       )}
 
       <div className="project-search">
@@ -1018,6 +1436,7 @@ export function ProjectDetail({
           value={searchQuery}
           onChange={(event) => setSearchQuery(event.target.value)}
           onKeyDown={(event) => {
+            if (event.nativeEvent.isComposing) return;
             if (event.key === "Escape") setSearchQuery("");
             if (event.key === "ArrowDown" && searchResults.length) {
               event.preventDefault();
@@ -1042,7 +1461,24 @@ export function ProjectDetail({
             role="region"
             aria-label="Project search results"
           >
-            {searchResults.length === 0 && (
+            {searching && (
+              <p className="muted" role="status">
+                Searching…
+              </p>
+            )}
+            {searchFailed && (
+              <p role="status">
+                Search unavailable.{" "}
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={() => setRetry((value) => value + 1)}
+                >
+                  Retry
+                </button>
+              </p>
+            )}
+            {!searching && !searchFailed && searchResults.length === 0 && (
               <p className="muted">No matches in this project.</p>
             )}
             {searchTasks.length > 0 && (
@@ -1165,7 +1601,7 @@ export function ProjectDetail({
               id="project-deadline"
               type="date"
               value={deadline?.day ?? ""}
-              disabled={busy}
+              disabled={busy || !canWrite}
               onChange={(e) => setDeadline({ day: e.target.value || null })}
             />
             {/* 5 pm unless another time is picked; clearing it goes back
@@ -1174,7 +1610,7 @@ export function ProjectDetail({
               <DateField
                 type="time"
                 value={deadline.clock}
-                disabled={busy}
+                disabled={busy || !canWrite}
                 aria-label="Deadline time"
                 onChange={(e) => setDeadline({ clock: e.target.value })}
               />
@@ -1223,7 +1659,7 @@ export function ProjectDetail({
                   {canWrite && (
                     <button
                       className="text-button"
-                      disabled={busy}
+                      disabled={busy || !canWrite}
                       onClick={planProject}
                     >
                       Plan this project
@@ -1275,7 +1711,7 @@ export function ProjectDetail({
                         <input
                           type="checkbox"
                           checked={claiming.includes(item.id)}
-                          disabled={busy}
+                          disabled={busy || !canWrite}
                           onChange={(event) =>
                             setClaiming((ids) =>
                               event.target.checked
@@ -1369,7 +1805,7 @@ export function ProjectDetail({
           {(project.summary || project.doc_id || (canWrite && onOpenNote)) && (
             <section className="project-home-section">
               <h3>Brief</h3>
-              {project.summary && <p>{project.summary}</p>}
+
               {project.doc_id && onOpenNote && (
                 <button
                   className="text-button"
@@ -1381,7 +1817,7 @@ export function ProjectDetail({
               {!project.doc_id && canWrite && onOpenNote && (
                 <button
                   className="text-button"
-                  disabled={busy}
+                  disabled={busy || !canWrite}
                   onClick={() => void createProjectPage(true)}
                 >
                   Write a brief
@@ -1406,7 +1842,7 @@ export function ProjectDetail({
                       {canWrite && (
                         <button
                           className="text-button"
-                          disabled={busy}
+                          disabled={busy || !canWrite}
                           onClick={() => void removeLink(link.id)}
                           aria-label={`Remove ${link.title || link.url}`}
                         >
@@ -1420,6 +1856,7 @@ export function ProjectDetail({
               {addingLink && canWrite && (
                 <div className="project-home-actions">
                   <input
+                    disabled={busy}
                     value={linkUrl}
                     onChange={(event) => setLinkUrl(event.target.value)}
                     placeholder="https://…"
@@ -1427,6 +1864,7 @@ export function ProjectDetail({
                     maxLength={2000}
                   />
                   <input
+                    disabled={busy}
                     value={linkTitle}
                     onChange={(event) => setLinkTitle(event.target.value)}
                     placeholder="Title (optional)"
@@ -1442,6 +1880,7 @@ export function ProjectDetail({
                   </button>
                   <button
                     className="text-button"
+                    disabled={busy}
                     onClick={() => setAddingLink(false)}
                   >
                     Cancel
@@ -1475,7 +1914,7 @@ export function ProjectDetail({
                 {canWrite && (
                   <button
                     className="text-button"
-                    disabled={busy}
+                    disabled={busy || !canWrite}
                     onClick={() => void createProjectPage(false)}
                   >
                     New page
@@ -1538,7 +1977,7 @@ export function ProjectDetail({
                     },
                     (e) => {
                       report(e);
-                      return project.aliases ?? [];
+                      throw e;
                     },
                   )
                 }
@@ -1594,25 +2033,29 @@ export function ProjectDetail({
                 Changes to the project, its tasks, and its notes in one place.
               </p>
             </div>
-            <button
-              className="secondary"
-              onClick={() =>
-                client
-                  .projectActivity(project.id)
-                  .then(setActivity)
-                  .catch(report)
-              }
-            >
+            <button className="secondary" onClick={() => void loadHistory()}>
               Refresh
             </button>
           </div>
           <ProjectTimeMachine projectId={project.id} report={report} />
-          {activity === null ? (
-            <p className="muted">Loading project history…</p>
-          ) : activity.length === 0 ? (
-            <p className="project-history-empty muted">
-              Changes will appear here as work on this project evolves.
+          {historyFailed && (
+            <p role="status">
+              History unavailable.{" "}
+              <button
+                type="button"
+                className="text-button"
+                onClick={() => void loadHistory()}
+              >
+                Retry
+              </button>
             </p>
+          )}
+          {activity === null ? (
+            <p className="muted">
+              {historyFailed ? "" : "Loading project history…"}
+            </p>
+          ) : activity.length === 0 ? (
+            <p className="project-history-empty muted">No changes yet.</p>
           ) : (
             <>
               {lastSeen && (
@@ -1735,14 +2178,14 @@ export function ProjectDetail({
                 className={"pboard-column" + (dragging ? " is-target" : "")}
                 onDragOver={(e) => {
                   // Allowing the drop is what makes the column a target.
-                  if (dragging) e.preventDefault();
+                  if (canWrite && !busy && dragging) e.preventDefault();
                 }}
                 onDrop={(e) => {
                   e.preventDefault();
                   const id = e.dataTransfer.getData("text/plain") || dragging;
                   const item = items.find((i) => i.id === id);
                   setDragging(null);
-                  if (item && item.stage_id !== column.id)
+                  if (canWrite && item && item.stage_id !== column.id)
                     moveTo(item, column.id);
                 }}
               >
@@ -1758,7 +2201,7 @@ export function ProjectDetail({
                         "pboard-card" +
                         (dragging === item.id ? " is-dragging" : "")
                       }
-                      draggable
+                      draggable={canWrite && !busy}
                       onDragStart={(e) => {
                         e.dataTransfer.setData("text/plain", item.id);
                         e.dataTransfer.effectAllowed = "move";
@@ -1801,6 +2244,7 @@ export function ProjectDetail({
                   <button
                     className="stage-name"
                     onClick={() => renameStage(stage)}
+                    disabled={busy || !canWrite}
                     title="Rename this stage"
                   >
                     {stage.name}
@@ -1809,13 +2253,14 @@ export function ProjectDetail({
                   <button
                     className="text-button"
                     onClick={() => addExisting(stage.id)}
-                    disabled={busy}
+                    disabled={busy || !canWrite}
                   >
                     <Plus size={13} /> Add task
                   </button>
                   <button
                     className="icon-button"
                     onClick={() => removeStage(stage)}
+                    disabled={busy || !canWrite}
                     aria-label={`Remove the ${stage.name} stage`}
                   >
                     <Trash2 size={13} />
@@ -1850,7 +2295,7 @@ export function ProjectDetail({
                           id={`stage-for-${item.id}`}
                           className="stage-move"
                           value={item.stage_id ?? ""}
-                          disabled={busy}
+                          disabled={busy || !canWrite}
                           aria-label={`Stage for ${item.title}`}
                           onChange={(e) =>
                             e.target.value === "__remove"
@@ -1883,7 +2328,7 @@ export function ProjectDetail({
               <button
                 className="text-button"
                 onClick={() => addExisting(null)}
-                disabled={busy}
+                disabled={busy || !canWrite}
               >
                 <Plus size={13} /> Add task
               </button>
@@ -1911,7 +2356,7 @@ export function ProjectDetail({
                       id={`stage-for-${item.id}`}
                       className="stage-move"
                       value=""
-                      disabled={busy}
+                      disabled={busy || !canWrite}
                       aria-label={`Stage for ${item.title}`}
                       onChange={(e) =>
                         e.target.value === "__remove"
@@ -1933,11 +2378,50 @@ export function ProjectDetail({
             )}
           </section>
 
-          <button className="add-stage" onClick={addStage} disabled={busy}>
+          <button
+            className="add-stage"
+            onClick={addStage}
+            disabled={busy || !canWrite}
+          >
             <Plus size={14} /> Add a stage
           </button>
         </div>
       )}
     </div>
+  );
+}
+
+function ProjectEditorDialog({
+  title,
+  busy,
+  onClose,
+  children,
+}: {
+  title: string;
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={focus.ref as RefObject<HTMLDialogElement>}
+      className="project-record-dialog"
+      aria-label={title}
+      data-modal-owner={focus.id}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <h2>{title}</h2>
+      {children}
+    </dialog>,
+    document.body,
   );
 }

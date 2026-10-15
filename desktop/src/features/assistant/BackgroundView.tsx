@@ -33,7 +33,9 @@ export function BackgroundView({
       window.clearInterval(timer);
     };
   }, [store]);
-  const profile = snapshot.data?.profiles[0];
+  const profile = snapshot.data?.profiles.find(
+    (item) => item.lane === "background",
+  );
   return (
     <section
       className="assistant-background-workspace"
@@ -67,7 +69,7 @@ export function BackgroundView({
                       ? "waiting"
                       : "ready"
                 }
-                size={48}
+                size={32}
               />
               <div>
                 <h3>{profile.identity?.name ?? "Background"}</h3>

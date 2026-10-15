@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   AccessibilityInfo,
   Animated,
@@ -20,10 +20,11 @@ import {
   type Plan,
   type PlannedBlock,
 } from "@orbyn/core";
+import { InlineDetails } from "./InlineDetails";
 import { Chip, ChipRow } from "./Chip";
 import { Icon } from "./Icon";
 import { minutesLabel, rangeLabel } from "../lib/planning";
-import { animateLayout, Pressable } from "../motion";
+import { Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { tap } from "../lib/haptics";
@@ -89,6 +90,7 @@ export function HorizonView({
     target: { block?: PlannedBlock; itemId: string },
     day: string,
   ) => {
+    if (busy) return;
     setNotice("");
     let start: Date;
     let end: Date;
@@ -104,7 +106,6 @@ export function HorizonView({
     }
     const clash = dependencyConflict(target.itemId, start, end, plan, items);
     if (clash) {
-      animateLayout();
       setNotice(clash);
       AccessibilityInfo.announceForAccessibility(clash);
       return;
@@ -133,10 +134,11 @@ export function HorizonView({
 
   return (
     <View style={s.wrap}>
-      <Text style={shared.small}>
-        Press and hold a session to drag it to another day, or tap it to choose
-        one.
-      </Text>
+      <InlineDetails title="Moving sessions">
+        <Text style={shared.small}>
+          Tap to choose a day, or hold and drag. Moved sessions stay pinned.
+        </Text>
+      </InlineDetails>
       {!!notice && (
         <View style={s.notice} accessibilityRole="alert">
           <Icon name="alert" size={14} color={colors.danger} />
@@ -168,6 +170,10 @@ export function HorizonView({
                     measure();
                     onDragging?.(true);
                   }}
+                  onCancel={() => {
+                    onDragging?.(false);
+                    setOver(null);
+                  }}
                   onMove={(y) => setOver(laneAt(y))}
                   onDrop={(y) => {
                     onDragging?.(false);
@@ -176,15 +182,14 @@ export function HorizonView({
                     if (day) tryMove({ block: b, itemId: b.item_id }, day);
                   }}
                   onPress={() => {
-                    animateLayout();
                     setPicked(picked === key ? null : key);
                   }}
                   label={`${b.title}, ${rangeLabel(b.start_at, b.end_at)}${b.pinned ? ", pinned" : ""}. Tap to move to another day.`}
                 >
                   <View style={[s.card, b.pinned && s.pinned]}>
                     <Icon name="list" size={14} color={colors.muted} />
-                    <View style={{ flex: 1 }}>
-                      <Text style={s.cardTitle} numberOfLines={1}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={s.cardTitle}>
                         {b.title}
                         {b.parts > 1 ? ` (${b.part}/${b.parts})` : ""}
                       </Text>
@@ -216,6 +221,10 @@ export function HorizonView({
                   measure();
                   onDragging?.(true);
                 }}
+                onCancel={() => {
+                  onDragging?.(false);
+                  setOver(null);
+                }}
                 onMove={(y) => setOver(laneAt(y))}
                 onDrop={(y) => {
                   onDragging?.(false);
@@ -224,20 +233,15 @@ export function HorizonView({
                   if (day) tryMove({ itemId: u.item_id }, day);
                 }}
                 onPress={() => {
-                  animateLayout();
                   setPicked(picked === u.item_id ? null : u.item_id);
                 }}
                 label={`${u.title}, not placed yet: ${u.reason}. Tap to put it on a day.`}
               >
                 <View style={[s.card, s.unplaced]}>
                   <Icon name="clock" size={14} color={colors.muted} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.cardTitle} numberOfLines={1}>
-                      {u.title}
-                    </Text>
-                    <Text style={shared.small} numberOfLines={2}>
-                      {u.reason}
-                    </Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.cardTitle}>{u.title}</Text>
+                    <Text style={shared.small}>{u.reason}</Text>
                   </View>
                 </View>
               </DragCard>
@@ -263,7 +267,9 @@ function DragCard({
   onStart,
   onMove,
   onDrop,
+  onCancel,
 }: {
+  onCancel: () => void;
   children: React.ReactNode;
   disabled: boolean;
   label: string;
@@ -273,31 +279,52 @@ function DragCard({
   onDrop: (pageY: number) => void;
 }) {
   const armed = useRef(false);
+  const moved = useRef(false);
   const y = useRef(new Animated.Value(0)).current;
   const [lifted, setLifted] = useState(false);
-  const latest = useRef({ onMove, onDrop });
-  latest.current = { onMove, onDrop };
+  const latest = useRef({ onMove, onDrop, onCancel, disabled });
+  latest.current = { onMove, onDrop, onCancel, disabled };
+  useEffect(
+    () => () => {
+      if (armed.current) latest.current.onCancel();
+    },
+    [],
+  );
   const reset = () => {
     armed.current = false;
     setLifted(false);
-    Animated.spring(y, { toValue: 0, useNativeDriver: true }).start();
+    moved.current = false;
+    y.setValue(0);
   };
   const responder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponderCapture: () => armed.current,
-      onMoveShouldSetPanResponder: () => armed.current,
+      onMoveShouldSetPanResponderCapture: () => {
+        if (!armed.current || latest.current.disabled) return false;
+        moved.current = true;
+        return true;
+      },
+      onMoveShouldSetPanResponder: () => {
+        if (!armed.current || latest.current.disabled) return false;
+        moved.current = true;
+        return true;
+      },
       onPanResponderTerminationRequest: () => false,
       onPanResponderMove: (_e, g) => {
+        if (!armed.current || latest.current.disabled) return;
+        moved.current = true;
         y.setValue(g.dy);
         latest.current.onMove(g.moveY);
       },
       onPanResponderRelease: (_e, g) => {
-        latest.current.onDrop(g.moveY);
+        if (armed.current) {
+          if (latest.current.disabled) latest.current.onCancel();
+          else latest.current.onDrop(g.moveY);
+        }
         reset();
       },
-      onPanResponderTerminate: (_e, g) => {
-        latest.current.onDrop(g.moveY);
+      onPanResponderTerminate: () => {
+        latest.current.onCancel();
         reset();
       },
     }),
@@ -317,13 +344,18 @@ function DragCard({
         delayLongPress={280}
         onLongPress={() => {
           tap();
+          if (latest.current.disabled) return;
           armed.current = true;
+          moved.current = false;
           setLifted(true);
           onStart();
         }}
         onPressOut={() => {
           // Held but never moved: put it back down.
-          if (armed.current && !lifted) reset();
+          if (armed.current && !moved.current) {
+            latest.current.onCancel();
+            reset();
+          }
         }}
         onPress={onPress}
       >
@@ -366,6 +398,8 @@ const s = themed(() =>
       flexDirection: "row",
       justifyContent: "space-between",
       alignItems: "baseline",
+      flexWrap: "wrap",
+      gap: 6,
     },
     laneDay: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
     card: {
@@ -385,7 +419,7 @@ const s = themed(() =>
       borderStyle: "dashed",
       borderColor: colors.border,
     },
-    cardTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
+    cardTitle: { fontFamily: fonts.medium, fontSize: 13, color: colors.text },
     tray: { gap: 6, marginTop: 6 },
   }),
 );

@@ -13,7 +13,7 @@
   border-color: var(--color-divider);
 }
 .app.workspace .sidebar-head {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .app.workspace .brand {
   font-size: 24px;
@@ -76,13 +76,13 @@
 }
 .app.workspace .content {
   max-width: 1320px;
-  padding: 28px clamp(20px, 3vw, 44px) 24px;
+  padding: 20px clamp(16px, 3vw, 36px) 24px;
 }
 .app.workspace .content:has(.docs-nav-page) {
   max-width: none;
 }
 .app.workspace .page-heading {
-  margin-bottom: 24px;
+  margin-bottom: 18px;
   align-items: flex-start;
 }
 .app.workspace .page-heading h1 {
@@ -95,7 +95,7 @@
   color: var(--color-textSoft);
 }
 .app.workspace .card {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
   background: var(--color-surface);
   border-color: var(--color-divider);
   box-shadow: none;
@@ -109,7 +109,7 @@
 }
 .app.workspace .home-companions-card {
   padding: 18px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .app.workspace .home-companions-heading h2 {
   font-size: 18px;
@@ -121,7 +121,7 @@
   padding: 12px 0;
 }
 .app.workspace .stats {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .app.workspace .stats strong {
   font-size: 24px;
@@ -167,10 +167,10 @@
 }
 @media (min-width: 801px) {
   .app.workspace .sidebar {
-    width: 224px;
+    width: var(--workspace-sidebar-width, 224px);
   }
   .app.workspace .shell {
-    margin-left: 224px;
+    margin-left: var(--workspace-sidebar-width, 224px);
   }
   .app.workspace.is-railed .sidebar {
     width: 72px;
@@ -228,4 +228,252 @@
   .app.workspace.is-railed .brand-name {
     display: none;
   }
+}
+
+.app.workspace .teams-layout.is-compact,
+.app.workspace .lists-layout.is-compact {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Daily work reflows with the available content pane, including expanded navigation. */
+.app.workspace .overview-grid.is-compact {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+/* Two independently controlled surfaces share the account and outer viewport. */
+.workspace-duo {
+  min-width: 0;
+}
+.workspace-duo-primary,
+.workspace-duo-secondary {
+  min-width: 0;
+}
+.workspace-duo.is-paired {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  height: 100dvh;
+  overflow: hidden;
+}
+.workspace-duo.is-paired > .workspace-duo-primary,
+.workspace-duo.is-paired > .workspace-duo-secondary {
+  height: 100%;
+  min-height: 0;
+  overflow: auto;
+}
+.workspace-duo-secondary {
+  border-left: 1px solid var(--color-divider);
+}
+.workspace-duo .is-secondary-pane > .shell {
+  margin-left: 0;
+}
+.workspace-duo .is-secondary-pane > .shell > .topbar,
+.workspace-duo .is-secondary-pane > .shell > .announcement-banner,
+.workspace-duo .is-secondary-pane > .shell > .maintenance-banner,
+.workspace-duo .is-secondary-pane > .shell > .update-banner {
+  display: none;
+}
+.workspace-pane-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 16px;
+  min-height: 56px;
+  box-sizing: border-box;
+  font-size: 13px;
+  color: var(--color-textSoft);
+  border-bottom: 1px solid var(--color-divider);
+}
+.workspace-pane-toolbar > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.workspace-pane-toolbar .icon-button {
+  flex-shrink: 0;
+  min-width: 36px;
+  min-height: 36px;
+}
+.workspace-pane-switch {
+  display: none;
+}
+.workspace-duo.is-paired .app.workspace .content {
+  padding-inline: 16px;
+}
+.workspace-duo.is-paired .app.workspace .content:has(.ai-chat) {
+  padding: 0;
+}
+@media (max-width: 1279px) {
+  .workspace-duo.is-paired {
+    grid-template-columns: minmax(0, 1fr);
+    --pane-switch-height: 44px;
+    grid-template-rows: var(--pane-switch-height) minmax(0, 1fr);
+  }
+  .workspace-pane-switch {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--color-divider);
+    background: var(--color-canvas);
+  }
+  .workspace-pane-switch button {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13px;
+    border: 0;
+    background: transparent;
+  }
+  .workspace-pane-switch button[aria-pressed="true"] {
+    background: var(--color-hover);
+  }
+  .workspace-duo.is-paired[data-focused="main"] > .workspace-duo-secondary,
+  .workspace-duo.is-paired[data-focused="secondary"] > .workspace-duo-primary {
+    display: none;
+  }
+  .workspace-duo.is-paired .shell:has(.ai-chat) {
+    height: calc(
+      var(--chat-viewport-height, 100dvh) - var(--pane-switch-height)
+    );
+  }
+  .workspace-duo-secondary {
+    border-left: 0;
+  }
+}
+@media (pointer: coarse) {
+  .workspace-duo.is-paired {
+    --pane-switch-height: 52px;
+  }
+  .workspace-pane-toolbar .icon-button,
+  .workspace-pane-switch button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+/* Overview cards follow the same reading and keyboard order at every width. */
+.app.workspace .overview-grid {
+  align-items: start;
+  gap: 16px;
+}
+.app.workspace .overview-grid > * {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.app.workspace .brand {
+  line-height: 1;
+  align-items: center;
+}
+.app.workspace .brand svg {
+  flex: none;
+  display: block;
+}
+.app.workspace .brand-name {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  gap: 6px;
+}
+.app.workspace .brand-name > span {
+  font-size: 20px;
+  line-height: 1;
+  margin-left: 0;
+}
+.sidebar-resizer {
+  display: none;
+}
+@media (min-width: 801px) {
+  .sidebar-resizer {
+    display: block;
+    position: absolute;
+    inset: 0 -4px 0 auto;
+    width: 8px;
+    z-index: 4;
+    cursor: col-resize;
+    touch-action: none;
+  }
+  .sidebar-resizer:hover,
+  .sidebar-resizer:focus-visible {
+    background: var(--color-accentSoft);
+    outline: 1px solid var(--color-accent);
+    outline-offset: -1px;
+  }
+}
+
+/* Resizing and navigation respond immediately rather than chasing the pointer. */
+.app.workspace .sidebar,
+.app.workspace .shell {
+  transition: none;
+}
+.app.workspace .sidebar nav button {
+  min-width: 0;
+}
+.app.workspace .sidebar nav button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.app.workspace .sidebar nav button > svg {
+  flex: none;
+}
+
+/* One header owns navigation, working tabs and shared actions. */
+.app.workspace .topbar {
+  min-width: 0;
+  height: var(--topbar-h);
+  padding-inline: 16px;
+  gap: 8px;
+}
+.app.workspace .topbar .workspace-location {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+}
+.app.workspace .topbar .workspace-header-actions {
+  flex: none;
+  gap: 8px;
+}
+.app.workspace .topbar .tab-strip {
+  position: static;
+  top: auto;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+}
+.app.workspace .topbar .tab-item {
+  max-width: 164px;
+  border-radius: var(--radius-sm);
+}
+.app.workspace .topbar.is-compact .command-trigger > span,
+.app.workspace .topbar.is-compact .command-trigger > kbd,
+.app.workspace .topbar.is-compact .today-label {
+  display: none;
+}
+.app.workspace .topbar.is-compact .command-trigger {
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  justify-content: center;
+}
+.app.workspace .brand {
+  align-items: center;
+}
+.app.workspace .brand-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1;
+}
+.app.workspace .brand-name > span {
+  line-height: 1;
+}
+.app.workspace .topbar .tab-main,
+.app.workspace .topbar .tab-new,
+.app.workspace .topbar .tab-more {
+  min-height: 44px;
 }

@@ -9,7 +9,7 @@ import { Icon } from "./Icon";
 import { Pill, type PillTone } from "./Pill";
 import { SmallAction } from "./SmallAction";
 import { minutesLabel, parseMinutes } from "../lib/planning";
-import { colors, fonts, themed } from "../theme";
+import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
 /** Quick picks for a new alert, in minutes before. */
@@ -47,6 +47,14 @@ export function AlertsField({
   const [custom, setCustom] = useState<string | null>(null);
   const full = alerts.length >= MAX_ALERTS;
   const add = (minutes: number) => {
+    if (
+      disabled ||
+      full ||
+      !Number.isFinite(minutes) ||
+      minutes < 0 ||
+      minutes > MAX_ALERT_MINUTES
+    )
+      return;
     onChange([...new Set([...alerts, minutes])].sort((a, b) => a - b));
     setAdding(false);
     setCustom(null);
@@ -94,12 +102,14 @@ export function AlertsField({
                 key={p}
                 label={alertLabel(p)}
                 selected={false}
+                disabled={disabled || full}
                 onPress={() => add(p)}
               />
             ))}
             <Chip
               label="Custom"
               selected={custom !== null}
+              disabled={disabled || full}
               onPress={() => setCustom("")}
             />
           </ChipRow>
@@ -107,17 +117,23 @@ export function AlertsField({
             <View style={[s.row, s.gapTop]}>
               <NumberInput
                 value={custom}
+                editable={!disabled && !full}
                 onChangeText={setCustom}
                 suffix="minutes before"
                 accessibilityLabel="Minutes before for the alert"
               />
             </View>
           )}
+          {custom !== null && !customOk && custom.length > 0 && (
+            <Text style={[shared.small, s.problem]} accessibilityRole="alert">
+              Enter 0–{MAX_ALERT_MINUTES} minutes.
+            </Text>
+          )}
           <View style={[s.row, s.gapTop]}>
             {custom !== null && (
               <SmallAction
                 label="Add"
-                disabled={!customOk}
+                disabled={disabled || full || !customOk}
                 onPress={() => customMinutes !== null && add(customMinutes)}
               />
             )}
@@ -160,7 +176,6 @@ export function ColorField({
         accessibilityLabel="No colour of its own"
         accessibilityState={{ checked: !value, disabled }}
         disabled={disabled}
-        hitSlop={4}
         onPress={() => onChange(null)}
         style={[s.swatch, s.none, !value && s.noneOn]}
       >
@@ -173,7 +188,6 @@ export function ColorField({
           accessibilityLabel={`Colour ${n + 1} of ${choices.length}`}
           accessibilityState={{ checked: same(c), disabled }}
           disabled={disabled}
-          hitSlop={4}
           onPress={() => onChange(c)}
           style={[s.swatch, { backgroundColor: c }]}
         >
@@ -215,6 +229,7 @@ export function InviteesField({
   const [name, setName] = useState("");
   const [problem, setProblem] = useState("");
   const add = () => {
+    if (disabled) return;
     const address = email.trim().toLowerCase();
     if (!EMAIL.test(address))
       return setProblem("That doesn’t look like an email address.");
@@ -239,15 +254,9 @@ export function InviteesField({
         const rsvp = status ? RSVP[status] : null;
         return (
           <View key={p.email} style={[s.person, n > 0 && s.divider]}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.personName} numberOfLines={1}>
-                {p.name || p.email}
-              </Text>
-              {!!p.name && (
-                <Text style={shared.small} numberOfLines={1}>
-                  {p.email}
-                </Text>
-              )}
+            <View style={{ flex: 1, minWidth: 120 }}>
+              <Text style={s.personName}>{p.name || p.email}</Text>
+              {!!p.name && <Text style={shared.small}>{p.email}</Text>}
             </View>
             <Pill label={rsvp ? rsvp.label : "New"} tone={rsvp?.tone} />
             {!disabled && (
@@ -302,8 +311,7 @@ export function InviteesField({
             onPress={add}
           />
           <Text style={shared.small}>
-            They get an email invitation with a link to answer; no account
-            needed.
+            Saving sends an email invitation. No account needed to reply.
           </Text>
         </View>
       )}
@@ -314,20 +322,25 @@ export function InviteesField({
 const s = themed(() =>
   StyleSheet.create({
     gapTop: { marginTop: 10 },
-    row: { flexDirection: "row", alignItems: "center", gap: 10 },
+    row: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 10,
+    },
     panel: {
       marginTop: 10,
       padding: 12,
-      borderRadius: 12,
+      borderRadius: radii.card,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
     },
     swatches: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     swatch: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+      width: 44,
+      height: 44,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },
@@ -339,6 +352,7 @@ const s = themed(() =>
     noneOn: { borderColor: colors.accent, borderWidth: 2 },
     person: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 8,
       paddingVertical: 8,

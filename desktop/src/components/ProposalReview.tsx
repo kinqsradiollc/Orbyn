@@ -25,10 +25,10 @@ import {
   type RichInline,
 } from "@orbyn/core";
 import type { TurnState } from "../hooks/useAssistant";
-import { stagger } from "../lib/motion";
 import { PlanCard } from "./PlanCard";
 import { DraftNotes } from "./DraftNotes";
 import { FileText } from "lucide-react";
+import { session } from "../lib/session";
 
 type Props = {
   proposal: Proposal;
@@ -202,6 +202,36 @@ function changes(data: ItemInput, current: Item, items: Item[]) {
   return lines;
 }
 
+function NoteDetails({ before, after }: { before?: string; after: string }) {
+  return (
+    <details className="ai-note-details">
+      <summary>{before === undefined ? "Notes" : "Notes change"}</summary>
+      {before !== undefined && (
+        <>
+          <strong>Before</strong>
+          <div
+            className="ai-note-text"
+            tabIndex={0}
+            role="region"
+            aria-label="Previous notes"
+          >
+            {before || "Empty"}
+          </div>
+          <strong>After</strong>
+        </>
+      )}
+      <div
+        className="ai-note-text"
+        tabIndex={0}
+        role="region"
+        aria-label="Proposed notes"
+      >
+        {after || "Empty"}
+      </div>
+    </details>
+  );
+}
+
 function Details({
   action,
   items,
@@ -222,14 +252,21 @@ function Details({
   if (!data) return null;
   if (action.operation === "update" && current) {
     const lines = changes(data, current, items);
-    return lines.length ? (
-      <ul className="ai-diff">
-        {lines.map((l) => (
-          <li key={l}>{l}</li>
-        ))}
-      </ul>
-    ) : (
-      <small className="ai-muted">No visible changes.</small>
+    return (
+      <>
+        {lines.length ? (
+          <ul className="ai-diff">
+            {lines.map((l) => (
+              <li key={l}>{l}</li>
+            ))}
+          </ul>
+        ) : (
+          <small className="ai-muted">No visible changes.</small>
+        )}
+        {current.notes !== data.notes && (
+          <NoteDetails before={current.notes} after={data.notes} />
+        )}
+      </>
     );
   }
   return (
@@ -261,13 +298,19 @@ function Details({
           {teamName(items, data.team_id)}
         </span>
       )}
-      {data.notes && <p className="ai-notes">{data.notes}</p>}
+      {data.notes && <NoteDetails after={data.notes} />}
     </div>
   );
 }
 
 /** One assistant reply: its summary, each proposed change, and the approve/discard decision. */
-export function ProposalReview({
+export function ProposalReview(props: Props) {
+  return (
+    <ProposalBody key={`${session.get()}:${props.proposal.id}`} {...props} />
+  );
+}
+
+function ProposalBody({
   proposal,
   items,
   before,
@@ -303,36 +346,39 @@ export function ProposalReview({
       {/* What the assistant actually read, so the answer can be checked
           against it rather than taken on trust. */}
       {sources.length > 0 && (
-        <div className="ai-sources">
-          {(
-            [
-              ["Used", usedSources],
-              ["Also read", otherSources],
-            ] as const
-          ).map(([label, group]) =>
-            group.length ? (
-              <div key={label} className="ai-sources-group">
-                <span className="ai-sources-label">{label}:</span>
-                {group.map((source) => (
-                  <button
-                    key={
-                      "doc_id" in source
-                        ? `page:${source.doc_id}`
-                        : `${source.kind}:${source.id}`
-                    }
-                    className="ai-source"
-                    title={source.quote}
-                    disabled={!onOpenSource}
-                    onClick={() => onOpenSource?.(source)}
-                  >
-                    <FileText size={12} aria-hidden="true" /> [{source.number}]{" "}
-                    {source.title || "Untitled"}
-                  </button>
-                ))}
-              </div>
-            ) : null,
-          )}
-        </div>
+        <details className="ai-source-details">
+          <summary>Sources ({sources.length})</summary>
+          <div className="ai-sources">
+            {(
+              [
+                ["Used", usedSources],
+                ["Also read", otherSources],
+              ] as const
+            ).map(([label, group]) =>
+              group.length ? (
+                <div key={label} className="ai-sources-group">
+                  <span className="ai-sources-label">{label}:</span>
+                  {group.map((source) => (
+                    <button
+                      key={
+                        "doc_id" in source
+                          ? `page:${source.doc_id}`
+                          : `${source.kind}:${source.id}`
+                      }
+                      className="ai-source"
+                      title={source.quote}
+                      disabled={!onOpenSource}
+                      onClick={() => onOpenSource?.(source)}
+                    >
+                      <FileText size={12} aria-hidden="true" /> [{source.number}
+                      ] {source.title || "Untitled"}
+                    </button>
+                  ))}
+                </div>
+              ) : null,
+            )}
+          </div>
+        </details>
       )}
       {plan && (
         <PlanCard
@@ -343,6 +389,7 @@ export function ProposalReview({
         />
       )}
       <DraftNotes
+        scope={proposal.id}
         notes={proposal.notes ?? []}
         onKept={onKeptNote}
         report={() => {}}
@@ -354,6 +401,7 @@ export function ProposalReview({
             type="checkbox"
             role="switch"
             className="ai-switch"
+            disabled={busy}
             checked={giveTasksDeadlines}
             onChange={(event) => setGiveTasksDeadlines(event.target.checked)}
           />
@@ -367,11 +415,7 @@ export function ProposalReview({
           }
         >
           {proposal.actions.map((a, n) => (
-            <div
-              className="ai-action fade-up stagger"
-              style={stagger(n)}
-              key={n}
-            >
+            <div className="ai-action" key={n}>
               <span className={"ai-op " + OPERATION[a.operation].className}>
                 {OPERATION[a.operation].label}
               </span>

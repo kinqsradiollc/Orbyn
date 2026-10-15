@@ -1,9 +1,12 @@
+import { SidebarResizer } from "./SidebarResizer";
+import { useState } from "react";
+import { Popover } from "./Popover";
+import { ActivityDialog } from "../features/activity/ActivityDialog";
 import {
+  ChartNoAxesColumn,
   Hash,
   LogOut,
   Orbit,
-  PanelLeftClose,
-  PanelLeftOpen,
   Settings,
   Table2,
   type LucideIcon,
@@ -16,7 +19,6 @@ import {
   type User,
 } from "@orbyn/core";
 import { NAV_GROUPS, navName, type View } from "../app/views";
-import { commandById, keysFor } from "../app/commands";
 import { usePrefs } from "../app/prefs";
 import { CONCEPT_ICON } from "../app/concept-icons";
 import { newTabClick, openInNewTab, type TabRequest } from "../app/tabs";
@@ -28,8 +30,6 @@ const starTab = (s: StarredItem): TabRequest | null =>
     : s.kind === "project" || s.kind === "view"
       ? { kind: s.kind, id: s.id, title: s.title }
       : null;
-
-const MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 /** How many starred things the sidebar lists; ⌘K has the rest. */
 const STARRED_SHOWN = 8;
@@ -44,9 +44,10 @@ const STAR_ICONS: Record<StarredItem["kind"], LucideIcon> = {
 
 type Props = {
   open: boolean;
+  width?: number;
+  onResize?: (width: number) => void;
   /** Shown as a narrow rail of icons, to give the page more room. */
   railed: boolean;
-  onToggleRail: () => void;
   view: View;
   user: User | null;
   hasUnread: boolean;
@@ -73,8 +74,9 @@ type Props = {
  */
 export function Sidebar({
   open,
+  width = 224,
+  onResize,
   railed,
-  onToggleRail,
   view,
   user,
   hasUnread,
@@ -90,18 +92,18 @@ export function Sidebar({
 }: Props) {
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const { prefs } = usePrefs();
-  /** The sidebar's keys, as the command list (and your changes) have them. */
-  const sidebarKeys = keysFor(
-    commandById("app.sidebar"),
-    MAC,
-    prefs.shortcuts,
-  ).join(" ");
+  const [activityOpen, setActivityOpen] = useState(false);
+  const [accountAnchor, setAccountAnchor] = useState<DOMRect | null>(null);
   return (
     <aside
+      data-shared-chrome=""
       id="workspace-navigation"
       aria-label="Workspace navigation"
       className={"sidebar " + (open ? "open" : "")}
     >
+      {!railed && onResize && (
+        <SidebarResizer width={width} onChange={onResize} />
+      )}
       <div className="sidebar-head">
         <div className="brand" aria-label="orbyn">
           <Orbit />
@@ -204,48 +206,70 @@ export function Sidebar({
 
       <div className="sidebar-bottom">
         <button
-          className="settings-link rail-toggle"
-          aria-label={railed ? "Expand sidebar" : "Collapse sidebar"}
-          title={`${railed ? "Expand" : "Collapse"} sidebar${
-            sidebarKeys ? ` (${sidebarKeys})` : ""
-          }`}
-          aria-expanded={!railed}
-          onClick={onToggleRail}
+          type="button"
+          className="sidebar-account-trigger"
+          aria-label={`Account: ${user?.name || "Orbyn"}`}
+          aria-haspopup="dialog"
+          aria-expanded={!!accountAnchor}
+          onClick={(event) =>
+            setAccountAnchor(event.currentTarget.getBoundingClientRect())
+          }
         >
-          {railed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}{" "}
-          <span>Collapse</span>
-        </button>
-        <button
-          className="settings-link"
-          aria-label={railed ? "Settings" : undefined}
-          title={railed ? "Settings" : undefined}
-          {...newTabClick(
-            () => onNavigate("Settings"),
-            () => openInNewTab({ kind: "screen", view: "Settings" }),
-          )}
-        >
-          <Settings size={17} /> <span>Settings</span>
-        </button>
-        <div className="profile">
-          <span className="avatar" title={user?.name}>
+          <span className="avatar" aria-hidden="true">
             {user?.name[0] || "O"}
           </span>
-          <div>
-            <strong>
-              {user?.name || "Loading…"}
-              {isAdmin && <span className="role-badge system">Admin</span>}
-            </strong>
-            <small>{isAdmin ? "Workspace admin" : "Personal account"}</small>
-          </div>
-          <button
-            className="icon-button"
-            aria-label="Sign out"
-            onClick={onSignOut}
+          <span className="sidebar-account-name">
+            {user?.name || "Loading…"}
+          </span>
+        </button>
+        {accountAnchor && (
+          <Popover
+            anchor={accountAnchor}
+            label="Account"
+            onClose={() => setAccountAnchor(null)}
+            width={280}
           >
-            <LogOut size={16} />
-          </button>
-        </div>
+            <div className="sidebar-account-menu" data-shared-chrome="">
+              <div className="sidebar-account-identity">
+                <strong>{user?.name || "Orbyn account"}</strong>
+                <small>
+                  {isAdmin ? "Workspace admin" : "Personal account"}
+                </small>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAccountAnchor(null);
+                  setActivityOpen(true);
+                }}
+              >
+                <ChartNoAxesColumn size={17} aria-hidden="true" /> Activity
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAccountAnchor(null);
+                  onNavigate("Settings");
+                }}
+              >
+                <Settings size={17} aria-hidden="true" /> Settings
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAccountAnchor(null);
+                  onSignOut();
+                }}
+              >
+                <LogOut size={17} aria-hidden="true" /> Sign out
+              </button>
+            </div>
+          </Popover>
+        )}
       </div>
+      {activityOpen && (
+        <ActivityDialog onClose={() => setActivityOpen(false)} />
+      )}
     </aside>
   );
 }

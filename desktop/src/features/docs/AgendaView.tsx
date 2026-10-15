@@ -85,7 +85,11 @@ export function AgendaView({
   /** Today's page went to Trash from here; Undo on the toast brings it back. */
   const [trashed, setTrashed] = useState(false);
 
+  const request = useRef(0);
+  const mutation = useRef(false);
   const load = () => {
+    if (mutation.current) return;
+    const version = ++request.current;
     setTrashed(false);
     setFailed(false);
     setDayFailed(false);
@@ -97,6 +101,7 @@ export function AgendaView({
       .agendaToday(deviceTimeZone())
       .then(
         (next) => {
+          if (version !== request.current) return;
           setDoc(next);
           // The server's today (your account's zone) names the page.
           const day =
@@ -105,13 +110,21 @@ export function AgendaView({
           setToday(day);
         },
         (e) => {
+          if (version !== request.current) return;
           setFailed(true);
           errorText(e, "Today's agenda");
         },
       )
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (version === request.current) setLoading(false);
+      });
   };
-  useEffect(load, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    load();
+    return () => {
+      request.current += 1;
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Left open past midnight, the page on screen becomes yesterday's: the
   // labels, the Today button and Rewrite follow the clock, checked when the
@@ -147,7 +160,9 @@ export function AgendaView({
 
   /** Step to another day's page, or to the gap where it would be. */
   const go = (day: string) => {
+    if (mutation.current || loading) return;
     if (day === today) return load();
+    const version = ++request.current;
     setTrashed(false);
     setFailed(false);
     setDayFailed(false);
@@ -160,39 +175,49 @@ export function AgendaView({
       .agendaOn(day, deviceTimeZone())
       .then(
         (found) => {
+          if (version !== request.current) return;
           setDoc(found.doc);
           setToday(found.today);
         },
         (e) => {
+          if (version !== request.current) return;
           setDoc(null);
           setDayFailed(true);
           errorText(e, "That day's agenda");
         },
       )
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (version === request.current) setLoading(false);
+      });
   };
 
   const write = () => {
-    if (!date) return;
+    if (!date || mutation.current || loading) return;
+    mutation.current = true;
     setWriting(true);
     client
       .writeAgenda(date)
       .then(setDoc, report)
-      .finally(() => setWriting(false));
+      .finally(() => {
+        mutation.current = false;
+        setWriting(false);
+      });
   };
 
   const rewrite = async () => {
-    if (
-      !(await ask({
-        title: "Rewrite today's agenda?",
-        body: "Everything above Notes is written again from your calendar as it is now. Your notes and end-of-day answers stay as they are.",
-        confirmLabel: "Rewrite",
-      }))
-    )
-      return;
+    if (mutation.current || loading) return;
+    mutation.current = true;
     setRewriting(true);
-    setNote("");
     try {
+      if (
+        !(await ask({
+          title: "Rewrite today's agenda?",
+          body: "Replaces everything above Notes with your current calendar. Your notes and end-of-day answers stay.",
+          confirmLabel: "Rewrite",
+        }))
+      )
+        return;
+      setNote("");
       const next = await client.rewriteAgenda(deviceTimeZone());
       setDoc(next);
       setEdition((n) => n + 1);
@@ -200,6 +225,7 @@ export function AgendaView({
     } catch (e) {
       report(e);
     } finally {
+      mutation.current = false;
       setRewriting(false);
     }
   };
@@ -212,7 +238,9 @@ export function AgendaView({
         className="icon-button"
         aria-label="The day before"
         title="The day before"
-        disabled={loading || date <= addDays(today, -DAYS_BACK)}
+        disabled={
+          loading || rewriting || writing || date <= addDays(today, -DAYS_BACK)
+        }
         onClick={() => go(addDays(date, -1))}
       >
         <ChevronLeft size={16} />
@@ -225,7 +253,9 @@ export function AgendaView({
         className="icon-button"
         aria-label="The day after"
         title="The day after"
-        disabled={loading || date >= addDays(today, DAYS_AHEAD)}
+        disabled={
+          loading || rewriting || writing || date >= addDays(today, DAYS_AHEAD)
+        }
         onClick={() => go(addDays(date, 1))}
       >
         <ChevronRight size={16} />
@@ -234,7 +264,7 @@ export function AgendaView({
         <button
           type="button"
           className="secondary agenda-today"
-          disabled={loading}
+          disabled={loading || rewriting || writing}
           onClick={() => go(today)}
         >
           Today
@@ -246,7 +276,10 @@ export function AgendaView({
   if (failed)
     return (
       <p className="muted">
-        Today's agenda couldn't be loaded. Try again in a moment.
+        Today's agenda couldn't be loaded.
+        <button className="text-button" onClick={load}>
+          Retry
+        </button>
       </p>
     );
   // Nothing is written again until asked: a fresh copy now would sit beside
@@ -276,29 +309,28 @@ export function AgendaView({
           <button
             type="button"
             className="secondary"
-            disabled={rewriting}
+            disabled={loading || rewriting || writing}
             onClick={() => void rewrite()}
           >
             <RefreshCw size={14} />{" "}
-            {rewriting ? "Rewriting…" : "Rewrite from my calendar"}
+            {rewriting ? "Rewriting…" : "Rewrite agenda"}
           </button>
         )}
       </div>
       {doc && (
         <p className="agenda-note muted">
           <Sparkles size={14} aria-hidden="true" /> Written from your calendars.
-          A rewrite keeps your notes.
           {note && <strong role="status"> {note}</strong>}
         </p>
       )}
       {loading && !doc ? (
-        <p className="muted">Looking for that day's page…</p>
+        <p className="muted">Loading agenda…</p>
       ) : dayFailed ? (
         <div className="empty agenda-empty" role="alert">
           <CalendarDays size={30} aria-hidden="true" />
           <p>{agendaTitleOn(date)} couldn't be loaded.</p>
           <button type="button" className="secondary" onClick={() => go(date)}>
-            <RefreshCw size={14} aria-hidden="true" /> Try again
+            <RefreshCw size={14} aria-hidden="true" /> Retry
           </button>
         </div>
       ) : doc ? (
@@ -330,10 +362,10 @@ export function AgendaView({
           <button
             type="button"
             className="primary"
-            disabled={writing}
+            disabled={loading || rewriting || writing}
             onClick={write}
           >
-            {writing ? "Writing…" : "Write it from my calendar"}
+            {writing ? "Writing…" : "Write agenda"}
           </button>
         </div>
       )}

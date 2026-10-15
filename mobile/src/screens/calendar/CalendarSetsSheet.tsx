@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Switch } from "../../components/Switch";
 import type {
@@ -15,7 +15,10 @@ import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
 import { usePlanning } from "../../lib/planningContext";
 import { useRun } from "../../hooks/useRun";
-import { animateLayout } from "../../motion";
+import { BottomSheet } from "../../components/BottomSheet";
+import { Field } from "../../components/Field";
+import { MoreMenu } from "../../components/MoreMenu";
+import { errorText } from "../../lib/errors";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
 
@@ -52,12 +55,19 @@ export function CalendarSetsSheet({
   onClose: () => void;
   onSaved: (prefs: PlannerPrefs) => void;
 }) {
+  const [pending, setPending] = useState(false);
   return (
-    <Sheet visible={visible} title="Calendar sets" onClose={onClose}>
+    <Sheet
+      visible={visible}
+      title="Calendar sets"
+      onClose={onClose}
+      closeDisabled={pending}
+    >
       {visible && (
         <Body
           sets={sets}
           teams={teams}
+          onBusyChange={setPending}
           onSaved={(prefs) => {
             onSaved(prefs);
             onClose();
@@ -72,82 +82,180 @@ function Body({
   sets,
   teams,
   onSaved,
+  onBusyChange,
 }: {
   sets: CalendarSet[];
   teams: Team[];
   onSaved: (prefs: PlannerPrefs) => void;
+  onBusyChange: (busy: boolean) => void;
 }) {
   const { lists } = usePlanning();
   const { busy, error, setError, run } = useRun();
   const [draft, setDraft] = useState<CalendarSet[]>(() =>
     sets.length ? sets : [newSet(0)],
   );
-  const update = (id: string, patch: Partial<CalendarSet>) =>
-    setDraft((d) => d.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-  const [subs, setSubs] = useState<CalendarSubscription[]>([]);
+  const [editing, setEditing] = useState<string | null>(null);
+  const selected = draft.find((set) => set.id === editing);
+  const alive = useRef(true);
+  const saving = useRef(false);
   useEffect(() => {
-    client.listCalendarSubscriptions().then(setSubs, () => setSubs([]));
-  }, []);
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      onBusyChange(false);
+    };
+  }, [onBusyChange]);
+  const update = (id: string, patch: Partial<CalendarSet>) => {
+    if (!saving.current)
+      setDraft((d) => d.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  };
+  const [subs, setSubs] = useState<CalendarSubscription[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  useEffect(() => {
+    let current = true;
+    setLoading(true);
+    setLoadError("");
+    client
+      .listCalendarSubscriptions()
+      .then(
+        (result) => {
+          if (current) setSubs(result);
+        },
+        (e) => {
+          if (current) setLoadError(errorText(e));
+        },
+      )
+      .finally(() => {
+        if (current) setLoading(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [attempt]);
   /** A set from before subscriptions could be picked shows all of them. */
   const subsOf = (set: CalendarSet) =>
     set.subscription_ids ?? subs.map((x) => x.id);
 
-  const save = () =>
-    run(async () => {
-      if (draft.some((x) => !x.name.trim()))
-        throw new Error("Give every set a name.");
-      const prefs = await client.updatePlannerPrefs({
-        calendar_sets: draft.map((x) => ({ ...x, name: x.name.trim() })),
+  const save = async () => {
+    if (saving.current) return;
+    const unnamed = draft.find((x) => !x.name.trim());
+    if (unnamed) {
+      setEditing(unnamed.id);
+      setError("Give this set a name.");
+      return;
+    }
+    saving.current = true;
+    onBusyChange(true);
+    try {
+      await run(async () => {
+        const prefs = await client.updatePlannerPrefs({
+          calendar_sets: draft.map((x) => ({ ...x, name: x.name.trim() })),
+        });
+        if (alive.current) onSaved(prefs);
       });
-      onSaved(prefs);
-    });
+    } finally {
+      saving.current = false;
+      if (alive.current) onBusyChange(false);
+    }
+  };
 
   return (
-    <ScrollView
-      contentContainerStyle={sheetStyles.body}
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="interactive"
-      automaticallyAdjustKeyboardInsets
-    >
-      <View style={sheetStyles.column}>
-        <ErrorBanner error={error} onDismiss={() => setError("")} />
-        <Text style={[shared.subtitle, s.intro]}>
-          A set shows only some of your calendar, like just work. Pick one from
-          the chips above the calendar.
-        </Text>
-        {draft.map((set, n) => (
-          <View key={set.id} style={shared.card}>
-            <View style={s.head}>
-              <Text style={shared.label}>Set {n + 1}</Text>
+    <>
+      <ScrollView
+        contentContainerStyle={sheetStyles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
+        automaticallyAdjustKeyboardInsets
+      >
+        <View style={sheetStyles.column}>
+          <ErrorBanner error={error} onDismiss={() => setError("")} />
+          {draft.map((set) => (
+            <View key={set.id} style={s.head}>
+              <Text style={[shared.label, { flex: 1, minWidth: 0 }]}>
+                {set.name || "Unnamed set"}
+              </Text>
               <SmallAction
-                destructive
-                label="Remove"
+                label="Edit"
                 disabled={busy}
                 onPress={() => {
-                  animateLayout();
-                  setDraft(draft.filter((x) => x.id !== set.id));
+                  setEditing(set.id);
+                  setError("");
                 }}
               />
+              <MoreMenu
+                label={`Manage ${set.name || "set"}`}
+                disabled={busy}
+                actions={[
+                  {
+                    label: "Remove set",
+                    destructive: true,
+                    onPress: () =>
+                      setDraft((d) => d.filter((x) => x.id !== set.id)),
+                  },
+                ]}
+              />
             </View>
-            <TextInput
-              style={[shared.input, s.gap]}
-              value={set.name}
-              onChangeText={(name) => update(set.id, { name })}
-              maxLength={40}
-              placeholder="Work"
-              placeholderTextColor={colors.faint}
-              accessibilityLabel={`Name of set ${n + 1}`}
+          ))}
+          {draft.length === 0 && (
+            <Text style={shared.small}>No calendar sets.</Text>
+          )}
+          {draft.length < MAX_SETS ? (
+            <Button
+              secondary
+              title="Add a set"
+              icon="plus"
+              disabled={busy}
+              onPress={() => {
+                const added = newSet(draft.length);
+                setDraft([...draft, added]);
+                setEditing(added.id);
+              }}
             />
+          ) : (
+            <Text style={[shared.small, s.center]}>Maximum 9 sets.</Text>
+          )}
+          <Button
+            title={busy ? "Saving…" : "Save sets"}
+            icon="check"
+            disabled={busy}
+            onPress={() => void save()}
+          />
+        </View>
+      </ScrollView>
+      <BottomSheet
+        visible={!!selected}
+        title="Edit calendar set"
+        onClose={() => setEditing(null)}
+        closeDisabled={busy}
+      >
+        <ErrorBanner error={error} onDismiss={() => setError("")} />
+        {selected && (
+          <View>
+            <Field label="Name">
+              <TextInput
+                style={[shared.input, s.gap]}
+                editable={!busy}
+                value={selected.name}
+                onChangeText={(name) => update(selected.id, { name })}
+                maxLength={40}
+                placeholder="Work"
+                placeholderTextColor={colors.faint}
+                accessibilityLabel={"Set name"}
+              />
+            </Field>
             <View style={s.switchRow}>
               <View style={{ flex: 1 }}>
                 <Text style={s.switchTitle}>Personal</Text>
                 <Text style={shared.small}>Your own tasks and events.</Text>
               </View>
               <Switch
-                value={set.personal}
+                disabled={busy}
+                value={selected.personal}
                 trackColor={{ true: colors.accent }}
-                accessibilityLabel={`${set.name || "This set"} shows personal items`}
-                onValueChange={(personal) => update(set.id, { personal })}
+                accessibilityLabel={`${selected.name || "This set"} shows personal items`}
+                onValueChange={(personal) => update(selected.id, { personal })}
               />
             </View>
             {teams.length > 0 && (
@@ -158,11 +266,12 @@ function Body({
                     <Chip
                       key={t.id}
                       multi
+                      disabled={busy}
                       label={t.name}
-                      selected={set.team_ids.includes(t.id)}
+                      selected={selected.team_ids.includes(t.id)}
                       onPress={() =>
-                        update(set.id, {
-                          team_ids: toggle(set.team_ids, t.id),
+                        update(selected.id, {
+                          team_ids: toggle(selected.team_ids, t.id),
                         })
                       }
                     />
@@ -178,12 +287,13 @@ function Body({
                     <Chip
                       key={l.id}
                       multi
+                      disabled={busy}
                       color={l.color}
                       label={l.name}
-                      selected={set.list_ids.includes(l.id)}
+                      selected={selected.list_ids.includes(l.id)}
                       onPress={() =>
-                        update(set.id, {
-                          list_ids: toggle(set.list_ids, l.id),
+                        update(selected.id, {
+                          list_ids: toggle(selected.list_ids, l.id),
                         })
                       }
                     />
@@ -202,12 +312,13 @@ function Body({
                     <Chip
                       key={c.id}
                       multi
+                      disabled={busy || loading || !!loadError}
                       color={c.color}
                       label={c.name}
-                      selected={subsOf(set).includes(c.id)}
+                      selected={subsOf(selected).includes(c.id)}
                       onPress={() =>
-                        update(set.id, {
-                          subscription_ids: toggle(subsOf(set), c.id),
+                        update(selected.id, {
+                          subscription_ids: toggle(subsOf(selected), c.id),
                         })
                       }
                     />
@@ -215,43 +326,38 @@ function Body({
                 </ChipRow>
               </>
             )}
+            {loading && <Text style={shared.small}>Loading calendars…</Text>}
+            {!!loadError && (
+              <>
+                <ErrorBanner error={loadError} />
+                <Button
+                  secondary
+                  title="Retry calendars"
+                  onPress={() => setAttempt((n) => n + 1)}
+                />
+              </>
+            )}
+            <Button
+              title="Done"
+              disabled={busy || !selected.name.trim()}
+              onPress={() => setEditing(null)}
+            />
           </View>
-        ))}
-        {draft.length < MAX_SETS ? (
-          <Button
-            secondary
-            title="Add a set"
-            icon="plus"
-            disabled={busy}
-            onPress={() => {
-              animateLayout();
-              setDraft([...draft, newSet(draft.length)]);
-            }}
-          />
-        ) : (
-          <Text style={[shared.small, s.center]}>
-            That’s the most sets you can have.
-          </Text>
         )}
-        <Button
-          title={busy ? "Saving…" : "Save sets"}
-          icon="check"
-          disabled={busy}
-          onPress={() => void save()}
-        />
-      </View>
-    </ScrollView>
+      </BottomSheet>
+    </>
   );
 }
 
 const s = themed(() =>
   StyleSheet.create({
-    intro: { marginTop: 0, marginBottom: 18 },
     head: {
       flexDirection: "row",
       alignItems: "center",
-      justifyContent: "space-between",
-      marginBottom: 8,
+      gap: 8,
+      paddingVertical: 8,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
     },
     gap: { marginBottom: 14 },
     hint: { marginTop: 8 },

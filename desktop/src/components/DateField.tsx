@@ -83,7 +83,33 @@ export function DateField({
   const day = hasDay ? parseDay(value) : null;
   const time = hasTime ? timeOf(value) : "";
 
-  const emit = (next: string) => onChange?.({ target: { value: next } });
+  const emit = (next: string) => {
+    if (!disabled && !button.current?.matches(":disabled"))
+      onChange?.({ target: { value: next } });
+  };
+  useEffect(() => {
+    if (disabled) setAnchor(null);
+  }, [disabled]);
+  useEffect(() => {
+    if (!anchor || !button.current) return;
+    const check = () => {
+      if (button.current?.matches(":disabled")) setAnchor(null);
+    };
+    const observer = new MutationObserver(check);
+    for (
+      let node: HTMLElement | null = button.current;
+      node;
+      node = node.parentElement
+    ) {
+      if (node instanceof HTMLFieldSetElement)
+        observer.observe(node, {
+          attributes: true,
+          attributeFilter: ["disabled"],
+        });
+    }
+    check();
+    return () => observer.disconnect();
+  }, [anchor]);
   const label =
     type === "time"
       ? time && timeLabel(time)
@@ -217,18 +243,46 @@ function MonthGrid({
       ?.focus({ preventScroll: true });
   }, [focus, month]);
 
+  const bounded = (date: Date) =>
+    min && dayKey(date) < dayKey(min)
+      ? min
+      : max && dayKey(date) > dayKey(max)
+        ? max
+        : date;
   const move = (by: number, unit: "day" | "month" = "day") => {
-    const next =
+    const raw =
       unit === "day"
         ? new Date(focus.getFullYear(), focus.getMonth(), focus.getDate() + by)
-        : new Date(focus.getFullYear(), focus.getMonth() + by, focus.getDate());
+        : new Date(
+            focus.getFullYear(),
+            focus.getMonth() + by,
+            Math.min(
+              focus.getDate(),
+              new Date(
+                focus.getFullYear(),
+                focus.getMonth() + by + 1,
+                0,
+              ).getDate(),
+            ),
+          );
+    const next = bounded(raw);
     setFocus(next);
-    if (
-      next.getMonth() !== month.getMonth() ||
-      next.getFullYear() !== month.getFullYear()
-    )
-      setMonth(new Date(next.getFullYear(), next.getMonth(), 1));
+    setMonth(new Date(next.getFullYear(), next.getMonth(), 1));
   };
+  const changeMonth = (by: number) => {
+    const next = bounded(
+      new Date(month.getFullYear(), month.getMonth() + by, 1),
+    );
+    setFocus(next);
+    setMonth(new Date(next.getFullYear(), next.getMonth(), 1));
+  };
+  useEffect(() => {
+    const next = bounded(focus);
+    if (dayKey(next) !== dayKey(focus)) {
+      setFocus(next);
+      setMonth(new Date(next.getFullYear(), next.getMonth(), 1));
+    }
+  }, [min?.getTime(), max?.getTime()]);
   const onKey = (e: React.KeyboardEvent) => {
     const keys: Record<string, () => void> = {
       ArrowLeft: () => move(-1),
@@ -251,9 +305,12 @@ function MonthGrid({
           type="button"
           className="icon-button"
           aria-label="Previous month"
-          onClick={() =>
-            setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))
+          disabled={
+            !!min &&
+            dayKey(new Date(month.getFullYear(), month.getMonth(), 0)) <
+              dayKey(min)
           }
+          onClick={() => changeMonth(-1)}
         >
           <ChevronLeft size={15} />
         </button>
@@ -264,9 +321,12 @@ function MonthGrid({
           type="button"
           className="icon-button"
           aria-label="Next month"
-          onClick={() =>
-            setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))
+          disabled={
+            !!max &&
+            dayKey(new Date(month.getFullYear(), month.getMonth() + 1, 1)) >
+              dayKey(max)
           }
+          onClick={() => changeMonth(1)}
         >
           <ChevronRight size={15} />
         </button>
@@ -325,12 +385,28 @@ function TimeList({
   const list = useRef<HTMLDivElement>(null);
   const times = useMemo(() => {
     const all: string[] = [];
-    for (let m = 0; m < 24 * 60; m += step)
+    const stride =
+      Number.isFinite(step) && step > 0 ? Math.max(1, Math.floor(step)) : 15;
+    for (let m = 0; m < 24 * 60; m += stride)
       all.push(`${pad(Math.floor(m / 60))}:${pad(m % 60)}`);
     if (value && !all.includes(value)) all.push(value);
     return all.sort();
   }, [step, value]);
 
+  const [active, setActive] = useState(() =>
+    Math.max(0, times.indexOf(value || "09:00")),
+  );
+  const keyboard = useRef(false);
+  useEffect(() => {
+    if (keyboard.current) {
+      keyboard.current = false;
+      const option = list.current?.querySelector<HTMLElement>(
+        `[data-time="${times[active]}"]`,
+      );
+      option?.focus({ preventScroll: true });
+      option?.scrollIntoView({ block: "nearest" });
+    }
+  }, [active, times]);
   // Open at the chosen time, or at the start of a working day.
   useEffect(() => {
     list.current
@@ -339,13 +415,32 @@ function TimeList({
   }, [value]);
 
   return (
-    <div className="date-times" ref={list} role="listbox" aria-label="Time">
-      {times.map((t) => (
+    <div
+      className="date-times"
+      ref={list}
+      role="listbox"
+      aria-label="Time"
+      onKeyDown={(event) => {
+        let next = active;
+        if (event.key === "ArrowDown")
+          next = Math.min(times.length - 1, active + 1);
+        else if (event.key === "ArrowUp") next = Math.max(0, active - 1);
+        else if (event.key === "Home") next = 0;
+        else if (event.key === "End") next = times.length - 1;
+        else return;
+        event.preventDefault();
+        keyboard.current = true;
+        setActive(next);
+      }}
+    >
+      {times.map((t, index) => (
         <button
           key={t}
           type="button"
           role="option"
           data-time={t}
+          tabIndex={index === active ? 0 : -1}
+          onFocus={() => setActive(index)}
           aria-selected={t === value}
           className="date-time"
           onClick={() => onPick(t)}

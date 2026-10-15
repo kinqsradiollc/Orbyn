@@ -44,15 +44,19 @@ export function AdminAgents({ report }: { report: Report }) {
   const limitAction = useAction(report);
   const appAction = useAction(report);
 
-  const adopt = (s: AgentSettings) => {
+  // Only refresh the saved form; unrelated drafts survive access/app changes.
+  const adopt = (s: AgentSettings, saved?: AgentSettingsUpdate) => {
     setSettings(s);
-    setHosts(s.allowed_client_hosts.join("\n"));
-    setMaxDays(String(s.max_grant_days));
-    setLimits(
-      Object.fromEntries(
-        LIMITS.map(({ key }) => [key, String(s.agent_limits[key])]),
-      ),
-    );
+    if (!saved || "allowed_client_hosts" in saved)
+      setHosts(s.allowed_client_hosts.join("\n"));
+    if (!saved || "agent_limits" in saved || "max_grant_days" in saved) {
+      setMaxDays(String(s.max_grant_days));
+      setLimits(
+        Object.fromEntries(
+          LIMITS.map(({ key }) => [key, String(s.agent_limits[key])]),
+        ),
+      );
+    }
   };
   const load = useCallback(() => {
     client.adminAgentSettings().then(adopt, report);
@@ -63,7 +67,7 @@ export function AdminAgents({ report }: { report: Report }) {
 
   const update = (body: AgentSettingsUpdate, done: string) =>
     client.adminUpdateAgentSettings(body).then((s) => {
-      adopt(s);
+      adopt(s, body);
       return done;
     });
 
@@ -172,14 +176,14 @@ export function AdminAgents({ report }: { report: Report }) {
 
   if (!settings)
     return (
-      <section className="card agents-admin fade-up">
+      <section className="card agents-admin">
         <p className="muted">Loading agent settings…</p>
       </section>
     );
 
   return (
     <>
-      <section className="card agents-admin fade-up">
+      <section className="card agents-admin">
         <div className="section-heading">
           <h2>
             <Bot size={16} aria-hidden="true" /> Outside agents
@@ -189,12 +193,12 @@ export function AdminAgents({ report }: { report: Report }) {
           </button>
         </div>
         <p className="muted agents-admin-lead">
-          Control MCP agents for everyone. Changes apply within seconds.
+          Workspace-wide MCP access. Changes apply within seconds.
         </p>
         <div className="agents-admin-switches">
           <Switch
             label="Outside agents"
-            hint="Off: every agent is refused, and none can sign in."
+            hint="Off blocks all connections and new sign-ins."
             on={settings.agents_enabled}
             disabled={switches.pending}
             onChange={(on) =>
@@ -206,8 +210,8 @@ export function AdminAgents({ report }: { report: Report }) {
             }
           />
           <Switch
-            label="Let agents make changes"
-            hint="Off: agents can still read, but every change is refused (for incidents)."
+            label="Allow changes"
+            hint="Off keeps reading available and blocks changes."
             on={settings.agents_writes_enabled}
             disabled={switches.pending}
             onChange={(on) =>
@@ -219,8 +223,8 @@ export function AdminAgents({ report }: { report: Report }) {
             }
           />
           <Switch
-            label="Apps can register themselves"
-            hint="For apps without a client metadata document. Limited per address; unused registrations are cleared after a week."
+            label="App registration"
+            hint="Allows apps without website metadata to register."
             on={settings.dcr_enabled}
             disabled={switches.pending}
             onChange={(on) =>
@@ -232,8 +236,8 @@ export function AdminAgents({ report }: { report: Report }) {
             }
           />
           <Switch
-            label="Cards in agents (preview)"
-            hint="Agents that can show cards get Today, a plan preview with Apply, and changes waiting for review. Approving still happens only in Orbyn."
+            label="Interactive cards"
+            hint="Shows supported previews. Approvals stay in Orbyn."
             on={settings.mcp_apps_enabled}
             disabled={switches.pending}
             onChange={(on) =>
@@ -245,7 +249,7 @@ export function AdminAgents({ report }: { report: Report }) {
             }
           />
           <Switch
-            label="Old personal API keys reach agents"
+            label="Legacy API key access"
             hint={
               settings.legacy_keys_until
                 ? `Until ${new Date(settings.legacy_keys_until).toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" })}, then never again. They always keep working with the API and CalDAV.`
@@ -259,25 +263,30 @@ export function AdminAgents({ report }: { report: Report }) {
         <OutcomeNote outcome={switches.outcome} />
       </section>
 
-      <section className="card agents-admin fade-up">
+      <section className="card agents-admin">
         <div className="section-heading">
           <h2>Apps</h2>
         </div>
-        <form className="agents-admin-hosts" onSubmit={saveHosts}>
-          <label htmlFor="agents-hosts">
-            Only allow apps from these websites
-          </label>
-          <textarea
-            id="agents-hosts"
-            rows={3}
-            value={hosts}
-            placeholder={"Empty: any website.\nclaude.ai\nchatgpt.com"}
-            onChange={(e) => setHosts(e.target.value)}
-          />
-          <button className="secondary" disabled={appAction.pending}>
-            Save websites
-          </button>
-        </form>
+        <details className="agents-admin-config">
+          <summary>Allowed websites</summary>
+          <form className="agents-admin-hosts" onSubmit={saveHosts}>
+            <label htmlFor="agents-hosts">
+              Only allow apps from these websites
+            </label>
+            <textarea
+              id="agents-hosts"
+              rows={3}
+              value={hosts}
+              disabled={appAction.pending}
+              placeholder={"Empty: any website.\nclaude.ai\nchatgpt.com"}
+              onChange={(e) => setHosts(e.target.value)}
+            />
+            <p className="muted">Leave empty to allow any website.</p>
+            <button className="secondary" disabled={appAction.pending}>
+              Save websites
+            </button>
+          </form>
+        </details>
         {apps === null ? (
           <p className="muted">Loading apps…</p>
         ) : apps.length ? (
@@ -327,42 +336,52 @@ export function AdminAgents({ report }: { report: Report }) {
         <OutcomeNote outcome={appAction.outcome} />
       </section>
 
-      <section className="card agents-admin fade-up">
+      <section className="card agents-admin">
         <div className="section-heading">
           <h2>Limits</h2>
         </div>
-        <form className="agents-admin-limits" onSubmit={saveLimits}>
-          <label>
-            Longest a connection may last (days)
-            <input
-              inputMode="numeric"
-              value={maxDays}
-              onChange={(e) => setMaxDays(e.target.value)}
-            />
-          </label>
-          {LIMITS.map(({ key, label }) => (
-            <label key={key}>
-              {label}
+        <details
+          className="agents-admin-config"
+          onInvalidCapture={(event) => {
+            event.currentTarget.open = true;
+          }}
+        >
+          <summary>Connection limits</summary>
+          <form className="agents-admin-limits" onSubmit={saveLimits}>
+            <label>
+              Connection lifetime (days)
               <input
                 inputMode="numeric"
-                value={limits[key] ?? ""}
-                onChange={(e) =>
-                  setLimits((l) => ({ ...l, [key]: e.target.value }))
-                }
+                disabled={limitAction.pending}
+                value={maxDays}
+                onChange={(e) => setMaxDays(e.target.value)}
               />
             </label>
-          ))}
-          <div className="agents-admin-save">
-            <button className="primary" disabled={limitAction.pending}>
-              Save limits
-            </button>
-            <OutcomeNote outcome={limitAction.outcome} />
-          </div>
-        </form>
+            {LIMITS.map(({ key, label }) => (
+              <label key={key}>
+                {label}
+                <input
+                  inputMode="numeric"
+                  disabled={limitAction.pending}
+                  value={limits[key] ?? ""}
+                  onChange={(e) =>
+                    setLimits((l) => ({ ...l, [key]: e.target.value }))
+                  }
+                />
+              </label>
+            ))}
+            <div className="agents-admin-save">
+              <button className="primary" disabled={limitAction.pending}>
+                Save limits
+              </button>
+              <OutcomeNote outcome={limitAction.outcome} />
+            </div>
+          </form>
+        </details>
       </section>
 
       {usage && (
-        <section className="card agents-admin fade-up">
+        <section className="card agents-admin">
           <div className="section-heading">
             <h2>Use by app</h2>
             <small className="muted">Last {usage.days} days</small>

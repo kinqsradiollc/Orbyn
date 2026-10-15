@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
   type FormEvent,
-  type Ref,
 } from "react";
 import {
   ChevronDown,
@@ -33,16 +32,18 @@ import {
   type AiTestResult,
   aiUsageSummary,
 } from "@orbyn/core";
+import { session } from "../../lib/session";
 import { client } from "../../lib/api";
 import type { TeamActions } from "../teams/TeamDetail";
-import { stagger } from "../../lib/motion";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import "./ai.css";
 
 type Props = Pick<TeamActions, "busy" | "revision" | "act" | "report">;
 
 const SOURCE_LABELS = {
-  database: "Admin console",
-  none: "Not set up",
+  database: "Configured",
+  none: "Off",
 } as const;
 
 const CLOUD_KINDS = AI_PROVIDER_KINDS.filter((k) => !AI_PROVIDERS[k].local);
@@ -52,8 +53,19 @@ const offered = (kinds: readonly AiProviderKind[], current: AiProviderKind) =>
   kinds.filter((k) => AI_PROVIDERS[k].pickerVisible || k === current);
 
 /** AI provider management for admins with `ai:manage`; the server enforces it too. */
-export function AdminAi({ busy, revision, act, report }: Props) {
-  const { ask, tell } = useConfirm();
+export function AdminAi({ busy: externalBusy, revision, act, report }: Props) {
+  const [pending, setPending] = useState(false);
+  const busy = externalBusy || pending;
+  const mutation = useRef<object | null>(null);
+  const mounted = useRef(true);
+  const accountAtRender = session.get();
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const { ask } = useConfirm();
   const [data, setData] = useState<AiProvidersResponse | null>(null);
   const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<AiProvider | "new" | null>(null);
@@ -69,11 +81,13 @@ export function AdminAi({ busy, revision, act, report }: Props) {
   );
   const [tests, setTests] = useState<Record<string, AiTestResult>>({});
   const [nightBudget, setNightBudget] = useState("1000000");
-  useEffect(
-    () => setNightBudget(String(data?.settings.night_token_budget ?? 1000000)),
-    [data?.settings.night_token_budget],
-  );
-  const formRef = useRef<HTMLElement>(null);
+  const savedBudget = useRef("1000000");
+  useEffect(() => {
+    const next = String(data?.settings.night_token_budget ?? 1000000);
+    const previous = savedBudget.current;
+    savedBudget.current = next;
+    setNightBudget((current) => (current === previous ? next : current));
+  }, [data?.settings.night_token_budget]);
   const dataRef = useRef(data);
   dataRef.current = data;
   const loadRequest = useRef(0);
@@ -82,18 +96,28 @@ export function AdminAi({ busy, revision, act, report }: Props) {
 
   const load = useCallback(async () => {
     const request = ++loadRequest.current;
+    const account = session.get();
     setFailed(false);
     setCatalogLoading({});
     setCatalogErrors({});
     try {
       const next = await client.listAiProviders();
-      if (request !== loadRequest.current) return;
+      if (
+        request !== loadRequest.current ||
+        !mounted.current ||
+        account !== session.get()
+      )
+        return;
       dataRef.current = next;
       setData(next);
       setLoaded({});
       setTests({});
     } catch (e) {
-      if (request === loadRequest.current) {
+      if (
+        request === loadRequest.current &&
+        mounted.current &&
+        account === session.get()
+      ) {
         setFailed(true);
         reportRef.current(e);
       }
@@ -107,10 +131,6 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       dataRef.current = null;
     };
   }, [load, revision]);
-
-  useEffect(() => {
-    if (editing) formRef.current?.scrollIntoView({ block: "nearest" });
-  }, [editing]);
 
   const settings = data?.settings;
   const providers = data?.providers ?? [];
@@ -127,27 +147,69 @@ export function AdminAi({ busy, revision, act, report }: Props) {
   /** Run a mutation, then reload the list. */
   const mutate = async (
     fn: () => Promise<unknown>,
-    warning = "Apply this AI configuration change? It affects the assistant for everyone.",
-    confirmed = false,
-  ) => {
+    warning:
+      | string
+      | {
+          title: string;
+          body?: string;
+          confirmLabel?: string;
+          destructive?: boolean;
+        } = {
+      title: "Apply this AI change?",
+      body: "This changes the assistant for everyone.",
+      confirmLabel: "Apply change",
+    },
+  ): Promise<boolean> => {
     if (
-      !confirmed &&
-      !(await ask({ title: warning, confirmLabel: "Apply change" }))
+      mutation.current ||
+      externalBusy ||
+      !mounted.current ||
+      session.get() !== accountAtRender
     )
-      return;
-    void act(async () => {
-      try {
-        await fn();
-      } finally {
-        await load();
+      return false;
+    const ticket = {};
+    const account = session.get();
+    const current = () =>
+      mounted.current &&
+      mutation.current === ticket &&
+      session.get() === account;
+    mutation.current = ticket;
+    setPending(true);
+    let saved = false;
+    try {
+      if (
+        !(await ask(
+          typeof warning === "string"
+            ? { title: warning, confirmLabel: "Apply change" }
+            : warning,
+        ))
+      )
+        return false;
+      if (!current()) return false;
+      await act(async () => {
+        try {
+          await fn();
+          saved = current();
+        } finally {
+          if (current()) await load();
+        }
+      });
+      return saved && current();
+    } finally {
+      if (mutation.current === ticket) {
+        mutation.current = null;
+        if (mounted.current) setPending(false);
       }
-    });
+    }
   };
 
   const loadModels = (p: AiProvider) =>
     void act(async () => {
       const generation = loadRequest.current;
+      const account = session.get();
       const current = () =>
+        mounted.current &&
+        session.get() === account &&
         generation === loadRequest.current &&
         dataRef.current?.providers.some(
           (row) =>
@@ -179,6 +241,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
   const test = (p: AiProvider) =>
     void act(async () => {
       const generation = loadRequest.current;
+      const account = session.get();
       const requestedModel = modelFor(p).trim();
       if (!requestedModel || !p.controls_revision) return;
       setTests(({ [p.id]: _, ...rest }) => rest);
@@ -188,6 +251,8 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         p.controls_revision,
       );
       if (
+        !mounted.current ||
+        session.get() !== account ||
         generation !== loadRequest.current ||
         !dataRef.current?.providers.some(
           (current) =>
@@ -205,37 +270,32 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       setTests((t) => ({ ...t, [p.id]: result }));
     });
 
-  const remove = async (p: AiProvider) => {
-    if (
-      !(await ask({
-        title: `Delete ${p.name}? Its saved key is removed too. If the assistant was using it, the assistant turns off until you choose another provider.`,
-        confirmLabel: "Delete",
-        destructive: true,
-      }))
-    )
-      return;
+  const remove = (p: AiProvider) =>
     void mutate(
       async () => {
         await client.deleteAiProvider(p.id);
-        if (editing !== "new" && editing?.id === p.id) setEditing(null);
+        if (
+          mounted.current &&
+          session.get() === accountAtRender &&
+          editing !== "new" &&
+          editing?.id === p.id
+        )
+          setEditing(null);
       },
-      "",
-      true,
-    );
-  };
-
-  const turnOff = async () => {
-    if (
-      !(await ask({
-        title:
-          "Turn off the assistant? It stays off until you choose a provider again.",
-        confirmLabel: "Turn off",
+      {
+        title: `Delete ${p.name}?`,
+        body: "Its saved key is removed. If active, the assistant turns off until you choose another provider.",
+        confirmLabel: "Delete",
         destructive: true,
-      }))
-    )
-      return;
-    void mutate(() => client.updateAiSettings({ provider_id: null }), "", true);
-  };
+      },
+    );
+  const turnOff = () =>
+    void mutate(() => client.updateAiSettings({ provider_id: null }), {
+      title: "Turn off the assistant?",
+      body: "It stays off until you choose a provider again.",
+      confirmLabel: "Turn off",
+      destructive: true,
+    });
 
   const loadError = (
     <section className="card" role="alert">
@@ -257,7 +317,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
   return (
     <>
       {failed && loadError}
-      <section className="card ai-assistant fade-up">
+      <section className="card ai-assistant">
         <div className="section-heading">
           <h2>Assistant</h2>
           <button
@@ -270,7 +330,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         </div>
         <dl className="ai-facts">
           <div>
-            <dt>Configured from</dt>
+            <dt>Status</dt>
             <dd>{settings ? SOURCE_LABELS[settings.source] : "–"}</dd>
           </div>
           <div>
@@ -290,8 +350,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
         </dl>
         {settings?.source === "none" && (
           <p className="muted pad ai-providers-note">
-            The assistant is off. Add a provider below and choose Use for
-            assistant.
+            Choose Use for assistant on a provider.
           </p>
         )}
       </section>
@@ -318,6 +377,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
               min={1000}
               max={10000000}
               step={1000}
+              disabled={busy}
               value={nightBudget}
               onChange={(e) => setNightBudget(e.target.value)}
             />
@@ -358,35 +418,28 @@ export function AdminAi({ busy, revision, act, report }: Props) {
       {editing && settings && (
         <ProviderForm
           key={editing === "new" ? "new" : editing.id}
-          ref={formRef}
           editing={editing}
           busy={busy}
           onCancel={() => setEditing(null)}
           onSave={(save) =>
-            void mutate(
+            mutate(
               async () => {
                 await save();
-                setEditing(null);
+                if (mounted.current && session.get() === accountAtRender)
+                  setEditing(null);
               },
               editing === "new"
                 ? "Add this AI provider for the workspace?"
                 : `Save changes to ${editing?.name}?`,
             )
           }
-          onRemoveKey={async (p) => {
-            if (
-              !(await ask({
-                title: `Remove the saved key for ${p.name}? Requests will be sent without one.`,
-                confirmLabel: "Remove",
-                destructive: true,
-              }))
-            )
-              return;
-            void mutate(
-              () => client.updateAiProvider(p.id, { api_key: "" }),
-              "",
-              true,
-            );
+          onRemoveKey={(p) => {
+            void mutate(() => client.updateAiProvider(p.id, { api_key: "" }), {
+              title: `Remove the saved key for ${p.name}?`,
+              body: "Requests will be sent without a key.",
+              confirmLabel: "Remove",
+              destructive: true,
+            });
           }}
         />
       )}
@@ -418,7 +471,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
               </tr>
             </thead>
             <tbody>
-              {providers.map((p, n) => {
+              {providers.map((p) => {
                 const def = AI_PROVIDERS[p.kind];
                 const model = modelFor(p);
                 const choices = loaded[p.id];
@@ -430,13 +483,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                     ? tests[p.id]
                     : undefined;
                 return (
-                  <tr
-                    key={p.id}
-                    className={
-                      "fade-up stagger " + (p.enabled ? "" : "is-disabled")
-                    }
-                    style={stagger(n)}
-                  >
+                  <tr key={p.id} className={p.enabled ? "" : "is-disabled"}>
                     <td>
                       <strong>{p.name}</strong>
                       {p.id === activeId && (
@@ -449,28 +496,30 @@ export function AdminAi({ busy, revision, act, report }: Props) {
                     <td data-label="Key" className="nowrap">
                       {p.has_key ? (
                         <span className="ai-key">
-                          <KeyRound size={12} /> Key saved ({p.key_hint})
+                          <KeyRound size={12} /> Key saved
                         </span>
                       ) : (
                         <span className="muted">No key</span>
                       )}
                     </td>
                     <td data-label="Enabled">
-                      <input
-                        type="checkbox"
-                        role="switch"
-                        className="ai-switch"
-                        aria-label={`Enable ${p.name}`}
-                        checked={p.enabled}
-                        disabled={busy}
-                        onChange={(e) => {
-                          const enabled = e.target.checked;
-                          void mutate(
-                            () => client.updateAiProvider(p.id, { enabled }),
-                            `${enabled ? "Enable" : "Disable"} ${p.name} for the workspace?`,
-                          );
-                        }}
-                      />
+                      <label className="ai-provider-toggle">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          className="ai-switch"
+                          aria-label={`Enable ${p.name}`}
+                          checked={p.enabled}
+                          disabled={busy}
+                          onChange={(e) => {
+                            const enabled = e.target.checked;
+                            void mutate(
+                              () => client.updateAiProvider(p.id, { enabled }),
+                              `${enabled ? "Enable" : "Disable"} ${p.name} for the workspace?`,
+                            );
+                          }}
+                        />{" "}
+                      </label>
                     </td>
                     <td data-label="Model">
                       <div
@@ -640,7 +689,7 @@ export function AdminAi({ busy, revision, act, report }: Props) {
               {data && !providers.length && (
                 <tr>
                   <td colSpan={5} className="muted table-empty">
-                    No providers yet. Add one to turn on the assistant.
+                    No providers yet.
                   </td>
                 </tr>
               )}
@@ -725,23 +774,35 @@ function ProviderManagement({
 }
 
 type FormProps = {
-  ref: Ref<HTMLElement>;
   editing: AiProvider | "new";
   busy: boolean;
   onCancel: () => void;
-  onSave: (save: SaveFn) => void;
+  onSave: (save: SaveFn) => Promise<boolean>;
   onRemoveKey: (p: AiProvider) => void;
 };
 
 /** Add or edit a provider. The key is write-only: it is never shown again. */
 function ProviderForm({
-  ref,
   editing,
   busy,
   onCancel,
   onSave,
   onRemoveKey,
 }: FormProps) {
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const pending = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const working = busy || saving;
+  const focus = useModalFocus(() => {
+    if (!pending.current) onCancel();
+  }, working);
   const existing = editing === "new" ? null : editing;
   const [kind, setKind] = useState<AiProviderKind>(existing?.kind ?? "openai");
   const def = AI_PROVIDERS[kind];
@@ -764,9 +825,13 @@ function ProviderForm({
     setKind(next);
   };
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const key = apiKey;
+    if (pending.current || busy) return;
+    pending.current = true;
+    setSaving(true);
+    setSaveError("");
+    const key = apiKey.trim();
     const opts = {
       ...existing?.options,
       ...Object.fromEntries(
@@ -775,15 +840,32 @@ function ProviderForm({
     };
     const body = {
       name: name.trim() || def.label,
-      base_url: baseUrl.trim() || undefined,
+      base_url: baseUrl.trim(),
       options: opts,
       ...(key ? { api_key: key } : {}),
     };
-    onSave(() =>
-      existing
-        ? client.updateAiProvider(existing.id, body)
-        : client.createAiProvider({ kind, ...body }),
-    );
+    try {
+      const saved = await onSave(() =>
+        existing
+          ? client.updateAiProvider(existing.id, {
+              ...body,
+              expected_revision: existing.updated_at ?? undefined,
+            })
+          : client.createAiProvider({ kind, ...body }),
+      );
+      if (!saved && alive.current)
+        setSaveError("Changes were not saved. Review them and try again.");
+    } catch (error) {
+      if (alive.current)
+        setSaveError(
+          error instanceof Error
+            ? error.message
+            : "Couldn’t save this provider. Try again.",
+        );
+    } finally {
+      pending.current = false;
+      if (alive.current) setSaving(false);
+    }
   };
 
   const prefixes = def.keyPrefixes ?? [];
@@ -803,127 +885,160 @@ function ProviderForm({
       ? `This doesn't look like a ${def.label} key. Those start with ${prefixes.join(" or ")}.`
       : "";
 
-  return (
-    <section className="card ai-form-card fade-up" ref={ref}>
-      <div className="section-heading">
-        <h2>{existing ? `Edit ${existing.name}` : "Add a provider"}</h2>
-      </div>
-      <form className="ai-form" onSubmit={submit}>
-        <label className="wide">
-          Provider
-          <Select
-            searchable
-            aria-label="Providers"
-            value={kind}
-            disabled={!!existing}
-            onChange={(e) => changeKind(e.target.value as AiProviderKind)}
-          >
-            <optgroup label="Cloud">
-              {offered(CLOUD_KINDS, kind).map((k) => (
-                <option key={k} value={k}>
-                  {AI_PROVIDERS[k].label}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Local">
-              {offered(LOCAL_KINDS, kind).map((k) => (
-                <option key={k} value={k}>
-                  {AI_PROVIDERS[k].label}
-                </option>
-              ))}
-            </optgroup>
-          </Select>
-          <small className="field-hint">
-            {def.hint}
-            {existing ? " The provider type can't be changed." : ""}
-          </small>
-        </label>
-        <label>
-          Name
-          <input
-            required
-            maxLength={100}
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <label>
-          Base URL
-          <input
-            type="url"
-            required={!def.defaultBaseUrl}
-            maxLength={500}
-            placeholder={def.defaultBaseUrl || "https://…"}
-            value={baseUrl}
-            onChange={(e) => setBaseUrl(e.target.value)}
-          />
-          {!def.defaultBaseUrl && (
-            <small className="field-hint">
-              Required.{" "}
-              {kind === "azure"
-                ? "Your resource URL, e.g. https://name.openai.azure.com."
-                : "The address of your server's OpenAI-compatible API."}
-            </small>
-          )}
-        </label>
-        <label>
-          API key
-          <input
-            type="password"
-            autoComplete="new-password"
-            spellCheck={false}
-            maxLength={500}
-            placeholder={
-              existing?.has_key
-                ? "Leave blank to keep the saved key"
-                : prefixes[0]
-                  ? `${prefixes[0]}…`
-                  : ""
-            }
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-          />
-          {keyWarning ? (
-            <small className="field-hint field-warning" role="status">
-              {keyWarning}
-            </small>
-          ) : (
-            keyHint && <small className="field-hint">{keyHint}</small>
-          )}
-        </label>
-        {def.options.map((o) => (
-          <label key={o.key}>
-            {o.label}
+  return createPortal(
+    <div
+      className="modal-backdrop"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !working) onCancel();
+      }}
+    >
+      <section
+        className="modal ai-form-card ai-provider-modal"
+        ref={focus.ref}
+        data-modal-focus={focus.id}
+        role="dialog"
+        aria-modal="true"
+        aria-label={existing ? "Edit provider" : "Add provider"}
+        tabIndex={-1}
+      >
+        <div className="section-heading">
+          <h2>{existing ? `Edit ${existing.name}` : "Add a provider"}</h2>
+        </div>
+        <form className="ai-form" onSubmit={(event) => void submit(event)}>
+          <label className="wide">
+            Provider
+            <Select
+              searchable
+              aria-label="Providers"
+              value={kind}
+              disabled={working || !!existing}
+              onChange={(e) => changeKind(e.target.value as AiProviderKind)}
+            >
+              <optgroup label="Cloud">
+                {offered(CLOUD_KINDS, kind).map((k) => (
+                  <option key={k} value={k}>
+                    {AI_PROVIDERS[k].label}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Local">
+                {offered(LOCAL_KINDS, kind).map((k) => (
+                  <option key={k} value={k}>
+                    {AI_PROVIDERS[k].label}
+                  </option>
+                ))}
+              </optgroup>
+            </Select>
+          </label>
+          <details className="wide ai-provider-help">
+            <summary>Provider details</summary>
+            <p className="field-hint">
+              {def.hint}
+              {existing ? " The provider type can't be changed." : ""}
+            </p>
+          </details>
+          <label>
+            Name
             <input
-              required={o.required}
-              maxLength={50}
-              placeholder={o.placeholder}
-              value={options[o.key] ?? ""}
-              onChange={(e) =>
-                setOptions((v) => ({ ...v, [o.key]: e.target.value }))
-              }
+              required
+              maxLength={80}
+              disabled={working}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
             />
           </label>
-        ))}
-        <div className="button-row wide">
-          {existing?.has_key && (
+          <label>
+            Base URL
+            <input
+              type="url"
+              required={!def.defaultBaseUrl}
+              maxLength={500}
+              placeholder={def.defaultBaseUrl || "https://…"}
+              disabled={working}
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+            />
+            {!def.defaultBaseUrl && (
+              <small className="field-hint">
+                Required.{" "}
+                {kind === "azure"
+                  ? "Your resource URL, e.g. https://name.openai.azure.com."
+                  : "The address of your server's OpenAI-compatible API."}
+              </small>
+            )}
+          </label>
+          <label>
+            API key
+            <input
+              type="password"
+              autoComplete="new-password"
+              spellCheck={false}
+              maxLength={4000}
+              placeholder={
+                existing?.has_key
+                  ? "Leave blank to keep the saved key"
+                  : prefixes[0]
+                    ? `${prefixes[0]}…`
+                    : ""
+              }
+              disabled={working}
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            {keyWarning ? (
+              <small className="field-hint field-warning" role="status">
+                {keyWarning}
+              </small>
+            ) : (
+              keyHint && <small className="field-hint">{keyHint}</small>
+            )}
+          </label>
+          {def.options.map((o) => (
+            <label key={o.key}>
+              {o.label}
+              <input
+                required={o.required}
+                maxLength={50}
+                placeholder={o.placeholder}
+                disabled={working}
+                value={options[o.key] ?? ""}
+                onChange={(e) =>
+                  setOptions((v) => ({ ...v, [o.key]: e.target.value }))
+                }
+              />
+            </label>
+          ))}
+          {saveError && (
+            <p className="wide" role="alert">
+              {saveError}
+            </p>
+          )}
+          <div className="button-row wide">
+            {existing?.has_key && (
+              <button
+                type="button"
+                className="danger"
+                disabled={working}
+                onClick={() => onRemoveKey(existing)}
+              >
+                <Trash2 size={13} /> Remove saved key
+              </button>
+            )}
             <button
               type="button"
-              className="danger"
-              disabled={busy}
-              onClick={() => onRemoveKey(existing)}
+              className="secondary"
+              disabled={working}
+              onClick={onCancel}
             >
-              <Trash2 size={13} /> Remove saved key
+              Cancel
             </button>
-          )}
-          <button type="button" className="secondary" onClick={onCancel}>
-            Cancel
-          </button>
-          <button className="primary" disabled={busy}>
-            {existing ? "Save changes" : "Add provider"}
-          </button>
-        </div>
-      </form>
-    </section>
+            <button className="primary" disabled={working}>
+              {saving ? "Saving…" : existing ? "Save changes" : "Add provider"}
+            </button>
+          </div>
+        </form>
+      </section>
+    </div>,
+    document.body,
   );
 }

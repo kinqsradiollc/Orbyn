@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   CalendarRange,
-  Check,
   ChevronDown,
+  Check,
   CircleX,
   Clock,
   MoveLeft,
@@ -17,6 +17,7 @@ import {
   type Plan,
   type PlanApplied,
 } from "@orbyn/core";
+import { session } from "../lib/session";
 import {
   byDay,
   errorText,
@@ -61,7 +62,10 @@ type Props = {
  * their deadline (the planner's own ticked, yours unticked), what's at risk
  * or didn't fit, and Apply.
  */
-export function PlanCard({
+export function PlanCard(props: Props) {
+  return <PlanCardBody key={`${session.get()}:${props.plan.id}`} {...props} />;
+}
+function PlanCardBody({
   plan,
   onApply,
   onOpenInPlanner,
@@ -71,21 +75,50 @@ export function PlanCard({
   onLookAhead,
   onShowOnCalendar,
 }: Props) {
+  const owner = useRef(session.get()).current;
+  const mounted = useRef(true),
+    operation = useRef(false);
+  const owns = () => mounted.current && session.get() === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  const shownLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.floor(limit))
+    : 6;
   const [pending, setPending] = useState(false);
-  const [outcome, setOutcome] = useState<{ ok: boolean; text: string } | null>(
-    null,
-  );
+  const [outcome, setOutcome] = useState<{
+    ok: boolean;
+    text: string;
+    at?: string;
+  } | null>(null);
   const [ownTicks, setOwnTicks] = useState<Record<string, boolean>>({});
   const ticks = heldTicks ?? ownTicks;
-  const tick = (id: string, on: boolean) =>
+  const tick = (id: string, on: boolean) => {
+    if (
+      !owns() ||
+      operation.current ||
+      applied ||
+      !plan.moves?.some((move) => move.block_id === id)
+    )
+      return;
     onTick ? onTick(id, on) : setOwnTicks((t) => ({ ...t, [id]: on }));
+  };
   const applied = plan.applied || outcome?.ok;
   const days = byDay(plan.blocks);
   const moves = plan.moves ?? [];
   const chosen = tickedMoves(plan, ticks);
   const canLookFurther = !!onLookAhead && plan.days < PLAN_MAX_DAYS && !applied;
   const lookFurther = (
-    <button type="button" className="text-button" onClick={onLookAhead}>
+    <button
+      type="button"
+      className="text-button"
+      disabled={pending}
+      onClick={onLookAhead}
+    >
       Look further ahead
     </button>
   );
@@ -96,15 +129,18 @@ export function PlanCard({
   ].sort()[0];
 
   const apply = async () => {
-    if (!onApply) return;
+    if (!owns() || !onApply || operation.current || applied) return;
+    operation.current = true;
     setPending(true);
     setOutcome(null);
     try {
-      setOutcome({ ok: true, text: await onApply(chosen) });
+      const text = await onApply(chosen);
+      if (owns()) setOutcome({ ok: true, text, at: firstAt });
     } catch (e) {
-      setOutcome({ ok: false, text: errorText(e) });
+      if (owns()) setOutcome({ ok: false, text: errorText(e) });
     } finally {
-      setPending(false);
+      operation.current = false;
+      if (owns()) setPending(false);
     }
   };
 
@@ -127,26 +163,44 @@ export function PlanCard({
             <li key={key}>
               <h4>{longDay(key)}</h4>
               <ul>
-                {blocks.slice(0, limit).map((b) => (
-                  <li key={b.item_id + b.start_at}>
-                    <span className="plan-time">
-                      {spanLabel(b.start_at, b.end_at)}
-                    </span>
-                    <span className="plan-title">
-                      {b.title}
-                      {b.parts > 1 && (
-                        <small>
-                          {" "}
-                          · Session {b.part} of {b.parts}
-                        </small>
-                      )}
-                      {b.frame_name && <small> · {b.frame_name}</small>}
-                    </span>
-                  </li>
-                ))}
-                {blocks.length > limit && (
+                {(expanded.has(key) ? blocks : blocks.slice(0, shownLimit)).map(
+                  (b) => (
+                    <li key={b.item_id + b.start_at}>
+                      <span className="plan-time">
+                        {spanLabel(b.start_at, b.end_at)}
+                      </span>
+                      <span className="plan-title">
+                        {b.title}
+                        {b.parts > 1 && (
+                          <small>
+                            {" "}
+                            · Session {b.part} of {b.parts}
+                          </small>
+                        )}
+                        {b.frame_name && <small> · {b.frame_name}</small>}
+                      </span>
+                    </li>
+                  ),
+                )}
+                {blocks.length > shownLimit && (
                   <li className="plan-more">
-                    and {plural(blocks.length - limit, "more session")}
+                    <button
+                      type="button"
+                      className="text-button"
+                      aria-expanded={expanded.has(key)}
+                      onClick={() =>
+                        setExpanded((current) => {
+                          const next = new Set(current);
+                          if (next.has(key)) next.delete(key);
+                          else next.add(key);
+                          return next;
+                        })
+                      }
+                    >
+                      {expanded.has(key)
+                        ? "Show fewer"
+                        : `Show all ${blocks.length} sessions`}
+                    </button>
                   </li>
                 )}
               </ul>
@@ -235,6 +289,7 @@ export function PlanCard({
         <div className="plan-actions">
           {onApply && (
             <button
+              type="button"
               className="primary"
               disabled={
                 pending || applied || (!plan.blocks.length && !chosen.length)
@@ -246,7 +301,12 @@ export function PlanCard({
             </button>
           )}
           {onOpenInPlanner && (
-            <button className="secondary" onClick={onOpenInPlanner}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={pending}
+              onClick={onOpenInPlanner}
+            >
               <CalendarRange size={15} /> Open in planner
             </button>
           )}
@@ -261,11 +321,13 @@ export function PlanCard({
         >
           {outcome.ok ? <Check size={13} /> : <CircleX size={13} />}
           <span>{outcome.text}</span>
-          {outcome.ok && onShowOnCalendar && firstAt && (
+          {outcome.ok && onShowOnCalendar && outcome.at && (
             <button
               type="button"
               className="text-button"
-              onClick={() => onShowOnCalendar(firstAt)}
+              onClick={() => {
+                if (outcome.at) onShowOnCalendar(outcome.at);
+              }}
             >
               Show on calendar
             </button>

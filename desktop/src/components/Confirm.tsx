@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { AlertTriangle } from "lucide-react";
+import { createPortal } from "react-dom";
 
 export type AskOptions = {
   /** The question, as a short sentence. */
@@ -17,6 +18,8 @@ export type AskOptions = {
   body?: string;
   /** The word on the button that goes ahead. Defaults to "Continue". */
   confirmLabel?: string;
+  /** Names the safe return path when Cancel would be ambiguous. */
+  cancelLabel?: string;
   /** Marks the action as one that destroys something. */
   destructive?: boolean;
   /** Leaves out the cancel button: a message rather than a question. */
@@ -120,6 +123,7 @@ function ConfirmDialog({
   title,
   body,
   confirmLabel,
+  cancelLabel,
   destructive,
   tellOnly,
   input,
@@ -131,6 +135,13 @@ function ConfirmDialog({
   const id = useId();
   const [value, setValue] = useState(input?.value ?? "");
   const root = useRef<HTMLDivElement>(null);
+  const dialog = useRef<HTMLDialogElement>(null);
+  const opener = useRef(document.activeElement as HTMLElement | null);
+  useEffect(() => {
+    const node = dialog.current;
+    node?.showModal();
+    return () => node?.close();
+  }, []);
   const field = useRef<HTMLInputElement>(null);
   const settled = useRef(false);
   const go = useRef<HTMLButtonElement>(null);
@@ -143,7 +154,7 @@ function ConfirmDialog({
 
   // Start at the field or safe action; keep focus here and return it on close.
   useEffect(() => {
-    const opener = document.activeElement as HTMLElement | null;
+    const previousFocus = opener.current;
     const backgrounds = Array.from(
       document.querySelectorAll<HTMLElement>(
         ".app, .modal-backdrop, dialog[open]",
@@ -204,26 +215,28 @@ function ConfirmDialog({
       });
       document.body.style.overflow = overflow;
       if (
-        opener?.isConnected &&
-        !opener.closest('[inert], [aria-hidden="true"]')
+        previousFocus?.isConnected &&
+        !previousFocus.closest('[inert], [aria-hidden="true"]')
       )
-        opener.focus();
+        previousFocus.focus();
     };
   }, []);
 
-  return (
-    <div
-      className="modal-backdrop"
+  return createPortal(
+    <dialog
+      ref={dialog}
+      className="modal-backdrop confirm-backdrop"
+      role="alertdialog"
+      aria-modal="true"
+      aria-describedby={body ? `${id}-body` : undefined}
+      aria-labelledby={`${id}-title`}
+      onCancel={(event) => {
+        event.preventDefault();
+        latest.current(false);
+      }}
       onMouseDown={(e) => e.target === e.currentTarget && latest.current(false)}
     >
-      <div
-        className="modal modal-small confirm-dialog"
-        ref={root}
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={`${id}-title`}
-        aria-describedby={body ? `${id}-body` : undefined}
-      >
+      <div className="modal modal-small confirm-dialog" ref={root}>
         <div className="confirm-body">
           {destructive && (
             <span className="confirm-mark" aria-hidden="true">
@@ -264,7 +277,7 @@ function ConfirmDialog({
                 className="ghost"
                 onClick={() => latest.current(false)}
               >
-                Cancel
+                {cancelLabel ?? "Cancel"}
               </button>
             )}
             <button
@@ -277,6 +290,7 @@ function ConfirmDialog({
           </div>
         </form>
       </div>
-    </div>
+    </dialog>,
+    document.body,
   );
 }

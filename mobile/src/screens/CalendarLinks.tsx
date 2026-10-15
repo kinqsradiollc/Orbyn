@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Alert } from "../lib/alert";
 import { Switch } from "../components/Switch";
@@ -15,6 +15,8 @@ import {
 import { Chip, ChipRow } from "../components/Chip";
 import { confirmAction } from "../lib/confirm";
 import { Button } from "../components/Button";
+import { BottomSheet } from "../components/BottomSheet";
+import { MoreMenu } from "../components/MoreMenu";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { Field } from "../components/Field";
 import { Icon } from "../components/Icon";
@@ -23,7 +25,7 @@ import { client } from "../lib/api";
 import { LIST_COLORS, shareText } from "../lib/planning";
 import { timeAgo } from "../lib/progress";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, animateLayout, Pressable } from "../motion";
+import { animateLayout, Pressable } from "../motion";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -32,18 +34,57 @@ import { shared } from "../styles";
  * safe to share. Links are only shown when made, so a new one replaces the
  * old. The share sheet includes Copy.
  */
-export function CalendarFeedCard() {
+export function CalendarFeedCard({
+  onBusyChange,
+}: { onBusyChange?: (busy: boolean) => void } = {}) {
   const { busy, error, setError, run } = useRun();
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   const [settings, setSettings] = useState<CalendarFeedSettings | null>(null);
   const [links, setLinks] = useState<{ full?: string; busy?: string }>({});
 
+  const mounted = useRef(true);
+  const request = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [readFailed, setReadFailed] = useState(false);
+  const load = useCallback(async () => {
+    const epoch = ++request.current;
+    setLoading(true);
+    try {
+      const value = await client.calendarFeedSettings();
+      if (!mounted.current || request.current !== epoch) return;
+      setSettings(value);
+      setReadFailed(false);
+    } catch (error) {
+      if (mounted.current && request.current === epoch) {
+        setReadFailed(true);
+        setError(
+          error instanceof Error
+            ? error.message
+            : "Couldn't load calendar feed.",
+        );
+      }
+    } finally {
+      if (mounted.current && request.current === epoch) setLoading(false);
+    }
+  }, [setError]);
   useEffect(() => {
-    void run(async () => setSettings(await client.calendarFeedSettings()));
-  }, [run]);
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      ++request.current;
+    };
+  }, [load]);
+  const blocked = busy || loading || readFailed;
 
   const make = (busyOnly: boolean) =>
     run(async () => {
+      if (blocked) return;
       const made = await client.createCalendarFeed({ busy: busyOnly });
+      if (!mounted.current) return;
       animateLayout();
       setLinks((l) => ({ ...l, [busyOnly ? "busy" : "full"]: made.url }));
       setSettings(
@@ -62,6 +103,7 @@ export function CalendarFeedCard() {
           onPress: () =>
             void run(async () => {
               await client.deleteCalendarFeed({ busy: busyOnly });
+              if (!mounted.current) return;
               animateLayout();
               setLinks((l) => ({ ...l, [busyOnly ? "busy" : "full"]: "" }));
               setSettings(
@@ -78,9 +120,18 @@ export function CalendarFeedCard() {
 
   return (
     <>
-      <Text style={[shared.eyebrow, s.eyebrow]}>CALENDAR FEED</Text>
+      <Text style={[shared.eyebrow, s.eyebrow]}>Calendar feed</Text>
       <View style={shared.card}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
+        {loading && <Text style={shared.small}>Loading feed settings…</Text>}
+        {readFailed && (
+          <Button
+            title="Retry feed settings"
+            secondary
+            disabled={busy || loading}
+            onPress={() => void load()}
+          />
+        )}
         <Text style={[shared.small, s.gap]}>
           Subscribe from Apple Calendar, Google Calendar or Outlook with a
           private link.
@@ -90,7 +141,7 @@ export function CalendarFeedCard() {
           detail="Your events and tasks with their details. Keep this link to yourself."
           on={!!settings?.enabled}
           url={links.full}
-          busy={busy}
+          busy={blocked}
           onMake={() => void make(false)}
           onOff={() => turnOff(false)}
         />
@@ -100,13 +151,13 @@ export function CalendarFeedCard() {
           detail="Just “Busy” times, with no details. Safe to share with others."
           on={!!settings?.busy_enabled}
           url={links.busy}
-          busy={busy}
+          busy={blocked}
           onMake={() => void make(true)}
           onOff={() => turnOff(true)}
         />
         <View style={s.divider} />
         <View style={s.switchRow}>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minWidth: 120 }}>
             <Text style={s.title}>Include sessions</Text>
             <Text style={shared.small}>
               Sessions appear with task names and deadlines in the full feed.
@@ -114,15 +165,16 @@ export function CalendarFeedCard() {
           </View>
           <Switch
             value={!!settings?.include_blocks}
-            disabled={busy || !settings}
+            disabled={blocked || !settings}
             trackColor={{ true: colors.accent }}
             accessibilityLabel="Include sessions in the feed"
             onValueChange={(include_blocks) =>
-              void run(async () =>
-                setSettings(
-                  await client.updateCalendarFeedSettings({ include_blocks }),
-                ),
-              )
+              void run(async () => {
+                const value = await client.updateCalendarFeedSettings({
+                  include_blocks,
+                });
+                if (mounted.current) setSettings(value);
+              })
             }
           />
         </View>
@@ -154,7 +206,7 @@ function FeedLink({
       <Text style={s.title}>{title}</Text>
       <Text style={[shared.small, s.gap]}>{detail}</Text>
       {!!url && (
-        <FadeIn style={s.secret}>
+        <View style={s.secret}>
           <Text selectable style={s.code}>
             {url}
           </Text>
@@ -164,7 +216,7 @@ function FeedLink({
             style={s.last}
             onPress={() => void shareText(url)}
           />
-        </FadeIn>
+        </View>
       )}
       {on && !url && (
         <Text style={[shared.small, s.gap]}>
@@ -253,7 +305,7 @@ function SettingsFields({
     off = false,
   ) => (
     <View style={s.switchRow}>
-      <View style={{ flex: 1 }}>
+      <View style={{ flex: 1, minWidth: 120 }}>
         <Text style={s.switchLabel}>{label}</Text>
         <Text style={shared.small}>{hint}</Text>
       </View>
@@ -338,8 +390,14 @@ function SettingsFields({
  * meetings, public holidays. Each kind starts with sensible settings; their
  * events show on your calendar, read-only.
  */
-export function SubscriptionsCard() {
+export function SubscriptionsCard({
+  onBusyChange,
+}: { onBusyChange?: (busy: boolean) => void } = {}) {
   const { busy, error, setError, run } = useRun();
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   const [subs, setSubs] = useState<CalendarSubscription[] | null>(null);
   const [adding, setAdding] = useState(false);
   const [open, setOpen] = useState<string | null>(null);
@@ -350,22 +408,54 @@ export function SubscriptionsCard() {
   const [kindPicked, setKindPicked] = useState(false);
   const [note, setNote] = useState("");
 
-  const load = async () => setSubs(await client.listCalendarSubscriptions());
+  const mounted = useRef(true);
+  const readEpoch = useRef(0);
+  const [loading, setLoading] = useState(true);
+  const [readFailed, setReadFailed] = useState(false);
+  const load = useCallback(async () => {
+    const epoch = ++readEpoch.current;
+    setLoading(true);
+    try {
+      const value = await client.listCalendarSubscriptions();
+      if (!mounted.current || readEpoch.current !== epoch) return;
+      setSubs(value);
+      setReadFailed(false);
+    } catch (error) {
+      if (mounted.current && readEpoch.current === epoch) {
+        setReadFailed(true);
+        setError(
+          error instanceof Error ? error.message : "Couldn't load calendars.",
+        );
+      }
+    } finally {
+      if (mounted.current && readEpoch.current === epoch) setLoading(false);
+    }
+  }, [setError]);
   useEffect(() => {
-    void run(load);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [run]);
-
-  const replace = (next: CalendarSubscription) =>
-    setSubs((list) => list?.map((x) => (x.id === next.id ? next : x)) ?? null);
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+      ++readEpoch.current;
+    };
+  }, [load]);
+  const blocked = busy || loading || readFailed;
+  const replace = (next: CalendarSubscription) => {
+    if (mounted.current)
+      setSubs(
+        (list) => list?.map((x) => (x.id === next.id ? next : x)) ?? null,
+      );
+  };
   const create = () =>
     run(async () => {
+      if (blocked) return;
       const made = await client.createCalendarSubscription({
         url: url.trim(),
         name: name.trim(),
         color,
         ...draft,
       });
+      if (!mounted.current) return;
       animateLayout();
       setAdding(false);
       setUrl("");
@@ -391,6 +481,7 @@ export function SubscriptionsCard() {
       () =>
         void run(async () => {
           await client.deleteCalendarSubscription(sub.id);
+          if (!mounted.current) return;
           animateLayout();
           await load();
         }),
@@ -398,15 +489,24 @@ export function SubscriptionsCard() {
 
   return (
     <>
-      <Text style={[shared.eyebrow, s.eyebrow]}>SUBSCRIBED CALENDARS</Text>
+      <Text style={[shared.eyebrow, s.eyebrow]}>Subscribed calendars</Text>
       <View style={shared.card}>
         <ErrorBanner error={error} onDismiss={() => setError("")} />
         <Text style={[shared.small, s.gap]}>
           Add read-only calendars by link. They refresh hourly.
         </Text>
         {!!note && <Text style={[shared.small, s.gap]}>{note}</Text>}
-        {subs === null && (
-          <Text style={shared.small}>{busy ? "Loading…" : ""}</Text>
+        {loading && <Text style={shared.small}>Loading calendars…</Text>}
+        {readFailed && (
+          <Button
+            title="Retry calendars"
+            secondary
+            disabled={busy || loading}
+            onPress={() => void load()}
+          />
+        )}
+        {subs?.length === 0 && !loading && !readFailed && (
+          <Text style={shared.small}>No subscribed calendars.</Text>
         )}
         {subs?.map((sub, n) => (
           <View key={sub.id} style={[s.sub, n > 0 && s.divider]}>
@@ -418,13 +518,9 @@ export function SubscriptionsCard() {
                   !sub.visible && s.faded,
                 ]}
               />
-              <View style={{ flex: 1 }}>
-                <Text style={s.title} numberOfLines={1}>
-                  {sub.name}
-                </Text>
-                <Text style={shared.small} numberOfLines={2}>
-                  {summaryOf(sub)}
-                </Text>
+              <View style={{ flex: 1, minWidth: 120 }}>
+                <Text style={s.title}>{sub.name}</Text>
+                <Text style={shared.small}>{summaryOf(sub)}</Text>
               </View>
             </View>
             <Text style={[shared.small, s.subMeta]}>
@@ -437,54 +533,65 @@ export function SubscriptionsCard() {
                 {sub.last_error}
               </Text>
             )}
-            {open === sub.id && (
-              <FadeIn>
-                <SettingsFields
-                  value={sub}
-                  disabled={busy}
-                  onChange={(next) => void change(sub, next)}
-                />
-              </FadeIn>
-            )}
-            <View style={s.subActions}>
-              <SmallAction
-                label={open === sub.id ? "Done" : "Settings"}
-                disabled={false}
-                onPress={() => {
-                  animateLayout();
-                  setOpen(open === sub.id ? null : sub.id);
-                }}
+            <BottomSheet
+              visible={open === sub.id}
+              title={sub.name}
+              closeDisabled={busy}
+              onClose={() => {
+                if (!busy) setOpen(null);
+              }}
+            >
+              <ErrorBanner error={error} onDismiss={() => setError("")} />
+              <SettingsFields
+                value={sub}
+                disabled={blocked}
+                onChange={(next) => void change(sub, next)}
               />
-              <SmallAction
-                label={sub.visible ? "Hide" : "Show"}
-                disabled={busy}
-                onPress={() =>
-                  void change(sub, { ...sub, visible: !sub.visible })
-                }
-              />
-              <SmallAction
-                label="Refresh"
-                disabled={busy}
-                onPress={() =>
-                  void run(async () =>
-                    replace(await client.refreshCalendarSubscription(sub.id)),
-                  )
-                }
-              />
-              <SmallAction
-                label="Remove"
-                disabled={busy}
-                onPress={() => remove(sub)}
-              />
-            </View>
+            </BottomSheet>
+            <MoreMenu
+              label={`${sub.name} options`}
+              title={sub.name}
+              disabled={blocked}
+              actions={[
+                {
+                  label: open === sub.id ? "Close settings" : "Settings",
+                  onPress: () => setOpen(open === sub.id ? null : sub.id),
+                },
+                {
+                  label: sub.visible ? "Hide calendar" : "Show calendar",
+                  onPress: () =>
+                    void change(sub, { ...sub, visible: !sub.visible }),
+                },
+                {
+                  label: "Refresh calendar",
+                  onPress: () =>
+                    void run(async () =>
+                      replace(await client.refreshCalendarSubscription(sub.id)),
+                    ),
+                },
+                {
+                  label: "Remove calendar",
+                  destructive: true,
+                  onPress: () => remove(sub),
+                },
+              ]}
+            />
           </View>
         ))}
-        {adding ? (
-          <FadeIn style={[s.form, !!subs?.length && s.divider]}>
+        <BottomSheet
+          visible={adding}
+          title="Add calendar"
+          closeDisabled={busy}
+          onClose={() => {
+            if (!busy) setAdding(false);
+          }}
+        >
+          <View style={s.form}>
             <Field label="Link">
               <TextInput
                 style={shared.input}
                 value={url}
+                editable={!blocked}
                 onChangeText={setUrl}
                 placeholder="webcal://…"
                 placeholderTextColor={colors.faint}
@@ -499,6 +606,7 @@ export function SubscriptionsCard() {
               <TextInput
                 style={shared.input}
                 value={name}
+                editable={!blocked}
                 onChangeText={(next) => {
                   setName(next);
                   // Until a kind is picked by hand, the name suggests one.
@@ -525,8 +633,11 @@ export function SubscriptionsCard() {
                     key={c}
                     accessibilityRole="radio"
                     accessibilityLabel={`Colour ${n + 1} of ${LIST_COLORS.length}`}
-                    accessibilityState={{ checked: color === c }}
-                    hitSlop={4}
+                    accessibilityState={{
+                      checked: color === c,
+                      disabled: blocked,
+                    }}
+                    disabled={blocked}
                     onPress={() => setColor(c)}
                     style={[s.swatch, { backgroundColor: c }]}
                   >
@@ -544,7 +655,7 @@ export function SubscriptionsCard() {
             </Field>
             <SettingsFields
               value={draft}
-              disabled={busy}
+              disabled={blocked}
               onChange={(next) => {
                 if (next.kind !== draft.kind) setKindPicked(true);
                 setDraft(next);
@@ -559,24 +670,28 @@ export function SubscriptionsCard() {
               <Button
                 title={busy ? "Reading it…" : "Subscribe"}
                 icon="check"
-                disabled={busy || !isCalendarLink(url.trim()) || !name.trim()}
+                disabled={
+                  blocked || !isCalendarLink(url.trim()) || !name.trim()
+                }
                 style={s.flex}
                 onPress={() => void create()}
               />
               <Button
                 secondary
                 title="Cancel"
+                disabled={busy}
                 style={s.flex}
                 onPress={() => setAdding(false)}
               />
             </View>
-          </FadeIn>
-        ) : (
+          </View>
+        </BottomSheet>
+        {!adding && (
           <Button
             secondary
             title="Add a calendar"
             icon="plus"
-            disabled={busy || (subs?.length ?? 0) >= 20}
+            disabled={blocked || (subs?.length ?? 0) >= 20}
             style={[s.last, !!subs?.length && s.addTop]}
             onPress={() => {
               animateLayout();
@@ -592,7 +707,12 @@ export function SubscriptionsCard() {
 
 const s = themed(() =>
   StyleSheet.create({
-    eyebrow: { marginTop: 8 },
+    eyebrow: {
+      marginTop: 8,
+      fontSize: 13,
+      letterSpacing: 0,
+      textTransform: "none",
+    },
     gap: { marginBottom: 12 },
     divider: {
       borderTopWidth: StyleSheet.hairlineWidth,
@@ -617,15 +737,20 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.text,
       backgroundColor: colors.surface,
-      borderRadius: 8,
+      borderRadius: radii.input,
       padding: 10,
       marginBottom: 10,
     },
-    actions: { flexDirection: "row", gap: 10 },
-    flex: { flex: 1, marginBottom: 0 },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    flex: { flex: 1, minWidth: 120, marginBottom: 0 },
     last: { marginBottom: 0 },
     addTop: { marginTop: 14 },
-    switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+    switchRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 12,
+    },
     switchLabel: {
       fontFamily: fonts.medium,
       fontSize: 15,
@@ -635,16 +760,16 @@ const s = themed(() =>
     subTop: { flexDirection: "row", alignItems: "center", gap: 10 },
     subMeta: { marginLeft: 20 },
     subActions: { flexDirection: "row", gap: 8 },
-    dot: { width: 10, height: 10, borderRadius: 5 },
+    dot: { width: 10, height: 10, borderRadius: radii.pill },
     problem: { color: colors.danger },
     form: {},
     swatches: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
     settings: { gap: 12, marginTop: 12, marginBottom: 12 },
     faded: { opacity: 0.45 },
     swatch: {
-      width: 34,
-      height: 34,
-      borderRadius: 17,
+      width: 44,
+      height: 44,
+      borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",
     },

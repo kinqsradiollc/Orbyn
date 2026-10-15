@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useId,
   useRef,
   useState,
   type CSSProperties,
@@ -29,6 +30,7 @@ import {
 import { hourLabel, minutesOf, timeLabel } from "./dates";
 import { usePlanning } from "../../app/planning";
 import { layoutSpans, type Span } from "./layout";
+import { BlockDialog } from "./BlockDialog";
 import { Popover } from "../../components/Popover";
 import { entryClass, listLook } from "./MonthView";
 import { dayDropTarget } from "../../lib/drag";
@@ -200,6 +202,7 @@ export function CalendarGrid({
 }: Props) {
   const { listById } = usePlanning();
   const now = useNow();
+  const keyboardHintId = useId();
   const scroller = useRef<HTMLDivElement>(null);
   const cols = useRef<(HTMLDivElement | null)[]>([]);
   const gesture = useRef<Gesture | null>(null);
@@ -211,6 +214,7 @@ export function CalendarGrid({
     copy: boolean;
   } | null>(null);
   const dragRef = useRef(drag);
+  const [ghostEdit, setGhostEdit] = useState<PlannedBlock | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [duePicker, setDuePicker] = useState<{
     entries: CalendarEntry[];
@@ -328,8 +332,12 @@ export function CalendarGrid({
         const t = g.target;
         if (t.kind === "entry")
           onChangeEntry(t.entry, d.start, d.end, g.mode === "resize");
-        else if (t.kind === "ghost") onPinGhost(t.ghost, d.start, d.end);
-        else if (g.mode === "move" && e.altKey)
+        else if (t.kind === "ghost") {
+          const current = ghosts.find(
+            (ghost) => ghostId(ghost) === ghostId(t.ghost),
+          );
+          if (tunable && current) onPinGhost(current, d.start, d.end);
+        } else if (g.mode === "move" && e.altKey)
           onDuplicateBlock(t.block, d.start);
         else onChangeBlock(t.block, d.start, d.end);
       }
@@ -371,6 +379,21 @@ export function CalendarGrid({
 
   // ---- dropping tasks on a whole day (its heading or all-day row) ----
   const [dropDay, setDropDay] = useState<string | null>(null);
+  // A pointer-up in a different range must not commit an old selection.
+  useEffect(() => {
+    gesture.current = null;
+    dragRef.current = null;
+    selectingRef.current = null;
+    setDragState(null);
+    setSelectingState(null);
+    setDropHint(null);
+    setDropDay(null);
+    setDuePicker(null);
+    setGhostEdit(null);
+    setSelectedTaskId(null);
+    suppressClick.current = false;
+    skipClick.current = false;
+  }, [rangeKey]);
   const dayDrop = (d: Date) =>
     onDropTaskOnDay
       ? dayDropTarget(
@@ -473,12 +496,27 @@ export function CalendarGrid({
     }),
   ];
   const ghostById = new Map(ghosts.map((g) => [ghostId(g), g]));
+  useEffect(() => {
+    if (
+      ghostEdit &&
+      (!tunable ||
+        !ghosts.some((ghost) => ghostId(ghost) === ghostId(ghostEdit)))
+    )
+      setGhostEdit(null);
+  }, [ghosts, ghostEdit, tunable]);
 
   return (
     <div
       className={"timegrid" + (selectedTaskId ? " has-selection" : "")}
       style={style}
     >
+      <span id={keyboardHintId} className="sr-only">
+        Use Up and Down to select a time. Home selects 8 AM; End selects 11:45
+        PM. Press C to create an event at the selected time.
+      </span>
+      <span className="sr-only" role="status">
+        {slot && `Selected ${slot.toLocaleDateString()}, ${timeLabel(slot)}`}
+      </span>
       <div className="tg-head">
         <span className="tg-corner tg-zone-heads">
           {zones.length > 0 &&
@@ -513,11 +551,7 @@ export function CalendarGrid({
         ))}
       </div>
       <div className="tg-allday">
-        <span className="tg-label">
-          All day
-          <br />
-          no time
-        </span>
+        <span className="tg-label">All day</span>
         {days.map((d) => (
           <div
             className={
@@ -613,6 +647,50 @@ export function CalendarGrid({
                   (draft ? " is-selecting" : "")
                 }
                 style={{ "--hour": HOUR_PX + "px" } as CSSProperties}
+                role="group"
+                tabIndex={0}
+                aria-label={d.toLocaleDateString(undefined, {
+                  weekday: "long",
+                  month: "long",
+                  day: "numeric",
+                })}
+                aria-describedby={keyboardHintId}
+                onKeyDown={(e) => {
+                  if (
+                    e.target !== e.currentTarget ||
+                    e.altKey ||
+                    e.metaKey ||
+                    e.ctrlKey
+                  )
+                    return;
+                  const current =
+                    slot && sameDay(slot, d) ? minutesOf(slot) : 9 * 60;
+                  const next =
+                    e.key === "ArrowUp"
+                      ? current - SNAP
+                      : e.key === "ArrowDown"
+                        ? current + SNAP
+                        : e.key === "Home"
+                          ? 8 * 60
+                          : e.key === "End"
+                            ? 24 * 60 - SNAP
+                            : null;
+                  if (next === null) return;
+                  e.preventDefault();
+                  const minutes = Math.max(0, Math.min(24 * 60 - SNAP, next));
+                  setSelectedTaskId(null);
+                  onSelectSlot(at(d, minutes));
+                  const el = scroller.current;
+                  if (el) {
+                    const top = minutes * PX_PER_MIN;
+                    if (top < el.scrollTop) el.scrollTop = top;
+                    else if (
+                      top + SNAP * PX_PER_MIN >
+                      el.scrollTop + el.clientHeight
+                    )
+                      el.scrollTop = top + SNAP * PX_PER_MIN - el.clientHeight;
+                  }
+                }}
                 onDragOver={(e) => onDragOver(e, n)}
                 onDragLeave={(e) => {
                   if (!e.currentTarget.contains(e.relatedTarget as Node))
@@ -1053,49 +1131,50 @@ export function CalendarGrid({
                       title={
                         tunable ? "Drag to pin it at another time" : undefined
                       }
-                      onPointerDown={
-                        tunable
-                          ? (ev) =>
-                              begin(
-                                ev,
-                                { kind: "ghost", ghost: original },
-                                cell.id,
-                                "move",
-                                n,
-                              )
-                          : undefined
-                      }
-                      onPointerMove={tunable ? move : undefined}
-                      onPointerUp={tunable ? finish : undefined}
-                      onPointerCancel={tunable ? cancel : undefined}
                     >
-                      <span className="cal-title">
-                        {g.pinned ? (
-                          <Pin size={11} aria-hidden="true" />
-                        ) : (
-                          <Sparkles size={11} aria-hidden="true" />
-                        )}
-                        {g.title}
-                      </span>
-                      <small>
-                        {spanLabel(g.start_at, g.end_at)}
-                        {g.parts > 1 && ` · Session ${g.part} of ${g.parts}`}
-                      </small>
-                      {tunable && (
-                        <button
-                          className="cal-ghost-remove"
-                          aria-label={
-                            g.pinned
-                              ? `Unpin ${g.title}`
-                              : `Leave ${g.title} out of this plan`
+                      <button
+                        type="button"
+                        className="ghost-time-action"
+                        onPointerDown={
+                          tunable
+                            ? (ev) =>
+                                begin(
+                                  ev,
+                                  { kind: "ghost", ghost: original },
+                                  cell.id,
+                                  "move",
+                                  n,
+                                )
+                            : undefined
+                        }
+                        onPointerMove={tunable ? move : undefined}
+                        onPointerUp={tunable ? finish : undefined}
+                        onPointerCancel={tunable ? cancel : undefined}
+                        disabled={!tunable}
+                        aria-label={`Change time for ${g.title}`}
+                        aria-haspopup="dialog"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (suppressClick.current) {
+                            suppressClick.current = false;
+                            return;
                           }
-                          title={g.pinned ? "Unpin" : "Leave out"}
-                          onPointerDown={(ev) => ev.stopPropagation()}
-                          onClick={() => onRemoveGhost(original)}
-                        >
-                          <X size={11} />
-                        </button>
-                      )}
+                          setGhostEdit(original);
+                        }}
+                      >
+                        <span className="cal-title">
+                          {g.pinned ? (
+                            <Pin size={11} aria-hidden="true" />
+                          ) : (
+                            <Sparkles size={11} aria-hidden="true" />
+                          )}
+                          {g.title}
+                        </span>
+                        <small>
+                          {spanLabel(g.start_at, g.end_at)}
+                          {g.parts > 1 && ` · Session ${g.part} of ${g.parts}`}
+                        </small>
+                      </button>
                     </div>
                   );
                 })}
@@ -1200,6 +1279,35 @@ export function CalendarGrid({
           })}
         </div>
       </div>
+      {ghostEdit && (
+        <BlockDialog
+          heading="Move planned session"
+          subject={ghostEdit.title}
+          start={new Date(ghostEdit.start_at)}
+          minutes={Math.round(
+            (Date.parse(ghostEdit.end_at) - Date.parse(ghostEdit.start_at)) /
+              60000,
+          )}
+          minimumMinutes={1}
+          minuteStep={1}
+          busy={!tunable}
+          hint="Updates this preview. Apply the plan to save it."
+          onClose={() => setGhostEdit(null)}
+          onSave={(start, end) => {
+            setGhostEdit(null);
+            const current = ghostById.get(ghostId(ghostEdit));
+            if (tunable && current) onPinGhost(current, start, end);
+          }}
+          onRemove={() => {
+            setGhostEdit(null);
+            const current = ghostById.get(ghostId(ghostEdit));
+            if (tunable && current) onRemoveGhost(current);
+          }}
+          removeLabel={
+            ghostEdit.pinned ? "Unpin session" : "Exclude task from this plan"
+          }
+        />
+      )}
       {duePicker && (
         <Popover
           anchor={duePicker.anchor}

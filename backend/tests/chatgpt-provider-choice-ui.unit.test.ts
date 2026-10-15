@@ -110,6 +110,7 @@ async function fixture(app: "desktop" | "mobile") {
       if (id === "react-native")
         return { View: "View", Text: "Text", Switch: "Switch" };
       if (id.endsWith("/SmallAction")) return { SmallAction: "SmallAction" };
+      if (id.endsWith("/Chip")) return { Chip: "Chip", ChipRow: "ChipRow" };
       if (id.endsWith("/styles"))
         return { shared: { small: {}, body: {}, label: {} } };
       if (id.endsWith("/theme")) return { colors: { accent: "fixture" } };
@@ -357,7 +358,7 @@ for (const app of ["desktop", "mobile"] as const) {
       const selected = nodes(tree).find((n) =>
         app === "desktop"
           ? n.type === "button" && n.props.children === "ChatGPT"
-          : n.props?.label === "ChatGPT · selected",
+          : n.props?.label === "ChatGPT" && n.props.selected === true,
       );
       assert.ok(selected);
       if (app === "desktop") assert.equal(selected.props["aria-pressed"], true);

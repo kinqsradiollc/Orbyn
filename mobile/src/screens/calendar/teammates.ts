@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { BusyInterval, Team } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { readLocal, saveLocal } from "../../lib/localPrefs";
@@ -61,7 +61,13 @@ export function useTeammates(
   const [busy, setBusy] = useState<Record<string, BusyInterval[]>>({});
   const [names, setNames] = useState<Record<string, string>>({});
   const [wanted, setWanted] = useState(false);
-  const [error, setError] = useState("");
+  const [memberError, setMemberError] = useState("");
+  const [availabilityError, setAvailabilityError] = useState("");
+  const [membersLoading, setMembersLoading] = useState(false);
+  const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const load = useCallback(() => setWanted(true), []);
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
   const teamKey = teams.map((t) => t.id).join(",");
   const pinnedKey = pinnedIds.join(",");
   const needed = wanted || selected.length > 0;
@@ -69,9 +75,12 @@ export function useTeammates(
   useEffect(() => {
     if (!needed) return;
     let alive = true;
+    setMembersLoading(true);
+    setMemberError("");
+    setMates(null);
     Promise.all([
-      client.me().catch(() => null),
-      Promise.all(teams.map((t) => client.getTeam(t.id).catch(() => null))),
+      client.me(),
+      Promise.all(teams.map((t) => client.getTeam(t.id))),
     ])
       .then(([me, details]) => {
         if (!alive) return;
@@ -92,21 +101,29 @@ export function useTeammates(
           ),
         );
       })
-      .catch((e: Error) => alive && setError(errorText(e)));
+      .catch((e: Error) => alive && setMemberError(errorText(e)))
+      .finally(() => {
+        if (alive) setMembersLoading(false);
+      });
     return () => {
       alive = false;
     };
     // Teams and pins are compared by id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needed, teamKey, pinnedKey]);
+  }, [needed, teamKey, pinnedKey, attempt]);
 
   const selectedKey = selected.join(",");
   useEffect(() => {
     if (!selected.length) {
       setBusy({});
+      setAvailabilityError("");
+      setAvailabilityLoading(false);
       return;
     }
     let alive = true;
+    setAvailabilityLoading(true);
+    setAvailabilityError("");
+    setBusy({});
     client
       .availability(selected, from, to)
       .then((people) => {
@@ -119,15 +136,18 @@ export function useTeammates(
         }
         setBusy(next);
         setNames(named);
-        setError("");
+        setAvailabilityError("");
       })
-      .catch((e: Error) => alive && setError(errorText(e)));
+      .catch((e: Error) => alive && setAvailabilityError(errorText(e)))
+      .finally(() => {
+        if (alive) setAvailabilityLoading(false);
+      });
     return () => {
       alive = false;
     };
     // Selection is compared by id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedKey, from, to, recheck]);
+  }, [selectedKey, from, to, recheck, attempt]);
 
   const setSelected = (next: string[]) => {
     setSelectedState(next);
@@ -143,7 +163,9 @@ export function useTeammates(
     );
   const colorOf = (id: string) =>
     MATE_COLORS[Math.max(0, selected.indexOf(id)) % MATE_COLORS.length];
-  const shown: MateBusy[] = selected.map((id) => ({
+  const shown: MateBusy[] = (
+    availabilityLoading || availabilityError ? [] : selected
+  ).map((id) => ({
     user_id: id,
     name: names[id] ?? mates?.find((m) => m.user_id === id)?.name ?? "Teammate",
     color: colorOf(id),
@@ -154,11 +176,16 @@ export function useTeammates(
     mates,
     selected,
     shown,
-    error,
+    error: memberError || availabilityError,
+    memberError,
+    availabilityError,
+    membersLoading,
+    availabilityLoading,
+    retry,
     toggle,
     colorOf,
     clear: () => setSelected([]),
     /** Load the members (when the picker opens). */
-    load: () => setWanted(true),
+    load,
   };
 }

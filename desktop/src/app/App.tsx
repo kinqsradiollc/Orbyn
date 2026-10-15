@@ -1,6 +1,16 @@
+import { ViewDraftStore } from "@orbyn/api-client";
 import { chatgptStore } from "../lib/chatgpt";
 import "./workspace.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { savedSidebarWidth } from "../components/SidebarResizer";
 import { Orbit, Settings, X, type LucideIcon } from "lucide-react";
 import {
   dayZone,
@@ -17,6 +27,8 @@ import {
   type Status,
 } from "@orbyn/core";
 import { client } from "../lib/api";
+import { session } from "../lib/session";
+import { useConfirm } from "../components/Confirm";
 import { setPageMeta } from "../lib/seo";
 import { usePlanner } from "../hooks/usePlanner";
 import { usePresence } from "../hooks/usePresence";
@@ -30,6 +42,8 @@ import { PlanningContext } from "./planning";
 import { OPEN_LINK_EVENT } from "../features/docs/DocLinks";
 import {
   activeTab,
+  tabsReducer,
+  TAB_LIMIT,
   hasUnseenRelease,
   HttpError,
   placeOf,
@@ -76,7 +90,7 @@ import { ShortcutSheet } from "../components/ShortcutSheet";
 import { celebrate } from "../lib/celebrate";
 import { isTyping } from "../lib/keys";
 import { appliedText } from "../components/PlanCard";
-import { deviceTimeZone, nextUp } from "../lib/planning";
+import { deviceTimeZone, errorText, nextUp } from "../lib/planning";
 import { HomePage } from "../features/home/HomePage";
 import { LegalPage } from "../features/legal/LegalPage";
 import { StudyView } from "../features/study/StudyView";
@@ -97,7 +111,12 @@ import {
   RecentChangesDialog,
 } from "../features/changes/RecentChanges";
 import { PEEK_EVENT } from "../features/docs/DocLinks";
-import { openPageCommands, watchOpenPage } from "./page-commands";
+import {
+  PageCommandScope,
+  preparePageLeave,
+  openPageCommands,
+  watchOpenPage,
+} from "./page-commands";
 import {
   OPEN_TAB_EVENT,
   PAGE_VIEWS,
@@ -167,21 +186,281 @@ import { onOpenReview } from "../lib/review";
 import { onLive } from "../lib/live";
 import "../styles/planning.css";
 
+type ChromeAction =
+  | { kind: "navigate"; view: View }
+  | { kind: "search" }
+  | { kind: "saved-view"; id: string }
+  | { kind: "starred"; item: StarredItem };
+type ChromeLocation = { view: View; savedView: string | null };
+type ChromeOwner = {
+  run: (action: ChromeAction) => void;
+};
+
 export function App() {
+  const planner = usePlanner();
+  const [chromeLocations, setChromeLocations] = useState<
+    Record<string, ChromeLocation>
+  >({});
+  const reportChromeLocation = useCallback(
+    (scope: string, location: ChromeLocation) => {
+      setChromeLocations((previous) => {
+        const current = previous[scope];
+        return current?.view === location.view &&
+          current.savedView === location.savedView
+          ? previous
+          : { ...previous, [scope]: location };
+      });
+    },
+    [],
+  );
+  const chromeOwners = useRef(new Map<string, ChromeOwner>());
+  const registerChrome = useCallback((scope: string, owner: ChromeOwner) => {
+    chromeOwners.current.set(scope, owner);
+    return () => {
+      if (chromeOwners.current.get(scope) === owner)
+        chromeOwners.current.delete(scope);
+    };
+  }, []);
+  const dispatchChrome = (action: ChromeAction) => {
+    const scope = focusedRef.current;
+    if (paneVisible(scope)) chromeOwners.current.get(scope)?.run(action);
+  };
+  const [paired, setPaired] = useState<TabPlace | null>(null);
+  const [focused, setFocused] = useState("main");
+  const focusedRef = useRef("main");
+  const primaryPane = useRef<HTMLDivElement>(null);
+  const secondaryPane = useRef<HTMLDivElement>(null);
+  const [singlePane, setSinglePane] = useState(
+    () => window.matchMedia("(max-width: 1279px)").matches,
+  );
+  const paneState = useRef({ paired, singlePane, token: planner.token });
+  paneState.current = { paired, singlePane, token: planner.token };
+  const lastPaneFocus = useRef(new Map<string, HTMLElement>());
+  const focusFrame = useRef<number | null>(null);
+  const restoreRequested = useRef<string | null>(null);
+  const paneVisible = (scope: string) =>
+    scope === "main"
+      ? !paneState.current.paired ||
+        !paneState.current.singlePane ||
+        focusedRef.current === "main"
+      : !!paneState.current.paired &&
+        (!paneState.current.singlePane || focusedRef.current === "secondary");
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1279px)");
+    const update = () => setSinglePane(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => {
+      media.removeEventListener("change", update);
+      if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+    };
+  }, []);
+  const focusPane = (scope: string) => {
+    focusedRef.current = scope;
+    setFocused(scope);
+  };
+  const restorePaneFocus = (scope: string) => {
+    restoreRequested.current = scope;
+    if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
+    const account = planner.token;
+    focusFrame.current = requestAnimationFrame(() => {
+      focusFrame.current = null;
+      if (
+        account !== paneState.current.token ||
+        focusedRef.current !== scope ||
+        !paneVisible(scope)
+      )
+        return;
+      const root =
+        scope === "main" ? primaryPane.current : secondaryPane.current;
+      if (!root) return;
+      restoreRequested.current = null;
+      const remembered = lastPaneFocus.current.get(scope);
+      if (
+        root &&
+        remembered?.isConnected &&
+        root.contains(remembered) &&
+        remembered.getClientRects().length &&
+        !remembered.closest("[hidden], [inert]") &&
+        !remembered.matches(":disabled")
+      )
+        remembered.focus({ preventScroll: true });
+      else root?.focus({ preventScroll: true });
+    });
+  };
+  const capturePaneFocus = (scope: string, target: EventTarget) => {
+    if (target instanceof Element && target.closest("[data-shared-chrome]"))
+      return;
+    if (!paneVisible(scope)) return;
+    focusPane(scope);
+    const root = scope === "main" ? primaryPane.current : secondaryPane.current;
+    if (
+      target instanceof HTMLElement &&
+      target !== root &&
+      root?.contains(target)
+    )
+      lastPaneFocus.current.set(scope, target);
+  };
+  useEffect(() => {
+    if (restoreRequested.current === focused) restorePaneFocus(focused);
+    // Retry restoration after the requested pane is committed or becomes visible.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focused, paired, singlePane]);
+  usePresence(planner.token, () => void planner.refresh({ silent: true }));
+  useEffect(() => {
+    setPaired(null);
+    setChromeLocations({});
+    lastPaneFocus.current.clear();
+    restoreRequested.current = null;
+    focusPane("main");
+  }, [planner.token]);
+  return (
+    <div
+      className={"workspace-duo" + (paired ? " is-paired" : "")}
+      data-focused={focused}
+    >
+      {paired && (
+        <nav className="workspace-pane-switch" aria-label="Working panes">
+          <button
+            aria-pressed={focused === "main"}
+            onClick={() => {
+              focusPane("main");
+              restorePaneFocus("main");
+            }}
+          >
+            First pane
+          </button>
+          <button
+            aria-pressed={focused === "secondary"}
+            onClick={() => {
+              focusPane("secondary");
+              restorePaneFocus("secondary");
+            }}
+          >
+            Second pane
+          </button>
+        </nav>
+      )}
+      <div
+        ref={primaryPane}
+        tabIndex={-1}
+        role={paired ? "region" : undefined}
+        aria-label={paired ? "First working pane" : undefined}
+        className="workspace-duo-primary"
+        inert={!!paired && singlePane && focused !== "main"}
+        onPointerDownCapture={(event) => {
+          if (
+            event.target instanceof Element &&
+            event.target.closest("[data-shared-chrome]")
+          )
+            return;
+          if (paneVisible("main")) focusPane("main");
+        }}
+        onFocusCapture={(event) => capturePaneFocus("main", event.target)}
+      >
+        <PageCommandScope.Provider value="main">
+          <WorkspaceController
+            planner={planner}
+            registerChrome={registerChrome}
+            reportChromeLocation={reportChromeLocation}
+            chromeLocation={chromeLocations[focused]}
+            dispatchChrome={dispatchChrome}
+            ownsEvents={() =>
+              paneVisible("main") && focusedRef.current === "main"
+            }
+            onSplit={
+              paired
+                ? undefined
+                : (place) => {
+                    setPaired(place);
+                    focusPane("secondary");
+                    restorePaneFocus("secondary");
+                  }
+            }
+          />
+        </PageCommandScope.Provider>
+      </div>
+      {paired && (
+        <div
+          ref={secondaryPane}
+          tabIndex={-1}
+          role="region"
+          aria-label="Second working pane"
+          className="workspace-duo-secondary"
+          inert={singlePane && focused !== "secondary"}
+          onPointerDownCapture={() => {
+            if (paneVisible("secondary")) focusPane("secondary");
+          }}
+          onFocusCapture={(event) =>
+            capturePaneFocus("secondary", event.target)
+          }
+        >
+          <PageCommandScope.Provider value="secondary">
+            <WorkspaceController
+              planner={planner}
+              registerChrome={registerChrome}
+              reportChromeLocation={reportChromeLocation}
+              initialPlace={paired}
+              ownsEvents={() =>
+                paneVisible("secondary") && focusedRef.current === "secondary"
+              }
+              onClosePane={() => {
+                setPaired(null);
+                focusPane("main");
+                restorePaneFocus("main");
+              }}
+            />
+          </PageCommandScope.Provider>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WorkspaceController({
+  planner,
+  initialPlace,
+  ownsEvents,
+  onSplit,
+  onClosePane,
+  registerChrome,
+  reportChromeLocation,
+  chromeLocation,
+  dispatchChrome,
+}: {
+  registerChrome: (scope: string, owner: ChromeOwner) => () => void;
+  reportChromeLocation: (scope: string, location: ChromeLocation) => void;
+  chromeLocation?: ChromeLocation;
+  dispatchChrome?: (action: ChromeAction) => void;
+  planner: ReturnType<typeof usePlanner>;
+  initialPlace?: TabPlace;
+  ownsEvents: () => boolean;
+  onSplit?: (place: TabPlace) => void;
+  onClosePane?: () => void;
+}) {
+  const ownsEventsRef = useRef(ownsEvents);
+  ownsEventsRef.current = ownsEvents;
+  const secondary = !!initialPlace;
+  const commandScope = useContext(PageCommandScope);
+  const tabPrefix =
+    commandScope === "main" ? "workspace" : `workspace-${commandScope}`;
+  const panelId =
+    commandScope === "main" ? "tab-panel" : `tab-panel-${commandScope}`;
+  const { ask } = useConfirm();
   const nativeDesktop = location.protocol === "file:";
-  const [path, setPath] = useState(location.pathname);
+  const [path, setPath] = useState(secondary ? "/app" : location.pathname);
   const navigatePath = (next: string, replace = false) => {
-    if (!nativeDesktop)
+    if (!nativeDesktop && !secondary)
       window.history[replace ? "replaceState" : "pushState"]({}, "", next);
     setPath(next);
     window.scrollTo(0, 0);
   };
   useEffect(() => {
+    if (secondary) return;
     const pop = () => setPath(location.pathname);
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
   }, []);
-  const planner = usePlanner();
   const assistant = useAssistant(planner);
   const newVersion = useNewVersion();
   const {
@@ -215,7 +494,7 @@ export function App() {
   const starred = useStarred(token);
   /** A window showing one page alone (NAV-06), and which page. */
   const [pageWindowId] = useState<string | null>(() => {
-    if (!isPageWindow()) return null;
+    if (secondary || !isPageWindow()) return null;
     const open = new URLSearchParams(location.search).get("open");
     const link = open
       ? deepLinkOfUrl(open)
@@ -247,8 +526,8 @@ export function App() {
       clearInterval(timer);
     };
   }, [token]);
-  usePresence(token, () => void refresh({ silent: true }));
-  const [view, setView] = useState<View>(() => {
+  const [view, setViewState] = useState<View>(() => {
+    if (initialPlace) return initialPlace.view as View;
     try {
       return location.pathname === "/app" &&
         localStorage.getItem("orbyn-assistant-view-open") === "true"
@@ -258,6 +537,40 @@ export function App() {
       return "Overview";
     }
   });
+  // A late navigation read must not replace a newer tab, screen or account.
+  const navigationRead = useRef(0);
+  const itemRead = useRef(0);
+  const sessionToken = useRef(token);
+  sessionToken.current = token;
+  const viewDraftReport = useRef(report);
+  viewDraftReport.current = report;
+  const viewDraftStore = useMemo(
+    () =>
+      new ViewDraftStore(
+        async (id, definition) =>
+          (await client.updateView(id, { definition })).definition,
+        () => !!token && sessionToken.current === token,
+        (error) => viewDraftReport.current(error),
+      ),
+    [token],
+  );
+  useEffect(() => {
+    viewDraftStore.start();
+    return () => viewDraftStore.stop();
+  }, [viewDraftStore]);
+  const setView = useCallback((next: View) => {
+    navigationRead.current += 1;
+    itemRead.current += 1;
+    setViewState(next);
+  }, []);
+  useEffect(() => {
+    navigationRead.current += 1;
+    itemRead.current += 1;
+    return () => {
+      navigationRead.current += 1;
+      itemRead.current += 1;
+    };
+  }, [token]);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => {
     if (!settingsExitAllowed()) return false;
@@ -269,6 +582,7 @@ export function App() {
   }, [token]);
   // Compact layouts have no workspace tabs to restore their current screen.
   useEffect(() => {
+    if (secondary) return;
     try {
       if (view === "AI assistant")
         localStorage.setItem("orbyn-assistant-view-open", "true");
@@ -288,8 +602,13 @@ export function App() {
   const tabsLive = tabsOn && wideEnough && !pageWindowId;
   const tabsLiveRef = useRef(tabsLive);
   tabsLiveRef.current = tabsLive;
-  const tabs = useTabState();
-  useEffect(() => setTabsShown(tabsLive), [tabsLive]);
+  const tabs = useTabState({
+    storageKey: commandScope === "main" ? "orbyn-tabs" : null,
+    initialPlace,
+  });
+  useEffect(() => {
+    if (!secondary) setTabsShown(tabsLive);
+  }, [tabsLive, secondary]);
   /**
    * The thing a tab is opening (a page, project, view or chat): until it
    * shows, what the screens say they show is someone else's.
@@ -339,9 +658,15 @@ export function App() {
   const [pinnedViews, setPinnedViews] = useState<SavedView[]>([]);
   /** Saved views' names, for their tabs. */
   const [viewNames, setViewNames] = useState<Record<string, string>>({});
+  const pinnedRead = useRef(0);
   const loadPinnedViews = useCallback(() => {
-    client.listViews().then(
+    const request = ++pinnedRead.current;
+    const account = sessionToken.current;
+    if (!account) return;
+    void client.listViews().then(
       (views) => {
+        if (request !== pinnedRead.current || account !== sessionToken.current)
+          return;
         setPinnedViews(views.filter((v) => v.pinned));
         setViewNames(Object.fromEntries(views.map((v) => [v.id, v.name])));
       },
@@ -352,7 +677,13 @@ export function App() {
   }, []);
   useEffect(() => {
     if (token) loadPinnedViews();
-    else setPinnedViews([]);
+    else {
+      setPinnedViews([]);
+      setViewNames({});
+    }
+    return () => {
+      pinnedRead.current += 1;
+    };
   }, [token, loadPinnedViews]);
   const openSavedView = (id: string) => {
     setViewToOpen(id);
@@ -363,14 +694,20 @@ export function App() {
   >(null);
   const [projectSourceId, setProjectSourceId] = useState<string | null>(null);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [commandFocusRequest, setCommandFocusRequest] = useState(0);
+  const [commandQueryRequest, setCommandQueryRequest] = useState(0);
   /** Words ⌘K opens with (a quick-add or search link). */
   const [commandQuery, setCommandQuery] = useState("");
   /** The words came from an add link: making them leads, to confirm. */
   const [commandAdd, setCommandAdd] = useState(false);
-  const openCommand = (words = "", add = false) => {
-    setCommandQuery(words);
-    setCommandAdd(add);
+  const openCommand = (words?: string, add = false) => {
+    if (words !== undefined || !commandOpen) {
+      setCommandQuery(words ?? "");
+      setCommandAdd(add);
+      if (words !== undefined) setCommandQueryRequest((request) => request + 1);
+    }
     setCommandOpen(true);
+    setCommandFocusRequest((request) => request + 1);
   };
   /** Bumped to open "New page from template" or a new project from ⌘K. */
   const [templatesAsked, setTemplatesAsked] = useState(0);
@@ -393,12 +730,19 @@ export function App() {
   } | null>(null);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [calendarMode, setCalendarMode] = useState<CalendarMode>("month");
+  const tabCalendar = useRef(
+    new Map<string, { date: Date; mode: CalendarMode }>(),
+  );
+  useEffect(() => {
+    tabCalendar.current.clear();
+  }, [token]);
   const [planRequest, setPlanRequest] = useState<PlanRequest | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth);
   // A narrow icon rail instead of the full sidebar, remembered per browser.
   const [railed, setRailed] = useState(() => {
     try {
-      return localStorage.getItem("orbyn-sidebar") === "rail";
+      return localStorage.getItem("orbyn-sidebar") !== "full";
     } catch {
       return false;
     }
@@ -438,22 +782,32 @@ export function App() {
   // /app/project/<id>, /app/today) opens it over the app. Signed out, it
   // waits through every sign-in step (two-step and passkeys included), kept
   // for this tab and in the sign-in page's ?next=, and opens after.
-  const linked = deepLinkOf(
-    path,
-    nativeDesktop ? "" : location.hash,
-    nativeDesktop ? "" : location.search,
-  );
+  const linked = secondary
+    ? null
+    : deepLinkOf(
+        path,
+        nativeDesktop ? "" : location.hash,
+        nativeDesktop ? "" : location.search,
+      );
   // Read now: the sign-in redirect below replaces the address before effects.
-  const signInSearch = nativeDesktop ? "" : location.search;
-  const openDeepLink = (link: DeepLink) => {
+  const signInSearch = nativeDesktop || secondary ? "" : location.search;
+  const openDeepLink = async (link: DeepLink) => {
+    // Document loads settle the current page immediately before adoption.
+    // Other replacing links need the same departure contract as the sidebar.
+    if (
+      !["task", "doc", "add", "search", "agents", "chatgpt"].includes(link.kind)
+    ) {
+      const account = sessionToken.current;
+      const request = ++navigationRead.current;
+      if (
+        !(await preparePageLeave(commandScope)) ||
+        account !== sessionToken.current ||
+        request !== navigationRead.current
+      )
+        return;
+    }
     if (link.kind === "task") openItemById(link.id);
-    else if (link.kind === "doc")
-      void client.getDocForEditor(link.id).then((doc) => {
-        setNoteDoc(doc);
-        setView("Docs");
-        setNoteBlockId(link.block ?? null);
-        if (link.block) focusDocBlock(link.block);
-      }, report);
+    else if (link.kind === "doc") openPage(link.id, link.block, true);
     else if (link.kind === "project") {
       setProjectToOpen(link.id);
       setView("Projects");
@@ -486,22 +840,31 @@ export function App() {
   // How many proposals wait, for the sidebar: read when signed in and again
   // whenever the inbox changes (an agent proposed, or another device decided).
   useEffect(() => {
+    setReviewPending(0);
     if (!token) return;
-    const count = () =>
-      client.reviewCount().then(
-        (r) => setReviewPending(r.pending),
+    let alive = true;
+    let request = 0;
+    const count = () => {
+      const read = ++request;
+      return client.reviewCount().then(
+        (r) => {
+          if (alive && read === request) setReviewPending(r.pending);
+        },
         () => {},
       );
+    };
     void count();
     const stop = onLive(
       (news) =>
         news.kind === "changed" && news.area === "review" && void count(),
     );
     const stopOpen = onOpenReview((id) => {
+      if (!ownsEventsRef.current()) return;
       setReviewToOpen(id);
       setView("Review");
     });
     return () => {
+      alive = false;
       stop();
       stopOpen();
     };
@@ -516,12 +879,16 @@ export function App() {
     else rememberDeepLink(link);
   };
   useEffect(
-    () => window.orbynDesktop?.onOpenLink((url) => openLinkRef.current(url)),
+    () =>
+      window.orbynDesktop?.onOpenLink((url) => {
+        if (ownsEventsRef.current()) openLinkRef.current(url);
+      }),
     [],
   );
   // Link pills and "Linked here" ask for things to open the same way.
   useEffect(() => {
     const open = (e: Event) => {
+      if (!ownsEventsRef.current()) return;
       const url = (e as CustomEvent<unknown>).detail;
       if (typeof url === "string") openLinkRef.current(url);
     };
@@ -531,7 +898,12 @@ export function App() {
   // ⌘-click on a link, ⌘Enter in ⌘K: open it beside (NAV-05).
   useEffect(() => {
     const onPeek = (e: Event) => {
+      if (!sessionToken.current || !ownsEventsRef.current()) return;
       const target = (e as CustomEvent<ObjectRef>).detail;
+      itemRead.current += 1;
+      navigationRead.current += 1;
+      setOpenTask(null);
+      setMobileNav(false);
       setPeek((was) => ({ target, pinned: was?.pinned ?? false }));
     };
     window.addEventListener(PEEK_EVENT, onPeek);
@@ -540,7 +912,7 @@ export function App() {
   // After a release, "What's new" opens once by itself (DSN-03). A browser
   // that has never seen one (a new account, a first visit) is not shown it.
   useEffect(() => {
-    if (!token || !user || user.first_run_done === false) return;
+    if (secondary || !token || !user || user.first_run_done === false) return;
     const seen = seenRelease();
     if (!seen) markReleaseSeen();
     else if (hasUnseenRelease(seen)) setWhatsNewOpen(true);
@@ -551,9 +923,52 @@ export function App() {
   }, [view]);
   // What opens at start on this device (NAV-12), unless a link says otherwise.
   const started = useRef(false);
+  const ownedSession = useRef(token);
+  useEffect(() => {
+    const previous = ownedSession.current;
+    ownedSession.current = token;
+    if (!previous || previous === token) return;
+    // Private screen intents and editors cannot survive a session change.
+    started.current = false;
+    pendingPlace.current = null;
+    setEditing(null);
+    setDraft(null);
+    setDraftTeamId(null);
+    setOpenTask(null);
+    setOpenOccurrence(null);
+    setFocusTask(null);
+    setNoteDoc(null);
+    setNoteBlockId(null);
+    setOpenedFiles(null);
+    setProjectToOpen(null);
+    setProjectSectionToOpen(null);
+    setProjectSourceId(null);
+    setViewToOpen(null);
+    setShownView(null);
+    setReviewToOpen(null);
+    setTemplateToOpen(null);
+    setOvernightId(undefined);
+    setCommandOpen(false);
+    setCommandQuery("");
+    setCommandAdd(false);
+    setSettingsOpen(false);
+    setSettingAsked(null);
+    setPeek(null);
+    setMobileNav(false);
+    setShortcutsOpen(false);
+    setWhatsNewOpen(false);
+    setChangesOpen(false);
+    setPlanRequest(null);
+    setBookingFocus(null);
+    setQuery("");
+  }, [token]);
   useEffect(() => {
     if (!token || started.current) return;
     started.current = true;
+    if (initialPlace) {
+      showPlace(initialPlace);
+      return;
+    }
     if (linked || pageWindowId) return;
     // Tabs kept on this device open where they were instead.
     if (tabsLive) {
@@ -569,57 +984,78 @@ export function App() {
     else if (start === "tasks") setView("My tasks");
     else if (start === "last-page") {
       const id = lastPage();
-      if (id)
-        void client.getDoc(id).then(
-          (doc) => {
-            setNoteDoc(doc);
-            setView("Docs");
-          },
-          () => {
-            // A page that's gone or no longer yours: Overview, as usual.
-          },
-        );
+      if (id) openPage(id, null, false, true);
     }
   }, [token]);
   // Files opened with Orbyn on the desktop (CAP-11): Word and PDF go to
   // Uploads; Markdown is read by the page importer, which says first what
   // it would make.
-  useEffect(
-    () =>
-      window.orbynDesktop?.onOpenFile?.((opened) => {
-        const bytes = Uint8Array.from(atob(opened.data), (c) =>
-          c.charCodeAt(0),
-        );
-        if (opened.type === "text/markdown") {
-          void client
-            .importPages({
-              format: "markdown",
+  useEffect(() => {
+    let alive = true;
+    const current = () => alive && token === sessionToken.current;
+    const stop = window.orbynDesktop?.onOpenFile?.((opened) => {
+      if (!ownsEventsRef.current()) return;
+      if (!token) {
+        planner.setError("Sign in to open this file.");
+        return;
+      }
+      const destination = navigationRead.current;
+      void (async () => {
+        try {
+          if (opened.type === "text/markdown") {
+            const input = {
+              format: "markdown" as const,
               file_name: opened.name,
               data: opened.data,
-              dry_run: true,
-            })
-            .then(async (dry) => {
-              if (!dry.pages) {
-                planner.setError(`“${opened.name}” has nothing to import.`);
-                return;
-              }
-              await client.importPages({
-                format: "markdown",
-                file_name: opened.name,
-                data: opened.data,
-                dry_run: false,
-              });
-              // The library opens with the new page in it.
-              setView("Docs");
-            }, report);
-          return;
+            };
+            const dry = await client.importPages({ ...input, dry_run: true });
+            if (!current()) return;
+            if (dry.errors.length || !dry.pages) {
+              planner.setError(
+                dry.errors.length
+                  ? `Couldn't import “${opened.name}”. ${dry.errors.join(" ")}`
+                  : `“${opened.name}” has no pages to import.`,
+              );
+              return;
+            }
+            const accepted = await ask({
+              title: `Import ${dry.pages === 1 ? "page" : `${dry.pages} pages`}?`,
+              body: `“${opened.name}” will be added to your pages.`,
+              confirmLabel: "Import",
+            });
+            if (!accepted || !current()) return;
+            const done = await client.importPages({ ...input, dry_run: false });
+            if (!current()) return;
+            if (done.errors.length) {
+              planner.setError(
+                `Import needs attention. ${done.errors.join(" ")}`,
+              );
+              return;
+            }
+            if (destination === navigationRead.current) setView("Docs");
+            return;
+          }
+          const bytes = Uint8Array.from(atob(opened.data), (c) =>
+            c.charCodeAt(0),
+          );
+          const file = new File([bytes], opened.name, { type: opened.type });
+          if (!current()) return;
+          setOpenedFiles((was) => ({
+            files: [file],
+            seq: (was?.seq ?? 0) + 1,
+          }));
+          setView("Docs");
+        } catch (error) {
+          if (current()) report(error);
         }
-        const file = new File([bytes], opened.name, { type: opened.type });
-        setOpenedFiles((was) => ({ files: [file], seq: (was?.seq ?? 0) + 1 }));
-        setView("Docs");
-      }),
-    [],
-  );
+      })();
+    });
+    return () => {
+      alive = false;
+      stop?.();
+    };
+  }, [token, ask]);
+
   useEffect(() => {
     if (!linked || pageWindowId) return;
     if (!token) {
@@ -641,8 +1077,8 @@ export function App() {
     if (waiting) openDeepLink(waiting);
   }, [token]);
   useEffect(() => {
-    // Public booking pages set their own titles and say noindex themselves.
-    if (isPublicBooking) return;
+    // The primary pane owns the browser page metadata.
+    if (secondary || isPublicBooking) return;
     // The same words index.html ships, so the page says one thing whether or
     // not a crawler runs the script.
     const app = "One planner for tasks, calendar, projects and notes.";
@@ -744,6 +1180,9 @@ export function App() {
     path === "/privacy" ||
     path === "/security" ||
     path === "/changelog" ||
+    path === "/forgot-password" ||
+    path === "/reset-password" ||
+    path === "/verify-email" ||
     (!nativeDesktop && path === "/")
   );
   useEffect(() => {
@@ -752,6 +1191,14 @@ export function App() {
     // person's own changes (NAV-09): what a key does is looked up there,
     // then run here, whichever command it is.
     const onKey = (e: KeyboardEvent) => {
+      if (!ownsEventsRef.current()) return;
+      if (
+        e.defaultPrevented ||
+        document.querySelector(
+          'dialog[open], [aria-modal="true"], .popover, .select-list.is-floating',
+        )
+      )
+        return;
       const command = commandForKey(e, accountPrefs.prefs.shortcuts);
       if (!command) return;
       const keys =
@@ -778,15 +1225,32 @@ export function App() {
    * own commands, a setting, or one of the app's actions. False when there
    * is nothing to run it on (a page command with no page open).
    */
+  const leaveFor = async (adopt: () => void) => {
+    const account = sessionToken.current;
+    const request = ++navigationRead.current;
+    try {
+      if (
+        !(await preparePageLeave(commandScope)) ||
+        account !== sessionToken.current ||
+        request !== navigationRead.current ||
+        !chromeMounted.current
+      )
+        return;
+      adopt();
+    } catch (error) {
+      if (account === sessionToken.current && chromeMounted.current)
+        report(error);
+    }
+  };
   const runCommandRef = useRef<(c: CommandDef) => boolean>(() => false);
   runCommandRef.current = (c: CommandDef) => {
     if (c.view) {
       if (c.needs === "admin" && !isAdmin) return false;
-      navigate(c.view);
+      chromeRun.current({ kind: "navigate", view: c.view });
       return true;
     }
     if (c.needs === "page") {
-      const run = openPageCommands()?.run[c.id];
+      const run = openPageCommands(commandScope)?.run[c.id];
       if (!run) return false;
       run();
       return true;
@@ -799,40 +1263,41 @@ export function App() {
     const actions: Record<string, () => void> = {
       "app.search": () => {
         if (settingsOpen && !closeSettings()) return;
-        setCommandQuery("");
-        setCommandAdd(false);
-        setCommandOpen((open) => !open);
+        openCommand();
       },
       "app.sidebar": () => toggleRail(),
       "app.shortcuts": () => setShortcutsOpen(true),
       "app.changes": () => setChangesOpen(true),
       "app.whats-new": () => setWhatsNewOpen(true),
-      "app.security": () => navigatePath("/security"),
+      "app.security": () => void leaveFor(() => navigatePath("/security")),
       "new.task": () => newItem(),
       "new.event": () => newItem(null, { kind: "event" }),
       "new.page": () => void newPage(),
-      "new.from-template": () => {
-        navigate("Docs");
-        setTemplatesAsked(Date.now());
-      },
-      "new.project": () => {
-        navigate("Projects");
-        setProjectAsked(Date.now());
-      },
+      "new.from-template": () =>
+        void leaveFor(() => {
+          navigate("Docs");
+          setTemplatesAsked(Date.now());
+        }),
+      "new.project": () =>
+        void leaveFor(() => {
+          navigate("Projects");
+          setProjectAsked(Date.now());
+        }),
       "new.import": () => {
         navigate("Settings");
         setSettingAsked((was) => ({ id: "import", seq: (was?.seq ?? 0) + 1 }));
       },
-      "plan.day": () => planMyDay(),
+      "plan.day": () => void leaveFor(planMyDay),
       "plan.focus": () => {
         const next = nextUp(items, undefined, 1)[0];
         if (next) startFocus(next);
       },
-      "plan.today": () => {
-        navigate("Calendar");
-        setCalendarDate(new Date());
-        setCalendarMode("day");
-      },
+      "plan.today": () =>
+        void leaveFor(() => {
+          navigate("Calendar");
+          setCalendarDate(new Date());
+          setCalendarMode("day");
+        }),
     };
     const action = actions[c.id];
     if (!action) return false;
@@ -846,9 +1311,11 @@ export function App() {
     else if (s.kind === "heading") openPage(s.id, s.block_id);
     else if (s.kind === "task") openItemById(s.id);
     else if (s.kind === "project") {
-      setProjectToOpen(s.id);
-      navigate("Projects");
-    } else if (s.kind === "view") openSavedView(s.id);
+      void leaveFor(() => {
+        setProjectToOpen(s.id);
+        navigate("Projects");
+      });
+    } else if (s.kind === "view") void leaveFor(() => openSavedView(s.id));
   };
 
   const newItem = (
@@ -861,27 +1328,67 @@ export function App() {
   };
 
   /** A new page (titled when ⌘K's Shift+Enter named it), opened. */
+  const creatingPage = useRef(false);
   const newPage = async (title = "") => {
+    if (creatingPage.current) return;
+    creatingPage.current = true;
+    const account = token;
+    const request = ++navigationRead.current;
+    const current = () =>
+      account === sessionToken.current && request === navigationRead.current;
     try {
+      if (!(await preparePageLeave(commandScope)) || !current()) return;
       const doc = await client.createDoc({
         title,
         kind: "doc",
         content: [{ type: "paragraph", text: "" }],
       });
+      if (!current() || !(await preparePageLeave(commandScope)) || !current())
+        return;
       setNoteBlockId(null);
       setNoteDoc(doc);
       navigate("Docs");
     } catch (e) {
-      report(e);
+      if (current()) report(e);
+    } finally {
+      creatingPage.current = false;
     }
   };
 
-  const openPage = (docId: string, blockId?: string | null) =>
-    void client.getDoc(docId).then((doc) => {
-      setNoteBlockId(blockId ?? null);
-      setNoteDoc(doc);
-      setView("Docs");
-    }, report);
+  const openPage = (
+    docId: string,
+    blockId?: string | null,
+    forEditor = false,
+    quiet = false,
+  ) => {
+    const request = ++navigationRead.current;
+    const account = token;
+    const current = () =>
+      request === navigationRead.current && account === sessionToken.current;
+    const load = forEditor
+      ? client.getDocForEditor(docId)
+      : client.getDoc(docId);
+    void load
+      .then(async (doc) => {
+        if (!current() || !(await preparePageLeave(commandScope)) || !current())
+          return;
+        setNoteBlockId(blockId ?? null);
+        setNoteDoc(doc);
+        setView("Docs");
+        const adopted = navigationRead.current;
+        if (blockId)
+          focusDocBlock(
+            blockId,
+            40,
+            () =>
+              adopted === navigationRead.current &&
+              account === sessionToken.current,
+          );
+      })
+      .catch((error) => {
+        if (current() && !quiet) report(error);
+      });
+  };
 
   /** Open a fact the assistant read at its task, page, or project section. */
   const openSource = (source: AssistantSource) => {
@@ -890,12 +1397,15 @@ export function App() {
     } else if (source.kind === "task") {
       openItemById(source.id);
     } else if (source.project_id) {
-      setProjectToOpen(source.project_id);
-      setProjectSectionToOpen(
-        source.kind === "decision" ? "decisions" : "history",
-      );
-      setProjectSourceId(source.id);
-      setView("Projects");
+      const projectId = source.project_id;
+      void leaveFor(() => {
+        setProjectToOpen(projectId);
+        setProjectSectionToOpen(
+          source.kind === "decision" ? "decisions" : "history",
+        );
+        setProjectSourceId(source.id);
+        setView("Projects");
+      });
     }
   };
 
@@ -933,40 +1443,76 @@ export function App() {
    * A card dragged to another board column (DATA-03): its list, priority,
    * assignee or tags change, saved against the version it was shown at.
    */
-  const changeItem = (i: Item, change: ColumnChange | Partial<ItemInput>) => {
-    if (!guard(i)) return;
-    void act(async () => {
-      // Handing a task to your agent or taking it back (W3), and giving it
-      // to someone at the same time.
-      if ("agent" in change) {
-        const { agent, ...rest } = change;
-        const after =
-          agent === "hand"
-            ? await client.handTaskToAgent(i.id)
-            : await client.takeTaskBack(i.id);
-        if ("assignee_id" in rest)
-          await client.updateItem(i.id, {
-            ...itemBody(after),
-            assignee_id: rest.assignee_id ?? null,
-          });
-      } else await client.updateItem(i.id, { ...itemBody(i), ...change });
-      await refresh();
-    });
+  const saveItemChange = async (
+    i: Item,
+    change: ColumnChange | Partial<ItemInput>,
+  ) => {
+    const owner = sessionToken.current;
+    // Handing a task to your agent or taking it back (W3), and giving it
+    // to someone at the same time.
+    if ("agent" in change) {
+      const { agent, ...rest } = change;
+      const after =
+        agent === "hand"
+          ? await client.handTaskToAgent(i.id)
+          : await client.takeTaskBack(i.id);
+      if (sessionToken.current !== owner) return;
+      if ("assignee_id" in rest)
+        await client.updateItem(i.id, {
+          ...itemBody(after),
+          assignee_id: rest.assignee_id ?? null,
+        });
+    } else await client.updateItem(i.id, { ...itemBody(i), ...change });
+    if (sessionToken.current === owner) await refresh();
   };
+  const changeItem = (i: Item, change: ColumnChange | Partial<ItemInput>) => {
+    if (guard(i)) void act(() => saveItemChange(i, change));
+  };
+  const changeItemResult = (i: Item, change: Partial<ItemInput>) =>
+    guard(i)
+      ? planner.actResult(() => saveItemChange(i, change))
+      : Promise.resolve(false);
+  const setStatusResult = (i: Item, status: Status) => {
+    if (!guard(i)) return Promise.resolve(false);
+    return status === i.status
+      ? Promise.resolve(true)
+      : planner.setItemStatusResult(i, status);
+  };
+  const toggleResult = (i: Item) =>
+    setStatusResult(
+      i,
+      i.status !== "done"
+        ? "done"
+        : (i.progress ?? 0) > 0
+          ? "in_progress"
+          : "todo",
+    );
 
   /**
    * Opens an item in the task panel. Opened on one time of a repeating
    * event (a class), that time is kept, so its meeting note is that class's.
    */
   const openItem = (i: Item, occurrence?: OccurrenceRef) => {
+    itemRead.current += 1;
+    navigationRead.current += 1;
+    setPeek(null);
+    setMobileNav(false);
     setOpenTask(i);
     setOpenOccurrence(
       occurrence ? { itemId: i.id, occurrence: occurrence.occurrence } : null,
     );
   };
-  const closeTask = useCallback(() => setOpenTask(null), []);
+  const closeTask = useCallback(() => {
+    itemRead.current += 1;
+    navigationRead.current += 1;
+    setOpenTask(null);
+  }, []);
   const closeFocus = useCallback(() => setFocusTask(null), []);
   const startFocus = (i: Item) => {
+    itemRead.current += 1;
+    navigationRead.current += 1;
+    setPeek(null);
+    setMobileNav(false);
     setOpenTask(null);
     setFocusTask(i);
   };
@@ -993,6 +1539,7 @@ export function App() {
 
   const navigate = (v: View) => {
     if (v === "Settings") {
+      navigationRead.current += 1;
       setSettingsOpen(true);
       setMobileNav(false);
       return;
@@ -1006,6 +1553,61 @@ export function App() {
     setQuery("");
     setPlanRequest(null);
     setBookingFocus(null);
+  };
+
+  const chromeNavigation = useRef(false);
+  const chromeMounted = useRef(true);
+  const chromeRun = useRef<(action: ChromeAction) => void>(() => {});
+  chromeRun.current = (action) => {
+    if (action.kind === "search") {
+      openCommand();
+      return;
+    }
+    if (chromeNavigation.current) return;
+    chromeNavigation.current = true;
+    const account = sessionToken.current;
+    const navigation = navigationRead.current;
+    void (async () => {
+      try {
+        // Settings and task details overlay the current work; other destinations
+        // must let the pane's editors save or reject leaving their draft.
+        const overlays =
+          (action.kind === "navigate" && action.view === "Settings") ||
+          (action.kind === "starred" && action.item.kind === "task");
+        if (!overlays && !(await preparePageLeave(commandScope))) return;
+        if (
+          account !== sessionToken.current ||
+          navigation !== navigationRead.current ||
+          !chromeMounted.current ||
+          !ownsEventsRef.current()
+        )
+          return;
+        if (action.kind === "navigate") navigate(action.view);
+        else if (action.kind === "saved-view") openSavedView(action.id);
+        else openStarred(action.item);
+      } catch (error) {
+        if (account === sessionToken.current) report(error);
+      } finally {
+        chromeNavigation.current = false;
+      }
+    })();
+  };
+  useEffect(() => {
+    chromeMounted.current = true;
+    const unregister = registerChrome(commandScope, {
+      run: (action) => chromeRun.current(action),
+    });
+    return () => {
+      chromeMounted.current = false;
+      unregister();
+    };
+  }, [commandScope, registerChrome]);
+  useEffect(() => {
+    reportChromeLocation(commandScope, { view, savedView: shownView });
+  }, [commandScope, view, shownView, reportChromeLocation]);
+  const chrome = (action: ChromeAction) => {
+    if (dispatchChrome) dispatchChrome(action);
+    else chromeRun.current(action);
   };
 
   // ── Tabs (W4) ─────────────────────────────────────────────────────────
@@ -1033,8 +1635,17 @@ export function App() {
       });
   };
 
+  const tabPlaceRead = useRef(0);
+  useEffect(() => {
+    tabPlaceRead.current += 1;
+    return () => {
+      tabPlaceRead.current += 1;
+    };
+  }, [token]);
+
   /** Show a tab's place: its screen, afresh, with its thing open. */
   const showPlace = (place: TabPlace) => {
+    const request = ++tabPlaceRead.current;
     const next = place.view as View;
     if (next === "Settings") {
       setSettingsOpen(true);
@@ -1046,13 +1657,22 @@ export function App() {
     setQuery("");
     setPlanRequest(null);
     setBookingFocus(null);
+    setNoteDoc(null);
+    setNoteBlockId(null);
+    setProjectToOpen(null);
+    setProjectSectionToOpen(null);
+    setProjectSourceId(null);
+    setTemplateToOpen(null);
+    setViewToOpen(null);
     setShownSeq((n) => n + 1);
     setView(next);
+    const navigation = navigationRead.current;
     const id = place.id;
     pendingPlace.current = id ? { ...place, since: Date.now() } : null;
     const missed = () => {
       // Gone or out of reach: the screen shows without it, quietly.
-      if (pendingPlace.current?.id === id) pendingPlace.current = null;
+      if (request === tabPlaceRead.current && pendingPlace.current?.id === id)
+        pendingPlace.current = null;
     };
     if (!id) {
       // A tab on the assistant with no chat yet is a new chat.
@@ -1061,6 +1681,15 @@ export function App() {
     }
     if (PAGE_VIEWS.includes(next))
       void client.getDoc(id).then((doc) => {
+        const current = placeOf(activeTab(tabs.ref.current));
+        if (
+          request !== tabPlaceRead.current ||
+          navigation !== navigationRead.current ||
+          !tabsLiveRef.current ||
+          current.view !== next ||
+          current.id !== id
+        )
+          return;
         setNoteBlockId(null);
         setNoteDoc(doc);
       }, missed);
@@ -1073,25 +1702,141 @@ export function App() {
   };
 
   /** Change the tabs as the person asked, and show what came to the front. */
-  const tabAct = (action: TabAction) => {
-    if (!tabsLive) return;
+  const tabActNow = (action: TabAction) => {
+    if (!tabsLive) return false;
+    if (action.type === "open" && tabs.ref.current.tabs.length >= TAB_LIMIT) {
+      planner.setError(
+        `Close a tab before opening another. Maximum ${TAB_LIMIT} tabs.`,
+      );
+      return false;
+    }
+    if (settingsOpen && !closeSettings()) return false;
     if (action.type === "select") {
       const selected = tabs.ref.current.tabs.find(
         (tab) => tab.key === action.key,
       );
       if (selected && placeOf(selected).view === "Settings") {
         navigate("Settings");
-        return;
+        return false;
       }
     }
     const before = activeTab(tabs.ref.current);
     const was = placeOf(before);
-    const after = activeTab(tabs.act(action));
+    tabCalendar.current.set(before.key, {
+      date: calendarDate,
+      mode: calendarMode,
+    });
+    const state = tabs.act(action);
+    const after = activeTab(state);
+    if (after.key !== before.key) {
+      const saved = tabCalendar.current.get(after.key);
+      setCalendarDate(saved?.date ?? new Date());
+      setCalendarMode(saved?.mode ?? "month");
+    }
+    // Recently closed tabs retain their calendar state for Reopen closed tab.
+    const retained = new Set(
+      [...state.tabs, ...state.closed].map((tab) => tab.key),
+    );
+    for (const key of tabCalendar.current.keys())
+      if (!retained.has(key)) tabCalendar.current.delete(key);
     if (after.key !== before.key || placeOf(after) !== was)
       showPlace(placeOf(after));
+    return true;
+  };
+  const tabNavigation = useRef(0);
+  const tabAct = async (action: TabAction) => {
+    const request = ++tabNavigation.current;
+    const before = tabs.ref.current;
+    const currentTab = activeTab(before);
+    const currentPlace = placeOf(currentTab);
+    const projected = tabsReducer(before, action);
+    const nextTab = activeTab(projected);
+    const nextPlace = placeOf(nextTab);
+    const leavesPage =
+      nextTab.key !== currentTab.key ||
+      nextPlace.view !== currentPlace.view ||
+      nextPlace.id !== currentPlace.id;
+    if (leavesPage) {
+      const account = sessionToken.current;
+      const navigation = navigationRead.current;
+      const allowed = await preparePageLeave(commandScope);
+      if (
+        request !== tabNavigation.current ||
+        account !== sessionToken.current ||
+        navigation !== navigationRead.current ||
+        !chromeMounted.current
+      )
+        return false;
+      if (!allowed) return false;
+    }
+    return tabActNow(action);
   };
   const tabActRef = useRef(tabAct);
   tabActRef.current = tabAct;
+
+  const closingPane = useRef(false);
+  const paneClosureState = useRef({
+    busy,
+    assistant,
+    editing,
+    settingsOpen,
+    viewDraftStore,
+  });
+  paneClosureState.current = {
+    busy,
+    assistant,
+    editing,
+    settingsOpen,
+    viewDraftStore,
+  };
+  const paneClosureBlocked = () => {
+    const latest = paneClosureState.current;
+    return (
+      latest.busy ||
+      latest.assistant.thinking ||
+      !!latest.editing ||
+      latest.settingsOpen ||
+      latest.assistant.runProgress?.state === "waiting" ||
+      latest.assistant.runProgress?.state === "running" ||
+      !!latest.viewDraftStore.creation ||
+      latest.viewDraftStore.drafts.size > 0
+    );
+  };
+  const closePane = async () => {
+    if (!onClosePane || closingPane.current) return;
+    if (paneClosureBlocked()) {
+      planner.setError("Finish the open edit before closing this pane.");
+      return;
+    }
+    closingPane.current = true;
+    const account = sessionToken.current;
+    try {
+      if (
+        !(await preparePageLeave(commandScope)) ||
+        account !== sessionToken.current ||
+        paneClosureBlocked()
+      )
+        return;
+      const draft = paneClosureState.current.assistant.message;
+      if (
+        draft.trim() &&
+        !(await ask({
+          title: "Discard this unsent message?",
+          confirmLabel: "Discard",
+          destructive: true,
+        }))
+      )
+        return;
+      if (
+        account === sessionToken.current &&
+        !paneClosureBlocked() &&
+        draft === paneClosureState.current.assistant.message
+      )
+        onClosePane();
+    } finally {
+      closingPane.current = false;
+    }
+  };
 
   /** A thing's current name (a page's title, a project's name). */
   const titleFor = (place: TabPlace): Promise<string> => {
@@ -1147,8 +1892,8 @@ export function App() {
         )
           // Back to the library, in the same tab.
           reportPlace({ view: here, id: null, title: "" });
-      }),
-    [], // eslint-disable-line react-hooks/exhaustive-deps
+      }, commandScope),
+    [commandScope], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // The chat open in the assistant.
@@ -1178,10 +1923,9 @@ export function App() {
 
   // Kept tabs whose thing is gone (deleted, or no longer shared) close,
   // without a word, once signed in.
-  const tabsChecked = useRef(false);
   useEffect(() => {
-    if (!token || !tabsLive || tabsChecked.current) return;
-    tabsChecked.current = true;
+    if (!token || !tabsLive) return;
+    let alive = true;
     const gone = (e: unknown) =>
       e instanceof HttpError && [403, 404, 410].includes(e.statusCode);
     void Promise.all(
@@ -1190,7 +1934,7 @@ export function App() {
         if (!place.id) return null;
         try {
           const title = await titleFor(place);
-          if (title)
+          if (alive && title)
             tabs.act({
               type: "retitle",
               view: place.view,
@@ -1199,13 +1943,27 @@ export function App() {
             });
           return null;
         } catch (e) {
-          return gone(e) ? tab.key : null;
+          return gone(e) ? { key: tab.key, place } : null;
         }
       }),
-    ).then((keys) => {
-      const drop = keys.filter((k): k is string => !!k);
+    ).then((results) => {
+      if (!alive) return;
+      const drop = results.flatMap((result) => {
+        if (!result) return [];
+        const current = tabs.ref.current.tabs.find(
+          (tab) => tab.key === result.key,
+        );
+        if (!current) return [];
+        const place = placeOf(current);
+        return place.view === result.place.view && place.id === result.place.id
+          ? [result.key]
+          : [];
+      });
       if (drop.length) tabActRef.current({ type: "drop", keys: drop });
     });
+    return () => {
+      alive = false;
+    };
   }, [token, tabsLive]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Asked for a new tab: ⌘-click, a middle click, or "Open in new tab".
@@ -1228,10 +1986,12 @@ export function App() {
               (request.kind === "view" ? (viewNames[request.id] ?? "") : ""),
           };
     tabAct({ type: "open", place, background: true });
+    const account = token;
     if (place.id && !place.title)
       void titleFor(place).then(
         (title) =>
           title &&
+          account === sessionToken.current &&
           tabs.act({ type: "retitle", view: place.view, id: place.id!, title }),
         () => {
           // Its name shows once the tab is opened.
@@ -1239,8 +1999,10 @@ export function App() {
       );
   };
   useEffect(() => {
-    const onOpen = (e: Event) =>
-      openTabRef.current((e as CustomEvent<TabRequest>).detail);
+    const onOpen = (e: Event) => {
+      if (ownsEventsRef.current())
+        openTabRef.current((e as CustomEvent<TabRequest>).detail);
+    };
     window.addEventListener(OPEN_TAB_EVENT, onOpen);
     return () => window.removeEventListener(OPEN_TAB_EVENT, onOpen);
   }, []);
@@ -1256,21 +2018,36 @@ export function App() {
   useEffect(() => {
     if (tabs.state.moves === movesSeen.current) return;
     movesSeen.current = tabs.state.moves;
-    if (!tabsLive || nativeDesktop || !location.pathname.startsWith("/app"))
+    if (
+      secondary ||
+      !tabsLive ||
+      nativeDesktop ||
+      !location.pathname.startsWith("/app")
+    )
       return;
     historyAt.current += 1;
     window.history.pushState({ orbynTab: historyAt.current }, "");
   }, [tabs.state.moves, tabsLive, nativeDesktop]);
   useEffect(() => {
-    if (!tabsLive || nativeDesktop) return;
-    const pop = (e: PopStateEvent) => {
+    if (secondary || !tabsLive || nativeDesktop) return;
+    const pop = async (e: PopStateEvent) => {
       if (!location.pathname.startsWith("/app")) return;
       const state = e.state as { orbynTab?: unknown } | null;
       const at = typeof state?.orbynTab === "number" ? state.orbynTab : 0;
       const steps = at - historyAt.current;
       historyAt.current = at;
-      for (let i = 0; i < Math.abs(steps); i++)
-        tabActRef.current({ type: steps < 0 ? "back" : "forward" });
+      for (let i = 0; i < Math.abs(steps); i++) {
+        const moved = await tabActRef.current({
+          type: steps < 0 ? "back" : "forward",
+        });
+        if (!moved) {
+          // Return the browser to the accepted position when a draft blocks it.
+          const remaining = Math.sign(steps) * (Math.abs(steps) - i);
+          historyAt.current -= remaining;
+          window.history.go(-remaining);
+          break;
+        }
+      }
     };
     window.addEventListener("popstate", pop);
     return () => window.removeEventListener("popstate", pop);
@@ -1282,7 +2059,15 @@ export function App() {
     if (!token || !tabsLive || isPublicBooking || !inShell) return;
     const mac = /Mac|iPhone|iPad/.test(navigator.userAgent);
     const onKey = (e: KeyboardEvent) => {
-      if (e.altKey || document.querySelector('[aria-modal="true"]')) return;
+      if (!ownsEventsRef.current()) return;
+      if (
+        e.defaultPrevented ||
+        e.altKey ||
+        document.querySelector(
+          'dialog[open], [aria-modal="true"], .popover, .select-list.is-floating',
+        )
+      )
+        return;
       const mod = mac ? e.metaKey : e.ctrlKey;
       const key = e.key.toLowerCase();
       const now = tabs.ref.current;
@@ -1392,10 +2177,27 @@ export function App() {
   };
   /** Opens an item by id (from a notice), fetching it if the list doesn't have it. */
   const openItemById = (id: string) => {
+    const request = ++itemRead.current;
+    navigationRead.current += 1;
+    const account = token;
+    const current = () =>
+      request === itemRead.current && account === sessionToken.current;
     setOpenOccurrence(null);
+    setPeek(null);
+    setMobileNav(false);
     const found = items.find((i) => i.id === id);
     if (found) setOpenTask(found);
-    else client.getItem(id).then(setOpenTask, report);
+    else {
+      setOpenTask(null);
+      void client.getItem(id).then(
+        (item) => {
+          if (current()) setOpenTask(item);
+        },
+        (error) => {
+          if (current()) report(error);
+        },
+      );
+    }
   };
   /** Shows a day in the calendar (from an event search result). */
   const jumpToDate = (day: Date) => {
@@ -1416,33 +2218,68 @@ export function App() {
   const saveItem = (data: ItemInput, options: EditOptions = {}) => {
     if (!editing) return;
     const target = editing;
-    void act(async () => {
+    const account = sessionToken.current;
+    const current = () =>
+      sessionToken.current === account && session.get() === account;
+    return act(async () => {
+      if (!current()) return;
       if (target === "new") await client.createItem(data);
       else {
-        await client.updateItem(
+        const saved = await client.updateItem(
           target.id,
           { ...data, status: target.status, version: target.version },
           options,
         );
-        // Status changes go through the timeline so they're recorded.
+        if (!current()) return;
+        // Keep the form mounted and advance its revision if the separate status write fails.
+        setEditing(saved);
         if (data.status !== target.status) {
-          await client.postItemUpdate(target.id, { status: data.status });
+          try {
+            await client.postItemUpdate(target.id, { status: data.status });
+          } catch (e) {
+            if (current())
+              throw new Error(
+                `Item saved. Status update failed: ${errorText(e)}`,
+              );
+            return;
+          }
+          if (!current()) return;
           if (data.status === "done") celebrate();
         }
       }
+      if (!current()) return;
       setEditing(null);
-      await refresh();
+      try {
+        await refresh();
+      } catch {
+        if (current())
+          report(
+            new Error("Item saved. Refresh your planner to update the list."),
+          );
+      }
     });
   };
 
   const deleteItem = (options: EditOptions = {}) => {
     if (!editing || editing === "new") return;
-    const target = editing;
-    void act(async () => {
+    const target = editing,
+      account = sessionToken.current;
+    const current = () =>
+      sessionToken.current === account && session.get() === account;
+    return act(async () => {
+      if (!current()) return;
       await client.deleteItem(target.id, target.version, options);
+      if (!current()) return;
       setEditing(null);
       if (openTask?.id === target.id) setOpenTask(null);
-      await refresh();
+      try {
+        await refresh();
+      } catch {
+        if (current())
+          report(
+            new Error("Item deleted. Refresh your planner to update the list."),
+          );
+      }
     });
   };
 
@@ -1545,6 +2382,7 @@ export function App() {
     );
 
   // Signed in but the email isn't confirmed yet: hold at the gate.
+  if (token && user && !user.email_verified && secondary) return null;
   if (token && user && !user.email_verified)
     return (
       <VerifyGate
@@ -1555,6 +2393,14 @@ export function App() {
     );
 
   // Signed in but not on the current Terms: ask before the app.
+  if (
+    secondary &&
+    token &&
+    user &&
+    legal &&
+    user.terms_version !== legal.terms_version
+  )
+    return null;
   if (token && user && legal && user.terms_version !== legal.terms_version)
     return (
       <ConsentGate
@@ -1615,10 +2461,23 @@ export function App() {
     onOpen: openItem,
   };
 
+  const workspaceTabs = tabsLive ? (
+    <TabStrip
+      onSplit={onSplit}
+      idPrefix={tabPrefix}
+      panelId={panelId}
+      tabs={tabs.state}
+      onAction={tabAct}
+      titleOf={tabTitle}
+      iconOf={tabIcon}
+    />
+  ) : null;
+
   const settingsDialog =
     settingsOpen && user ? (
       <SettingsModal onClose={closeSettings}>
         <SettingsView
+          key={token}
           user={user}
           teams={teams}
           busy={busy}
@@ -1629,10 +2488,10 @@ export function App() {
           }}
           onEmailReminders={planner.setEmailReminders}
           onOpenStatus={() => {
-            if (closeSettings()) navigatePath("/status");
+            if (closeSettings()) void leaveFor(() => navigatePath("/status"));
           }}
           onOpenSecurity={() => {
-            if (closeSettings()) navigatePath("/security");
+            if (closeSettings()) void leaveFor(() => navigatePath("/security"));
           }}
           onAccountDeleted={() => {
             planner.clearSession();
@@ -1666,60 +2525,87 @@ export function App() {
         <div
           className={
             "app workspace" +
+            (secondary ? " is-secondary-pane" : "") +
             (railed ? " is-railed" : "") +
             (peek ? " has-peek" : "")
           }
+          style={
+            {
+              "--workspace-sidebar-width": `${sidebarWidth}px`,
+            } as CSSProperties
+          }
         >
-          <Sidebar
-            open={mobileNav}
-            railed={railed}
-            onToggleRail={toggleRail}
-            view={view}
-            user={user}
-            hasUnread={notices.some((n) => !n.read)}
-            reviewPending={reviewPending}
-            onNavigate={navigate}
-            pinnedViews={pinnedViews}
-            openView={shownView}
-            onOpenView={openSavedView}
-            starred={starred}
-            onOpenStarred={openStarred}
-            onSignOut={() => void planner.logout()}
-            agentName={assistant.agentName}
-          />
+          {!secondary && (
+            <Sidebar
+              open={mobileNav}
+              width={sidebarWidth}
+              onResize={setSidebarWidth}
+              railed={railed}
+              view={chromeLocation?.view ?? view}
+              user={user}
+              hasUnread={notices.some((n) => !n.read)}
+              reviewPending={reviewPending}
+              onNavigate={(view) => chrome({ kind: "navigate", view })}
+              pinnedViews={pinnedViews}
+              openView={chromeLocation ? chromeLocation.savedView : shownView}
+              onOpenView={(id) => chrome({ kind: "saved-view", id })}
+              starred={starred}
+              onOpenStarred={(item) => chrome({ kind: "starred", item })}
+              onSignOut={() => void planner.logout()}
+              agentName={assistant.agentName}
+            />
+          )}
           <div className="shell" ref={shellEl}>
-            <AnnouncementBanner />
-            <MaintenanceBanner
-              maintenance={planner.maintenance}
-              isAdmin={hasSystemPermission(user?.role, "system:manage")}
-            />
-            {newVersion.available && (
-              <UpdateBanner onDismiss={newVersion.dismiss} />
+            {onClosePane && (
+              <div className="workspace-pane-toolbar">
+                <span>Second pane</span>
+                <button
+                  type="button"
+                  className="icon-button"
+                  aria-label="Close second pane"
+                  onClick={() => void closePane()}
+                >
+                  <X size={16} />
+                </button>
+              </div>
             )}
-            <FocusElsewhere
-              items={items}
-              hidden={!!shownFocus}
-              onOpen={setFocusTask}
-            />
+            {!secondary && (
+              <>
+                <AnnouncementBanner />
+                <MaintenanceBanner
+                  maintenance={planner.maintenance}
+                  isAdmin={hasSystemPermission(user?.role, "system:manage")}
+                />
+                {newVersion.available && (
+                  <UpdateBanner onDismiss={newVersion.dismiss} />
+                )}
+                <FocusElsewhere
+                  items={items}
+                  hidden={!!shownFocus}
+                  onOpen={setFocusTask}
+                />
+              </>
+            )}
             <Topbar
-              view={view}
+              sharedChrome={!secondary}
+              showLocation={!tabsLive}
+              tabs={secondary ? undefined : workspaceTabs}
+              view={chromeLocation?.view ?? view}
               agentName={assistant.agentName}
               railed={railed}
               navigationOpen={mobileNav}
               onToggleRail={toggleRail}
-              onToggleMenu={() => setMobileNav(!mobileNav)}
-              onOpenNotifications={() => navigate("Notifications")}
-              onOpenCommand={() => openCommand()}
+              onToggleMenu={() => {
+                setPeek(null);
+                setMobileNav(!mobileNav);
+              }}
+              onOpenNotifications={() =>
+                chrome({ kind: "navigate", view: "Notifications" })
+              }
+              onOpenCommand={() => chrome({ kind: "search" })}
               timeZone={accountZone}
             />
-            {tabsLive && (
-              <TabStrip
-                tabs={tabs.state}
-                onAction={tabAct}
-                titleOf={tabTitle}
-                iconOf={tabIcon}
-              />
-            )}
+            {secondary && workspaceTabs}
             <main className="content">
               {error && (
                 <div role="alert" className="error">
@@ -1738,8 +2624,16 @@ export function App() {
                 // tabs the count never moves, so this is the screen alone.
                 key={`${shownSeq}:${view}`}
                 className="view-enter"
-                id={tabsLive ? "tab-panel" : undefined}
+                id={tabsLive ? panelId : undefined}
                 role={tabsLive ? "tabpanel" : undefined}
+                aria-labelledby={
+                  tabsLive ? `${tabPrefix}-tab-${tabs.state.active}` : undefined
+                }
+                aria-label={
+                  tabsLive
+                    ? tabTitle(placeOf(activeTab(tabs.state)))
+                    : undefined
+                }
               >
                 {view === "Overview" ? (
                   <HomeTop
@@ -1761,12 +2655,7 @@ export function App() {
                 {view === "Overview" && (
                   <WelcomeBack
                     onOpenItem={openItemById}
-                    onOpenDoc={(id) =>
-                      void client.getDoc(id).then((doc) => {
-                        setNoteDoc(doc);
-                        setView("Docs");
-                      }, report)
-                    }
+                    onOpenDoc={(id) => openPage(id)}
                     onOpenAsks={() => navigate("Notifications")}
                   />
                 )}
@@ -1811,7 +2700,9 @@ export function App() {
                   <OverviewView
                     {...listProps}
                     onNewItem={() => newItem()}
-                    onNavigate={navigate}
+                    onNavigate={(next) =>
+                      chromeRun.current({ kind: "navigate", view: next })
+                    }
                     onOpenProject={(id) => {
                       setProjectToOpen(id);
                       setView("Projects");
@@ -1901,6 +2792,8 @@ export function App() {
                 )}
                 {view === "Views" && (
                   <ViewsView
+                    key={token}
+                    draftStore={viewDraftStore}
                     report={report}
                     teams={teams}
                     userId={user?.id}
@@ -1918,20 +2811,15 @@ export function App() {
                         });
                     }}
                     onOpenItem={openItem}
-                    onOpenDoc={(id) =>
-                      void client.getDoc(id).then((doc) => {
-                        setNoteDoc(doc);
-                        setView("Docs");
-                      }, report)
-                    }
+                    onOpenDoc={(id) => openPage(id)}
                     onOpenProject={(id) => {
                       setProjectToOpen(id);
                       setView("Projects");
                     }}
                     onViewsChanged={loadPinnedViews}
-                    onToggle={toggle}
-                    onSetStatus={setStatus}
-                    onChangeItem={changeItem}
+                    onToggle={toggleResult}
+                    onSetStatus={setStatusResult}
+                    onChangeItem={changeItemResult}
                   />
                 )}
                 {view === "Study" && (
@@ -1972,9 +2860,9 @@ export function App() {
                     report={report}
                     onRefresh={() => void refresh()}
                     onOpenItem={openItem}
-                    onOpenPlan={openPlan}
+                    onOpenPlan={(plan) => void leaveFor(() => openPlan(plan))}
                     startNew={projectAsked}
-                    onAskProject={(project, question) => {
+                    onAskProject={(project, question, chatId) => {
                       assistant.setScope({
                         kind: "project",
                         id: project.id,
@@ -1982,14 +2870,9 @@ export function App() {
                       });
                       if (question) assistant.setMessage(question);
                       setView("AI assistant");
+                      if (chatId) void assistant.openChat(chatId).catch(report);
                     }}
-                    onOpenNote={(docId, blockId) =>
-                      void client.getDoc(docId).then((doc) => {
-                        setNoteDoc(doc);
-                        setNoteBlockId(blockId ?? null);
-                        setView("Docs");
-                      }, report)
-                    }
+                    onOpenNote={(docId, blockId) => openPage(docId, blockId)}
                   />
                 )}
                 {view === "Calendar" && (
@@ -2007,6 +2890,7 @@ export function App() {
                     onDateChange={setCalendarDate}
                     mode={calendarMode}
                     onModeChange={setCalendarMode}
+                    ownsShortcuts={() => ownsEventsRef.current()}
                     shortcuts={
                       !editing &&
                       !shownTask &&
@@ -2024,11 +2908,7 @@ export function App() {
                       if (target === "project") {
                         setProjectToOpen(id);
                         setView("Projects");
-                      } else
-                        void client.getDoc(id).then((doc) => {
-                          setNoteDoc(doc);
-                          setView("Docs");
-                        }, report);
+                      } else openPage(id);
                     }}
                   />
                 )}
@@ -2038,13 +2918,36 @@ export function App() {
                     busy={busy}
                     assistant={assistant}
                     onApplyPlan={applyPlan}
-                    onOpenPlan={openPlan}
-                    onShowOnCalendar={showOnCalendar}
+                    onOpenPlan={(plan) => void leaveFor(() => openPlan(plan))}
+                    onShowOnCalendar={(at) =>
+                      void leaveFor(() => showOnCalendar(at))
+                    }
                     onOpenSource={openSource}
                     onKeptNote={(docId) => openPage(docId)}
                     openUpcoming={upcomingAsked}
-                    navigationOpen={mobileNav}
+                    navigationOpen={mobileNav || !ownsEvents()}
                     onOpenSidePanel={() => setMobileNav(false)}
+                    agentWorkspace={(lane, openChat) =>
+                      lane === "background" ? (
+                        <BackgroundView onOpenChat={openChat} />
+                      ) : (
+                        <OvernightView
+                          report={report}
+                          onOpenChat={openChat}
+                          onOpenReview={(id) => {
+                            setReviewToOpen(id);
+                            navigate("Review");
+                          }}
+                          onOpen={(kind, id) =>
+                            openDeepLink(
+                              kind === "doc"
+                                ? { kind, id, block: null }
+                                : { kind, id },
+                            )
+                          }
+                        />
+                      )
+                    }
                   />
                 )}
                 {view === "Teams" && (
@@ -2094,12 +2997,7 @@ export function App() {
                       navigate("Projects");
                     }}
                     onOpenSetting={openSetting}
-                    onOpenDoc={(id) =>
-                      void client.getDoc(id).then((doc) => {
-                        setNoteDoc(doc);
-                        navigate("Docs");
-                      }, report)
-                    }
+                    onOpenDoc={(id) => openPage(id)}
                     onStartSession={async (blockId, itemId) => {
                       try {
                         await client.startSession(blockId, "reminder");
@@ -2161,7 +3059,6 @@ export function App() {
               )}
               {view !== "AI assistant" && (
                 <footer>
-                  A little more clarity. A little more you. <Orbit size={14} />{" "}
                   <button
                     type="button"
                     className="footer-link"
@@ -2194,7 +3091,7 @@ export function App() {
                   : null
               }
               onFindTime={findTimeFor}
-              onShowOnCalendar={showOnCalendar}
+              onShowOnCalendar={(at) => void leaveFor(() => showOnCalendar(at))}
               onOpenProject={(id) => {
                 closeTask();
                 setProjectToOpen(id);
@@ -2216,6 +3113,11 @@ export function App() {
                 setView("Docs");
               }}
               onOpenNote={(event, series) => {
+                const request = ++navigationRead.current;
+                const account = token;
+                const current = () =>
+                  request === navigationRead.current &&
+                  account === sessionToken.current;
                 void client
                   // Opened on one class of a repeating event: that class's
                   // note, unless the series' own was asked for.
@@ -2228,11 +3130,14 @@ export function App() {
                       : null,
                   )
                   .then((note) => {
+                    if (!current()) return;
                     closeTask();
                     setNoteDoc(note);
                     setView("Docs");
                   })
-                  .catch(report);
+                  .catch((error) => {
+                    if (current()) report(error);
+                  });
               }}
             />
           )}
@@ -2250,9 +3155,7 @@ export function App() {
           )}
           {editing && (
             <ItemEditor
-              key={
-                editing === "new" ? "new" : editing.id + ":" + editing.version
-              }
+              key={`${token}:${editing === "new" ? "new" : editing.id}`}
               editing={editing}
               teams={teams}
               items={items}
@@ -2263,56 +3166,81 @@ export function App() {
               onClose={() => setEditing(null)}
               onSave={saveItem}
               onDelete={deleteItem}
+              onUpdated={(updated) => {
+                if (session.get() === token)
+                  setEditing((current) =>
+                    current && current !== "new" && current.id === updated.id
+                      ? updated
+                      : current,
+                  );
+              }}
               occurrence={editing === "new" ? null : editOccurrence}
             />
           )}
           {commandOpen && (
             <CommandBar
+              key={token}
               items={items}
               isAdmin={isAdmin}
               view={view}
+              focusRequest={commandFocusRequest}
+              queryRequest={commandQueryRequest}
               initialQuery={commandQuery}
               initialAdd={commandAdd}
               onClose={() => setCommandOpen(false)}
               onOpenItem={openItem}
               onOpenItemById={openItemById}
-              onOpenDoc={(found, blockId) => {
-                setNoteDoc(found);
-                setNoteBlockId(blockId ?? null);
-                setView("Docs");
-              }}
-              onGoToProjects={(id) => {
-                setProjectToOpen(id);
-                setView("Projects");
-              }}
+              onOpenDoc={(found, blockId) =>
+                void leaveFor(() => {
+                  setNoteDoc(found);
+                  setNoteBlockId(blockId ?? null);
+                  setView("Docs");
+                })
+              }
+              onGoToProjects={(id) =>
+                void leaveFor(() => {
+                  setProjectToOpen(id);
+                  setView("Projects");
+                })
+              }
               onNewItem={() => newItem()}
               onNewEvent={() => newItem(null, { kind: "event" })}
               onNewPage={(title) => void newPage(title)}
-              onNewPageFromTemplate={() => {
-                navigate("Docs");
-                setTemplatesAsked(Date.now());
-              }}
-              onNewProject={() => {
-                navigate("Projects");
-                setProjectAsked(Date.now());
-              }}
-              onPlanDay={planMyDay}
+              onNewPageFromTemplate={() =>
+                void leaveFor(() => {
+                  navigate("Docs");
+                  setTemplatesAsked(Date.now());
+                })
+              }
+              onNewProject={() =>
+                void leaveFor(() => {
+                  navigate("Projects");
+                  setProjectAsked(Date.now());
+                })
+              }
+              onPlanDay={() => void leaveFor(planMyDay)}
               onStartFocus={() => {
                 const next = nextUp(items, undefined, 1)[0];
                 if (next) startFocus(next);
                 else planner.setError("Nothing is next up to focus on.");
               }}
-              onShowToday={() => {
-                navigate("Calendar");
-                setCalendarDate(new Date());
-                setCalendarMode("day");
-              }}
+              onShowToday={() =>
+                void leaveFor(() => {
+                  navigate("Calendar");
+                  setCalendarDate(new Date());
+                  setCalendarMode("day");
+                })
+              }
               onToggleSidebar={toggleRail}
-              onOpenSecurity={() => navigatePath("/security")}
-              onNavigate={navigate}
+              onOpenSecurity={() =>
+                void leaveFor(() => navigatePath("/security"))
+              }
+              onNavigate={(next) =>
+                chromeRun.current({ kind: "navigate", view: next })
+              }
               onApplyPlan={applyPlan}
-              onOpenPlan={openPlan}
-              onShowOnCalendar={showOnCalendar}
+              onOpenPlan={(plan) => void leaveFor(() => openPlan(plan))}
+              onShowOnCalendar={(at) => void leaveFor(() => showOnCalendar(at))}
               onOpenSource={openSource}
               onKeptNote={(docId) => openPage(docId)}
               onApplied={refresh}
@@ -2325,7 +3253,7 @@ export function App() {
               }}
               teams={teams}
               userId={user?.id}
-              onJumpToDate={jumpToDate}
+              onJumpToDate={(day) => void leaveFor(() => jumpToDate(day))}
               starred={starred}
               onOpenStarred={openStarred}
               report={report}
@@ -2355,7 +3283,7 @@ export function App() {
           {changesOpen && (
             <RecentChangesDialog onClose={() => setChangesOpen(false)} />
           )}
-          {user && user.first_run_done === false && (
+          {!secondary && user && user.first_run_done === false && (
             <FirstRun
               user={user}
               onDone={(_next, made) => {
@@ -2366,7 +3294,7 @@ export function App() {
               }}
             />
           )}
-          <Celebration />
+          {!secondary && <Celebration />}
         </div>
       </PlanningProviders>
     </PrefsContext.Provider>

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Switch } from "../components/Switch";
 import {
@@ -33,6 +33,7 @@ import { Segmented } from "../components/Segmented";
 import { Sheet, sheetStyles } from "../components/Sheet";
 import { SmallAction } from "../components/SmallAction";
 import { client } from "../lib/api";
+import { session } from "../lib/session";
 import {
   deviceTimeZone,
   minutesLabel,
@@ -56,7 +57,7 @@ import { HorizonView } from "../components/HorizonView";
 import { RealityLine, WhatIfBox } from "../components/followthrough/PlanChecks";
 import { PlanExperiments } from "../components/followthrough/PlanExperiments";
 import { useRun } from "../hooks/useRun";
-import { FadeIn, animateLayout } from "../motion";
+import { InlineDetails } from "../components/InlineDetails";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -156,11 +157,15 @@ export function PlanSheet({
   /** After a plan is applied: show the day of its first change on the calendar. */
   onShowDay?: (at: string) => void;
 }) {
+  const [bodyBusy, setBodyBusy] = useState(false);
   return (
     <Sheet
       visible={visible}
+      hideClose={bodyBusy}
       title={title ?? (seed ? "Move work forward" : "Plan my day")}
-      onClose={onClose}
+      onClose={() => {
+        if (!bodyBusy) onClose();
+      }}
       onDismiss={onDismiss}
     >
       <Body
@@ -169,6 +174,7 @@ export function PlanSheet({
         teams={teams}
         items={items}
         onApplied={onApplied}
+        onBusyChange={setBodyBusy}
         onDone={onClose}
         onShowOnCalendar={onShowOnCalendar}
         onShowDay={onShowDay}
@@ -182,10 +188,12 @@ function Body({
   teams,
   items,
   onApplied,
+  onBusyChange,
   onDone,
   onShowOnCalendar,
   onShowDay,
 }: {
+  onBusyChange: (busy: boolean) => void;
   seed: Plan | null;
   teams: Team[];
   items: Item[];
@@ -195,7 +203,25 @@ function Body({
   onShowDay?: (at: string) => void;
 }) {
   const { lists } = usePlanning();
-  const { busy, error, setError, run } = useRun();
+  const { busy: runBusy, error, setError, run: runBase } = useRun();
+  const [prefsLoading, setPrefsLoading] = useState(true);
+  const [prefsFailed, setPrefsFailed] = useState(false);
+  const [prefsVersion, setPrefsVersion] = useState(0);
+  const busy = runBusy || prefsLoading;
+  const mutation = useRef(false);
+  const run = async <T,>(fn: () => Promise<T>) => {
+    if (mutation.current) return;
+    mutation.current = true;
+    try {
+      return await runBase(fn);
+    } finally {
+      mutation.current = false;
+    }
+  };
+  useEffect(() => {
+    onBusyChange(runBusy);
+    return () => onBusyChange(false);
+  }, [runBusy, onBusyChange]);
   // A seed plan (moved forward, or from the calendar) starts from its options.
   const o = seed?.options;
   /** The planner's saved zone: the server reads start_date as a day there. */
@@ -254,10 +280,15 @@ function Body({
   // Start from the saved planning settings.
   useEffect(() => {
     let alive = true;
+    const account = session.token;
+    const current = () => alive && account === session.token;
+    setPrefsLoading(true);
+    setPrefsFailed(false);
     client
       .getPlannerPrefs()
       .then((p) => {
-        if (!alive) return;
+        if (!current()) return;
+        setPrefsLoading(false);
         setZone(p.timezone);
         setWorkStart(p.work_start);
         // A seed plan keeps its own options.
@@ -267,12 +298,15 @@ function Body({
         setDays(dayOption(p.horizon_days));
       })
       .catch(() => {
-        // The defaults above still make a sensible plan.
+        if (current()) {
+          setPrefsLoading(false);
+          setPrefsFailed(true);
+        }
       });
     return () => {
       alive = false;
     };
-  }, [seed]);
+  }, [seed, prefsVersion]);
   const pads = [...new Set([...PADS, pad])].sort((a, b) => a - b);
   const tunable = !!plan && !plan.applied && !saved;
   const keepFree = plan?.options?.keep_free ?? [];
@@ -290,7 +324,6 @@ function Body({
         if (isConflict(e)) return markStale();
         throw e;
       }
-      animateLayout();
       setPlan(next);
       setMoving(null);
       setLengthForm(null);
@@ -324,7 +357,6 @@ function Body({
         )
       )
         next = await client.tunePlan(next.id, { include_item_ids: include });
-      animateLayout();
       setPlan(next);
       // A fresh plan after one was applied starts from the planner's ticks.
       if (saved) setTicks({});
@@ -337,7 +369,6 @@ function Body({
     run(async () => {
       if (!plan) return;
       const result = await client.applyPlan(plan.id, { moves: chosen });
-      animateLayout();
       setSaved({
         text: planOutcome(result, plan.at_risk),
         at:
@@ -355,6 +386,7 @@ function Body({
   };
 
   const chooseScope = (next: PlanScope) => {
+    if (busy) return;
     setScopeState(next);
     if (tunable)
       void change((p) => setScope(p, isEverything(next) ? null : next));
@@ -382,8 +414,12 @@ function Body({
     if (!adding) return;
     const start = atClock(adding.day, adding.from);
     const end = atClock(adding.day, adding.to);
+    if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+      setError("Choose a day, start and end time.");
+      return;
+    }
     if (end <= start) {
-      setError("A time to keep free ends after it starts.");
+      setError("End time must be after start time.");
       return;
     }
     void change((p) =>
@@ -398,55 +434,62 @@ function Body({
     if (!moving || moving.key !== blockKey(b)) return null;
     const blockLength = Date.parse(b.end_at) - Date.parse(b.start_at);
     return (
-      <FadeIn style={s.inline}>
-        <Field label="Day">
-          <DateField
-            label="Day"
-            value={dayKeyOf(moving.start)}
-            onChange={(day) => {
-              if (!day) return;
-              const [y, m, d] = day.split("-").map(Number);
-              const next = new Date(moving.start);
-              next.setFullYear(y, m - 1, d);
-              setMoving({ ...moving, start: next });
-            }}
-          />
-        </Field>
-        <Field
-          label="Starts at"
-          hint="A session you move stays where you put it; the rest of the plan fits around it."
-        >
-          <TimeField
-            label="Start time"
-            value={moving.start}
-            onChange={(start) => setMoving({ ...moving, start })}
-          />
-        </Field>
-        <View style={s.row}>
-          <Button
-            title="Pin here"
-            icon="pin"
-            disabled={busy}
-            style={s.flex}
-            onPress={() =>
-              void change((p) =>
-                pinBlock(
-                  p,
-                  b,
-                  moving.start,
-                  new Date(moving.start.getTime() + blockLength),
-                ),
-              )
-            }
-          />
-          <Button
-            secondary
-            title="Cancel"
-            style={s.flex}
-            onPress={() => setMoving(null)}
-          />
+      <PlanEditSheet
+        title="Move session"
+        busy={busy}
+        error={error}
+        onClose={() => setMoving(null)}
+      >
+        <View style={s.editor}>
+          <Field label="Day">
+            <DateField
+              label="Day"
+              disabled={busy}
+              value={dayKeyOf(moving.start)}
+              onChange={(day) => {
+                if (!day) return;
+                const [y, m, d] = day.split("-").map(Number);
+                const next = new Date(moving.start);
+                next.setFullYear(y, m - 1, d);
+                setMoving({ ...moving, start: next });
+              }}
+            />
+          </Field>
+          <Field label="Starts at" hint="Moved sessions stay pinned.">
+            <TimeField
+              label="Start time"
+              disabled={busy}
+              value={moving.start}
+              onChange={(start) => setMoving({ ...moving, start })}
+            />
+          </Field>
+          <View style={s.row}>
+            <Button
+              title="Pin here"
+              icon="pin"
+              disabled={busy}
+              style={s.flex}
+              onPress={() =>
+                void change((p) =>
+                  pinBlock(
+                    p,
+                    b,
+                    moving.start,
+                    new Date(moving.start.getTime() + blockLength),
+                  ),
+                )
+              }
+            />
+            <Button
+              secondary
+              title="Cancel"
+              disabled={busy}
+              style={s.flex}
+              onPress={() => setMoving(null)}
+            />
+          </View>
         </View>
-      </FadeIn>
+      </PlanEditSheet>
     );
   };
 
@@ -459,104 +502,123 @@ function Body({
       automaticallyAdjustKeyboardInsets
     >
       <View style={sheetStyles.column}>
-        <ErrorBanner error={error} onDismiss={() => setError("")} />
-        <Text style={[shared.subtitle, s.intro]}>
-          {seed
-            ? "Here’s a plan to look over. Tune it if you like; nothing changes until you apply it."
-            : "Orbyn fits your open tasks into free working time around your events. Nothing is saved until you apply the plan."}
+        {!moving && !length && !adding && (
+          <ErrorBanner error={error} onDismiss={() => setError("")} />
+        )}
+        {prefsLoading && (
+          <Text style={shared.small} accessibilityLiveRegion="polite">
+            Loading planning settings…
+          </Text>
+        )}
+        {prefsFailed && (
+          <View style={s.stale} accessibilityRole="alert">
+            <Text style={s.staleText}>
+              Planning settings unavailable. Using current options.
+            </Text>
+            <SmallAction
+              label="Retry"
+              disabled={runBusy}
+              onPress={() => setPrefsVersion((v) => v + 1)}
+            />
+          </View>
+        )}
+        <Text style={[shared.small, s.intro]}>
+          Preview only. Apply saves changes.
         </Text>
         <View style={shared.card}>
           <Field label="Start on">
             <DateField
               label="First day to plan"
+              disabled={busy}
               value={start}
               minimumDate={new Date()}
               onChange={(day) => day && setStartDate(day)}
             />
           </Field>
-          <Text style={shared.label}>How many days?</Text>
+          <Text style={shared.label}>Days to plan</Text>
           <Segmented
             wrap
             accessibilityLabel="Days to plan"
+            disabled={busy}
             options={DAYS}
             labels={start === today ? DAY_LABELS : undefined}
             value={days}
             onChange={setDays}
           />
-          <Text style={[shared.label, s.labelTop]}>Pad estimates by</Text>
-          <ChipRow label="Pad estimates by">
-            {pads.map((n) => (
-              <Chip
-                key={n}
-                label={`${n}%`}
-                accessibilityLabel={`${n}% extra time`}
-                selected={pad === n}
-                onPress={() => setPad(n)}
+          <InlineDetails title="Scheduling options">
+            <Text style={[shared.label, s.labelTop]}>Padding</Text>
+            <ChipRow label="Pad estimates by">
+              {pads.map((n) => (
+                <Chip
+                  key={n}
+                  label={`${n}%`}
+                  accessibilityLabel={`${n}% extra time`}
+                  disabled={busy}
+                  selected={pad === n}
+                  onPress={() => setPad(n)}
+                />
+              ))}
+            </ChipRow>
+            <View style={s.stepper}>
+              <SmallAction
+                label="−5%"
+                disabled={busy || pad <= 0}
+                onPress={() => setPad(Math.max(0, pad - 5))}
               />
-            ))}
-          </ChipRow>
-          <View style={s.stepper}>
-            <SmallAction
-              label="−5%"
-              disabled={pad <= 0}
-              onPress={() => setPad(Math.max(0, pad - 5))}
-            />
-            <Text style={s.stepperValue} accessibilityLiveRegion="polite">
-              {pad}% extra time
+              <Text style={s.stepperValue} accessibilityLiveRegion="polite">
+                {pad}% extra time
+              </Text>
+              <SmallAction
+                label="+5%"
+                disabled={busy || pad >= 100}
+                onPress={() => setPad(Math.min(100, pad + 5))}
+              />
+            </View>
+            <Text style={[shared.label, s.labelTop]}>
+              Breaks between sessions
             </Text>
-            <SmallAction
-              label="+5%"
-              disabled={pad >= 100}
-              onPress={() => setPad(Math.min(100, pad + 5))}
+            <Segmented
+              accessibilityLabel="Breaks between sessions"
+              disabled={busy}
+              options={BREAK_LEVELS}
+              labels={BREAK_LABELS}
+              value={breakLevel}
+              onChange={setBreakLevel}
             />
-          </View>
-          <Text style={[shared.small, s.hint]}>
-            Extra time for the unexpected, 0 to 100%.
-          </Text>
-          <Text style={[shared.label, s.labelTop]}>
-            Breaks between sessions
-          </Text>
-          <Segmented
-            accessibilityLabel="Breaks between sessions"
-            options={BREAK_LEVELS}
-            labels={BREAK_LABELS}
-            value={breakLevel}
-            onChange={setBreakLevel}
-          />
-          <View style={s.switchRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.switchTitle}>Split long tasks</Text>
-              <Text style={shared.small}>
-                Long tasks become several sessions.
-              </Text>
+            <View style={s.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.switchTitle}>Split long tasks</Text>
+              </View>
+              <Switch
+                value={split}
+                disabled={busy}
+                trackColor={{ true: colors.accent }}
+                accessibilityLabel="Split long tasks"
+                onValueChange={setSplit}
+              />
             </View>
-            <Switch
-              value={split}
-              trackColor={{ true: colors.accent }}
-              accessibilityLabel="Split long tasks"
-              onValueChange={setSplit}
-            />
-          </View>
-          <View style={s.switchRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={s.switchTitle}>Use frames</Text>
-              <Text style={shared.small}>
-                Put tasks in the frames that match them, when you have any.
-              </Text>
+            <View style={s.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={s.switchTitle}>Use frames</Text>
+                <Text style={shared.small}>
+                  Only schedule inside matching frames.
+                </Text>
+              </View>
+              <Switch
+                value={useFrames}
+                disabled={busy}
+                trackColor={{ true: colors.accent }}
+                accessibilityLabel="Use frames"
+                onValueChange={setUseFrames}
+              />
             </View>
-            <Switch
-              value={useFrames}
-              trackColor={{ true: colors.accent }}
-              accessibilityLabel="Use frames"
-              onValueChange={setUseFrames}
-            />
-          </View>
+          </InlineDetails>
           <Button
             title={
-              busy && !plan
+              runBusy && !plan
                 ? "Planning…"
                 : seed
-                  ? "Plan again with these options"
+                  ? "Preview again"
                   : plan
                     ? "Preview again"
                     : "Preview plan"
@@ -569,63 +631,67 @@ function Body({
         </View>
 
         <View style={shared.card}>
-          <Text style={shared.label}>Plan tasks from</Text>
-          <ChipRow label="Plan tasks from" multi>
-            <Chip
-              multi
-              label="Personal"
-              disabled={busy}
-              selected={scope.personal}
-              onPress={() =>
-                chooseScope({ ...scope, personal: !scope.personal })
-              }
-            />
-            {teams.map((t) => (
+          <InlineDetails
+            title={`Plan for · ${[scope.personal ? "Personal" : "", teams.length ? (!scope.team_ids ? "All teams" : `${scope.team_ids.length} teams`) : "", scope.list_ids.length ? `${scope.list_ids.length} lists` : ""].filter(Boolean).join(" · ") || "No tasks"}`}
+          >
+            <Text style={shared.label}>Plan tasks from</Text>
+            <ChipRow label="Plan tasks from" multi>
               <Chip
-                key={t.id}
                 multi
-                label={t.name}
+                label="Personal"
                 disabled={busy}
-                selected={teamOn(t.id)}
-                onPress={() => toggleTeam(t.id)}
+                selected={scope.personal}
+                onPress={() =>
+                  chooseScope({ ...scope, personal: !scope.personal })
+                }
               />
-            ))}
-          </ChipRow>
-          <Text style={[shared.small, s.hint]}>
-            Team tasks count when they’re assigned to you.
-          </Text>
-          {lists.length > 0 && (
-            <>
-              <Text style={[shared.label, s.labelTop]}>Only these lists</Text>
-              <ChipRow label="Only these lists" multi>
-                {lists.map((l) => (
-                  <Chip
-                    key={l.id}
-                    multi
-                    color={l.color}
-                    label={l.name}
-                    disabled={busy}
-                    selected={scope.list_ids.includes(l.id)}
-                    onPress={() =>
-                      chooseScope({
-                        ...scope,
-                        list_ids: toggle(scope.list_ids, l.id),
-                      })
-                    }
-                  />
-                ))}
-              </ChipRow>
-              <Text style={[shared.small, s.hint]}>
-                None chosen means any list.
-              </Text>
-            </>
-          )}
+              {teams.map((t) => (
+                <Chip
+                  key={t.id}
+                  multi
+                  label={t.name}
+                  disabled={busy}
+                  selected={teamOn(t.id)}
+                  onPress={() => toggleTeam(t.id)}
+                />
+              ))}
+            </ChipRow>
+            <Text style={[shared.small, s.hint]}>
+              Team tasks count when they’re assigned to you.
+            </Text>
+            {lists.length > 0 && (
+              <>
+                <Text style={[shared.label, s.labelTop]}>Only these lists</Text>
+                <ChipRow label="Only these lists" multi>
+                  {lists.map((l) => (
+                    <Chip
+                      key={l.id}
+                      multi
+                      color={l.color}
+                      label={l.name}
+                      disabled={busy}
+                      selected={scope.list_ids.includes(l.id)}
+                      onPress={() =>
+                        chooseScope({
+                          ...scope,
+                          list_ids: toggle(scope.list_ids, l.id),
+                        })
+                      }
+                    />
+                  ))}
+                </ChipRow>
+                <Text style={[shared.small, s.hint]}>
+                  None chosen means any list.
+                </Text>
+              </>
+            )}
+          </InlineDetails>
         </View>
 
         {tunable && stale && (
           <View style={s.stale} accessibilityRole="alert">
             <Text style={s.staleText}>
-              Your calendar changed since this plan was made.
+              Calendar changed. Refresh this plan.
             </Text>
             <SmallAction
               label="Refresh"
@@ -635,11 +701,8 @@ function Body({
           </View>
         )}
 
-        <WhatIfBox items={items} />
-        <PlanExperiments />
-
         {plan && (
-          <FadeIn style={shared.card}>
+          <View style={shared.card}>
             <Text style={[shared.sectionTitle, s.gapBelow]}>Proposed plan</Text>
             {tunable && (
               <RealityLine plan={plan} timeZone={zone ?? deviceTimeZone()} />
@@ -652,8 +715,8 @@ function Body({
                 }
                 labels={TAB_LABELS}
                 value={tab}
+                disabled={busy}
                 onChange={(next) => {
-                  animateLayout();
                   setTab(next);
                 }}
               />
@@ -674,7 +737,7 @@ function Body({
                       ? {
                           busy,
                           onMove: (b) => {
-                            animateLayout();
+                            setError("");
                             setMoving(
                               moving?.key === blockKey(b)
                                 ? null
@@ -735,8 +798,7 @@ function Body({
             {tunable && tab === "tasks" && (
               <View style={s.tabBody}>
                 <Text style={[shared.small, s.gapBelow]}>
-                  Every task the planner looked at. Switch one off to leave it
-                  out, or change how long it gets.
+                  Choose tasks and their planned time.
                 </Text>
                 {tasks.length === 0 && (
                   <Text style={shared.small}>
@@ -747,10 +809,7 @@ function Body({
                   <View key={t.item_id} style={[s.task, n > 0 && s.divider]}>
                     <View style={s.taskTop}>
                       <View style={{ flex: 1 }}>
-                        <Text
-                          style={[s.taskTitle, !t.included && s.leftOut]}
-                          numberOfLines={2}
-                        >
+                        <Text style={[s.taskTitle, !t.included && s.leftOut]}>
                           {t.title}
                         </Text>
                         <Text style={shared.small}>{taskLine(t)}</Text>
@@ -783,7 +842,7 @@ function Body({
                           label="Change length"
                           disabled={busy}
                           onPress={() => {
-                            animateLayout();
+                            setError("");
                             setLengthForm({
                               itemId: t.item_id,
                               text: String(t.estimate_minutes ?? 30),
@@ -794,46 +853,57 @@ function Body({
                       </View>
                     )}
                     {length?.itemId === t.item_id && (
-                      <FadeIn style={s.inline}>
-                        <Field label="Plan it for">
-                          <NumberInput
-                            value={length.text}
-                            onChangeText={(text) =>
-                              setLengthForm({ ...length, text })
-                            }
-                            suffix="minutes"
-                            accessibilityLabel={`Minutes to plan for ${t.title}`}
-                          />
-                        </Field>
-                        <View style={[s.switchRow, s.switchTight]}>
-                          <Text style={[s.switchTitle, { flex: 1 }]}>
-                            Save to the task
-                          </Text>
-                          <Switch
-                            value={length.save}
-                            trackColor={{ true: colors.accent }}
-                            accessibilityLabel="Save this length to the task"
-                            onValueChange={(save) =>
-                              setLengthForm({ ...length, save })
-                            }
-                          />
+                      <PlanEditSheet
+                        title="Change estimate"
+                        busy={busy}
+                        error={error}
+                        onClose={() => setLengthForm(null)}
+                      >
+                        <View style={s.editor}>
+                          <Text style={s.taskTitle}>{t.title}</Text>
+                          <Field label="Plan it for">
+                            <NumberInput
+                              value={length.text}
+                              editable={!busy}
+                              onChangeText={(text) =>
+                                setLengthForm({ ...length, text })
+                              }
+                              suffix="minutes"
+                              accessibilityLabel={`Minutes to plan for ${t.title}`}
+                            />
+                          </Field>
+                          <View style={[s.switchRow, s.switchTight]}>
+                            <Text style={[s.switchTitle, { flex: 1 }]}>
+                              Save to the task
+                            </Text>
+                            <Switch
+                              value={length.save}
+                              disabled={busy}
+                              trackColor={{ true: colors.accent }}
+                              accessibilityLabel="Save this length to the task"
+                              onValueChange={(save) =>
+                                setLengthForm({ ...length, save })
+                              }
+                            />
+                          </View>
+                          <View style={s.row}>
+                            <Button
+                              title="Use this length"
+                              icon="check"
+                              disabled={busy}
+                              style={s.flex}
+                              onPress={saveLength}
+                            />
+                            <Button
+                              secondary
+                              title="Cancel"
+                              disabled={busy}
+                              style={s.flex}
+                              onPress={() => setLengthForm(null)}
+                            />
+                          </View>
                         </View>
-                        <View style={s.row}>
-                          <Button
-                            title="Use this length"
-                            icon="check"
-                            disabled={busy}
-                            style={s.flex}
-                            onPress={saveLength}
-                          />
-                          <Button
-                            secondary
-                            title="Cancel"
-                            style={s.flex}
-                            onPress={() => setLengthForm(null)}
-                          />
-                        </View>
-                      </FadeIn>
+                      </PlanEditSheet>
                     )}
                   </View>
                 ))}
@@ -851,7 +921,7 @@ function Body({
             {tunable && tab === "free" && (
               <View style={s.tabBody}>
                 <Text style={[shared.small, s.gapBelow]}>
-                  Times the plan leaves empty, like a Friday afternoon.
+                  These times stay free.
                 </Text>
                 {keepFree.map((r, n) => (
                   <View
@@ -876,55 +946,68 @@ function Body({
                   </View>
                 ))}
                 {adding ? (
-                  <FadeIn style={s.inline}>
-                    <Field label="Day">
-                      <DateField
-                        label="Day to keep free"
-                        value={adding.day}
-                        onChange={(day) => day && setAdding({ ...adding, day })}
-                      />
-                    </Field>
-                    <View style={s.row}>
-                      <Field label="From" style={s.flex}>
-                        <ClockField
-                          label="Free from"
-                          value={adding.from}
-                          onChange={(from) => setAdding({ ...adding, from })}
+                  <PlanEditSheet
+                    title="Keep time free"
+                    busy={busy}
+                    error={error}
+                    onClose={() => setAdding(null)}
+                  >
+                    <View style={s.editor}>
+                      <Field label="Day">
+                        <DateField
+                          label="Day to keep free"
+                          disabled={busy}
+                          value={adding.day}
+                          onChange={(day) =>
+                            day && setAdding({ ...adding, day })
+                          }
                         />
                       </Field>
-                      <Field label="To" style={s.flex}>
-                        <ClockField
-                          label="Free until"
-                          value={adding.to}
-                          onChange={(to) => setAdding({ ...adding, to })}
+                      <View style={s.row}>
+                        <Field label="From" style={s.flex}>
+                          <ClockField
+                            label="Free from"
+                            disabled={busy}
+                            value={adding.from}
+                            onChange={(from) => setAdding({ ...adding, from })}
+                          />
+                        </Field>
+                        <Field label="To" style={s.flex}>
+                          <ClockField
+                            label="Free until"
+                            disabled={busy}
+                            value={adding.to}
+                            onChange={(to) => setAdding({ ...adding, to })}
+                          />
+                        </Field>
+                      </View>
+                      <View style={s.row}>
+                        <Button
+                          title="Keep it free"
+                          icon="check"
+                          disabled={busy}
+                          style={s.flex}
+                          onPress={addFree}
                         />
-                      </Field>
+                        <Button
+                          secondary
+                          title="Cancel"
+                          disabled={busy}
+                          style={s.flex}
+                          onPress={() => setAdding(null)}
+                        />
+                      </View>
                     </View>
-                    <View style={s.row}>
-                      <Button
-                        title="Keep it free"
-                        icon="check"
-                        disabled={busy}
-                        style={s.flex}
-                        onPress={addFree}
-                      />
-                      <Button
-                        secondary
-                        title="Cancel"
-                        style={s.flex}
-                        onPress={() => setAdding(null)}
-                      />
-                    </View>
-                  </FadeIn>
+                  </PlanEditSheet>
                 ) : (
                   <Button
                     secondary
-                    title="Add a time to keep free"
+                    title="Add free time"
                     icon="plus"
                     disabled={busy || keepFree.length >= 20}
                     style={s.gapAbove}
                     onPress={() => {
-                      animateLayout();
+                      setError("");
                       setAdding({
                         day: plan.starts_on,
                         from: "13:00",
@@ -935,13 +1018,13 @@ function Body({
                 )}
               </View>
             )}
-          </FadeIn>
+          </View>
         )}
 
         {plan && !saved && (
           <>
             <Button
-              title={busy ? "Saving…" : "Apply"}
+              title={runBusy ? "Saving…" : "Apply"}
               icon="check"
               disabled={
                 busy ||
@@ -953,7 +1036,7 @@ function Body({
             {onShowOnCalendar && !plan.applied && plan.blocks.length > 0 && (
               <Button
                 secondary
-                title="See it on the calendar"
+                title="Show on calendar"
                 icon="calendar"
                 disabled={busy}
                 onPress={() => onShowOnCalendar(plan)}
@@ -962,7 +1045,7 @@ function Body({
           </>
         )}
         {saved && (
-          <FadeIn style={s.saved}>
+          <View style={s.saved}>
             <Icon
               name="check"
               size={16}
@@ -972,7 +1055,7 @@ function Body({
             <Text style={s.savedText} accessibilityRole="alert">
               {saved.text}
             </Text>
-          </FadeIn>
+          </View>
         )}
         {saved && onShowDay && saved.at && (
           <Button
@@ -983,15 +1066,61 @@ function Body({
           />
         )}
         {saved && <Button secondary title="Done" onPress={onDone} />}
+        <InlineDetails title="Planning tools">
+          <WhatIfBox items={items} />
+          <PlanExperiments />
+        </InlineDetails>
       </View>
     </ScrollView>
   );
 }
 
+function PlanEditSheet({
+  title,
+  busy,
+  error,
+  onClose,
+  children,
+}: {
+  title: string;
+  busy: boolean;
+  error: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <Sheet
+      visible
+      title={title}
+      hideClose={busy}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
+    >
+      <ScrollView
+        contentContainerStyle={sheetStyles.body}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={sheetStyles.column}>
+          {!!error && (
+            <Text
+              style={[shared.small, { color: colors.danger }]}
+              accessibilityRole="alert"
+            >
+              {error}
+            </Text>
+          )}
+          {children}
+        </View>
+      </ScrollView>
+    </Sheet>
+  );
+}
+
 const s = themed(() =>
   StyleSheet.create({
-    intro: { marginTop: 0, marginBottom: 18 },
-    labelTop: { marginTop: 18 },
+    intro: { marginTop: 0, marginBottom: 6 },
+    labelTop: { marginTop: 12 },
     hint: { marginTop: 8 },
     stepper: {
       flexDirection: "row",
@@ -1010,7 +1139,7 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 16,
-      marginTop: 18,
+      marginTop: 12,
     },
     switchTight: { marginTop: 0, marginBottom: 14 },
     switchTitle: {
@@ -1019,7 +1148,7 @@ const s = themed(() =>
       color: colors.text,
       marginBottom: 3,
     },
-    preview: { marginTop: 18, marginBottom: 0 },
+    preview: { marginTop: 12, marginBottom: 0 },
     gapBelow: { marginBottom: 10 },
     gapAbove: { marginTop: 12, marginBottom: 0 },
     tabBody: { marginTop: 14 },
@@ -1041,6 +1170,7 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.warning,
     },
+    editor: { gap: 12 },
     inline: {
       backgroundColor: colors.background,
       borderWidth: 1,
@@ -1050,14 +1180,19 @@ const s = themed(() =>
       marginTop: 6,
       marginBottom: 10,
     },
-    row: { flexDirection: "row", gap: 10 },
-    flex: { flex: 1, marginBottom: 0 },
+    row: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+    flex: { flex: 1, minWidth: 100, marginBottom: 0 },
     divider: {
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
     },
     task: { paddingVertical: 10 },
-    taskTop: { flexDirection: "row", alignItems: "center", gap: 10 },
+    taskTop: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 10,
+    },
     taskTitle: {
       fontFamily: fonts.semibold,
       fontSize: 15,

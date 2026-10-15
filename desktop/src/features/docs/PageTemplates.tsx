@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import {
   ArrowLeft,
   FileText,
@@ -90,7 +92,7 @@ function startingSpace(
 }
 
 /**
- * New page from a template: pick one, name the page, and say where it goes.
+ * Choose a template: pick one, name the page, and say where it goes.
  * Blanks ({date}, {title}, {project}, {event}) fill themselves in; a
  * template's to-do lines can become tasks in the project chosen. Any
  * template can start a page in your own space or a team's you can write in.
@@ -109,7 +111,7 @@ export function PageTemplatesDialog({
   onCreated: (doc: Doc, note: string, tasks: number) => void;
 }) {
   const { ask } = useConfirm();
-  const root = useRef<HTMLDivElement>(null);
+  const mutation = useRef(false);
   const [templates, setTemplates] = useState<PageTemplate[] | null>(null);
   const [picked, setPicked] = useState<PageTemplate | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -130,51 +132,54 @@ export function PageTemplatesDialog({
   const [notes, setNotes] = useState<EventNoteRef[]>([]);
   const [menu, setMenu] = useState<DOMRect | null>(null);
 
-  const load = () =>
-    client.listPageTemplates().then(setTemplates, (e) => {
-      setTemplates([]);
-      setError(errorText(e));
-    });
+  const request = useRef(0);
+  const [loaded, setLoaded] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const load = async () => {
+    const epoch = ++request.current;
+    setLoadFailed(false);
+    setError("");
+    const today = localDateKey(new Date(), deviceTimeZone());
+    try {
+      const [nextTemplates, nextProjects, nextTeams, view] = await Promise.all([
+        client.listPageTemplates(),
+        client.listProjects(),
+        client.listTeams(),
+        client.calendar(
+          new Date(`${addDays(today, -7)}T00:00:00`).toISOString(),
+          new Date(`${addDays(today, 15)}T00:00:00`).toISOString(),
+        ),
+      ]);
+      const listed = view.entries
+        .filter((event) => event.kind === "event")
+        .sort((a, b) => a.start_at.localeCompare(b.start_at));
+      const nextNotes = listed.length
+        ? await client.eventNotes(listed.map((event) => event.item_id))
+        : [];
+      if (epoch !== request.current) return;
+      setTemplates(nextTemplates);
+      setProjects(
+        nextProjects.filter((project) => project.status === "active"),
+      );
+      setTeams(
+        nextTeams.filter((team) => hasTeamPermission(team.role, "items:write")),
+      );
+      setEvents(listed);
+      setNotes(nextNotes);
+      setLoaded(true);
+    } catch (reason) {
+      if (epoch === request.current) {
+        setLoadFailed(true);
+        setError(errorText(reason));
+      }
+    }
+  };
   useEffect(() => {
     void load();
-    client.listProjects().then(
-      (all) => setProjects(all.filter((p) => p.status === "active")),
-      () => setProjects([]),
-    );
-    client.listTeams().then(
-      (all) =>
-        setTeams(all.filter((t) => hasTeamPermission(t.role, "items:write"))),
-      () => setTeams([]),
-    );
-    const tz = deviceTimeZone();
-    const today = localDateKey(new Date(), tz);
-    client
-      .calendar(
-        new Date(`${addDays(today, -7)}T00:00:00`).toISOString(),
-        new Date(`${addDays(today, 15)}T00:00:00`).toISOString(),
-      )
-      .then(
-        (view) => {
-          const listed = view.entries
-            .filter((e) => e.kind === "event")
-            .sort((a, b) => a.start_at.localeCompare(b.start_at));
-          setEvents(listed);
-          // Which of these have a note, asked of these events alone.
-          if (listed.length)
-            client
-              .eventNotes(listed.map((e) => e.item_id))
-              .then(setNotes, () => setNotes([]));
-        },
-        () => setEvents([]),
-      );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => {
+      request.current++;
+    };
   }, []);
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    root.current?.querySelector<HTMLElement>("button")?.focus();
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const team = space || null;
   const inSpace = (x: { team_id?: string | null }) =>
@@ -254,7 +259,8 @@ export function PageTemplatesDialog({
   };
 
   const create = async () => {
-    if (!picked) return;
+    if (!picked || !loaded || loadFailed || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -284,11 +290,14 @@ export function PageTemplatesDialog({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
 
   const remove = async (t: PageTemplate) => {
+    if (mutation.current || !t.can_edit) return;
+    mutation.current = true;
     setMenu(null);
     if (
       !(await ask({
@@ -297,8 +306,10 @@ export function PageTemplatesDialog({
         confirmLabel: "Delete",
         destructive: true,
       }))
-    )
+    ) {
+      mutation.current = false;
       return;
+    }
     setBusy(true);
     try {
       await client.deletePageTemplate(t.id);
@@ -307,6 +318,7 @@ export function PageTemplatesDialog({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -318,115 +330,136 @@ export function PageTemplatesDialog({
     : [];
 
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <TemplateDialog
+      busy={busy}
+      onClose={onClose}
+      className="page-templates"
+      labelledBy="page-templates-title"
     >
-      <section
-        ref={root}
-        className="modal page-templates"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="page-templates-title"
-      >
-        <div className="section-heading">
-          {picked && (
-            <button
-              className="icon-button"
-              aria-label="All templates"
-              onClick={() => setPicked(null)}
-            >
-              <ArrowLeft size={18} />
-            </button>
-          )}
-          <h2 id="page-templates-title">
-            {picked ? picked.name : "New page from a template"}
-          </h2>
-          {picked?.can_edit && (
-            <button
-              className="icon-button"
-              aria-label="Template options"
-              title="Template options"
-              aria-haspopup="menu"
-              aria-expanded={!!menu}
-              disabled={busy}
-              onClick={(e) =>
-                setMenu(menu ? null : e.currentTarget.getBoundingClientRect())
-              }
-            >
-              <MoreHorizontal size={18} />
-            </button>
-          )}
-          <button className="icon-button" aria-label="Close" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </div>
-        {menu && picked && (
-          <Popover
-            anchor={menu}
-            label="Template options"
-            onClose={() => setMenu(null)}
-            width={220}
+      <div className="section-heading">
+        {picked && (
+          <button
+            className="icon-button"
+            disabled={busy}
+            aria-label="All templates"
+            onClick={() => setPicked(null)}
           >
-            <div className="doc-menu" role="menu">
-              <button
-                className="doc-menu-item is-danger"
-                role="menuitem"
-                onClick={() => void remove(picked)}
-              >
-                <Trash2 size={15} aria-hidden="true" /> Delete template
-              </button>
-            </div>
-          </Popover>
+            <ArrowLeft size={18} />
+          </button>
         )}
-        <div className="page-templates-body">
-          {error && (
-            <div className="error" role="alert">
-              {error}
-            </div>
-          )}
-          {!picked ? (
-            templates === null ? (
-              <p className="muted">Loading…</p>
-            ) : (
-              GROUPS.map(([source, label]) => {
-                const list = templates.filter((t) => t.source === source);
-                if (!list.length) return null;
-                return (
-                  <section key={source} className="page-templates-group">
-                    <h3>{label}</h3>
-                    <ul className="page-templates-list">
-                      {list.map((t) => (
-                        <li key={t.id}>
-                          <button
-                            className="page-template-card"
-                            onClick={() => choose(t)}
-                          >
-                            <LayoutTemplate size={16} aria-hidden="true" />
-                            <span>
-                              <strong>{t.name}</strong>
-                              {t.description && <small>{t.description}</small>}
-                              {summary(t) && (
-                                <small className="page-template-meta">
-                                  {summary(t)}
-                                </small>
-                              )}
-                            </span>
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                );
-              })
+        <h2 id="page-templates-title">
+          {picked ? picked.name : "Choose a template"}
+        </h2>
+        {picked?.can_edit && (
+          <button
+            className="icon-button"
+            aria-label="Template options"
+            title="Template options"
+            aria-haspopup="menu"
+            aria-expanded={!!menu}
+            disabled={busy}
+            onClick={(e) =>
+              setMenu(menu ? null : e.currentTarget.getBoundingClientRect())
+            }
+          >
+            <MoreHorizontal size={18} />
+          </button>
+        )}
+        <button
+          className="icon-button"
+          disabled={busy}
+          aria-label="Close"
+          onClick={onClose}
+        >
+          <X size={20} />
+        </button>
+      </div>
+      {menu && picked && (
+        <Popover
+          anchor={menu}
+          label="Template options"
+          onClose={() => setMenu(null)}
+          width={220}
+        >
+          <div className="doc-menu" role="menu">
+            <button
+              className="doc-menu-item is-danger"
+              role="menuitem"
+              onClick={() => void remove(picked)}
+            >
+              <Trash2 size={15} aria-hidden="true" /> Delete template
+            </button>
+          </div>
+        </Popover>
+      )}
+      <div className="page-templates-body">
+        {error && (
+          <div className="error" role="alert">
+            {error}
+            {loadFailed && (
+              <button
+                className="text-button"
+                disabled={busy}
+                onClick={() => void load()}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        )}
+        {!picked && loaded && templates?.length === 0 && (
+          <p className="muted">No templates yet.</p>
+        )}
+        {!picked ? (
+          templates === null ? (
+            !loadFailed && (
+              <p className="muted" role="status">
+                Loading templates…
+              </p>
             )
           ) : (
-            <form
-              className="page-template-form"
-              onSubmit={(e) => {
-                e.preventDefault();
-                void create();
-              }}
+            GROUPS.map(([source, label]) => {
+              const list = templates.filter((t) => t.source === source);
+              if (!list.length) return null;
+              return (
+                <section key={source} className="page-templates-group">
+                  <h3>{label}</h3>
+                  <ul className="page-templates-list">
+                    {list.map((t) => (
+                      <li key={t.id}>
+                        <button
+                          className="page-template-card"
+                          onClick={() => choose(t)}
+                        >
+                          <LayoutTemplate size={16} aria-hidden="true" />
+                          <span>
+                            <strong>{t.name}</strong>
+                            {t.description && <small>{t.description}</small>}
+                            {summary(t) && (
+                              <small className="page-template-meta">
+                                {summary(t)}
+                              </small>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              );
+            })
+          )
+        ) : (
+          <form
+            className="page-template-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void create();
+            }}
+          >
+            <fieldset
+              disabled={busy || !loaded || loadFailed}
+              className="page-template-fields"
             >
               {sections.length > 0 && !opens && (
                 <p className="muted page-template-sections">
@@ -542,8 +575,7 @@ export function PageTemplatesDialog({
                     onChange={(e) => setMakeTasks(e.target.checked)}
                   />
                   <span>
-                    Make its {todos} to-do{todos === 1 ? "" : "s"}{" "}
-                    {todos === 1 ? "a task" : "tasks"}
+                    Create {todos} task{todos === 1 ? "" : "s"}
                     <small>
                       {project
                         ? `In ${project.name}. Ticking one on the page ticks the task.`
@@ -560,7 +592,7 @@ export function PageTemplatesDialog({
               <div className="confirm-actions">
                 {opens ? (
                   <button type="submit" className="primary" disabled={busy}>
-                    <FileText size={15} aria-hidden="true" /> Open its note
+                    <FileText size={15} aria-hidden="true" /> Open note
                   </button>
                 ) : (
                   <button type="submit" className="primary" disabled={busy}>
@@ -568,11 +600,11 @@ export function PageTemplatesDialog({
                   </button>
                 )}
               </div>
-            </form>
-          )}
-        </div>
-      </section>
-    </div>
+            </fieldset>
+          </form>
+        )}
+      </div>
+    </TemplateDialog>
   );
 }
 
@@ -594,17 +626,14 @@ export function SaveTemplateDialog({
   onClose: () => void;
   onSaved: (t: PageTemplate) => void;
 }) {
+  const mutation = useRef(false);
   const [name, setName] = useState(doc.title || "");
   const [personal, setPersonal] = useState(!canShare);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
   const save = async () => {
+    if (mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -618,34 +647,36 @@ export function SaveTemplateDialog({
     } catch (e) {
       setError(errorText(e));
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
 
   return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    <TemplateDialog
+      busy={busy}
+      onClose={onClose}
+      labelledBy="save-template-title"
     >
-      <section
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="save-template-title"
-      >
-        <div className="section-heading">
-          <h2 id="save-template-title">Save as template</h2>
-          <button className="icon-button" aria-label="Close" onClick={onClose}>
-            <X size={20} />
-          </button>
-        </div>
-        <form
-          className="save-template-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save();
-          }}
+      <div className="section-heading">
+        <h2 id="save-template-title">Save as template</h2>
+        <button
+          className="icon-button"
+          disabled={busy}
+          aria-label="Close"
+          onClick={onClose}
         >
+          <X size={20} />
+        </button>
+      </div>
+      <form
+        className="save-template-form"
+        onSubmit={(e) => {
+          e.preventDefault();
+          void save();
+        }}
+      >
+        <fieldset disabled={busy} className="page-template-fields">
           {error && (
             <div className="error" role="alert">
               {error}
@@ -660,10 +691,13 @@ export function SaveTemplateDialog({
               placeholder="Untitled"
               onChange={(e) => setName(e.target.value)}
             />
-            <small className="field-hint">
-              Blanks like {"{date}"}, {"{title}"}, {"{project}"} and {"{event}"}{" "}
-              in the page fill themselves in each time it's used.
-            </small>
+            <details>
+              <summary>Template placeholders</summary>
+              <p className="field-hint">
+                Use {"{date}"}, {"{title}"}, {"{project}"} or {"{event}"} for
+                values filled when creating a page.
+              </p>
+            </details>
           </label>
           {doc.team_id && canShare && (
             <label className="switch-line">
@@ -682,8 +716,8 @@ export function SaveTemplateDialog({
           )}
           {doc.team_id && !canShare && (
             <p className="muted page-template-sections">
-              It's kept as your own template, since you can read{" "}
-              {doc.team_name ?? "this team"}'s pages but not add to them.
+              Saved to your templates. You have read-only access to{" "}
+              {doc.team_name ?? "this team"}.
             </p>
           )}
           <div className="confirm-actions">
@@ -694,8 +728,49 @@ export function SaveTemplateDialog({
               Save template
             </button>
           </div>
-        </form>
-      </section>
-    </div>
+        </fieldset>
+      </form>
+    </TemplateDialog>
+  );
+}
+
+function TemplateDialog({
+  busy,
+  onClose,
+  className = "",
+  labelledBy,
+  children,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  className?: string;
+  labelledBy: string;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      data-modal-owner={focus.id}
+      className={`modal ${className}`}
+      aria-labelledby={labelledBy}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      {children}
+    </dialog>,
+    document.body,
   );
 }

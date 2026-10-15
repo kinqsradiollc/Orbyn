@@ -1,8 +1,17 @@
+import { session } from "../../lib/session";
+import { errorText } from "../../lib/planning";
+import { SettingsEditor } from "../settings/SettingsEditor";
+import {
+  preparePaneDrafts,
+  PageCommandScope,
+  usePaneLeaveGuard,
+} from "../../app/page-commands";
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useRef, useState } from "react";
 import {
   ListTodo,
+  MoreHorizontal,
   LogOut,
   Pencil,
   Plus,
@@ -32,7 +41,7 @@ import type { Planner } from "../../hooks/usePlanner";
 import { EmptyState } from "../../components/EmptyState";
 import { ItemRow } from "../../components/ItemRow";
 import { RoleBadge } from "../../components/RoleBadge";
-import { stagger } from "../../lib/motion";
+import { Popover } from "../../components/Popover";
 import { TeamPlanning } from "./TeamPlanning";
 import { TeamAgents } from "./TeamAgents";
 import { TeamPolicies } from "./TeamPolicies";
@@ -58,6 +67,7 @@ export type TeamActions = {
 type Props = TeamActions & {
   teamId: string;
   onClose: () => void;
+  onGone?: () => void;
   warnOnChanges?: boolean;
 };
 
@@ -66,11 +76,20 @@ type Props = TeamActions & {
  * effective role — their membership role, or "owner" for a system admin who
  * is not a member (the server grants admins management but not item access).
  */
-export function TeamDetail({
+export function TeamDetail(props: Props) {
+  return (
+    <TeamDetailBody
+      key={`${session.get()}:${props.user?.id ?? ""}:${props.teamId}`}
+      {...props}
+    />
+  );
+}
+function TeamDetailBody({
   teamId,
   onClose,
+  onGone = onClose,
   user,
-  busy,
+  busy: parentBusy,
   revision,
   act,
   refresh,
@@ -80,27 +99,105 @@ export function TeamDetail({
   onToggle,
   warnOnChanges = false,
 }: Props) {
-  const { ask, tell } = useConfirm();
+  const { ask: askDialog } = useConfirm();
+  const confirmationLock = useRef(false);
+  const [confirming, setConfirming] = useState(false);
+  const ask = async (options: Parameters<typeof askDialog>[0]) => {
+    if (!owns() || confirmationLock.current) return false;
+    confirmationLock.current = true;
+    setConfirming(true);
+    try {
+      const accepted = await askDialog(options);
+      return owns() && accepted;
+    } finally {
+      confirmationLock.current = false;
+      if (owns()) setConfirming(false);
+    }
+  };
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<TeamRole>("member");
+  const [memberQuery, setMemberQuery] = useState("");
+  const [showAllMembers, setShowAllMembers] = useState(false);
+  const [optionsAnchor, setOptionsAnchor] = useState<DOMRect | null>(null);
   const [team, setTeam] = useState<TeamDetailData | null>(null);
   const [items, setItems] = useState<Item[] | null>(null);
   const seq = useRef(0);
-  const latest = useRef({ onClose, report });
-  latest.current = { onClose, report };
+  const owner = useRef(session.get()).current;
+  const mounted = useRef(true),
+    lock = useRef(false);
+  const [writing, setWriting] = useState(false);
+  const busy = parentBusy || writing || confirming;
+  const [readError, setReadError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState("");
+  const owns = () => mounted.current && owner === session.get();
+  const editState = useRef({ name, renaming, inviteEmail, inviteRole, team });
+  editState.current = { name, renaming, inviteEmail, inviteRole, team };
+  const pageScope = useContext(PageCommandScope);
+  const beforeLeave = async () => {
+    if (!owns() || lock.current || confirmationLock.current) return false;
+    const snapshot = editState.current;
+    const dirty =
+      snapshot.inviteEmail.trim() ||
+      snapshot.inviteRole !== "member" ||
+      (snapshot.renaming && snapshot.name !== snapshot.team?.name);
+    if (!dirty) return true;
+    if (
+      !(await ask({
+        title: "Discard team edits?",
+        body: "Your unsaved name and member details will be discarded.",
+        confirmLabel: "Discard",
+        destructive: true,
+      }))
+    )
+      return false;
+    const latest = editState.current;
+    if (
+      !owns() ||
+      latest.name !== snapshot.name ||
+      latest.inviteEmail !== snapshot.inviteEmail ||
+      latest.inviteRole !== snapshot.inviteRole
+    )
+      return false;
+    setInviteEmail("");
+    setInviteRole("member");
+    setName(latest.team?.name ?? "");
+    setRenaming(false);
+    return true;
+  };
+  usePaneLeaveGuard(beforeLeave);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      seq.current++;
+    };
+  }, []);
+  const latest = useRef({ onClose, onGone, report });
+  latest.current = { onClose, onGone, report };
 
   const load = useCallback(async () => {
     const mine = ++seq.current;
+    setReadError("");
     try {
       const detail = await client.getTeam(teamId);
       const teamItems = hasTeamPermission(detail.role, "items:read")
         ? await client.listItems({ team_id: teamId, limit: 500 })
         : null;
-      if (mine !== seq.current) return;
+      if (!owns() || mine !== seq.current) return;
       setTeam(detail);
       setItems(teamItems);
     } catch (e) {
-      if (mine !== seq.current) return;
-      if ((e as HttpError).status === 404) latest.current.onClose();
-      latest.current.report(e);
+      if (!owns() || mine !== seq.current) return;
+      const status = (e as HttpError).status;
+      if (status === 401 || status === 403 || status === 404) {
+        setTeam(null);
+        setItems(null);
+      }
+      if (status === 404) latest.current.onGone();
+      setReadError(errorText(e));
     }
   }, [teamId]);
 
@@ -113,7 +210,20 @@ export function TeamDetail({
     return (
       <section className="card team-detail">
         <div className="empty">
-          <p>Loading team…</p>
+          {readError ? (
+            <>
+              <p role="alert">{readError}</p>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void load()}
+              >
+                Retry
+              </button>
+            </>
+          ) : (
+            <p>Loading team…</p>
+          )}
         </div>
       </section>
     );
@@ -124,13 +234,54 @@ export function TeamDetail({
     (hasSystemPermission(user?.role, "teams:manage_all") ? "owner" : null);
   const canManage = hasTeamPermission(actor, "members:manage");
   const canWrite = hasTeamPermission(team.role, "items:write");
+  const filteredMembers = team.members.filter((member) =>
+    `${member.name} ${member.email}`
+      .toLocaleLowerCase()
+      .includes(memberQuery.trim().toLocaleLowerCase()),
+  );
 
   /** Run a mutation, then refresh the planner (which reloads this panel). */
-  const mutate = (fn: () => Promise<unknown>) =>
-    void act(async () => {
-      await fn();
-      await refresh();
-    });
+  const mutate = async (fn: () => Promise<unknown>, onSaved?: () => void) => {
+    if (!owns() || parentBusy || lock.current) return false;
+    lock.current = true;
+    setWriting(true);
+    setActionError("");
+    let saved = false;
+    try {
+      await act(async () => {
+        try {
+          await fn();
+          saved = true;
+          if (!owns()) return;
+          onSaved?.();
+          await refresh();
+        } catch (e) {
+          if (owns())
+            setActionError(
+              saved ? "Saved. Couldn't refresh the team." : errorText(e),
+            );
+          else if (saved && session.get() === owner) latest.current.report(e);
+        }
+      });
+      return saved;
+    } finally {
+      lock.current = false;
+      if (owns()) setWriting(false);
+    }
+  };
+  const closeRename = async () => {
+    if (!owns() || busy || lock.current) return;
+    if (
+      name !== team.name &&
+      !(await ask({
+        title: "Discard name change?",
+        confirmLabel: "Discard",
+        destructive: true,
+      }))
+    )
+      return;
+    if (owns()) setRenaming(false);
+  };
 
   const changeRole = async (m: TeamMember, role: TeamRole) => {
     if (
@@ -138,12 +289,17 @@ export function TeamDetail({
       !(await ask({
         title:
           m.user_id === user?.id
-            ? `Change your own role to ${TEAM_ROLE_LABELS[role]}? You may lose access to some controls.`
+            ? `Change your role to ${TEAM_ROLE_LABELS[role]}?`
             : `Change ${m.name}'s role in ${team.name} to ${TEAM_ROLE_LABELS[role]}?`,
+        body:
+          m.user_id === user?.id
+            ? "You may lose access to some controls."
+            : undefined,
       }))
     )
       return;
-    mutate(() => client.updateTeamMember(team.id, m.user_id, { role }));
+    if (!owns() || !canChangeTeamMember(actor, m.role, role)) return;
+    void mutate(() => client.updateTeamMember(team.id, m.user_id, { role }));
   };
 
   const remove = async (m: TeamMember) => {
@@ -155,42 +311,55 @@ export function TeamDetail({
       }))
     )
       return;
-    mutate(() => client.removeTeamMember(team.id, m.user_id));
+    if (!owns() || !canChangeTeamMember(actor, m.role, null)) return;
+    void mutate(() => client.removeTeamMember(team.id, m.user_id));
   };
 
   const leave = async () => {
     if (!user) return;
     if (
       !(await ask({
-        title: `Leave ${team.name}? You'll lose access to its shared items.`,
+        title: `Leave ${team.name}?`,
+        body: "You’ll lose access to its shared items.",
+        confirmLabel: "Leave",
       }))
     )
       return;
-    void act(async () => {
-      await client.removeTeamMember(team.id, user.id);
-      onClose();
-      await refresh();
-    });
+    void mutate(() => client.removeTeamMember(team.id, user.id), onGone);
   };
 
   const deleteTeam = async () => {
     if (
       !(await ask({
-        title: `Delete ${team.name} for everyone? This can't be undone.`,
+        title: `Delete ${team.name}?`,
+        body: "Deletes the team for everyone. This can’t be undone.",
         confirmLabel: "Delete",
         destructive: true,
       }))
     )
       return;
-    void act(async () => {
-      await client.deleteTeam(team.id);
-      onClose();
-      await refresh();
-    });
+    void mutate(() => client.deleteTeam(team.id), onGone);
   };
 
   return (
-    <section className="card team-detail">
+    <section className="card team-detail" aria-busy={writing}>
+      {readError && (
+        <div className="error" role="alert">
+          {readError}
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => void load()}
+          >
+            Retry
+          </button>
+        </div>
+      )}
+      {actionError && (
+        <p className="error" role="alert">
+          {actionError}
+        </p>
+      )}
       <div className="section-heading">
         <div>
           <h2>{team.name}</h2>
@@ -202,10 +371,33 @@ export function TeamDetail({
         </div>
         <div className="heading-actions">
           <RoleBadge role={team.role} />
+          {(hasTeamPermission(actor, "team:update") ||
+            hasTeamPermission(actor, "team:delete")) && (
+            <button
+              className="icon-button"
+              aria-label="Team options"
+              aria-expanded={!!optionsAnchor}
+              disabled={busy}
+              onClick={(e) =>
+                setOptionsAnchor(
+                  optionsAnchor
+                    ? null
+                    : e.currentTarget.getBoundingClientRect(),
+                )
+              }
+            >
+              <MoreHorizontal size={18} />
+            </button>
+          )}
           <button
             className="icon-button"
             aria-label="Close team"
-            onClick={onClose}
+            disabled={busy}
+            onClick={() => {
+              void preparePaneDrafts(pageScope).then((allowed) => {
+                if (allowed && owns()) onClose();
+              });
+            }}
           >
             <X size={18} />
           </button>
@@ -219,53 +411,103 @@ export function TeamDetail({
         </p>
       )}
 
-      {(hasTeamPermission(actor, "team:update") ||
-        hasTeamPermission(actor, "team:delete")) && (
-        <div className="team-settings">
-          {hasTeamPermission(actor, "team:update") && (
-            <form
-              key={team.name}
-              className="inline-form"
-              onSubmit={async (e) => {
-                e.preventDefault();
-                const name = String(
-                  new FormData(e.currentTarget).get("name"),
-                ).trim();
-                if (!name || name === team.name) return;
+      {optionsAnchor &&
+        (hasTeamPermission(actor, "team:update") ||
+          hasTeamPermission(actor, "team:delete")) && (
+          <Popover
+            anchor={optionsAnchor}
+            label="Team options"
+            onClose={() => setOptionsAnchor(null)}
+          >
+            <div className="team-settings">
+              {hasTeamPermission(actor, "team:update") && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setName(team.name);
+                    setRenaming(true);
+                    setOptionsAnchor(null);
+                  }}
+                  disabled={busy}
+                >
+                  <Pencil size={14} /> Rename team
+                </button>
+              )}
+              {hasTeamPermission(actor, "team:delete") && (
+                <button
+                  type="button"
+                  className="danger"
+                  disabled={busy}
+                  onClick={() => {
+                    setOptionsAnchor(null);
+                    void deleteTeam();
+                  }}
+                >
+                  <Trash2 size={15} /> Delete team
+                </button>
+              )}
+            </div>
+          </Popover>
+        )}
+
+      {renaming && (
+        <SettingsEditor
+          title="Rename team"
+          pending={writing}
+          onClose={() => {
+            void closeRename();
+          }}
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const value = name.trim();
+              if (!value || value === team.name) return;
+              void (async () => {
                 if (
                   warnOnChanges &&
                   !(await ask({
-                    title: `Rename ${team.name} to ${name} for everyone?`,
+                    title: `Rename ${team.name} to ${value} for everyone?`,
                     confirmLabel: "Rename",
                   }))
                 )
                   return;
-                mutate(() => client.updateTeam(team.id, { name }));
-              }}
-            >
+                if (!owns()) return;
+                await mutate(
+                  () => client.updateTeam(team.id, { name: value }),
+                  () => {
+                    setTeam(
+                      (current) => current && { ...current, name: value },
+                    );
+                    setRenaming(false);
+                  },
+                );
+              })();
+            }}
+          >
+            <label className="settings-field">
+              Team name
               <input
-                name="name"
-                aria-label="Team name"
-                defaultValue={team.name}
-                maxLength={80}
                 required
+                maxLength={80}
+                value={name}
+                disabled={busy}
+                onChange={(e) => setName(e.target.value)}
               />
-              <button className="secondary" disabled={busy}>
-                <Pencil size={14} /> Rename
-              </button>
-            </form>
-          )}
-          {hasTeamPermission(actor, "team:delete") && (
+            </label>
+            {actionError && (
+              <p className="error" role="alert">
+                {actionError}
+              </p>
+            )}
             <button
-              type="button"
-              className="danger"
-              disabled={busy}
-              onClick={deleteTeam}
+              className="primary"
+              disabled={busy || !name.trim() || name.trim() === team.name}
             >
-              <Trash2 size={15} /> Delete team
+              {writing ? "Saving…" : "Save name"}
             </button>
-          )}
-        </div>
+          </form>
+        </SettingsEditor>
       )}
 
       {/* The members card, kept calm: add someone by email, then everyone
@@ -276,61 +518,104 @@ export function TeamDetail({
         </h3>
       </div>
       {canManage && (
-        <form
-          className="inline-form add-member"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const form = e.currentTarget;
-            const d = new FormData(form);
-            const email = String(d.get("email")).trim();
-            const role = d.get("role") as TeamRole;
-            if (
-              warnOnChanges &&
-              !(await ask({
-                title: `Add ${email} to ${team.name} as ${TEAM_ROLE_LABELS[role]}?`,
-                confirmLabel: "Add member",
-              }))
-            )
-              return;
-            void act(async () => {
-              await client.addTeamMember(team.id, {
-                email,
-                role,
-              });
-              form.reset();
-              await refresh();
-            });
-          }}
-        >
+        <details className="team-add-details">
+          <summary>Add member</summary>
+          <form
+            className="inline-form add-member"
+            onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.currentTarget;
+              const d = new FormData(form);
+              const email = String(d.get("email")).trim();
+              const role = d.get("role") as TeamRole;
+              if (
+                warnOnChanges &&
+                !(await ask({
+                  title: `Add ${email} to ${team.name} as ${TEAM_ROLE_LABELS[role]}?`,
+                  confirmLabel: "Add member",
+                }))
+              )
+                return;
+              if (!owns() || !assignableTeamRoles(actor).includes(role)) return;
+              void mutate(
+                () => client.addTeamMember(team.id, { email, role }),
+                () => {
+                  const shown = new FormData(form);
+                  if (
+                    String(shown.get("email")).trim() === email &&
+                    shown.get("role") === role
+                  ) {
+                    setInviteEmail((current) =>
+                      current.trim() === email ? "" : current,
+                    );
+                    setInviteRole((current) =>
+                      current === role ? "member" : current,
+                    );
+                  }
+                },
+              );
+            }}
+          >
+            <input
+              name="email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+              disabled={busy}
+              type="email"
+              required
+              maxLength={254}
+              aria-label="Add someone by email"
+              placeholder="Add someone by email"
+            />
+            <Select
+              name="role"
+              aria-label="Their role"
+              value={
+                assignableTeamRoles(actor).includes(inviteRole)
+                  ? inviteRole
+                  : (assignableTeamRoles(actor)[0] ?? "member")
+              }
+              onChange={(e) => setInviteRole(e.target.value as TeamRole)}
+              disabled={busy}
+            >
+              {assignableTeamRoles(actor).map((r) => (
+                <option key={r} value={r}>
+                  {TEAM_ROLE_LABELS[r]}
+                </option>
+              ))}
+            </Select>
+            <button className="primary" disabled={busy}>
+              <UserPlus size={15} /> Add
+            </button>
+          </form>
+        </details>
+      )}
+      {(team.members.length > 8 || memberQuery) && (
+        <div className="team-member-search">
           <input
-            name="email"
-            type="email"
-            required
-            maxLength={254}
-            aria-label="Add someone by email"
-            placeholder="Add someone by email"
+            type="search"
+            aria-label="Search members"
+            placeholder="Search members"
+            value={memberQuery}
+            onChange={(e) => {
+              setMemberQuery(e.target.value);
+              setShowAllMembers(false);
+            }}
           />
-          <Select name="role" aria-label="Their role" defaultValue="member">
-            {assignableTeamRoles(actor).map((r) => (
-              <option key={r} value={r}>
-                {TEAM_ROLE_LABELS[r]}
-              </option>
-            ))}
-          </Select>
-          <button className="primary" disabled={busy}>
-            <UserPlus size={15} /> Add
-          </button>
-        </form>
+        </div>
+      )}
+      {!!memberQuery.trim() && !filteredMembers.length && (
+        <p className="muted">No matching members.</p>
       )}
       <ul className="member-list">
-        {team.members.map((m, n) => {
+        {filteredMembers.slice(0, showAllMembers ? undefined : 25).map((m) => {
           const self = m.user_id === user?.id;
           const options = TEAM_ROLES.filter(
             (r) => r === m.role || canChangeTeamMember(actor, m.role, r),
           );
           const canRemove = !self && canChangeTeamMember(actor, m.role, null);
           return (
-            <li key={m.user_id} className="fade-up stagger" style={stagger(n)}>
+            <li key={m.user_id}>
               <span className="member-initials" aria-hidden="true">
                 {initialsOf(m.name)}
               </span>
@@ -381,6 +666,15 @@ export function TeamDetail({
           );
         })}
       </ul>
+      {!showAllMembers && filteredMembers.length > 25 && (
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => setShowAllMembers(true)}
+        >
+          Show all {filteredMembers.length} members
+        </button>
+      )}
 
       {!override && (
         <TeamAgents

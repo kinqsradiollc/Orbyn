@@ -1,5 +1,5 @@
 import { useConfirm } from "../../components/Confirm";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ChevronsUpDown,
@@ -20,6 +20,7 @@ import {
   type Sitting,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { BlockView } from "./DocBlocks";
 
 const when = (iso: string) => {
@@ -34,6 +35,10 @@ const when = (iso: string) => {
         minute: "2-digit",
       });
 };
+
+export function DocHistory(props: Parameters<typeof DocHistoryBody>[0]) {
+  return <DocHistoryBody key={`${session.get()}:${props.doc.id}`} {...props} />;
+}
 
 /** "Anna Lee" as "AL", for the badge beside a change. */
 const initials = (name: string | null) =>
@@ -67,7 +72,7 @@ export type HistoryView = {
  * DocChanges); Restore puts the whole version back as a new version on top,
  * so nothing is ever thrown away.
  */
-export function DocHistory({
+function DocHistoryBody({
   doc,
   onRestored,
   canWrite = true,
@@ -75,10 +80,14 @@ export function DocHistory({
   onView,
   viewing,
   report,
+  beforeRestore,
+  onRestoreEnd,
 }: {
   doc: Doc;
   canWrite?: boolean;
   onRestored: (doc: Doc) => void;
+  beforeRestore: () => Promise<boolean>;
+  onRestoreEnd: () => void;
   onClose: () => void;
   /** Show a version on the page, compared with something, or stop. */
   onView: (view: HistoryView | null) => void;
@@ -89,49 +98,106 @@ export function DocHistory({
   const [versions, setVersions] = useState<DocVersion[] | null>(null);
   const [busy, setBusy] = useState(false);
   const chosen = viewing?.version ?? null;
+  const mutation = useRef(false);
+  const reportRef = useRef(report);
+  reportRef.current = report;
+  const [failed, setFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const mounted = useRef(true);
+  const account = useRef(session.get()).current;
+  const latest = useRef({
+    canWrite,
+    onRestored,
+    onView,
+    beforeRestore,
+    onRestoreEnd,
+  });
+  latest.current = {
+    canWrite,
+    onRestored,
+    onView,
+    beforeRestore,
+    onRestoreEnd,
+  };
+  const current = () => mounted.current && account === session.get();
 
   useEffect(() => {
-    client.listDocVersions(doc.id).then(setVersions, (e) => {
-      setVersions([]);
-      report(e);
-    });
-  }, [doc.id, doc.version, report]);
+    let alive = true;
+    mounted.current = true;
+    setVersions(null);
+    setFailed(false);
+    client.listDocVersions(doc.id).then(
+      (rows) => {
+        if (alive && current()) setVersions(rows);
+      },
+      (e) => {
+        if (!alive || !current()) return;
+        setFailed(true);
+        reportRef.current(e);
+      },
+    );
+    return () => {
+      alive = false;
+      mounted.current = false;
+    };
+  }, [doc.id, doc.version, retry]);
 
   const open = (v: DocVersion) => {
+    if (mutation.current || !current()) return;
+    mutation.current = true;
     setBusy(true);
     // One read brings the version, the one before it (what that sitting
     // changed) and the ones kept since (who changed what since).
     client
       .getDocVersionChanges(doc.id, v.version)
-      .then(({ version, older, sittings }) =>
+      .then(({ version, older, sittings }) => {
+        if (!current()) return;
         onView({
           version,
           older,
           compare: viewing?.compare ?? "current",
           sittings,
-        }),
-      )
-      .catch(report)
-      .finally(() => setBusy(false));
+        });
+      })
+      .catch((error) => {
+        if (current()) reportRef.current(error);
+      })
+      .finally(() => {
+        mutation.current = false;
+        if (current()) setBusy(false);
+      });
   };
 
   const restore = async () => {
-    if (!chosen || !canWrite) return;
-    if (
-      !(await ask({
-        title: `Put the page back as it was at ${when(chosen.created_at)}? What is there now is kept in history.`,
-      }))
-    )
+    if (!chosen || !latest.current.canWrite || mutation.current || !current())
       return;
+    mutation.current = true;
     setBusy(true);
-    client
-      .restoreDocVersion(doc.id, chosen.version)
-      .then((restored) => {
-        onRestored(restored);
-        onView(null);
-      })
-      .catch(report)
-      .finally(() => setBusy(false));
+    let prepared = false;
+    try {
+      if (
+        !(await ask({
+          title: "Restore version?",
+          body: `Restores the page from ${when(chosen.created_at)}. The current page stays in history.`,
+          confirmLabel: "Restore",
+        }))
+      )
+        return;
+      if (!current() || !latest.current.canWrite) return;
+      prepared = await latest.current.beforeRestore();
+      if (!prepared) return;
+      if (!current() || !latest.current.canWrite) return;
+      const restored = await client.restoreDocVersion(doc.id, chosen.version);
+      if (!current()) return;
+      latest.current.onRestored(restored);
+      latest.current.onView(null);
+    } catch (e) {
+      if (current()) reportRef.current(e);
+    } finally {
+      if (prepared) latest.current.onRestoreEnd();
+      mutation.current = false;
+      if (current()) setBusy(false);
+    }
   };
 
   return (
@@ -143,19 +209,28 @@ export function DocHistory({
         <button
           className="icon-button"
           aria-label="Close history"
+          disabled={busy}
           onClick={onClose}
         >
           <X size={15} />
         </button>
       </div>
 
-      {versions === null ? (
+      {failed ? (
+        <p className="error" role="alert">
+          Could not load history.{" "}
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => setRetry(retry + 1)}
+          >
+            Retry
+          </button>
+        </p>
+      ) : versions === null ? (
         <p className="muted small">Loading…</p>
       ) : versions.length === 0 ? (
-        <p className="muted small">
-          No earlier version yet. Editing a page saves the version you started
-          from.
-        </p>
+        <p className="muted small">No earlier version yet.</p>
       ) : (
         <ol className="doc-history-list">
           {versions.map((v) => (
@@ -166,7 +241,7 @@ export function DocHistory({
                   (chosen?.version === v.version ? " is-chosen" : "")
                 }
                 aria-pressed={chosen?.version === v.version}
-                disabled={busy || !canWrite}
+                disabled={busy}
                 onClick={() => open(v)}
               >
                 <strong>{when(v.created_at)}</strong>
@@ -188,15 +263,14 @@ export function DocHistory({
       {chosen && (
         <div className="doc-history-preview">
           <span className="doc-history-note">
-            Showing the page as it was at {when(chosen.created_at)}, with what
-            has changed.
+            Version from {when(chosen.created_at)}
           </span>
           <button
             className="text-button"
             disabled={busy || !canWrite}
             onClick={restore}
           >
-            <RotateCcw size={14} aria-hidden="true" /> Restore this version
+            <RotateCcw size={14} aria-hidden="true" /> Restore version
           </button>
         </div>
       )}
@@ -287,21 +361,19 @@ export function DocChanges({
         </button>
         <div
           className="doc-changes-compare"
-          role="radiogroup"
+          role="group"
           aria-label="Compare with"
         >
           <span className="muted small">Compare with</span>
           <button
-            role="radio"
-            aria-checked={!previous}
+            aria-pressed={!previous}
             className={!previous ? "is-on" : ""}
             onClick={() => onCompare("current")}
           >
             Current page
           </button>
           <button
-            role="radio"
-            aria-checked={!!previous}
+            aria-pressed={!!previous}
             className={previous ? "is-on" : ""}
             disabled={!view.older}
             title={view.older ? undefined : "This is the oldest version kept"}

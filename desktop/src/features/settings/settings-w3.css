@@ -1,11 +1,98 @@
 /* Settings: a webhook's "event starting" lead time. Layout only. */
 .hook-lead {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  white-space: nowrap;
+  white-space: normal;
+  max-width: 100%;
 }
 .hook-lead input {
   width: 64px;
+}
+
+/* Searchable connection rows keep optional controls inside their own detail. */
+.connection-collection {
+  max-height: min(440px, 55dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+.connection-details {
+  min-width: 0;
+  max-width: 100%;
+  margin-block: 8px;
+}
+.connection-details > summary {
+  min-height: 36px;
+  padding-block: 8px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+  font-size: 15px;
+}
+.connection-details > summary small {
+  display: block;
+  margin-top: 3px;
+  color: var(--color-muted);
+  font-size: 13px;
+}
+.connection-details-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding-block: 8px;
+  min-width: 0;
+}
+.connection-details-body > small {
+  flex: 1 1 100%;
+  overflow-wrap: anywhere;
+}
+.connection-details-body .hook-active {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.connection-recovery {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.connection-details .hook-lead {
+  flex-basis: 100%;
+}
+.connection-details .hook-lead label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+@media (pointer: coarse), (max-width: 640px) {
+  .connection-details > summary {
+    min-height: 44px;
+  }
+}
+.connection-collection.settings-list strong {
+  font-size: 15px;
+}
+.connection-collection.clip-keys li > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.connection-collection.clip-keys li > svg,
+.connection-collection.clip-keys li > button {
+  flex-shrink: 0;
+}
+.connection-collection.clip-keys small {
+  font-size: 13px;
+}
+.connection-details.settings-list-main {
+  display: block;
+}
+.connection-details > summary:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }

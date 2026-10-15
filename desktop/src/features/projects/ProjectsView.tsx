@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { PageCommandScope, preparePageLeave } from "../../app/page-commands";
+import { useElementWidth } from "../../hooks/useElementWidth";
+import { useContext, useEffect, useRef, useState } from "react";
 import { onLive } from "../../lib/live";
 import { Boxes, LayoutTemplate, Plus, Search } from "lucide-react";
 import {
@@ -10,6 +12,8 @@ import {
   type Plan,
   type Team,
 } from "@orbyn/core";
+import { session } from "../../lib/session";
+import { errorText } from "../../lib/errors";
 import { client } from "../../lib/api";
 import { EmptyState } from "../../components/EmptyState";
 import { ProjectDetail } from "./ProjectDetail";
@@ -65,14 +69,17 @@ export function ProjectsView({
   /** Opens one of a project's notes in the documents view. */
   onOpenNote?: (docId: string, blockId?: string | null) => void;
   onOpenPlan: (plan: Plan) => void;
-  onAskProject?: (project: Project, question?: string) => void;
+  onAskProject?: (project: Project, question?: string, chatId?: string) => void;
   userId: string;
   /** Changes to start a new project (from ⌘K). */
   startNew?: number;
   /** The project open now (null: the list), for the app's tabs. */
   onShown?: (project: Project | null) => void;
 }) {
+  const { ref: paneRef, width: paneWidth } = useElementWidth();
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const commandScope = useContext(PageCommandScope);
+  const departing = useRef(false);
   const [libraryQuery, setLibraryQuery] = useState("");
   const visibleProjects = searchProjects(projects ?? [], libraryQuery);
   const [open, setOpen] = useState<Project | null>(null);
@@ -89,6 +96,31 @@ export function ProjectsView({
     onShown?.(open);
   }, [open?.id, open?.name]); // eslint-disable-line react-hooks/exhaustive-deps
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [openingError, setOpeningError] = useState("");
+  const mounted = useRef(false);
+  const owner = useRef(session.get());
+  const readSequence = useRef(0);
+  const openSequence = useRef(0);
+  const current = () => mounted.current && owner.current === session.get();
+  const openById = async (id: string) => {
+    if (!current()) return;
+    const request = ++openSequence.current;
+    setBusy(true);
+    setOpeningError("");
+    try {
+      const project = await client.getProject(id);
+      if (!current() || request !== openSequence.current) return;
+      setOpen(project);
+    } catch (e) {
+      if (current() && request === openSequence.current) {
+        setOpeningError(errorText(e));
+        report(e);
+      }
+    } finally {
+      if (current() && request === openSequence.current) setBusy(false);
+    }
+  };
   const [creating, setCreating] = useState(false);
   const [templates, setTemplates] = useState(!!openTemplate);
   const [initialTemplate] = useState(openTemplate);
@@ -105,13 +137,22 @@ export function ProjectsView({
     }
   }, [startNew]);
 
-  const load = () =>
-    client.listProjects().then(setProjects, (e) => {
-      setProjects([]);
-      report(e);
-    });
+  const load = async () => {
+    const request = ++readSequence.current;
+    setLoadError("");
+    try {
+      const next = await client.listProjects();
+      if (current() && request === readSequence.current) setProjects(next);
+    } catch (e) {
+      if (current() && request === readSequence.current) {
+        setLoadError(errorText(e));
+        report(e);
+      }
+    }
+  };
 
   useEffect(() => {
+    mounted.current = true;
     void load();
     // Projects changed elsewhere (another device, a teammate, or a
     // connected agent): read them again, once for a burst of changes.
@@ -129,37 +170,26 @@ export function ProjectsView({
       soon = setTimeout(() => void load(), 400);
     });
     return () => {
+      mounted.current = false;
       clearTimeout(soon);
       stop();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!initialProjectId) return;
-    void client.getProject(initialProjectId).then((project) => {
-      setOpenSection(initialSection ?? "home");
-      setOpenSourceId(initialSourceId);
-      setOpen(project);
-      onInitialProjectShown?.();
-    }, report);
-  }, [initialProjectId, initialSection, initialSourceId, report]);
+    setOpenSection(initialSection ?? "home");
+    setOpenSourceId(initialSourceId);
+    void openById(initialProjectId).then(() => {
+      if (current()) onInitialProjectShown?.();
+    });
+  }, [initialProjectId, initialSection, initialSourceId]);
 
   useEffect(() => {
     if (!openProject) return;
-    let alive = true;
-    client.getProject(openProject).then(
-      (p) => {
-        if (alive) setOpen(p);
-        onProjectOpened?.();
-      },
-      (e) => {
-        report(e);
-        onProjectOpened?.();
-      },
-    );
-    return () => {
-      alive = false;
-    };
-  }, [openProject]); // eslint-disable-line react-hooks/exhaustive-deps
+    void openById(openProject).then(() => {
+      if (current()) onProjectOpened?.();
+    });
+  }, [openProject]);
 
   if (open)
     return (
@@ -189,8 +219,18 @@ export function ProjectsView({
         onOpenPlan={onOpenPlan}
         onAskProject={onAskProject}
         onBack={() => {
-          setOpen(null);
-          void load();
+          if (departing.current || !current()) return;
+          const target = open.id;
+          departing.current = true;
+          void (async () => {
+            try {
+              if (!(await preparePageLeave(commandScope)) || !current()) return;
+              setOpen((page) => (page?.id === target ? null : page));
+              void load();
+            } finally {
+              departing.current = false;
+            }
+          })();
         }}
         onChanged={(p) => {
           setOpen(p);
@@ -208,7 +248,13 @@ export function ProjectsView({
     );
 
   return (
-    <div className="projects-view">
+    <div
+      ref={paneRef}
+      className={
+        "projects-view" +
+        (paneWidth > 0 && paneWidth < 600 ? " is-compact" : "")
+      }
+    >
       <div className="projects-head">
         <span className="muted projects-count">
           {projects === null
@@ -270,9 +316,7 @@ export function ProjectsView({
         userId={userId}
         teams={teams}
         report={report}
-        onProject={(id) =>
-          void client.getProject(id).then(setOpen).catch(report)
-        }
+        onProject={(id) => void openById(id)}
       />
 
       {!!projects?.length && (
@@ -288,8 +332,22 @@ export function ProjectsView({
           />
         </label>
       )}
+      {openingError && <p role="alert">{openingError}</p>}
+      {busy && (
+        <p role="status" className="muted">
+          Opening project…
+        </p>
+      )}
+      {loadError && (
+        <div role="alert">
+          <p>{loadError}</p>
+          <button className="secondary" onClick={() => void load()}>
+            Retry projects
+          </button>
+        </div>
+      )}
       {projects === null ? (
-        <p className="muted">Loading…</p>
+        !loadError && <p className="muted">Loading…</p>
       ) : projects.length === 0 ? (
         <EmptyState
           icon={Boxes}
@@ -319,7 +377,7 @@ export function ProjectsView({
                 <button
                   className="project-card"
                   {...newTabClick(
-                    () => client.getProject(p.id).then(setOpen).catch(report),
+                    () => void openById(p.id),
                     () =>
                       openInNewTab({
                         kind: "project",

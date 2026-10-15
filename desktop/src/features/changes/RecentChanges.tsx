@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
 import { Activity, X } from "lucide-react";
 import {
   activityOriginLabel,
@@ -53,31 +55,48 @@ export function RecentChanges({
   const [next, setNext] = useState<string | null>(null);
   const [error, setError] = useState("");
   const zone = deviceTimeZone();
+  const request = useRef(0);
+  const fetching = useRef(false);
+  const [loading, setLoading] = useState(false);
 
   const load = useCallback(
-    (before?: string) =>
-      client
-        .listChanges({
+    async (before?: string) => {
+      if (before && fetching.current) return;
+      const version = ++request.current;
+      fetching.current = true;
+      setLoading(true);
+      setError("");
+      try {
+        const page = await client.listChanges({
           team_id: teamId,
           hide_mine: hideMine,
           before,
           limit,
-        })
-        .then(
-          (page) => {
-            setError("");
-            setChanges((was) =>
-              before ? [...(was ?? []), ...page.changes] : page.changes,
-            );
-            setNext(page.next);
-          },
-          (e) => setError(errorText(e)),
-        ),
+        });
+        if (version !== request.current) return;
+        setChanges((was) =>
+          before ? [...(was ?? []), ...page.changes] : page.changes,
+        );
+        setNext(page.next);
+      } catch (error) {
+        if (version === request.current) setError(errorText(error));
+      } finally {
+        if (version === request.current) {
+          fetching.current = false;
+          setLoading(false);
+        }
+      }
+    },
     [teamId, hideMine, limit],
   );
   useEffect(() => {
     setChanges(null);
+    setNext(null);
     void load();
+    return () => {
+      request.current++;
+      fetching.current = false;
+    };
   }, [load]);
 
   const days = groupChangesByDay(changes ?? [], zone);
@@ -106,16 +125,22 @@ export function RecentChanges({
         </label>
       </div>
       {error && (
-        <p role="alert" className="muted">
+        <div role="alert" className="error">
           {error}
-        </p>
+          <button
+            type="button"
+            className="text-button"
+            disabled={loading}
+            onClick={() => void load(changes ? (next ?? undefined) : undefined)}
+          >
+            Retry
+          </button>
+        </div>
       )}
       {changes === null && !error && <p className="muted">Loading…</p>}
       {changes && !changes.length && (
         <p className="section-empty">
-          {hideMine
-            ? "Nothing changed by anyone else lately."
-            : "Nothing changed lately."}
+          {hideMine ? "No recent changes from others." : "No recent changes."}
         </p>
       )}
       {days.slice(0, compact ? 2 : undefined).map((day) => (
@@ -166,8 +191,12 @@ export function RecentChanges({
         </div>
       ))}
       {!compact && next && (
-        <button className="text-button" onClick={() => void load(next)}>
-          Show earlier changes
+        <button
+          className="text-button"
+          disabled={loading}
+          onClick={() => void load(next)}
+        >
+          {loading ? "Loading…" : "Earlier changes"}
         </button>
       )}
     </section>
@@ -176,34 +205,35 @@ export function RecentChanges({
 
 /** Recent changes in every team you are in, over the app (⌘K). */
 export function RecentChangesDialog({ onClose }: { onClose: () => void }) {
+  const focus = useModalFocus(onClose);
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  return (
-    <div
-      className="modal-backdrop"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+    const node = focus.ref.current as HTMLDialogElement;
+    node.showModal();
+    return () => node.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      className="modal changes-dialog"
+      data-modal-focus={focus.id}
+      aria-label="Recent changes"
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
       }}
     >
-      <div
-        className="modal changes-dialog scale-in"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Recent changes"
+      <button
+        className="icon-button changes-close"
+        aria-label="Close recent changes"
+        onClick={onClose}
+        autoFocus
       >
-        <button
-          className="icon-button changes-close"
-          aria-label="Close recent changes"
-          onClick={onClose}
-          autoFocus
-        >
-          <X size={18} />
-        </button>
-        <RecentChanges />
-      </div>
-    </div>
+        <X size={18} />
+      </button>
+      <RecentChanges />
+    </dialog>,
+    document.body,
   );
 }

@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -18,7 +17,6 @@ import {
   type Item,
 } from "@orbyn/core";
 import { usePlanned } from "../app/planned";
-import { stagger } from "../lib/motion";
 import { minutesLabel } from "../lib/planning";
 import { startDrag } from "../lib/drag";
 import { progressOf, stepsLabel, updatesLabel } from "../lib/tasks";
@@ -32,7 +30,7 @@ type Props = {
   busy: boolean;
   /** Viewers can open team items but not complete them. */
   readOnly?: boolean;
-  /** Position in its list; staggers the entrance animation. */
+  /** Position retained for caller compatibility; rows do not animate on entry. */
   index?: number;
   /** Quick-complete / reopen (recorded in the task's timeline). */
   onToggle: (item: Item) => void;
@@ -59,7 +57,6 @@ export function ItemRow({
   item: i,
   busy,
   readOnly,
-  index = 0,
   onToggle,
   onOpen,
   score,
@@ -70,11 +67,6 @@ export function ItemRow({
   parentTitle,
 }: Props) {
   const done = i.status === "done";
-  // Items already done when the row mounts don't pop; completing one does.
-  const doneAtMount = useRef(done);
-  useEffect(() => {
-    if (!done) doneAtMount.current = false;
-  }, [done]);
   const steps = stepsLabel(i);
   const updates = updatesLabel(i);
   const showProgress = i.kind === "task" || !!i.steps_total;
@@ -93,10 +85,7 @@ export function ItemRow({
   const fitChip = open ? rowFitChip(planned?.fit) : null;
   return (
     <div
-      className={
-        `item-row tone-${i.status} fade-up stagger ` + (done ? "completed" : "")
-      }
-      style={stagger(index)}
+      className={`item-row tone-${i.status} ${done ? "completed" : ""}`}
       // Picked up, a task plans a session on a calendar day or links into
       // a page (ORG-06); its menus do the same without a mouse.
       draggable
@@ -121,11 +110,7 @@ export function ItemRow({
       )}
       <button
         disabled={busy || readOnly}
-        className={
-          "check " +
-          (done ? "checked " : "") +
-          (doneAtMount.current ? "" : "can-pop")
-        }
+        className={"check " + (done ? "checked" : "")}
         aria-label={done ? "Reopen " + i.title : "Complete " + i.title}
         title={readOnly ? "View only" : done ? "Reopen" : "Mark done"}
         onClick={() => onToggle(i)}
@@ -144,9 +129,7 @@ export function ItemRow({
         )}
         <strong>{i.title}</strong>
         <span className="item-meta">
-          {i.kind === "event"
-            ? "Event"
-            : i.notes || (i.team_id ? "Team plan" : "Personal")}
+          {i.kind === "event" ? "Event" : i.team_id ? "Task" : "Personal task"}
           {i.due_at && " · " + dateLabel(i.due_at)}
         </span>
         {(plannedToday || fitChip) && (
@@ -214,7 +197,7 @@ export function ItemRow({
             className="icon-button"
             aria-label={`Move ${i.title} up`}
             title="Move up"
-            disabled={!onMoveUp || busy}
+            disabled={!onMoveUp || busy || readOnly}
             onClick={onMoveUp}
           >
             <ArrowUp size={13} />
@@ -223,7 +206,7 @@ export function ItemRow({
             className="icon-button"
             aria-label={`Move ${i.title} down`}
             title="Move down"
-            disabled={!onMoveDown || busy}
+            disabled={!onMoveDown || busy || readOnly}
             onClick={onMoveDown}
           >
             <ArrowDown size={13} />

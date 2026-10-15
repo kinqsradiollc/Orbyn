@@ -66,15 +66,17 @@ export function WaitsOnPicker({
       {!readOnly &&
         (open.length > 0 ? (
           <Select
+            searchable
             aria-label="Add a task to wait on"
             disabled={full}
             value=""
             onChange={(e) => {
-              if (e.target.value) onChange([...selected, e.target.value]);
+              if (!full && open.some((item) => item.id === e.target.value))
+                onChange([...selected, e.target.value]);
             }}
           >
             <option value="">
-              {full ? `That's ${MAX}, the most it can wait on` : "Add a task…"}
+              {full ? `Up to ${MAX} tasks` : "Add a task…"}
             </option>
             {open.map((i) => (
               <option key={i.id} value={i.id}>
@@ -83,12 +85,10 @@ export function WaitsOnPicker({
             ))}
           </Select>
         ) : (
-          <small className="field-hint">
-            Nothing else open to wait on yet.
-          </small>
+          <small className="field-hint">No other open tasks.</small>
         ))}
       {selected.length === 0 && readOnly && (
-        <small className="field-hint">Nothing.</small>
+        <small className="field-hint">None.</small>
       )}
     </fieldset>
   );

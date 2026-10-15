@@ -17,12 +17,6 @@
 :root[data-theme="dark"] .ai-test.fail {
   color: var(--color-danger);
 }
-:root[data-theme="dark"] .ai-switch {
-  background: var(--color-borderStrong);
-}
-:root[data-theme="dark"] .ai-switch::after {
-  background: var(--color-surface);
-}
 :root[data-theme="dark"] .ai-switch:focus-visible {
   outline: 3px solid var(--color-focus);
 }
@@ -82,20 +76,8 @@
   border-color: var(--color-borderHover);
   background: var(--color-hover);
 }
-:root[data-theme="dark"] .ai-bubble-user {
-  color: var(--color-onAccent);
-}
-:root[data-theme="dark"] .ai-bubble-bot {
-  background: var(--color-hover);
-}
 :root[data-theme="dark"] .ai-action {
   background: var(--color-surface);
-}
-:root[data-theme="dark"] .ai-composer {
-  background: var(--color-surface);
-}
-:root[data-theme="dark"] .ai-composer:focus-within {
-  border-color: var(--color-borderHover);
 }
 :root[data-theme="dark"] .ai-send {
   color: var(--color-onAccent);
@@ -341,12 +323,8 @@
   color: var(--color-onAccent);
 }
 :root[data-theme="dark"] .cal-block {
-  border: 1px solid color-mix(in srgb, var(--green) 45%, var(--color-surface));
-  background: repeating-linear-gradient(
-    -45deg,
-    color-mix(in srgb, var(--green) 11%, var(--color-surface)) 0 6px,
-    color-mix(in srgb, var(--green) 16%, var(--color-surface)) 6px 12px
-  );
+  border-color: var(--color-accent);
+  background: var(--color-accentSoft);
   color: var(--color-selectedText);
 }
 :root[data-theme="dark"] .cal-block.is-done .cal-title {
@@ -559,9 +537,6 @@
 :root[data-theme="dark"] [role="button"]:focus-visible {
   outline: 3px solid var(--color-focus);
 }
-:root[data-theme="dark"] p {
-  color: var(--color-textMuted);
-}
 :root[data-theme="dark"] .sidebar {
   background: var(--color-surface);
 }
@@ -571,16 +546,6 @@
 }
 :root[data-theme="dark"] .nav-label {
   color: var(--color-muted);
-}
-:root[data-theme="dark"] nav button {
-  color: var(--color-textMuted);
-}
-:root[data-theme="dark"] nav button:hover {
-  background: var(--color-hover);
-}
-:root[data-theme="dark"] nav button.active {
-  background: var(--color-selected);
-  color: var(--color-selectedText);
 }
 :root[data-theme="dark"] nav button i,
 :root[data-theme="dark"] .notice i {
@@ -652,15 +617,6 @@
 }
 :root[data-theme="dark"] .section-heading > svg {
   color: var(--color-muted);
-}
-:root[data-theme="dark"] .check {
-  border: 1.5px solid var(--color-borderStrong);
-  background: var(--color-surface);
-}
-:root[data-theme="dark"] .checked {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-onAccent);
 }
 :root[data-theme="dark"] .item-main .item-meta {
   color: var(--color-textMuted);
@@ -1091,7 +1047,7 @@
 }
 :root[data-theme="dark"] .command-bar:focus-within {
   box-shadow:
-    0 24px 90px #1c312440,
+    0 24px 90px var(--color-shadow),
     0 0 0 3px color-mix(in srgb, var(--color-focus) 40%, transparent);
 }
 :root[data-theme="dark"] .command-list li[role="option"].active {

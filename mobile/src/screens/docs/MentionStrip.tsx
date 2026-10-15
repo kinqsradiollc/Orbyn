@@ -1,5 +1,7 @@
-import React from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useRef } from "react";
+import { usePaneWidth } from "../../hooks/usePaneWidth";
+import { FlatList, StyleSheet, Text, View } from "react-native";
+import { SmallAction } from "../../components/SmallAction";
 import { Pressable } from "../../motion";
 import { colors, fonts, radii, themed } from "../../theme";
 
@@ -14,51 +16,94 @@ export function MentionStrip({
   query,
   people,
   onPick,
+  failed = false,
+  onRetry,
 }: {
   query: string;
+  failed?: boolean;
+  onRetry?: () => void;
   /** Null while loading. */
   people: MentionPerson[] | null;
   onPick: (person: MentionPerson) => void;
 }) {
   const q = query.trim().toLowerCase();
-  const matches = (people ?? [])
-    .filter(
-      (p) =>
-        !q ||
-        p.name
-          .toLowerCase()
-          .split(/\s+/)
-          .some((w) => w.startsWith(q)) ||
-        p.email.toLowerCase().startsWith(q),
-    )
-    .slice(0, 8);
+  const matches = (people ?? []).filter(
+    (p) =>
+      !q ||
+      p.name
+        .toLowerCase()
+        .split(/\s+/)
+        .some((w) => w.startsWith(q)) ||
+      p.email.toLowerCase().startsWith(q),
+  );
+  const latest = useRef({ people, failed, onPick });
+  latest.current = { people, failed, onPick };
+  const { width, onLayout } = usePaneWidth();
+  const counts = new Map<string, number>();
+  for (const person of people ?? []) {
+    const name = person.name.trim().toLocaleLowerCase();
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
   return (
-    <View style={s.strip} accessibilityLabel="Mention someone">
-      {people === null ? (
+    <View
+      onLayout={onLayout}
+      style={s.strip}
+      accessibilityLabel="Mention someone"
+    >
+      {failed ? (
+        <View style={s.recovery}>
+          <Text style={s.note} accessibilityRole="alert">
+            Couldn't load people.
+          </Text>
+          {onRetry && (
+            <SmallAction
+              label="Retry people"
+              onPress={onRetry}
+              disabled={false}
+            />
+          )}
+        </View>
+      ) : people === null ? (
         <Text style={s.note}>Finding people…</Text>
       ) : !matches.length ? (
         <Text style={s.note}>
-          Nobody else who can open this page has that name.
+          {q ? "No matching people." : "No other people with access."}
         </Text>
       ) : (
-        <ScrollView
-          horizontal
+        <FlatList
+          data={matches}
+          keyExtractor={(person) => person.id}
+          initialNumToRender={8}
+          maxToRenderPerBatch={12}
           keyboardShouldPersistTaps="always"
-          showsHorizontalScrollIndicator={false}
+          style={s.list}
+          nestedScrollEnabled
           contentContainerStyle={s.row}
-        >
-          {matches.map((p) => (
+          renderItem={({ item: p }) => (
             <Pressable
               key={p.id}
               accessibilityRole="button"
-              accessibilityLabel={`Mention ${p.name}`}
-              onPress={() => onPick(p)}
-              style={({ pressed }) => [s.chip, pressed && { opacity: 0.7 }]}
+              accessibilityLabel={`Mention ${p.name}, ${p.email}`}
+              onPress={() => {
+                const current = latest.current;
+                const person = current.people?.find(
+                  (person) => person.id === p.id,
+                );
+                if (!current.failed && person) current.onPick(person);
+              }}
+              style={({ pressed }) => [
+                s.chip,
+                { maxWidth: Math.max(44, width - 24) },
+                pressed && { backgroundColor: colors.surfaceMuted },
+              ]}
             >
               <Text style={s.chipText}>@{p.name}</Text>
+              {(counts.get(p.name.trim().toLocaleLowerCase()) ?? 0) > 1 && (
+                <Text style={s.note}>{p.email}</Text>
+              )}
             </Pressable>
-          ))}
-        </ScrollView>
+          )}
+        />
       )}
     </View>
   );
@@ -74,14 +119,22 @@ const s = themed(() =>
       borderTopColor: colors.divider,
       backgroundColor: colors.surface,
     },
-    row: { gap: 8, alignItems: "center", paddingVertical: 6 },
+    recovery: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      gap: 8,
+      alignItems: "center",
+    },
+    list: { maxHeight: 180 },
+    row: { gap: 4, paddingVertical: 6 },
     chip: {
-      minHeight: 32,
+      minHeight: 44,
       paddingHorizontal: 12,
       borderRadius: radii.pill,
       backgroundColor: colors.accentSoft,
-      alignItems: "center",
+      alignItems: "flex-start",
       justifyContent: "center",
+      paddingVertical: 8,
     },
     chipText: {
       fontFamily: fonts.semibold,

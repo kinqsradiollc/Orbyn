@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -100,7 +100,7 @@ export function DocBlockMenu({
   onIndent?: (by: 1 | -1) => void;
   canIndent?: boolean;
   canOutdent?: boolean;
-  /** "Copy link to this line" (LNK-04). */
+  /** "Copy line link" (LNK-04). */
   onCopyLink?: () => void;
   /** "Move to new page" (ORG-05); a heading takes its whole section. */
   onMoveToPage?: () => void;
@@ -151,10 +151,7 @@ export function DocBlockMenu({
           })}
         </div>
         {!structural && (
-          <p className="doc-menu-note">
-            Suggest mode changes words only. Leave it to move, copy or delete
-            lines.
-          </p>
+          <p className="doc-menu-note">Suggest mode changes words only.</p>
         )}
         <div className="doc-menu-row">
           <button
@@ -174,7 +171,7 @@ export function DocBlockMenu({
                 onClose();
               }}
             >
-              <LinkIcon size={15} aria-hidden="true" /> Copy link to this line
+              <LinkIcon size={15} aria-hidden="true" /> Copy line link
             </button>
           )}
           {structural && onMoveToPage && (
@@ -320,7 +317,7 @@ const slashEntries = (): SlashEntry[] => {
     item: { kind: "task" },
     key: "task",
     label: "New task",
-    hint: "A checklist line that goes straight into your tasks",
+    hint: "Creates a task in your planner",
     icon: ListChecks,
     words: "task todo make",
   };
@@ -336,7 +333,7 @@ const slashEntries = (): SlashEntry[] => {
     item: { kind: "link" },
     key: "link",
     label: "Link",
-    hint: "A page, task, project, person or date",
+    hint: "Link to an Orbyn item",
     shorthand: "[[",
     icon: Link2,
     words: "link page connect mention",
@@ -345,7 +342,7 @@ const slashEntries = (): SlashEntry[] => {
     item: { kind: "live-list" },
     key: "live-list",
     label: "Live list",
-    hint: "Tasks or pages that match, kept up to date",
+    hint: "Matching tasks or pages",
     icon: ListFilter,
     words: "live list query view filter tasks due open action items",
   };
@@ -363,7 +360,7 @@ const slashEntries = (): SlashEntry[] => {
       item: { kind: "image" },
       key: "image",
       label: "Picture",
-      hint: "From your computer; resize it by its edge",
+      hint: "Upload a picture",
       icon: ImageIcon,
       words: "image picture photo png jpg",
     },
@@ -371,7 +368,7 @@ const slashEntries = (): SlashEntry[] => {
       item: { kind: "file" },
       key: "file",
       label: "File",
-      hint: "A PDF, Word, Excel or other file to keep here",
+      hint: "Upload a file",
       icon: Paperclip,
       words: "file attachment pdf upload",
     },
@@ -379,7 +376,7 @@ const slashEntries = (): SlashEntry[] => {
       item: { kind: "template" },
       key: "template",
       label: "Template",
-      hint: "A template's lines, here",
+      hint: "Insert template blocks",
       icon: LayoutTemplate,
       words: "template insert starter",
     },
@@ -387,7 +384,7 @@ const slashEntries = (): SlashEntry[] => {
       item: { kind: "footnote" },
       key: "footnote",
       label: "Footnote",
-      hint: "A numbered note at the end of the page",
+      hint: "Numbered reference",
       shorthand: "[^1]",
       icon: Superscript,
       words: "footnote note reference cite",
@@ -396,7 +393,7 @@ const slashEntries = (): SlashEntry[] => {
       item: { kind: "embed-section" },
       key: "embed-section",
       label: "Embed a page",
-      hint: "Another page, or one of its headings, kept up to date",
+      hint: "Live page or section",
       icon: PanelTop,
       words: "embed transclude section page heading",
     },
@@ -404,7 +401,7 @@ const slashEntries = (): SlashEntry[] => {
       item: { kind: "embed-tasks" },
       key: "embed-tasks",
       label: "Tasks linked here",
-      hint: "The tasks this page links to, with their ticks",
+      hint: "Live linked task checklist",
       icon: ClipboardList,
       words: "embed tasks linked list ticks",
     },
@@ -412,7 +409,7 @@ const slashEntries = (): SlashEntry[] => {
       item: { kind: "diagram" },
       key: "diagram",
       label: "Diagram",
-      hint: "A flowchart or other Mermaid diagram",
+      hint: "Mermaid diagram",
       icon: Workflow,
       words: "diagram mermaid flowchart chart graph",
     },
@@ -466,15 +463,32 @@ export function SlashMenu({
           e.hint.toLowerCase().includes(q)),
     );
   }, [query, insertsOnly]);
+  const menu = useRef<HTMLDivElement>(null);
+  const inputOwner = useRef(document.activeElement);
   const [highlight, setHighlight] = useState(0);
-  useEffect(() => setHighlight(0), [query]);
+  useEffect(() => setHighlight(0), [query, matches.length]);
+  useEffect(() => {
+    menu.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [highlight]);
 
   // The keyboard stays in the textarea; this listens over the top of it.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        e.altKey ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.target !== inputOwner.current ||
+        !inputOwner.current?.isConnected
+      )
+        return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setHighlight((h) => Math.min(h + 1, matches.length - 1));
+        setHighlight((h) => Math.max(0, Math.min(h + 1, matches.length - 1)));
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setHighlight((h) => Math.max(h - 1, 0));
@@ -488,7 +502,6 @@ export function SlashMenu({
     return () => document.removeEventListener("keydown", onKey, true);
   }, [matches, highlight, onPick]);
 
-  if (!matches.length) return null;
   return (
     <Popover
       anchor={anchor}
@@ -501,7 +514,13 @@ export function SlashMenu({
         <span className="doc-menu-label">
           {query ? `Matching “${query}”` : "Add a block"}
         </span>
-        <div className="doc-menu-kinds" role="listbox" aria-label="Block kinds">
+        {!matches.length && <p className="doc-menu-note">No matching block.</p>}
+        <div
+          ref={menu}
+          className="doc-menu-kinds"
+          role="listbox"
+          aria-label="Block kinds"
+        >
           {matches.map((entry, i) => {
             const Icon = entry.icon;
             return (
@@ -567,14 +586,31 @@ export function PeopleMenu({
       )
       .slice(0, 8);
   }, [people, query]);
+  const menu = useRef<HTMLDivElement>(null);
+  const inputOwner = useRef(document.activeElement);
   const [highlight, setHighlight] = useState(0);
-  useEffect(() => setHighlight(0), [query]);
+  useEffect(() => setHighlight(0), [query, matches.length]);
+  useEffect(() => {
+    menu.current
+      ?.querySelector('[aria-selected="true"]')
+      ?.scrollIntoView?.({ block: "nearest" });
+  }, [highlight]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (
+        e.defaultPrevented ||
+        e.isComposing ||
+        e.altKey ||
+        e.ctrlKey ||
+        e.metaKey ||
+        e.target !== inputOwner.current ||
+        !inputOwner.current?.isConnected
+      )
+        return;
       if (e.key === "ArrowDown") {
         e.preventDefault();
-        setHighlight((h) => Math.min(h + 1, matches.length - 1));
+        setHighlight((h) => Math.max(0, Math.min(h + 1, matches.length - 1)));
       } else if (e.key === "ArrowUp") {
         e.preventDefault();
         setHighlight((h) => Math.max(h - 1, 0));
@@ -599,13 +635,18 @@ export function PeopleMenu({
       <div className="doc-menu">
         <span className="doc-menu-label">
           {people === null
-            ? "Finding people…"
+            ? "Loading members…"
             : matches.length
-              ? "People who can open this page"
-              : "Nobody else can open this page by that name"}
+              ? "Page members"
+              : "No matching page member"}
         </span>
         {matches.length > 0 && (
-          <div className="doc-menu-kinds" role="listbox" aria-label="People">
+          <div
+            ref={menu}
+            className="doc-menu-kinds"
+            role="listbox"
+            aria-label="People"
+          >
             {matches.map((p, i) => (
               <button
                 key={p.id}

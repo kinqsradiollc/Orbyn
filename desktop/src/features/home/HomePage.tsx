@@ -36,8 +36,6 @@ import {
   HOME_AGENT_IDLE_NOTE,
 } from "@orbyn/core";
 import { Character } from "../../components/Character";
-import { useReveal } from "../../hooks/useReveal";
-import { stagger } from "../../lib/motion";
 import { LinkDemo, WeekDemo } from "./HomeDemos";
 import { FAQ } from "./faq";
 import "./home.css";
@@ -140,8 +138,8 @@ const YOURS: Point[] = [
 function PointList({ points }: { points: Point[] }) {
   return (
     <ul className="home-points">
-      {points.map(({ icon: Icon, title, body }, n) => (
-        <li key={title} className="reveal" style={stagger(n)}>
+      {points.map(({ icon: Icon, title, body }) => (
+        <li key={title} className="reveal">
           <span className="home-feature-icon">
             <Icon aria-hidden="true" />
           </span>
@@ -158,13 +156,12 @@ function PointList({ points }: { points: Point[] }) {
 type Props = { signedIn: boolean; onNavigate: (path: string) => void };
 export function HomePage({ signedIn, onNavigate }: Props) {
   const start = () => onNavigate(signedIn ? "/app" : "/signup");
-  const revealRoot = useReveal<HTMLDivElement>();
   const openStatus = (e: MouseEvent) => {
     e.preventDefault();
     onNavigate("/status");
   };
   return (
-    <div className="home theme-light" ref={revealRoot}>
+    <div className="home theme-light">
       <a className="home-skip" href="#home-main">
         Skip to content
       </a>
@@ -176,10 +173,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
         <nav aria-label="Homepage">
           <a href="#features">Features</a>
           <a href="#planning">Planning</a>
-          <a href="#work">Projects & docs</a>
           <a href="#agents">Agents</a>
-          <a href="#together">Teams</a>
-          <a href="#yours">Privacy</a>
           <a href="#faq">FAQ</a>
         </nav>
         <div className="home-nav-actions">
@@ -323,7 +317,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-features" id="agents">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">BACKGROUND AND OVERNIGHT</span>
+            <span className="eyebrow">Background and Overnight</span>
             <h2>Work you can hand over.</h2>
             <p>
               Give Background a task now, or queue it for Overnight. Review the
@@ -378,7 +372,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-features" id="features">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">TASKS, CALENDAR AND NOTES</span>
+            <span className="eyebrow">Tasks, calendar and notes</span>
             <h2>
               See the day.
               <br />
@@ -387,7 +381,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
             <p>Keep each task, its notes and its time together.</p>
           </div>
           <div className="home-feature-grid">
-            <article className="home-feature large reveal" style={stagger(0)}>
+            <article className="home-feature large reveal">
               <span className="home-feature-icon">
                 <CalendarDays />
               </span>
@@ -406,7 +400,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 ))}
               </div>
             </article>
-            <article className="home-feature reveal" style={stagger(1)}>
+            <article className="home-feature reveal">
               <span className="home-feature-icon">
                 <Sparkles />
               </span>
@@ -420,7 +414,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <ArrowUpRight size={16} />
               </div>
             </article>
-            <article className="home-feature reveal" style={stagger(2)}>
+            <article className="home-feature reveal">
               <span className="home-feature-icon">
                 <Bell />
               </span>
@@ -433,7 +427,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <span /> Choose the time and delivery channel.
               </div>
             </article>
-            <article className="home-feature reveal" style={stagger(3)}>
+            <article className="home-feature reveal">
               <span className="home-feature-icon">
                 <Clock />
               </span>
@@ -448,26 +442,29 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-features" id="companions">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">MEET YOUR COMPANION</span>
+            <span className="eyebrow">Agent characters</span>
             <h2>Choose a face. Give it a name.</h2>
             <p>Choose a face, look and movement. Show it or tuck it away.</p>
           </div>
-          <ul
-            className="home-companion-grid"
-            aria-label="Orbyn character presets"
-          >
-            {CHARACTER_PRESETS.map(({ name, appearance }) => (
-              <li key={name}>
-                <Character appearance={appearance} name={name} size={96} />
-                <span>{name}</span>
-              </li>
-            ))}
-          </ul>
+          <details className="home-companion-options">
+            <summary>See character styles</summary>
+            <ul
+              className="home-companion-grid"
+              aria-label="Orbyn character presets"
+            >
+              {CHARACTER_PRESETS.map(({ name, appearance }) => (
+                <li key={name}>
+                  <Character appearance={appearance} name={name} size={96} />
+                  <span>{name}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
         </section>
 
         <section className="home-features home-split" id="planning">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">AUTOMATIC PLANNING</span>
+            <span className="eyebrow">Automatic planning</span>
             <h2>
               It plans your day.
               <br />
@@ -484,14 +481,14 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-features" id="work">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">PROJECTS AND PAGES</span>
+            <span className="eyebrow">Projects and pages</span>
             <h2>Project tasks and their notes.</h2>
             <p>
               Projects keep the work in order. Pages keep the words beside it.
             </p>
           </div>
           <div className="home-feature-grid">
-            <article className="home-feature large reveal" style={stagger(0)}>
+            <article className="home-feature large reveal">
               <span className="home-feature-icon">
                 <Boxes />
               </span>
@@ -504,7 +501,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <span /> From one sentence to a plan you can start on.
               </div>
             </article>
-            <article className="home-feature large reveal" style={stagger(1)}>
+            <article className="home-feature large reveal">
               <span className="home-feature-icon">
                 <FileText />
               </span>
@@ -523,12 +520,12 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-features" id="together">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">TEAMS AND BOOKING</span>
+            <span className="eyebrow">Teams and booking</span>
             <h2>Shared plans and booking.</h2>
             <p>Share what should be shared. Keep the rest your own.</p>
           </div>
           <div className="home-feature-grid">
-            <article className="home-feature reveal" style={stagger(0)}>
+            <article className="home-feature reveal">
               <span className="home-feature-icon">
                 <Users />
               </span>
@@ -544,7 +541,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
                 <small>Shared with your team.</small>
               </div>
             </article>
-            <article className="home-feature reveal" style={stagger(1)}>
+            <article className="home-feature reveal">
               <span className="home-feature-icon">
                 <CalendarCheck />
               </span>
@@ -562,7 +559,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-features home-split" id="connects">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">WORKS WITH WHAT YOU USE</span>
+            <span className="eyebrow">Integrations</span>
             <h2>
               Connected,
               <br />
@@ -578,7 +575,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-yours" id="yours">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">PRIVATE BY DESIGN</span>
+            <span className="eyebrow">Privacy</span>
             <h2>
               A lot of your life.
               <br />
@@ -591,25 +588,25 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-how" id="how-it-works">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">GET STARTED</span>
+            <span className="eyebrow">Get started</span>
             <h2>Add a task. Choose when to work.</h2>
           </div>
           <div className="home-steps">
             {[
               {
                 title: "Capture the work.",
-                body: "Capture a task, an event, or something you want to make time for — in plain words, from any device.",
+                body: "Add a task or event in plain words.",
               },
               {
                 title: "Plan the time.",
-                body: "Give it a date, a priority and a rough size. Let Orbyn find it a time, or ask your assistant for a hand.",
+                body: "Set a date and estimate, then review the proposed time.",
               },
               {
                 title: "Review and adjust.",
-                body: "Check in from anywhere. Adjust as life changes. Review completed and unfinished work.",
+                body: "Adjust the plan and carry unfinished work forward.",
               },
             ].map((step, n) => (
-              <article key={step.title} className="reveal" style={stagger(n)}>
+              <article key={step.title} className="reveal">
                 <span>0{n + 1}</span>
                 <h3>{step.title}</h3>
                 <p>{step.body}</p>
@@ -620,7 +617,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-everywhere" id="everywhere">
           <div className="reveal">
-            <span className="eyebrow">SAME SPACE. WHEREVER YOU ARE.</span>
+            <span className="eyebrow">Across your devices</span>
             <h2>
               At your desk.
               <br />
@@ -642,7 +639,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
           </div>
           <div
             className="home-device-art reveal"
-            style={stagger(2)}
+
             aria-hidden="true"
           >
             <div className="home-device-desktop">
@@ -673,7 +670,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-faq" id="faq">
           <div className="home-section-heading reveal">
-            <span className="eyebrow">QUESTIONS, ANSWERED</span>
+            <span className="eyebrow">Questions</span>
             <h2>Before you start.</h2>
           </div>
           <div className="home-faq-list">
@@ -691,7 +688,7 @@ export function HomePage({ signedIn, onNavigate }: Props) {
 
         <section className="home-final reveal">
           <Orbit size={37} />
-          <span className="eyebrow">TASKS · PLANNING · DELEGATED WORK</span>
+          <span className="eyebrow">Tasks · planning · delegated work</span>
           <h2>Start with your next task.</h2>
           <p>Keep your plans, notes and agent results together.</p>
           <button className="primary" onClick={start}>

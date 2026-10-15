@@ -1,11 +1,15 @@
-import React, { useRef, useState } from "react";
-import { StyleSheet, Text, TextInput, View } from "react-native";
-import { plainText, threadComments, type DocComment } from "@orbyn/core";
+import React, { useEffect, useRef, useState } from "react";
+import { StyleSheet, Text, ScrollView, View } from "react-native";
+import { threadComments, type DocComment } from "@orbyn/core";
+import { MoreMenu, ActionSheet } from "../../components/MoreMenu";
+import { session } from "../../lib/session";
 import { Button } from "../../components/Button";
 import { SmallAction } from "../../components/SmallAction";
 import { colors, fonts, radii, themed } from "../../theme";
 import type { DocCommentsState } from "./useDocComments";
+import { InlineDetails } from "../../components/InlineDetails";
 import { MentionInput } from "./MentionInput";
+import { commentDraftScope, useCommentDraftGuard } from "./doc-comment-drafts";
 
 const when = (iso: string) => {
   const date = new Date(iso);
@@ -19,7 +23,15 @@ const when = (iso: string) => {
  * a line and for the page as a whole, so a comment reads the same wherever
  * it is: who wrote it, when, and what it says.
  */
-export function DocThread({
+export function DocThread(props: React.ComponentProps<typeof DocThreadBody>) {
+  return (
+    <DocThreadBody
+      key={`${session.token}:${props.state.docId}:${props.anchor?.block_id ?? "page"}`}
+      {...props}
+    />
+  );
+}
+function DocThreadBody({
   comments,
   state,
   userId,
@@ -41,6 +53,32 @@ export function DocThread({
   onDone?: () => void;
 }) {
   const [draft, setDraft] = useState("");
+  const [discard, setDiscard] = useState(false);
+  const [replyOnly, setReplyOnly] = useState(false);
+  const leaveResolver = useRef<((allow: boolean) => void) | null>(null);
+  const pending = useRef(false);
+  const [removing, setRemoving] = useState<DocComment | null>(null);
+  const alive = useRef(true);
+  const identity = {
+    id: state.docId,
+    block: anchor?.block_id,
+    account: session.token,
+  };
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      leaveResolver.current?.(false);
+      leaveResolver.current = null;
+    };
+  }, []);
+  const current = (owner: typeof identity) =>
+    alive.current &&
+    owner.id === identityRef.current.id &&
+    owner.block === identityRef.current.block &&
+    owner.account === session.token;
   /** The remark being answered, and what has been typed under it. */
   const [reply, setReply] = useState<{ id: string; text: string } | null>(null);
   /** Everyone each composer has named, kept by id so a rename still reads. */
@@ -48,44 +86,163 @@ export function DocThread({
   const namedReply = useRef(new Map<string, string>());
   const [mentions, setMentions] = useState<string[]>([]);
   const [replyMentions, setReplyMentions] = useState<string[]>([]);
-
-  const send = () => {
-    const body = draft;
-    void state.add(body, { ...(anchor ?? {}), mentions }).then((ok) => {
-      if (ok) {
+  const edits = useRef({ draft, reply, busy: state.busy, identity });
+  edits.current = { draft, reply, busy: state.busy, identity };
+  const beforeLeave = async (onlyReply = false) => {
+    if (
+      !current(identity) ||
+      pending.current ||
+      edits.current.busy ||
+      leaveResolver.current
+    )
+      return false;
+    if (
+      !(onlyReply
+        ? edits.current.reply?.text.trim()
+        : edits.current.draft.trim() || edits.current.reply?.text.trim())
+    )
+      return true;
+    setReplyOnly(onlyReply);
+    setDiscard(true);
+    return new Promise<boolean>((resolve) => {
+      leaveResolver.current = resolve;
+    });
+  };
+  useCommentDraftGuard(commentDraftScope(anchor?.block_id), beforeLeave);
+  const settleLeave = (allowed: boolean) => {
+    const resolve = leaveResolver.current;
+    leaveResolver.current = null;
+    if (allowed && current(identity) && !pending.current && !state.busy) {
+      if (!replyOnly) {
         setDraft("");
         namedDraft.current.clear();
         setMentions([]);
-        onDone?.();
       }
-    });
+      setReply(null);
+      namedReply.current.clear();
+      setReplyMentions([]);
+      resolve?.(true);
+    } else resolve?.(false);
+  };
+
+  const send = () => {
+    if (pending.current || state.busy || !draft.trim() || !current(identity))
+      return;
+    pending.current = true;
+    const body = draft;
+    const owner = identity;
+    void state
+      .add(body, { ...(anchor ?? {}), mentions })
+      .then((ok) => {
+        if (ok && current(owner) && edits.current.draft === body) {
+          setDraft("");
+          namedDraft.current.clear();
+          setMentions([]);
+          onDone?.();
+        }
+      })
+      .finally(() => {
+        pending.current = false;
+      });
   };
 
   const sendReply = () => {
-    if (!reply) return;
+    if (
+      !reply ||
+      pending.current ||
+      state.busy ||
+      !reply.text.trim() ||
+      !current(identity)
+    )
+      return;
+    pending.current = true;
     const body = reply.text;
+    const owner = identity;
     void state
       .add(body, { parent_id: reply.id, mentions: replyMentions })
       .then((ok) => {
-        if (ok) {
-          setReply(null);
+        if (
+          ok &&
+          current(owner) &&
+          edits.current.reply?.id === reply.id &&
+          edits.current.reply.text === body
+        ) {
+          setReply((shown) =>
+            shown?.id === reply.id && shown.text === body ? null : shown,
+          );
           namedReply.current.clear();
           setReplyMentions([]);
         }
+      })
+      .finally(() => {
+        pending.current = false;
       });
   };
 
   return (
     <View style={styles.thread}>
-      {!!quote && <Text style={styles.quote}>“{plainText(quote)}”</Text>}
+      <ActionSheet
+        visible={discard}
+        label="Discard comment draft"
+        title={replyOnly ? "Discard reply?" : "Discard comment edits?"}
+        message={
+          replyOnly
+            ? "Your unsent reply will be discarded."
+            : "Your unsent comment and reply will be discarded."
+        }
+        cancelLabel="Keep editing"
+        actions={[
+          {
+            label: "Discard",
+            destructive: true,
+            disabled: state.busy,
+            onPress: () => settleLeave(true),
+          },
+        ]}
+        onClose={(selection) => {
+          if (selection !== "selected") settleLeave(false);
+          setDiscard(false);
+        }}
+      />
+      <ActionSheet
+        visible={!!removing}
+        label="Remove comment"
+        title="Remove this comment?"
+        message="Also removes its replies."
+        cancelLabel="Keep comment"
+        onClose={() => setRemoving(null)}
+        actions={[
+          {
+            label: "Remove",
+            destructive: true,
+            disabled: state.busy,
+            onPress: () => {
+              if (removing && current(identity)) state.remove(removing);
+            },
+          },
+        ]}
+      />
+      {!!quote && (
+        <InlineDetails title="Quoted text">
+          <ScrollView style={{ maxHeight: 160 }}>
+            <Text selectable style={styles.quote}>
+              {quote}
+            </Text>
+          </ScrollView>
+        </InlineDetails>
+      )}
 
       {threadComments(comments).map(({ comment, replies }) => (
         <View key={comment.id} style={styles.group}>
           {/* A remark whose words have gone still says what it was about. */}
           {comment.detached && !!comment.quote && (
-            <Text style={styles.gone}>
-              “{plainText(comment.quote)}” — since removed
-            </Text>
+            <InlineDetails title="Removed text">
+              <ScrollView style={{ maxHeight: 160 }}>
+                <Text selectable style={styles.gone}>
+                  {comment.quote}
+                </Text>
+              </ScrollView>
+            </InlineDetails>
           )}
           {[comment, ...replies].map((c, depth) => (
             <View
@@ -104,36 +261,54 @@ export function DocThread({
                   ) : null}
                 </Text>
                 <Text style={styles.when}>{when(c.created_at)}</Text>
+                <MoreMenu
+                  label={`Comment options for ${c.author}`}
+                  disabled={state.busy}
+                  actions={[
+                    ...(depth === 0
+                      ? [
+                          {
+                            label: c.resolved_at ? "Reopen" : "Resolve",
+                            onPress: () => {
+                              if (current(identity))
+                                state.setResolved(c, !c.resolved_at);
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(depth === 0 && !c.resolved_at
+                      ? [
+                          {
+                            label: "Reply",
+                            onPress: () => {
+                              if (!current(identity)) return;
+                              void beforeLeave(true).then((allowed) => {
+                                if (allowed && current(identity))
+                                  setReply((one) =>
+                                    one?.id === c.id
+                                      ? null
+                                      : { id: c.id, text: "" },
+                                  );
+                              });
+                            },
+                          },
+                        ]
+                      : []),
+                    ...(c.user_id === userId
+                      ? [
+                          {
+                            label: "Remove",
+                            destructive: true,
+                            onPress: () => {
+                              if (current(identity)) setRemoving(c);
+                            },
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
               </View>
               <Text style={styles.body}>{c.body}</Text>
-              <View style={styles.actions}>
-                {depth === 0 && (
-                  <SmallAction
-                    label={c.resolved_at ? "Bring back" : "Resolve"}
-                    disabled={state.busy}
-                    onPress={() => state.setResolved(c, !c.resolved_at)}
-                  />
-                )}
-                {depth === 0 && !c.resolved_at && (
-                  <SmallAction
-                    label="Reply"
-                    disabled={state.busy}
-                    onPress={() =>
-                      setReply((r) =>
-                        r?.id === c.id ? null : { id: c.id, text: "" },
-                      )
-                    }
-                  />
-                )}
-                {c.user_id === userId && (
-                  <SmallAction
-                    label="Remove"
-                    destructive
-                    disabled={state.busy}
-                    onPress={() => state.remove(c)}
-                  />
-                )}
-              </View>
             </View>
           ))}
           {reply?.id === comment.id && (
@@ -179,7 +354,15 @@ export function DocThread({
       />
       <View style={styles.send}>
         {!!onDone && (
-          <SmallAction label="Cancel" disabled={state.busy} onPress={onDone} />
+          <SmallAction
+            label="Cancel"
+            disabled={state.busy}
+            onPress={() => {
+              void beforeLeave().then((allow) => {
+                if (allow && current(identity)) onDone?.();
+              });
+            }}
+          />
         )}
         {/* A composer's own button, not a page's: the standing margin under
             every Button left it floating away from the box it belongs to. */}
@@ -202,7 +385,6 @@ const styles = themed(() =>
     gone: {
       color: colors.muted,
       fontSize: 13,
-      textDecorationLine: "line-through",
     },
     reply: { marginLeft: 14, backgroundColor: colors.surfaceMuted },
     replyBox: { gap: 8, marginLeft: 14 },
@@ -223,7 +405,12 @@ const styles = themed(() =>
       backgroundColor: colors.surface,
     },
     faded: { backgroundColor: colors.surfaceMuted },
-    head: { flexDirection: "row", alignItems: "baseline", gap: 8 },
+    head: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "baseline",
+      gap: 8,
+    },
     author: {
       flex: 1,
       flexShrink: 1,

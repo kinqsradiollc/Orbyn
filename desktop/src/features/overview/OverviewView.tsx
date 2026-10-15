@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useElementWidth } from "../../hooks/useElementWidth";
+import { useId, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -29,7 +30,6 @@ import { ItemRow } from "../../components/ItemRow";
 import { ProgressBar } from "../../components/ProgressBar";
 import { StatusPill } from "../../components/StatusPill";
 import type { View } from "../../app/views";
-import { stagger } from "../../lib/motion";
 import { progressOf } from "../../lib/tasks";
 
 type Props = {
@@ -76,6 +76,7 @@ export function OverviewView({
   onPlanMyDay,
   onShowLate,
 }: Props) {
+  const { ref: gridRef, width: gridWidth } = useElementWidth();
   const now = new Date();
   const planned = usePlanned();
   /** Focus on a task by id: the listed copy, else the task opens instead. */
@@ -114,8 +115,7 @@ export function OverviewView({
       />
     ));
 
-  // An empty planner still has a workspace: show any projects and documents
-  // under the prompt to add a first task, rather than an apparently empty app.
+  // Start with a single task action when the planner is empty.
   if (!items.length)
     return (
       <>
@@ -137,186 +137,157 @@ export function OverviewView({
   return (
     <>
       <section className="stats stats-4" aria-label="At a glance">
-        <Stat icon={CircleDot} label="Open" value={pending.length}>
-          still on your list
-        </Stat>
-        <Stat icon={Loader} label="In progress" value={inProgressCount}>
-          moving along
-        </Stat>
+        <Stat icon={CircleDot} label="Open" value={pending.length} />
+        <Stat icon={Loader} label="In progress" value={inProgressCount} />
         <Stat
           icon={OctagonAlert}
           label="Blocked"
           value={blocked}
           tone={blocked ? "blocked" : undefined}
-        >
-          waiting on something
-        </Stat>
-        <Stat icon={CircleCheck} label="Done this week" value={doneThisWeek}>
-          finished since Sunday
-        </Stat>
+        />
+        <Stat icon={CircleCheck} label="Done this week" value={doneThisWeek} />
       </section>
       <AssistantIdeasCard onReview={() => onNavigate("Review")} />
-      <div className="overview-grid">
-        <div>
-          {/* Older servers have no Today list: what's due today, as before. */}
-          {!planned.ready || planned.today ? (
-            <TodayCard
-              today={planned.today}
-              onOpen={onOpenById}
-              onFocus={focusById}
-              onPlanIt={onPlanIt}
-              onPlanAgain={onPlanAgain}
-              onOpenCalendar={() => onNavigate("Calendar")}
-              onPlanDay={onPlanMyDay}
-              onShowLate={onShowLate}
-              onCheckedIn={() => void planned.reload()}
-            />
-          ) : (
-            <OverviewSection
-              icon={Sun}
-              title="Due today"
-              count={today.length}
-              className="ov-due-today"
-            >
-              {today.length ? (
-                rows(today)
-              ) : (
-                <EmptyState
-                  icon={Sun}
-                  title="A little breathing room."
-                  body="Nothing due today."
-                >
-                  <button className="text-button" onClick={onNewItem}>
-                    Plan something <Plus size={14} />
-                  </button>
-                </EmptyState>
-              )}
-            </OverviewSection>
-          )}
-          {attention.length > 0 && (
-            <OverviewSection
-              icon={AlertTriangle}
-              title="Needs attention"
-              count={attention.length}
-              className="attention-card"
-              hint="Blocked or past due. Open one to post an update or unblock it."
-            >
-              {rows(attention)}
-            </OverviewSection>
-          )}
+      <div
+        ref={gridRef}
+        className={"overview-grid" + (gridWidth < 720 ? " is-compact" : "")}
+      >
+        {/* Older servers have no Today list: what's due today, as before. */}
+        {!planned.ready || planned.today ? (
+          <TodayCard
+            today={planned.today}
+            onOpen={onOpenById}
+            onFocus={focusById}
+            onPlanIt={onPlanIt}
+            onPlanAgain={onPlanAgain}
+            onOpenCalendar={() => onNavigate("Calendar")}
+            onPlanDay={onPlanMyDay}
+            onShowLate={onShowLate}
+            onCheckedIn={() => void planned.reload()}
+          />
+        ) : (
           <OverviewSection
-            icon={Loader}
-            title="In progress"
-            className="ov-in-progress"
-            count={inProgress.length}
-            action={
-              <button
-                className="text-button"
-                onClick={() => onNavigate("My tasks")}
-              >
-                All tasks <ArrowRight size={14} />
-              </button>
-            }
+            icon={Sun}
+            title="Due today"
+            count={today.length}
+            className="ov-due-today"
           >
-            {inProgress.length ? (
-              rows(inProgress)
+            {today.length ? (
+              rows(today)
             ) : (
-              <p className="section-empty">
-                {inProgressEmpty(inProgressCount)}
-              </p>
+              <EmptyState
+                icon={Sun}
+                title="Nothing due today"
+                body="Add a task or event."
+              >
+                <button className="text-button" onClick={onNewItem}>
+                  Plan something <Plus size={14} />
+                </button>
+              </EmptyState>
             )}
           </OverviewSection>
-        </div>
-        <div>
-          <UpNextCard items={items} onOpen={onOpen} onFocus={onFocus} />
-          <section className="assistant-card">
-            <span className="sparkle-box">
-              <Sparkles size={23} />
-            </span>
-            <span className="eyebrow">A MIND BESIDE YOURS</span>
-            <h2>
-              Find your next
-              <br />
-              clear step.
-            </h2>
-            <p>Let’s turn a busy mind into a plan that feels possible.</p>
-            <button onClick={onPlanDay}>
-              Help me plan my day <ArrowUpRight size={17} />
-            </button>
-            <div className="abstract-orbit">
-              <i />
-              <i />
-              <span>✦</span>
-            </div>
-          </section>
+        )}
+        <UpNextCard items={items} onOpen={onOpen} onFocus={onFocus} />
+        {attention.length > 0 && (
           <OverviewSection
-            icon={CalendarDays}
-            title="Coming up"
-            className="ov-coming-up"
-            count={comingUp.length}
-            action={
-              <button
-                className="text-button"
-                onClick={() => onNavigate("Calendar")}
-              >
-                Calendar <ArrowRight size={14} />
-              </button>
-            }
+            icon={AlertTriangle}
+            title="Needs attention"
+            count={attention.length}
+            className="attention-card"
+            hint="Blocked or overdue."
           >
-            {comingUp.slice(0, 5).map((i, n) => (
-              <button
-                className="upcoming fade-up stagger"
-                style={stagger(n)}
-                key={i.id}
-                onClick={() => onOpen(i)}
-              >
-                <span className="date-tile" aria-hidden="true">
-                  <small>
-                    {new Date(i.due_at!).toLocaleDateString([], {
-                      month: "short",
-                    })}
-                  </small>
-                  {new Date(i.due_at!).getDate()}
-                </span>
-                <span className="upcoming-main">
-                  <strong>{i.title}</strong>
-                  <small>
-                    {dateLabel(i.due_at)} ·{" "}
-                    {i.kind === "event" ? "Event" : "Task"}
-                  </small>
-                  {i.kind === "task" && (
-                    <ProgressBar
-                      value={progressOf(i)}
-                      status={i.status}
-                      label={`Progress on ${i.title}`}
-                    />
-                  )}
-                </span>
-                <StatusPill status={i.status} />
-              </button>
-            ))}
-            {!comingUp.length && (
-              <p className="section-empty">
-                No upcoming plans yet. Your next idea can start here.
-              </p>
-            )}
+            {rows(attention)}
           </OverviewSection>
-          <section className="card progress-card">
-            <h2>Your momentum</h2>
-            <div className="progress-line">
-              <strong>{Math.round(completePct)}%</strong>
-              <span>of your plans complete</span>
-            </div>
-            <div className="progress-track">
-              <div style={{ transform: `scaleX(${completePct / 100})` }} />
-            </div>
-            <p>
-              {openTasks.length
-                ? `Open tasks are ${Math.round(average)}% done on average.`
-                : "Progress happens one small step at a time."}
-            </p>
-          </section>
-        </div>
+        )}
+        <OverviewSection
+          icon={Loader}
+          title="In progress"
+          className="ov-in-progress"
+          count={inProgress.length}
+          action={
+            <button
+              className="text-button"
+              onClick={() => onNavigate("My tasks")}
+            >
+              All tasks <ArrowRight size={14} />
+            </button>
+          }
+        >
+          {inProgress.length ? (
+            rows(inProgress)
+          ) : (
+            <p className="section-empty">{inProgressEmpty(inProgressCount)}</p>
+          )}
+        </OverviewSection>
+
+        <section className="assistant-card">
+          <h2>
+            <Sparkles size={16} aria-hidden="true" /> Plan today
+          </h2>
+          <button onClick={onPlanDay}>
+            Make a plan <ArrowUpRight size={17} />
+          </button>
+        </section>
+        <OverviewSection
+          icon={CalendarDays}
+          title="Coming up"
+          className="ov-coming-up"
+          count={comingUp.length}
+          action={
+            <button
+              className="text-button"
+              onClick={() => onNavigate("Calendar")}
+            >
+              Calendar <ArrowRight size={14} />
+            </button>
+          }
+        >
+          {comingUp.slice(0, 5).map((i) => (
+            <button className="upcoming" key={i.id} onClick={() => onOpen(i)}>
+              <span className="date-tile" aria-hidden="true">
+                <small>
+                  {new Date(i.due_at!).toLocaleDateString([], {
+                    month: "short",
+                  })}
+                </small>
+                {new Date(i.due_at!).getDate()}
+              </span>
+              <span className="upcoming-main">
+                <strong>{i.title}</strong>
+                <small>
+                  {dateLabel(i.due_at)} ·{" "}
+                  {i.kind === "event" ? "Event" : "Task"}
+                </small>
+                {i.kind === "task" && (
+                  <ProgressBar
+                    value={progressOf(i)}
+                    status={i.status}
+                    label={`Progress on ${i.title}`}
+                  />
+                )}
+              </span>
+              <StatusPill status={i.status} />
+            </button>
+          ))}
+          {!comingUp.length && (
+            <p className="section-empty">No upcoming tasks or events.</p>
+          )}
+        </OverviewSection>
+        <section className="card progress-card">
+          <h2>Progress</h2>
+          <div className="progress-line">
+            <strong>{Math.round(completePct)}%</strong>
+            <span>of your plans complete</span>
+          </div>
+          <div className="progress-track">
+            <div style={{ transform: `scaleX(${completePct / 100})` }} />
+          </div>
+          <p>
+            {openTasks.length
+              ? `Open tasks are ${Math.round(average)}% done on average.`
+              : "No open tasks."}
+          </p>
+        </section>
       </div>
     </>
   );
@@ -333,7 +304,7 @@ function Stat({
   label: string;
   value: number;
   tone?: "blocked";
-  children: ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <div className={tone ? "stat-" + tone : undefined}>
@@ -342,7 +313,7 @@ function Stat({
       </span>
       <strong>
         {value}
-        <small>{children}</small>
+        {children && <small>{children}</small>}
       </strong>
     </div>
   );
@@ -365,7 +336,7 @@ function OverviewSection({
   className?: string;
   children: ReactNode;
 }) {
-  const id = "overview-" + title.toLowerCase().replace(/\W+/g, "-");
+  const id = useId();
   return (
     <section
       className={"card overview-section " + className}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import type {
   Item,
@@ -8,6 +8,8 @@ import type {
   WorkRecord,
   WorkRecordKind,
 } from "@orbyn/core";
+import { BottomSheet } from "../../components/BottomSheet";
+import { InlineDetails } from "../../components/InlineDetails";
 import { Button } from "../../components/Button";
 import { Chip, ChipRow } from "../../components/Chip";
 import { DateField } from "../../components/Field";
@@ -24,7 +26,18 @@ const KINDS: { id: WorkRecordKind; label: string }[] = [
 ];
 
 /** The same project commitments as desktop, with one short form on a phone. */
-export function ProjectRecords({
+export function ProjectRecords(
+  props: Parameters<typeof ProjectRecordsBody>[0],
+) {
+  return (
+    <ProjectRecordsBody
+      key={`${props.project.id}:${props.userId}`}
+      {...props}
+    />
+  );
+}
+
+function ProjectRecordsBody({
   focusId = null,
   project,
   items,
@@ -57,58 +70,46 @@ export function ProjectRecords({
   const [editingOutcome, setEditingOutcome] = useState<string | null>(null);
   const [outcome, setOutcome] = useState("");
 
-  useEffect(() => {
-    let active = true;
-    setRecords(null);
-    client.listWorkRecords({ project_id: project.id }).then(
-      (rows) => {
-        if (active) setRecords(rows);
-      },
-      (reason: Error) => {
-        if (active) setError(reason.message);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [project.id]);
-  useEffect(() => {
-    setOwnerId(userId);
-    if (!project.team_id) {
-      setMembers([]);
-      return;
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [ready, setReady] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const reload = async () => {
+    const epoch = ++request.current;
+    setFailed(false);
+    try {
+      const [rows, pages, team] = await Promise.all([
+        client.listWorkRecords({ project_id: project.id }),
+        client.listDocs({ project: project.id }),
+        project.team_id
+          ? client.getTeam(project.team_id)
+          : Promise.resolve(null),
+      ]);
+      if (epoch !== request.current) return;
+      setRecords(rows);
+      setNotes(pages);
+      setMembers(team?.members ?? []);
+      setReady(true);
+    } catch (e) {
+      if (epoch === request.current) {
+        setFailed(true);
+        setError((e as Error).message || "Records unavailable.");
+      }
     }
-    let active = true;
-    client.getTeam(project.team_id).then(
-      (team) => {
-        if (active) setMembers(team.members);
-      },
-      (reason: Error) => {
-        if (active) setError(reason.message);
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [project.team_id, userId]);
+  };
   useEffect(() => {
-    let active = true;
-    client.listDocs({ project: project.id }).then(
-      (rows) => {
-        if (active) setNotes(rows);
-      },
-      (reason: Error) => {
-        if (active) setError(reason.message);
-      },
-    );
+    void reload();
     return () => {
-      active = false;
+      request.current++;
     };
-  }, [project.id]);
+  }, [project.id, project.team_id]);
 
-  const reload = async () =>
-    setRecords(await client.listWorkRecords({ project_id: project.id }));
-  const perform = async (action: () => Promise<unknown>) => {
+  const perform = async (
+    action: () => Promise<unknown>,
+    allowed = canWrite,
+  ) => {
+    if (!allowed || mutation.current) return;
+    mutation.current = true;
     setBusy(true);
     setError("");
     try {
@@ -117,12 +118,13 @@ export function ProjectRecords({
     } catch (reason) {
       setError((reason as Error).message || "Could not save this record.");
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
 
   const create = () => {
-    if (!title.trim()) return;
+    if (!canWrite || !ready || !title.trim() || !meetingEffortValid) return;
     void perform(async () => {
       await client.createWorkRecord({
         kind,
@@ -177,191 +179,228 @@ export function ProjectRecords({
   return (
     <View style={styles.root}>
       <ErrorBanner error={error} onDismiss={() => setError("")} />
-      <Text style={styles.intro}>
-        Promises, decisions, experiments, and meeting outcomes kept beside this
-        project.
-      </Text>
+      <Text style={styles.title}>Decisions & commitments</Text>
+      {failed && (
+        <SmallAction
+          label="Retry"
+          disabled={busy}
+          onPress={() => void reload()}
+        />
+      )}
       {canWrite && (
         <Button
-          title={adding ? "Cancel" : "Add a record"}
+          title="Add record"
+          disabled={busy || !ready}
           secondary
-          onPress={() => setAdding(!adding)}
+          onPress={() => {
+            setEditingOutcome(null);
+            setAdding(true);
+          }}
         />
       )}
       {adding && (
-        <View style={styles.form}>
-          <ChipRow label="Type">
-            {KINDS.map((option) => (
-              <Chip
-                key={option.id}
-                label={option.label}
-                selected={kind === option.id}
-                onPress={() => {
-                  setKind(option.id);
-                  setDay(null);
-                  setMeetingMinutes("");
-                  setParticipantCount("");
-                }}
-              />
-            ))}
-          </ChipRow>
-          <TextInput
-            style={styles.input}
-            value={title}
-            onChangeText={setTitle}
-            maxLength={200}
-            placeholder={
-              kind === "experiment"
-                ? "What are we testing?"
-                : kind === "meeting_outcome"
-                  ? "What was this meeting for?"
+        <BottomSheet
+          visible
+          title="New record"
+          onClose={() => {
+            if (!busy) setAdding(false);
+          }}
+        >
+          <View style={styles.form}>
+            <ErrorBanner error={error} onDismiss={() => setError("")} />
+            <ChipRow label="Type">
+              {KINDS.map((option) => (
+                <Chip
+                  disabled={busy}
+                  key={option.id}
+                  label={option.label}
+                  selected={kind === option.id}
+                  onPress={() => {
+                    setKind(option.id);
+                    setDay(null);
+                    setMeetingMinutes("");
+                    setParticipantCount("");
+                  }}
+                />
+              ))}
+            </ChipRow>
+            <TextInput
+              editable={!busy}
+              style={styles.input}
+              value={title}
+              onChangeText={setTitle}
+              maxLength={200}
+              placeholder={
+                kind === "experiment"
+                  ? "What are we testing?"
+                  : kind === "meeting_outcome"
+                    ? "What was this meeting for?"
+                    : kind === "decision"
+                      ? "What did we decide?"
+                      : "What was promised?"
+              }
+              placeholderTextColor={colors.faint}
+              accessibilityLabel="Record title"
+            />
+            <TextInput
+              editable={!busy}
+              style={[styles.input, styles.details]}
+              value={details}
+              onChangeText={setDetails}
+              multiline
+              maxLength={4000}
+              textAlignVertical="top"
+              placeholder={
+                kind === "experiment"
+                  ? "What result would change our plan?"
                   : kind === "decision"
-                    ? "What did we decide?"
-                    : "What was promised?"
-            }
-            placeholderTextColor={colors.faint}
-            accessibilityLabel="Record title"
-          />
-          <TextInput
-            style={[styles.input, styles.details]}
-            value={details}
-            onChangeText={setDetails}
-            multiline
-            maxLength={4000}
-            textAlignVertical="top"
-            placeholder={
-              kind === "experiment"
-                ? "What result would change our plan?"
-                : kind === "decision"
-                  ? "Why did we choose this?"
-                  : "Context or success criteria (optional)"
-            }
-            placeholderTextColor={colors.faint}
-            accessibilityLabel="Record context"
-          />
-          {kind === "meeting_outcome" && (
-            <View style={styles.form}>
-              <Text style={styles.meta}>Meeting effort (optional)</Text>
-              <TextInput
-                style={styles.input}
-                value={meetingMinutes}
-                onChangeText={setMeetingMinutes}
-                keyboardType="number-pad"
-                placeholder="Length in minutes"
-                placeholderTextColor={colors.faint}
-                accessibilityLabel="Meeting length in minutes"
-              />
-              <TextInput
-                style={styles.input}
-                value={participantCount}
-                onChangeText={setParticipantCount}
-                keyboardType="number-pad"
-                placeholder="People, including you"
-                placeholderTextColor={colors.faint}
-                accessibilityLabel="Number of meeting participants"
-              />
-              {!!meetingMinutes && !!participantCount && (
-                <Text style={styles.meta}>
-                  {(
-                    (Number(meetingMinutes) * Number(participantCount)) /
-                    60
-                  ).toLocaleString(undefined, {
-                    maximumFractionDigits: 1,
-                  })}{" "}
-                  person-hours
-                </Text>
-              )}
-            </View>
-          )}
-          {!!notes.length && (
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Source note (optional)</Text>
-              <ChipRow label="Source note (optional)">
-                <Chip
-                  label="None"
-                  selected={!sourceDocId}
-                  onPress={() => setSourceDocId(null)}
+                    ? "Why did we choose this?"
+                    : "Context or success criteria (optional)"
+              }
+              placeholderTextColor={colors.faint}
+              accessibilityLabel="Record context"
+            />
+            {kind === "meeting_outcome" && (
+              <View style={styles.form}>
+                <Text style={styles.meta}>Meeting effort (optional)</Text>
+                <TextInput
+                  editable={!busy}
+                  style={styles.input}
+                  value={meetingMinutes}
+                  onChangeText={setMeetingMinutes}
+                  keyboardType="number-pad"
+                  placeholder="Length in minutes"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Meeting length in minutes"
                 />
-                {notes.map((note) => (
+                <TextInput
+                  editable={!busy}
+                  style={styles.input}
+                  value={participantCount}
+                  onChangeText={setParticipantCount}
+                  keyboardType="number-pad"
+                  placeholder="People, including you"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Number of meeting participants"
+                />
+                {!!meetingMinutes && !!participantCount && (
+                  <Text style={styles.meta}>
+                    {(
+                      (Number(meetingMinutes) * Number(participantCount)) /
+                      60
+                    ).toLocaleString(undefined, {
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    person-hours
+                  </Text>
+                )}
+              </View>
+            )}
+            {!!notes.length && (
+              <InlineDetails
+                title={`Source note: ${notes.find((note) => note.id === sourceDocId)?.title || "None"}`}
+              >
+                <ChipRow label="Source note (optional)">
                   <Chip
-                    key={note.id}
-                    label={note.title || "Untitled"}
-                    selected={sourceDocId === note.id}
-                    onPress={() => setSourceDocId(note.id)}
+                    disabled={busy}
+                    label="None"
+                    selected={!sourceDocId}
+                    onPress={() => setSourceDocId(null)}
                   />
-                ))}
-              </ChipRow>
-            </View>
-          )}
-          {kind === "promise" && !!project.team_id && (
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Promised by</Text>
-              <ChipRow label="Promised by">
-                <Chip
-                  label="Me"
-                  selected={!ownerId || ownerId === userId}
-                  onPress={() => setOwnerId(userId)}
-                />
-                {members
-                  .filter((member) => member.user_id !== userId)
-                  .map((member) => (
+                  {notes.map((note) => (
                     <Chip
-                      key={member.user_id}
-                      label={member.name}
-                      selected={ownerId === member.user_id}
-                      onPress={() => setOwnerId(member.user_id)}
+                      disabled={busy}
+                      key={note.id}
+                      label={note.title || "Untitled"}
+                      selected={sourceDocId === note.id}
+                      onPress={() => setSourceDocId(note.id)}
                     />
                   ))}
-              </ChipRow>
-            </View>
-          )}
-          {!!tasks.length && (
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>Linked task (optional)</Text>
-              <ChipRow label="Linked task (optional)">
-                <Chip
-                  label="None"
-                  selected={!taskId}
-                  onPress={() => setTaskId(null)}
-                />
-                {tasks.map((task) => (
+                </ChipRow>
+              </InlineDetails>
+            )}
+            {kind === "promise" && !!project.team_id && (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Promised by</Text>
+                <ChipRow label="Promised by">
                   <Chip
-                    key={task.id}
-                    label={task.title}
-                    selected={taskId === task.id}
-                    onPress={() => setTaskId(task.id)}
+                    disabled={busy}
+                    label="Me"
+                    selected={!ownerId || ownerId === userId}
+                    onPress={() => setOwnerId(userId)}
                   />
-                ))}
-              </ChipRow>
-            </View>
-          )}
-          {(kind === "promise" ||
-            kind === "experiment" ||
-            kind === "decision") && (
-            <View style={styles.field}>
-              <Text style={styles.fieldLabel}>
-                {kind === "promise" ? "Due (optional)" : "Review on (optional)"}
-              </Text>
-              <DateField
-                label={kind === "promise" ? "Due date" : "Review date"}
-                value={day}
-                clearable
-                placeholder="No date"
-                onChange={setDay}
-              />
-            </View>
-          )}
-          <Button
-            title={busy ? "Saving…" : "Save record"}
-            disabled={busy || !title.trim() || !meetingEffortValid}
-            onPress={create}
-          />
-        </View>
+                  {members
+                    .filter((member) => member.user_id !== userId)
+                    .map((member) => (
+                      <Chip
+                        disabled={busy}
+                        key={member.user_id}
+                        label={member.name}
+                        selected={ownerId === member.user_id}
+                        onPress={() => setOwnerId(member.user_id)}
+                      />
+                    ))}
+                </ChipRow>
+              </View>
+            )}
+            {!!tasks.length && (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>Linked task (optional)</Text>
+                <ChipRow label="Linked task (optional)">
+                  <Chip
+                    disabled={busy}
+                    label="None"
+                    selected={!taskId}
+                    onPress={() => setTaskId(null)}
+                  />
+                  {tasks.map((task) => (
+                    <Chip
+                      disabled={busy}
+                      key={task.id}
+                      label={task.title}
+                      selected={taskId === task.id}
+                      onPress={() => setTaskId(task.id)}
+                    />
+                  ))}
+                </ChipRow>
+              </View>
+            )}
+            {(kind === "promise" ||
+              kind === "experiment" ||
+              kind === "decision") && (
+              <View style={styles.field}>
+                <Text style={styles.fieldLabel}>
+                  {kind === "promise"
+                    ? "Due (optional)"
+                    : "Review on (optional)"}
+                </Text>
+                <DateField
+                  label={kind === "promise" ? "Due date" : "Review date"}
+                  value={day}
+                  disabled={busy}
+                  clearable
+                  placeholder="No date"
+                  onChange={setDay}
+                />
+              </View>
+            )}
+            <Button
+              title={busy ? "Saving…" : "Save record"}
+              disabled={busy || !title.trim() || !meetingEffortValid}
+              onPress={create}
+            />
+            <SmallAction
+              label="Cancel"
+              disabled={busy}
+              onPress={() => setAdding(false)}
+            />
+          </View>
+        </BottomSheet>
       )}
       {records === null ? (
-        <Text style={styles.meta}>Loading records…</Text>
+        <Text style={styles.meta}>{failed ? "" : "Loading records…"}</Text>
       ) : records.length === 0 ? (
-        <Text style={styles.meta}>No commitments recorded yet.</Text>
+        <Text style={styles.meta}>No records yet.</Text>
       ) : (
         [...records]
           .sort((a, b) => Number(b.id === focusId) - Number(a.id === focusId))
@@ -475,8 +514,9 @@ export function ProjectRecords({
                     label="Accept"
                     disabled={busy}
                     onPress={() =>
-                      void perform(() =>
-                        client.respondWorkRecord(record.id, "accept"),
+                      void perform(
+                        () => client.respondWorkRecord(record.id, "accept"),
+                        record.owner_id === userId,
                       )
                     }
                   />
@@ -484,8 +524,9 @@ export function ProjectRecords({
                     label="Decline"
                     disabled={busy}
                     onPress={() =>
-                      void perform(() =>
-                        client.respondWorkRecord(record.id, "decline"),
+                      void perform(
+                        () => client.respondWorkRecord(record.id, "decline"),
+                        record.owner_id === userId,
                       )
                     }
                   />
@@ -495,39 +536,52 @@ export function ProjectRecords({
                 (record.status === "open" || record.status === "done") && (
                   <>
                     {editingOutcome === record.id && (
-                      <View style={styles.form}>
-                        <TextInput
-                          style={[styles.input, styles.details]}
-                          value={outcome}
-                          onChangeText={setOutcome}
-                          multiline
-                          maxLength={4000}
-                          textAlignVertical="top"
-                          placeholder="What happened?"
-                          placeholderTextColor={colors.faint}
-                          accessibilityLabel="Record outcome"
-                        />
-                        <Button
-                          title="Save outcome"
-                          disabled={busy || !outcome.trim()}
-                          onPress={() =>
-                            void perform(async () => {
-                              await client.updateWorkRecord(record.id, {
-                                version: record.version,
-                                outcome: outcome.trim(),
-                                status: "done",
-                              });
-                              setEditingOutcome(null);
-                              setOutcome("");
-                            })
-                          }
-                        />
-                        <SmallAction
-                          label="Cancel"
-                          disabled={busy}
-                          onPress={() => setEditingOutcome(null)}
-                        />
-                      </View>
+                      <BottomSheet
+                        visible
+                        title="Record outcome"
+                        onClose={() => {
+                          if (!busy) setEditingOutcome(null);
+                        }}
+                      >
+                        <View style={styles.form}>
+                          <ErrorBanner
+                            error={error}
+                            onDismiss={() => setError("")}
+                          />
+                          <TextInput
+                            editable={!busy}
+                            style={[styles.input, styles.details]}
+                            value={outcome}
+                            onChangeText={setOutcome}
+                            multiline
+                            maxLength={4000}
+                            textAlignVertical="top"
+                            placeholder="What happened?"
+                            placeholderTextColor={colors.faint}
+                            accessibilityLabel="Record outcome"
+                          />
+                          <Button
+                            title="Save outcome"
+                            disabled={busy || !outcome.trim()}
+                            onPress={() =>
+                              void perform(async () => {
+                                await client.updateWorkRecord(record.id, {
+                                  version: record.version,
+                                  outcome: outcome.trim(),
+                                  status: "done",
+                                });
+                                setEditingOutcome(null);
+                                setOutcome("");
+                              })
+                            }
+                          />
+                          <SmallAction
+                            label="Cancel"
+                            disabled={busy}
+                            onPress={() => setEditingOutcome(null)}
+                          />
+                        </View>
+                      </BottomSheet>
                     )}
                     {record.status === "open" &&
                     (record.kind === "experiment" ||
@@ -573,14 +627,11 @@ const styles = themed(() =>
     intro: { color: colors.muted, fontFamily: fonts.regular, lineHeight: 21 },
     form: {
       gap: 12,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.card,
-      backgroundColor: colors.surface,
+      paddingVertical: 8,
     },
     input: {
-      minHeight: 48,
+      minHeight: 44,
+      fontSize: 16,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.input,
@@ -605,18 +656,23 @@ const styles = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       justifyContent: "space-between",
+      flexWrap: "wrap",
       gap: 8,
     },
     kind: {
       color: colors.text,
       fontFamily: fonts.bold,
       fontSize: 13,
-      textTransform: "uppercase",
     },
     title: { color: colors.text, fontFamily: fonts.bold, fontSize: 15 },
-    body: { color: colors.text, fontFamily: fonts.regular, lineHeight: 21 },
+    body: {
+      color: colors.text,
+      fontFamily: fonts.regular,
+      fontSize: 13,
+      lineHeight: 20,
+    },
     meta: { color: colors.muted, fontFamily: fonts.regular, fontSize: 13 },
-    actions: { flexDirection: "row", gap: 12 },
+    actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     field: { gap: 8 },
     fieldLabel: {
       color: colors.textSoft,

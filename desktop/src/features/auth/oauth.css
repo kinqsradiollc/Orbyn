@@ -4,6 +4,7 @@
   width: 100%;
   display: grid;
   gap: 14px;
+  overflow-wrap: anywhere;
 }
 .oauth-card h2 {
   font-size: 24px;
@@ -46,7 +47,7 @@
   gap: 6px;
   padding: 8px 10px;
   border-radius: var(--radius-sm);
-  background: var(--color-highBg);
+  background: var(--color-dangerSoft);
   color: var(--color-danger);
   font-size: 13px;
 }
@@ -78,10 +79,10 @@
 .oauth-group legend {
   padding: 0;
   margin-bottom: 6px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
   color: var(--color-muted);
 }
 .oauth-card .oauth-hint {
@@ -129,7 +130,8 @@
   line-height: 1.45;
 }
 .oauth-check {
-  padding: 4px 0;
+  min-height: 44px;
+  padding: 8px 0;
 }
 .oauth-check.is-off {
   color: var(--color-faint);
@@ -152,6 +154,7 @@
   color: var(--color-textSoft);
 }
 .oauth-chip {
+  min-height: 44px;
   padding: 5px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-pill);
@@ -216,4 +219,26 @@
   .oauth-page .auth-form {
     padding: 28px 16px;
   }
+  .oauth-card h2 {
+    font-size: 18px;
+    overflow-wrap: anywhere;
+  }
+  .oauth-acts > button,
+  .oauth-reauth-acts > button {
+    flex: 1 1 140px;
+    min-height: 44px;
+  }
+}
+
+.oauth-team-search {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.oauth-teams {
+  min-width: 0;
+  max-height: min(280px, 40dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }

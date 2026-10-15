@@ -7,6 +7,7 @@ import {
 } from "@orbyn/core";
 import { client } from "../lib/api";
 import { colors, fonts, themed } from "../theme";
+import { Button } from "./Button";
 import { Sheet, sheetStyles } from "./Sheet";
 import { errorText } from "../lib/errors";
 
@@ -81,8 +82,19 @@ export function LegalSheet({
   doc: LegalDoc | null;
   onClose: () => void;
 }) {
+  return <LegalSheetBody key={doc ?? "closed"} doc={doc} onClose={onClose} />;
+}
+
+function LegalSheetBody({
+  doc,
+  onClose,
+}: {
+  doc: LegalDoc | null;
+  onClose: () => void;
+}) {
   const [document, setDocument] = useState<LegalDocument | null>(null);
   const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!doc) return;
     let alive = true;
@@ -95,7 +107,7 @@ export function LegalSheet({
     return () => {
       alive = false;
     };
-  }, [doc]);
+  }, [doc, retry]);
   return (
     <Sheet
       visible={!!doc}
@@ -105,7 +117,19 @@ export function LegalSheet({
       <ScrollView contentContainerStyle={sheetStyles.body}>
         <View style={sheetStyles.column}>
           {error ? (
-            <Text style={[s.body, { color: colors.danger }]}>{error}</Text>
+            <>
+              <Text
+                style={[s.body, { color: colors.danger }]}
+                accessibilityRole="alert"
+              >
+                {error}
+              </Text>
+              <Button
+                title="Retry"
+                secondary
+                onPress={() => setRetry((value) => value + 1)}
+              />
+            </>
           ) : document ? (
             <LegalText body={document.body} />
           ) : (
@@ -140,14 +164,14 @@ const s = themed(() =>
   StyleSheet.create({
     h1: {
       fontFamily: fonts.display,
-      fontSize: 24,
-      lineHeight: 32,
+      fontSize: 20,
+      lineHeight: 27,
       color: colors.text,
       marginBottom: 2,
     },
     h2: {
       fontFamily: fonts.display,
-      fontSize: 18,
+      fontSize: 16,
       lineHeight: 23,
       color: colors.text,
       marginTop: 20,

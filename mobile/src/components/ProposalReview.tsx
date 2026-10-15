@@ -1,6 +1,13 @@
 import { ProjectDraftReview } from "./ProjectDraftReview";
 import React, { useState } from "react";
-import { ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import {
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import {
   dateLabel,
   aiFeatureProviderLabel,
@@ -18,7 +25,10 @@ import { SmallAction } from "./SmallAction";
 import { DraftNotes } from "./DraftNotes";
 import { Icon } from "./Icon";
 import type { TurnState } from "../hooks/useAssistant";
-import { FadeIn, PressableScale } from "../motion";
+import { Pressable } from "../motion";
+import { InlineDetails } from "./InlineDetails";
+import { session } from "../lib/session";
+import { usePaneWidth } from "../hooks/usePaneWidth";
 import { colors, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 
@@ -61,7 +71,10 @@ function Table({
   rows: RichInline[][][];
 }) {
   const columns = header.map(plainText);
-  const wide = header.length > 3;
+  const { width, onLayout } = usePaneWidth();
+  const { fontScale } = useWindowDimensions();
+  const columnWidth = WIDE_COLUMN * Math.max(1, fontScale);
+  const wide = header.length * columnWidth > width;
   const row = (cells: RichInline[][], head: boolean, r: number) => (
     <View
       key={head ? "head" : r}
@@ -90,21 +103,26 @@ function Table({
     </View>
   );
   const grid = (
-    <View style={[s.table, wide && { width: header.length * WIDE_COLUMN }]}>
+    <View style={[s.table, wide && { width: header.length * columnWidth }]}>
       {row(header, true, 0)}
       {rows.map((cells, r) => row(cells, false, r))}
     </View>
   );
-  return wide ? (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator
-      accessibilityLabel="Table, scrolls sideways"
-    >
-      {grid}
-    </ScrollView>
-  ) : (
-    grid
+  return (
+    <View onLayout={onLayout} style={{ minWidth: 0 }}>
+      {wide ? (
+        <ScrollView
+          horizontal
+          tabIndex={0}
+          showsHorizontalScrollIndicator
+          accessibilityLabel="Table, scrolls sideways"
+        >
+          {grid}
+        </ScrollView>
+      ) : (
+        grid
+      )}
+    </View>
   );
 }
 
@@ -159,13 +177,15 @@ function beforeText(m: number) {
   return `${Math.floor(m / 60)} h ${m % 60} min`;
 }
 
-/** The soonest alert: "Remind 30 min before", or "No reminder" without any. */
+/** Every configured reminder, in order; an empty list explicitly removes them. */
 function reminderText(alerts: number[] | null | undefined) {
   if (!alerts?.length) return "No reminder";
-  const soonest = Math.min(...alerts);
-  return soonest === 0
-    ? "Remind when it starts"
-    : `Remind ${beforeText(soonest)} before`;
+  return [...alerts]
+    .sort((a, b) => a - b)
+    .map((minutes) =>
+      minutes === 0 ? "At the start" : `${beforeText(minutes)} before`,
+    )
+    .join(", ");
 }
 
 const sameAlerts = (a: number[], b: number[]) => {
@@ -192,10 +212,16 @@ function changes(data: ItemInput, current: Item, items: Item[]) {
   compare("Priority", current.priority, data.priority);
   compare("Status", current.status, data.status);
   compare("Type", current.kind, data.kind);
-  // Only when the proposal actually changes the alerts.
-  if (data.alerts && !sameAlerts(data.alerts, current.alerts ?? []))
+  // Omitted reminders keep the saved value; legacy single reminders still count.
+  const alerts =
+    data.alerts ??
+    (data.reminder_minutes !== undefined ? [data.reminder_minutes] : undefined);
+  const previousAlerts =
+    current.alerts ??
+    (current.reminder_minutes !== undefined ? [current.reminder_minutes] : []);
+  if (alerts && !sameAlerts(alerts, previousAlerts))
     lines.push(
-      `Reminder: ${reminderText(current.alerts)} → ${reminderText(data.alerts)}`,
+      `Reminder: ${reminderText(previousAlerts)} → ${reminderText(alerts)}`,
     );
   compare(
     "Shared with",
@@ -213,6 +239,29 @@ function Chip({ children, high }: { children: string; high?: boolean }) {
         {children}
       </Text>
     </View>
+  );
+}
+
+function NoteDetails({ before, after }: { before?: string; after: string }) {
+  return (
+    <InlineDetails title={before === undefined ? "Notes" : "Notes change"}>
+      {before !== undefined && (
+        <>
+          <Text style={s.sourcesLabel}>Before</Text>
+          <ScrollView nestedScrollEnabled tabIndex={0} style={s.noteText}>
+            <Text selectable style={shared.small}>
+              {before || "Empty"}
+            </Text>
+          </ScrollView>
+          <Text style={s.sourcesLabel}>After</Text>
+        </>
+      )}
+      <ScrollView nestedScrollEnabled tabIndex={0} style={s.noteText}>
+        <Text selectable style={shared.small}>
+          {after || "Empty"}
+        </Text>
+      </ScrollView>
+    </InlineDetails>
   );
 }
 
@@ -236,16 +285,23 @@ function Details({
   if (!data) return null;
   if (action.operation === "update" && current) {
     const lines = changes(data, current, items);
-    return lines.length ? (
-      <View style={{ gap: 3 }}>
-        {lines.map((l) => (
-          <Text key={l} style={s.diff}>
-            {l}
-          </Text>
-        ))}
-      </View>
-    ) : (
-      <Text style={shared.small}>No visible changes.</Text>
+    return (
+      <>
+        {lines.length ? (
+          <View style={{ gap: 3 }}>
+            {lines.map((l) => (
+              <Text key={l} style={s.diff}>
+                {l}
+              </Text>
+            ))}
+          </View>
+        ) : (
+          <Text style={shared.small}>No visible changes.</Text>
+        )}
+        {current.notes !== data.notes && (
+          <NoteDetails before={current.notes} after={data.notes} />
+        )}
+      </>
     );
   }
   return (
@@ -258,17 +314,35 @@ function Details({
       <Chip
         high={data.priority === "high"}
       >{`${capitalize(data.priority)} priority`}</Chip>
-      {data.due_at && data.alerts && <Chip>{reminderText(data.alerts)}</Chip>}
+      {data.due_at && (
+        <Chip>
+          {data.alerts !== undefined
+            ? reminderText(data.alerts)
+            : data.reminder_minutes !== undefined
+              ? reminderText([data.reminder_minutes])
+              : "Your default reminders"}
+        </Chip>
+      )}
       {data.team_id && <Chip>{teamName(items, data.team_id)}</Chip>}
       {!!data.notes && (
-        <Text style={[shared.small, s.notes]}>{data.notes}</Text>
+        <View style={{ flexBasis: "100%" }}>
+          <NoteDetails after={data.notes} />
+        </View>
       )}
     </View>
   );
 }
 
 /** One assistant reply: summary, proposed changes, and the approve/discard decision. */
-export function ProposalReview({
+export function ProposalReview(
+  props: React.ComponentProps<typeof ProposalBody>,
+) {
+  return (
+    <ProposalBody key={`${session.token}:${props.proposal.id}`} {...props} />
+  );
+}
+
+function ProposalBody({
   proposal,
   items,
   before,
@@ -317,34 +391,37 @@ export function ProposalReview({
       {/* What the assistant actually read, so the answer can be checked
           against it rather than taken on trust. */}
       {sources.length > 0 && (
-        <View style={s.sources}>
-          {(
-            [
-              ["USED", usedSources],
-              ["ALSO READ", otherSources],
-            ] as const
-          ).map(([label, group]) =>
-            group.length ? (
-              <View key={label} style={s.sourceGroup}>
-                <Text style={s.sourcesLabel}>{label}</Text>
-                {group.map((source) => (
-                  <SmallAction
-                    key={
-                      "doc_id" in source
-                        ? `page:${source.doc_id}`
-                        : `${source.kind}:${source.id}`
-                    }
-                    label={`[${source.number}] ${source.title || "Untitled"}`}
-                    disabled={!onOpenSource}
-                    onPress={() => onOpenSource?.(source)}
-                  />
-                ))}
-              </View>
-            ) : null,
-          )}
-        </View>
+        <InlineDetails title={`Sources (${sources.length})`}>
+          <View style={s.sources}>
+            {(
+              [
+                ["Used", usedSources],
+                ["Also read", otherSources],
+              ] as const
+            ).map(([label, group]) =>
+              group.length ? (
+                <View key={label} style={s.sourceGroup}>
+                  <Text style={s.sourcesLabel}>{label}</Text>
+                  {group.map((source) => (
+                    <SmallAction
+                      key={
+                        "doc_id" in source
+                          ? `page:${source.doc_id}`
+                          : `${source.kind}:${source.id}`
+                      }
+                      label={`[${source.number}] ${source.title || "Untitled"}`}
+                      disabled={!onOpenSource}
+                      onPress={() => onOpenSource?.(source)}
+                    />
+                  ))}
+                </View>
+              ) : null,
+            )}
+          </View>
+        </InlineDetails>
       )}
       <DraftNotes
+        scope={proposal.id}
         notes={proposal.notes ?? []}
         onKept={onKeptNote}
         report={() => {}}
@@ -356,11 +433,16 @@ export function ProposalReview({
             flexDirection: "row",
             alignItems: "center",
             justifyContent: "space-between",
+            gap: 12,
+            minHeight: 44,
           }}
         >
-          <Text style={shared.body}>Give tasks these deadlines</Text>
+          <Text style={[shared.body, { flex: 1, minWidth: 0 }]}>
+            Give tasks these deadlines
+          </Text>
           <Switch
             accessibilityLabel="Give tasks these deadlines"
+            disabled={busy}
             value={giveTasksDeadlines}
             onValueChange={setGiveTasksDeadlines}
             trackColor={{ true: colors.accent }}
@@ -372,12 +454,12 @@ export function ProposalReview({
           {proposal.actions.map((a, n) => {
             const op = OPERATION[a.operation];
             return (
-              <FadeIn key={n} index={n} style={s.action}>
+              <View key={n} style={s.action}>
                 <View style={s.actionHead}>
                   <View style={[s.op, { backgroundColor: op.bg }]}>
                     <Text style={[s.opText, { color: op.fg }]}>{op.label}</Text>
                   </View>
-                  <Text style={s.actionTitle} numberOfLines={2}>
+                  <Text style={s.actionTitle}>
                     {a.data?.title ||
                       before?.find((i) => i.id === a.item_id)?.title ||
                       items.find((i) => i.id === a.item_id)?.title ||
@@ -397,7 +479,7 @@ export function ProposalReview({
                     }
                   </Text>
                 )}
-              </FadeIn>
+              </View>
             );
           })}
         </View>
@@ -409,9 +491,10 @@ export function ProposalReview({
             {sessionChange.title}
           </Text>
           <Text style={shared.body}>
-            {new Date(sessionChange.from_start_at).toLocaleString()}
+            {new Date(sessionChange.from_start_at).toLocaleString()}–
+            {new Date(sessionChange.from_end_at).toLocaleTimeString()}
             {sessionChange.operation === "move"
-              ? ` → ${new Date(sessionChange.start_at).toLocaleString()}`
+              ? ` → ${new Date(sessionChange.start_at).toLocaleString()}–${new Date(sessionChange.end_at).toLocaleTimeString()}`
               : ""}
           </Text>
         </View>
@@ -438,7 +521,7 @@ export function ProposalReview({
         </View>
       )}
       {status === "applied" && total > 0 && (
-        <FadeIn style={s.status}>
+        <View style={s.status}>
           <Icon
             name="check"
             size={14}
@@ -448,18 +531,18 @@ export function ProposalReview({
           <Text style={[s.statusText, { color: colors.accent }]}>
             Saved to your planner
           </Text>
-        </FadeIn>
+        </View>
       )}
       {status === "discarded" && (
-        <FadeIn style={s.status}>
+        <View style={s.status}>
           <Icon name="x" size={14} color={colors.muted} />
           <Text style={s.statusText}>Discarded</Text>
-        </FadeIn>
+        </View>
       )}
       {onFollowUp && followUps.length > 0 && (
-        <FadeIn style={s.followUps}>
+        <View style={s.followUps}>
           {followUps.map((text, n) => (
-            <PressableScale
+            <Pressable
               key={n}
               accessibilityRole="button"
               accessibilityLabel={text}
@@ -474,9 +557,9 @@ export function ProposalReview({
               ]}
             >
               <Text style={s.followUpText}>{text}</Text>
-            </PressableScale>
+            </Pressable>
           ))}
-        </FadeIn>
+        </View>
       )}
     </View>
   );
@@ -501,7 +584,7 @@ const s = themed(() =>
       color: colors.muted,
       marginBottom: 8,
     },
-    sourcesLabel: { color: colors.muted, fontSize: 11, letterSpacing: 0.7 },
+    sourcesLabel: { color: colors.muted, fontSize: 13 },
     heading: {
       fontFamily: fonts.bold,
       fontSize: 15,
@@ -518,7 +601,7 @@ const s = themed(() =>
     },
     list: { gap: 6 },
     bulletRow: { flexDirection: "row", gap: 8 },
-    bulletText: { flex: 1 },
+    bulletText: { flex: 1, minWidth: 0 },
     bulletDot: {
       fontFamily: fonts.bold,
       fontSize: 15,
@@ -527,18 +610,17 @@ const s = themed(() =>
     },
     actions: { gap: 8, marginTop: 12 },
     action: {
-      backgroundColor: colors.background,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.input,
-      padding: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
+      paddingVertical: 12,
       gap: 8,
     },
     actionHead: { flexDirection: "row", alignItems: "center", gap: 8 },
     op: { borderRadius: radii.pill, paddingHorizontal: 8, paddingVertical: 3 },
-    opText: { fontFamily: fonts.semibold, fontSize: 11 },
+    opText: { fontFamily: fonts.semibold, fontSize: 13 },
     actionTitle: {
       flex: 1,
+      minWidth: 0,
       fontFamily: fonts.semibold,
       fontSize: 15,
       color: colors.text,
@@ -557,7 +639,7 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.textSoft,
     },
-    notes: { flexBasis: "100%", marginTop: 2 },
+    noteText: { maxHeight: 240 },
     diff: { fontFamily: fonts.regular, fontSize: 13, color: colors.textSoft },
     buttons: { marginTop: 12 },
     status: {
@@ -601,6 +683,8 @@ const s = themed(() =>
       marginTop: 12,
     },
     followUp: {
+      minHeight: 44,
+      justifyContent: "center",
       maxWidth: "100%",
       backgroundColor: colors.background,
       borderWidth: 1,

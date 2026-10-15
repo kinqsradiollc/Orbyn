@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import {
   pluginAiPermissionInput,
@@ -11,7 +11,27 @@ import { SmallAction } from "../components/SmallAction";
 import { shared } from "../styles";
 
 /** Explicit workspace-provider permission for a plugin; separate from personal ChatGPT. */
-export function PluginAiPermission({ grantId }: { grantId: string }) {
+export function PluginAiPermission(props: {
+  grantId: string;
+  onBusyChange?: (grantId: string, busy: boolean) => void;
+}) {
+  return <PermissionBody key={props.grantId} {...props} />;
+}
+function PermissionBody({
+  grantId,
+  onBusyChange,
+}: {
+  grantId: string;
+  onBusyChange?: (grantId: string, busy: boolean) => void;
+}) {
+  const mounted = useRef(true);
+  const mutation = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<PluginAiPermissionView | null>(null);
   const [output, setOutput] = useState("512"),
@@ -20,7 +40,13 @@ export function PluginAiPermission({ grantId }: { grantId: string }) {
   const [pending, setPending] = useState(false),
     [refresh, setRefresh] = useState(0);
   useEffect(() => {
+    onBusyChange?.(grantId, pending);
+    return () => onBusyChange?.(grantId, false);
+  }, [grantId, pending, onBusyChange]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
     if (!open) return;
+    setLoading(true);
     const controller = new AbortController();
     setView(null);
     setError("");
@@ -35,11 +61,14 @@ export function PluginAiPermission({ grantId }: { grantId: string }) {
       .catch(() => {
         if (!controller.signal.aborted)
           setError("Could not load AI permission. Try again.");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
   }, [grantId, open, refresh]);
   const save = async (enabled: boolean) => {
-    if (!view || pending) return;
+    if (!view || mutation.current || loading) return;
     const provider = view.available_provider;
     const input = pluginAiPermissionInput.safeParse({
       enabled,
@@ -60,16 +89,20 @@ export function PluginAiPermission({ grantId }: { grantId: string }) {
       setError("Choose 1–2048 output tokens and 1–100 calls per day.");
       return;
     }
+    mutation.current = true;
     setPending(true);
     setError("");
     try {
-      setView(await client.setPluginAiPermission(grantId, input.data));
+      const value = await client.setPluginAiPermission(grantId, input.data);
+      if (mounted.current) setView(value);
     } catch {
-      setError(
-        "Permission changed or could not be saved. Refresh before trying again.",
-      );
+      if (mounted.current)
+        setError(
+          "Permission changed or could not be saved. Refresh before trying again.",
+        );
     } finally {
-      setPending(false);
+      mutation.current = false;
+      if (mounted.current) setPending(false);
     }
   };
   return (
@@ -137,7 +170,7 @@ export function PluginAiPermission({ grantId }: { grantId: string }) {
           )}
           <SmallAction
             label="Refresh permission"
-            disabled={pending}
+            disabled={pending || loading}
             onPress={() => setRefresh(refresh + 1)}
           />
         </>

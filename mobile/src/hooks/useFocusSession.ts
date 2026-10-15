@@ -21,6 +21,7 @@ import {
   type ItemDetail,
 } from "@orbyn/core";
 import { client } from "../lib/api";
+import { session } from "../lib/session";
 import {
   endFocusActivity,
   startFocusActivity,
@@ -93,6 +94,33 @@ export function useFocusSession({
   onLogged,
   onError,
 }: Options) {
+  const owner = useRef(session.token).current;
+  const mounted = useRef(true);
+  const owns = () => mounted.current && session.token === owner;
+  const changeSequence = useRef(0);
+  const finishing = useRef(false);
+  const recording = useRef(false);
+  const [saving, setSaving] = useState(false);
+  const [pendingLog, setPendingLog] = useState(false);
+  const failed = useRef(false);
+  const logRequests = useRef(
+    new Map<
+      string,
+      {
+        input: Parameters<typeof client.saveFocusSession>[0];
+        state: FocusState;
+        completed: boolean;
+        at: number;
+      }
+    >(),
+  );
+  const logged = useRef(new Set<string>());
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
   const saved = focusRhythm(readLocal(RHYTHM_KEY));
   const [rhythm, setRhythm] = useState<FocusRhythm>(
     () => saved ?? rhythmForBreakLevel("normal"),
@@ -112,10 +140,17 @@ export function useFocusSession({
   // Before a choice, the rhythm follows the breaks asked of the planner.
   useEffect(() => {
     if (chosen.current) return;
+    const sequence = changeSequence.current;
     let alive = true;
     client.getPlannerPrefs().then(
       (p) => {
-        if (!alive || chosen.current) return;
+        if (
+          !alive ||
+          !owns() ||
+          chosen.current ||
+          sequence !== changeSequence.current
+        )
+          return;
         const next = rhythmForBreakLevel(p.break_level);
         setRhythm(next);
         setState((s) =>
@@ -133,19 +168,28 @@ export function useFocusSession({
 
   const refreshToday = useCallback(() => {
     client.focusSummary(startOfToday(), new Date(Date.now() + 60_000)).then(
-      (s) => setToday(s.work_minutes),
+      (s) => {
+        if (owns()) setToday(s.work_minutes);
+      },
       () => {},
     );
   }, []);
   useEffect(refreshToday, [refreshToday]);
 
   const record = useCallback(
-    async (s: FocusState, completed: boolean, at: number) => {
+    async (s: FocusState, completed: boolean, at: number): Promise<boolean> => {
+      if (!owns()) return false;
+      const key = JSON.stringify(s);
+      if (logged.current.has(key)) return true;
       const { rhythm: r, item: task, canWrite: can } = latest.current;
       const ran = Math.min(focusRan(s, at), 12 * 3_600_000);
-      if (ran < 60_000 || !can) return;
-      try {
-        const kept = await client.saveFocusSession({
+      if (!can) return false;
+      if (ran < 60_000) return true;
+      const entry = logRequests.current.get(key) ?? {
+        state: s,
+        completed,
+        at,
+        input: {
           id: newId(),
           item_id: s.phase === "work" ? task.id : null,
           kind: s.phase,
@@ -154,17 +198,51 @@ export function useFocusSession({
           planned_minutes: phaseMinutes(r, s.phase),
           minutes: Math.round(ran / 60_000),
           completed,
-        });
+        },
+      };
+      logRequests.current.set(key, entry);
+      if (recording.current) {
+        failed.current = true;
+        setPendingLog(true);
+        return false;
+      }
+      recording.current = true;
+      setSaving(true);
+      try {
+        const kept = await client.saveFocusSession(entry.input);
+        if (!owns()) return false;
+        logRequests.current.delete(key);
+        logged.current.add(key);
+        failed.current = logRequests.current.size > 0;
+        setPendingLog(failed.current);
         if (kept.item) latest.current.onLogged(kept.item);
         refreshToday();
+        return true;
       } catch (e) {
-        latest.current.onError(errorText(e));
+        if (owns()) {
+          failed.current = true;
+          setPendingLog(true);
+          latest.current.onError(errorText(e));
+        }
+        return false;
+      } finally {
+        recording.current = false;
+        if (owns()) setSaving(false);
       }
     },
     [refreshToday],
   );
+  const retryLogging = async () => {
+    if (!owns() || recording.current || finishing.current) return;
+    for (const entry of [...logRequests.current.values()]) {
+      if (!(await record(entry.state, entry.completed, entry.at))) return;
+    }
+  };
 
   const update = useCallback((next: FocusState) => {
+    if (!owns() || !latest.current.canWrite) return;
+    changeSequence.current++;
+    latest.current.state = next;
     setState(next);
     const { rhythm: r, item: task } = latest.current;
     // One reminder at a time: the one for the phase now running.
@@ -174,7 +252,12 @@ export function useFocusSession({
       void Notifications.cancelScheduledNotificationAsync(old).catch(() => {});
     if (next.ends_at)
       void remindAt(next, r, task.title).then((id) => {
-        reminder.current = id;
+        if (owns() && latest.current.state.ends_at === next.ends_at)
+          reminder.current = id;
+        else if (id)
+          void Notifications.cancelScheduledNotificationAsync(id).catch(
+            () => {},
+          );
       });
     // The session on the Lock Screen and in the Dynamic Island (CAP-05).
     if (next.ends_at)
@@ -201,11 +284,20 @@ export function useFocusSession({
       const at = Date.now();
       setNow(at);
       const s = latest.current.state;
-      if (!s.ends_at || focusRemaining(s, at) > 0) return;
-      void record(s, true, Date.parse(s.ends_at));
-      // The reminder for this phase has fired (or is firing): let it be.
-      reminder.current = null;
-      update(advanceFocus(latest.current.rhythm, s, at));
+      if (
+        !owns() ||
+        finishing.current ||
+        recording.current ||
+        failed.current ||
+        !s.ends_at ||
+        focusRemaining(s, at) > 0
+      )
+        return;
+      void record(s, true, Date.parse(s.ends_at)).then((ok) => {
+        if (!ok || !owns() || latest.current.state !== s) return;
+        reminder.current = null;
+        update(advanceFocus(latest.current.rhythm, s, Date.now()));
+      });
     };
     tick();
     const id = setInterval(tick, 1000);
@@ -221,17 +313,29 @@ export function useFocusSession({
   // Picking up a session running on another device: the time left carries
   // over, and from here on only what runs here is logged here.
   useEffect(() => {
+    const sequence = changeSequence.current;
     let alive = true;
     client.currentFocus().then(
       (c) => {
-        if (!alive || !c || c.state.item_id !== latest.current.item.id) return;
+        if (
+          sequence !== changeSequence.current ||
+          !alive ||
+          !owns() ||
+          !latest.current.canWrite ||
+          !c ||
+          c.state.item_id !== latest.current.item.id
+        )
+          return;
         const r = focusRhythm(c.state.rhythm);
         if (!r || !r.work) return;
         chosen.current = true;
+        latest.current.rhythm = r;
         setRhythm(r);
         // This phone's own session, after stepping away: carry on where it
         // is. The server already holds it, so it isn't shared again.
         if (c.device_id === deviceId()) {
+          changeSequence.current++;
+          latest.current.state = c.state;
           setState(c.state);
           return;
         }
@@ -254,15 +358,37 @@ export function useFocusSession({
   useEffect(
     () =>
       onLive((news) => {
-        if (news.kind !== "focus" || news.by === deviceId()) return;
+        if (
+          !owns() ||
+          !latest.current.canWrite ||
+          news.kind !== "focus" ||
+          news.by === deviceId()
+        )
+          return;
         const s = latest.current.state;
         if (!s.ends_at) return;
         void client.currentFocus().then(
           (c) => {
-            if (!c || c.device_id === deviceId() || !c.device_id) return;
+            if (
+              !owns() ||
+              latest.current.state !== s ||
+              !c ||
+              c.device_id === deviceId() ||
+              !c.device_id
+            )
+              return;
             const at = Date.now();
             void record(s, false, at);
-            setState(freshFocus(latest.current.rhythm, s.item_id));
+            changeSequence.current++;
+            latest.current.state = freshFocus(latest.current.rhythm, s.item_id);
+            setState(latest.current.state);
+            const old = reminder.current;
+            reminder.current = null;
+            if (old)
+              void Notifications.cancelScheduledNotificationAsync(old).catch(
+                () => {},
+              );
+            endFocusActivity();
             setMovedTo(c.device ?? "another device");
           },
           () => {},
@@ -271,36 +397,85 @@ export function useFocusSession({
     [record],
   );
 
-  const start = () => update(startFocus(state, Date.now()));
-  const pause = () => update(pauseFocus(state, Date.now()));
+  const start = () => {
+    if (!recording.current && !failed.current && !finishing.current)
+      update(startFocus(latest.current.state, Date.now()));
+  };
+  const pause = () => {
+    if (!recording.current && !failed.current && !finishing.current)
+      update(pauseFocus(latest.current.state, Date.now()));
+  };
   const skip = () => {
     const at = Date.now();
-    void record(state, false, at);
-    update(advanceFocus(rhythm, state, at));
+    if (recording.current || failed.current || finishing.current) return;
+    const currentState = latest.current.state;
+    void record(currentState, false, at).then((ok) => {
+      if (ok && owns() && latest.current.state === currentState)
+        update(advanceFocus(latest.current.rhythm, currentState, Date.now()));
+    });
   };
   const chooseRhythm = (next: FocusRhythm) => {
+    if (
+      !owns() ||
+      !latest.current.canWrite ||
+      recording.current ||
+      failed.current ||
+      finishing.current ||
+      latest.current.state.ends_at
+    )
+      return;
+    changeSequence.current++;
     chosen.current = true;
     saveLocal(RHYTHM_KEY, next.id);
+    latest.current.rhythm = next;
+    latest.current.state = freshFocus(next, item.id);
     setRhythm(next);
-    setState(freshFocus(next, item.id));
+    setState(latest.current.state);
   };
 
   /** Leaving: keep the work so far, cancel the reminder, stop sharing. */
-  const finish = useCallback(async () => {
-    const s = latest.current.state;
-    const old = reminder.current;
-    reminder.current = null;
-    if (old)
-      await Notifications.cancelScheduledNotificationAsync(old).catch(() => {});
-    if (latest.current.rhythm.work > 0 && s.phase === "work")
-      await record(s, false, Date.now());
-    // Only this device's own session: never one picked up elsewhere.
-    const current = await client.currentFocus().catch(() => null);
-    if (!current || !current.device_id || current.device_id === deviceId())
-      await client.clearCurrentFocus().catch(() => {});
+  const finish = useCallback(async (): Promise<boolean> => {
+    if (!owns() || finishing.current || recording.current) return false;
+    if (!latest.current.canWrite) return true;
+    finishing.current = true;
+    try {
+      const s = latest.current.state;
+      if (
+        latest.current.rhythm.work > 0 &&
+        s.phase === "work" &&
+        !(await record(s, false, Date.now()))
+      )
+        return false;
+      if (!owns() || logRequests.current.size) return false;
+      const current = await client.currentFocus();
+      if (!owns()) return false;
+      if (!current || !current.device_id || current.device_id === deviceId())
+        await client.clearCurrentFocus();
+      if (!owns()) return false;
+      const old = reminder.current;
+      reminder.current = null;
+      if (old)
+        await Notifications.cancelScheduledNotificationAsync(old).catch(
+          () => {},
+        );
+      if (!owns()) return false;
+      latest.current.state = freshFocus(latest.current.rhythm, s.item_id);
+      setState(latest.current.state);
+      endFocusActivity();
+      return true;
+    } catch (e) {
+      if (owns()) latest.current.onError(errorText(e));
+      return false;
+    } finally {
+      finishing.current = false;
+    }
   }, [record]);
 
   return {
+    saving,
+    hasUnfinishedLog: () => recording.current || logRequests.current.size > 0,
+    pendingLog,
+    retryLogging,
     rhythm: intervals ? rhythm : OPEN_TIMER,
     chooseRhythm,
     intervals,

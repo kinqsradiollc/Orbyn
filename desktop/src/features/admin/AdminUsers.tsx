@@ -1,11 +1,11 @@
 import { Select } from "../../components/Select";
 import { useConfirm } from "../../components/Confirm";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search, Trash2 } from "lucide-react";
+import { Search, Trash2, MoreHorizontal } from "lucide-react";
 import type { AdminUser, SystemRole } from "@orbyn/core";
 import { client } from "../../lib/api";
 import type { TeamActions } from "../teams/TeamDetail";
-import { stagger } from "../../lib/motion";
+import { Popover } from "../../components/Popover";
 
 const PAGE = 50;
 
@@ -26,9 +26,14 @@ export function AdminUsers({
   report,
   onOpen,
 }: Props) {
-  const { ask, tell } = useConfirm();
+  const { ask } = useConfirm();
   const [search, setSearch] = useState("");
+  const [menu, setMenu] = useState<{ id: string; anchor: DOMRect } | null>(
+    null,
+  );
+
   const [rows, setRows] = useState<AdminUser[]>([]);
+  const selected = rows.find((row) => row.id === menu?.id);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const seq = useRef(0);
@@ -140,16 +145,10 @@ export function AdminUsers({
             </tr>
           </thead>
           <tbody>
-            {rows.map((u, n) => {
+            {rows.map((u) => {
               const self = u.id === user?.id;
               return (
-                <tr
-                  key={u.id}
-                  className={
-                    "fade-up stagger " + (u.disabled ? "is-disabled" : "")
-                  }
-                  style={stagger(n % PAGE)}
-                >
+                <tr key={u.id} className={u.disabled ? "is-disabled" : ""}>
                   <td>
                     {onOpen ? (
                       <button
@@ -169,31 +168,11 @@ export function AdminUsers({
                     {!u.email_verified && (
                       <span className="admin-unverified">
                         <span className="status-pill disabled">Unverified</span>
-                        <button
-                          className="link-button"
-                          disabled={busy}
-                          onClick={() =>
-                            void update(u, { email_verified: true })
-                          }
-                        >
-                          Verify
-                        </button>
                       </span>
                     )}
                   </td>
                   <td data-label="Role">
-                    <Select
-                      className="role-select"
-                      aria-label={`System role for ${u.name}`}
-                      value={u.role}
-                      disabled={busy}
-                      onChange={(e) =>
-                        changeRole(u, e.target.value as SystemRole)
-                      }
-                    >
-                      <option value="admin">Admin</option>
-                      <option value="member">Member</option>
-                    </Select>
+                    <span>{u.role === "admin" ? "Admin" : "Member"}</span>
                   </td>
                   <td data-label="Status">
                     <span
@@ -203,15 +182,6 @@ export function AdminUsers({
                     >
                       {u.disabled ? "Disabled" : "Active"}
                     </span>
-                    {!self && (
-                      <button
-                        className="link-button"
-                        disabled={busy}
-                        onClick={() => toggleDisabled(u)}
-                      >
-                        {u.disabled ? "Enable" : "Disable"}
-                      </button>
-                    )}
                   </td>
                   <td data-label="Teams">{u.team_count}</td>
                   <td data-label="Items">{u.item_count}</td>
@@ -219,16 +189,21 @@ export function AdminUsers({
                     {new Date(u.created_at).toLocaleDateString()}
                   </td>
                   <td className="row-actions">
-                    {!self && (
-                      <button
-                        className="danger-text"
-                        aria-label={`Delete ${u.email}`}
-                        disabled={busy}
-                        onClick={() => remove(u)}
-                      >
-                        <Trash2 size={13} /> Delete
-                      </button>
-                    )}
+                    <button
+                      className="icon-button"
+                      aria-label={`${u.name} options`}
+                      aria-haspopup="dialog"
+                      aria-expanded={menu?.id === u.id}
+                      disabled={busy}
+                      onClick={(event) =>
+                        setMenu({
+                          id: u.id,
+                          anchor: event.currentTarget.getBoundingClientRect(),
+                        })
+                      }
+                    >
+                      <MoreHorizontal size={16} />
+                    </button>
                   </td>
                 </tr>
               );
@@ -243,6 +218,67 @@ export function AdminUsers({
           </tbody>
         </table>
       </div>
+      {menu && selected && (
+        <Popover
+          anchor={menu.anchor}
+          label={`${selected.name} options`}
+          onClose={() => setMenu(null)}
+        >
+          <div className="admin-user-options">
+            <label>
+              System role
+              <Select
+                aria-label={`System role for ${selected.name}`}
+                value={selected.role}
+                disabled={busy}
+                onChange={(event) => {
+                  setMenu(null);
+                  changeRole(selected, event.target.value as SystemRole);
+                }}
+              >
+                <option value="admin">Admin</option>
+                <option value="member">Member</option>
+              </Select>
+            </label>
+            {!selected.email_verified && (
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={() => {
+                  setMenu(null);
+                  void update(selected, { email_verified: true });
+                }}
+              >
+                Verify email
+              </button>
+            )}
+            {selected.id !== user?.id && (
+              <>
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setMenu(null);
+                    toggleDisabled(selected);
+                  }}
+                >
+                  {selected.disabled ? "Enable account" : "Disable account"}
+                </button>
+                <button
+                  className="danger"
+                  disabled={busy}
+                  onClick={() => {
+                    setMenu(null);
+                    void remove(selected);
+                  }}
+                >
+                  <Trash2 size={14} /> Delete account
+                </button>
+              </>
+            )}
+          </div>
+        </Popover>
+      )}
       <div className="table-footer">
         <small className="muted">
           Showing {rows.length} of {total}

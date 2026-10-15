@@ -21,10 +21,16 @@ import { MoreMenu } from "../../components/MoreMenu";
 import { Pressable } from "../../motion";
 import { client } from "../../lib/api";
 import { session } from "../../lib/session";
-import { colors, fonts, radii, themed } from "../../theme";
+import { colors, fonts, inputFontSize, radii, themed } from "../../theme";
 
 /** The same scoped schedule and nonce-bound review flow as desktop. */
-export function PageMaintenanceSheet({
+export function PageMaintenanceSheet(
+  props: Parameters<typeof PageMaintenanceBody>[0],
+) {
+  return <PageMaintenanceBody key={props.id} {...props} />;
+}
+
+function PageMaintenanceBody({
   id,
   onChanged,
   onClose,
@@ -86,33 +92,37 @@ export function PageMaintenanceSheet({
     <BottomSheet
       visible
       title="Page updates"
+      closeDisabled={state.busy}
       onClose={() => {
         if (!state.busy) onClose();
       }}
     >
       <View style={s.content}>
-        <Button
-          title="Close"
-          secondary
-          disabled={state.busy}
-          onPress={onClose}
-          style={{ alignSelf: "flex-end" }}
-        />
         {!!state.error && (
           <Text accessibilityRole="alert" style={s.error}>
             {state.error}
           </Text>
         )}
-        {!state.doc && <Text style={s.muted}>Loading…</Text>}
+        {!!state.error && (
+          <Button
+            title="Retry"
+            secondary
+            disabled={state.busy}
+            onPress={() => void (state.doc ? store.refresh() : store.prepare())}
+          />
+        )}
+        {!state.doc && !state.error && <Text style={s.muted}>Loading…</Text>}
         {!showForm && (
           <Button
             title="Add schedule"
             secondary
-            disabled={state.busy}
+            disabled={state.busy || !state.doc}
             onPress={() => {
               setEditing(undefined);
               setSelected([]);
               setInstruction("");
+              setFrequency("FREQ=DAILY");
+              setBudget(String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET));
               setShowForm(true);
             }}
           />
@@ -123,8 +133,7 @@ export function PageMaintenanceSheet({
               {editing ? "Edit schedule" : "New schedule"}
             </Text>
             <Text style={s.muted}>
-              Choose the blocks your assistant may update using your configured
-              model.
+              Your configured model may update only the selected blocks.
             </Text>
             {state.doc?.content.map(
               (block, index) =>
@@ -135,6 +144,7 @@ export function PageMaintenanceSheet({
                     accessibilityRole="checkbox"
                     accessibilityState={{
                       checked: selected.includes(block.id),
+                      disabled: state.busy,
                     }}
                     onPress={() =>
                       setSelected((ids) =>
@@ -147,7 +157,7 @@ export function PageMaintenanceSheet({
                   >
                     <Text style={s.text}>
                       {selected.includes(block.id) ? "✓" : "○"} {index + 1}.{" "}
-                      {blockText(block).slice(0, 140) || block.type}
+                      {blockText(block) || block.type}
                     </Text>
                   </Pressable>
                 ),
@@ -160,7 +170,7 @@ export function PageMaintenanceSheet({
               maxLength={4000}
               value={instruction}
               onChangeText={setInstruction}
-              style={s.input}
+              style={[s.input, s.instructions]}
               placeholder="What should these blocks contain?"
               placeholderTextColor={colors.muted}
             />
@@ -190,8 +200,7 @@ export function PageMaintenanceSheet({
               applies.
             </Text>
             <Text style={s.muted}>
-              Starts when enabled. Overnight handles updates when follow-through
-              is enabled.
+              Starts now; runs through Overnight when follow-through is enabled.
             </Text>
             <Button
               title={editing ? "Save and enable" : "Enable updates"}
@@ -221,6 +230,12 @@ export function PageMaintenanceSheet({
                 )
               }
             />
+            <Button
+              title="Cancel"
+              secondary
+              disabled={state.busy}
+              onPress={() => setShowForm(false)}
+            />
             {editing && (
               <Button
                 title="New schedule"
@@ -230,6 +245,7 @@ export function PageMaintenanceSheet({
                   setEditing(undefined);
                   setSelected([]);
                   setInstruction("");
+                  setFrequency("FREQ=DAILY");
                   setBudget(String(DEFAULT_MAINTAINED_PAGE_TOKEN_BUDGET));
                 }}
               />
@@ -239,7 +255,7 @@ export function PageMaintenanceSheet({
         {!showForm && (
           <>
             <Text style={s.heading}>Schedules</Text>
-            {!state.bindings.length && (
+            {state.doc && !state.bindings.length && (
               <Text style={s.muted}>No schedules yet.</Text>
             )}
             {state.bindings.map((binding) => (
@@ -335,9 +351,9 @@ export function PageMaintenanceSheet({
 }
 const s = themed(() =>
   StyleSheet.create({
-    content: { padding: 16, gap: 12 },
-    heading: { fontFamily: fonts.semibold, fontSize: 18, color: colors.text },
-    text: { fontFamily: fonts.regular, fontSize: 15, color: colors.text },
+    content: { paddingVertical: 8, gap: 12 },
+    heading: { fontFamily: fonts.semibold, fontSize: 15, color: colors.text },
+    text: { fontFamily: fonts.regular, fontSize: 13, color: colors.text },
     muted: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
     error: { color: colors.danger },
     block: {
@@ -348,21 +364,23 @@ const s = themed(() =>
     },
     input: {
       padding: 12,
-      minHeight: 88,
-      textAlignVertical: "top",
+      minHeight: 44,
+      fontSize: inputFontSize,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.input,
       color: colors.text,
       fontFamily: fonts.regular,
     },
+    instructions: { minHeight: 88, textAlignVertical: "top" },
     row: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       justifyContent: "space-between",
       gap: 8,
     },
-    grow: { flex: 1 },
+    grow: { flexGrow: 1, flexBasis: 180, minWidth: 0 },
     actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     card: {
       padding: 12,

@@ -72,70 +72,74 @@ export function CreateSheet({
       {arranging ? (
         <View style={s.list}>
           <Text style={s.lead}>
-            The star is what a tap on + does. Hide what you never use.
+            Star your default action. Hide or reorder the rest.
           </Text>
           {arrangement.order.map((id, n) => {
             const hidden = arrangement.hidden.includes(id);
             const favourite = arrangement.favourite === id;
             return (
-              <View key={id} style={[s.row, hidden && s.hidden]}>
-                <Pressable
-                  accessibilityRole="radio"
-                  accessibilityState={{ checked: favourite }}
-                  accessibilityLabel={`A tap on + does ${createLabel(id)}`}
-                  hitSlop={6}
-                  onPress={() => onArrange(setFavourite(arrangement, id))}
-                  style={s.small}
-                >
+              <View key={id} style={[s.arrangementRow, hidden && s.hidden]}>
+                <View style={s.actionTitle}>
                   <Icon
-                    name={favourite ? "starFilled" : "star"}
-                    size={17}
-                    color={favourite ? colors.accent : colors.faint}
+                    name={CREATE_ICONS[id]}
+                    size={19}
+                    color={colors.textSoft}
                   />
-                </Pressable>
-                <Icon
-                  name={CREATE_ICONS[id]}
-                  size={19}
-                  color={colors.textSoft}
-                />
-                <Text style={s.label} numberOfLines={1}>
-                  {createLabel(id)}
-                </Text>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Move ${createLabel(id)} up`}
-                  disabled={n === 0}
-                  hitSlop={6}
-                  onPress={() => onArrange(moveAction(arrangement, id, -1))}
-                  style={[s.small, n === 0 && s.off]}
-                >
-                  <Icon name="arrowUp" size={16} color={colors.textSoft} />
-                </Pressable>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`Move ${createLabel(id)} down`}
-                  disabled={n === arrangement.order.length - 1}
-                  hitSlop={6}
-                  onPress={() => onArrange(moveAction(arrangement, id, 1))}
-                  style={[s.small, n === arrangement.order.length - 1 && s.off]}
-                >
-                  <Icon name="arrowDown" size={16} color={colors.textSoft} />
-                </Pressable>
-                <Pressable
-                  accessibilityRole="switch"
-                  accessibilityState={{ checked: !hidden, disabled: favourite }}
-                  accessibilityLabel={`Show ${createLabel(id)}`}
-                  disabled={favourite}
-                  hitSlop={6}
-                  onPress={() => onArrange(toggleHidden(arrangement, id))}
-                  style={[s.small, favourite && s.off]}
-                >
-                  <Icon
-                    name={hidden ? "circlePlus" : "circleMinus"}
-                    size={18}
-                    color={hidden ? colors.accent : colors.muted}
-                  />
-                </Pressable>
+                  <Text style={s.label}>{createLabel(id)}</Text>
+                </View>
+                <View style={s.adjustments}>
+                  <Pressable
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: favourite }}
+                    accessibilityLabel={`A tap on + does ${createLabel(id)}`}
+                    onPress={() => onArrange(setFavourite(arrangement, id))}
+                    style={s.small}
+                  >
+                    <Icon
+                      name={favourite ? "starFilled" : "star"}
+                      size={17}
+                      color={favourite ? colors.accent : colors.faint}
+                    />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move ${createLabel(id)} up`}
+                    disabled={n === 0}
+                    onPress={() => onArrange(moveAction(arrangement, id, -1))}
+                    style={[s.small, n === 0 && s.off]}
+                  >
+                    <Icon name="arrowUp" size={16} color={colors.textSoft} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Move ${createLabel(id)} down`}
+                    disabled={n === arrangement.order.length - 1}
+                    onPress={() => onArrange(moveAction(arrangement, id, 1))}
+                    style={[
+                      s.small,
+                      n === arrangement.order.length - 1 && s.off,
+                    ]}
+                  >
+                    <Icon name="arrowDown" size={16} color={colors.textSoft} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="switch"
+                    accessibilityState={{
+                      checked: !hidden,
+                      disabled: favourite,
+                    }}
+                    accessibilityLabel={`Show ${createLabel(id)}`}
+                    disabled={favourite}
+                    onPress={() => onArrange(toggleHidden(arrangement, id))}
+                    style={[s.small, favourite && s.off]}
+                  >
+                    <Icon
+                      name={hidden ? "circlePlus" : "circleMinus"}
+                      size={18}
+                      color={hidden ? colors.accent : colors.muted}
+                    />
+                  </Pressable>
+                </View>
               </View>
             );
           })}
@@ -191,6 +195,14 @@ const s = themed(() =>
       marginHorizontal: -10,
       borderRadius: radii.input,
     },
+    arrangementRow: {
+      gap: 4,
+      paddingVertical: 8,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    actionTitle: { flexDirection: "row", alignItems: "center", gap: 10 },
+    adjustments: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     hidden: { opacity: 0.5 },
     label: {
       flex: 1,
@@ -200,8 +212,8 @@ const s = themed(() =>
     },
     tap: { fontFamily: fonts.medium, fontSize: 13, color: colors.muted },
     small: {
-      width: 34,
-      height: 34,
+      width: 44,
+      height: 44,
       borderRadius: radii.pill,
       alignItems: "center",
       justifyContent: "center",

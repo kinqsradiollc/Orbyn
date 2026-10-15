@@ -173,7 +173,7 @@
 .changelog-filter button:hover {
   color: var(--color-text);
 }
-.changelog-filter button[aria-checked="true"] {
+.changelog-filter button[aria-pressed="true"] {
   color: var(--color-selectedText);
   background: var(--color-selected);
 }
@@ -200,7 +200,7 @@
   width: 600px;
 }
 .whats-new-body {
-  padding: 8px 23px 12px;
+  padding: 8px 16px 12px;
 }
 .whats-new-foot {
   position: sticky;
@@ -209,7 +209,7 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 12px 23px 18px;
+  padding: 12px 16px;
   background: var(--color-surface);
   border-top: 1px solid var(--color-divider);
 }
@@ -258,4 +258,40 @@
   .release-chevron {
     transition: none;
   }
+}
+
+dialog.whats-new {
+  width: min(600px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+}
+.whats-new h2 {
+  font-size: 18px;
+}
+.whats-new-foot {
+  flex-wrap: wrap;
+}
+.whats-new .icon-button,
+.whats-new-foot button,
+.changelog-filter button {
+  min-height: 44px;
+}
+.changelog-jump {
+  flex-wrap: wrap;
+}
+.release-title {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+}
+.release-summary,
+.release-part li,
+.release-highlight {
+  overflow-wrap: anywhere;
+}
+.release-highlight > span {
+  min-width: 0;
+}
+
+dialog.whats-new::backdrop {
+  background: var(--color-backdrop);
 }

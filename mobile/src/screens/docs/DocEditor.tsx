@@ -1,11 +1,15 @@
+import { Icon } from "../../components/Icon";
 import { docContainerBlocks, maintainedPageDraftSaved } from "@orbyn/core";
 import { PageMaintenanceSheet } from "./PageMaintenanceSheet";
 import { DocNavigationContext } from "./doc-navigation";
+import { DocSourceAsk } from "./DocSourceAsk";
 import { DocSourcePreview } from "./DocSourcePreview";
 import { StructuredDocEditor } from "./StructuredDocEditor";
+import { commentDraftScope, CommentDraftContext } from "./doc-comment-drafts";
 import { openAppUrl } from "../../hooks/useAppLinks";
 import React, {
   useCallback,
+  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -14,6 +18,7 @@ import React, {
 import {
   Keyboard,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -115,14 +120,16 @@ import { savePageOffline } from "../../lib/outbox";
 import { PublishSheet } from "./PublishSheet";
 import { downloadDoc, formatsHere } from "../../lib/download";
 import { copyLink, shareLink, sharePageFile } from "../../lib/share";
-import { setOpenDoc } from "../../lib/live";
+import { currentDoc, setOpenDoc } from "../../lib/live";
+import { BottomSheet } from "../../components/BottomSheet";
 import { SmallAction } from "../../components/SmallAction";
 import { ActionSheet, type MoreAction } from "../../components/MoreMenu";
 import { HeaderButton } from "../../components/Sheet";
 import { SlotFill, type SlotHandle } from "../../components/Slot";
 import type { DocNews } from "@orbyn/api-client";
 import { client } from "../../lib/api";
-import { confirmAction } from "../../lib/confirm";
+import { session as authSession } from "../../lib/session";
+
 import { showToast } from "../../components/Toast";
 import { tap } from "../../lib/haptics";
 import { SaveTemplatePanel } from "./PageTemplates";
@@ -196,6 +203,7 @@ const taskNews = (by?: string) =>
 
 function LegacyDocEditor({
   doc,
+  beforeLeave,
   initialBlockId,
   onTargetOffset,
   comments,
@@ -281,6 +289,36 @@ function LegacyDocEditor({
   const reading = mode === "read" || (!canWrite && !suggesting);
   const [suggestions, setSuggestions] = useState<DocSuggestion[]>([]);
   const [deciding, setDeciding] = useState(false);
+  const suggestionOwner = useRef({ id: doc.id, userId });
+  suggestionOwner.current = { id: doc.id, userId };
+  const suggestionMounted = useRef(true);
+  const renderAccount = authSession.token;
+  const currentPage = () =>
+    suggestionMounted.current &&
+    suggestionOwner.current.id === doc.id &&
+    authSession.token === renderAccount;
+  const writeAllowed = useRef(canWrite);
+  writeAllowed.current = canWrite;
+  const creatingLink = useRef(false);
+  const uploadingFiles = useRef(false);
+  const deleting = useRef(false);
+  const archiving = useRef(false);
+  const [archivingPage, setArchivingPage] = useState(false);
+  const [forgetting, setForgetting] = useState(false);
+  const [deletingPage, setDeletingPage] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const creatingTasks = useRef(false);
+  const [tasksBusy, setTasksBusy] = useState(false);
+  const suggestionRead = useRef(0);
+  const suggestionMutation = useRef<object | null>(null);
+  useEffect(() => {
+    suggestionMounted.current = true;
+    return () => {
+      suggestionMounted.current = false;
+      suggestionRead.current++;
+    };
+  }, []);
+
   const [title, setTitle] = useState(doc.title);
   const bodyOffset = useRef<number | null>(null);
   const targetLine = useRef<number | null>(null);
@@ -288,7 +326,19 @@ function LegacyDocEditor({
   const lineYs = useRef(new Map<number, number>());
   const linkedY = useRef<number | null>(null);
   const [contentsOpen, setContentsOpen] = useState(false);
+  const [footnote, setFootnote] = useState<{
+    label: string;
+    words: string;
+  } | null>(null);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
+  const sourcePreviewOwner = useRef(sourcePreview);
+  sourcePreviewOwner.current = sourcePreview;
+  const [sourceAsk, setSourceAsk] = useState<{
+    blockId: string;
+    start: number;
+    end: number;
+    quote: string;
+  } | null>(null);
   useEffect(() => {
     bodyOffset.current = null;
     targetLine.current = null;
@@ -314,6 +364,7 @@ function LegacyDocEditor({
   const [focused, setFocused] = useState<number | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveFailure, setSaveFailure] = useState(false);
   /** When the page was last saved, for the line at its end. */
   const [savedAt, setSavedAt] = useState(doc.updated_at);
   const [now, setNow] = useState(() => new Date());
@@ -337,6 +388,37 @@ function LegacyDocEditor({
     range_start?: number;
     range_end?: number;
   } | null>(null);
+  const commentDrafts = useContext(CommentDraftContext);
+  const threadNavigation = useRef(false);
+  const threadState = useRef({ open: openThread, pending: pending?.blockId });
+  threadState.current = { open: openThread, pending: pending?.blockId };
+  const requestThread = async (next: string | null, update?: () => void) => {
+    if (threadNavigation.current || !currentPage()) return;
+    threadNavigation.current = true;
+    const previous = threadState.current;
+    try {
+      if (next !== previous.open || update) {
+        for (const scope of new Set([previous.open, previous.pending]))
+          if (
+            scope &&
+            commentDrafts &&
+            !(await commentDrafts.prepare(commentDraftScope(scope)))
+          )
+            return;
+      }
+      if (
+        !currentPage() ||
+        threadState.current.open !== previous.open ||
+        threadState.current.pending !== previous.pending
+      )
+        return;
+      setPending((current) => (current?.blockId === next ? current : null));
+      setOpenThread(next);
+      update?.();
+    } finally {
+      threadNavigation.current = false;
+    }
+  };
   /** Words chosen, waiting for what to ask the assistant for. */
   const [asking, setAsking] = useState<{
     blockId: string;
@@ -384,13 +466,13 @@ function LegacyDocEditor({
     setFoldsLoaded(false);
     client.docFolds(doc.id).then(
       (r) => {
-        if (live) {
+        if (live && currentPage()) {
           setFolds(new Set(r.block_ids));
           setFoldsLoaded(true);
         }
       },
       () => {
-        if (live) setFoldsLoaded(true);
+        if (live && currentPage()) setFoldsLoaded(true);
       },
     );
     return () => {
@@ -402,7 +484,16 @@ function LegacyDocEditor({
   /** A link pill held down: its card (LNK-07). */
   const [card, setCard] = useState<ObjectRef | null>(null);
   /** The table whose cells are open, the template, embed and merge sheets. */
-  const [tableAt, setTableAt] = useState<number | null>(null);
+  const [tableEdit, setTableEdit] = useState<{
+    index: number;
+    block: Extract<DocBlock, { type: "table" }>;
+  } | null>(null);
+  const setTableAt = (index: number | null) => {
+    const block = index === null ? null : live.current.blocks[index];
+    setTableEdit(
+      index !== null && block?.type === "table" ? { index, block } : null,
+    );
+  };
   const [templateAt, setTemplateAt] = useState<number | null>(null);
   const [embedAt, setEmbedAt] = useState<number | null>(null);
   const [merging, setMerging] = useState(false);
@@ -427,6 +518,7 @@ function LegacyDocEditor({
     client.listFavourites().then(
       (all) =>
         live &&
+        currentPage() &&
         setStars(
           all.filter(
             (f) =>
@@ -471,6 +563,8 @@ function LegacyDocEditor({
   const [menu, setMenu] = useState<"page" | "share" | "export" | null>(null);
   /** People who can open the page, for "@" (loaded the first time). */
   const [people, setPeople] = useState<MentionPerson[] | null>(null);
+  const [peopleFailed, setPeopleFailed] = useState(false);
+  const [peopleAttempt, setPeopleAttempt] = useState(0);
   /** Where the caret or selection is in the open line. */
   const sel = useRef({ start: 0, end: 0 });
   const [selection, setSelection] = useState({ start: 0, end: 0 });
@@ -558,7 +652,9 @@ function LegacyDocEditor({
   // While the page is open, others see this phone is on it.
   useEffect(() => {
     setOpenDoc(doc.id);
-    return () => setOpenDoc(null);
+    return () => {
+      if (currentDoc() === doc.id) setOpenDoc(null);
+    };
   }, [doc.id]);
 
   /** Add to the page the #tags typed into it since they were last looked at. */
@@ -566,14 +662,19 @@ function LegacyDocEditor({
   /** Set once the page goes to Trash: there is nothing left to tag. */
   const gone = useRef(false);
   settleTags.current = () => {
-    if (gone.current) return;
+    if (gone.current || authSession.token !== renderAccount) return;
     const now = live.current.blocks;
     const added = addedInlineTags(tagBase.current, now);
     tagBase.current = now;
     if (!added.length || !canWrite) return;
-    client
-      .addDocTags(doc.id, added)
-      .then(({ tags: next }) => setTags(next), report);
+    client.addDocTags(doc.id, added).then(
+      ({ tags: next }) => {
+        if (currentPage()) setTags(next);
+      },
+      (e) => {
+        if (currentPage()) report(e);
+      },
+    );
   };
   // Putting a line away (Done, Return, another line) is when a #tag typed
   // in it counts, not every keystroke on the way to "#physics".
@@ -715,7 +816,13 @@ function LegacyDocEditor({
       // mustn't count them again.
       const from = ticksFrom.current;
       const write = async () => {
-        setSaving(true);
+        if (
+          gone.current ||
+          authSession.token !== renderAccount ||
+          !writeAllowed.current
+        )
+          return;
+        if (currentPage()) setSaving(true);
         try {
           const saved = await client.updateDoc(
             doc.id,
@@ -726,6 +833,7 @@ function LegacyDocEditor({
             },
             { ticksFrom: from },
           );
+          if (authSession.token !== renderAccount) return;
           version.current = saved.version;
           base.current = saved.content;
           baseTitle.current = saved.title;
@@ -735,36 +843,52 @@ function LegacyDocEditor({
           setSavedAt(saved.updated_at);
           setNow(new Date());
           setKeptOffline(false);
+          if (currentPage()) setSaveFailure(false);
           void rememberPage(saved);
           settle(nextBlocks, saved);
-          onChanged(saved);
+          if (currentPage()) onChanged(saved);
         } catch (e) {
+          if (authSession.token !== renderAccount) return;
           // No signal: the edit is kept on the phone and sent when it's back,
           // merged into whatever the page became meanwhile (SHR-03).
           if (isOfflineError(e)) {
-            await savePageOffline({
-              id: doc.id,
-              title: nextTitle,
-              content: nextBlocks,
-              base: {
-                version: version.current,
-                title: baseTitle.current,
-                content: base.current,
-              },
-            });
-            void rememberPage({
-              ...doc,
-              title: nextTitle,
-              content: nextBlocks,
-            });
-            setKeptOffline(true);
+            try {
+              await savePageOffline({
+                id: doc.id,
+                title: nextTitle,
+                content: nextBlocks,
+                base: {
+                  version: version.current,
+                  title: baseTitle.current,
+                  content: base.current,
+                },
+              });
+              if (authSession.token !== renderAccount) return;
+              void rememberPage({
+                ...doc,
+                title: nextTitle,
+                content: nextBlocks,
+              });
+              if (currentPage()) {
+                setKeptOffline(true);
+                setSaveFailure(false);
+              }
+            } catch (storageError) {
+              if (currentPage()) {
+                setSaveFailure(true);
+                report(storageError);
+              }
+            }
             return;
           }
+
           // Someone saved first: take their copy, fold this edit into it and
           // save again rather than making the writer sort it out by hand.
           if ((e as { statusCode?: number }).statusCode === 409) {
             try {
               const remote = await client.getDocForEditor(doc.id);
+              if (authSession.token !== renderAccount || !writeAllowed.current)
+                return;
               if (remote.document?.format === 2)
                 throw new Error(
                   "This page changed format. Keep your draft and reopen it before saving.",
@@ -782,20 +906,29 @@ function LegacyDocEditor({
                 },
                 { ticksFrom: ticksFrom.current },
               );
+              if (authSession.token !== renderAccount) return;
               version.current = saved.version;
               base.current = saved.content;
               dirty.current =
                 live.current.title !== mergedTitle ||
                 live.current.blocks !== merged;
               setSavedAt(saved.updated_at);
+              baseTitle.current = saved.title;
+              if (currentPage()) setSaveFailure(false);
               settle(merged, saved);
-              onChanged(saved);
+              if (currentPage()) onChanged(saved);
             } catch (again) {
-              report(again);
+              if (currentPage()) {
+                setSaveFailure(true);
+                report(again);
+              }
             }
-          } else report(e);
+          } else if (currentPage()) {
+            setSaveFailure(true);
+            report(e);
+          }
         } finally {
-          setSaving(false);
+          if (currentPage()) setSaving(false);
         }
       };
       saveQueue.current = saveQueue.current.then(write, write);
@@ -804,6 +937,56 @@ function LegacyDocEditor({
     [doc.id, onChanged, reconcile, report, settle],
   );
   persistRef.current = persist;
+  useEffect(() => {
+    if (!beforeLeave) return;
+    const guard = async () => {
+      if (
+        sourceAsk ||
+        sourcePreviewOwner.current ||
+        asking ||
+        suggestionMutation.current ||
+        uploadingFiles.current ||
+        deleting.current ||
+        archiving.current
+      )
+        return false;
+      if (!currentPage()) return false;
+      const at = focusedRef.current;
+      if (
+        suggesting &&
+        at !== null &&
+        sourceOf(live.current.blocks, at) !== draftRef.current
+      )
+        return false;
+      const shown = canWrite && !suggesting ? onScreen() : live.current.blocks;
+      if (
+        canWrite &&
+        !suggesting &&
+        (dirty.current ||
+          live.current.title !== baseTitle.current ||
+          JSON.stringify(shown) !== JSON.stringify(base.current))
+      ) {
+        live.current = { ...live.current, blocks: shown };
+        setBlocks(shown);
+        dirty.current = true;
+        await persistRef.current(live.current.title, shown);
+      }
+      await saveQueue.current;
+      return currentPage() && !dirty.current;
+    };
+    beforeLeave.current = guard;
+    return () => {
+      if (beforeLeave.current === guard) beforeLeave.current = null;
+    };
+  }, [
+    beforeLeave,
+    sourceAsk,
+    sourcePreview,
+    asking,
+    canWrite,
+    suggesting,
+    onScreen,
+  ]);
 
   /**
    * The page with the open line's words in it, including any typed since
@@ -846,6 +1029,7 @@ function LegacyDocEditor({
     client.targetFields("page", doc.id).then(
       (f) =>
         live &&
+        currentPage() &&
         setPropertyCount(
           f.fields.filter((field) => {
             const v = f.values[field.id];
@@ -868,6 +1052,7 @@ function LegacyDocEditor({
     remote: number,
     { trashed, forgotten, tags: retagged, fields: refielded, by }: DocNews,
   ) => {
+    if (!currentPage()) return;
     // Moved to Trash somewhere else: let the page go, rather than keep
     // typing into something every save will now refuse.
     if (trashed || forgotten) {
@@ -890,13 +1075,19 @@ function LegacyDocEditor({
     }
     // Someone changed the page's tags: the row follows, the words stay.
     if (retagged) {
-      void client
-        .getDoc(doc.id)
-        .then((theirs) => setTags(theirs.tags ?? []), report);
+      void client.getDoc(doc.id).then(
+        (theirs) => {
+          if (currentPage()) setTags(theirs.tags ?? []);
+        },
+        (e) => {
+          if (currentPage()) report(e);
+        },
+      );
       return;
     }
     if (remote && remote <= version.current) return;
     void client.getDocForEditor(doc.id).then((theirs) => {
+      if (!currentPage()) return;
       if (theirs.version <= version.current) return;
       if (theirs.document?.format === 2) {
         if (dirty.current || focusedRef.current !== null) {
@@ -961,8 +1152,9 @@ function LegacyDocEditor({
   );
 
   const update = (next: DocBlock[]) => {
+    if (!currentPage() || !writeAllowed.current) return;
     setBlocks(next);
-    queueSave(title, next);
+    queueSave(live.current.title, next);
   };
 
   /**
@@ -972,7 +1164,12 @@ function LegacyDocEditor({
   const remember = (kind?: string) => {
     history.current = recordUndo(
       history.current,
-      { title, blocks, focused, draft },
+      {
+        title: live.current.title,
+        blocks: live.current.blocks,
+        focused: focusedRef.current,
+        draft: draftRef.current,
+      },
       { kind, now: Date.now() },
     );
     setHistoryShown((n) => n + 1);
@@ -1124,25 +1321,54 @@ function LegacyDocEditor({
 
   /** "Create page X" / "Create task X": made first, then linked. */
   const createAndLink = async (kind: "doc" | "task", name: string) => {
+    if (!currentPage() || !writeAllowed.current || creatingLink.current) return;
+    creatingLink.current = true;
+    const originalLine = focusedRef.current;
+    const originalDraft = draftRef.current;
+    const originalBlock =
+      originalLine === null ? null : live.current.blocks[originalLine];
+    const originalSelection = { ...sel.current };
     try {
-      if (kind === "doc") {
-        const made = await client.createDoc({
-          title: name,
-          team_id: doc.team_id,
-          project_id: doc.project_id,
+      const made =
+        kind === "doc"
+          ? await client.createDoc({
+              title: name,
+              team_id: doc.team_id,
+              project_id: doc.project_id,
+            })
+          : await client.createItem({
+              title: name,
+              ...(doc.team_id ? { team_id: doc.team_id } : {}),
+              ...(doc.project_id ? { project_id: doc.project_id } : {}),
+            });
+      if (!currentPage()) return;
+      if (kind === "task") onItemsChanged?.();
+      if (
+        !writeAllowed.current ||
+        (originalLine !== null &&
+          live.current.blocks[originalLine] !== originalBlock) ||
+        focusedRef.current !== originalLine ||
+        draftRef.current !== originalDraft ||
+        sel.current.start !== originalSelection.start ||
+        sel.current.end !== originalSelection.end
+      ) {
+        showToast({
+          text: `Created “${made.title}”. Your text changed, so no link was inserted.`,
+          action: {
+            label: "Open",
+            run: () => {
+              if (authSession.token === renderAccount)
+                openObject({ kind, id: made.id });
+            },
+          },
         });
-        insertPicked({ kind: "doc", id: made.id }, made.title);
-      } else {
-        const made = await client.createItem({
-          title: name,
-          ...(doc.team_id ? { team_id: doc.team_id } : {}),
-          ...(doc.project_id ? { project_id: doc.project_id } : {}),
-        });
-        insertPicked({ kind: "task", id: made.id }, made.title);
-        onItemsChanged?.();
+        return;
       }
+      insertPicked({ kind, id: made.id }, made.title);
     } catch (e) {
-      report(e);
+      if (currentPage()) report(e);
+    } finally {
+      creatingLink.current = false;
     }
   };
 
@@ -1316,8 +1542,10 @@ function LegacyDocEditor({
     const next = blocks.slice();
     next[index] = { ...block, id: blockId };
     setBlocks(next);
+    live.current = { ...live.current, blocks: next };
+    dirty.current = true;
     if (timer.current) clearTimeout(timer.current);
-    void persist(title, next);
+    void persist(live.current.title, next);
     return blockId;
   };
 
@@ -1330,26 +1558,29 @@ function LegacyDocEditor({
     const placed = keepStart(next, focused);
     setFocused(null);
     setBlocks(placed);
+    live.current = { ...live.current, blocks: placed };
+    dirty.current = true;
     // Saved at once rather than on the usual delay: the remark about to be
     // written points at this name, and a name that is not saved is a remark
     // with nothing to hang on.
     if (timer.current) clearTimeout(timer.current);
-    void persist(title, placed);
+    void persist(live.current.title, placed);
     return { blockId, source: blockText(parsed) };
   };
 
   const commentOnLine = () => {
     const line = settleLine();
     if (!line) return;
-    setPending({ blockId: line.blockId, quote: line.source.slice(0, 400) });
-    setOpenThread(line.blockId);
+    void requestThread(line.blockId, () =>
+      setPending({ blockId: line.blockId, quote: line.source.slice(0, 400) }),
+    );
   };
 
   /** Comment on some of a line's words rather than all of it. */
   const commentOnWords = () => {
     const line = settleLine();
     if (!line) return;
-    setPicking(line);
+    void requestThread(line.blockId, () => setPicking(line));
   };
 
   /**
@@ -1385,15 +1616,48 @@ function LegacyDocEditor({
     Keyboard.dismiss();
   };
 
-  const deleteLine = () => {
-    if (focused === null) return;
-    if (!structural) return;
-    remember();
-    const next = blocks.slice();
-    if (next.length > 1) next.splice(focused, 1);
-    else next.splice(focused, 1, EMPTY);
-    setFocused(null);
-    update(next);
+  const deleteLine = async () => {
+    if (
+      focused === null ||
+      !structural ||
+      threadNavigation.current ||
+      !currentPage() ||
+      !writeAllowed.current
+    )
+      return;
+    const index = focused;
+    const target = live.current.blocks;
+    const text = draftRef.current;
+    threadNavigation.current = true;
+    try {
+      const blockId = target[index]?.id;
+      if (
+        blockId &&
+        commentDrafts &&
+        !(await commentDrafts.prepare(commentDraftScope(blockId)))
+      )
+        return;
+      if (
+        !currentPage() ||
+        !writeAllowed.current ||
+        live.current.blocks !== target ||
+        focusedRef.current !== index ||
+        draftRef.current !== text
+      )
+        return;
+      remember();
+      const next = target.slice();
+      if (next.length > 1) next.splice(index, 1);
+      else next.splice(index, 1, EMPTY);
+      setFocused(null);
+      if (blockId) {
+        setOpenThread((open) => (open === blockId ? null : open));
+        setPending((value) => (value?.blockId === blockId ? null : value));
+      }
+      update(next);
+    } finally {
+      threadNavigation.current = false;
+    }
   };
 
   // ---- folding, line links, moving lines (EDT-14, LNK-04, ORG-05) ----
@@ -1504,19 +1768,37 @@ function LegacyDocEditor({
 
   // ---- pictures, files and other lines from the kinds panel (EDT-01) ----
   /** Put lines where the open line is: in its place when it's empty. */
-  const placeLines = (made: DocBlock[], at: number | null = focused) => {
-    if (!made.length) return;
-    const current = at !== null && at === focused ? withDraft() : blocks;
+  const placeLines = (
+    made: DocBlock[],
+    at: number | null = focusedRef.current,
+  ) => {
+    if (!made.length || !currentPage() || !writeAllowed.current) return null;
+    const shown = live.current.blocks;
+    const focusedAt = focusedRef.current;
+    const current = shown.slice();
+    if (at !== null && at === focusedAt && shown[at]) {
+      const parsed = parseDoc(draftRef.current);
+      current.splice(
+        at,
+        1,
+        ...carryBlockIds(shown[at], parsed.length ? parsed : [EMPTY]),
+      );
+    }
     const next = current.slice();
-    if (at === null) next.push(...made);
-    else {
+    let placedAt: number;
+    if (at === null || !next[at]) {
+      placedAt = next.length;
+      next.push(...made);
+    } else {
       const here = next[at];
-      const empty = here?.type === "paragraph" && !blockText(here).trim();
-      next.splice(empty ? at : at + 1, empty ? 1 : 0, ...made);
+      const empty = here.type === "paragraph" && !blockText(here).trim();
+      placedAt = empty ? at : at + 1;
+      next.splice(placedAt, empty ? 1 : 0, ...made);
     }
     remember();
     setFocused(null);
     update(next);
+    return placedAt;
   };
 
   type Picked = {
@@ -1530,54 +1812,83 @@ function LegacyDocEditor({
   };
 
   /** Send pictures and files to Orbyn's file store, then into the page. */
-  const addFiles = async (files: Picked[], at: number | null) => {
-    if (!files.length) return;
-    showToast({
-      text:
-        files.length === 1
-          ? `Adding “${files[0].name}”…`
-          : `Adding ${files.length} files…`,
-    });
-    const made: DocBlock[] = [];
-    for (const f of files) {
-      try {
-        const mime = pageFileType(f.name, f.mime ?? undefined);
-        if (!mime)
-          throw new Error(
-            `“${f.name}” can't go in a page: pictures, PDF, Word, Excel, PowerPoint, text and CSV files can.`,
+  const addFiles = async (
+    files: Picked[],
+    at: number | null,
+    anchor = at === null ? null : live.current.blocks[at],
+  ) => {
+    if (!files.length || !currentPage() || !writeAllowed.current) return;
+    if (uploadingFiles.current)
+      throw new Error("Wait for the current upload to finish.");
+    uploadingFiles.current = true;
+    try {
+      showToast({
+        text:
+          files.length === 1
+            ? `Adding “${files[0].name}”…`
+            : `Adding ${files.length} files…`,
+      });
+      const made: DocBlock[] = [];
+      for (const f of files) {
+        if (!currentPage() || !writeAllowed.current) return;
+        try {
+          const mime = pageFileType(f.name, f.mime ?? undefined);
+          if (!mime)
+            throw new Error(
+              `“${f.name}” can't go in a page: pictures, PDF, Word, Excel, PowerPoint, text and CSV files can.`,
+            );
+          const body: Blob =
+            Platform.OS === "web" && f.file
+              ? f.file
+              : await (await fetch(f.uri)).blob();
+          if (!currentPage() || !writeAllowed.current) return;
+          const { file, upload_path } = await client.createPageFile(doc.id, {
+            name: f.name.slice(0, 300) || "File",
+            bytes: f.size ?? body.size,
+            mime,
+            ...(f.width && f.height
+              ? { width: f.width, height: f.height }
+              : {}),
+          });
+          if (!currentPage() || !writeAllowed.current) return;
+          await client.uploadPageFile(upload_path, body, mime);
+          if (!currentPage()) return;
+          made.push(
+            file.kind === "image"
+              ? { type: "image", file: file.id, text: "", id: newBlockId() }
+              : {
+                  type: "file",
+                  file: file.id,
+                  text: file.name,
+                  id: newBlockId(),
+                },
           );
-        const body: Blob =
-          Platform.OS === "web" && f.file
-            ? f.file
-            : await (await fetch(f.uri)).blob();
-        const { file, upload_path } = await client.createPageFile(doc.id, {
-          name: f.name.slice(0, 300) || "File",
-          bytes: f.size ?? body.size,
-          mime,
-          ...(f.width && f.height ? { width: f.width, height: f.height } : {}),
-        });
-        await client.uploadPageFile(upload_path, body, mime);
-        made.push(
-          file.kind === "image"
-            ? { type: "image", file: file.id, text: "", id: newBlockId() }
-            : {
-                type: "file",
-                file: file.id,
-                text: file.name,
-                id: newBlockId(),
-              },
-        );
-      } catch (e) {
-        report(e);
+        } catch (e) {
+          if (currentPage()) report(e);
+        }
       }
-    }
-    if (made.length) {
-      placeLines(made, at);
-      showToast({ text: "Added to the page" });
+      if (made.length && currentPage() && writeAllowed.current) {
+        const position = anchor
+          ? live.current.blocks.findIndex((block) =>
+              anchor.id ? block.id === anchor.id : block === anchor,
+            )
+          : -1;
+        placeLines(made, position < 0 ? null : position);
+        showToast({
+          text:
+            anchor && position < 0
+              ? "Added at the end. The original line was removed."
+              : "Added to the page",
+        });
+      }
+    } finally {
+      uploadingFiles.current = false;
     }
   };
 
   const pickPictures = async (camera: boolean, at: number | null) => {
+    if (!currentPage() || !writeAllowed.current) return;
+    const anchor = at === null ? null : live.current.blocks[at];
     if (camera) {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
@@ -1587,6 +1898,7 @@ function LegacyDocEditor({
         return;
       }
     }
+    if (!currentPage() || !writeAllowed.current) return;
     const result = camera
       ? await ImagePicker.launchCameraAsync({
           mediaTypes: ["images"],
@@ -1613,10 +1925,13 @@ function LegacyDocEditor({
         file: (a as { file?: File }).file,
       })),
       at,
+      anchor,
     );
   };
 
   const pickFiles = async (at: number | null) => {
+    if (!currentPage() || !writeAllowed.current) return;
+    const anchor = at === null ? null : live.current.blocks[at];
     const picked = await DocumentPicker.getDocumentAsync({
       type: Object.keys(PAGE_FILE_TYPES),
       multiple: true,
@@ -1632,6 +1947,7 @@ function LegacyDocEditor({
         file: a.file,
       })),
       at,
+      anchor,
     );
   };
 
@@ -1641,11 +1957,13 @@ function LegacyDocEditor({
     const at = focused;
     Keyboard.dismiss();
     switch (what) {
-      case "table":
-        placeLines([{ type: "table", text: emptyTable(), id: newBlockId() }]);
-        // Straight to its cells.
-        setTimeout(() => setTableAt(at), 300);
+      case "table": {
+        const placed = placeLines([
+          { type: "table", text: emptyTable(), id: newBlockId() },
+        ]);
+        if (placed !== null) setTableAt(placed);
         return;
+      }
       case "diagram":
         placeLines([
           {
@@ -1722,9 +2040,11 @@ function LegacyDocEditor({
 
   /** Copy the page for another app: HTML where it's taken, Markdown too (EDT-15). */
   const richCopy = async () => {
+    if (!currentPage()) return;
+    const copied = onScreen();
     const urls = new Map<string, string>();
     await Promise.all(
-      blocks.flatMap((b) =>
+      copied.flatMap((b) =>
         b.type === "image" || b.type === "file"
           ? [
               fileLink(b.file).then(
@@ -1735,7 +2055,8 @@ function LegacyDocEditor({
           : [],
       ),
     );
-    const { html, text } = blocksToClipboard(blocks, {
+    if (!currentPage()) return;
+    const { html, text } = blocksToClipboard(copied, {
       fileUrl: (id) => urls.get(id) ?? null,
     });
     try {
@@ -1750,7 +2071,8 @@ function LegacyDocEditor({
               "text/plain": new Blob([text], { type: "text/plain" }),
             }),
           ]);
-        else await nav?.clipboard?.writeText(text);
+        else if (nav?.clipboard?.writeText) await nav.clipboard.writeText(text);
+        else throw new Error("Clipboard unavailable");
       } else {
         // eslint-disable-next-line @typescript-eslint/no-require-imports
         const Clipboard = require("expo-clipboard") as {
@@ -1760,15 +2082,14 @@ function LegacyDocEditor({
           ) => Promise<boolean>;
           StringFormat?: { HTML: string };
         };
-        await Clipboard.setStringAsync(html, {
+        const written = await Clipboard.setStringAsync(html, {
           inputFormat: Clipboard.StringFormat?.HTML ?? "html",
         });
+        if (!written) throw new Error("Clipboard unavailable");
       }
-      showToast({
-        text: "Copied. It pastes with its headings, lists and links.",
-      });
+      if (currentPage()) showToast({ text: "Page copied" });
     } catch {
-      showToast({ text: "Couldn't copy the page" });
+      if (currentPage()) showToast({ text: "Couldn't copy the page" });
     }
   };
 
@@ -1826,19 +2147,35 @@ function LegacyDocEditor({
    * than as a scatter of single characters.
    */
   const proposeLine = async () => {
-    if (focused === null) return;
-    const block = blocks[focused];
-    setFocused(null);
+    if (focused === null || !currentPage() || suggestionMutation.current)
+      return;
+    const at = focused;
+    const sentDraft = draft;
+    const block = blocks[at];
     if (!block?.id) return;
-    // Compared with the line as it was shown for typing, number and all.
-    const change = proposeEdit(block.id, sourceOf(blocks, focused), draft);
-    if (!change) return;
+    const change = proposeEdit(block.id, sourceOf(blocks, at), sentDraft);
+    if (!change) {
+      setFocused(null);
+      return;
+    }
+    const ticket = {};
+    suggestionMutation.current = ticket;
+    setDeciding(true);
     try {
       const made = await client.proposeDocChanges(doc.id, [change]);
+      if (!currentPage()) return;
+      suggestionRead.current++;
       setSuggestions((list) => [...list, ...made]);
-      showToast({ text: "Suggested. It waits for someone to take it." });
+      if (focusedRef.current === at && draftRef.current === sentDraft)
+        setFocused(null);
+      showToast({ text: "Suggested. Review it before accepting." });
     } catch (e) {
-      report(e);
+      if (currentPage()) report(e);
+    } finally {
+      if (suggestionMutation.current === ticket) {
+        suggestionMutation.current = null;
+        if (currentPage()) setDeciding(false);
+      }
     }
   };
 
@@ -1847,62 +2184,171 @@ function LegacyDocEditor({
    * is a proposal like any other, so the page does not change until someone
    * takes it.
    */
-  const assist = async (action: DocAiAction, instruction: string) => {
-    const words = asking;
+  const assist = async (
+    action: DocAiAction,
+    instruction: string,
+    retained?: typeof sourceAsk,
+  ) => {
+    const words = retained ?? asking;
     if (!words) return;
-    setAsking(null);
+    if (suggestionMutation.current) {
+      if (retained) throw new Error("Wait for the current request to finish.");
+      return;
+    }
+    const ticket = {};
+    const owner = { id: doc.id, userId, account: authSession.token };
+    const current = () =>
+      suggestionMounted.current &&
+      suggestionMutation.current === ticket &&
+      suggestionOwner.current.id === owner.id &&
+      suggestionOwner.current.userId === owner.userId &&
+      authSession.token === owner.account;
+    const block = live.current.blocks.find((one) => one.id === words.blockId);
+    if (!block || !("text" in block)) {
+      if (retained)
+        throw new Error(
+          "The selected text changed. Select it again before asking.",
+        );
+      return;
+    }
+    const quote = retained?.quote ?? block.text.slice(words.start, words.end);
+    suggestionMutation.current = ticket;
     setDeciding(true);
     try {
-      const made = await client.assistDoc(doc.id, {
+      if (!current()) throw new Error("The account or page changed.");
+      if (dirty.current)
+        throw new Error("Save your edits before asking for a change.");
+      await saveQueue.current;
+      if (!current()) throw new Error("The account or page changed.");
+      if (dirty.current)
+        throw new Error("Save your edits before asking for a change.");
+      const latest = live.current.blocks.find(
+        (one) => one.id === words.blockId,
+      );
+      if (
+        !latest ||
+        !("text" in latest) ||
+        latest.text.slice(words.start, words.end) !== quote
+      )
+        throw new Error(
+          "The selected text changed. Select it again before asking.",
+        );
+      const made = await client.assistDoc(owner.id, {
         block_id: words.blockId,
         range_start: words.start,
         range_end: words.end,
         action,
         instruction,
+        quote,
+        version: version.current,
       });
+      if (!current()) throw new Error("The account or page changed.");
+      if (!retained) setAsking(null);
+      suggestionRead.current++;
       setSuggestions((list) => [...list, made]);
-      showToast({ text: "Suggested. Take it or leave it." });
-    } catch (e) {
-      report(e);
+      showToast({ text: "Suggested. Review it before accepting." });
+    } catch (error) {
+      if (retained) throw error;
+      if (current()) report(error);
     } finally {
-      setDeciding(false);
+      if (current()) {
+        suggestionMutation.current = null;
+        setDeciding(false);
+      }
     }
   };
 
   const loadSuggestions = useCallback(() => {
-    client
-      .listDocSuggestions(doc.id)
-      .then(setSuggestions, () => setSuggestions([]));
-  }, [doc.id]);
+    const request = ++suggestionRead.current;
+    const owner = { id: doc.id, userId, account: authSession.token };
+    const current = () =>
+      suggestionMounted.current &&
+      request === suggestionRead.current &&
+      suggestionOwner.current.id === owner.id &&
+      suggestionOwner.current.userId === owner.userId &&
+      authSession.token === owner.account;
+    client.listDocSuggestions(doc.id).then(
+      (list) => {
+        if (current()) setSuggestions(list);
+      },
+      (error) => {
+        if (current()) report(error);
+      },
+    );
+  }, [doc.id, userId]);
+  useEffect(() => {
+    setSuggestions([]);
+    suggestionMutation.current = null;
+    setSourceAsk(null);
+    setDeciding(false);
+    loadSuggestions();
+  }, [loadSuggestions]);
 
-  useEffect(() => loadSuggestions(), [loadSuggestions]);
-
-  /** Take a proposal into the page, or leave it. */
-  const decide = (one: DocSuggestion, take: boolean) => {
+  /** Serialize review decisions; a newer local draft never gets replaced by a receipt. */
+  const reviewSuggestions = async (
+    actions: { suggestion: DocSuggestion; take?: boolean }[],
+  ) => {
+    if (suggestionMutation.current) return;
+    if (dirty.current) {
+      report(new Error("Save your edits before reviewing changes."));
+      return;
+    }
+    const ticket = {};
+    suggestionMutation.current = ticket;
     setDeciding(true);
-    client
-      .decideDocSuggestion(doc.id, one.id, take)
-      .then(({ doc: saved }) => {
-        if (saved) {
-          version.current = saved.version;
-          ticksFrom.current = saved.version;
-          base.current = saved.content;
-          setBlocks(saved.content);
-          onChanged(saved);
+    const owner = { id: doc.id, userId, account: authSession.token };
+    const current = () =>
+      suggestionMounted.current &&
+      suggestionMutation.current === ticket &&
+      suggestionOwner.current.id === owner.id &&
+      suggestionOwner.current.userId === owner.userId &&
+      authSession.token === owner.account;
+    try {
+      await saveQueue.current;
+      for (const { suggestion, take } of actions) {
+        if (!current()) return;
+        if (dirty.current)
+          throw new Error("Save your new edits before continuing this review.");
+        if (take === undefined) {
+          await client.withdrawDocSuggestion(owner.id, suggestion.id);
+          if (current())
+            setSuggestions((list) =>
+              list.filter((one) => one.id !== suggestion.id),
+            );
+        } else {
+          const { doc: saved } = await client.decideDocSuggestion(
+            owner.id,
+            suggestion.id,
+            take,
+          );
+          if (!current()) return;
+          if (saved) {
+            if (dirty.current) reconcile(saved);
+            else {
+              version.current = saved.version;
+              ticksFrom.current = saved.version;
+              base.current = saved.content;
+              setBlocks(saved.content);
+            }
+            onChanged(saved);
+          }
         }
+      }
+    } catch (error) {
+      if (current()) report(error);
+    } finally {
+      if (current()) {
+        suggestionMutation.current = null;
+        setDeciding(false);
         loadSuggestions();
-      })
-      .catch(report)
-      .finally(() => setDeciding(false));
+      }
+    }
   };
-
-  const withdraw = (one: DocSuggestion) => {
-    setDeciding(true);
-    client
-      .withdrawDocSuggestion(doc.id, one.id)
-      .then(() => setSuggestions((list) => list.filter((x) => x.id !== one.id)))
-      .catch(report)
-      .finally(() => setDeciding(false));
+  const decide = (suggestion: DocSuggestion, take: boolean) => {
+    void reviewSuggestions([{ suggestion, take }]);
+  };
+  const withdraw = (suggestion: DocSuggestion) => {
+    void reviewSuggestions([{ suggestion }]);
   };
 
   /** Put an edited line back. Several lines of text become several blocks. */
@@ -1926,7 +2372,7 @@ function LegacyDocEditor({
   };
 
   const addLine = () => {
-    if (!structural) return;
+    if (!structural || reading || !canWrite) return;
     remember();
     const next = [...blocks, EMPTY];
     setBlocks(next);
@@ -1934,16 +2380,20 @@ function LegacyDocEditor({
   };
 
   const toggle = (index: number) => {
-    if (!structural) return;
+    if (!currentPage() || !canWrite || !structural) return;
     const line = blocks[index];
     if (line?.type === "todo" && !line.done) tap();
     const next = blocks.map((b, i) =>
       i === index && b.type === "todo" ? { ...b, done: !b.done } : b,
     );
     setBlocks(next);
+    live.current = { ...live.current, blocks: next };
+    dirty.current = true;
     // A tick is worth saving at once: it may finish a task.
     if (timer.current) clearTimeout(timer.current);
-    void persist(title, next).then(() => onItemsChanged?.());
+    void persist(live.current.title, next).then(() => {
+      if (currentPage() && !dirty.current) onItemsChanged?.();
+    });
   };
 
   /**
@@ -1951,6 +2401,9 @@ function LegacyDocEditor({
    * line to its task and hands the page back, so the lines follow them.
    */
   const makeTasks = (only?: string[]) => {
+    if (!currentPage() || !canWrite || creatingTasks.current) return;
+    creatingTasks.current = true;
+    setTasksBusy(true);
     if (timer.current) clearTimeout(timer.current);
     void (async () => {
       try {
@@ -1958,8 +2411,12 @@ function LegacyDocEditor({
         // A line just put away is still saving: the server needs its name.
         await saveQueue.current;
         // What the server works from; anything typed after this is newer.
+        if (!currentPage()) return;
+        if (dirty.current)
+          throw new Error("Save your page edits before creating tasks.");
         const sent = live.current.blocks;
         const { created, doc: updated } = await client.docToTasks(doc.id, only);
+        if (!currentPage()) return;
         if (updated && updated.version > version.current) {
           version.current = updated.version;
           ticksFrom.current = updated.version;
@@ -1987,7 +2444,10 @@ function LegacyDocEditor({
               : `Added ${created} task${created === 1 ? "" : "s"} to your planner.`,
         });
       } catch (e) {
-        report(e);
+        if (currentPage()) report(e);
+      } finally {
+        creatingTasks.current = false;
+        if (currentPage()) setTasksBusy(false);
       }
     })();
   };
@@ -2043,6 +2503,12 @@ function LegacyDocEditor({
 
   /** Change how the page is being worked on (Info). */
   const chooseMode = (m: DocMode) => {
+    if (
+      !currentPage() ||
+      suggestionMutation.current ||
+      (m === "edit" && !canWrite)
+    )
+      return;
     // Commit the open line before changing what it is allowed to do.
     commit();
     setFocused(null);
@@ -2054,59 +2520,87 @@ function LegacyDocEditor({
    * Delete the page: it moves to Trash for 30 days, and a toast offers Undo,
    * so nothing asks first.
    */
-  const removePage = () => {
-    if (doc.kind === "memory") {
-      confirmAction(
-        `Forget “${title || "Untitled"}”?`,
-        "This permanently removes the Memory note and its source links. This cannot be undone.",
-        "Forget",
-        () => {
-          if (timer.current) clearTimeout(timer.current);
-          void (async () => {
-            try {
-              await client.forgetMemory(doc.id);
-              void forgetPage(doc.id);
-            } catch (e) {
-              report(e);
-              return;
-            }
-            flushOnClose.current = () => {};
-            gone.current = true;
-            onDeleted?.();
-            showToast({ text: "Memory topic forgotten" });
-          })();
-        },
-      );
+  const deletePage = async () => {
+    if (
+      !currentPage() ||
+      !writeAllowed.current ||
+      deleting.current ||
+      archiving.current
+    )
       return;
-    }
-    if (timer.current) clearTimeout(timer.current);
-    // What was just typed goes with it — the open line's words too, even
-    // those not yet put into the page — so Undo brings all of it back.
-    const last = canWrite && !suggesting ? pageWithDraft() : null;
-    void (async () => {
-      try {
-        if (last && unsaved(last)) await persist(live.current.title, last);
+    deleting.current = true;
+    setDeletingPage(true);
+    setDeleteError("");
+    try {
+      if (commentDrafts && !(await commentDrafts.prepare())) return;
+      if (!currentPage() || !writeAllowed.current) return;
+      if (timer.current) clearTimeout(timer.current);
+      if (doc.kind === "memory") {
+        await client.forgetMemory(doc.id);
+      } else {
+        await flush();
+        if (!currentPage() || !writeAllowed.current) return;
+        if (dirty.current)
+          throw new Error("Save your edits before moving this page to Trash.");
         await client.deleteDoc(doc.id);
-        void forgetPage(doc.id);
-      } catch (e) {
-        report(e);
-        return;
       }
+      if (!currentPage()) return;
+      void forgetPage(doc.id);
+      dirty.current = false;
       flushOnClose.current = () => {};
       gone.current = true;
+      setForgetting(false);
       onDeleted?.();
       showToast({
-        text: `Moved “${title || "Untitled"}” to Trash`,
-        action: {
-          label: "Undo",
-          run: () =>
-            void client.restoreDoc(doc.id).then((back) => {
-              if (onUndoDelete) onUndoDelete(back);
-              else showToast({ text: `“${back.title || "Untitled"}” is back` });
-            }, report),
-        },
+        text:
+          doc.kind === "memory"
+            ? "Memory topic forgotten"
+            : `Moved “${live.current.title || "Untitled"}” to Trash`,
+        action:
+          doc.kind === "memory"
+            ? undefined
+            : {
+                label: "Undo",
+                run: () => {
+                  if (authSession.token !== renderAccount) return;
+                  void client.restoreDoc(doc.id).then(
+                    (back) => {
+                      if (authSession.token !== renderAccount) return;
+                      if (onUndoDelete) onUndoDelete(back);
+                      else
+                        showToast({
+                          text: `“${back.title || "Untitled"}” is back`,
+                        });
+                    },
+                    (e) => {
+                      if (authSession.token === renderAccount) report(e);
+                    },
+                  );
+                },
+              },
       });
-    })();
+    } catch (e) {
+      if (!currentPage()) return;
+      if (doc.kind === "memory")
+        setDeleteError("Couldn't forget this topic. Try again.");
+      else report(e);
+    } finally {
+      deleting.current = false;
+      if (currentPage()) setDeletingPage(false);
+    }
+  };
+  const removePage = () => {
+    if (
+      !currentPage() ||
+      !writeAllowed.current ||
+      deleting.current ||
+      archiving.current
+    )
+      return;
+    if (doc.kind === "memory") {
+      setDeleteError("");
+      setForgetting(true);
+    } else void deletePage();
   };
 
   // Whether the open line can be tucked under the line above it.
@@ -2141,14 +2635,32 @@ function LegacyDocEditor({
       : null;
   const wantsPeople = !!mention;
   useEffect(() => {
-    if (!wantsPeople || people !== null) return;
+    setPeople(null);
+    setPeopleFailed(false);
+  }, [doc.id, userId]);
+  useEffect(() => {
+    if (!wantsPeople || people !== null || peopleFailed) return;
+    let active = true;
     client.docPeople(doc.id).then(
-      (list) => setPeople(list.filter((p) => p.id !== userId)),
-      () => setPeople([]),
+      (list) => {
+        if (active && currentPage())
+          setPeople(list.filter((p) => p.id !== userId));
+      },
+      () => {
+        if (active && currentPage()) setPeopleFailed(true);
+      },
     );
-  }, [wantsPeople, people, doc.id, userId]);
+    return () => {
+      active = false;
+    };
+  }, [wantsPeople, people, peopleFailed, peopleAttempt, doc.id, userId]);
   const pickPerson = (person: MentionPerson) => {
-    if (!mention) return;
+    if (
+      !currentPage() ||
+      !mention ||
+      !people?.some((one) => one.id === person.id)
+    )
+      return;
     const written = `${mentionMarkdown(person)} `;
     const text =
       draft.slice(0, mention.from) + written + draft.slice(selection.start);
@@ -2202,9 +2714,7 @@ function LegacyDocEditor({
               })),
             ]
           : []),
-      ]
-        .filter((c) => slashMatches(slash!.query, c))
-        .slice(0, 8)
+      ].filter((c) => slashMatches(slash!.query, c))
     : [];
   const underLine =
     bracketOpen && bracket ? (
@@ -2217,7 +2727,12 @@ function LegacyDocEditor({
         report={report}
       />
     ) : slashChoices.length && slash ? (
-      <View style={styles.slash} accessibilityLabel="Kinds of line">
+      <ScrollView
+        style={styles.slash}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="always"
+        accessibilityLabel="Kinds of line"
+      >
         {slashChoices.map((c, n) => (
           <Pressable
             key={c.key}
@@ -2232,9 +2747,7 @@ function LegacyDocEditor({
             ]}
           >
             <Text style={styles.slashLabel}>{c.label}</Text>
-            <Text style={styles.slashHint} numberOfLines={1}>
-              {c.hint}
-            </Text>
+            <Text style={styles.slashHint}>{c.hint}</Text>
           </Pressable>
         ))}
         <Pressable
@@ -2244,7 +2757,7 @@ function LegacyDocEditor({
         >
           <Text style={styles.slashHint}>Keep “/” as it is</Text>
         </Pressable>
-      </View>
+      </ScrollView>
     ) : null;
 
   const toolbar =
@@ -2254,6 +2767,11 @@ function LegacyDocEditor({
           <MentionStrip
             query={mention.query}
             people={people}
+            failed={peopleFailed}
+            onRetry={() => {
+              setPeopleFailed(false);
+              setPeopleAttempt((attempt) => attempt + 1);
+            }}
             onPick={pickPerson}
           />
         )}
@@ -2351,32 +2869,45 @@ function LegacyDocEditor({
       }
     })();
   };
-  /** Archive the page (out of the library and search), or bring it back. */
-  const toggleArchive = async () => {
-    const next = !archived;
+  /** Archive only after the current draft is saved. */
+  const setArchive = async (next: boolean, offerUndo = true) => {
+    if (
+      !currentPage() ||
+      !writeAllowed.current ||
+      deleting.current ||
+      archiving.current
+    )
+      return;
+    archiving.current = true;
+    setArchivingPage(true);
     try {
+      if (commentDrafts && !(await commentDrafts.prepare())) return;
+      await flush();
+      if (!currentPage() || !writeAllowed.current) return;
+      if (dirty.current)
+        throw new Error("Save this draft before archiving the page.");
       const saved = await client.archiveDoc(doc.id, next);
+      if (!currentPage()) return;
       setArchived(!!saved.archived);
       onChanged(saved);
       showToast({
-        text: next
-          ? "Archived. It's out of the library and search."
-          : "Back in the library",
-        action: next
-          ? {
-              label: "Undo",
-              run: () =>
-                void client.archiveDoc(doc.id, false).then((back) => {
-                  setArchived(false);
-                  onChanged(back);
-                }, report),
-            }
-          : undefined,
+        text: next ? "Archived" : "Back in the library",
+        action:
+          next && offerUndo
+            ? {
+                label: "Undo",
+                run: () => void setArchive(false, false),
+              }
+            : undefined,
       });
-    } catch (e) {
-      report(e);
+    } catch (error) {
+      if (currentPage()) report(error);
+    } finally {
+      archiving.current = false;
+      if (currentPage()) setArchivingPage(false);
     }
   };
+  const toggleArchive = () => setArchive(!archived);
   /** A recording's summary goes under the recording (CAP-10). */
   const addSummary = (fileId: string, lines: DocBlock[]) => {
     const at = blocks.findIndex((b) => b.type === "file" && b.file === fileId);
@@ -2550,6 +3081,7 @@ function LegacyDocEditor({
     ...docStats(blocks),
     savedAt,
     saving,
+    failed: saveFailure || dirty.current,
     offline: keptOffline,
     now,
     linked: linkedCount,
@@ -2566,8 +3098,7 @@ function LegacyDocEditor({
       references: docReferenceLinks(blocks),
       numbers: footnoteNumbers(blocks),
       texts: footnoteTexts(blocks),
-      onShow: (n: string, words: string) =>
-        showToast({ text: `${n}. ${words}` }),
+      onShow: (n: string, words: string) => setFootnote({ label: n, words }),
     }),
     [blocks],
   );
@@ -2580,13 +3111,85 @@ function LegacyDocEditor({
   return (
     <RecordingContext.Provider value={recordingActions}>
       <View style={styles.page}>
+        <BottomSheet
+          visible={forgetting}
+          title="Forget Memory topic?"
+          closeDisabled={deletingPage}
+          onClose={() => setForgetting(false)}
+          footer={
+            <SmallAction
+              label={deletingPage ? "Forgetting…" : "Forget"}
+              destructive
+              disabled={deletingPage || !canWrite}
+              onPress={() => void deletePage()}
+            />
+          }
+        >
+          <Text style={styles.footnoteText}>
+            Permanently remove “{title || "Untitled"}” and its source links?
+            This cannot be undone.
+          </Text>
+          {deleteError && (
+            <Text style={styles.error} accessibilityLiveRegion="polite">
+              {deleteError}
+            </Text>
+          )}
+        </BottomSheet>
+        <BottomSheet
+          visible={footnote !== null}
+          title={`Footnote ${footnote?.label ?? ""}`}
+          onClose={() => setFootnote(null)}
+        >
+          <Text style={styles.footnoteText}>{footnote?.words}</Text>
+        </BottomSheet>
+        {sourceAsk && (
+          <DocSourceAsk
+            text={sourceAsk.quote}
+            onClose={() => setSourceAsk(null)}
+            onAsk={(instruction) => assist("custom", instruction, sourceAsk)}
+          />
+        )}
         {sourcePreview === doc.id && (
           <DocSourcePreview
+            beforeNavigate={async () => {
+              if (!currentPage()) return false;
+              await flush();
+              if (!currentPage()) return false;
+              if (dirty.current)
+                throw new Error(
+                  "Save your document changes before opening this link.",
+                );
+              return commentDrafts ? commentDrafts.prepare() : true;
+            }}
             blocks={blocks}
             docId={doc.id}
+            onCompileLatex={(source, signal) =>
+              client.compileDocLatex(
+                doc.id,
+                { source, version: version.current },
+                signal,
+              )
+            }
+            onAssist={
+              canWrite && !reading && !suggesting && !dirty.current
+                ? (block) => {
+                    if (block.id && "text" in block) {
+                      setSourcePreview(null);
+                      setSourceAsk({
+                        blockId: block.id,
+                        quote: block.text,
+                        start: 0,
+                        end: block.text.length,
+                      });
+                    }
+                  }
+                : undefined
+            }
             onSourceChange={
               canWrite && !reading && !suggesting
                 ? (text, expected) => {
+                    if (!currentPage())
+                      throw new Error("The account or page changed.");
                     const next = editDocSource(
                       live.current.blocks,
                       text,
@@ -2605,7 +3208,10 @@ function LegacyDocEditor({
             }
             onAppLink={openAppUrl}
             report={report}
-            onClose={() => setSourcePreview(null)}
+            onClose={() => {
+              sourcePreviewOwner.current = null;
+              setSourcePreview(null);
+            }}
           />
         )}
         {/* The page's header holds only Back, its title, Info and ⋯. */}
@@ -2636,7 +3242,7 @@ function LegacyDocEditor({
             <LookIconView icon={appearance.icon} size={36} />
           </View>
         )}
-        {reading ? (
+        {reading || suggesting ? (
           <Text style={styles.title} accessibilityRole="header">
             {title || "Untitled"}
           </Text>
@@ -2665,7 +3271,7 @@ function LegacyDocEditor({
               onChangeText={(text) => {
                 remember("title");
                 setTitle(text);
-                queueSave(text, blocks);
+                queueSave(text, live.current.blocks);
               }}
             />
           </View>
@@ -2682,25 +3288,42 @@ function LegacyDocEditor({
             {tags.map((t) => (
               <View key={t.id} style={styles.tag}>
                 <View style={[styles.tagDot, { backgroundColor: t.color }]} />
-                <Text style={styles.tagText} numberOfLines={1}>
-                  {t.name}
-                </Text>
+                <Text style={styles.tagText}>{t.name}</Text>
               </View>
             ))}
           </Pressable>
         )}
 
         {!!note && (
-          <Text style={styles.note} onPress={() => setNote("")}>
-            {note}
-          </Text>
+          <View style={styles.note}>
+            <Text style={styles.noteText} accessibilityLiveRegion="polite">
+              {note}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Dismiss notice"
+              onPress={() => setNote("")}
+              style={styles.noteDismiss}
+            >
+              <Icon name="x" size={16} color={colors.textSoft} />
+            </Pressable>
+          </View>
         )}
 
         <DocSuggestions
           suggestions={suggestions}
+          sourceBlockIds={
+            new Set(
+              blocks
+                .filter(
+                  (block) => block.type === "code" || block.type === "math",
+                )
+                .flatMap((block) => (block.id ? [block.id] : [])),
+            )
+          }
           canDecide={canWrite}
           userId={userId}
-          busy={deciding}
+          busy={deciding || dirty.current || saving}
           onDecide={decide}
           onWithdraw={withdraw}
         />
@@ -2710,11 +3333,10 @@ function LegacyDocEditor({
             doc={doc}
             canShare={canWrite}
             onClose={() => setSavingTemplate(false)}
-            onSaved={(t) =>
-              showToast({
-                text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
-              })
-            }
+            onSaved={(t) => {
+              if (currentPage())
+                showToast({ text: `Template saved: ${t.name}` });
+            }}
           />
         )}
 
@@ -2732,7 +3354,24 @@ function LegacyDocEditor({
                   const link = parseAppLink(url);
                   if (link?.kind === "doc" && link.id === doc.id && link.block)
                     goToFragment(link.block);
-                  else openAppUrl(url);
+                  else {
+                    if (threadNavigation.current || !currentPage()) return;
+                    threadNavigation.current = true;
+                    void (async () => {
+                      try {
+                        if (commentDrafts && !(await commentDrafts.prepare()))
+                          return;
+                        if (!currentPage()) return;
+                        await flush();
+                        if (!currentPage() || dirty.current) return;
+                        openAppUrl(url);
+                      } catch (e) {
+                        if (currentPage()) report(e);
+                      } finally {
+                        threadNavigation.current = false;
+                      }
+                    })();
+                  }
                 },
                 report,
               }}
@@ -2769,9 +3408,9 @@ function LegacyDocEditor({
                   inputRef={lineInput}
                   counts={comments.counts}
                   marks={markRanges(comments.anchored)}
-                  onOpenComments={(blockId) =>
-                    setOpenThread((open) => (open === blockId ? null : blockId))
-                  }
+                  onOpenComments={(blockId) => {
+                    void requestThread(openThread === blockId ? null : blockId);
+                  }}
                   renderUnder={(blockId) => {
                     const list = comments.anchored.get(blockId) ?? [];
                     const waiting = pending?.blockId === blockId;
@@ -2785,14 +3424,15 @@ function LegacyDocEditor({
                             setAsking({ blockId, ...range });
                           }}
                           onPick={(range) => {
-                            setPicking(null);
-                            setPending({
-                              blockId,
-                              quote: range.quote.slice(0, 400),
-                              range_start: range.start,
-                              range_end: range.end,
+                            void requestThread(blockId, () => {
+                              setPicking(null);
+                              setPending({
+                                blockId,
+                                quote: range.quote.slice(0, 400),
+                                range_start: range.start,
+                                range_end: range.end,
+                              });
                             });
-                            setOpenThread(blockId);
                           }}
                         />
                       );
@@ -2862,7 +3502,7 @@ function LegacyDocEditor({
           ) : (
             toolbar
           ))}
-        {focused === null && structural && (
+        {focused === null && structural && !reading && canWrite && (
           <Pressable
             onPress={addLine}
             accessibilityRole="button"
@@ -2877,29 +3517,49 @@ function LegacyDocEditor({
           there is a toolbar for it to be about. */}
         {focused !== null && structural && (
           <Text style={styles.hint}>
-            Return starts a new line; on an empty list item it ends the list.
+            Return adds a line. An empty item ends the list.
           </Text>
         )}
 
-        {/* One quiet line at the end of the page: "3 linked here" goes to
-          the links, the rest opens Info. */}
-        <Text style={styles.footer}>
-          {statusParts.map((part, n) => (
-            <Text
+        {saveFailure && (
+          <View style={styles.pageActions}>
+            <Text style={styles.error} accessibilityLiveRegion="polite">
+              Couldn't save. Your edits are still here.
+            </Text>
+            <SmallAction
+              label="Retry save"
+              disabled={saving || !canWrite || suggesting}
+              onPress={() => {
+                if (!currentPage()) return;
+                const shown = onScreen();
+                live.current = { ...live.current, blocks: shown };
+                setBlocks(shown);
+                dirty.current = true;
+                void persistRef.current(live.current.title, shown);
+              }}
+            />
+          </View>
+        )}
+        {/* Page facts keep full values and real touch targets. */}
+        <View style={styles.footer}>
+          {statusParts.map((part) => (
+            <Pressable
               key={part.key}
               accessibilityRole="button"
+              style={styles.footerAction}
               onPress={() => {
                 if (part.key === "linked" && linkedY.current !== null)
                   onTargetOffset?.(linkedY.current);
                 else setInfoOpen(true);
               }}
             >
-              {n > 0 ? " · " : ""}
-              {part.text}
-            </Text>
+              <Text style={styles.footerText}>{part.text}</Text>
+            </Pressable>
           ))}
-          {writtenVia}
-        </Text>
+          {!!doc.via_agent && (
+            <Text style={styles.footerText}>Written via {doc.via_agent}</Text>
+          )}
+        </View>
         <View
           onLayout={(event) => {
             linkedY.current = event.nativeEvent.layout.y;
@@ -2918,7 +3578,7 @@ function LegacyDocEditor({
           <PageMaintenanceSheet
             id={doc.id}
             onChanged={(updated) => {
-              if (updated.version < version.current) return;
+              if (!currentPage() || updated.version < version.current) return;
               setSavedAt(updated.updated_at);
               setNow(new Date());
               onChanged(updated);
@@ -2942,15 +3602,29 @@ function LegacyDocEditor({
           }}
           report={report}
         />
-        {tableAt !== null && blocks[tableAt]?.type === "table" && (
+        {tableEdit?.block.type === "table" && (
           <TableEditor
             visible
-            text={(blocks[tableAt] as { text: string }).text}
+            text={tableEdit.block.text}
             onSave={(text) => {
-              const at = tableAt;
+              if (!currentPage() || !writeAllowed.current)
+                throw new Error("This page is no longer editable.");
+              const shown = live.current.blocks;
+              const at = tableEdit.block.id
+                ? shown.findIndex((block) => block.id === tableEdit.block.id)
+                : shown.indexOf(tableEdit.block);
+              const block = shown[at];
+              if (
+                at < 0 ||
+                block?.type !== "table" ||
+                block.text !== tableEdit.block.text
+              )
+                throw new Error(
+                  "This table changed. Keep your draft and reopen the table before saving.",
+                );
               remember();
-              const next = blocks.slice();
-              next[at] = { ...(blocks[at] as DocBlock), text } as DocBlock;
+              const next = shown.slice();
+              next[at] = { ...block, text };
               update(next);
             }}
             onClose={() => setTableAt(null)}
@@ -3021,8 +3695,10 @@ function LegacyDocEditor({
         {openTodos > 0 && (
           <View style={styles.pageActions}>
             <SmallAction
-              label={`Add ${openTodos} to my tasks`}
-              disabled={false}
+              label={
+                tasksBusy ? "Adding tasks…" : `Add ${openTodos} to my tasks`
+              }
+              disabled={tasksBusy || !canWrite}
               onPress={() => makeTasks()}
             />
           </View>
@@ -3034,9 +3710,15 @@ function LegacyDocEditor({
           blocks={blocks}
           canWrite={canWrite || suggesting}
           onClose={() => setTalking(false)}
-          onGoToBlock={(blockId) => setOpenThread(blockId)}
+          onGoToBlock={(blockId) => {
+            void requestThread(blockId);
+          }}
           onNameBlock={nameBlockAt}
-          onSuggested={(made) => setSuggestions((list) => [...list, made])}
+          onSuggested={(made) => {
+            if (!currentPage()) return;
+            suggestionRead.current++;
+            setSuggestions((list) => [...list, made]);
+          }}
         />
         <PageInfo
           visible={infoOpen}
@@ -3100,7 +3782,14 @@ function LegacyDocEditor({
           visible={menu === "page"}
           label="Page options"
           title={title || "Untitled"}
-          actions={pageActions}
+          actions={pageActions.map((action) => ({
+            ...action,
+            disabled: deletingPage || archivingPage || action.disabled,
+            onPress: () => {
+              if (currentPage() && !deleting.current && !archiving.current)
+                action.onPress();
+            },
+          }))}
           onClose={() => setMenu((m) => (m === "page" ? null : m))}
         />
         <ActionSheet
@@ -3120,8 +3809,11 @@ function LegacyDocEditor({
               if (appearanceDocId.current === doc.id) setLookOpen(false);
             }}
             onSave={async (look) => {
+              if (!currentPage())
+                throw new Error("The account or page changed.");
               const saved = await client.setDocLook(doc.id, look);
-              if (appearanceDocId.current === doc.id) setAppearance(saved);
+              if (currentPage() && appearanceDocId.current === doc.id)
+                setAppearance(saved);
             }}
           />
         )}
@@ -3138,10 +3830,20 @@ function LegacyDocEditor({
 }
 
 export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
+  return (
+    <DocEditorBody key={`${authSession.token}:${props.doc.id}`} {...props} />
+  );
+}
+
+function DocEditorBody(props: Parameters<typeof LegacyDocEditor>[0]) {
+  const account = authSession.token;
+  const [openingFailed, setOpeningFailed] = useState(false);
+  const [openingAttempt, setOpeningAttempt] = useState(0);
   const [complete, setComplete] = useState<Doc | null>(
     props.doc.document ? props.doc : null,
   );
   useEffect(() => {
+    setOpeningFailed(false);
     if (props.doc.document) {
       setComplete(props.doc);
       return;
@@ -3149,16 +3851,16 @@ export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
     let active = true;
     client.getDocForEditor(props.doc.id).then(
       (doc) => {
-        if (active) setComplete(doc);
+        if (active && account === authSession.token) setComplete(doc);
       },
-      (error) => {
-        if (active) props.report(error);
+      () => {
+        if (active && account === authSession.token) setOpeningFailed(true);
       },
     );
     return () => {
       active = false;
     };
-  }, [props.doc.id, props.doc.document, props.report]);
+  }, [props.doc.id, props.doc.document, openingAttempt, account]);
   useEffect(() => {
     if (complete?.id !== props.doc.id || complete.document?.format !== 2)
       return;
@@ -3167,7 +3869,23 @@ export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
     );
   }, [complete, props.doc.id, props.onBlocksChange]);
   if (!complete || complete.id !== props.doc.id)
-    return <Text>Opening page…</Text>;
+    return (
+      <View style={{ gap: 8 }}>
+        <Text style={styles.hint} accessibilityLiveRegion="polite">
+          {openingFailed ? "Couldn't open page." : "Opening page…"}
+        </Text>
+        {openingFailed && (
+          <SmallAction
+            label="Retry"
+            disabled={false}
+            onPress={() => {
+              setOpeningFailed(false);
+              setOpeningAttempt((attempt) => attempt + 1);
+            }}
+          />
+        )}
+      </View>
+    );
   return complete.document?.format === 2 ? (
     <StructuredDocEditor
       doc={complete}
@@ -3191,6 +3909,7 @@ export function DocEditor(props: Parameters<typeof LegacyDocEditor>[0]) {
 const styles = themed(() =>
   StyleSheet.create({
     slash: {
+      maxHeight: 240,
       marginTop: 4,
       borderRadius: radii.card,
       borderWidth: StyleSheet.hairlineWidth,
@@ -3211,7 +3930,7 @@ const styles = themed(() =>
     },
     slashLabel: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     slashHint: { fontFamily: fonts.regular, fontSize: 13, color: colors.muted },
-    page: { gap: 16 },
+    page: { gap: 12, minWidth: 0 },
     titleEditor: { minHeight: 44 },
     title: {
       color: colors.text,
@@ -3230,13 +3949,13 @@ const styles = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 5,
-      maxWidth: 180,
+      maxWidth: "100%",
       paddingHorizontal: 9,
       paddingVertical: 3,
       borderRadius: radii.pill,
       backgroundColor: colors.surfaceMuted,
     },
-    tagDot: { width: 7, height: 7, borderRadius: 4 },
+    tagDot: { width: 7, height: 7, borderRadius: radii.pill },
     tagText: {
       flexShrink: 1,
       fontFamily: fonts.medium,
@@ -3244,23 +3963,56 @@ const styles = themed(() =>
       color: colors.textSoft,
     },
     note: {
-      alignSelf: "flex-start",
-      color: colors.muted,
-      backgroundColor: colors.soft,
-      fontSize: 13,
-      paddingHorizontal: 9,
-      paddingVertical: 3,
-      borderRadius: radii.pill,
-      overflow: "hidden",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      backgroundColor: colors.surfaceMuted,
+      paddingLeft: 12,
+      borderRadius: radii.input,
     },
+    noteText: {
+      flex: 1,
+      fontFamily: fonts.regular,
+      color: colors.textSoft,
+      fontSize: 13,
+      lineHeight: 20,
+    },
+    noteDismiss: {
+      minWidth: 44,
+      minHeight: 44,
+      alignItems: "center",
+      justifyContent: "center",
+      borderRadius: radii.input,
+    },
+    footnoteText: {
+      color: colors.text,
+      fontFamily: fonts.regular,
+      fontSize: 15,
+      lineHeight: 23,
+    },
+    error: { color: colors.danger, fontSize: 13, lineHeight: 19 },
     hint: { color: colors.faint, fontSize: 13, lineHeight: 18 },
     footer: {
-      color: colors.muted,
-      fontSize: 11,
-      lineHeight: 16,
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
       paddingTop: 10,
       borderTopWidth: StyleSheet.hairlineWidth,
       borderTopColor: colors.border,
+    },
+    footerAction: {
+      minHeight: 44,
+      maxWidth: "100%",
+      justifyContent: "center",
+      paddingHorizontal: 4,
+      borderRadius: radii.input,
+    },
+    footerText: {
+      color: colors.muted,
+      fontFamily: fonts.regular,
+      fontSize: 12,
+      lineHeight: 18,
       fontVariant: ["tabular-nums"],
     },
     pageActions: {
@@ -3273,7 +4025,6 @@ const styles = themed(() =>
       minHeight: 44,
       justifyContent: "center",
       paddingHorizontal: 6,
-      marginHorizontal: -6,
       borderRadius: radii.input,
     },
     addPressed: { backgroundColor: colors.surfaceMuted },

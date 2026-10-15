@@ -69,9 +69,10 @@ function useWebFocusRing(scheme: string) {
     if (Platform.OS !== "web" || typeof document === "undefined") return;
     const style = document.createElement("style");
     style.textContent = `
+      textarea { resize: none; }
       :focus { outline: none; }
       :focus-visible { outline: 2px solid ${colors.accent}; outline-offset: 2px; }
-      input:focus-visible, textarea:focus-visible { outline: none; border-color: ${colors.accent} !important; }
+      input:focus-visible, textarea:focus-visible { border-color: ${colors.accent} !important; }
     `;
     document.head.appendChild(style);
     return () => style.remove();

@@ -4,6 +4,7 @@ import React, {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
@@ -27,11 +28,12 @@ import {
   type ObjectRef,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session } from "../../lib/session";
 import { tap } from "../../lib/haptics";
 import { openAppUrl } from "../../hooks/useAppLinks";
 import { DocNavigationContext } from "./doc-navigation";
 import { CONCEPT_ICON, Icon, type IconName } from "../../components/Icon";
-import { colors, controls, fonts, radii, themed } from "../../theme";
+import { inputFontSize, colors, fonts, radii, themed } from "../../theme";
 
 /**
  * Links between things (LNK-01, LNK-02, LNK-05) on the phone: the pill a
@@ -119,29 +121,44 @@ export function useLinkPills(blocks: DocBlock[], report: (e: unknown) => void) {
     return [...seen.values()];
   }, [blocks]);
   const key = refs.map(pillKey).sort().join(",");
-  const [pills, setPills] = useState(() => new Map<string, LinkPill>());
+  const owner = session.token;
+  const [resolved, setResolved] = useState<{
+    owner: string;
+    key: string;
+    pills: Map<string, LinkPill>;
+  } | null>(null);
   const [round, setRound] = useState(0);
   useEffect(() => {
     if (!refs.length) return;
     let live = true;
+    const current = () => live && session.token === owner;
     const chunks: ObjectRef[][] = [];
     for (let i = 0; i < refs.length; i += 60)
       chunks.push(refs.slice(i, i + 60));
-    Promise.all(chunks.map((c) => client.resolveLinks(c))).then((all) => {
-      if (!live) return;
-      setPills((was) => {
-        const next = new Map(was);
-        for (const p of all.flat()) next.set(pillKey(p), p);
-        return next;
-      });
-    }, report);
+    Promise.all(chunks.map((c) => client.resolveLinks(c))).then(
+      (all) => {
+        if (!current()) return;
+        setResolved({
+          owner,
+          key,
+          pills: new Map(all.flat().map((pill) => [pillKey(pill), pill])),
+        });
+      },
+      (error) => {
+        if (current()) report(error);
+      },
+    );
     return () => {
       live = false;
     };
     // The set of links, not the array's identity, decides.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, round]);
+  }, [key, owner, round]);
   const reload = useCallback(() => setRound((n) => n + 1), []);
+  const pills =
+    resolved?.owner === owner && resolved.key === key
+      ? resolved.pills
+      : new Map<string, LinkPill>();
   return { pills, reload };
 }
 
@@ -297,40 +314,76 @@ export function LinkPickerPanel({
 }) {
   const [typed, setTyped] = useState("");
   const q = (query ?? typed).trim();
-  const [found, setFound] = useState<LinkOption[]>([]);
-  const [bad, setBad] = useState(false);
-  /** `[[Page#words`: the page it names, and its headings. */
-  const wantsLine = splitHeadingQuery(query ?? typed);
-  const [lines, setLines] = useState<{
-    doc: LinkOption;
-    headings: HeadingOption[];
+  const owner = session.token;
+  const requestKey = `${owner}:${q}`;
+  const latestKey = useRef(requestKey);
+  latestKey.current = requestKey;
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const [result, setResult] = useState<{
+    key: string;
+    found: LinkOption[];
+    lines: { doc: LinkOption; headings: HeadingOption[] } | null;
   } | null>(null);
+  const [bad, setBad] = useState(false);
+  const [searchFailure, setSearchFailure] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState("");
+  const [retry, setRetry] = useState(0);
+  const [anchoring, setAnchoring] = useState(false);
+  const pending = useRef(false);
+  const wantsLine = splitHeadingQuery(query ?? typed);
+  const ready = result?.key === requestKey;
+  const found = ready ? result.found : [];
+  const lines = ready ? result.lines : null;
+  const failed = searchFailure === requestKey;
   useEffect(() => {
     let live = true;
+    const current = () =>
+      live && session.token === owner && latestKey.current === requestKey;
+    setSearchFailure(null);
+    setSelectionError("");
     const t = setTimeout(() => {
-      if (wantsLine)
-        client
-          .pickLinks(wantsLine.page, 5)
-          .then(async (hits) => {
+      void (async () => {
+        try {
+          if (wantsLine) {
+            const hits = await client.pickLinks(wantsLine.page, 5);
+            if (!current()) return;
             const doc = hits.find((h) => h.kind === "doc");
-            if (!doc) return live && setLines(null);
-            const headings = await client.pageHeadings(
-              doc.id,
-              wantsLine.heading.trim(),
-            );
-            if (live) setLines({ doc, headings });
-          })
-          .catch(report);
-      else
-        client.pickLinks(q, 12).then((hits) => live && setFound(hits), report);
+            const headings = doc
+              ? await client.pageHeadings(doc.id, wantsLine.heading.trim())
+              : [];
+            if (current())
+              setResult({
+                key: requestKey,
+                found: [],
+                lines: doc ? { doc, headings } : null,
+              });
+          } else {
+            const hits = await client.pickLinks(q, 12);
+            if (current())
+              setResult({ key: requestKey, found: hits, lines: null });
+          }
+        } catch (error) {
+          if (current()) {
+            setSearchFailure(requestKey);
+            report(error);
+          }
+        }
+      })();
     }, 150);
     return () => {
       live = false;
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [requestKey, retry]);
   const rows = useMemo<Row[]>(() => {
+    if (!ready || failed) return [];
     if (wantsLine)
       return lines
         ? [
@@ -364,24 +417,39 @@ export function LinkPickerPanel({
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [found, q, query, onUrl, lines]);
+  }, [found, q, query, onUrl, lines, ready, failed]);
 
   const take = (row: Row) => {
+    if (pending.current || !ready || failed) return;
+    setSelectionError("");
     if (row.type === "url") {
       if (onUrl && !onUrl(row.url)) setBad(true);
     } else if (row.type === "create") onCreate(row.kind, row.title);
     else if (row.type === "heading") {
       const { doc, heading } = row;
-      // A line with no name yet is named first, so the link can find it.
-      const named = heading.block_id
-        ? Promise.resolve(heading.block_id)
-        : client
-            .anchorLine(doc.id, heading.index, heading.text)
-            .then((r) => r.block_id);
-      void named.then(
-        (block) => onPick({ kind: "doc", id: doc.id, block }, doc.title),
-        () => onPick({ kind: "doc", id: doc.id }, doc.title),
-      );
+      pending.current = true;
+      setAnchoring(true);
+      const current = () =>
+        alive.current &&
+        session.token === owner &&
+        latestKey.current === requestKey;
+      void (async () => {
+        try {
+          const block =
+            heading.block_id ??
+            (await client.anchorLine(doc.id, heading.index, heading.text))
+              .block_id;
+          if (current()) onPick({ kind: "doc", id: doc.id, block }, doc.title);
+        } catch (error) {
+          if (current()) {
+            setSelectionError("Couldn't link this line. Try again.");
+            report(error);
+          }
+        } finally {
+          pending.current = false;
+          if (alive.current) setAnchoring(false);
+        }
+      })();
     } else onPick(row.option, row.option.title);
   };
 
@@ -394,10 +462,11 @@ export function LinkPickerPanel({
           <TextInput
             style={s.search}
             value={typed}
+            editable={!anchoring}
             autoFocus
             autoCapitalize="none"
             autoCorrect={false}
-            placeholder="Find a page, task, person or date"
+            placeholder="Search links"
             placeholderTextColor={colors.faint}
             returnKeyType="done"
             onChangeText={(v) => {
@@ -408,24 +477,35 @@ export function LinkPickerPanel({
             accessibilityLabel="Find something to link"
           />
         ) : (
-          <Text style={s.searchText} numberOfLines={1}>
+          <Text style={s.searchText}>
             {q ? `Link “${q}”` : "Type to find something to link"}
           </Text>
         )}
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close"
-          hitSlop={10}
+          style={s.close}
           onPress={onClose}
         >
           <Icon name="x" size={16} color={colors.muted} />
         </Pressable>
       </View>
       {bad && (
-        <Text style={s.error}>
-          These words already have a style, so they can’t be a link too.
-        </Text>
+        <Text style={s.error}>Remove the text style before adding a link.</Text>
       )}
+      {selectionError ? <Text style={s.error}>{selectionError}</Text> : null}
+      {failed ? (
+        <View style={s.feedback}>
+          <Text style={s.error}>Couldn’t load links.</Text>
+          <Pressable
+            accessibilityRole="button"
+            style={s.linkButton}
+            onPress={() => setRetry((n) => n + 1)}
+          >
+            <Text style={s.linkButtonText}>Retry</Text>
+          </Pressable>
+        </View>
+      ) : null}
       <ScrollView
         style={s.rows}
         keyboardShouldPersistTaps="always"
@@ -445,6 +525,7 @@ export function LinkPickerPanel({
               {heading ? <Text style={s.group}>{heading}</Text> : null}
               <Pressable
                 accessibilityRole="button"
+                disabled={anchoring}
                 onPress={() => take(row)}
                 style={({ pressed }) => [s.row, pressed && s.rowPressed]}
               >
@@ -461,9 +542,7 @@ export function LinkPickerPanel({
                         },
                       ]}
                     >
-                      <Text style={s.rowTitle} numberOfLines={1}>
-                        {row.heading.text}
-                      </Text>
+                      <Text style={s.rowTitle}>{row.heading.text}</Text>
                       {!row.heading.level && (
                         <Text style={s.rowHint}>A line</Text>
                       )}
@@ -477,13 +556,9 @@ export function LinkPickerPanel({
                       color={colors.muted}
                     />
                     <View style={s.rowText}>
-                      <Text style={s.rowTitle} numberOfLines={1}>
-                        {row.option.title}
-                      </Text>
+                      <Text style={s.rowTitle}>{row.option.title}</Text>
                       {row.option.hint ? (
-                        <Text style={s.rowHint} numberOfLines={1}>
-                          {row.option.hint}
-                        </Text>
+                        <Text style={s.rowHint}>{row.option.hint}</Text>
                       ) : null}
                     </View>
                     {row.option.due_at && !row.option.done ? (
@@ -497,7 +572,7 @@ export function LinkPickerPanel({
                       size={16}
                       color={colors.accent}
                     />
-                    <Text style={[s.rowTitle, s.create]} numberOfLines={1}>
+                    <Text style={[s.rowTitle, s.create]}>
                       {row.type === "url"
                         ? `Link to ${row.url}`
                         : row.kind === "doc"
@@ -512,11 +587,13 @@ export function LinkPickerPanel({
             </View>
           );
         })}
-        {!rows.length && (
+        {!rows.length && !failed && (
           <Text style={s.empty}>
-            {q
-              ? "Nothing is called that."
-              : "Type to find a page, task, project, person or date."}
+            {!ready
+              ? "Loading links…"
+              : q
+                ? "No matches"
+                : "Search pages, tasks and people."}
           </Text>
         )}
       </ScrollView>
@@ -541,7 +618,7 @@ const SOURCE_NOTES: Partial<Record<LinkedHereEntry["source"], string>> = {
  * pages that say its name without linking to it, each with Link, and for a
  * page, the pages that read like it (LNK-06). Hidden when there's none.
  */
-export function LinkedHere({
+function LinkedHereBody({
   kind,
   id,
   onCount,
@@ -558,35 +635,60 @@ export function LinkedHere({
   /** Link a related page from this one; left out where that can't be. */
   onLinkRelated?: (page: RelatedPage) => void;
 }) {
+  const owner = session.token;
+  const alive = useRef(true);
+  const pending = useRef(false);
+  const [linking, setLinking] = useState(false);
+  const [failure, setFailure] = useState("");
   const [list, setList] = useState<LinkedHereList | null>(null);
   const [mentions, setMentions] = useState<UnlinkedMention[]>([]);
   const [related, setRelated] = useState<RelatedPage[]>([]);
   const [showMentions, setShowMentions] = useState(false);
   const [round, setRound] = useState(0);
   useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  useEffect(() => {
     let live = true;
+    const current = () => live && session.token === owner;
+    const fail = (error: unknown) => {
+      if (!current()) return;
+      setFailure("Couldn't load references. Try again.");
+      report(error);
+    };
+    setFailure("");
     client.linksHere(kind, id).then((l) => {
-      if (!live) return;
+      if (!current()) return;
       setList(l);
       onCount?.(l.count);
-    }, report);
+    }, fail);
     if (kind === "doc" || kind === "project")
-      client.unlinkedMentions(kind, id).then(
-        (m) => live && setMentions(m),
-        () => setMentions([]),
-      );
+      client.unlinkedMentions(kind, id).then((m) => {
+        if (current()) setMentions(m);
+      }, fail);
     if (kind === "doc")
-      client.relatedPages(id).then(
-        (r) => live && setRelated(r),
-        () => setRelated([]),
-      );
+      client.relatedPages(id).then((r) => {
+        if (current()) setRelated(r);
+      }, fail);
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kind, id, round]);
+  }, [kind, id, owner, round]);
   const link = (m: UnlinkedMention) => {
-    if (!m.block_id || (kind !== "doc" && kind !== "project")) return;
+    if (
+      !m.block_id ||
+      (kind !== "doc" && kind !== "project") ||
+      pending.current
+    )
+      return;
+    pending.current = true;
+    setLinking(true);
+    setFailure("");
+    const current = () => alive.current && session.token === owner;
     void client
       .linkMention({
         doc_id: m.doc_id,
@@ -594,13 +696,41 @@ export function LinkedHere({
         matched: m.matched,
         target: { kind, id },
       })
-      .then(() => setRound((n) => n + 1), report);
+      .then(
+        () => {
+          if (current()) setRound((n) => n + 1);
+        },
+        (error) => {
+          if (current()) {
+            setFailure("Couldn't link this mention. Try again.");
+            report(error);
+          }
+        },
+      )
+      .finally(() => {
+        pending.current = false;
+        if (current()) setLinking(false);
+      });
   };
-  if (!list) return null;
-  if (!list.count && !mentions.length && !related.length) return null;
+  if (!list && !failure) return null;
+  if (list && !list.count && !mentions.length && !related.length && !failure)
+    return null;
   return (
     <View style={s.here} accessibilityLabel="Linked here">
-      {list.count > 0 && (
+      {failure ? (
+        <View style={s.feedback}>
+          <Text style={s.error}>{failure}</Text>
+          <Pressable
+            accessibilityRole="button"
+            style={s.linkButton}
+            disabled={linking}
+            onPress={() => setRound((n) => n + 1)}
+          >
+            <Text style={s.linkButtonText}>Refresh</Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {list && list.count > 0 && (
         <>
           <Text style={s.hereTitle}>Linked here · {list.count}</Text>
           {list.items.map((e) => {
@@ -622,10 +752,8 @@ export function LinkedHere({
                   color={colors.muted}
                 />
                 <View style={s.rowText}>
-                  <Text style={s.rowTitle} numberOfLines={1}>
-                    {e.title}
-                  </Text>
-                  <Text style={s.rowHint} numberOfLines={1}>
+                  <Text style={s.rowTitle}>{e.title}</Text>
+                  <Text style={s.rowHint}>
                     {[e.hint, note].filter(Boolean).join(" · ")}
                   </Text>
                   {before || linked || after ? (
@@ -677,9 +805,7 @@ export function LinkedHere({
                 >
                   <Icon name="fileText" size={16} color={colors.muted} />
                   <View style={s.rowText}>
-                    <Text style={s.rowTitle} numberOfLines={1}>
-                      {m.title}
-                    </Text>
+                    <Text style={s.rowTitle}>{m.title}</Text>
                     <Text style={s.context} numberOfLines={2}>
                       {m.context.before}
                       <Text style={s.contextLinked}>{m.context.linked}</Text>
@@ -691,7 +817,7 @@ export function LinkedHere({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Link “${m.matched}” in ${m.title}`}
-                    hitSlop={8}
+                    disabled={linking}
                     onPress={() => link(m)}
                     style={({ pressed }) => [
                       s.linkButton,
@@ -725,10 +851,8 @@ export function LinkedHere({
               >
                 <Icon name="fileText" size={16} color={colors.muted} />
                 <View style={s.rowText}>
-                  <Text style={s.rowTitle} numberOfLines={1}>
-                    {r.title}
-                  </Text>
-                  <Text style={s.rowHint} numberOfLines={1}>
+                  <Text style={s.rowTitle}>{r.title}</Text>
+                  <Text style={s.rowHint}>
                     {[r.hint, r.reason].filter(Boolean).join(" · ")}
                   </Text>
                 </View>
@@ -737,7 +861,6 @@ export function LinkedHere({
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`Link ${r.title} from this page`}
-                  hitSlop={8}
                   onPress={() => {
                     onLinkRelated(r);
                     setRelated((all) =>
@@ -758,6 +881,16 @@ export function LinkedHere({
         </>
       )}
     </View>
+  );
+}
+
+/** Reset reference state when the page or signed-in account changes. */
+export function LinkedHere(props: React.ComponentProps<typeof LinkedHereBody>) {
+  return (
+    <LinkedHereBody
+      key={`${session.token}:${props.kind}:${props.id}`}
+      {...props}
+    />
   );
 }
 
@@ -790,10 +923,23 @@ const s = themed(() =>
       alignItems: "center",
       gap: 8,
       paddingHorizontal: 4,
-      minHeight: 34,
+      minHeight: 44,
+    },
+    close: {
+      width: 44,
+      height: 44,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    feedback: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
     },
     search: {
       flex: 1,
+      minWidth: 0,
       minHeight: 34,
       paddingHorizontal: 10,
       borderRadius: radii.input,
@@ -801,10 +947,11 @@ const s = themed(() =>
       borderColor: colors.border,
       color: colors.text,
       fontFamily: fonts.regular,
-      fontSize: 15,
+      fontSize: inputFontSize,
     },
     searchText: {
       flex: 1,
+      minWidth: 0,
       color: colors.muted,
       fontFamily: fonts.regular,
       fontSize: 13,
@@ -819,9 +966,7 @@ const s = themed(() =>
     group: {
       color: colors.muted,
       fontFamily: fonts.semibold,
-      fontSize: 11,
-      letterSpacing: 0.6,
-      textTransform: "uppercase",
+      fontSize: 13,
       paddingHorizontal: 8,
       paddingTop: 8,
       paddingBottom: 2,
@@ -829,13 +974,15 @@ const s = themed(() =>
     row: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 10,
+      flexWrap: "wrap",
+      gap: 8,
       minHeight: 44,
+      paddingVertical: 8,
       paddingHorizontal: 8,
       borderRadius: radii.input,
     },
     rowPressed: { backgroundColor: colors.accentSoft },
-    rowText: { flex: 1, minWidth: 0, gap: 1 },
+    rowText: { flex: 1, minWidth: 0, gap: 2 },
     rowTitle: {
       color: colors.text,
       fontFamily: fonts.regular,
@@ -860,6 +1007,7 @@ const s = themed(() =>
       marginBottom: 4,
     },
     hereRow: {
+      minHeight: 44,
       flexDirection: "row",
       alignItems: "flex-start",
       gap: 10,
@@ -878,17 +1026,22 @@ const s = themed(() =>
       flexDirection: "row",
       alignItems: "center",
       gap: 6,
-      minHeight: controls.compact,
+      minHeight: 44,
       marginTop: 8,
     },
     relatedTitle: { marginTop: 12 },
-    mentionRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-    mentionMain: { flex: 1 },
+    mentionRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 6,
+    },
+    mentionMain: { flexGrow: 1, flexShrink: 1, flexBasis: 160, minWidth: 0 },
     linkButton: {
       flexDirection: "row",
       alignItems: "center",
       gap: 4,
-      minHeight: controls.compact,
+      minHeight: 44,
       paddingHorizontal: 10,
       borderRadius: radii.pill,
       borderWidth: 1,

@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { SettingsEditor } from "./SettingsEditor";
 import { KeyRound, ShieldCheck } from "lucide-react";
 import type { TwoFactorSetup } from "@orbyn/core";
 import { client } from "../../lib/api";
@@ -16,6 +17,13 @@ export function TwoFactorSettings({
 }: {
   report: (e: unknown) => void;
 }) {
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [loadError, setLoadError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -26,6 +34,7 @@ export function TwoFactorSettings({
   useEffect(() => {
     let live = true;
     setLoadError(false);
+    setEnabled(null);
     client.getTwoFactor().then(
       (s) => live && setEnabled(s.enabled),
       () => live && setLoadError(true),
@@ -35,13 +44,17 @@ export function TwoFactorSettings({
     };
   }, [retry]);
 
-  const begin = () =>
+  const begin = () => {
+    if (enabled === null || loadError || enabled) return;
     void action.run(async () => {
-      setStage({ step: "setup", data: await client.setupTwoFactor() });
+      const data = await client.setupTwoFactor();
+      if (alive.current) setStage({ step: "setup", data });
     });
+  };
   const enable = (code: string) =>
     void action.run(async () => {
       const { recovery_codes } = await client.enableTwoFactor(code);
+      if (!alive.current) return;
       setEnabled(true);
       setStage({ step: "codes", codes: recovery_codes });
       return "Two-step verification is on.";
@@ -56,9 +69,10 @@ export function TwoFactorSettings({
       confirmLabel: "Turn off",
       destructive: true,
     });
-    if (!password) return;
+    if (!password || !alive.current) return;
     void action.run(async () => {
       await client.disableTwoFactor(password);
+      if (!alive.current) return;
       setEnabled(false);
       setStage({ step: "idle" });
       return "Two-step verification is off.";
@@ -80,7 +94,7 @@ export function TwoFactorSettings({
             className="secondary"
             onClick={() => setRetry((value) => value + 1)}
           >
-            Try again
+            Retry
           </button>
         </div>
       ) : enabled === null ? (
@@ -102,74 +116,93 @@ export function TwoFactorSettings({
         <button className="secondary" disabled={action.pending} onClick={begin}>
           <KeyRound size={14} /> Set up two-step
         </button>
-      ) : stage.step === "setup" ? (
-        <form
-          className="two-factor-setup"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const code = new FormData(e.currentTarget).get("code") as string;
-            enable(code);
-          }}
+      ) : null}
+      {stage.step !== "idle" && (
+        <SettingsEditor
+          title={
+            stage.step === "setup"
+              ? "Set up two-step verification"
+              : "Recovery codes"
+          }
+          pending={action.pending}
+          closeDisabled={stage.step === "codes"}
+          onClose={() => setStage({ step: "idle" })}
         >
-          <p>
-            1. Add this key to your authenticator app, or paste the setup link.
-          </p>
-          <code className="two-factor-secret">
-            {stage.data.secret.replace(/(.{4})/g, "$1 ").trim()}
-          </code>
-          <details>
-            <summary>Setup link</summary>
-            <code className="two-factor-uri">{stage.data.otpauth_uri}</code>
-          </details>
-          <label>
-            2. Enter the 6-digit code it shows
-            <input
-              name="code"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              autoFocus
-              maxLength={10}
-              required
-              placeholder="123456"
-            />
-          </label>
-          <div className="two-factor-actions">
-            <button className="primary" disabled={action.pending}>
-              Turn on
-            </button>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => setStage({ step: "idle" })}
+          {stage.step === "setup" ? (
+            <form
+              className="two-factor-setup"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const code = new FormData(e.currentTarget).get(
+                  "code",
+                ) as string;
+                enable(code);
+              }}
             >
-              Cancel
-            </button>
-          </div>
-        </form>
-      ) : (
-        <div
-          className="two-factor-codes"
-          data-settings-close-guard="Save your recovery codes before leaving Settings."
-        >
-          <p>
-            <strong>Save your recovery codes.</strong> Each works once if you
-            lose your authenticator. They won’t be shown again.
-          </p>
-          <ul>
-            {stage.codes.map((c) => (
-              <li key={c} className="mono">
-                {c}
-              </li>
-            ))}
-          </ul>
-          <button
-            className="secondary"
-            onClick={() => setStage({ step: "idle" })}
-          >
-            I’ve saved them
-          </button>
-        </div>
+              <p>Add this key to your authenticator app.</p>
+              <code className="two-factor-secret">
+                {stage.data.secret.replace(/(.{4})/g, "$1 ").trim()}
+              </code>
+              <details>
+                <summary>Setup link</summary>
+                <code className="two-factor-uri">{stage.data.otpauth_uri}</code>
+              </details>
+              <label>
+                Authenticator code
+                <input
+                  disabled={action.pending}
+                  name="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  maxLength={6}
+                  pattern="[0-9]{6}"
+                  required
+                  placeholder="123456"
+                />
+              </label>
+              <div className="two-factor-actions">
+                <button className="primary" disabled={action.pending}>
+                  Turn on
+                </button>
+                <button
+                  type="button"
+                  disabled={action.pending}
+                  className="text-button"
+                  onClick={() => setStage({ step: "idle" })}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div
+              className="two-factor-codes"
+              data-settings-close-guard="Save your recovery codes before leaving Settings."
+            >
+              <p>
+                <strong>Save your recovery codes.</strong> Each works once if
+                you lose your authenticator. They won’t be shown again.
+              </p>
+              <ul>
+                {stage.codes.map((c) => (
+                  <li key={c} className="mono">
+                    {c}
+                  </li>
+                ))}
+              </ul>
+              <button
+                className="secondary"
+                onClick={() => setStage({ step: "idle" })}
+              >
+                I’ve saved them
+              </button>
+            </div>
+          )}
+          <OutcomeNote outcome={action.outcome} />
+        </SettingsEditor>
       )}
+
       <OutcomeNote outcome={action.outcome} />
     </>
   );

@@ -2,7 +2,7 @@ import { addDays, dayTime } from "@orbyn/core";
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import type { ProjectDecomposition } from "@orbyn/core";
-import { colors, fonts, radii, themed } from "../theme";
+import { colors, fonts, themed } from "../theme";
 
 /** The same complete project review as web, with wrapping phone-sized rows. */
 export function ProjectDraftReview({
@@ -55,14 +55,15 @@ export function ProjectDraftReview({
         <Text style={s.meta}>Project deadline: {time(project.deadline)}</Text>
       )}
       <Text style={s.meta}>
-        Creates a project with {project.tasks.length} tasks. Times are in{" "}
-        {project.timezone}. Review covers {project.days} days.
+        Creates {project.tasks.length} tasks · {project.days}-day plan ·{" "}
+        {project.timezone}
       </Text>
       {project.unplaced.length > 0 && (
         <Text style={s.warning}>
           {project.unplaced.length}{" "}
           {project.unplaced.length === 1 ? "task cannot" : "tasks cannot"} be
-          fully scheduled. Their unscheduled work needs another plan.
+          fully scheduled. They will still be created; plan their remaining work
+          separately.
         </Text>
       )}
       {project.tasks.map((task) => (
@@ -100,11 +101,9 @@ const s = themed(() =>
     root: { gap: 12, marginVertical: 16 },
     task: {
       gap: 8,
-      padding: 14,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: radii.card,
-      backgroundColor: colors.surface,
+      paddingVertical: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.divider,
     },
     title: {
       fontFamily: fonts.semibold,

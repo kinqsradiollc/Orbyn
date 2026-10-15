@@ -930,3 +930,19 @@ For private production-host installation and acceptance, follow
 installation dependency. Use a dedicated test account and record the deployed
 commit. Current Kubernetes manifests do not deploy the separate plugin service;
 the automatic plugin rollout described above applies to Compose.
+
+
+### Standalone LaTeX compiler
+
+The `latex` service is built from `backend/Dockerfile --target latex` and rolled
+before the API by `scripts/deploy.sh`. Compose supplies `DOC_LATEX_URL=http://latex:8000`
+to the API. For a local combined backend, configure that private service URL explicitly.
+It shares `DOC_PDF_KEY` with the authorized API; signatures use a separate LaTeX
+purpose. No public compiler port, database/provider credentials, external package
+fetches or Docker socket are exposed. TeX packages are baked into the image.
+
+Install the service-specific `deploy/latex/seccomp.json` for namespace mount setup;
+Kubernetes uses `deploy/k8s/latex.yaml` and its localhost seccomp profile. Host user
+namespaces must be available. A namespace failure is a compilation failure: never
+remove isolation, enable shell escape or run a privileged container to work around it.
+See [compiler isolation](../deploy/latex/README.md).

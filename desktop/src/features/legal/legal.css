@@ -28,7 +28,7 @@
 }
 .legal-text h1 {
   font-family: "Manrope", sans-serif;
-  font-size: 36px;
+  font-size: 24px;
   line-height: 1.2;
   letter-spacing: -0.01em;
   margin: 0 0 4px;
@@ -131,6 +131,9 @@
   display: grid;
   gap: 2px;
   font-size: 13px;
+  max-height: min(36dvh, 320px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .privacy-history li {
   display: flex;
@@ -156,4 +159,41 @@
   display: block;
   width: 100%;
   margin-top: 7px;
+}
+
+.legal-main,
+.legal-text,
+.consent-reader {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.legal-switch a,
+.consent-docs button,
+.consent-agree,
+.consent-analytics {
+  min-height: 44px;
+  box-sizing: border-box;
+}
+.legal-switch a {
+  display: inline-flex;
+  align-items: center;
+}
+.privacy-history li {
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+@media (max-width: 420px) {
+  .legal-text h1 {
+    font-size: 22px;
+  }
+  .legal-text h2 {
+    font-size: 17px;
+  }
+  .consent-docs button {
+    flex: 1 1 120px;
+  }
+  .consent-reader {
+    padding: 12px;
+    max-height: min(300px, 45dvh);
+  }
 }

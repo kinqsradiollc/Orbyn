@@ -1,5 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
-import { BadgeCheck, Link2, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useModalFocus } from "../../hooks/useModalFocus";
+import type { ReactNode } from "react";
+import { BadgeCheck, Link2 } from "lucide-react";
 import type { ItemProof } from "@orbyn/core";
 import { client } from "../../lib/api";
 import { errorText } from "../../lib/planning";
@@ -16,24 +19,50 @@ const hostOf = (url: string) => {
  * Proof of progress on a task: the link that shows it moved — the pull
  * request, the sent file — or a short note. Anyone who can edit it can add.
  */
-export function ProofSection({
+export function ProofSection(props: Parameters<typeof ProofSectionBody>[0]) {
+  return <ProofSectionBody key={props.itemId} {...props} />;
+}
+
+function ProofSectionBody({
   itemId,
   canWrite,
 }: {
   itemId: string;
   canWrite: boolean;
 }) {
+  const request = useRef(0);
+  const mutation = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [proofs, setProofs] = useState<ItemProof[]>([]);
   const [adding, setAdding] = useState(false);
   const [url, setUrl] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
-  const load = useCallback(() => {
-    client.listProofs(itemId).then(setProofs, () => setProofs([]));
+  const load = useCallback(async () => {
+    const version = ++request.current;
+    setError("");
+    try {
+      const next = await client.listProofs(itemId);
+      if (version === request.current) {
+        setProofs(next);
+        setLoaded(true);
+      }
+    } catch (reason) {
+      if (version === request.current) setError(errorText(reason));
+    }
   }, [itemId]);
-  useEffect(load, [load]);
-  if (!proofs.length && !canWrite) return null;
+  useEffect(() => {
+    void load();
+    return () => {
+      request.current++;
+    };
+  }, [load]);
+  if (loaded && !proofs.length && !canWrite && !error) return null;
   const add = async () => {
+    if (!canWrite || mutation.current || (!url.trim() && !note.trim())) return;
+    mutation.current = true;
+    setBusy(true);
     setError("");
     try {
       await client.addProof(itemId, {
@@ -43,9 +72,27 @@ export function ProofSection({
       setUrl("");
       setNote("");
       setAdding(false);
-      load();
+      await load();
     } catch (e) {
       setError(errorText(e));
+    } finally {
+      mutation.current = false;
+      setBusy(false);
+    }
+  };
+  const remove = async (proof: ItemProof) => {
+    if (!canWrite || mutation.current) return;
+    mutation.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      await client.deleteProof(itemId, proof.id);
+      await load();
+    } catch (error) {
+      setError(errorText(error));
+    } finally {
+      mutation.current = false;
+      setBusy(false);
     }
   };
   return (
@@ -55,15 +102,18 @@ export function ProofSection({
           <BadgeCheck size={16} aria-hidden="true" /> Proof
         </h3>
         {canWrite && !adding && (
-          <button className="text-button" onClick={() => setAdding(true)}>
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => setAdding(true)}
+          >
             Add proof
           </button>
         )}
       </div>
-      {proofs.length === 0 && !adding && (
-        <p className="drawer-hint">
-          A link or a note that shows this moved — a pull request, a sent file.
-        </p>
+      {!loaded && !error && <p role="status">Loading proof…</p>}
+      {loaded && proofs.length === 0 && !adding && (
+        <p className="drawer-hint">No proof yet.</p>
       )}
       <ul className="proof-list">
         {proofs.map((p) => (
@@ -87,66 +137,123 @@ export function ProofSection({
               </small>
             </span>
             {canWrite && (
-              <button
-                className="icon-button"
-                aria-label="Remove this proof"
-                onClick={() =>
-                  void client
-                    .deleteProof(itemId, p.id)
-                    .then(load, (e) => setError(errorText(e)))
-                }
-              >
-                <X size={14} />
-              </button>
+              <details className="proof-options">
+                <summary aria-label="Proof options">More</summary>
+                <button
+                  className="text-button"
+                  aria-label="Remove this proof"
+                  disabled={busy}
+                  onClick={() => void remove(p)}
+                >
+                  Remove
+                </button>
+              </details>
             )}
           </li>
         ))}
       </ul>
       {adding && (
-        <form
-          className="proof-form"
-          onSubmit={(e) => {
-            e.preventDefault();
-            void add();
+        <ProofDialog
+          busy={busy}
+          onClose={() => {
+            if (!mutation.current) setAdding(false);
           }}
         >
-          <input
-            type="url"
-            value={url}
-            placeholder="https://… (optional)"
-            aria-label="Link"
-            onChange={(e) => setUrl(e.target.value)}
-            autoFocus
-          />
-          <input
-            value={note}
-            maxLength={1000}
-            placeholder="What it shows, e.g. “PR #42 merged”"
-            aria-label="Note"
-            onChange={(e) => setNote(e.target.value)}
-          />
-          <div className="proof-actions">
-            <button
-              className="secondary"
-              disabled={!url.trim() && !note.trim()}
-            >
-              Add
-            </button>
-            <button
-              type="button"
-              className="text-button"
-              onClick={() => setAdding(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+          <form
+            className="proof-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void add();
+            }}
+          >
+            <input
+              type="url"
+              disabled={busy}
+              value={url}
+              placeholder="https://… (optional)"
+              aria-label="Link"
+              onChange={(e) => setUrl(e.target.value)}
+              autoFocus
+            />
+            <input
+              disabled={busy}
+              value={note}
+              maxLength={1000}
+              placeholder="What this shows"
+              aria-label="Note"
+              onChange={(e) => setNote(e.target.value)}
+            />
+            <div className="proof-actions">
+              <button
+                className="secondary"
+                disabled={busy || (!url.trim() && !note.trim())}
+              >
+                {busy ? "Saving…" : "Add proof"}
+              </button>
+              <button
+                type="button"
+                className="text-button"
+                disabled={busy}
+                onClick={() => setAdding(false)}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+        </ProofDialog>
       )}
-      {error && (
+      {error && !adding && (
         <p className="error" role="alert">
           {error}
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => void load()}
+          >
+            Retry
+          </button>
         </p>
       )}
     </section>
+  );
+}
+
+function ProofDialog({
+  busy,
+  onClose,
+  children,
+}: {
+  busy: boolean;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  const focus = useModalFocus(onClose, busy);
+  useEffect(() => {
+    const dialog = focus.ref.current as HTMLDialogElement;
+    dialog.showModal();
+    return () => dialog.close();
+  }, []);
+  return createPortal(
+    <dialog
+      ref={(node) => {
+        focus.ref.current = node;
+      }}
+      data-modal-focus={focus.id}
+      className="modal modal-small"
+      aria-labelledby="proof-dialog-title"
+      onCancel={(event) => {
+        event.preventDefault();
+        if (!busy) onClose();
+      }}
+    >
+      <h2 id="proof-dialog-title">Add proof</h2>
+      {children}
+    </dialog>,
+    document.body,
   );
 }

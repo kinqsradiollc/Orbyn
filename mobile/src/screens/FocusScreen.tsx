@@ -1,13 +1,13 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
   AppState,
-  Animated,
   Modal,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle } from "react-native-svg";
@@ -29,15 +29,10 @@ import { client } from "../lib/api";
 import * as outbox from "../lib/outbox";
 import { minutesLabel, nextUp } from "../lib/planning";
 import { useNow } from "../hooks/useNow";
-import { useRun } from "../hooks/useRun";
+import { session as authSession } from "../lib/session";
+import { InlineDetails } from "../components/InlineDetails";
 import { useFocusSession } from "../hooks/useFocusSession";
-import {
-  animateLayout,
-  pop,
-  PressableScale,
-  useReducedMotion,
-  Pressable,
-} from "../motion";
+import { PressableScale, Pressable } from "../motion";
 import { colors, fonts, radii, spacing, themed } from "../theme";
 import { shared } from "../styles";
 import { errorText } from "../lib/errors";
@@ -82,14 +77,13 @@ export function FocusScreen({
   onSwitch: (item: Item) => void;
   onChanged: () => void;
 }) {
-  const reduced = useReducedMotion();
   // The body logs running time before leaving; Android's back button goes through it too.
   const leave = useRef(onClose);
   leave.current = onClose;
   return (
     <Modal
       visible={!!item}
-      animationType={reduced ? "none" : "slide"}
+      animationType="none"
       presentationStyle="fullScreen"
       onRequestClose={() => leave.current()}
       onDismiss={onDismiss}
@@ -101,7 +95,7 @@ export function FocusScreen({
         >
           {item && (
             <Body
-              key={item.id}
+              key={`${authSession.token}:${item.id}`}
               seed={item}
               items={items}
               leaveRef={leave}
@@ -134,14 +128,64 @@ function Body({
   onChanged: () => void;
   readOnly: boolean;
 }) {
-  const { busy, error, setError, run } = useRun();
+  const owner = useRef(authSession.token).current;
+  const mounted = useRef(true);
+  const saveLock = useRef(false);
+  const detailRead = useRef(0);
+  const transitionLock = useRef(false);
+  const [busy, setBusy] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
+  const owns = () => mounted.current && authSession.token === owner;
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const run = async <T,>(action: () => Promise<T>): Promise<T | undefined> => {
+    if (!owns() || saveLock.current) return undefined;
+    saveLock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      return await action();
+    } catch (e) {
+      if (owns()) setError(errorText(e));
+      return undefined;
+    } finally {
+      saveLock.current = false;
+      if (owns()) setBusy(false);
+    }
+  };
+  const transition = async (action: () => Promise<void>) => {
+    if (!owns() || transitionLock.current || saveLock.current) return;
+    transitionLock.current = true;
+    setLeaving(true);
+    try {
+      await action();
+    } finally {
+      transitionLock.current = false;
+      if (owns()) setLeaving(false);
+    }
+  };
   const [detail, setDetail] = useState<ItemDetail | null>(null);
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [session, setSession] = useState(0);
+  const openLog = useRef<Parameters<typeof client.saveFocusSession>[0] | null>(
+    null,
+  );
+  const startedRef = useRef(startedAt);
+  startedRef.current = startedAt;
+  const [pendingOpenLog, setPendingOpenLog] = useState(false);
+  const [queuedDone, setQueuedDone] = useState(false);
   const [celebrating, setCelebrating] = useState(false);
   const now = useNow(1000, startedAt !== null);
   const item: Item = detail ?? seed;
-  const done = item.status === "done";
+  const done = item.status === "done" || queuedDone;
   const elapsed =
     startedAt === null ? 0 : Math.max(0, now.getTime() - startedAt);
   // Up to four tasks to go to next, most pressing first.
@@ -154,10 +198,14 @@ function Body({
     item: seed,
     canWrite: !readOnly,
     onLogged: (d) => {
+      if (!owns()) return;
+      detailRead.current++;
       setDetail(d);
       onChanged();
     },
-    onError: setError,
+    onError: (message) => {
+      if (owns()) setError(message);
+    },
   });
   const rhythmIds = [...FOCUS_RHYTHMS.map((r) => r.id), "custom"] as const;
   const rhythmKey = focus.rhythm.id.startsWith("custom:")
@@ -165,45 +213,79 @@ function Body({
     : focus.rhythm.id;
   const [custom, setCustom] = useState({ work: "30", rest: "5" });
   const chooseCustom = (work: string, rest: string) => {
-    const w = Math.max(5, Math.min(180, Number(work) || 30));
-    const r = Math.max(1, Math.min(30, Number(rest) || 5));
+    const w = Number(work),
+      r = Number(rest);
+    if (
+      !Number.isInteger(w) ||
+      w < 5 ||
+      w > 180 ||
+      !Number.isInteger(r) ||
+      r < 1 ||
+      r > 30
+    ) {
+      setError("Use 5–180 work minutes and 1–30 break minutes.");
+      return;
+    }
+    setError("");
     focus.chooseRhythm(focusRhythm(customRhythmId(w, r, r * 3, 4))!);
   };
 
   useEffect(() => {
     let alive = true;
+    const ticket = ++detailRead.current;
+    setLoading(true);
+    setLoadError("");
     client
       .getItem(seed.id)
-      .then((d) => alive && setDetail(d))
-      .catch((e: Error) => alive && setError(errorText(e)));
+      .then((d) => {
+        if (alive && owns() && ticket === detailRead.current) setDetail(d);
+      })
+      .catch((e: Error) => {
+        if (alive && owns() && ticket === detailRead.current)
+          setLoadError(errorText(e));
+      })
+      .finally(() => {
+        if (alive && owns()) setLoading(false);
+      });
     return () => {
       alive = false;
     };
-  }, [seed.id, setError]);
+  }, [seed.id, retry]);
 
   /** Stop the timer and log what ran. False when logging failed. */
   const stop = async () => {
-    if (startedAt === null) return true;
-    const ms = Date.now() - startedAt;
-    setStartedAt(null);
-    if (ms < MIN_RUN_MS) return true;
-    const minutes = Math.min(600, Math.max(1, Math.round(ms / 60_000)));
-    const ended = Date.now();
-    const saved = await run(() =>
-      client.saveFocusSession({
+    if (!owns() || saveLock.current) return false;
+    if (!openLog.current) {
+      const start = startedRef.current;
+      if (start === null) return true;
+      const ended = Date.now(),
+        ms = ended - start;
+      startedRef.current = null;
+      setStartedAt(null);
+      if (ms < MIN_RUN_MS) return true;
+      const minutes = Math.min(600, Math.max(1, Math.round(ms / 60_000)));
+      openLog.current = {
         id: newId(),
         item_id: seed.id,
         kind: "work",
-        started_at: new Date(ended - ms).toISOString(),
+        started_at: new Date(start).toISOString(),
         ended_at: new Date(ended).toISOString(),
         planned_minutes: 0,
         minutes,
         completed: true,
-      }),
-    );
-    if (!saved) return false;
-    if (saved.item) setDetail(saved.item);
-    setSession((m) => m + minutes);
+      };
+      setPendingOpenLog(true);
+    }
+    const input = openLog.current;
+    const saved = await run(() => client.saveFocusSession(input));
+    if (!saved || !owns()) return false;
+    openLog.current = null;
+    setPendingOpenLog(false);
+    if (saved.item) {
+      detailRead.current++;
+      setDetail(saved.item);
+    }
+    setSession((m) => m + input.minutes);
     focus.refreshToday();
     onChanged();
     return true;
@@ -211,24 +293,34 @@ function Body({
 
   /** Log the open timer, keep the work of a session cut short, stop sharing. */
   const settle = async () => {
+    if (focus.hasUnfinishedLog()) {
+      setError("Retry the time log first.");
+      return false;
+    }
     const ok = await stop();
-    await focus.finish();
-    return ok;
+    if (!ok || !owns()) return false;
+    return readOnly ? true : await focus.finish();
   };
 
   // Leaving while a session runs is stepping away, not stopping: it keeps
   // going and "Back to focus" on Today returns to it. End session stops it.
   const keepsRunning = focus.running && !!focus.state.ends_at;
-  const close = async () => {
-    if (keepsRunning) {
-      if (await stop()) onClose();
-      return;
-    }
-    if (await settle()) onClose();
-  };
-  const endSession = async () => {
-    if (await settle()) onClose();
-  };
+  const close = () =>
+    transition(async () => {
+      if (focus.hasUnfinishedLog()) {
+        setError("Retry the time log before leaving.");
+        return;
+      }
+      if (keepsRunning) {
+        if ((await stop()) && owns()) onClose();
+        return;
+      }
+      if ((await settle()) && owns()) onClose();
+    });
+  const endSession = () =>
+    transition(async () => {
+      if ((await settle()) && owns()) onClose();
+    });
   leaveRef.current = () => void close();
 
   // Leaving the app stops the timer and logs what ran, like closing focus.
@@ -242,34 +334,44 @@ function Body({
     return () => sub.remove();
   }, []);
 
-  const markDone = async () => {
-    if (!(await settle())) return;
-    let queued = false;
-    tap();
-    const saved = await run(async () => {
-      const answer = await outbox.postItemUpdate(seed, { status: "done" });
-      queued = answer === null;
-      return answer;
-    });
-    if (!saved && !queued) return;
-    animateLayout();
-    setDetail((d) =>
-      saved
-        ? (saved as ItemDetail)
-        : d
-          ? { ...d, status: "done", progress: 100 }
-          : d,
-    );
-    setCelebrating(true);
-    onChanged();
-  };
-
-  const toggleStep = (stepId: string, value: boolean) =>
-    run(async () => {
-      setDetail(await client.updateStep(seed.id, stepId, { done: value }));
+  const markDone = () =>
+    transition(async () => {
+      if (!(await settle())) return;
+      let queued = false;
+      tap();
+      const saved = await run(async () => {
+        const answer = await outbox.postItemUpdate(seed, { status: "done" });
+        queued = answer === null;
+        return answer;
+      });
+      if (!saved && !queued) return;
+      if (!owns()) return;
+      detailRead.current++;
+      setDetail((d) =>
+        saved ? saved : d ? { ...d, status: "done", progress: 100 } : d,
+      );
+      setQueuedDone(queued);
+      setCelebrating(!queued);
       onChanged();
     });
 
+  const toggleStep = (stepId: string, value: boolean) =>
+    run(async () => {
+      const updated = await client.updateStep(seed.id, stepId, { done: value });
+      if (owns()) {
+        detailRead.current++;
+        setDetail(updated);
+        onChanged();
+      }
+    });
+
+  const locked =
+    busy ||
+    leaving ||
+    focus.saving ||
+    focus.pendingLog ||
+    pendingOpenLog ||
+    loading;
   return (
     <>
       <View style={s.header}>
@@ -279,7 +381,7 @@ function Body({
           accessibilityLabel={
             startedAt !== null ? "Log time and close focus" : "Close focus"
           }
-          hitSlop={10}
+          disabled={busy || leaving || focus.saving}
           onPress={() => void close()}
           style={s.round}
         >
@@ -289,19 +391,46 @@ function Body({
       <ScrollView contentContainerStyle={s.body}>
         <View style={s.column}>
           <ErrorBanner error={error} onDismiss={() => setError("")} />
+          {!!loadError && (
+            <View>
+              <ErrorBanner error={loadError} />
+              <Button
+                title="Retry task details"
+                disabled={busy || leaving}
+                onPress={() => setRetry((n) => n + 1)}
+              />
+            </View>
+          )}
+          {loading && <Text style={shared.small}>Loading task…</Text>}
+          {(pendingOpenLog || focus.pendingLog) && (
+            <Button
+              title="Retry time log"
+              disabled={busy || leaving || focus.saving}
+              onPress={() => {
+                if (pendingOpenLog) void stop();
+                else void focus.retryLogging();
+              }}
+            />
+          )}
+          {queuedDone && (
+            <Text accessibilityLiveRegion="polite" style={shared.small}>
+              Completion waiting to sync.
+            </Text>
+          )}
           <Text style={s.title} accessibilityRole="header">
             {item.title}
           </Text>
           <PlanningMeta item={item} large />
-          {!!item.notes && <Text style={s.notes}>{item.notes}</Text>}
+          {!!item.notes && (
+            <InlineDetails title="Notes">
+              <Text style={s.notes}>{item.notes}</Text>
+            </InlineDetails>
+          )}
 
           {readOnly && (
             <View style={s.viewOnly}>
               <Icon name="users" size={16} color={colors.accent} />
-              <Text style={s.viewOnlyText}>
-                View only — you’re a viewer in this team, so the timer and Mark
-                done are off.
-              </Text>
+              <Text style={s.viewOnlyText}>View only.</Text>
             </View>
           )}
 
@@ -310,7 +439,7 @@ function Body({
               <Segmented
                 options={rhythmIds}
                 value={rhythmKey}
-                disabled={focus.running || startedAt !== null}
+                disabled={locked || focus.running || startedAt !== null}
                 labels={Object.fromEntries([
                   ...FOCUS_RHYTHMS.map((r) => [r.id, r.label]),
                   ["custom", "Custom"],
@@ -327,6 +456,7 @@ function Body({
                   <Text style={shared.small}>Work</Text>
                   <TextInput
                     style={[shared.input, s.customInput]}
+                    editable={!locked}
                     keyboardType="number-pad"
                     value={custom.work}
                     maxLength={3}
@@ -337,6 +467,7 @@ function Body({
                   <Text style={shared.small}>min · Break</Text>
                   <TextInput
                     style={[shared.input, s.customInput]}
+                    editable={!locked}
                     keyboardType="number-pad"
                     value={custom.rest}
                     maxLength={2}
@@ -358,8 +489,6 @@ function Body({
               >
                 <Text
                   style={s.ringClock}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
                   accessibilityRole="timer"
                   accessibilityLabel={`${focus.label}, ${clock(focus.remaining)} left`}
                 >
@@ -391,9 +520,12 @@ function Body({
                 <PressableScale
                   accessibilityRole="button"
                   accessibilityLabel={focus.running ? "Pause" : "Start"}
-                  onPress={() =>
-                    focus.running ? focus.pause() : focus.start()
-                  }
+                  disabled={locked}
+                  accessibilityState={{ disabled: locked }}
+                  onPress={() => {
+                    if (saveLock.current || transitionLock.current) return;
+                    focus.running ? focus.pause() : focus.start();
+                  }}
                   style={({ pressed }) => [
                     s.play,
                     pressed && { backgroundColor: colors.accentPressed },
@@ -402,21 +534,21 @@ function Body({
                   <Icon
                     name={focus.running ? "pause" : "play"}
                     size={26}
-                    color={colors.white}
+                    color={colors.onAccent}
                     strokeWidth={2}
                   />
                 </PressableScale>
                 {keepsRunning && (
                   <SmallAction
                     label="End session"
-                    disabled={busy}
+                    disabled={locked}
                     onPress={() => void endSession()}
                   />
                 )}
                 {focus.state.phase !== "work" && (
                   <SmallAction
                     label="Skip break"
-                    disabled={busy}
+                    disabled={locked}
                     onPress={focus.skip}
                   />
                 )}
@@ -442,8 +574,6 @@ function Body({
             <View style={s.timerCard}>
               <Text
                 style={s.timer}
-                numberOfLines={1}
-                adjustsFontSizeToFit
                 accessibilityRole="timer"
                 accessibilityLabel={`Timer ${clock(elapsed)}`}
               >
@@ -463,10 +593,22 @@ function Body({
                 accessibilityLabel={
                   startedAt !== null ? "Pause and log time" : "Start timer"
                 }
-                accessibilityState={{ disabled: busy }}
-                disabled={busy}
+                accessibilityState={{ disabled: locked }}
+                disabled={locked}
                 onPress={() =>
-                  startedAt !== null ? void stop() : setStartedAt(Date.now())
+                  startedAt !== null
+                    ? void stop()
+                    : (() => {
+                        if (
+                          saveLock.current ||
+                          transitionLock.current ||
+                          openLog.current
+                        )
+                          return;
+                        const at = Date.now();
+                        startedRef.current = at;
+                        setStartedAt(at);
+                      })()
                 }
                 style={({ pressed }) => [
                   s.play,
@@ -477,7 +619,7 @@ function Body({
                 <Icon
                   name={startedAt !== null ? "pause" : "play"}
                   size={26}
-                  color={colors.white}
+                  color={colors.onAccent}
                   strokeWidth={2}
                 />
               </PressableScale>
@@ -487,7 +629,7 @@ function Body({
           {celebrating && <Celebration title={item.title} />}
 
           {steps.length > 0 && (
-            <View style={shared.card}>
+            <View style={s.section}>
               <Text style={[shared.sectionTitle, s.gapBelow]}>Checklist</Text>
               {steps.map((step, n) => (
                 <Pressable
@@ -496,9 +638,9 @@ function Body({
                   accessibilityLabel={step.title}
                   accessibilityState={{
                     checked: step.done,
-                    disabled: busy || readOnly,
+                    disabled: locked || readOnly,
                   }}
-                  disabled={busy || readOnly}
+                  disabled={locked || readOnly}
                   onPress={() => void toggleStep(step.id, !step.done)}
                   style={[s.step, n > 0 && s.divider]}
                 >
@@ -507,7 +649,7 @@ function Body({
                       <Icon
                         name="check"
                         size={12}
-                        color={colors.white}
+                        color={colors.onAccent}
                         strokeWidth={3}
                       />
                     )}
@@ -524,13 +666,13 @@ function Body({
             <Button
               title={busy ? "Saving…" : "Mark done"}
               icon="check"
-              disabled={busy}
+              disabled={locked}
               onPress={() => void markDone()}
             />
           )}
 
           {next && (
-            <View style={[shared.card, s.next]}>
+            <View style={[s.section, s.next]}>
               <Text style={shared.label}>Next up</Text>
               <Text style={s.nextTitle}>{next.title}</Text>
               <PlanningMeta item={next} />
@@ -538,25 +680,27 @@ function Body({
                 secondary
                 title="Focus on this next"
                 icon="arrowRight"
-                disabled={busy}
+                disabled={locked}
                 style={s.nextButton}
                 onPress={async () => {
-                  if (await settle()) onSwitch(next);
+                  void transition(async () => {
+                    if ((await settle()) && owns()) onSwitch(next);
+                  });
                 }}
               />
               {upcoming.slice(1).map((other) => (
                 <View key={other.id} style={[s.otherRow, s.divider]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.otherTitle} numberOfLines={1}>
-                      {other.title}
-                    </Text>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.otherTitle}>{other.title}</Text>
                     <PlanningMeta item={other} />
                   </View>
                   <SmallAction
                     label="Focus"
-                    disabled={busy}
+                    disabled={locked}
                     onPress={async () => {
-                      if (await settle()) onSwitch(other);
+                      void transition(async () => {
+                        if ((await settle()) && owns()) onSwitch(other);
+                      });
                     }}
                   />
                 </View>
@@ -579,13 +723,23 @@ function Ring({
   rest: boolean;
   children: React.ReactNode;
 }) {
-  const size = 188;
+  const { fontScale } = useWindowDimensions();
+  const [available, setAvailable] = useState(188);
+  const size = Math.min(available, 188 * Math.max(1, fontScale));
   const stroke = 10;
   const r = (size - stroke) / 2;
   const length = 2 * Math.PI * r;
   const done = Math.max(0, Math.min(1, progress));
   return (
-    <View style={{ width: size, height: size }}>
+    <View
+      onLayout={(event) => setAvailable(event.nativeEvent.layout.width)}
+      style={{
+        width: "100%",
+        maxWidth: 188 * Math.max(1, fontScale),
+        alignSelf: "center",
+        height: size,
+      }}
+    >
       <Svg width={size} height={size} style={StyleSheet.absoluteFill}>
         <Circle
           cx={size / 2}
@@ -613,26 +767,15 @@ function Ring({
   );
 }
 
-/** A check that pops in with a short message; still under reduced motion. */
+/** Completion feedback stays inline without ornamental motion. */
 function Celebration({ title }: { title: string }) {
-  const reduced = useReducedMotion();
-  const scale = useRef(new Animated.Value(reduced ? 1 : 0.6)).current;
-  useEffect(() => {
-    if (reduced) return;
-    pop(scale, 1.2).start();
-  }, [reduced, scale]);
   return (
-    <View
-      style={s.celebrate}
-      accessible
-      accessibilityRole="alert"
-      accessibilityLabel={`Nice work. ${title} is done.`}
-    >
-      <Animated.View style={[s.badge, { transform: [{ scale }] }]}>
-        <Icon name="check" size={28} color={colors.white} strokeWidth={3} />
-      </Animated.View>
-      <Text style={s.celebrateTitle}>Nice work.</Text>
-      <Text style={[shared.body, s.center]}>{title} is done.</Text>
+    <View style={s.celebrate} accessibilityRole="alert">
+      <Icon name="check" size={18} color={colors.accent} />
+      <View style={{ flex: 1, minWidth: 0 }}>
+        <Text style={s.celebrateTitle}>Task completed</Text>
+        <Text style={shared.small}>{title}</Text>
+      </View>
     </View>
   );
 }
@@ -649,9 +792,9 @@ const s = themed(() =>
     },
     eyebrow: { ...shared.eyebrow, marginBottom: 0 },
     round: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
+      width: 44,
+      height: 44,
+      borderRadius: radii.pill,
       backgroundColor: colors.surfaceMuted,
       alignItems: "center",
       justifyContent: "center",
@@ -659,20 +802,25 @@ const s = themed(() =>
     body: { padding: spacing.page, paddingTop: 4, paddingBottom: 40 },
     column: { width: "100%", maxWidth: 600, alignSelf: "center" },
     title: {
-      fontFamily: fonts.display,
-      fontSize: 24,
-      lineHeight: 34,
-      letterSpacing: -0.8,
+      fontFamily: fonts.bold,
+      fontSize: 18,
+      lineHeight: 26,
+      letterSpacing: -0.2,
       color: colors.text,
     },
     notes: { ...shared.body, marginTop: 12 },
+    section: {
+      paddingVertical: 12,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
     timerCard: {
       alignItems: "center",
       backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.card,
-      paddingVertical: 26,
+      paddingVertical: 18,
       paddingHorizontal: 18,
       marginVertical: 20,
       gap: 6,
@@ -704,13 +852,13 @@ const s = themed(() =>
       letterSpacing: -1,
       color: colors.text,
       fontVariant: ["tabular-nums"],
-      maxWidth: 150,
+      textAlign: "center",
     },
     dots: { flexDirection: "row", gap: 6, marginTop: 4 },
     dot: {
       width: 22,
       height: 6,
-      borderRadius: 3,
+      borderRadius: radii.check,
       backgroundColor: colors.surfaceMuted,
       borderWidth: 1,
       borderColor: colors.border,
@@ -719,6 +867,7 @@ const s = themed(() =>
     dotNow: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
     intervalButtons: {
       flexDirection: "row",
+      flexWrap: "wrap",
       alignItems: "center",
       gap: 14,
       marginTop: 8,
@@ -727,30 +876,18 @@ const s = themed(() =>
       marginTop: 12,
       width: 72,
       height: 72,
-      borderRadius: 36,
+      borderRadius: radii.pill,
       backgroundColor: colors.accent,
       alignItems: "center",
       justifyContent: "center",
     },
     celebrate: {
+      flexDirection: "row",
       alignItems: "center",
-      backgroundColor: colors.soft,
-      borderWidth: 1,
-      borderColor: colors.softBorder,
-      borderRadius: radii.card,
-      padding: 22,
-      marginVertical: 20,
+      gap: 8,
+      paddingVertical: 12,
     },
-    badge: {
-      width: 56,
-      height: 56,
-      borderRadius: 28,
-      backgroundColor: colors.accent,
-      alignItems: "center",
-      justifyContent: "center",
-      marginBottom: 12,
-    },
-    celebrateTitle: { ...shared.title, fontSize: 24 },
+    celebrateTitle: { ...shared.sectionTitle, fontSize: 15 },
     center: { textAlign: "center" },
     gapBelow: { marginBottom: 8 },
     step: {
@@ -767,7 +904,7 @@ const s = themed(() =>
     check: {
       width: 22,
       height: 22,
-      borderRadius: 7,
+      borderRadius: radii.check,
       borderWidth: 1.5,
       borderColor: colors.checkBorder,
       backgroundColor: colors.surface,

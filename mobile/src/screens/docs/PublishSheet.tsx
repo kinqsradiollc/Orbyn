@@ -1,10 +1,12 @@
-import React, { useEffect, useState } from "react";
-import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
+import React, { useEffect, useRef, useState } from "react";
+import { StyleSheet, Text, TextInput, View } from "react-native";
+import { Switch } from "../../components/Switch";
 import { PUBLISH_SLUG, type PublishState } from "@orbyn/core";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Button } from "../../components/Button";
 import { client, webOrigin } from "../../lib/api";
-import { confirmAction } from "../../lib/confirm";
+import { ActionSheet, MoreMenu } from "../../components/MoreMenu";
+import { session } from "../../lib/session";
 import { errorText } from "../../lib/errors";
 import { copyText } from "../../lib/share";
 import { shared } from "../../styles";
@@ -22,9 +24,12 @@ export function PublishSheet(props: {
     props.visible ? (
       <PagePublicationSheet id={props.id} onClose={props.onClose} />
     ) : null
-  ) : (
-    <LegacyPublishSheet {...props} />
-  );
+  ) : props.visible ? (
+    <LegacyPublishSheet
+      key={`${session.token}:${props.kind}:${props.id}`}
+      {...props}
+    />
+  ) : null;
 }
 
 /**
@@ -53,6 +58,24 @@ function LegacyPublishSheet({
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [note, setNote] = useState("");
+  const [leavePrompt, setLeavePrompt] = useState(false);
+  const [unpublishPrompt, setUnpublishPrompt] = useState(false);
+  const [removePasswordPrompt, setRemovePasswordPrompt] = useState(false);
+  const owner = useRef(session.token);
+  const mounted = useRef(false);
+  const lock = useRef(false);
+  const baseline = useRef("");
+  const owns = () => mounted.current && owner.current === session.token;
+  const close = () => {
+    if (lock.current || !owns()) return;
+    if (
+      state &&
+      baseline.current !== JSON.stringify([slug, description, hidden, password])
+    )
+      setLeavePrompt(true);
+    else onClose();
+  };
   const take = (s: PublishState) => {
     setState(s);
     setSlug(s.published?.slug ?? "");
@@ -61,23 +84,52 @@ function LegacyPublishSheet({
     );
     setHidden(s.published?.noindex ?? true);
     setPassword("");
+    baseline.current = JSON.stringify([
+      s.published?.slug ?? "",
+      kind === "doc" ? s.web_description : (s.published?.description ?? ""),
+      s.published?.noindex ?? true,
+      "",
+    ]);
   };
-  useEffect(() => {
-    if (!visible) return;
-    setState(null);
-    setError("");
-    client.getPublish(kind, id).then(take, (e) => setError(errorText(e)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visible, kind, id]);
-  const run = async (fn: () => Promise<PublishState>) => {
+  const load = async () => {
+    if (lock.current) return;
+    lock.current = true;
     setBusy(true);
     setError("");
     try {
-      take(await fn());
+      const next = await client.getPublish(kind, id);
+      if (owns()) take(next);
     } catch (e) {
-      setError(errorText(e));
+      if (owns()) setError(errorText(e));
     } finally {
-      setBusy(false);
+      lock.current = false;
+      if (owns()) setBusy(false);
+    }
+  };
+  useEffect(() => {
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const run = async (fn: () => Promise<PublishState>) => {
+    if (lock.current || !owns()) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    setNote("");
+    try {
+      const next = await fn();
+      if (owns()) {
+        take(next);
+        setNote(next.published ? "Publishing saved." : "Unpublished.");
+      }
+    } catch (e) {
+      if (owns()) setError(errorText(e));
+    } finally {
+      lock.current = false;
+      if (owns()) setBusy(false);
     }
   };
   const published = state?.published ?? null;
@@ -96,154 +148,230 @@ function LegacyPublishSheet({
       });
     });
   return (
-    <BottomSheet
-      visible={visible}
-      title="Publish to web"
-      onClose={onClose}
-      footer={
-        state?.can_publish ? (
-          <Button
-            title={published ? "Save" : "Publish"}
-            disabled={busy || !slugOk || (!!password && password.length < 4)}
-            onPress={save}
-          />
-        ) : undefined
-      }
-    >
-      {!state && !error && <Text style={s.muted}>Loading…</Text>}
-      {state && (
-        <View style={s.body}>
-          <Text style={s.muted}>
-            {published
-              ? `“${name}” is on the web. Anyone with the link can read it, without an account.`
-              : `Put “${name}” on the web: anyone with the link can read it, without an account. It stays off until you publish it.`}
-          </Text>
-          {state.via_folder && (
-            <Text style={s.note}>
-              This page is on the web already, in the folder “
-              {state.via_folder.folder_name}”.
+    <>
+      <BottomSheet
+        visible={visible}
+        title="Publish to web"
+        onClose={close}
+        closeDisabled={busy}
+        footer={
+          state?.can_publish ? (
+            <Button
+              title={published ? "Save" : "Publish"}
+              disabled={busy || !slugOk || (!!password && password.length < 4)}
+              onPress={save}
+            />
+          ) : undefined
+        }
+      >
+        {!state && !error && <Text style={s.muted}>Loading…</Text>}
+        {state && (
+          <View style={s.body}>
+            <Text style={s.muted}>
+              {published
+                ? `“${name}” is published. ${published.has_password ? "Password required to read it." : "Anyone with the link can read it."}`
+                : `“${name}” stays private until published. ${password ? "Readers will need the password." : "Anyone with the link will be able to read it."}`}
             </Text>
-          )}
-          {!state.can_publish && !!state.reason && (
-            <Text style={s.note}>{state.reason}</Text>
-          )}
-          {published && (
-            <View style={s.linkRow}>
-              <Text style={s.link} numberOfLines={1} selectable>
-                {url}
+            {state.via_folder && (
+              <Text style={s.note}>
+                This page is on the web already, in the folder “
+                {state.via_folder.folder_name}”.
               </Text>
-              <Button
-                secondary
-                icon="copy"
-                title="Copy"
-                onPress={() => void copyText(url, "Link copied")}
-              />
-            </View>
-          )}
-          {state.can_publish && (
-            <>
-              <Text style={shared.label}>Address</Text>
-              <TextInput
-                style={[shared.input, !slugOk && s.invalid]}
-                value={slug}
-                onChangeText={(t) => setSlug(t.toLowerCase())}
-                placeholder="made from the title"
-                placeholderTextColor={colors.faint}
-                autoCapitalize="none"
-                autoCorrect={false}
-                accessibilityLabel={`Address after ${webOrigin}/p/`}
-              />
-              {!slugOk && (
-                <Text style={s.error}>
-                  Use 3 to 80 letters, numbers and dashes.
+            )}
+            {!state.can_publish && !!state.reason && (
+              <Text style={s.note}>{state.reason}</Text>
+            )}
+            {published && (
+              <View style={s.linkRow}>
+                <Text style={s.link} selectable>
+                  {url}
                 </Text>
-              )}
-              <Text style={shared.label}>Description</Text>
-              <TextInput
-                style={[shared.input, s.multi]}
-                value={description}
-                onChangeText={setDescription}
-                maxLength={300}
-                multiline
-                placeholder="A line for the card a shared link shows"
-                placeholderTextColor={colors.faint}
-              />
-              <View style={s.switchRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.switchTitle}>Hide from search engines</Text>
-                  <Text style={s.muted}>
-                    On: only people with the link find it.
-                  </Text>
-                </View>
-                <Switch
-                  value={hidden}
-                  onValueChange={setHidden}
-                  trackColor={{ true: colors.accent }}
-                  accessibilityLabel="Hide from search engines"
-                />
-              </View>
-              <Text style={shared.label}>
-                {published?.has_password
-                  ? "New password"
-                  : "Password (optional)"}
-              </Text>
-              <TextInput
-                style={shared.input}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                autoCapitalize="none"
-                textContentType="newPassword"
-                placeholder={
-                  published?.has_password
-                    ? "Leave empty to keep it"
-                    : "Leave empty for no password"
-                }
-                placeholderTextColor={colors.faint}
-              />
-              {published?.has_password && (
                 <Button
                   secondary
-                  title="Remove the password"
-                  disabled={busy}
-                  onPress={() =>
-                    void run(() =>
-                      client.publish(kind, id, {
-                        slug: published.slug,
-                        noindex: hidden,
-                        description,
-                        password: null,
-                      }),
-                    )
-                  }
+                  icon="copy"
+                  title="Copy"
+                  onPress={() => void copyText(url, "Link copied")}
                 />
-              )}
-            </>
-          )}
-          {published && (
-            <>
-              <Text style={s.muted}>
-                Read {published.views} time{published.views === 1 ? "" : "s"}.
-              </Text>
-              <Button
-                destructive
-                title="Unpublish"
-                disabled={busy}
-                onPress={() =>
-                  confirmAction(
-                    `Unpublish this ${noun}?`,
-                    "The address stops working at once. You can publish it again later.",
-                    "Unpublish",
-                    () => void run(() => client.unpublish(kind, id)),
-                  )
-                }
-              />
-            </>
-          )}
-        </View>
-      )}
-      {!!error && <Text style={s.error}>{error}</Text>}
-    </BottomSheet>
+              </View>
+            )}
+            {state.can_publish && (
+              <>
+                <Text style={shared.label}>Address</Text>
+                <TextInput
+                  style={[shared.input, !slugOk && s.invalid]}
+                  editable={!busy}
+                  value={slug}
+                  onChangeText={(t) => setSlug(t.toLowerCase())}
+                  placeholder="made from the title"
+                  placeholderTextColor={colors.faint}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  accessibilityLabel={`Address after ${webOrigin}/p/`}
+                />
+                {!slugOk && (
+                  <Text style={s.error}>
+                    Use 3 to 80 letters, numbers and dashes.
+                  </Text>
+                )}
+                <Text style={shared.label}>Description</Text>
+                <TextInput
+                  style={[shared.input, s.multi]}
+                  editable={!busy}
+                  value={description}
+                  onChangeText={setDescription}
+                  maxLength={300}
+                  multiline
+                  placeholder="Short link preview"
+                  placeholderTextColor={colors.faint}
+                />
+                <View style={s.switchRow}>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={s.switchTitle}>Hide from search engines</Text>
+                    <Text style={s.muted}>
+                      Requests exclusion from search results. Access settings
+                      are unchanged.
+                    </Text>
+                  </View>
+                  <Switch
+                    disabled={busy}
+                    value={hidden}
+                    onValueChange={setHidden}
+                    trackColor={{ true: colors.accent }}
+                    accessibilityLabel="Hide from search engines"
+                  />
+                </View>
+                <Text style={shared.label}>
+                  {published?.has_password
+                    ? "New password"
+                    : "Password (optional)"}
+                </Text>
+                <TextInput
+                  style={shared.input}
+                  editable={!busy}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  autoCapitalize="none"
+                  textContentType="newPassword"
+                  placeholder={
+                    published?.has_password
+                      ? "Leave empty to keep it"
+                      : "Leave empty for no password"
+                  }
+                  placeholderTextColor={colors.faint}
+                />
+              </>
+            )}
+            {published && (
+              <>
+                <Text style={s.muted}>
+                  Read {published.views} time{published.views === 1 ? "" : "s"}.
+                </Text>
+                <MoreMenu
+                  label="Publishing options"
+                  disabled={busy}
+                  actions={[
+                    ...(published.has_password && state.can_publish
+                      ? [
+                          {
+                            label: "Remove password",
+                            destructive: true,
+                            onPress: () => {
+                              if (owns() && !lock.current)
+                                setRemovePasswordPrompt(true);
+                            },
+                          },
+                        ]
+                      : []),
+                    {
+                      label: "Unpublish",
+                      destructive: true,
+                      onPress: () => {
+                        if (owns() && !lock.current) setUnpublishPrompt(true);
+                      },
+                    },
+                  ]}
+                />
+              </>
+            )}
+          </View>
+        )}
+        {!!error && (
+          <Text accessibilityRole="alert" style={s.error}>
+            {error}
+          </Text>
+        )}
+        {!state && error && (
+          <Button
+            title="Retry"
+            secondary
+            disabled={busy}
+            onPress={() => void load()}
+          />
+        )}
+        {!!note && (
+          <Text accessibilityRole="text" style={s.muted}>
+            {note}
+          </Text>
+        )}
+      </BottomSheet>
+      <ActionSheet
+        visible={leavePrompt}
+        label="Unsaved publishing changes"
+        title="Discard changes?"
+        cancelLabel="Keep editing"
+        onClose={() => setLeavePrompt(false)}
+        actions={[
+          {
+            label: "Discard changes",
+            destructive: true,
+            onPress: () => {
+              if (owns() && !lock.current) onClose();
+            },
+          },
+        ]}
+      />
+      <ActionSheet
+        visible={removePasswordPrompt}
+        label="Remove publishing password"
+        title="Remove password?"
+        message="Anyone with the public link will be able to read this folder."
+        onClose={() => setRemovePasswordPrompt(false)}
+        actions={[
+          {
+            label: "Remove password",
+            destructive: true,
+            disabled: busy,
+            onPress: () => {
+              if (published && state?.can_publish)
+                void run(() =>
+                  client.publish(kind, id, {
+                    slug: published.slug,
+                    noindex: hidden,
+                    description,
+                    password: null,
+                  }),
+                );
+            },
+          },
+        ]}
+      />
+      <ActionSheet
+        visible={unpublishPrompt}
+        label="Unpublish"
+        title={`Unpublish this ${noun}?`}
+        message="The public address stops working. You can publish it again later."
+        onClose={() => setUnpublishPrompt(false)}
+        actions={[
+          {
+            label: "Unpublish",
+            destructive: true,
+            disabled: busy,
+            onPress: () => void run(() => client.unpublish(kind, id)),
+          },
+        ]}
+      />
+    </>
   );
 }
 
@@ -252,47 +380,97 @@ function LegacyPublishSheet({
  * off, which takes every one of the team's pages off the web at once.
  */
 export function TeamPublishingRow({ teamId }: { teamId: string }) {
+  return (
+    <TeamPublishingRowBody key={`${session.token}:${teamId}`} teamId={teamId} />
+  );
+}
+function TeamPublishingRowBody({ teamId }: { teamId: string }) {
   const [state, setState] = useState<{
     allowed: boolean;
     published: number;
     can_change: boolean;
   } | null>(null);
   const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const owner = useRef(session.token);
+  const mounted = useRef(false);
+  const lock = useRef(false);
+  const owns = () => mounted.current && owner.current === session.token;
+  const load = async () => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await client.getTeamPublishing(teamId);
+      if (owns()) setState(next);
+    } catch (e) {
+      if (owns()) setError(errorText(e));
+    } finally {
+      lock.current = false;
+      if (owns()) setBusy(false);
+    }
+  };
   useEffect(() => {
-    client.getTeamPublishing(teamId).then(setState, () => setState(null));
-  }, [teamId]);
-  if (!state) return null;
+    mounted.current = true;
+    void load();
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const change = async (allowed: boolean) => {
+    if (!state?.can_change || lock.current || !owns()) return;
+    lock.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const next = await client.setTeamPublishing(teamId, allowed);
+      if (owns()) setState(next);
+    } catch (e) {
+      if (owns()) setError(errorText(e));
+    } finally {
+      lock.current = false;
+      if (owns()) setBusy(false);
+    }
+  };
   return (
-    <View style={[shared.card, s.team]}>
-      <View style={s.switchRow}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.switchTitle}>Members can publish pages</Text>
-          <Text style={s.muted}>
-            {state.published
-              ? `${state.published} published. `
-              : "Nothing published. "}
-            {state.can_change
-              ? "Off takes them all off the web at once."
-              : "Owners and admins can change this."}
-          </Text>
+    <View style={s.team}>
+      <Text style={s.switchTitle}>Pages on the web</Text>
+      {!state && !error && (
+        <Text style={s.muted}>Loading publishing settings…</Text>
+      )}
+      {state && (
+        <View style={s.switchRow}>
+          <View style={{ flex: 1, minWidth: 0 }}>
+            <Text style={s.switchTitle}>Members can publish pages</Text>
+            <Text style={s.muted}>
+              {state.published} published.{" "}
+              {state.can_change
+                ? "Turning this off removes all public team pages."
+                : "Owners and admins can change this."}
+            </Text>
+          </View>
+          <Switch
+            value={state.allowed}
+            disabled={busy || !state.can_change}
+            accessibilityLabel="Members can publish pages"
+            onValueChange={(value) => void change(value)}
+          />
         </View>
-        <Switch
-          value={state.allowed}
-          disabled={!state.can_change}
-          trackColor={{ true: colors.accent }}
-          accessibilityLabel="Members can publish the team's pages"
-          onValueChange={(on) =>
-            client.setTeamPublishing(teamId, on).then(
-              (next) => {
-                setError("");
-                setState(next);
-              },
-              (e) => setError(errorText(e)),
-            )
-          }
+      )}
+      {!!error && (
+        <Text accessibilityRole="alert" style={s.error}>
+          {error}
+        </Text>
+      )}
+      {!state && error && (
+        <Button
+          title="Retry"
+          secondary
+          disabled={busy}
+          onPress={() => void load()}
         />
-      </View>
-      {!!error && <Text style={s.error}>{error}</Text>}
+      )}
     </View>
   );
 }
@@ -315,15 +493,22 @@ const s = themed(() =>
       fontSize: 13,
       color: colors.textSoft,
     },
-    linkRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+    linkRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      alignItems: "center",
+      gap: 8,
+    },
     link: {
-      flex: 1,
+      flexGrow: 1,
+      flexBasis: 180,
+      minWidth: 0,
       fontFamily: fonts.regular,
       fontSize: 15,
       color: colors.accent,
     },
     invalid: { borderColor: colors.danger },
-    multi: { minHeight: 64, textAlignVertical: "top" },
+    multi: { minHeight: 64, maxHeight: 160, textAlignVertical: "top" },
     switchRow: { flexDirection: "row", alignItems: "center", gap: 12 },
     switchTitle: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     error: { fontFamily: fonts.regular, fontSize: 13, color: colors.danger },

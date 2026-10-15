@@ -319,6 +319,7 @@ export function BlockView({
             type="checkbox"
             className="doc-check"
             checked={block.done}
+            disabled={!onToggleTodo}
             onChange={onToggleTodo}
             // Ticking a box is not a request to edit the line's source.
             onClick={(e) => e.stopPropagation()}

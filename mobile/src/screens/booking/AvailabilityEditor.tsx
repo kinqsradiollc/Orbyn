@@ -5,7 +5,6 @@ import { Button } from "../../components/Button";
 import { ClockField, DateField, Field } from "../../components/Field";
 import { Segmented } from "../../components/Segmented";
 import { SmallAction } from "../../components/SmallAction";
-import { animateLayout } from "../../motion";
 import { deviceTimeZone, WEEK_ORDER, WEEKDAYS } from "../../lib/planning";
 import { colors, fonts, themed } from "../../theme";
 import { shared } from "../../styles";
@@ -39,7 +38,9 @@ function Ranges({
   label,
   empty,
   extra,
+  disabled = false,
 }: {
+  disabled?: boolean;
   ranges: Range[];
   onChange: (ranges: Range[]) => void;
   /** Spoken name, e.g. "Monday" or "Fri, Sep 18". */
@@ -58,6 +59,7 @@ function Ranges({
         <View key={n} style={[bs.pair, s.range]}>
           <View style={bs.half}>
             <ClockField
+              disabled={disabled}
               label={`${label} from`}
               value={r.start}
               onChange={(start) =>
@@ -68,6 +70,7 @@ function Ranges({
           <Text style={s.dash}>–</Text>
           <View style={bs.half}>
             <ClockField
+              disabled={disabled}
               label={`${label} until`}
               value={r.end}
               onChange={(end) =>
@@ -76,9 +79,9 @@ function Ranges({
             />
           </View>
           <RemoveButton
+            disabled={disabled}
             label={`Remove ${label} hours`}
             onPress={() => {
-              animateLayout();
               onChange(ranges.filter((_, i) => i !== n));
             }}
           />
@@ -94,9 +97,8 @@ function Ranges({
           {next && ranges.length < MAX_RANGES && (
             <SmallAction
               label="Add hours"
-              disabled={false}
+              disabled={disabled}
               onPress={() => {
-                animateLayout();
                 onChange([...ranges, next]);
               }}
             />
@@ -118,7 +120,9 @@ export function AvailabilityEditor({
   kept,
   overrides,
   onOverrides,
+  disabled = false,
 }: {
+  disabled?: boolean;
   availability: BookingAvailability;
   onChange: (availability: BookingAvailability) => void;
   /** Custom hours to bring back when switching from working hours. */
@@ -127,9 +131,11 @@ export function AvailabilityEditor({
   onOverrides: (overrides: OverrideDraft[]) => void;
 }) {
   const device = deviceTimeZone();
-  const narrow = useWindowDimensions().width < SIDE_BY_SIDE;
+  const { width, fontScale } = useWindowDimensions();
+  const narrow = width < SIDE_BY_SIDE || fontScale > 1.35;
   const custom = availability.mode === "custom" ? availability : null;
   const setWeekly = (weekly: CustomWeek["weekly"]) =>
+    !disabled &&
     custom &&
     onChange({
       ...custom,
@@ -138,13 +144,15 @@ export function AvailabilityEditor({
       ),
     });
   const patchOverride = (key: string, patch: Partial<OverrideDraft>) =>
+    !disabled &&
     onOverrides(overrides.map((o) => (o.key === key ? { ...o, ...patch } : o)));
   const addOverride = () => {
+    if (disabled || overrides.length >= MAX_OVERRIDES) return;
     const taken = new Set(overrides.map((o) => o.date));
     const day = new Date();
     do day.setDate(day.getDate() + 1);
     while (taken.has(dayKeyOf(day)));
-    animateLayout();
+
     onOverrides([
       ...overrides,
       { key: newKey(), date: dayKeyOf(day), hours: [] },
@@ -155,12 +163,12 @@ export function AvailabilityEditor({
     <>
       <Field label="Offer times during">
         <Segmented
+          disabled={disabled}
           options={MODES}
           value={availability.mode}
           labels={{ working_hours: "My working hours", custom: "Custom hours" }}
           accessibilityLabel="Offer times during"
           onChange={(mode) => {
-            animateLayout();
             onChange(mode === "custom" ? { mode, ...kept } : { mode });
           }}
         />
@@ -173,14 +181,16 @@ export function AvailabilityEditor({
         <>
           <Field
             label="Time zone"
-            hint="The hours below are in this zone. Busy time on hosts’ calendars is still left out."
+            hint="Hours use this zone; busy host calendar time is excluded."
           >
             <TimeZonePicker
+              disabled={disabled}
               value={custom.timezone}
               onChange={(timezone) => onChange({ ...custom, timezone })}
             />
             {custom.timezone !== device && (
               <Button
+                disabled={disabled}
                 secondary
                 title={`Use this device’s (${device})`}
                 style={s.inline}
@@ -200,6 +210,7 @@ export function AvailabilityEditor({
                 </Text>
                 <View style={{ flex: 1 }}>
                   <Ranges
+                    disabled={disabled}
                     label={WEEKDAYS[d]}
                     empty="Unavailable"
                     ranges={ranges}
@@ -213,9 +224,8 @@ export function AvailabilityEditor({
                       ranges.length > 0 && (
                         <SmallAction
                           label="Copy to all days"
-                          disabled={false}
+                          disabled={disabled}
                           onPress={() => {
-                            animateLayout();
                             setWeekly(
                               WEEK_ORDER.flatMap((day) =>
                                 ranges.map((r) => ({ day, ...r })),
@@ -233,12 +243,9 @@ export function AvailabilityEditor({
         </>
       )}
 
-      <Text style={[shared.label, s.overrides]}>
-        Dates with different hours
-      </Text>
+      <Text style={[shared.label, s.overrides]}>Date exceptions</Text>
       <Text style={[shared.small, bs.gap]}>
-        Days off, or days with other hours. These replace the usual hours for
-        that date.
+        Replace the usual hours on a specific date.
       </Text>
       {overrides.map((o) => {
         const taken = overrides.some(
@@ -249,15 +256,16 @@ export function AvailabilityEditor({
             <View style={[bs.pair, bs.gap]}>
               <View style={bs.half}>
                 <DateField
+                  disabled={disabled}
                   label="Date"
                   value={o.date}
                   onChange={(date) => date && patchOverride(o.key, { date })}
                 />
               </View>
               <RemoveButton
+                disabled={disabled}
                 label="Remove this date"
                 onPress={() => {
-                  animateLayout();
                   onOverrides(overrides.filter((x) => x.key !== o.key));
                 }}
               />
@@ -268,12 +276,12 @@ export function AvailabilityEditor({
               </Text>
             )}
             <Segmented
+              disabled={disabled}
               options={["closed", "open"] as const}
               value={o.hours.length ? "open" : "closed"}
               labels={{ closed: "Unavailable", open: "Other hours" }}
               accessibilityLabel="Hours on this date"
               onChange={(v) => {
-                animateLayout();
                 patchOverride(o.key, {
                   hours: v === "open" ? [{ start: "09:00", end: "17:00" }] : [],
                 });
@@ -282,6 +290,7 @@ export function AvailabilityEditor({
             {o.hours.length > 0 && (
               <View style={s.overrideHours}>
                 <Ranges
+                  disabled={disabled}
                   label={o.date}
                   ranges={o.hours}
                   onChange={(hours) => patchOverride(o.key, { hours })}
@@ -293,6 +302,7 @@ export function AvailabilityEditor({
       })}
       {overrides.length < MAX_OVERRIDES && (
         <Button
+          disabled={disabled}
           secondary
           title="Add a date"
           icon="plus"
@@ -332,11 +342,10 @@ const s = themed(() =>
     warn: { color: colors.danger, marginBottom: 8 },
     overrides: { marginTop: 18 },
     override: {
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      padding: 12,
-      marginBottom: 12,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+      paddingVertical: 12,
+      marginBottom: 4,
     },
     overrideHours: { marginTop: 12 },
   }),
