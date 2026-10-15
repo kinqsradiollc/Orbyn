@@ -89,7 +89,10 @@ export function DocWritingBlock({
             }
           }}
           onBlur={(event) => {
+            // PDF iframe focus can report a null relatedTarget. Code pairs stay
+            // open for preview interaction until explicit Done or Escape.
             if (
+              !keepRendered &&
               !event.currentTarget.parentElement?.contains(
                 event.relatedTarget as Node | null,
               )

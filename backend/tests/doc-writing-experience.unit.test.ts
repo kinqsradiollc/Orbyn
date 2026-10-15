@@ -313,7 +313,8 @@ for (const native of [false, true])
     );
     let editing = false,
       text = "Original TeX",
-      mounts = 0;
+      mounts = 0,
+      doneCalls = 0;
     const Viewer = () => {
       React.useEffect(() => {
         mounts++;
@@ -339,7 +340,9 @@ for (const native of [false, true])
               render();
             },
             onEdit: () => {},
-            onDone: () => {},
+            onDone: () => {
+              doneCalls++;
+            },
             onComment: () => {},
             onAssist: () => {},
             onSourceFocus: () => {},
@@ -356,6 +359,21 @@ for (const native of [false, true])
       editing = true;
       await React.act(render);
       assert.equal(document.querySelector("iframe"), viewer);
+      if (!native) {
+        await React.act(() => {
+          document.querySelector("textarea")!.dispatchEvent(
+            new dom.window.FocusEvent("focusout", {
+              bubbles: true,
+              relatedTarget: null,
+            }),
+          );
+        });
+        assert.equal(
+          doneCalls,
+          0,
+          "preview iframe focus must not finish code editing",
+        );
+      }
       const hidden = viewer.parentElement!;
       if (native) {
         assert.notEqual(hidden.style.display, "none");
