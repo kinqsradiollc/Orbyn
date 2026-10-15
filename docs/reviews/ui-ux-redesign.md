@@ -2,23 +2,31 @@
 
 Current decision: [ADR 003](../adr/003-product-ui-ux-redesign.md).
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Baseline: `c7b3bdb7`. Phase: candidate preparation; see [qualification handoff](adr-003-candidate.md).
+Baseline: `c7b3bdb7`. Current product/test candidate: `7dfd1b9f`.
+Phase: Tester qualification; see [qualification handoff](adr-003-candidate.md).
 Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review rounds: 0/3.
 
-| Area                                 | State       | Evidence                                 |
-| ------------------------------------ | ----------- | ---------------------------------------- |
-| Decision archive and skill alignment | In progress | Builder source                           |
-| Shared design foundation             | In progress | Builder source                           |
-| Shell and overlays                   | In progress | Builder source; final assessment pending |
-| Home and Assistant                   | In progress | Builder source; final assessment pending |
-| Tasks, Calendar and Focus            | In progress | Builder source; final assessment pending |
-| Projects, Docs and Browse            | In progress | Builder source; final assessment pending |
-| Settings, Admin and Connections      | In progress | Builder source; final assessment pending |
-| Auth and public content              | In progress | Builder source; final assessment pending |
-| Mobile parity                        | In progress | Builder source; final assessment pending |
-| Frozen candidate / Tester / Reviewer | Pending     |                                          |
-| Final web and Expo Visual Check      | Pending     |                                          |
-| Accepted merge and push              | Pending     |                                          |
+| Area | Current state | Evidence / next gate |
+| --- | --- | --- |
+| Decision archive, skills and documentation | Implemented candidate | Changed-document qualification pending |
+| Shared design foundation | Implemented candidate | Types/build passed; final rendering pending |
+| Shell and overlays | Implemented candidate | Interaction test correction/retest in progress |
+| Home and Assistant | Implemented candidate | Final behavior/render qualification pending |
+| Tasks, Calendar and Focus | Implemented candidate | Activity/runtime and final rendering in progress |
+| Projects, Docs and Browse | Implemented candidate | Default TeX/compiler and editor interaction retests pending |
+| Settings, Admin and Connections | Implemented candidate | Import/runtime and interaction qualification in progress |
+| Auth and public content | Implemented candidate | Final representative rendering pending |
+| Mobile parity | Implemented candidate | Expo final behavior/render qualification pending |
+| Frozen candidate / Tester / Reviewer | Testing | `7dfd1b9f`; Reviewer 0/3 |
+| Final web and Expo Visual Check | Pending | After test/code findings settle |
+| Accepted merge and push | Pending | No acceptance or merge claim |
+
+Initial full workspace typecheck and production build passed on `f7899149`.
+The first focused batch failed; those failures remain in Tester's evidence.
+`7039a77b` updates four interaction harnesses, preserving the product source.
+`7dfd1b9f` provisions default T1 fonts and makes the empty TeX starter emit a
+blank page after the live compiler exposed that failure. Retests are pending.
+Detailed historical entries below retain earlier attempts and source boundaries.
 
 Production deployment remains user-owned. Preserve the unrelated Visual-owned
 `c6-production-visual-2026-10-11.md` working change.
