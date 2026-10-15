@@ -50,7 +50,12 @@ async function fixture(format: 1 | 2, anchored = false) {
     return value.format === 1 ? value.blocks : docContainerBlocks(value.nodes);
   };
   const client = {
-    anchorLine: async (_id: string, index: number, text: string) => {
+    anchorLine: async (
+      _id: string,
+      index: number,
+      text: string,
+      expectedVersion?: number,
+    ) => {
       anchors++;
       assert.equal(index, 1);
       assert.equal(text, "Repeated passage");
@@ -170,4 +175,29 @@ test("newer draft during anchoring is retained without refresh", async () => {
     /Save or resolve/,
   );
   assert.equal(f.store.state.session!.title, "Newer draft");
+});
+
+test("remote duplicate reordering refuses the captured saved revision", async () => {
+  const f = await fixture(2);
+  let received: number | undefined;
+  const client = {
+    anchorLine: async (
+      _id: string,
+      _index: number,
+      _text: string,
+      version?: number,
+    ) => {
+      received = version;
+      // The server now owns a newer revision, even if the passage at this index has identical text.
+      if (version !== 2)
+        throw Object.assign(new Error("This page changed"), { status: 409 });
+      assert.fail("A stale revision must never name the shifted duplicate");
+    },
+  };
+  await assert.rejects(
+    prepareDocAssistTarget(f.store, client, "page", f.leaves()[1], () => true),
+    /page changed/,
+  );
+  assert.equal(received, 1);
+  assert.equal(f.leaves()[1].id, undefined);
 });

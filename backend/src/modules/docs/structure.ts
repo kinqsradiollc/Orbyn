@@ -602,7 +602,7 @@ export async function docStructureRoutes(app: FastifyInstance) {
   app.post("/docs/:id/anchor", async (r) => {
     const u = await authenticate(r);
     const id = idParam(r);
-    const { index, text } = docAnchorInput.parse(r.body ?? {});
+    const { index, text, version } = docAnchorInput.parse(r.body ?? {});
     const out = await transaction(async (db) => {
       await actAs(db, u.id);
       // Anyone who can read the page may name a line to link to it: the
@@ -610,14 +610,17 @@ export async function docStructureRoutes(app: FastifyInstance) {
       await requireDoc(db, id, u, "items:read");
       const stored = (
         await db.query<{
+          version: number;
           content: DocBlock[] | null;
           content_format: 1 | 2;
           content_nodes: unknown;
         }>(
-          "SELECT content, content_format, content_nodes FROM docs WHERE id = $1",
+          "SELECT version, content, content_format, content_nodes FROM docs WHERE id = $1 FOR UPDATE",
           [id],
         )
       ).rows[0];
+      if (version !== undefined && stored.version !== version)
+        fail(409, "This page changed. Select the text again before asking.");
       const document = parseVersionedDocContent(
         stored.content_format === 2
           ? { format: 2, nodes: stored.content_nodes }

@@ -1836,3 +1836,50 @@ test("clipping highlights into a structured page retains nested content", async 
     ),
   );
 });
+
+test("saved-selection anchors reject a shifted identical duplicate at a newer revision", async () => {
+  const id = await page();
+  const initial = parseDocContainers(
+    "First\n\nRepeated passage\n\nRepeated passage",
+  );
+  await transaction((db) =>
+    saveVersionedDoc(db, owner, id, 1, { format: 2, nodes: initial }, [1, 2]),
+  );
+  const selectedVersion = (await readVersionedDoc(pool, owner, id, [1, 2]))
+    .version;
+  const reordered = parseDocContainers(
+    "Repeated passage\n\nRepeated passage\n\nFirst",
+  );
+  await transaction((db) =>
+    saveVersionedDoc(
+      db,
+      owner,
+      id,
+      selectedVersion,
+      { format: 2, nodes: reordered },
+      [1, 2],
+    ),
+  );
+  const anchor = (version: number) =>
+    app.inject({
+      method: "POST",
+      url: `/docs/${id}/anchor`,
+      headers: { authorization: `Bearer ${token}` },
+      payload: { index: 1, text: "Repeated passage", version },
+    });
+  const refused = await anchor(selectedVersion);
+  assert.equal(refused.statusCode, 409, refused.body);
+  const unchanged = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(unchanged.version, selectedVersion + 1);
+  assert.deepEqual(unchanged.document, { format: 2, nodes: reordered });
+  const named = await anchor(unchanged.version);
+  assert.equal(named.statusCode, 200, named.body);
+  const current = await readVersionedDoc(pool, owner, id, [1, 2]);
+  assert.equal(current.version, unchanged.version + 1);
+  assert.equal(
+    docContainerBlocks(
+      current.document!.format === 2 ? current.document!.nodes : [],
+    )[1].id,
+    named.json().block_id,
+  );
+});

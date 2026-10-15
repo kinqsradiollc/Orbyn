@@ -35,6 +35,7 @@ export async function prepareDocAssistTarget(
   if (!("text" in target) || !target.text.trim())
     throw new Error("Select some text before asking the assistant.");
   const blocks = saved();
+  const version = store.state.session!.saved.version;
   const index = target.id
     ? blocks.findIndex((block) => block.id === target.id)
     : blocks.indexOf(target);
@@ -44,7 +45,8 @@ export async function prepareDocAssistTarget(
       "The selected text changed. Select it again before asking.",
     );
   const id =
-    target.id ?? (await client.anchorLine(docId, index, target.text)).block_id;
+    target.id ??
+    (await client.anchorLine(docId, index, target.text, version)).block_id;
   if (!isCurrent())
     throw new Error("The account or page changed. Reopen this request.");
   if (!target.id) {

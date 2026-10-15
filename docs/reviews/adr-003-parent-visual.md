@@ -129,3 +129,16 @@ The API remains authoritative for scope and optimistic proposal acceptance.
 Development focused tests:19/19 passed. First workspace typecheck exposed a
 mobile-only stale history-ref name in the correction; fixed to its actual page
 owner guard. Final qualification and affected visual recheck remain required.
+
+### V13 review correction: concurrent duplicate reorder
+
+Scoped Reviewer found that matching only local index/text could still name the
+wrong identical passage after a remote reorder. The anchor request now includes
+the captured saved version. The backend locks the page row, validates that version
+before naming any leaf, and returns409 on mismatch. Existing link callers may
+omit the version; saved assistant selections always send it. A helper regression
+asserts stale-version refusal, and a guarded API regression shifts identical
+paragraphs before anchoring, expects409 with no content/revision change, then
+checks successful anchoring at the fresh revision.20/20 focused development unit
+checks passed after the correction. API execution remains assigned to Tester.
+No environment variable or migration is added.

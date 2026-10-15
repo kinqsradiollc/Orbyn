@@ -2573,10 +2573,10 @@ export class OrbynClient {
   }
 
   /** Name a heading or line so a link can point at it. */
-  anchorLine(docId: string, index: number, text: string) {
+  anchorLine(docId: string, index: number, text: string, version?: number) {
     return this.request<{ block_id: string }>(`/docs/${docId}/anchor`, {
       method: "POST",
-      body: { index, text },
+      body: { index, text, ...(version === undefined ? {} : { version }) },
     });
   }
 

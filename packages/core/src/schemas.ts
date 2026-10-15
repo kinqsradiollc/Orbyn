@@ -479,6 +479,8 @@ export const docAnchorInput = z
     index: z.number().int().min(0).max(1999),
     /** What the line says, so a page that moved on isn't named wrong. */
     text: z.string().max(40000),
+    /** Required by saved-selection callers to reject concurrent reordering. */
+    version: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER).optional(),
   })
   .strict();
 
