@@ -942,3 +942,65 @@ No broader API suite was run.
 No browser interaction, native build or Security scan was run. The bounded
 visual recovery recheck and Reviewer closure remain separate gates. Tester made
 no product or test-source edits and changed only this report.
+
+## V16 action sizing and PDF controls qualification at product freeze 5e3ffc45
+
+The successor product freeze is
+`5e3ffc4534e16601ab8600f2f0d2ee85838c6727`, parent
+`f36b8a3b31ba0bf4aff18554d0f5d6fe243ef4e8`, on `codex/c6-file-viewer` in
+`/Users/anhdang/.codex/worktrees/c6-next/Orbyn`. It preserves the shared
+32px desktop and 44px phone/coarse-pointer routine action sizes and fixes the
+unnamed-button fallback to retain the touch minimum, with a regression in
+`backend/tests/button-fallback.unit.test.ts`. The review counter remains 1/3.
+The later `ff9567f8` descendant changes only two review documents; comparison
+with the freeze shows no product or test-source drift.
+
+The initial eight-suite V16 batch at `f36b8a3b` passed 54/58. It exposed one
+size-token allowlist update, a mobile PDF label still at 14px, and two source
+assertions tied to old whitespace/rail callback text. The corrected development
+batch passed 65/65. The original and corrected logs remain at
+[`initial V16 batch`](/private/tmp/orbyn-button-sizing-dev.tap) and
+[`corrected V16 batch`](/private/tmp/orbyn-button-sizing-final-all.tap). Review
+then found that the zero-specificity bare-button fallback still left unnamed
+touch buttons at 32px. That P2 was addressed in the successor freeze above.
+
+I reran the eight focused suites on the successor:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/button-fallback.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/redesign-controls.unit.test.ts \
+  backend/tests/workspace-layout.unit.test.ts \
+  backend/tests/neatness.unit.test.ts \
+  backend/tests/settings-grid-layout.unit.test.ts \
+  backend/tests/pdf-preview-runtime.unit.test.ts \
+  backend/tests/doc-latex-note.unit.test.ts
+```
+
+Result: exit 0, **65/65 passed**, 0 failed, 0 cancelled and 0 skipped
+(5.60 seconds). The mode-0600 log is
+[`V16 successor focused tests`](/private/tmp/orbyn-v16-successor-units-5e3ffc45.tap).
+
+Both requested typechecks passed at the frozen product source:
+`npm run typecheck -w desktop` and `npm run typecheck -w mobile`. Their logs are
+[`desktop types`](/private/tmp/orbyn-v16-successor-desktop-typecheck-5e3ffc45.log)
+and
+[`mobile types`](/private/tmp/orbyn-v16-successor-mobile-typecheck-5e3ffc45.log).
+`npm run build` also passed for core, API client, backend and desktop, generating
+the PDF preview runtime and homepage. Vite emitted the existing warning for
+chunks larger than 500 kB. The log is
+[`V16 root build`](/private/tmp/orbyn-v16-successor-root-build-5e3ffc45.log).
+
+The exact desktop Docker target built successfully with
+`--build-arg GIT_SHA=5e3ffc45` and tag
+`orbyn-web:adr003-5e3ffc45-tester`. `docker image inspect` returned image ID
+`sha256:b44331f557ee81abef4b970f89405fcd3a99346b8a38aa6e26ed9b2214903570`.
+The image build completed with the same existing large-chunk warning; it was
+not run as a container. Its log is
+[`V16 desktop Docker build`](/private/tmp/orbyn-v16-successor-desktop-docker-5e3ffc45.log).
+
+No browser interaction, API/database suite, compiler test, provider test,
+native build or Security scan was run for this qualification. Visual recovery
+and Reviewer closure remain separate gates. Tester made no product or test-
+source edits and changed only this report.
