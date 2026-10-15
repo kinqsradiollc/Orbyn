@@ -2,7 +2,7 @@
 
 Decision: **changes required**. Whole-ADR acceptance also remains **evidence pending**.
 
-**Current disposition:** the same-round follow-up below closes the original R1–R3 source findings and the new backend-contract evidence gaps on `90305ece`. The subsequent common-Note implementation at `3704ec70` / `f19566e9` introduces outstanding R4–R6. Read the follow-up for the current correction plan; the initial review is retained as history.
+**Current disposition:** R1–R3 and the backend-contract evidence gaps were closed on `90305ece`. The latest same-round follow-up closes the R4–R6 source findings on `9b1fb984`; one remaining measured-width defect, R7, needs correction. Formal affected retest and final web/Expo acceptance remain pending. Earlier assessments below are retained as history.
 
 Reviewed on 15 October 2026 in `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`, branch `codex/c6-file-viewer`. Assigned range: `c7b3bdb7..b0baced59c393d22c4e0124a3cfdc83329d96a2f`, including implementation `15fc3a5a` and fixture correction `b0baced5`. The checkout advanced during inspection to `626c58eed917d0e6bd5221b9b5dc5cb3a7566666`; its bounded typography/fixture diff was inspected as a supplemental correction, not substituted silently for the assigned candidate. Before report completion, docs-only `5b10872e` recorded its focused retest. The three source findings below remain applicable there.
 
@@ -192,3 +192,29 @@ The provider selects only `docLatexBlock(blocks)` (the first marked block) and h
 2. Tester retains the completed 49/49 document/store/API receipt and reruns only affected suites/types/build after the correction freeze. Add R4–R6 regressions and valid/invalid structured departure cases. Reuse the unchanged 63/63 backend/picker/store/sweep and compiler-boundary receipts; do not rerun the sandbox probes solely for presentation changes.
 3. Retain the final visual plan as **prepared, acceptance pending** until source findings settle and Tester returns the fixture. In its existing document case, verify the same Note renderer, primary modes, source toggle, actual PDF state, assistant proposal visibility/accept/reject/failure and reader/Suggest authority on web and Expo. Keep the existing pane/resize/settings/planner/public cases; no per-edit sweep or new native requirement.
 4. Reviewer closes R4–R6 against the correction diff and receipts, then issues whole-ADR approval only when the final web/Expo gate is complete. Until then: **changes required; final evidence pending; round 1/3**.
+
+## Same-round follow-up — stable Note freeze `9b1fb984`
+
+Inspected exact source `9b1fb9844aa09c486bfe93a90609990257889e8b`, including whitespace-insensitive diffs for all four parents, source adapters, preview providers/renderers, layout CSS and revised tests. The working tree contained only the two unrelated tracker/Visual documents before this report edit. Reviewer executed no tests/builds or browser actions. Counter stays **1/3**.
+
+| Finding | Source disposition at this freeze |
+| --- | --- |
+| R4 duplicate Note renderer | Closed for the identified renderer-lifetime defect. Both source adapters accept `sourceOnly` and omit their PDF/Markdown render tree. Parents keep the original Note subtree mounted; desktop uses adjacent grid areas, mobile retained sibling panes. Presentation changes no longer substitute a second PDF renderer. Actual viewer zoom/page preservation still needs the final browser case. |
+| R5 structured controls/departure | Closed for inspected source. Nested Preview/Source/Split controls are removed. Primary choices use `chooseFormat`, save dirty valid content, and recheck account/document/conflict state before adoption. Web inline departure now consults `sourceLeaveCheck` before existing save/validation checks. Wide Markdown requests split; narrow uses the retained one-surface fallback. |
+| R6 incorrect duplicate-block PDF | Closed for the canonical stable-ID path. Provider ownership includes document/account/block identity; only the matching block renders its PDF. Secondary marked blocks retain actual source. Switching canonical IDs creates a fresh store and discards old results. |
+
+The revised provider tests mount both client providers and assert one viewer, the same unchanged iframe node, visible secondary TeX source, canonical reorder, fresh compilation and cleanup. Source-only adapter tests assert absence of the second renderer. These are appropriately named component/provider tests, not four-parent integrations; native PDF presentation is stubbed. The final visual plan explicitly retains actual four-parent transitions. Builder reports 38/38 development checks and both client types; at this report cutoff no formal Tester receipt for `9b1fb984` is recorded. Do not promote development counts to formal qualification.
+
+For legacy blocks without IDs, the provider uses current index as a fallback identity. The new tests use stable IDs. Keep this limitation explicit: the reorder assertion does not establish identity preservation for arbitrary id-less replacement at the same index. Prefer assigning stable IDs at the existing document normalization boundary if such content must support persistent preview identity; no broader migration/refactor is requested by this review.
+
+### R7 — P2: mobile legacy source layout uses window width instead of editor width
+
+**Location:** `mobile/src/screens/docs/DocEditor.tsx:337–339`, `:3132` and `:3248`; containing layout `mobile/src/screens/docs/DocsSheet.tsx:292–294`, `:905–906`, `:2959–2963`.
+
+`sourceBesideNote` is computed from `useWindowDimensions().width / fontScale >= 900`. The actual editor can be much narrower: DocsSheet displays a 300px library beside an open document when its outer pane is at least 1000px and multiple documents exist. At a 1000px Expo window, the editor has roughly 700px before padding, yet the new code selects the wide two-column source/Note layout and hides the adapter's compact mode controls. This bypasses the ADR's explicit available-pane-width fallback and differs from the measured structured editor. It also fails to respond when only the containing library/pane changes size.
+
+**Builder guidance:** measure the legacy editor's containing View with the existing `usePaneWidth`/`onLayout` pattern, retaining `useWindowDimensions` only for font scale if needed. Derive source/Note splitting and `showModes` from that measured width. Measure the outer editor before splitting, not either half, to avoid breakpoint oscillation. Keep both surfaces mounted and preserve the chosen draft/mode.
+
+**Verification:** one focused parent/layout regression with window width 1000 or 1200 and measured editor width 700 must select one surface; increasing actual editor width past the threshold must restore the split without losing draft or viewer identity. Include library-open versus library-hidden in the existing final Expo editor case; no new screenshot sweep or native gate.
+
+**Current decision:** changes required for R7; R4–R6 source corrections accepted. Tester should complete the already assigned affected batch, then retest only R7's changed paths and relevant types after its small correction. Retain unchanged backend/compiler receipts. Final actual-parent interactions, PDF appearance/state, pane routing and the rest of the existing web/Expo batch remain required for whole-ADR approval. All work stays within round **1/3**.
