@@ -19,6 +19,11 @@ deployment or completion of the final visual gate.
   parent `a0c5c7bdf4f4a7ae4d8746301deffb563fc3be57`.
 - The focused correction retest below ran at `626c58ee`, parent
   `b0baced59c393d22c4e0124a3cfdc83329d96a2f`.
+- The correction batch froze product/test source at `90305ecef85284a6b4eae216dd2c993593bb29d0`,
+  parent `5b10872ef3ed9ca8b103ca2c8c969ec8fe82b7f2`. Formal commands and
+  mounted runtime checks ran from this assigned checkout at `87d0e8be`; the
+  diff from `90305ece` contains documentation files only, so product and test
+  source remained identical to the freeze.
 - Product/runtime ancestry: original implementation `f7899149385f6be4189849a3678ad1b37fc64306`; test-fixture correction `7039a77bde85aaa695a0542df69a327bc43ce8c1`; TeX image/starter correction `7dfd1b9faaa875fd926d438e5455c0aa6126883a`; docs-only note `6b40a6eaf78da5d00b36f186005c629de273f082`; dialog focus correction and source-view test updates `15fc3a5a34356fa5cd55b23ec59a57077768957e`; focused source/test corrections `b0baced59c393d22c4e0124a3cfdc83329d96a2f` and `626c58ee`.
 - Review counter: `1/3`; round one has been dispatched with the partial-evidence
   boundaries recorded here.
@@ -31,13 +36,16 @@ deployment or completion of the final visual gate.
   subsequently frozen as `b0baced5` and retested below. Tester made no product
   or test source edits; both pre-existing review documents were left untouched.
 
-Status: focused dialog/source-view retests and the 142-test backend batch are
-green. The 17-suite supplemental batch exited 1. Its six changed suites were
-retaken at `b0baced5` (15 failures out of 87) and the four affected suites were
-retested at `626c58ee` (8 harness failures out of 76); desktop and mobile
-typechecks pass at `626c58ee`. Results and limits are recorded below. Tester
-qualification remains partial; the final shared-web and Expo-web visual batch
-and several redesign interaction families also remain unverified.
+Status before the final correction batch: focused dialog/source-view retests and
+the 142-test backend batch were green. The earlier 17-suite supplemental batch
+exited 1; six changed suites were retaken at `b0baced5` (15 failures out of 87),
+and four affected suites were retested at `626c58ee` (8 picker-harness failures
+out of 76). Those historical results remain below. At the later `90305ece`
+source freeze, the scoped 12-suite regression batch, builds, types, environment
+check, compiler boundary batch and finite mounted team/view/shared document
+control cases all passed. Qualification remains partial: the final shared-web
+and Expo-web visual batch is still pending, and the mounted document controls
+did not exercise each full editor parent or API persistence.
 
 ## Verification
 
@@ -231,10 +239,79 @@ appearance as unverified; the final visual pass should check this explicitly.
 - This Tester pass did not verify native iOS, Android, or desktop-app behavior;
   those builds remain excluded by the candidate scope.
 - Runtime checks above do not cover every redesign requirement. In particular,
-  multi-pane draft/scroll independence, Chat/Work project history and pins,
-  failure/retry and response-loss import receipts, broad route/deep-link draft
-  retention, team ownership/locks, and the full Settings/Admin/public surface
-  matrix remain open for the appropriate automated or visual evidence.
+  multi-pane draft/scroll independence, full-editor proposal persistence,
+  Chat/Work browser rendering, broad route/deep-link draft retention, team
+  ownership/permission transitions, and the full Settings/Admin/public surface
+  matrix remain open for the appropriate automated or visual evidence. The
+  scoped API/unit tests for Chat/Work modes and import response-loss recovery
+  passed in the correction batch below; that does not establish full UI behavior.
+
+## Final correction batch at 90305ece
+
+The assigned worktree was `/Users/anhdang/.codex/worktrees/c6-next/Orbyn` on
+`codex/c6-file-viewer`. Frozen source was `90305ecef85284a6b4eae216dd2c993593bb29d0`.
+The commands ran at `87d0e8be815b70cc4bfca51d3cd973cc4cdc89c2`; its only
+differences from the freeze are `docs/architecture.md`,
+`docs/reviews/adr-003-final-visual-plan.md`, `docs/reviews/ui-ux-redesign.md`,
+and `docs/setup.md`. No product or test source changed between these refs.
+
+`npm run build` and `npm run typecheck` passed. Vite printed its existing
+large-chunk warning (>500 kB); the build completed. The environment example
+check, `node scripts/check-env-examples.mjs`, passed for the 132 backend/Compose
+variables and both clients. Private mode-0600 logs:
+[`build`](</private/tmp/orbyn-adr003-build-90305ece.log>),
+[`typecheck`](</private/tmp/orbyn-adr003-typecheck-90305ece.log>), and
+[`environment check`](</private/tmp/orbyn-adr003-env-check-90305ece.log>).
+
+The 12 requested suites ran serially through `backend/tests/setup.ts` against
+`orbyn_test` with `orbyn.environment=test`: the eight new files listed in the
+correction handoff, `searchable-picker.unit.test.ts`, `chat-sweep.test.ts`,
+`pdf-client.unit.test.ts`, and `pdf-service.unit.test.ts`. Result: exit 0,
+63/63 passed, 0 failed, 0 skipped (14.35 seconds). This later candidate result
+supersedes the `626c58ee` picker-harness failure for this frozen batch without
+removing that earlier history. Full mode-0600 TAP output:
+[`regression log`](</private/tmp/orbyn-adr003-formal-regression-90305ece.tap>).
+
+One bounded test batch used the owned container `orbyn-u1-latex-fix`, image
+`orbyn-u1-latex-qa:candidate-7dfd1b9`, and compiler service on loopback port
+18000. The protected QA environment supplied the private key. The actual
+read-only-root container and Bubblewrap isolation were inspected. External
+read/write probes were denied; the shell/network namespace probe could not
+reach the compiler service. The nonterminating TeX job returned 503 after
+10,050 ms and left no private job directory. Health stayed HTTP 200; a
+subsequent valid compile returned HTTP 200 with a valid 14,402-byte PDF, and no
+job directory remained. The outer write canary was preserved and final canary
+cleanup exited 0. Full mode-0600 output:
+[`compiler boundary log`](</private/tmp/orbyn-adr003-compiler-boundaries-90305ece.log>).
+
+Finite mounted checks used a temporary mode-0600 harness outside the checkout,
+[`script`](</private/tmp/orbyn-adr003-mounted-runtime-90305.mjs>) and
+[`result`](</private/tmp/orbyn-adr003-mounted-runtime-90305.log>). They passed
+with the following scope:
+
+- Actual shared `DocSuggestions` and `DocSourceAsk` controls were mounted in
+  three labeled cases (normal text, Markdown source, LaTeX source). Each case
+  dispatched one accept and one reject action; after a simulated assistant
+  failure, the instruction remained in the textarea and a successful retry
+  closed the request. Callbacks were deterministic harness stubs. The full
+  editor parents, mode-specific source routing and API persistence were not
+  exercised.
+- Actual `TeamPlanning`, `TeamAttention` and `useSettingsRead` were mounted with
+  a deterministic client. A budget save remained pending once, disabled week
+  navigation, then committed once; the follow-up read failed; Retry recovered
+  with three reads total and no second write.
+- Actual `ViewsView` was mounted with a test `ViewTable` event harness and
+  deterministic client. A confirmed row write happened once, its result refresh
+  failed, and Retry read the results successfully without repeating the write
+  (three reads, one write). The production table interaction and backend write
+  were stubbed.
+
+Local signup was completed at `127.0.0.1:8081` with a synthetic QA identity
+after the displayed agreement was accepted. The frontend and API processes
+were from this assigned worktree; the API command used the protected QA env
+file, whose `DATABASE_URL` and `TEST_DATABASE_URL` both resolved to
+`orbyn_test` and the test marker. The app opened the new workspace. The account
+identifier and password are omitted.
 
 No merge, push, deployment, or acceptance is recorded. The review counter
 remains `1/3`.
