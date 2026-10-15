@@ -462,3 +462,39 @@ protected credential-file path and verified endpoints under the user's existing
 authorization. Visual Check owns the fixture for the final `3f7cd319` batch and
 will record outcomes in `docs/reviews/adr-003-final-visual.md`. No visual
 findings or visual acceptance are claimed here.
+
+## Visual V1 block-menu correction qualification at 239ce769
+
+The new frozen candidate was
+`239ce76918258f33c28fda5d7e6d1cf31316591d`, parent
+`77b679bc503f18fcc15c053fa7cbb875bb8381bc`, on
+`/Users/anhdang/.codex/worktrees/c6-next/Orbyn`, branch `codex/c6-file-viewer`.
+The product correction is confined to
+`desktop/src/features/docs/DocBlockMenu.tsx`; its new test is
+`backend/tests/doc-block-menu.unit.test.ts`. The test renders both `SlashMenu`
+and `DocBlockMenu` with the real Lucide package and checks all supported block
+labels and SVG icons.
+
+The formal test command was:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-block-menu.unit.test.ts
+```
+
+Result: exit 0, **2/2 passed**, 0 failed, 0 cancelled and 0 skipped (0.53 s).
+The full mode-0600 TAP log is
+[`block-menu suite`](/private/tmp/orbyn-adr003-block-menu-tester-239ce769.tap).
+`npm run typecheck -w desktop` passed at the exact candidate; its mode-0600 log
+is [`desktop typecheck`](/private/tmp/orbyn-adr003-block-menu-desktop-typecheck-239ce769.log).
+The root `npm run build` also passed at `239ce769`; the existing Vite warning
+for chunks over 500 kB appeared and the build completed. Its mode-0600 log is
+[`root build`](/private/tmp/orbyn-adr003-block-menu-build-239ce769.log).
+
+The earlier Visual V1 pre-fix menu failure remains a separate historical
+receipt; this 2/2 result qualifies the correction at `239ce769` and does not
+erase that failure. No database or QA fixture was accessed or mutated by Tester.
+Visual Check retains ownership of the Expo fixture and rendered/mobile
+verification. The prior 38/38, 29/29, 49/49 and 63/63 receipts remain scoped to
+their recorded commits; they are not relabeled as tests at `239ce769`. Tester
+made no source or test edits.
