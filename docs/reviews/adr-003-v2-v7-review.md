@@ -28,3 +28,15 @@ viewer. Both-client same-block regression retains canonical-owner replacement
 and cleanup assertions. Formal Tester and actual browser page/zoom retention
 remain pending. Reviewer executed no checks and changed no files; this parent
 record preserves its returned assessment. Round remains 1/3.
+
+## V8 and V9 source closures
+
+Delegated Reviewer accepted V8 at374258c5: open-document column uses available
+width, library stays fixed, source modes reuse shared controls and preserve
+LaTeX-only behavior. It closed V9 at43923346: existing optional IDs survive both
+source replacement helpers, insertion generates IDs, and both-client anchored/
+unanchored provider regressions retain the iframe and deliberate owner reset.
+Structured parent status ownership and explicit mobile font were accepted.
+No additional actionable source finding; no Reviewer tests/browser/source edits.
+Formal38/38/alltypes/rootbuild/latestDocker receipts are now in the Tester report.
+Whole-ADR acceptance still requires the remaining bounded visual cases.
