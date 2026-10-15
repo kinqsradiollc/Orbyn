@@ -1,3 +1,4 @@
+import { usePaneWidth } from "../../hooks/usePaneWidth";
 import { DocLatexPreviewProvider } from "./DocLatexPreview";
 import { DocEditorModes, type DocumentEditorMode } from "./DocEditorModes";
 import { Icon } from "../../components/Icon";
@@ -334,8 +335,9 @@ function LegacyDocEditor({
     words: string;
   } | null>(null);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
-  const { width: documentWidth, fontScale: documentScale } =
-    useWindowDimensions();
+  const { width: documentWidth, onLayout: measureDocumentPane } =
+    usePaneWidth();
+  const { fontScale: documentScale } = useWindowDimensions();
   const sourceBesideNote = documentWidth / Math.max(1, documentScale) >= 900;
   const [sourcePreviewMode, setSourcePreviewMode] = useState<
     "markdown" | "latex"
@@ -3127,6 +3129,7 @@ function LegacyDocEditor({
     >
       <RecordingContext.Provider value={recordingActions}>
         <View
+          onLayout={measureDocumentPane}
           style={[
             styles.page,
             sourcePreview && sourceBesideNote ? { flexDirection: "row" } : null,

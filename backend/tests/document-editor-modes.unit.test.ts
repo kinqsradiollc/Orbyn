@@ -101,3 +101,16 @@ test("all document editor parents expose formats directly and the toast keeps it
   assert.match(final, /\.toast-close\s*\{\s*width: 44px/);
   // Configuration evidence only. The final browser case checks actual toast geometry.
 });
+
+test("mobile legacy source split measures the editor pane after surrounding navigation", () => {
+  const source = readFileSync(
+    new URL("../../mobile/src/screens/docs/DocEditor.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    source,
+    /width: documentWidth, onLayout: measureDocumentPane[^;]*usePaneWidth\(\)/,
+  );
+  assert.match(source, /onLayout=\{measureDocumentPane\}/);
+  assert.match(source, /documentWidth \/ Math.max\(1, documentScale\) >= 900/);
+});

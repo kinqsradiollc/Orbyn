@@ -137,3 +137,14 @@ and real navigation are assigned to the final Visual batch; do not describe the
 component fixture as complete parent integration.
 Logs: `/private/tmp/orbyn-adr003-stable-note-dev-2.tap`,
 `/private/tmp/orbyn-adr003-stable-note-types-6.log`.
+
+### R7 — available editor width
+
+Mobile legacy uses the existing `usePaneWidth` hook wired to its root `onLayout`,
+then applies the existing font-scale-aware 900pt split threshold to that measured
+width. It no longer infers available space from the whole window. A source wiring
+regression plus the existing real hook measurement cases passed (29/29 finite
+checks); mobile types passed. Final Expo checks include the library open around
+a 1000px window, then hiding it and resizing to verify single/split behavior and
+retained Note state. Logs: `/private/tmp/orbyn-adr003-pane-width-dev.tap` and
+`/private/tmp/orbyn-adr003-pane-width-types.log`.
