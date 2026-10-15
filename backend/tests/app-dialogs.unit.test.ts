@@ -110,6 +110,13 @@ test("desktop prompts queue, trap focus, cancel safely and restore the opener", 
     '<body><button id="opener">Open</button><div class="app"><button id="behind">Behind</button></div><div id="root"></div></body>',
     { url: "http://127.0.0.1" },
   );
+  dom.window.HTMLDialogElement.prototype.showModal = function () {
+    this.open = true;
+  };
+  dom.window.HTMLDialogElement.prototype.close = function () {
+    this.open = false;
+  };
+  dom.window.HTMLElement.prototype.getClientRects = () => [{}];
   const globals = [
     "window",
     "document",
@@ -229,6 +236,7 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
   const dom = new JSDOM(
     '<body><div class="shell"><button id="opener">Open</button><button class="command-trigger">Search</button></div><nav class="sidebar"></nav><div id="root"></div></body>',
   );
+  dom.window.HTMLElement.prototype.getClientRects = () => [{}];
   const names = [
     "window",
     "document",
@@ -314,7 +322,7 @@ test("narrow peek retries loading, contains keyboard focus, and becomes a wide c
     assert.equal(dom.window.document.querySelector(".shell").inert, true);
     const retry = Array.from(
       dom.window.document.querySelectorAll("button"),
-    ).find((button: any) => button.textContent === "Try again") as any;
+    ).find((button: any) => button.textContent === "Retry") as any;
     assert.ok(retry);
     await React.act(async () => retry.click());
     assert.equal(loads, 2);
@@ -420,6 +428,7 @@ test("task drawer leaves Escape and Tab to a higher command dialog", () => {
   const dom = new JSDOM(
     '<body><aside aria-modal="true"><button>Close task</button><button>Last</button></aside></body>',
   );
+  dom.window.HTMLElement.prototype.getClientRects = () => [{}];
   const source = ts.createSourceFile(
     "TaskDetail.tsx",
     readFileSync(
@@ -463,6 +472,7 @@ test("task drawer leaves Escape and Tab to a higher command dialog", () => {
       suspended: false,
       scheduling: false,
       renaming: false,
+      writing: { current: false },
       panel: { current: dom.window.document.querySelector("aside") },
       hasHigherDialog: exports.hasHigherDialog,
       onClose: () => closed++,
@@ -613,6 +623,7 @@ test("passkey naming cancellation does not register or announce a saved credenti
       ceremonies = 0;
     const response = { id: "synthetic-credential" };
     const add = runInNewContext(code, {
+      mounted: { current: true },
       action: {
         run: (fn: () => Promise<unknown>) => {
           operation = fn().then((value) => {

@@ -17,6 +17,8 @@ function fixture(native: boolean, editable = false) {
   let focused = 0;
   const document = {
     activeElement: {
+      isConnected: true,
+      closest: () => null,
       focus: () => {
         focused++;
       },
@@ -43,7 +45,10 @@ function fixture(native: boolean, editable = false) {
       return [
         states[index],
         (value: unknown) => {
-          states[index] = value;
+          states[index] =
+            typeof value === "function"
+              ? (value as (previous: unknown) => unknown)(states[index])
+              : value;
         },
       ];
     },
@@ -57,6 +62,8 @@ function fixture(native: boolean, editable = false) {
   const modules: Record<string, unknown> = {
     react: hooks,
     "@orbyn/core": core,
+    "../../lib/session": { session: { token: "qa", get: () => "qa" } },
+    "../../components/DocumentPdfPreview": { DocumentPdfPreview: container },
     "lucide-react": { X: () => null },
     "./doc-source.css": {},
     "./DocBlocks": {
@@ -71,6 +78,7 @@ function fixture(native: boolean, editable = false) {
     "./doc-navigation": { DocNavigationContext: navigationContext },
     "./footnotes": { FootnoteContext: notes },
     "react-native": {
+      useWindowDimensions: () => ({ width: 390, height: 800, fontScale: 1 }),
       View: container,
       Text: container,
       ScrollView: container,
@@ -89,6 +97,34 @@ function fixture(native: boolean, editable = false) {
         React.createElement("pre", null, core.serializeDoc(content)),
     },
   };
+  // Exercise the real shared focus owner with the same hook state and DOM
+  // boundary as the source dialog, rather than substituting its behavior.
+  const focusExports: Record<string, unknown> = {};
+  runInNewContext(
+    ts.transpileModule(
+      readFileSync(
+        new URL("../../desktop/src/hooks/useModalFocus.ts", import.meta.url),
+        "utf8",
+      ),
+      {
+        compilerOptions: {
+          module: ts.ModuleKind.CommonJS,
+          target: ts.ScriptTarget.ES2022,
+        },
+      },
+    ).outputText,
+    {
+      exports: focusExports,
+      document,
+      HTMLElement: class {},
+      require: (name: string) => {
+        if (name === "react") return hooks;
+        assert.equal(name, "../lib/dialogLayers");
+        return { hasHigherDialog: () => false };
+      },
+    },
+  );
+  modules["../../hooks/useModalFocus"] = focusExports;
   const exports: Record<string, (props: unknown) => React.ReactElement> = {};
   const path = native
     ? "../../mobile/src/screens/docs/DocSourcePreview.tsx"
@@ -262,8 +298,14 @@ test("web source and preview scrolling follow block geometry without reciprocal 
     querySelector: () => nodes[1],
     querySelectorAll: () => nodes,
   };
-  render.refs[1].current = input;
-  render.refs[2].current = pane;
+  find(
+    tree,
+    (props) => props["aria-label"] === "Markdown source",
+  )!.ref.current = input;
+  find(
+    tree,
+    (props) => props["aria-label"] === "Rendered preview",
+  )!.ref.current = pane;
   const sourceScroll = find(
     tree,
     (props) => props["aria-label"] === "Markdown source",
@@ -301,7 +343,11 @@ test("native preview scrolling preserves the corresponding source block on toggl
   find(preview, (props) => props.scrollEventThrottle === 32)!.onScroll({
     nativeEvent: { contentOffset: { y: 200 } },
   });
-  assert.equal(render.states[1], 1, "scroll picks the second block");
+  assert.equal(
+    find(render(blocks), (props) => props.content === blocks)!.targetBlockId,
+    "second",
+    "scroll picks the second block",
+  );
   find(
     render(blocks),
     (props) => props.title === "Show Markdown source",
@@ -330,14 +376,34 @@ for (const native of [false, true]) {
     const navigation = find(tree, (props) => props.value?.onFragment)?.value;
     assert.ok(navigation);
     navigation.onFragment("next-section");
-    assert.equal(render.states[native ? 1 : 0], 1);
+    if (native)
+      assert.equal(
+        find(render(blocks), (props) => props.content === blocks)!
+          .targetBlockId,
+        "next",
+      );
+    else
+      assert.match(
+        renderToStaticMarkup(render(blocks)),
+        /data-source-index="1" class="is-selected"/,
+      );
     assert.equal(render.closed(), 0);
     navigation.onAppLink(
       "orbyn://doc/00000000-0000-4000-8000-000000000001#next",
     );
     assert.equal(render.closed(), 0);
     navigation.onFragment("missing-heading");
-    assert.equal(render.states[native ? 1 : 0], 1);
+    if (native)
+      assert.equal(
+        find(render(blocks), (props) => props.content === blocks)!
+          .targetBlockId,
+        "next",
+      );
+    else
+      assert.match(
+        renderToStaticMarkup(render(blocks)),
+        /data-source-index="1" class="is-selected"/,
+      );
     navigation.onAppLink("orbyn://doc/00000000-0000-4000-8000-000000000002");
     assert.equal(render.closed(), 1);
     assert.deepEqual(render.opened, [
@@ -581,7 +647,12 @@ test("web source errors keep the dialog mounted and Escape observes the latest v
   const render = fixture(false, true);
   const blocks = core.parseDoc("Safe ^one", { anchors: true });
   const first = render(blocks);
-  const lifecycle = render.dialogEffects[0];
+  const lifecycle = render.dialogEffects.find((effect) =>
+    effect.run.toString().includes("showModal"),
+  )!;
+  const focusLifecycle = render.dialogEffects.find(
+    (effect) => effect.deps?.[0] === "source-title",
+  )!;
   assert.deepEqual(Array.from(lifecycle.deps ?? []), []);
   let opened = 0,
     closed = 0;
@@ -593,7 +664,14 @@ test("web source errors keep the dialog mounted and Escape observes the latest v
       closed++;
     },
   };
-  render.refs[0].current = modal;
+  const root = find(first, (props) => props.className === "doc-source-dialog")!;
+  root.ref({
+    ...modal,
+    contains: () => false,
+    querySelectorAll: () => [],
+    focus: () => {},
+  });
+  const cleanupFocus = focusLifecycle.run();
   const cleanup = lifecycle.run();
   const input = find(
     first,
@@ -637,8 +715,9 @@ test("web source errors keep the dialog mounted and Escape observes the latest v
     1,
     "Escape can close after explicit restoration",
   );
-  render.refs[0].current = null;
+  root.ref(null);
   cleanup();
+  cleanupFocus();
   assert.equal(
     closed,
     1,

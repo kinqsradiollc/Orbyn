@@ -109,6 +109,7 @@ async function fixture(app: "desktop" | "mobile") {
       if (id.endsWith("/errors")) return { errorText: () => "Save failed" };
       if (id === "react-native")
         return { View: "View", Text: "Text", Switch: "Switch" };
+      if (id.endsWith("/Switch")) return { Switch: "Switch" };
       if (id.endsWith("/SmallAction")) return { SmallAction: "SmallAction" };
       if (id.endsWith("/Chip")) return { Chip: "Chip", ChipRow: "ChipRow" };
       if (id.endsWith("/styles"))

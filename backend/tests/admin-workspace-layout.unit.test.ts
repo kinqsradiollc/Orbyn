@@ -10,6 +10,8 @@ const read = (path: string) =>
 
 function menu(platform: "ios" | "android" | "web", reducedMotion = false) {
   const timers: (() => void)[] = [];
+  const cleanups: (() => void)[] = [];
+  const session = { token: "qa-account" };
   let calls = 0;
   let closed = 0;
   const code = ts.transpileModule(read("mobile/src/components/MoreMenu.tsx"), {
@@ -23,9 +25,18 @@ function menu(platform: "ios" | "android" | "web", reducedMotion = false) {
   runInNewContext(code, {
     exports,
     setTimeout: (fn: () => void) => timers.push(fn),
+    clearTimeout: () => {},
     require: (name: string) => {
       if (name === "react")
-        return { ...React, useRef: (value: unknown) => ({ current: value }) };
+        return {
+          ...React,
+          useRef: (value: unknown) => ({ current: value }),
+          useEffect: (effect: () => void | (() => void)) => {
+            const cleanup = effect();
+            if (cleanup) cleanups.push(cleanup);
+          },
+        };
+      if (name === "../lib/session") return { session };
       if (name === "react-native")
         return {
           Animated: { View: "AnimatedView" },
@@ -78,7 +89,15 @@ function menu(platform: "ios" | "android" | "web", reducedMotion = false) {
     }
   };
   visit(tree);
-  return { tree, nodes, timers, calls: () => calls, closed: () => closed };
+  return {
+    tree,
+    nodes,
+    timers,
+    session,
+    dispose: () => cleanups.forEach((cleanup) => cleanup()),
+    calls: () => calls,
+    closed: () => closed,
+  };
 }
 
 test("native section menu scrolls choices while Cancel remains outside the list", () => {
@@ -173,5 +192,26 @@ test("action sheets open immediately on web and respect native Reduce Motion", (
   for (const platform of ["ios", "android"] as const) {
     assert.equal(menu(platform).tree.props.animationType, "slide");
     assert.equal(menu(platform, true).tree.props.animationType, "none");
+  }
+});
+
+test("deferred menu choices cannot act after an account change or unmount", () => {
+  for (const teardown of ["account", "unmount"] as const) {
+    const view = menu("ios");
+    const item = view.nodes.find(
+      (node) => node.props.accessibilityRole === "menuitem",
+    )!;
+    item.props.onPress();
+    item.props.onPress();
+    assert.equal(view.closed(), 1, "rapid taps commit a single selection");
+    if (teardown === "account") view.session.token = "replacement-account";
+    else view.dispose();
+    view.tree.props.onDismiss();
+    for (const timer of view.timers) timer();
+    assert.equal(
+      view.calls(),
+      0,
+      "detached callbacks cannot mutate another owner",
+    );
   }
 });
