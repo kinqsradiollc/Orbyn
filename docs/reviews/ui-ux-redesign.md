@@ -3,7 +3,8 @@
 Current decision: [ADR 003](../adr/003-product-ui-ux-redesign.md).
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
 Baseline: `c7b3bdb7`. Accepted product/test candidate: `e2813634`.
-Phase: technically accepted; integration/push pending. Final evidence: `22cb6162`.
+Phase: completed, accepted and published to `origin/main` at `6a8cb5ca`.
+Final evidence: `22cb6162`. Later documentation receipts preserve the same runtime.
 See [final review](adr-003-reviewer.md), [actual visual evidence](adr-003-final-visual.md),
 [parent checks](adr-003-parent-visual.md) and [Tester receipts](adr-003-tester.md).
 Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review rounds: 1/3.
@@ -21,7 +22,7 @@ Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review ro
 | Mobile parity | Accepted for Expo web | Representative app flows, 320px layouts and document controls; native excluded |
 | Frozen candidate / Tester / Reviewer | Accepted `e2813634`, round 1/3 | V16/V17 affected receipts and retained earlier family/runtime evidence; counts overlap |
 | Final web and Expo Visual Check | Complete | Bounded passes and affected rechecks; individual inventory files were not each browser-tested |
-| Accepted merge and push | Pending integration | Accepted lineage; production deployment remains user-owned |
+| Accepted merge and push | Complete | Fast-forward `c7b3bdb7` → `6a8cb5ca`, remote ref verified; production deployment remains user-owned |
 
 The latest runtime change is V17, formally qualified in `c8aaef2a` (9/9 plus
 Desktop types/build). V16's 65/65/types/root build and desktop image are recorded
