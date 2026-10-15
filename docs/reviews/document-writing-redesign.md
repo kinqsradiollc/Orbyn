@@ -3,7 +3,7 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: accepted; main integration pending. Review counter: 1/3.
+Phase: accepted and delivered to main. Review counter: 1/3.
 Current product freeze: `d44c4cdf`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
@@ -19,7 +19,7 @@ button-size results remain historical evidence; they do not qualify this redesig
 | Shared format controls | Quiet and consistent across both document formats and clients | Wide/narrow and light/dark layout |
 | Storage and authority | Existing operation/store/permission/approval contracts retained | Affected formal regressions and read-only review |
 
-Current qualification and acceptance are complete; main integration remains pending.
+Current qualification, acceptance and main integration are complete.
 No production or native result is claimed. Preserve the unrelated Visual-owned
 `c6-production-visual-2026-10-11.md` edit.
 
@@ -143,3 +143,12 @@ external-provider execution are separate and were not claimed.
 No environment/configuration/service/database changes are needed for delivery.
 Existing API/5174web/8083Expo services are preserved for owner inspection.
 Main integration is the remaining delivery step; preserve unrelated working files.
+
+## Main delivery
+
+Accepted work fast-forward pushed from `b11b1429` to `e575c06e` with
+`git push origin HEAD:main`, exit0. `git ls-remote origin refs/heads/main`
+confirmed `e575c06ed5c452f3bfe55f71144d90f734986a27`. Subsequent reconciliation
+commits change documentation only. This is delivery to main; production is not
+deployed by this task. The primary checkout and its unrelated work were not
+reset, and the unrelated C6 Visual report edit remains outside this delivery.
