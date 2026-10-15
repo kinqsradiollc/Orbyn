@@ -2,6 +2,8 @@
 
 Decision: **changes required**. Whole-ADR acceptance also remains **evidence pending**.
 
+**Current disposition:** the same-round follow-up below closes the original R1–R3 source findings and the new backend-contract evidence gaps on `90305ece`. The subsequent common-Note implementation at `3704ec70` / `f19566e9` introduces outstanding R4–R6. Read the follow-up for the current correction plan; the initial review is retained as history.
+
 Reviewed on 15 October 2026 in `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`, branch `codex/c6-file-viewer`. Assigned range: `c7b3bdb7..b0baced59c393d22c4e0124a3cfdc83329d96a2f`, including implementation `15fc3a5a` and fixture correction `b0baced5`. The checkout advanced during inspection to `626c58eed917d0e6bd5221b9b5dc5cb3a7566666`; its bounded typography/fixture diff was inspected as a supplemental correction, not substituted silently for the assigned candidate. Before report completion, docs-only `5b10872e` recorded its focused retest. The three source findings below remain applicable there.
 
 This continues the recorded **1/3** round. Corrections and their verification can close this round; no counter reset or fourth round is authorized. This report records neither merge nor deployment approval.
@@ -120,3 +122,73 @@ The inventory is useful provenance but its “source assessed” rows are not Re
 5. **Reviewer:** inspect the batched correction diff and final receipts, close each finding explicitly, and issue the decision within this same round where possible. Acceptance requires the final web/Expo evidence; native builds, security scans and deployment are not added gates.
 
 Optional maintenance, not blockers: consolidate similar account/mount ownership helpers after acceptance and reduce brittle exact-copy/source regex assertions over time. Do not use this review to reopen accepted platform checkpoints or start unrelated refactors.
+
+## Same-round follow-up — pane/export corrections and common Note preview
+
+Reviewed `90305ece`, the formal Tester receipt committed as `0a9afc57`, the additional owner direction in ADR 003, and the functional diff through `3704ec708231f1910c0b3d2749ae8599f2ef47a6`. Also inspected the two-file follow-up `f19566e9f85fb70be43fb4d95e4beed06022b27a`. Observed HEAD subsequently advanced to docs-only `e7f24397`; its two changed documentation paths do not alter these source conclusions. Counter remains **1/3**. No tests/builds/runtime/visual checks were executed by Reviewer.
+
+### Original finding disposition
+
+| Item | Current disposition |
+| --- | --- |
+| R1 shared narrow navigation | Source correction accepted: explicit portal host outside hidden panes, shared navigation dispatch remains focused-controller owned, portal events preserve focused pane. Mounted portal test proves placement and callback routing. Full App routing, keyboard, draft/scroll and actual 320/900px layout remain in final Visual acceptance. |
+| R2 editor keyboard ownership | Closed for inspected source: `PaneInputOwner` and `ownsEditorKey` guard pane ownership, visible/inert ancestry, active dialogs and text fields before interception. Both menu handlers use the guard. Real-DOM helper tests cover yielding without destroying selection. Retain final browser integration case; do not call the helper test a full two-editor walkthrough. |
+| R3 export identity | Closed: top-level items have additive IDs; each completion embeds its own task ID/title/parent identity, including subtasks. Test covers same-title items, subtask, timestamps, personal/team exclusion and legacy input compatibility. No new history backfill/import is claimed. |
+| E1 Personal Activity | Closed for the named backend contract: real transition/recurrence, connected-account actor, work/break/idempotency, local start-day, fixed-clock DST SQL, null/zero, visibility/delete, snapshot and export assertions now exist and passed. The fixed-clock test runs the aggregation SQL with a replaced clock expression; it is not evidence of a real wall-clock DST rollover. |
+| E2 receipts/compiler | Closed for the finite backend/lifecycle scope: new route tests cover both replay paths, payload conflict, duplicate execution, receipt failure rollback, response failure and current authorization. Compiler API/lifecycle tests plus actual image probes establish the named negative boundaries. UI rendering remains separate. |
+| E3 regression/store/history | Original eight picker fixture failures superseded by the passing correction batch. Store and Chat/Work/sweep contracts now have scoped passing evidence. Parent/editor and rendered behavior limitations below remain. |
+
+Tester records **63/63**, zero failed/skipped, across the 12 requested suites on product source `90305ece` (execution HEAD `87d0e8be` differs only in docs). Workspace build/typecheck and 132-variable environment coverage passed. The real compiler probe denied external read/write and the shell/network probe, terminated a nonterminating job after about 10 seconds, removed its workspace, retained health and successfully compiled a subsequent valid PDF. These receipts are retained; the later client presentation change does not invalidate the unchanged sandbox implementation.
+
+The mounted TeamPlanning/TeamAttention and Views cases provide useful pending-save and read-retry evidence with one write; they use deterministic client/table stubs. The three labeled assistant-control cases mount shared controls, not all four editor parents. The new `doc-assist-formats.test.ts` exercises real API proposal/reject/accept persistence using a local stand-in provider, which is stronger format evidence but still not parent-mode UI or live-vendor evidence. Before this report was committed, Tester's working report recorded **49/49** affected source/store/mode/assistant/API tests, zero failures/skips, on exact `f19566e9` source at docs-only `e7f24397`, plus final workspace typecheck/build passes. Retain this receipt. Its wording about four-parent mode entry points is supported by source assertions, not mounted four-parent transition tests; the passing result does not contradict R4–R6.
+
+### R4 — P2: source mode replaces the Note renderer instead of sharing its presentation lifetime
+
+**Locations:** `desktop/src/features/docs/doc-source.css:198–203`; `desktop/src/features/docs/DocSourcePreview.tsx:630–672`; `desktop/src/features/docs/DocLatexPreview.tsx:75–104`; mobile equivalents `DocEditor.tsx:3233`, `DocSourcePreview.tsx` and `DocLatexPreview.tsx`.
+
+The new owner contract says source appears beside the common Note output, and presentation changes retain zoom/disclosure/scroll. The implementation shares the PDF blob/URL, but not the actual rendered surface: CSS hides the normal Note children while source is open; DocSourcePreview renders another iframe (and another Markdown block renderer). Returning to Note unmounts that source preview and reveals a different renderer. On mobile, the legacy Note wrapper is similarly hidden and source owns another DocumentPdfPreview. A user who changes PDF zoom/page/scroll in source preview returns to a different Note viewer state, and vice versa. For mixed notes, the LaTeX source preview also shows just the PDF instead of the same surrounding Note content.
+
+**Expected:** one stable Note render surface per editor/document, with source visibility/mode changing adjacent controls rather than replacing that surface. Preserve existing note blocks and viewer state across Note/Markdown/LaTeX and source hide/show.
+
+**Builder guidance:** hoist the common Note renderer beside the source editor under the existing document owner. Keep its iframe/DocumentPdfPreview identity stable for presentation-only changes; update its PDF on actual compiled-source changes. Route source selection and headings into that same rendered tree. Remove the broad CSS sibling hiding once ownership is explicit. Preserve the existing invalid-source draft guard and narrow single-surface preference.
+
+**Verification:** mount each actual editor parent, open source, hide/show source, return to Note, and assert the same rendered surface/iframe node remains for an unchanged PDF. Include mixed prose + equation + standalone TeX. Final Visual should exercise PDF page/zoom/scroll preservation on web and Expo. `doc-latex-note.unit.test.ts:94–108` constructs an artificial textarea beside DocLatexNote and therefore does not exercise the production replacement path; extend or replace it with parent integration coverage.
+
+### R5 — P2: structured editors retain the superseded source navigation and a modal-era departure lock
+
+**Locations:** `desktop/src/features/docs/StructuredDocEditor.tsx:785–793`, `:1203–1229`; `mobile/src/screens/docs/StructuredDocEditor.tsx:791–813`.
+
+The web structured editor still exposes the Preview/Source/Split button group; mobile still exposes Source/Preview plus Split/Hide split. Choosing Markdown on web selects `activePane='source'` rather than the requested source-beside-Note presentation. This does not satisfy the newly explicit removal of nested source navigation in favor of one source-visibility control. In addition, the web `beforeLeave` still rejects whenever `latexOwner.current` is true, even though a `sourceLeaveCheck` is now supplied to the inline source. A saved, valid inline LaTeX page cannot follow ordinary sidebar/tab navigation until the user manually exits source; it silently returns false. The mobile structured parent already consults that leave check.
+
+**Expected:** consistent primary Note/Markdown/LaTeX choices and one source visibility toggle in all four parents. A valid saved inline source can navigate normally; invalid source and pending mutations retain the draft and block departure with recovery.
+
+**Builder guidance:** integrate structured Markdown into the same format/visibility owner as R4, preserving its lossless structured-source adapter. Remove the old nested button groups. Make the web structured departure predicate consult the latest inline validation guard, then save/check the existing store, matching the intended mobile behavior. Do not merely remove the guard or disable all mode changes while valid edits await saving.
+
+**Verification:** actual web/mobile structured parents: primary mode transitions with saved and unsaved source, exactly one source toggle, wide split and narrow fallback; valid inline LaTeX tab/sidebar navigation succeeds; malformed source and pending saves block without losing content. `document-editor-modes.unit.test.ts` currently checks the standalone button component and parent source text, so it cannot detect these remaining controls or departure behavior.
+
+### R6 — P2: multiple standalone TeX blocks display the first block's PDF as every block's output
+
+**Locations:** `desktop/src/features/docs/DocLatexPreview.tsx:46`, `:75–93`; `desktop/src/features/docs/DocBlocks.tsx:351–353`; corresponding mobile provider `:44`, Note renderer `:56` and `DocBody.tsx:519`.
+
+The provider selects only `docLatexBlock(blocks)` (the first marked block) and has one PDF. Both block renderers now send **every** `latex-document` code block to DocLatexNote. That component consumes the same context PDF without checking block identity; `source` is used only for a stale message. An imported or edited note containing two different valid TeX blocks therefore displays the first document twice and labels the second preview as updating indefinitely. There is no schema uniqueness constraint preventing this content. This is incorrect content presentation, not just a compile-performance preference.
+
+**Expected:** a displayed PDF corresponds to the specific source block it represents. Preserve all original blocks even if only one canonical standalone document is supported for compilation.
+
+**Builder guidance:** bind preview ownership to stable block identity. Either render only the canonical block through that store and retain honest source/fallback for other marked blocks, or use bounded per-block ownership if multiple compiled documents are intended. Do not compare only source text: retaining an older PDF while the same block is edited is explicitly required. Do not silently delete duplicate blocks or show another block's PDF.
+
+**Verification:** a note with two distinct TeX blocks on both clients; each output is correctly identified or the secondary source remains honestly visible. Edit/reorder/remove the canonical block and ensure no stale PDF transfers to the other identity. Keep the same-block last-valid-PDF-on-error test.
+
+### Additional source observations and remaining evidence
+
+- `LatexPreviewStore` has explicit debounce/minimum start interval, readiness gating, generation-based cancellation, last-valid-PDF retention, explicit Retry and stop cleanup. The tests exercise these behaviors directly, including an abort-ignoring late result. Provider instances are keyed by account/document and object URLs are cleaned up. These are useful foundations for R4; sharing a URL alone does not close it.
+- Legacy Read→source enters Edit only for `canWrite`; Suggest retains the read-only source callback gate. Structured callbacks also check `canWrite`. The compile API still rechecks ownership/version around work. No new source-level permission bypass was found in these inspected paths, but test the actual four parent transitions rather than treating a disabled button or API permission test as UI proof.
+- The API rate change to 20/minute is explicit in the new ADR; automatic starts remain at least four seconds apart. The earlier compiler isolation/runtime receipts remain relevant; the new 49/49 receipt includes API/renderer tests on `f19566e9`. R4–R6 require only their affected correction checks at the next freeze.
+- `f19566e9` excludes dialogs from sibling hiding. Its extra `setSourcePreview(null)` duplicates the immediately following existing call; harmless cleanup, not a new acceptance blocker. The prior call already returned to Note before opening the web legacy assistant request. Do not describe the duplicate setter as new functional evidence.
+- Toast layout is a CSS change with source assertions; actual one-row dismiss reachability with wrapping text remains in the existing final Visual case.
+
+### Revised finite completion plan
+
+1. Builder batches R4–R6, retaining R1–R3 and the existing store/sandbox protections. Freeze one product/test ref and name the actual parent integration tests. No new full review round.
+2. Tester retains the completed 49/49 document/store/API receipt and reruns only affected suites/types/build after the correction freeze. Add R4–R6 regressions and valid/invalid structured departure cases. Reuse the unchanged 63/63 backend/picker/store/sweep and compiler-boundary receipts; do not rerun the sandbox probes solely for presentation changes.
+3. Retain the final visual plan as **prepared, acceptance pending** until source findings settle and Tester returns the fixture. In its existing document case, verify the same Note renderer, primary modes, source toggle, actual PDF state, assistant proposal visibility/accept/reject/failure and reader/Suggest authority on web and Expo. Keep the existing pane/resize/settings/planner/public cases; no per-edit sweep or new native requirement.
+4. Reviewer closes R4–R6 against the correction diff and receipts, then issues whole-ADR approval only when the final web/Expo gate is complete. Until then: **changes required; final evidence pending; round 1/3**.
