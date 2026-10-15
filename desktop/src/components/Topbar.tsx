@@ -72,11 +72,11 @@ export function Topbar({
     <header
       ref={headerRef}
       className={`topbar${tabs ? " has-tabs" : ""}${compact ? " is-compact" : ""}`}
-      data-shared-chrome={sharedChrome ? "" : undefined}
     >
       {onToggleRail && (
         <button
           className="icon-button workspace-rail-toggle"
+          data-shared-chrome={sharedChrome ? "" : undefined}
           data-settings-focus-return
           aria-label={railed ? "Expand navigation" : "Collapse navigation"}
           aria-expanded={!railed}
@@ -88,6 +88,7 @@ export function Topbar({
       )}
       <button
         className="icon-button mobile-menu"
+        data-shared-chrome={sharedChrome ? "" : undefined}
         data-settings-focus-return
         aria-label="Toggle navigation"
         aria-expanded={navigationOpen}
@@ -99,7 +100,10 @@ export function Topbar({
       <div className="workspace-location">
         {tabs ?? (showLocation && <strong>{navName(view, agentName)}</strong>)}
       </div>
-      <div className="workspace-header-actions">
+      <div
+        className="workspace-header-actions"
+        data-shared-chrome={sharedChrome ? "" : undefined}
+      >
         <button
           className="command-trigger"
           aria-label="Search or ask"

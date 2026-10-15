@@ -220,3 +220,18 @@ V16 source review found that the bare-button fallback did not consume the touch
 height token. It now applies the same minimum at zero specificity, so feature
 overrides and segmented sizing still win. The fallback regression covers this
 contract. This correction remains in round 1/3.
+
+## V17 — pane-tab shortcut ownership
+
+The remaining retained-selection browser check exposed a distinct header bug:
+after selecting real rendered prose in the second pane, clicking the first pane's
+Home tab retained the text selection but left the workspace owner as secondary.
+The whole primary header was marked shared chrome, so its own tabs were excluded
+from focus capture. Cmd+B did not alter the other document, but Cmd+K opened the
+second pane's search. This failed attempt remains recorded.
+
+Only the genuinely shared navigation toggles and action group now carry that
+marker; pane tabs reach their normal pointer/focus capture. Narrow chrome remains
+inside its existing shared host. A rendered Topbar regression checks both marker
+boundaries; the affected ownership suite passes3/3 in development. Formal
+qualification and the actual retained-selection recheck remain required.

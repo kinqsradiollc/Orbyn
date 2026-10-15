@@ -15,6 +15,62 @@ const compile = (file: string) =>
     format: "cjs",
     jsx: "automatic",
   }).code;
+test("pane tabs claim focus while shared header actions retain the current pane", () => {
+  const React = require("react");
+  const { renderToStaticMarkup } = require("react-dom/server");
+  const module = { exports: {} as any };
+  const mocks: Record<string, unknown> = {
+    "../hooks/useElementWidth": {
+      useElementWidth: () => ({ ref: null, width: 1400 }),
+    },
+    "lucide-react": Object.fromEntries(
+      ["Bell", "Menu", "PanelLeftClose", "PanelLeftOpen", "Plus", "Search"].map(
+        (name) => [name, () => null],
+      ),
+    ),
+    "../app/views": { navName: (view: string) => view },
+    "../app/commands": { commandById: () => ({}), keysFor: () => [] },
+    "../app/prefs": { usePrefs: () => ({ prefs: {} }) },
+  };
+  runInNewContext(compile("../../desktop/src/components/Topbar.tsx"), {
+    module,
+    exports: module.exports,
+    navigator: { platform: "MacIntel" },
+    require: (name: string) => (name in mocks ? mocks[name] : require(name)),
+  });
+  const dom = new JSDOM(
+    renderToStaticMarkup(
+      React.createElement(module.exports.Topbar, {
+        view: "Home",
+        sharedChrome: true,
+        onToggleRail: () => {},
+        tabs: React.createElement("button", { role: "tab" }, "Home"),
+      }),
+    ),
+  );
+  try {
+    const document = dom.window.document;
+    assert.equal(
+      document.querySelector('[role="tab"]')!.closest("[data-shared-chrome]"),
+      null,
+      "clicking a pane tab must reach its owning pane's focus capture",
+    );
+    for (const label of [
+      "Search or ask",
+      "Notifications",
+      "Toggle navigation",
+      "Collapse navigation",
+    ])
+      assert.ok(
+        document
+          .querySelector(`[aria-label="${label}"]`)!
+          .closest("[data-shared-chrome]"),
+        `${label} must preserve the previously focused pane`,
+      );
+  } finally {
+    dom.window.close();
+  }
+});
 test("retained selections yield shortcuts to another pane, fields, hidden ancestors and dialogs", () => {
   const dom = new JSDOM(
     '<body><section id="a"><p id="text">Retained selection</p><button id="toolbar">Style</button><input id="field"></section><section id="b"><button id="other">Other pane</button></section></body>',
