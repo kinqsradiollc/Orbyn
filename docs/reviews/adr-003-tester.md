@@ -925,8 +925,19 @@ No new Docker build was run. The
 [`509462e6 desktop image`](/private/tmp/orbyn-v12-v14-desktop-docker-509462e6.log)
 remains packaging evidence for the Docker target at that earlier product
 source; it does not contain V15. The API anchor route is unchanged, so the
-guarded saved-selection regression recorded for `509462e6` remains the relevant
-API evidence; no database or API suite was rerun for V15.
+guarded anchor checks were run against the final API source. The two selected
+cases passed together on `2bc81bd1`: `a viewer can name one nested leaf
+atomically without changing content ownership or history` and
+`saved-selection anchors reject a shifted identical duplicate at a newer
+revision`. Result: exit 0, **2/2 passed**, 0 failed, 0 cancelled and 0 skipped.
+The viewer's concurrent naming requests returned the same block ID without
+changing content ownership or version history; its edit attempt remained
+forbidden. The newer-revision selection was rejected with 409, while the
+unchanged version named the passage. The test also asserted the expected
+rate-limit 429 response. Before launch, the guarded test database again
+resolved to `_test` with `orbyn.environment='test'`. The mode-0600 log is
+[`V15 anchor compatibility tests`](/private/tmp/orbyn-v15-anchor-compat-2bc81bd1.tap).
+No broader API suite was run.
 
 No browser interaction, native build or Security scan was run. The bounded
 visual recovery recheck and Reviewer closure remain separate gates. Tester made
