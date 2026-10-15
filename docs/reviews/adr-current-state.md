@@ -1,6 +1,6 @@
 # ADR implementation tracker
 
-Updated 15 October 2026. Follow the full contract in
+Updated 16 October 2026. Follow the full contract in
 [the implementation review](devday-2026-implementation-review.md) and
 [the top-down execution order](adr-execution-order.md).
 Detailed qualification and historical failures remain in
@@ -14,26 +14,33 @@ reviewed and pushed at `c1aedfb9`; the closing receipt is `c7b3bdb7` on remote
 main. Its deployment and listed follow-ups remain user-owned, deferred or
 unverified, not passes. See [final reconciliation](final-integration-2026-10-12.md).
 
-**Current phase: ADR 003 technically accepted in Reviewer round 1/3.** Accepted
-product is `e2813634`; final evidence reconciliation is `22cb6162`. The V16
-formal Tester batch `b349e34c` passed **65/65**, types, root build and compiler
-image qualification. Its bounded Visual Check `3a51aa41` verified desktop density,
-44px touch targets and PDF state. V17 qualification `c8aaef2a` passed **9/9**,
-desktop types and build, and closed actual root-pane ownership, focused search,
-retained drafts/scroll and project Retry behavior. Reviewer closed the agreed ADR
-003 scope with no further tests or visual sweep required. Earlier scoped receipts,
-failures and their boundaries remain preserved; individual inventory files were
-not each independently browser-tested. Native apps, installed desktop behavior,
-external providers/hosts and production remain excluded or user-owned. Accepted
-runtime `e2813634` was fast-forward pushed to `origin/main`; remote advanced from
-`c7b3bdb7` to `6a8cb5ca`. ADR 003 is delivered to main. Production has not been
-deployed by this agent and remains owner-operated. Root's docs-only publication
-receipt is the remaining documentation closeout. See the [final review](adr-003-reviewer.md),
-[Tester receipts](adr-003-tester.md),
-[final Visual Check](adr-003-final-visual.md), [parent checks](adr-003-parent-visual.md),
-[redesign delivery ledger](ui-ux-redesign.md), [ADR 003](../adr/003-product-ui-ux-redesign.md)
-and [ADR index](../adr/README.md). The accepted delivery and evidence are on main;
-the publication receipt does not represent a production deployment.
+**ADR 003 remains technically accepted and delivered to main** at runtime
+`e2813634`; remote advanced from `c7b3bdb7` to `6a8cb5ca`. Its recorded scope,
+evidence and exclusions are preserved below. The owner rejected the document
+editing experience and opened a focused full document-writing redesign under
+ADR 004; this supersedes only the document presentation, not ADR 003's other
+accepted work.
+
+**Current phase: ADR 004 — final bounded visual review in progress**, round 1/3.
+Baseline is `b11b1429` on branch `codex/docs-writing-redesign`; current product
+freeze is `c58c91b8`, and the current documentation head is `944462fb`. The scope
+redesigns legacy and structured Note as a writing surface: inline replacement
+editing, contextual block actions, compact format/mode controls, mobile parity,
+and optional source/Note/PDF transitions while preserving the existing storage,
+permission, proposal and PDF ownership contracts. Tester `33fd1626` qualified the
+initial batch with **66/66** equivalent checks, **4/4** CSS-sensitive checks,
+desktop/mobile types and desktop build. Reviewer found one P2: inline text edits
+unmounted canonical code/PDF viewers. Correction `c58c91b8` retains those viewers
+mounted but hidden during editing; Tester `62865551` passed **51/51**, desktop and
+mobile types, and desktop production build, and Reviewer closed the source finding.
+The final bounded web and Expo visual review is now running against actual writing,
+menus and source/PDF states. ADR 004 is not yet accepted, merged or pushed.
+Production deployment remains user-owned. See [ADR 004](../adr/004-document-writing-experience.md),
+[document-writing redesign record](document-writing-redesign.md),
+[Tester report](document-writing-tester.md), and [visual report](document-writing-visual.md).
+Reviewer source closure is recorded in the redesign record. Remaining gates are the final
+visual report, any scoped fixes/rechecks it requires, and same-round Reviewer
+closure. Native builds and production checks are outside this scope.
 
 ## Previous delivery — historical checkpoint entries
 
