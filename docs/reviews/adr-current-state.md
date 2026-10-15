@@ -24,14 +24,16 @@ retained drafts/scroll and project Retry behavior. Reviewer closed the agreed AD
 003 scope with no further tests or visual sweep required. Earlier scoped receipts,
 failures and their boundaries remain preserved; individual inventory files were
 not each independently browser-tested. Native apps, installed desktop behavior,
-external providers/hosts and production remain excluded or user-owned. Integration
-and push of the accepted lineage are pending; production deployment remains
-owner-operated. See the [final review](adr-003-reviewer.md), [Tester receipts](adr-003-tester.md),
+external providers/hosts and production remain excluded or user-owned. Accepted
+runtime `e2813634` was fast-forward pushed to `origin/main`; remote advanced from
+`c7b3bdb7` to `6a8cb5ca`. ADR 003 is delivered to main. Production has not been
+deployed by this agent and remains owner-operated. Root's docs-only publication
+receipt is the remaining documentation closeout. See the [final review](adr-003-reviewer.md),
+[Tester receipts](adr-003-tester.md),
 [final Visual Check](adr-003-final-visual.md), [parent checks](adr-003-parent-visual.md),
 [redesign delivery ledger](ui-ux-redesign.md), [ADR 003](../adr/003-product-ui-ux-redesign.md)
-and [ADR index](../adr/README.md). The remaining delivery gate is fast-forward
-integration/push of accepted product `e2813634` and its evidence; no production
-deployment is implied.
+and [ADR index](../adr/README.md). The accepted delivery and evidence are on main;
+the publication receipt does not represent a production deployment.
 
 ## Previous delivery — historical checkpoint entries
 
