@@ -1,3 +1,4 @@
+import { DocLatexNote } from "./DocLatexPreview";
 import {
   Fragment,
   useContext,
@@ -7,6 +8,7 @@ import {
 import {
   mentionedPerson,
   docLinkDestination,
+  DOC_LATEX_LANGUAGE,
   EMBED_LANG,
   isDiagram,
   LIVE_LIST_LANG,
@@ -347,6 +349,8 @@ export function BlockView({
         </blockquote>
       );
     case "code":
+      if (block.lang === DOC_LATEX_LANGUAGE)
+        return <DocLatexNote source={block.text} />;
       if (block.lang === LIVE_LIST_LANG)
         return (
           <LiveList

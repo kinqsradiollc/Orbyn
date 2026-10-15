@@ -1,7 +1,6 @@
 # ADR 003 — final bounded visual batch
 
-Prepared against product/test freeze `90305ece`; later documentation commits do
-not change that runtime. **Not yet dispatched:** wait for the finite Tester batch
+Prepared for the next frozen owner-correction candidate (see latest Builder handoff). **Not yet dispatched:** wait for the finite Tester batch
 and code-review findings to settle. Orbyn Visual Check owns browser execution and
 writes `docs/reviews/adr-003-final-visual.md`. Builder fixes reproduced findings
 and requests only affected rechecks. Review counter stays 1/3.
@@ -50,3 +49,15 @@ checks the resulting UI and actual interactions above; no live paid provider is
 required for synthetic acceptance fixtures. Do not infer native behavior, live
 host integration, production deployment or unperformed failure paths from this
 batch. Stop after these cases and report concrete findings.
+
+## Owner-reported Docs and toast recheck
+
+In both legacy and structured editors, find Note/Markdown/LaTeX without opening
+More. From a writer's Read mode choose LaTeX; source opens inline, saves and shows
+an actual PDF automatically. Type identifiable text, wait for saved/live output,
+then select Note: the same rendered page remains. Markdown updates the common
+Note rendering; no second Source/Split/Preview selector or source modal remains.
+Hide/show source at wide and narrow sizes. On malformed TeX retain draft and last
+valid PDF, expose an inline error/Retry, repair and recover. Exercise assistant
+proposal accept/reject in the visible editor. Check a short “Link copied” toast:
+message and dismiss control share a compact row. Verify actual CSS viewport.

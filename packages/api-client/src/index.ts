@@ -65,3 +65,5 @@ export * from "./page-publication-store.js";
 export * from "./doc-refresh.js";
 
 export * from "./view-draft-store.js";
+
+export * from "./latex-preview-store.js";

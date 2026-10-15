@@ -1,3 +1,5 @@
+import { DocLatexPreviewProvider } from "./DocLatexPreview";
+import { DocEditorModes } from "./DocEditorModes";
 import React, {
   useEffect,
   useMemo,
@@ -118,6 +120,7 @@ function StructuredDocEditorBody({
     }
   };
   const [latexOpen, setLatexOpen] = React.useState(false);
+  const sourceLeaveCheck = React.useRef<(() => boolean) | null>(null);
   const latexOwner = React.useRef(latexOpen);
   latexOwner.current = latexOpen;
   const [sourceAsk, setSourceAsk] = React.useState<DocBlock | null>(null);
@@ -544,7 +547,7 @@ function StructuredDocEditorBody({
         !currentPage() ||
         sourceMutation.current ||
         sourceAsk ||
-        latexOwner.current ||
+        (latexOwner.current && !sourceLeaveCheck.current?.()) ||
         pageAction
       )
         return false;
@@ -590,617 +593,686 @@ function StructuredDocEditorBody({
     save,
   ]);
   return (
-    <View
-      ref={pageRef}
-      style={styles.page}
-      onLayout={(event) => {
-        pageOffset.current = event.nativeEvent.layout.y;
-        setPaneWidth(event.nativeEvent.layout.width);
-      }}
+    <DocLatexPreviewProvider
+      canCompile={canWrite}
+      blocks={leaves}
+      docId={doc.id}
+      ready={
+        canWrite &&
+        !!session &&
+        !state.busy &&
+        !state.error &&
+        !state.conflict &&
+        state.source === null &&
+        !docEditorSessionDirty(session)
+      }
+      compile={(source, signal) =>
+        client.compileDocLatex(
+          doc.id,
+          {
+            source,
+            version: store.state.session?.saved.version ?? doc.version,
+          },
+          signal,
+        )
+      }
     >
-      {sourceAsk && "text" in sourceAsk && (
-        <DocSourceAsk
-          key={sourceAsk.id}
-          text={sourceAsk.text}
-          onAsk={requestSourceSuggestion}
-          onClose={() => setSourceAsk(null)}
-        />
-      )}
-      {latexOpen && document && session && (
-        <DocSourcePreview
-          beforeNavigate={prepareLinkedPage}
-          latexOnly
-          blocks={leaves}
-          docId={doc.id}
-          onClose={() => {
-            latexOwner.current = false;
-            setLatexOpen(false);
-          }}
-          onAssist={
-            canWrite &&
-            !state.busy &&
-            !state.error &&
-            !state.conflict &&
-            state.source === null &&
-            !docEditorSessionDirty(session)
-              ? (block) => {
-                  setLatexOpen(false);
-                  askForBlock(block);
-                }
-              : undefined
-          }
-
-          onAppLink={(url) => {
-            void openLinkedPage(url);
-          }}
-          report={report}
-          onCompileLatex={(source, signal) =>
-            client.compileDocLatex(
-              doc.id,
-              {
-                source,
-                version:
-                  store.state.session?.saved.version ?? session.saved.version,
-              },
-              signal,
-            )
-          }
-          saveStatus={
-            state.busy
-              ? "Saving…"
-              : docEditorSessionDirty(session)
-                ? "Unsaved changes"
-                : "Saved"
-          }
-          onLatexChange={
-            canWrite
-              ? (text, expected) => {
-                  const current = store.state.session;
-                  if (
-                    !current ||
-                    current.document !== document ||
-                    JSON.stringify(expected) !== JSON.stringify(leaves) ||
-                    store.state.sourceInvalid ||
-                    store.state.conflict ||
-                    store.state.error
-                  )
-                    throw new Error(
-                      "The document changed. Restore the current document before editing.",
-                    );
-                  store.changeOperation(
-                    document,
-                    docLatexOperation(document, text),
-                  );
-                  if (store.state.error) throw store.state.error;
-                  const next = store.state.session?.document;
-                  if (!next) throw new Error("The document is unavailable.");
-                  return next.format === 2
-                    ? docContainerBlocks(next.nodes, { projected: true })
-                    : next.blocks;
-                }
-              : undefined
-          }
-        />
-      )}
-      <ActionSheet
-        visible={discardOpen}
-        label="Discard page draft"
-        title="Discard draft?"
-        message="This removes your unsaved edits."
-        cancelLabel="Keep editing"
-        actions={[{ label: "Discard", destructive: true, onPress: discard }]}
-        onClose={() => setDiscardOpen(false)}
-      />
-      <DocSuggestions
-        suggestions={sourceSuggestions}
-        userId={userId}
-        canDecide={canWrite}
-        busy={
-          sourcePending ||
-          state.busy ||
-          !session ||
-          docEditorSessionDirty(session) ||
-          state.source !== null
-        }
-        sourceBlockIds={
-          new Set(
-            leaves
-              .filter((block) => block.type === "code" || block.type === "math")
-              .flatMap((block) => (block.id ? [block.id] : [])),
-          )
-        }
-        onDecide={(suggestion, take) =>
-          void reviewSourceSuggestions([{ suggestion, take }])
-        }
-        onWithdraw={(suggestion) =>
-          void reviewSourceSuggestions([{ suggestion }])
-        }
-      />
-      <View style={styles.toolbar}>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.actionTarget}
-          disabled={
-            !session || !!state.source || state.busy || !!state.conflict
-          }
-          onPress={() => setLatexOpen(true)}
-        >
-          <Text style={styles.action}>LaTeX</Text>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          style={styles.actionTarget}
-          onPress={() => {
-            setSplitRequested(false);
-            setSourceVisible((value) => !value);
-          }}
-        >
-          <Text style={styles.action}>
-            {sourceVisible ? "Preview" : "Source"}
-          </Text>
-        </Pressable>
-        {paneWidth / Math.max(1, fontScale) >= 900 && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ selected: split }}
-            style={styles.actionTarget}
-            onPress={() => setSplitRequested((value) => !value)}
-          >
-            <Text style={styles.action}>{split ? "Hide split" : "Split"}</Text>
-          </Pressable>
+      <View
+        ref={pageRef}
+        style={styles.page}
+        onLayout={(event) => {
+          pageOffset.current = event.nativeEvent.layout.y;
+          setPaneWidth(event.nativeEvent.layout.width);
+        }}
+      >
+        {sourceAsk && "text" in sourceAsk && (
+          <DocSourceAsk
+            key={sourceAsk.id}
+            text={sourceAsk.text}
+            onAsk={requestSourceSuggestion}
+            onClose={() => setSourceAsk(null)}
+          />
         )}
-        {canWrite && (sourceVisible || split) && (
-          <Pressable
-            accessibilityRole="button"
-            style={styles.actionTarget}
-            disabled={
+        {latexOpen && document && session && (
+          <DocSourcePreview
+            leaveCheck={sourceLeaveCheck}
+            compileReady={
+              !state.busy &&
+              !state.error &&
+              !state.conflict &&
+              !!session &&
+              !docEditorSessionDirty(session) &&
+              state.source === null
+            }
+            inline
+            beforeNavigate={prepareLinkedPage}
+            latexOnly
+            blocks={leaves}
+            docId={doc.id}
+            onClose={() => {
+              latexOwner.current = false;
+              setLatexOpen(false);
+            }}
+            onAssist={
+              canWrite &&
+              !state.busy &&
+              !state.error &&
+              !state.conflict &&
+              state.source === null &&
+              !docEditorSessionDirty(session)
+                ? (block) => {
+                    setLatexOpen(false);
+                    askForBlock(block);
+                  }
+                : undefined
+            }
+
+            onAppLink={(url) => {
+              void openLinkedPage(url);
+            }}
+            report={report}
+            onCompileLatex={(source, signal) =>
+              client.compileDocLatex(
+                doc.id,
+                {
+                  source,
+                  version:
+                    store.state.session?.saved.version ?? session.saved.version,
+                },
+                signal,
+              )
+            }
+            saveStatus={
+              state.busy
+                ? "Saving…"
+                : docEditorSessionDirty(session)
+                  ? "Unsaved changes"
+                  : "Saved"
+            }
+            onLatexChange={
+              canWrite
+                ? (text, expected) => {
+                    const current = store.state.session;
+                    if (
+                      !current ||
+                      current.document !== document ||
+                      JSON.stringify(expected) !== JSON.stringify(leaves) ||
+                      store.state.sourceInvalid ||
+                      store.state.conflict ||
+                      store.state.error
+                    )
+                      throw new Error(
+                        "The document changed. Restore the current document before editing.",
+                      );
+                    store.changeOperation(
+                      document,
+                      docLatexOperation(document, text),
+                    );
+                    if (store.state.error) throw store.state.error;
+                    const next = store.state.session?.document;
+                    if (!next) throw new Error("The document is unavailable.");
+                    return next.format === 2
+                      ? docContainerBlocks(next.nodes, { projected: true })
+                      : next.blocks;
+                  }
+                : undefined
+            }
+          />
+        )}
+        <View
+          style={
+            latexOpen ? { display: "none" } : { flex: 1, minHeight: 0, gap: 10 }
+          }
+        >
+          <ActionSheet
+            visible={discardOpen}
+            label="Discard page draft"
+            title="Discard draft?"
+            message="This removes your unsaved edits."
+            cancelLabel="Keep editing"
+            actions={[
+              { label: "Discard", destructive: true, onPress: discard },
+            ]}
+            onClose={() => setDiscardOpen(false)}
+          />
+          <DocSuggestions
+            suggestions={sourceSuggestions}
+            userId={userId}
+            canDecide={canWrite}
+            busy={
               sourcePending ||
               state.busy ||
               !session ||
               docEditorSessionDirty(session) ||
               state.source !== null
             }
-            onPress={() => {
-              try {
-                if (!document) return;
-                const map = versionedDocSourceMap(
-                  document,
-                  source ?? undefined,
-                  { projected: true },
-                );
-                const range = versionedDocSourceAt(
-                  map,
-                  sourceSelection.current,
-                );
-                const block =
-                  range?.blockIndex !== undefined
-                    ? leaves[range.blockIndex]
-                    : undefined;
-                if (block) askForBlock(block);
-                else
-                  setNavigationError(
-                    "Place the cursor in text before asking the assistant.",
-                  );
-              } catch (error) {
-                report(error);
-              }
-            }}
-          >
-            <Text style={styles.action}>Ask assistant</Text>
-          </Pressable>
-        )}
-        {canWrite && (
-          <Pressable
-            accessibilityRole="button"
-            style={styles.actionTarget}
-            accessibilityState={{ disabled: state.busy || state.conflict }}
-            disabled={
-              state.busy ||
-              state.conflict ||
-              !!state.error ||
-              !session ||
-              !docEditorSessionDirty(session)
+            sourceBlockIds={
+              new Set(
+                leaves
+                  .filter(
+                    (block) => block.type === "code" || block.type === "math",
+                  )
+                  .flatMap((block) => (block.id ? [block.id] : [])),
+              )
             }
-            onPress={() => void save()}
-          >
-            <Text style={styles.action}>Save</Text>
-          </Pressable>
-        )}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Page actions"
-          style={styles.actionTarget}
-          accessibilityState={{ expanded: menuOpen }}
-          onPress={() => setMenuOpen((value) => !value)}
-        >
-          <Icon name="more" size={18} color={colors.textSoft} />
-        </Pressable>
-      </View>
-      <BottomSheet
-        visible={menuOpen}
-        title="Page actions"
-        onClose={() => setMenuOpen(false)}
-        afterClose={() => {
-          const action = afterMenu.current;
-          afterMenu.current = null;
-          action?.();
-        }}
-      >
-        <View style={styles.menu}>
-          <Pressable
-            accessibilityRole="button"
-            disabled={state.busy}
-            onPress={() => {
-              closeMenuThen(refreshPage);
-            }}
-          >
-            <Text style={styles.action}>Refresh</Text>
-          </Pressable>
-          {onShowHistory && (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                closeMenuThen(onShowHistory);
-              }}
-            >
-              <Text style={styles.action}>History</Text>
-            </Pressable>
-          )}
-          {onShowInLibrary && (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                closeMenuThen(onShowInLibrary);
-              }}
-            >
-              <Text style={styles.action}>Show in library</Text>
-            </Pressable>
-          )}
-          {onMoveTo && (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => {
-                closeMenuThen(onMoveTo);
-              }}
-            >
-              <Text style={styles.action}>Move to…</Text>
-            </Pressable>
-          )}
-          {formatsHere().map((format) => (
-            <Pressable
-              key={format}
-              accessibilityRole="button"
+            onDecide={(suggestion, take) =>
+              void reviewSourceSuggestions([{ suggestion, take }])
+            }
+            onWithdraw={(suggestion) =>
+              void reviewSourceSuggestions([{ suggestion }])
+            }
+          />
+          <View style={styles.toolbar}>
+            <DocEditorModes
+              value={
+                latexOpen
+                  ? "latex"
+                  : sourceVisible || split
+                    ? "markdown"
+                    : "note"
+              }
               disabled={
                 !session ||
-                docEditorSessionDirty(session) ||
-                state.source !== null
+                state.source !== null ||
+                state.busy ||
+                !!state.conflict ||
+                sourcePending ||
+                !!sourceAsk
               }
-              onPress={() => {
-                closeMenuThen(
-                  () =>
-                    void downloadDoc(
-                      doc.id,
-                      format,
-                      session?.saved.version,
-                    ).catch(report),
-                );
-              }}
-            >
-              <Text style={styles.action}>{downloadLabel(format)}</Text>
-            </Pressable>
-          ))}
-          {canWrite &&
-            (["updates", "publish"] as const).map((action) => (
-              <Pressable
-                key={action}
-                accessibilityRole="button"
-                disabled={
-                  state.busy ||
-                  !!state.error ||
-                  state.conflict ||
-                  !session ||
-                  docEditorSessionDirty(session) ||
-                  state.source !== null ||
-                  keptOffline
+              onChange={(format) => {
+                if (format === "latex") setLatexOpen(true);
+                else {
+                  setSplitRequested(false);
+                  setSourceVisible(format === "markdown");
                 }
-                onPress={() => {
-                  closeMenuThen(() => setPageAction(action));
-                }}
-              >
-                <Text style={styles.action}>
-                  {action === "updates" ? "Page updates" : "Publish to web"}
-                </Text>
-              </Pressable>
-            ))}
-        </View>
-      </BottomSheet>
-      {pageAction === "updates" && (
-        <PageMaintenanceSheet
-          id={doc.id}
-          onChanged={(next) => {
-            store.adopt(next);
-            onChanged(next);
-          }}
-          onClose={() => setPageAction(null)}
-        />
-      )}
-      {pageAction === "publish" && (
-        <PagePublicationSheet
-          id={doc.id}
-          onChanged={(next) => {
-            store.adopt(next);
-            onChanged(next);
-          }}
-          onClose={() => setPageAction(null)}
-        />
-      )}
-      <Text style={styles.status}>
-        {!session
-          ? state.busy
-            ? "Opening page…"
-            : "Page unavailable"
-          : state.busy
-            ? "Saving…"
-            : state.conflict
-              ? "Review changes"
-              : session && docEditorSessionDirty(session)
-                ? keptOffline
-                  ? "Saved on this phone"
-                  : "Unsaved"
-                : "Saved"}
-      </Text>
-      {state.error !== null && (
-        <View>
-          <Text accessibilityRole="alert" style={styles.error}>
-            {state.error instanceof Error
-              ? state.error.message
-              : "Could not update this page."}
-          </Text>
-          {!state.sourceInvalid && !state.conflict && (
+              }}
+            />
             <Pressable
               accessibilityRole="button"
-              disabled={state.busy}
-              onPress={refreshPage}
+              style={styles.actionTarget}
+              onPress={() => {
+                setSplitRequested(false);
+                setSourceVisible((value) => !value);
+              }}
             >
-              <Text style={styles.action}>Retry</Text>
+              <Text style={styles.action}>
+                {sourceVisible ? "Preview" : "Source"}
+              </Text>
+            </Pressable>
+            {paneWidth / Math.max(1, fontScale) >= 900 && (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: split }}
+                style={styles.actionTarget}
+                onPress={() => setSplitRequested((value) => !value)}
+              >
+                <Text style={styles.action}>
+                  {split ? "Hide split" : "Split"}
+                </Text>
+              </Pressable>
+            )}
+            {canWrite && (sourceVisible || split) && (
+              <Pressable
+                accessibilityRole="button"
+                style={styles.actionTarget}
+                disabled={
+                  sourcePending ||
+                  state.busy ||
+                  !session ||
+                  docEditorSessionDirty(session) ||
+                  state.source !== null
+                }
+                onPress={() => {
+                  try {
+                    if (!document) return;
+                    const map = versionedDocSourceMap(
+                      document,
+                      source ?? undefined,
+                      { projected: true },
+                    );
+                    const range = versionedDocSourceAt(
+                      map,
+                      sourceSelection.current,
+                    );
+                    const block =
+                      range?.blockIndex !== undefined
+                        ? leaves[range.blockIndex]
+                        : undefined;
+                    if (block) askForBlock(block);
+                    else
+                      setNavigationError(
+                        "Place the cursor in text before asking the assistant.",
+                      );
+                  } catch (error) {
+                    report(error);
+                  }
+                }}
+              >
+                <Text style={styles.action}>Ask assistant</Text>
+              </Pressable>
+            )}
+            {canWrite && (
+              <Pressable
+                accessibilityRole="button"
+                style={styles.actionTarget}
+                accessibilityState={{ disabled: state.busy || state.conflict }}
+                disabled={
+                  state.busy ||
+                  state.conflict ||
+                  !!state.error ||
+                  !session ||
+                  !docEditorSessionDirty(session)
+                }
+                onPress={() => void save()}
+              >
+                <Text style={styles.action}>Save</Text>
+              </Pressable>
+            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Page actions"
+              style={styles.actionTarget}
+              accessibilityState={{ expanded: menuOpen }}
+              onPress={() => setMenuOpen((value) => !value)}
+            >
+              <Icon name="more" size={18} color={colors.textSoft} />
+            </Pressable>
+          </View>
+          <BottomSheet
+            visible={menuOpen}
+            title="Page actions"
+            onClose={() => setMenuOpen(false)}
+            afterClose={() => {
+              const action = afterMenu.current;
+              afterMenu.current = null;
+              action?.();
+            }}
+          >
+            <View style={styles.menu}>
+              <Pressable
+                accessibilityRole="button"
+                disabled={state.busy}
+                onPress={() => {
+                  closeMenuThen(refreshPage);
+                }}
+              >
+                <Text style={styles.action}>Refresh</Text>
+              </Pressable>
+              {onShowHistory && (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    closeMenuThen(onShowHistory);
+                  }}
+                >
+                  <Text style={styles.action}>History</Text>
+                </Pressable>
+              )}
+              {onShowInLibrary && (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    closeMenuThen(onShowInLibrary);
+                  }}
+                >
+                  <Text style={styles.action}>Show in library</Text>
+                </Pressable>
+              )}
+              {onMoveTo && (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => {
+                    closeMenuThen(onMoveTo);
+                  }}
+                >
+                  <Text style={styles.action}>Move to…</Text>
+                </Pressable>
+              )}
+              {formatsHere().map((format) => (
+                <Pressable
+                  key={format}
+                  accessibilityRole="button"
+                  disabled={
+                    !session ||
+                    docEditorSessionDirty(session) ||
+                    state.source !== null
+                  }
+                  onPress={() => {
+                    closeMenuThen(
+                      () =>
+                        void downloadDoc(
+                          doc.id,
+                          format,
+                          session?.saved.version,
+                        ).catch(report),
+                    );
+                  }}
+                >
+                  <Text style={styles.action}>{downloadLabel(format)}</Text>
+                </Pressable>
+              ))}
+              {canWrite &&
+                (["updates", "publish"] as const).map((action) => (
+                  <Pressable
+                    key={action}
+                    accessibilityRole="button"
+                    disabled={
+                      state.busy ||
+                      !!state.error ||
+                      state.conflict ||
+                      !session ||
+                      docEditorSessionDirty(session) ||
+                      state.source !== null ||
+                      keptOffline
+                    }
+                    onPress={() => {
+                      closeMenuThen(() => setPageAction(action));
+                    }}
+                  >
+                    <Text style={styles.action}>
+                      {action === "updates" ? "Page updates" : "Publish to web"}
+                    </Text>
+                  </Pressable>
+                ))}
+            </View>
+          </BottomSheet>
+          {pageAction === "updates" && (
+            <PageMaintenanceSheet
+              id={doc.id}
+              onChanged={(next) => {
+                store.adopt(next);
+                onChanged(next);
+              }}
+              onClose={() => setPageAction(null)}
+            />
+          )}
+          {pageAction === "publish" && (
+            <PagePublicationSheet
+              id={doc.id}
+              onChanged={(next) => {
+                store.adopt(next);
+                onChanged(next);
+              }}
+              onClose={() => setPageAction(null)}
+            />
+          )}
+          <Text style={styles.status}>
+            {!session
+              ? state.busy
+                ? "Opening page…"
+                : "Page unavailable"
+              : state.busy
+                ? "Saving…"
+                : state.conflict
+                  ? "Review changes"
+                  : session && docEditorSessionDirty(session)
+                    ? keptOffline
+                      ? "Saved on this phone"
+                      : "Unsaved"
+                    : "Saved"}
+          </Text>
+          {state.error !== null && (
+            <View>
+              <Text accessibilityRole="alert" style={styles.error}>
+                {state.error instanceof Error
+                  ? state.error.message
+                  : "Could not update this page."}
+              </Text>
+              {!state.sourceInvalid && !state.conflict && (
+                <Pressable
+                  accessibilityRole="button"
+                  disabled={state.busy}
+                  onPress={refreshPage}
+                >
+                  <Text style={styles.action}>Retry</Text>
+                </Pressable>
+              )}
+            </View>
+          )}
+          {navigationError && (
+            <Text accessibilityRole="alert" style={styles.error}>
+              {navigationError}
+            </Text>
+          )}
+          {state.conflict && (
+            <Text accessibilityRole="alert" style={styles.error}>
+              This page changed elsewhere. Your draft is still here.
+            </Text>
+          )}
+          {(state.conflict || state.error !== null) && session && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setDiscardOpen(true)}
+            >
+              <Text style={styles.action}>Discard draft</Text>
             </Pressable>
           )}
-        </View>
-      )}
-      {navigationError && (
-        <Text accessibilityRole="alert" style={styles.error}>
-          {navigationError}
-        </Text>
-      )}
-      {state.conflict && (
-        <Text accessibilityRole="alert" style={styles.error}>
-          This page changed elsewhere. Your draft is still here.
-        </Text>
-      )}
-      {(state.conflict || state.error !== null) && session && (
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setDiscardOpen(true)}
-        >
-          <Text style={styles.action}>Discard draft</Text>
-        </Pressable>
-      )}
-      {session && document && (
-        <>
-          {canWrite ? (
-            <TextInput
-              accessibilityLabel="Page title"
-              style={styles.title}
-              value={session.title}
-              onChangeText={(title) => {
-                editGeneration.current++;
-                offlineQueued.current = false;
-                setKeptOffline(false);
-                store.changeTitle(session.title, title);
-              }}
-              maxLength={200}
-              placeholder="Untitled"
-            />
-          ) : (
-            <Text style={styles.title}>{session.title}</Text>
-          )}
-          <View style={[styles.columns, split && styles.splitColumns]}>
-            <View
-              style={[
-                styles.sourcePane,
-                { height: paneHeight },
-                !sourceVisible && !split && styles.hiddenPane,
-              ]}
-            >
-              {source === null ? (
-                <Text>Source view is unavailable for this structure.</Text>
-              ) : (
+          {session && document && (
+            <>
+              {canWrite ? (
                 <TextInput
-                  accessibilityLabel="Markdown source"
-                  onSelectionChange={(event) => {
-                    sourceSelection.current = event.nativeEvent.selection.start;
-                  }}
-                  style={[styles.source, { height: paneHeight }]}
-                  multiline
-                  editable={canWrite}
-                  value={state.source ?? source}
-                  onChangeText={(text) => {
+                  accessibilityLabel="Page title"
+                  style={styles.title}
+                  value={session.title}
+                  onChangeText={(title) => {
                     editGeneration.current++;
                     offlineQueued.current = false;
                     setKeptOffline(false);
-                    store.changeSource(document, text);
+                    store.changeTitle(session.title, title);
                   }}
-                  textAlignVertical="top"
-                  autoCapitalize="none"
-                  autoCorrect={false}
+                  maxLength={200}
+                  placeholder="Untitled"
                 />
+              ) : (
+                <Text style={styles.title}>{session.title}</Text>
               )}
-            </View>
-            <View
-              ref={previewAnchor}
-              style={[
-                styles.preview,
-                { height: paneHeight },
-                sourceVisible && !split && styles.hiddenPane,
-              ]}
-            >
-              <ScrollView ref={previewScroll} nestedScrollEnabled>
-                <View ref={previewContent} style={styles.previewContent}>
-                  {document.format === 2 && (
-                    <DocNavigationContext.Provider
-                      value={{
-                        onFragment: goToFragment,
-                        onAppLink: (url) => {
-                          const link = parseAppLink(url);
-                          if (
-                            link?.kind === "doc" &&
-                            link.id === doc.id &&
-                            link.block
-                          )
-                            goToFragment(link.block);
-                          else void openLinkedPage(url);
-                        },
-                        report,
+              <View style={[styles.columns, split && styles.splitColumns]}>
+                <View
+                  style={[
+                    styles.sourcePane,
+                    { height: paneHeight },
+                    !sourceVisible && !split && styles.hiddenPane,
+                  ]}
+                >
+                  {source === null ? (
+                    <Text>Source view is unavailable for this structure.</Text>
+                  ) : (
+                    <TextInput
+                      accessibilityLabel="Markdown source"
+                      onSelectionChange={(event) => {
+                        sourceSelection.current =
+                          event.nativeEvent.selection.start;
                       }}
-                    >
-                      <DocContainerBody
-                        nodes={document.nodes}
-                        onOperation={
-                          canWrite
-                            ? (operation, expectedNodes) => {
-                                editGeneration.current++;
-                                offlineQueued.current = false;
-                                setKeptOffline(false);
-                                store.changeOperation(
-                                  { format: 2, nodes: [...expectedNodes] },
-                                  operation,
-                                );
-                              }
-                            : undefined
-                        }
-                        renderLeaf={(block, index, path) => (
-                          <View
-                            ref={(node) => {
-                              if (node) leafRefs.current.set(index, node);
-                              else leafRefs.current.delete(index);
-                            }}
-                            style={styles.leaf}
-                            onLayout={() => {
-                              const target = pendingInitial.current;
+                      style={[styles.source, { height: paneHeight }]}
+                      multiline
+                      editable={canWrite}
+                      value={state.source ?? source}
+                      onChangeText={(text) => {
+                        editGeneration.current++;
+                        offlineQueued.current = false;
+                        setKeptOffline(false);
+                        store.changeSource(document, text);
+                      }}
+                      textAlignVertical="top"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                    />
+                  )}
+                </View>
+                <View
+                  ref={previewAnchor}
+                  style={[
+                    styles.preview,
+                    { height: paneHeight },
+                    sourceVisible && !split && styles.hiddenPane,
+                  ]}
+                >
+                  <ScrollView ref={previewScroll} nestedScrollEnabled>
+                    <View ref={previewContent} style={styles.previewContent}>
+                      {document.format === 2 && (
+                        <DocNavigationContext.Provider
+                          value={{
+                            onFragment: goToFragment,
+                            onAppLink: (url) => {
+                              const link = parseAppLink(url);
                               if (
-                                !target ||
-                                docFragmentIndex(leaves, target) !== index
+                                link?.kind === "doc" &&
+                                link.id === doc.id &&
+                                link.block
                               )
-                                return;
-                              pendingInitial.current = null;
-                              requestAnimationFrame(() => goToFragment(target));
-                            }}
-                          >
-                            <DocBody
-                              content={[block]}
-                              pageContent={leaves}
-                              pageIndex={index}
-                            />
-                            {!!block.id && (
-                              <Pressable
-                                accessibilityRole="button"
-                                accessibilityLabel={`Comments on block ${index + 1}`}
-                                onPress={() => {
-                                  void toggleThread(block.id!);
-                                }}
-                              >
-                                <Text style={styles.editAction}>
-                                  {(comments.counts[block.id] ?? 0) > 0
-                                    ? `${comments.counts[block.id]} ${comments.counts[block.id] === 1 ? "comment" : "comments"}`
-                                    : "Comment"}
-                                </Text>
-                              </Pressable>
-                            )}
-                            {!!block.id && openThread === block.id && (
-                              <DocThread
-                                comments={comments.anchored.get(block.id) ?? []}
-                                state={comments}
-                                userId={userId}
-                                quote={
-                                  comments.anchored.get(block.id)?.[0]?.quote
-                                }
-                                placeholder="Comment on this line…"
-                                anchor={{
-                                  block_id: block.id,
-                                  quote: String(
-                                    "text" in block ? block.text : "",
-                                  ),
-                                }}
-                              />
-                            )}
-                            {canWrite && "text" in block && (
-                              <Pressable
-                                accessibilityRole="button"
-                                onPress={() =>
-                                  setEditing(
-                                    editing === path.join("/")
-                                      ? null
-                                      : path.join("/"),
-                                  )
-                                }
-                              >
-                                <Text style={styles.editAction}>
-                                  {editing === path.join("/") ? "Done" : "Edit"}
-                                </Text>
-                              </Pressable>
-                            )}
-                            {canWrite &&
-                              editing === path.join("/") &&
-                              "text" in block && (
-                                <Pressable
-                                  accessibilityRole="button"
-                                  style={styles.actionTarget}
-                                  disabled={
-                                    sourcePending ||
-                                    !block.id ||
-                                    state.busy ||
-                                    docEditorSessionDirty(session) ||
-                                    state.source !== null
-                                  }
-                                  onPress={() => askForBlock(block)}
-                                >
-                                  <Text style={styles.editAction}>
-                                    Ask assistant
-                                  </Text>
-                                </Pressable>
-                              )}
-                            {canWrite &&
-                              editing === path.join("/") &&
-                              "text" in block && (
-                                <TextInput
-                                  accessibilityLabel={`Edit block ${index + 1}`}
-                                  style={styles.leafInput}
-                                  multiline
-                                  value={block.text}
-                                  onChangeText={(text) => {
+                                goToFragment(link.block);
+                              else void openLinkedPage(url);
+                            },
+                            report,
+                          }}
+                        >
+                          <DocContainerBody
+                            nodes={document.nodes}
+                            onOperation={
+                              canWrite
+                                ? (operation, expectedNodes) => {
                                     editGeneration.current++;
                                     offlineQueued.current = false;
                                     setKeptOffline(false);
-                                    store.changeOperation(document, {
-                                      kind: "replace-leaf",
-                                      path,
-                                      block: { ...block, text } as DocBlock,
-                                    });
-                                  }}
+                                    store.changeOperation(
+                                      { format: 2, nodes: [...expectedNodes] },
+                                      operation,
+                                    );
+                                  }
+                                : undefined
+                            }
+                            renderLeaf={(block, index, path) => (
+                              <View
+                                ref={(node) => {
+                                  if (node) leafRefs.current.set(index, node);
+                                  else leafRefs.current.delete(index);
+                                }}
+                                style={styles.leaf}
+                                onLayout={() => {
+                                  const target = pendingInitial.current;
+                                  if (
+                                    !target ||
+                                    docFragmentIndex(leaves, target) !== index
+                                  )
+                                    return;
+                                  pendingInitial.current = null;
+                                  requestAnimationFrame(() =>
+                                    goToFragment(target),
+                                  );
+                                }}
+                              >
+                                <DocBody
+                                  content={[block]}
+                                  pageContent={leaves}
+                                  pageIndex={index}
                                 />
-                              )}
-                          </View>
-                        )}
-                      />
-                    </DocNavigationContext.Provider>
-                  )}
+                                {!!block.id && (
+                                  <Pressable
+                                    accessibilityRole="button"
+                                    accessibilityLabel={`Comments on block ${index + 1}`}
+                                    onPress={() => {
+                                      void toggleThread(block.id!);
+                                    }}
+                                  >
+                                    <Text style={styles.editAction}>
+                                      {(comments.counts[block.id] ?? 0) > 0
+                                        ? `${comments.counts[block.id]} ${comments.counts[block.id] === 1 ? "comment" : "comments"}`
+                                        : "Comment"}
+                                    </Text>
+                                  </Pressable>
+                                )}
+                                {!!block.id && openThread === block.id && (
+                                  <DocThread
+                                    comments={
+                                      comments.anchored.get(block.id) ?? []
+                                    }
+                                    state={comments}
+                                    userId={userId}
+                                    quote={
+                                      comments.anchored.get(block.id)?.[0]
+                                        ?.quote
+                                    }
+                                    placeholder="Comment on this line…"
+                                    anchor={{
+                                      block_id: block.id,
+                                      quote: String(
+                                        "text" in block ? block.text : "",
+                                      ),
+                                    }}
+                                  />
+                                )}
+                                {canWrite && "text" in block && (
+                                  <Pressable
+                                    accessibilityRole="button"
+                                    onPress={() =>
+                                      setEditing(
+                                        editing === path.join("/")
+                                          ? null
+                                          : path.join("/"),
+                                      )
+                                    }
+                                  >
+                                    <Text style={styles.editAction}>
+                                      {editing === path.join("/")
+                                        ? "Done"
+                                        : "Edit"}
+                                    </Text>
+                                  </Pressable>
+                                )}
+                                {canWrite &&
+                                  editing === path.join("/") &&
+                                  "text" in block && (
+                                    <Pressable
+                                      accessibilityRole="button"
+                                      style={styles.actionTarget}
+                                      disabled={
+                                        sourcePending ||
+                                        !block.id ||
+                                        state.busy ||
+                                        docEditorSessionDirty(session) ||
+                                        state.source !== null
+                                      }
+                                      onPress={() => askForBlock(block)}
+                                    >
+                                      <Text style={styles.editAction}>
+                                        Ask assistant
+                                      </Text>
+                                    </Pressable>
+                                  )}
+                                {canWrite &&
+                                  editing === path.join("/") &&
+                                  "text" in block && (
+                                    <TextInput
+                                      accessibilityLabel={`Edit block ${index + 1}`}
+                                      style={styles.leafInput}
+                                      multiline
+                                      value={block.text}
+                                      onChangeText={(text) => {
+                                        editGeneration.current++;
+                                        offlineQueued.current = false;
+                                        setKeptOffline(false);
+                                        store.changeOperation(document, {
+                                          kind: "replace-leaf",
+                                          path,
+                                          block: { ...block, text } as DocBlock,
+                                        });
+                                      }}
+                                    />
+                                  )}
+                              </View>
+                            )}
+                          />
+                        </DocNavigationContext.Provider>
+                      )}
+                    </View>
+                  </ScrollView>
                 </View>
-              </ScrollView>
-            </View>
-          </View>
-        </>
-      )}
-    </View>
+              </View>
+            </>
+          )}
+        </View>
+      </View>
+    </DocLatexPreviewProvider>
   );
 }
 

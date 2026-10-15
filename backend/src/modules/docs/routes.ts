@@ -178,7 +178,7 @@ export async function docRoutes(app: FastifyInstance) {
     "/docs/:id/latex/preview",
     {
       bodyLimit: 1_100_000,
-      config: { rateLimit: { max: 6, timeWindow: "1 minute" } },
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
       onRequest: async (request) => {
         await authenticate(request);
       },

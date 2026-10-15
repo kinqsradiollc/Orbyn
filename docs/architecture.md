@@ -47,6 +47,10 @@ Expo uses its existing navigation and focused sheets rather than desktop panes.
 Documents offer normal note editing, Markdown/equation source beside the rendered
 note, and standalone TeX beside PDF. Source visibility is a presentation preference.
 A named LaTeX block preserves exact source without replacing other note blocks.
+Note is the common rendered output, including the compiled LaTeX PDF. Inline
+Markdown/LaTeX source can be hidden independently. One account/document preview
+store survives source/Note changes, debounces saved revisions and discards aborted
+or stale results. Errors retain the last valid PDF and expose Retry.
 Assistant changes remain proposals requiring a decision. Compilation authorizes
 the writer and document revision before and after work, so a stale or newly
 inaccessible result is discarded.

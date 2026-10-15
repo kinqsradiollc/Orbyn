@@ -1,3 +1,4 @@
+import { useDocLatexPreview } from "./DocLatexPreview";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ScrollView,
@@ -43,6 +44,10 @@ export function DocSourcePreview({
   onAssist,
   onLatexChange,
   latexOnly = false,
+  initialMode = "markdown",
+  inline = false,
+  compileReady = true,
+  leaveCheck,
 }: {
   blocks: DocBlock[];
   docId: string;
@@ -56,6 +61,10 @@ export function DocSourcePreview({
   onAssist?: (block: DocBlock) => void;
   onLatexChange?: (text: string, expected: DocBlock[]) => DocBlock[];
   latexOnly?: boolean;
+  initialMode?: "markdown" | "latex";
+  inline?: boolean;
+  compileReady?: boolean;
+  leaveCheck?: { current: (() => boolean) | null };
 }) {
   const [navigating, setNavigating] = useState(false);
   const [navigationError, setNavigationError] = useState("");
@@ -69,15 +78,21 @@ export function DocSourcePreview({
     };
   }, []);
   const [mode, setMode] = useState<"markdown" | "latex">(
-    latexOnly ? "latex" : "markdown",
+    latexOnly ? "latex" : initialMode,
   );
   const latex = docLatexBlock(blocks);
   const [latexText, setLatexText] = useState(
     latex?.text ?? EMPTY_LATEX_DOCUMENT,
   );
-  const [pdf, setPdf] = useState<{ blob: Blob; source: string } | null>(null);
-  const [compiling, setCompiling] = useState(false);
-  const [compileError, setCompileError] = useState("");
+  const sharedPreview = useDocLatexPreview();
+  const [localPdf, setPdf] = useState<{ blob: Blob; source: string } | null>(
+    null,
+  );
+  const pdf = sharedPreview?.pdf ?? localPdf;
+  const [localCompiling, setCompiling] = useState(false);
+  const compiling = sharedPreview?.busy ?? localCompiling;
+  const [localCompileError, setCompileError] = useState("");
+  const compileError = sharedPreview?.error ?? localCompileError;
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
     if (latex) setLatexText(latex.text);
@@ -89,7 +104,16 @@ export function DocSourcePreview({
     [],
   );
   const compilePdf = async () => {
-    if (compile.current || sourceError || !(onSourceChange || onLatexChange))
+    if (sharedPreview) {
+      sharedPreview.retry();
+      return;
+    }
+    if (
+      compile.current ||
+      !compileReady ||
+      sourceError ||
+      !(onSourceChange || onLatexChange)
+    )
       return;
     const controller = new AbortController();
     compile.current = controller;
@@ -115,7 +139,7 @@ export function DocSourcePreview({
   };
   const [sourceVisible, setSourceVisible] = useState(true);
   const [paneWidth, setPaneWidth] = useState(0);
-  const { fontScale } = useWindowDimensions();
+  const { fontScale, height: windowHeight } = useWindowDimensions();
   const wide = paneWidth / fontScale >= 900;
   const split = wide && sourceVisible;
   const [selected, setSelected] = useState(0);
@@ -231,6 +255,63 @@ export function DocSourcePreview({
       );
     }
   };
+  const compileLatest = useRef(compilePdf);
+  compileLatest.current = compilePdf;
+  const lastCompile = useRef(0);
+  useEffect(() => {
+    const previous = compile.current;
+    previous?.abort();
+    if (compile.current === previous) compile.current = null;
+    setCompiling(false);
+    if (
+      sharedPreview ||
+      mode !== "latex" ||
+      !compileReady ||
+      sourceError ||
+      !(onSourceChange || onLatexChange)
+    )
+      return;
+    const timer = setTimeout(
+      () => {
+        lastCompile.current = Date.now();
+        void compileLatest.current();
+      },
+      Math.max(1200, 4000 - (Date.now() - lastCompile.current)),
+    );
+    return () => {
+      clearTimeout(timer);
+      compile.current?.abort();
+    };
+  }, [
+    mode,
+    latexText,
+    compileReady,
+    sourceError,
+    docId,
+    !!onSourceChange,
+    !!onLatexChange,
+  ]);
+  useEffect(() => {
+    if (!leaveCheck) return;
+    const ready = () =>
+      !liveSourceError.current &&
+      !mustRestore.current &&
+      !navigationPending.current;
+    leaveCheck.current = ready;
+    return () => {
+      if (leaveCheck.current === ready) leaveCheck.current = null;
+    };
+  }, [leaveCheck]);
+  useEffect(() => {
+    if (
+      sharedPreview &&
+      mode === "latex" &&
+      !docLatexBlock(ownerBlocks.current) &&
+      (onSourceChange || onLatexChange) &&
+      !sourceError
+    )
+      changeLatex(latexText);
+  }, [mode, !!latex, !!sharedPreview]);
   const closeSource = () => {
     if (!sourceError && !navigationPending.current) onClose();
   };
@@ -304,7 +385,298 @@ export function DocSourcePreview({
     },
     report,
   };
-  return (
+  const content = (
+    <View
+      style={{ flex: 1, minHeight: 0, padding: 16, gap: 12 }}
+      onLayout={(event) => {
+        setPaneWidth(event.nativeEvent.layout.width);
+        setControlsHeight(
+          Math.max(0, (event.nativeEvent.layout.height - 44) * 0.45),
+        );
+      }}
+    >
+      <ScrollView
+        style={{ flexGrow: 0, flexShrink: 1, maxHeight: controlsHeight }}
+        contentContainerStyle={{ gap: 12 }}
+        keyboardShouldPersistTaps="handled"
+      >
+        {!!navigationError && (
+          <Text accessibilityRole="alert" style={shared.small}>
+            {navigationError}
+          </Text>
+        )}
+        {navigating && (
+          <Text accessibilityLiveRegion="polite" style={shared.small}>
+            Saving before opening…
+          </Text>
+        )}
+        {!!sourceError && (
+          <View style={{ gap: 8 }}>
+            <Button
+              title="Restore current document"
+              disabled={navigating}
+              secondary
+              onPress={revertSource}
+            />
+            <Text accessibilityRole="alert" style={shared.small}>
+              {sourceError} This edit has not been saved.
+            </Text>
+          </View>
+        )}
+        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+          <Button
+            title="Note"
+            secondary
+            disabled={navigating || !!sourceError}
+            onPress={closeSource}
+          />
+          {!latexOnly && (
+            <Button
+              title="Markdown"
+              disabled={navigating}
+              secondary={mode !== "markdown"}
+              onPress={() => setMode("markdown")}
+            />
+          )}
+          <Button
+            title="LaTeX"
+            disabled={navigating}
+            secondary={mode !== "latex"}
+            onPress={() => setMode("latex")}
+          />
+        </View>
+        <Text style={shared.small}>
+          {mode === "latex"
+            ? "LaTeX is saved with this note."
+            : onSourceChange
+              ? "Edit Markdown. Keep block anchors to preserve comments and task links."
+              : "Source is read-only."}
+        </Text>
+        {saveStatus && (
+          <Text accessibilityLiveRegion="polite" style={shared.small}>
+            {saveStatus}
+          </Text>
+        )}
+        {mode === "markdown" && onAssist && blocks[selected]?.id && (
+          <Button
+            title="Ask assistant"
+            secondary
+            disabled={navigating || !!sourceError}
+            onPress={() => onAssist(blocks[selected])}
+          />
+        )}
+        <Button
+          title={
+            sourceVisible
+              ? wide
+                ? "Hide source"
+                : "Show preview"
+              : "Show source"
+          }
+          secondary
+          onPress={() => {
+            setSourceSelection(
+              !sourceVisible && selectedRange
+                ? { start: selectedRange.start, end: selectedRange.start }
+                : undefined,
+            );
+            setSourceVisible(!sourceVisible);
+          }}
+        />
+      </ScrollView>
+      {mode === "latex" && (
+        <>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            <Text accessibilityLiveRegion="polite" style={shared.small}>
+              {compiling ? "Updating preview…" : "Live preview"}
+            </Text>
+            {compileError && (
+              <Button
+                title="Retry preview"
+                secondary
+                disabled={
+                  navigating ||
+                  !compileReady ||
+                  compiling ||
+                  !!sourceError ||
+                  !(onSourceChange || onLatexChange)
+                }
+                onPress={() => void compilePdf()}
+              />
+            )}
+            {onAssist && latex?.id && (
+              <Button
+                title="Ask assistant"
+                secondary
+                disabled={navigating || !!sourceError || !latex.text.trim()}
+                onPress={() => onAssist(latex)}
+              />
+            )}
+          </View>
+          {!!compileError && (
+            <Text accessibilityRole="alert" style={shared.small}>
+              {compileError}
+            </Text>
+          )}
+          {pdf && pdf.source !== latexText && (
+            <Text accessibilityLiveRegion="polite" style={shared.small}>
+              Preview is updating.
+            </Text>
+          )}
+          <View
+            style={{
+              flex: 1,
+              minHeight: 0,
+              gap: 12,
+              flexDirection: split ? "row" : "column",
+            }}
+          >
+            <View
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: sourceVisible ? "flex" : "none",
+              }}
+            >
+              <TextInput
+                accessibilityLabel="LaTeX source"
+                multiline
+                scrollEnabled
+                editable={!navigating && !!(onSourceChange || onLatexChange)}
+                value={latexText}
+                style={[
+                  shared.input,
+                  { flex: 1, minHeight: 120, textAlignVertical: "top" },
+                ]}
+                onChangeText={changeLatex}
+              />
+            </View>
+            <View
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display: split || !sourceVisible ? "flex" : "none",
+              }}
+            >
+              {pdf ? (
+                <DocumentPdfPreview pdf={pdf.blob} report={report} />
+              ) : (
+                <Text style={shared.small}>
+                  {onSourceChange || onLatexChange
+                    ? "Preparing PDF preview…"
+                    : "Editing access is needed to compile."}
+                </Text>
+              )}
+            </View>
+          </View>
+        </>
+      )}
+      <View
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: mode === "markdown" ? "flex" : "none",
+        }}
+      >
+        <View
+          style={{
+            flex: 1,
+            minHeight: 0,
+            flexDirection: split ? "row" : "column",
+            gap: 12,
+          }}
+        >
+          <View
+            style={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              display: sourceVisible ? "flex" : "none",
+            }}
+          >
+            <TextInput
+              accessibilityLabel="Markdown source"
+              value={onSourceChange ? sourceText : map.source}
+              editable={!navigating && !!onSourceChange}
+              onChangeText={onSourceChange ? changeSource : undefined}
+              ref={sourceInput}
+              selection={onSourceChange ? undefined : sourceSelection}
+              onLayout={() => {
+                if (onSourceChange && sourceSelection) {
+                  sourceInput.current?.setNativeProps({
+                    selection: sourceSelection,
+                  });
+                  setSourceSelection(undefined);
+                }
+              }}
+              multiline
+              scrollEnabled
+              showSoftInputOnFocus={!!onSourceChange}
+              style={{
+                flex: 1,
+                textAlignVertical: "top",
+                fontFamily: fonts.mono,
+                fontSize: 13,
+                lineHeight: 20,
+                padding: 12,
+                color: colors.text,
+                borderColor: colors.border,
+                borderWidth: 1,
+                borderRadius: radii.input,
+              }}
+              onSelectionChange={(event) => {
+                setSourceSelection(undefined);
+                const range = docSourceBlockAt(
+                  map,
+                  event.nativeEvent.selection.start,
+                );
+                if (range) setSelected(range.blockIndex);
+              }}
+            />
+          </View>
+          <ScrollView
+            ref={scroll}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: !sourceVisible || split ? "flex" : "none",
+            }}
+            contentContainerStyle={{ padding: 12 }}
+            scrollEventThrottle={32}
+            onScroll={(event) => {
+              const top = event.nativeEvent.contentOffset.y;
+              let current = 0;
+              for (const [index, y] of positions)
+                if (y <= top + 12 && index > current) current = index;
+              setSelected(current);
+            }}
+          >
+            <DocNavigationContext.Provider value={navigation}>
+              <FootnoteContext.Provider value={notes}>
+                <DocBody
+                  content={blocks}
+                  targetBlockId={blockId}
+                  onLineLayout={(index, y) => positions.set(index, y)}
+                  flash={blockId ?? null}
+                  onTargetLayout={(y) =>
+                    scroll.current?.scrollTo({
+                      y: Math.max(0, y - 12),
+                      animated: false,
+                    })
+                  }
+                />
+              </FootnoteContext.Provider>
+            </DocNavigationContext.Provider>
+          </ScrollView>
+        </View>
+      </View>
+    </View>
+  );
+  return inline ? (
+    <View style={{ height: Math.max(400, windowHeight - 180), minHeight: 0 }}>
+      {content}
+    </View>
+  ) : (
     <Sheet
       visible
       title="Source and preview"
@@ -312,284 +684,7 @@ export function DocSourcePreview({
       hideClose={!!sourceError}
       closeDisabled={!!sourceError}
     >
-      <View
-        style={{ flex: 1, minHeight: 0, padding: 16, gap: 12 }}
-        onLayout={(event) => {
-          setPaneWidth(event.nativeEvent.layout.width);
-          setControlsHeight(
-            Math.max(0, (event.nativeEvent.layout.height - 44) * 0.45),
-          );
-        }}
-      >
-        <ScrollView
-          style={{ flexGrow: 0, flexShrink: 1, maxHeight: controlsHeight }}
-          contentContainerStyle={{ gap: 12 }}
-          keyboardShouldPersistTaps="handled"
-        >
-          {!!navigationError && (
-            <Text accessibilityRole="alert" style={shared.small}>
-              {navigationError}
-            </Text>
-          )}
-          {navigating && (
-            <Text accessibilityLiveRegion="polite" style={shared.small}>
-              Saving before opening…
-            </Text>
-          )}
-          {!!sourceError && (
-            <View style={{ gap: 8 }}>
-              <Button
-                title="Restore current document"
-                disabled={navigating}
-                secondary
-                onPress={revertSource}
-              />
-              <Text accessibilityRole="alert" style={shared.small}>
-                {sourceError} This edit has not been saved.
-              </Text>
-            </View>
-          )}
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <Button
-              title="Note"
-              secondary
-              disabled={navigating || !!sourceError}
-              onPress={closeSource}
-            />
-            {!latexOnly && (
-              <Button
-                title="Markdown"
-                disabled={navigating}
-                secondary={mode !== "markdown"}
-                onPress={() => setMode("markdown")}
-              />
-            )}
-            <Button
-              title="LaTeX"
-              disabled={navigating}
-              secondary={mode !== "latex"}
-              onPress={() => setMode("latex")}
-            />
-          </View>
-          <Text style={shared.small}>
-            {mode === "latex"
-              ? "LaTeX is saved with this note."
-              : onSourceChange
-                ? "Edit Markdown. Keep block anchors to preserve comments and task links."
-                : "Source is read-only."}
-          </Text>
-          {saveStatus && (
-            <Text accessibilityLiveRegion="polite" style={shared.small}>
-              {saveStatus}
-            </Text>
-          )}
-          {mode === "markdown" && onAssist && blocks[selected]?.id && (
-            <Button
-              title="Ask assistant"
-              secondary
-              disabled={navigating || !!sourceError}
-              onPress={() => onAssist(blocks[selected])}
-            />
-          )}
-          <Button
-            title={
-              sourceVisible
-                ? wide
-                  ? "Hide source"
-                  : "Show preview"
-                : "Show source"
-            }
-            secondary
-            onPress={() => {
-              setSourceSelection(
-                !sourceVisible && selectedRange
-                  ? { start: selectedRange.start, end: selectedRange.start }
-                  : undefined,
-              );
-              setSourceVisible(!sourceVisible);
-            }}
-          />
-        </ScrollView>
-        {mode === "latex" && (
-          <>
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              <Button
-                title={compiling ? "Compiling…" : "Compile PDF"}
-                disabled={
-                  navigating ||
-                  compiling ||
-                  !!sourceError ||
-                  !(onSourceChange || onLatexChange)
-                }
-                onPress={() => void compilePdf()}
-              />
-              {onAssist && latex?.id && (
-                <Button
-                  title="Ask assistant"
-                  secondary
-                  disabled={navigating || !!sourceError || !latex.text.trim()}
-                  onPress={() => onAssist(latex)}
-                />
-              )}
-            </View>
-            {!!compileError && (
-              <Text accessibilityRole="alert" style={shared.small}>
-                {compileError}
-              </Text>
-            )}
-            {pdf && pdf.source !== latexText && (
-              <Text accessibilityLiveRegion="polite" style={shared.small}>
-                PDF shows an earlier draft. Compile to update it.
-              </Text>
-            )}
-            <View
-              style={{
-                flex: 1,
-                minHeight: 0,
-                gap: 12,
-                flexDirection: split ? "row" : "column",
-              }}
-            >
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  display: sourceVisible ? "flex" : "none",
-                }}
-              >
-                <TextInput
-                  accessibilityLabel="LaTeX source"
-                  multiline
-                  scrollEnabled
-                  editable={!navigating && !!(onSourceChange || onLatexChange)}
-                  value={latexText}
-                  style={[
-                    shared.input,
-                    { flex: 1, minHeight: 120, textAlignVertical: "top" },
-                  ]}
-                  onChangeText={changeLatex}
-                />
-              </View>
-              <View
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  display: split || !sourceVisible ? "flex" : "none",
-                }}
-              >
-                {pdf ? (
-                  <DocumentPdfPreview pdf={pdf.blob} report={report} />
-                ) : (
-                  <Text style={shared.small}>
-                    {onSourceChange || onLatexChange
-                      ? "Compile to preview the PDF."
-                      : "Editing access is needed to compile."}
-                  </Text>
-                )}
-              </View>
-            </View>
-          </>
-        )}
-        <View
-          style={{
-            flex: 1,
-            minHeight: 0,
-            display: mode === "markdown" ? "flex" : "none",
-          }}
-        >
-          <View
-            style={{
-              flex: 1,
-              minHeight: 0,
-              flexDirection: split ? "row" : "column",
-              gap: 12,
-            }}
-          >
-            <View
-              style={{
-                flex: 1,
-                minWidth: 0,
-                minHeight: 0,
-                display: sourceVisible ? "flex" : "none",
-              }}
-            >
-              <TextInput
-                accessibilityLabel="Markdown source"
-                value={onSourceChange ? sourceText : map.source}
-                editable={!navigating && !!onSourceChange}
-                onChangeText={onSourceChange ? changeSource : undefined}
-                ref={sourceInput}
-                selection={onSourceChange ? undefined : sourceSelection}
-                onLayout={() => {
-                  if (onSourceChange && sourceSelection) {
-                    sourceInput.current?.setNativeProps({
-                      selection: sourceSelection,
-                    });
-                    setSourceSelection(undefined);
-                  }
-                }}
-                multiline
-                scrollEnabled
-                showSoftInputOnFocus={!!onSourceChange}
-                style={{
-                  flex: 1,
-                  textAlignVertical: "top",
-                  fontFamily: fonts.mono,
-                  fontSize: 13,
-                  lineHeight: 20,
-                  padding: 12,
-                  color: colors.text,
-                  borderColor: colors.border,
-                  borderWidth: 1,
-                  borderRadius: radii.input,
-                }}
-                onSelectionChange={(event) => {
-                  setSourceSelection(undefined);
-                  const range = docSourceBlockAt(
-                    map,
-                    event.nativeEvent.selection.start,
-                  );
-                  if (range) setSelected(range.blockIndex);
-                }}
-              />
-            </View>
-            <ScrollView
-              ref={scroll}
-              style={{
-                flex: 1,
-                minWidth: 0,
-                display: !sourceVisible || split ? "flex" : "none",
-              }}
-              contentContainerStyle={{ padding: 12 }}
-              scrollEventThrottle={32}
-              onScroll={(event) => {
-                const top = event.nativeEvent.contentOffset.y;
-                let current = 0;
-                for (const [index, y] of positions)
-                  if (y <= top + 12 && index > current) current = index;
-                setSelected(current);
-              }}
-            >
-              <DocNavigationContext.Provider value={navigation}>
-                <FootnoteContext.Provider value={notes}>
-                  <DocBody
-                    content={blocks}
-                    targetBlockId={blockId}
-                    onLineLayout={(index, y) => positions.set(index, y)}
-                    flash={blockId ?? null}
-                    onTargetLayout={(y) =>
-                      scroll.current?.scrollTo({
-                        y: Math.max(0, y - 12),
-                        animated: false,
-                      })
-                    }
-                  />
-                </FootnoteContext.Provider>
-              </DocNavigationContext.Provider>
-            </ScrollView>
-          </View>
-        </View>
-      </View>
+      {content}
     </Sheet>
   );
 }

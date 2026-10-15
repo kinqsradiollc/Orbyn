@@ -188,3 +188,52 @@
   min-height: 0;
   box-sizing: border-box;
 }
+
+/* Source editing is part of the document canvas, with no modal focus trap. */
+.doc-source-workspace {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.doc-editor:has(> .doc-source-workspace) > :not(.doc-source-workspace),
+.structured-doc-editor:has(> .doc-source-workspace)
+  > :not(.doc-source-workspace) {
+  display: none;
+}
+.doc-source-workspace .doc-source-tools {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.doc-source-workspace .doc-source-view,
+.doc-source-workspace .doc-source-save {
+  margin: 0;
+}
+.doc-source-workspace .doc-source-columns textarea,
+.doc-source-workspace .doc-source-rendered {
+  height: clamp(360px, calc(100dvh - 280px), 800px);
+}
+.doc-source-view > .secondary {
+  min-height: 36px;
+}
+@media (pointer: coarse) {
+  .doc-source-view > .secondary {
+    min-height: 44px;
+  }
+}
+.doc-source-workspace [hidden],
+.doc-source-dialog [hidden] {
+  display: none !important;
+}
+.doc-latex-note {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.doc-latex-note > iframe {
+  width: 100%;
+  height: min(75dvh, 900px);
+  min-height: 360px;
+  border: 0;
+}

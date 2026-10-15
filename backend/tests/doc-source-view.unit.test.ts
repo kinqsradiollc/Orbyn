@@ -7,7 +7,13 @@ import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import * as core from "@orbyn/core";
 
-function fixture(native: boolean, editable = false) {
+function fixture(
+  native: boolean,
+  editable = false,
+  options: Record<string, unknown> = {},
+) {
+  const timers = new Map<number, () => void>();
+  let nextTimer = 0;
   const states: unknown[] = [];
   let at = 0,
     refAt = 0;
@@ -125,6 +131,7 @@ function fixture(native: boolean, editable = false) {
     },
   );
   modules["../../hooks/useModalFocus"] = focusExports;
+  modules["./DocLatexPreview"] = { useDocLatexPreview: () => null };
   const exports: Record<string, (props: unknown) => React.ReactElement> = {};
   const path = native
     ? "../../mobile/src/screens/docs/DocSourcePreview.tsx"
@@ -141,6 +148,15 @@ function fixture(native: boolean, editable = false) {
     {
       exports,
       React,
+      AbortController,
+      Date,
+      URL: { createObjectURL: () => "blob:fixture-pdf", revokeObjectURL() {} },
+      setTimeout: (fn: () => void) => {
+        const id = ++nextTimer;
+        timers.set(id, fn);
+        return id;
+      },
+      clearTimeout: (id: number) => timers.delete(id),
       getComputedStyle: () => ({ lineHeight: "20px" }),
       document,
       require: (name: string) => {
@@ -174,10 +190,12 @@ function fixture(native: boolean, editable = false) {
       onClose: () => {
         closed++;
       },
+      ...options,
     });
   };
   return Object.assign(render, {
     refs,
+    timers,
     dialogEffects,
     listeners,
     focused: () => focused,
@@ -771,5 +789,127 @@ for (const native of [false, true]) {
       text,
       "the rejected typing remains available for recovery",
     );
+  });
+}
+
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} opens the requested LaTeX format inline and schedules a saved live preview`, async () => {
+    const calls: { source: string; signal: AbortSignal }[] = [];
+    const leaveCheck: { current: (() => boolean) | null } = { current: null };
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      compileReady: true,
+      leaveCheck,
+      onCompileLatex: async (source: string, signal: AbortSignal) => {
+        calls.push({ source, signal });
+        return new Blob(["%PDF-fixture"]);
+      },
+    });
+    const blocks = core.withDocLatexSource(
+      [],
+      "\\documentclass{article}\\begin{document}Live\\end{document}",
+    );
+    const first = render(blocks);
+    if (!native)
+      assert.ok(find(first, (p) => p.className === "doc-source-workspace"));
+    const field = find(
+      first,
+      (p) =>
+        p["aria-label"] === "LaTeX source" ||
+        p.accessibilityLabel === "LaTeX source",
+    );
+    assert.ok(field);
+    assert.equal(field.value, core.docLatexBlock(blocks)!.text);
+    const schedule = render.dialogEffects.find(
+      (e) => e.deps?.length === 7 && e.deps[0] === "latex",
+    )!;
+    assert.ok(schedule);
+    const cleanup = schedule.run();
+    assert.equal(calls.length, 0, "typing is debounced");
+    for (const [id, run] of render.timers) {
+      render.timers.delete(id);
+      run();
+    }
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].source, field.value);
+    cleanup?.();
+    assert.equal(render.timers.size, 0);
+  });
+  test(`${native ? "native" : "web"} live preview waits for a saved source and cleanup cancels its pending request`, async () => {
+    let signal: AbortSignal | undefined;
+    let finish!: (blob: Blob) => void;
+    const compile = (source: string, requestSignal: AbortSignal) => {
+      signal = requestSignal;
+      return new Promise<Blob>((resolve) => (finish = resolve));
+    };
+    const blocks = core.withDocLatexSource([], "Draft TeX");
+    const unsaved = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      compileReady: false,
+      onCompileLatex: compile,
+    });
+    unsaved(blocks);
+    unsaved.dialogEffects
+      .find((e) => e.deps?.length === 7 && e.deps[0] === "latex")!
+      .run();
+    assert.equal(unsaved.timers.size, 0);
+    const saved = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      compileReady: true,
+      onCompileLatex: compile,
+    });
+    saved(blocks);
+    const cleanup = saved.dialogEffects
+      .find((e) => e.deps?.length === 7 && e.deps[0] === "latex")!
+      .run();
+    for (const [id, run] of saved.timers) {
+      saved.timers.delete(id);
+      run();
+    }
+    assert.ok(signal);
+    cleanup?.();
+    assert.equal(signal!.aborted, true);
+    finish(new Blob(["%PDF-stale"]));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.ok(
+      !saved.states.some(
+        (value) =>
+          value &&
+          typeof value === "object" &&
+          ("blob" in value || "url" in value),
+      ),
+      "cancelled output is not adopted",
+    );
+  });
+}
+
+for (const native of [false, true]) {
+  test(`${native ? "native" : "web"} inline navigation allows valid source and blocks an unapplied source error`, () => {
+    const leaveCheck: { current: (() => boolean) | null } = { current: null };
+    const render = fixture(native, true, { inline: true, leaveCheck });
+    const blocks = core.parseDoc("One ^one\n\nTwo ^two", { anchors: true });
+    const tree = render(blocks);
+    const owner = render.dialogEffects.find(
+      (effect) => effect.deps?.[0] === leaveCheck,
+    )!;
+    const cleanup = owner.run();
+    assert.equal(leaveCheck.current?.(), true);
+    const input = find(
+      tree,
+      (props) =>
+        props["aria-label"] === "Markdown source" ||
+        props.accessibilityLabel === "Markdown source",
+    )!;
+    const invalid = "First ^one\n\nSecond ^one";
+    if (native) input.onChangeText(invalid);
+    else input.onChange({ currentTarget: { value: invalid } });
+    render(blocks);
+    assert.equal(leaveCheck.current?.(), false);
+    cleanup?.();
+    assert.equal(leaveCheck.current, null);
   });
 }

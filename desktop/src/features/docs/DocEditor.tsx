@@ -1,3 +1,5 @@
+import { DocLatexPreviewProvider } from "./DocLatexPreview";
+import { DocEditorModes, type DocumentEditorMode } from "./DocEditorModes";
 import { ownsEditorKey } from "./editor-input";
 import { preparePaneDrafts } from "../../app/page-commands";
 import { PageMaintenanceDialog } from "./PageMaintenanceDialog";
@@ -486,7 +488,11 @@ function LegacyDocEditor({
     };
   }, []);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
+  const [sourcePreviewMode, setSourcePreviewMode] = useState<
+    "markdown" | "latex"
+  >("markdown");
   const linkNavigation = useRef(false);
+  const sourceLeaveCheck = useRef<(() => boolean) | null>(null);
   const sourcePreviewOwner = useRef(sourcePreview);
   sourcePreviewOwner.current = sourcePreview;
   const [sourceAsk, setSourceAsk] = useState<{
@@ -3035,7 +3041,7 @@ function LegacyDocEditor({
     beforeLeave: async () => {
       if (
         sourceAsk ||
-        sourcePreviewOwner.current ||
+        (sourcePreviewOwner.current && !sourceLeaveCheck.current?.()) ||
         suggestionMutation.current ||
         historyMutation.current ||
         pageMutation.current
@@ -3284,1477 +3290,1511 @@ function LegacyDocEditor({
     });
 
   return (
-    <RecordingContext.Provider value={recordingActions}>
-      <div
-        className="doc-editor"
-        ref={editorRoot}
-        inert={restoringHistory || pagePending}
-        aria-busy={restoringHistory || pagePending || undefined}
-      >
-        {sourceAsk && (
-          <DocSourceAsk
-            text={sourceAsk.quote}
-            onClose={() => setSourceAsk(null)}
-            onAsk={(instruction) =>
-              assist(sourceAsk, "custom", {
-                instruction,
-                quote: sourceAsk.quote,
-              })
-            }
-          />
-        )}
-        {sourcePreview === doc.id && (
-          <DocSourcePreview
-            beforeNavigate={async () => {
-              const account = authSession.get();
-              const page = doc.id;
-              await flush();
-              if (
-                !historyMounted.current ||
-                authSession.get() !== account ||
-                docNow.current.id !== page
-              )
-                return false;
-              if (dirty.current)
-                throw new Error(
-                  "Save your document changes before opening this link.",
-                );
-              return preparePaneDrafts(pageScope);
-            }}
-            blocks={blocks}
-            docId={doc.id}
-            onCompileLatex={(source, signal) =>
-              client.compileDocLatex(
-                doc.id,
-                { source, version: version.current },
-                signal,
-              )
-            }
-            onAssist={
-              canWrite && !reading && !suggesting && !dirty.current
-                ? (block) => {
-                    if (block.id && "text" in block) {
-                      setSourcePreview(null);
-                      setSourceAsk({
-                        blockId: block.id,
-                        start: 0,
-                        end: block.text.length,
-                        quote: block.text,
-                      });
-                    }
-                  }
-                : undefined
-            }
-            onSourceChange={
-              canWrite && !reading && !suggesting
-                ? (text, expected) => {
-                    const next = editDocSource(
-                      live.current.blocks,
-                      text,
-                      expected,
-                    );
-                    if (next !== live.current.blocks) {
-                      update(next);
-                    }
-                    return next;
-                  }
-                : undefined
-            }
-            saveStatus={
-              save === "error"
-                ? "Couldn’t save. Changes remain in this document."
-                : save === "saving"
-                  ? "Saving…"
-                  : dirty.current
-                    ? "Unsaved changes"
-                    : "Saved"
-            }
-            onAppLink={(url) =>
-              window.dispatchEvent(
-                new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
-              )
-            }
-            onClose={() => {
-              sourcePreviewOwner.current = null;
-              setSourcePreview(null);
-            }}
-          />
-        )}
-        <div className="doc-bar">
-          {onBack && (
-            <button className="text-button" onClick={onBack}>
-              <ArrowLeft size={15} /> All documents
-            </button>
-          )}
-          <span className="doc-save" role="status">
-            {save === "saving" && (
-              <>
-                <Loader2 size={13} className="spin" /> Saving…
-              </>
-            )}
-            {save === "saved" && (
-              <>
-                <Check size={13} /> Saved
-              </>
-            )}
-            {save === "error" && "Not saved"}
-          </span>
-          {!!note && (
-            <span className="doc-merged" role="status">
-              <Users size={13} aria-hidden="true" /> {note}
-            </span>
-          )}
-          <span className="doc-bar-actions" ref={pageActionsRef}>
-            <DocModeSwitch
-              mode={mode}
-              canWrite={canWrite}
-              teamName={doc.team_name}
-              onChange={changeMode}
+    <DocLatexPreviewProvider
+      canCompile={canWrite}
+      blocks={blocks}
+      docId={doc.id}
+      ready={
+        canWrite && !dirty.current && save !== "saving" && save !== "error"
+      }
+      compile={(source, signal) =>
+        client.compileDocLatex(
+          doc.id,
+          { source, version: version.current },
+          signal,
+        )
+      }
+    >
+      <RecordingContext.Provider value={recordingActions}>
+        <div
+          className="doc-editor"
+          ref={editorRoot}
+          inert={restoringHistory || pagePending}
+          aria-busy={restoringHistory || pagePending || undefined}
+        >
+          {sourceAsk && (
+            <DocSourceAsk
+              text={sourceAsk.quote}
+              onClose={() => setSourceAsk(null)}
+              onAsk={(instruction) =>
+                assist(sourceAsk, "custom", {
+                  instruction,
+                  quote: sourceAsk.quote,
+                })
+              }
             />
-            {openTodos > 0 && !reading && (
-              <button className="text-button" onClick={makeTasks}>
-                <ListPlus size={15} /> Add {openTodos} to my tasks
-              </button>
-            )}
-            {/* A conversation about the page sits beside the page's own tools,
-              not in the margin: the margin is where the remarks live. */}
-            <button
-              className={"icon-button" + (chat ? " is-on" : "")}
-              onClick={() => {
-                if (!chat) {
-                  setShowHistory(false);
-                  setHistoryView(null);
-                  setShowInfo(false);
-                  setMoreMenu(false);
-                  setDownloadMenu(false);
-                }
-                setChat((v) => !v);
+          )}
+          {sourcePreview === doc.id && (
+            <DocSourcePreview
+              leaveCheck={sourceLeaveCheck}
+              compileReady={
+                !dirty.current && save !== "saving" && save !== "error"
+              }
+              inline
+              initialMode={sourcePreviewMode}
+              beforeNavigate={async () => {
+                const account = authSession.get();
+                const page = doc.id;
+                await flush();
+                if (
+                  !historyMounted.current ||
+                  authSession.get() !== account ||
+                  docNow.current.id !== page
+                )
+                  return false;
+                if (dirty.current)
+                  throw new Error(
+                    "Save your document changes before opening this link.",
+                  );
+                return preparePaneDrafts(pageScope);
               }}
-              disabled={chat}
-              aria-label="Talk about this page"
-              aria-pressed={chat}
-              title="Talk about this page"
-            >
-              <Sparkles size={15} />
-            </button>
-            <button
-              className={"icon-button" + (showHistory ? " is-on" : "")}
-              onClick={() => {
-                if (showHistory) setHistoryView(null);
-                setShowInfo(false);
-                setShowHistory((v) => !v);
-              }}
-              disabled={chat}
-              aria-label="Page history"
-              aria-pressed={showHistory}
-              title="Page history"
-            >
-              <History size={15} />
-            </button>
-            <button
-              className="icon-button"
-              onClick={copyPageLink}
-              aria-label="Copy link"
-              title="Copy link"
-            >
-              <Link2 size={15} />
-            </button>
-            {/* On a phone's browser: the system share sheet (SHR-07). */}
-            <SharePageButton
+              blocks={blocks}
               docId={doc.id}
-              title={title || "Untitled"}
-              onError={report}
+              onCompileLatex={(source, signal) =>
+                client.compileDocLatex(
+                  doc.id,
+                  { source, version: version.current },
+                  signal,
+                )
+              }
+              onAssist={
+                canWrite && !reading && !suggesting && !dirty.current
+                  ? (block) => {
+                      if (block.id && "text" in block) {
+                        setSourcePreview(null);
+                        setSourceAsk({
+                          blockId: block.id,
+                          start: 0,
+                          end: block.text.length,
+                          quote: block.text,
+                        });
+                      }
+                    }
+                  : undefined
+              }
+              onSourceChange={
+                canWrite && !reading && !suggesting
+                  ? (text, expected) => {
+                      const next = editDocSource(
+                        live.current.blocks,
+                        text,
+                        expected,
+                      );
+                      if (next !== live.current.blocks) {
+                        update(next);
+                      }
+                      return next;
+                    }
+                  : undefined
+              }
+              saveStatus={
+                save === "error"
+                  ? "Couldn’t save. Changes remain in this document."
+                  : save === "saving"
+                    ? "Saving…"
+                    : dirty.current
+                      ? "Unsaved changes"
+                      : "Saved"
+              }
+              onAppLink={(url) =>
+                window.dispatchEvent(
+                  new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
+                )
+              }
+              onClose={() => {
+                sourcePreviewOwner.current = null;
+                setSourcePreview(null);
+              }}
             />
-            <span className="doc-download">
-              <button
-                className={"icon-button" + (downloadMenu ? " is-on" : "")}
-                onClick={() => {
-                  setMoreMenu(false);
-                  setDownloadMenu((v) => !v);
-                }}
-                aria-label="Download this page"
-                aria-haspopup="menu"
-                aria-expanded={downloadMenu}
-                title="Download this page"
-              >
-                <Download size={15} />
+          )}
+          <div className="doc-bar">
+            {onBack && (
+              <button className="text-button" onClick={onBack}>
+                <ArrowLeft size={15} /> All documents
               </button>
-              {downloadMenu && (
-                <ul className="doc-download-menu" role="menu">
-                  {EXPORT_FORMATS.map((format) => (
-                    <li key={format}>
-                      <button
-                        role="menuitem"
-                        onClick={() => void download(format)}
-                      >
-                        {EXPORT_LABELS[format].name}
-                        <small>.{EXPORT_LABELS[format].extension}</small>
-                      </button>
-                    </li>
-                  ))}
-                </ul>
+            )}
+            <span className="doc-save" role="status">
+              {save === "saving" && (
+                <>
+                  <Loader2 size={13} className="spin" /> Saving…
+                </>
               )}
+              {save === "saved" && (
+                <>
+                  <Check size={13} /> Saved
+                </>
+              )}
+              {save === "error" && "Not saved"}
             </span>
-            {/* Rarer page actions live behind ⋯. */}
-            <span className="doc-download">
-              <button
-                className={"icon-button" + (moreMenu ? " is-on" : "")}
-                onClick={() => {
+            {!!note && (
+              <span className="doc-merged" role="status">
+                <Users size={13} aria-hidden="true" /> {note}
+              </span>
+            )}
+            <span className="doc-bar-actions" ref={pageActionsRef}>
+              <DocEditorModes
+                value={sourcePreview ? sourcePreviewMode : "note"}
+                disabled={restoringHistory || pagePending}
+                onChange={(format: DocumentEditorMode) => {
+                  if (format === "note") return;
+                  setMoreMenu(false);
                   setDownloadMenu(false);
-                  setMoreMenu((v) => !v);
+                  setFocused(null);
+                  if (canWrite && mode === "read") changeMode("edit");
+                  setSourcePreviewMode(format);
+                  setSourcePreview(doc.id);
                 }}
-                aria-label="More"
-                aria-haspopup="menu"
-                aria-expanded={moreMenu}
-                title="More"
+              />
+              <DocModeSwitch
+                mode={mode}
+                canWrite={canWrite}
+                teamName={doc.team_name}
+                onChange={changeMode}
+              />
+              {openTodos > 0 && !reading && (
+                <button className="text-button" onClick={makeTasks}>
+                  <ListPlus size={15} /> Add {openTodos} to my tasks
+                </button>
+              )}
+              {/* A conversation about the page sits beside the page's own tools,
+              not in the margin: the margin is where the remarks live. */}
+              <button
+                className={"icon-button" + (chat ? " is-on" : "")}
+                onClick={() => {
+                  if (!chat) {
+                    setShowHistory(false);
+                    setHistoryView(null);
+                    setShowInfo(false);
+                    setMoreMenu(false);
+                    setDownloadMenu(false);
+                  }
+                  setChat((v) => !v);
+                }}
+                disabled={chat}
+                aria-label="Talk about this page"
+                aria-pressed={chat}
+                title="Talk about this page"
               >
-                <MoreHorizontal size={15} />
+                <Sparkles size={15} />
               </button>
-              {moreMenu && (
-                <ul className="doc-download-menu" role="menu">
-                  <li>
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreMenu(false);
-                        setFocused(null);
-                        setSourcePreview(doc.id);
-                      }}
-                    >
-                      Source / preview
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreMenu(false);
-                        setPresenting(true);
-                      }}
-                    >
-                      Present
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreMenu(false);
-                        openInWindow(doc.id);
-                      }}
-                    >
-                      Open in new window
-                    </button>
-                  </li>
-                  {canOpenTabs() && (
+              <button
+                className={"icon-button" + (showHistory ? " is-on" : "")}
+                onClick={() => {
+                  if (showHistory) setHistoryView(null);
+                  setShowInfo(false);
+                  setShowHistory((v) => !v);
+                }}
+                disabled={chat}
+                aria-label="Page history"
+                aria-pressed={showHistory}
+                title="Page history"
+              >
+                <History size={15} />
+              </button>
+              <button
+                className="icon-button"
+                onClick={copyPageLink}
+                aria-label="Copy link"
+                title="Copy link"
+              >
+                <Link2 size={15} />
+              </button>
+              {/* On a phone's browser: the system share sheet (SHR-07). */}
+              <SharePageButton
+                docId={doc.id}
+                title={title || "Untitled"}
+                onError={report}
+              />
+              <span className="doc-download">
+                <button
+                  className={"icon-button" + (downloadMenu ? " is-on" : "")}
+                  onClick={() => {
+                    setMoreMenu(false);
+                    setDownloadMenu((v) => !v);
+                  }}
+                  aria-label="Download this page"
+                  aria-haspopup="menu"
+                  aria-expanded={downloadMenu}
+                  title="Download this page"
+                >
+                  <Download size={15} />
+                </button>
+                {downloadMenu && (
+                  <ul className="doc-download-menu" role="menu">
+                    {EXPORT_FORMATS.map((format) => (
+                      <li key={format}>
+                        <button
+                          role="menuitem"
+                          onClick={() => void download(format)}
+                        >
+                          {EXPORT_LABELS[format].name}
+                          <small>.{EXPORT_LABELS[format].extension}</small>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </span>
+              {/* Rarer page actions live behind ⋯. */}
+              <span className="doc-download">
+                <button
+                  className={"icon-button" + (moreMenu ? " is-on" : "")}
+                  onClick={() => {
+                    setDownloadMenu(false);
+                    setMoreMenu((v) => !v);
+                  }}
+                  aria-label="More"
+                  aria-haspopup="menu"
+                  aria-expanded={moreMenu}
+                  title="More"
+                >
+                  <MoreHorizontal size={15} />
+                </button>
+                {moreMenu && (
+                  <ul className="doc-download-menu" role="menu">
                     <li>
                       <button
                         role="menuitem"
                         onClick={() => {
                           setMoreMenu(false);
-                          openInNewTab({
-                            kind: "doc",
-                            id: doc.id,
-                            title: title || "Untitled",
-                          });
+                          setPresenting(true);
                         }}
                       >
-                        Open in new tab
+                        Present
                       </button>
                     </li>
-                  )}
-                  <li>
-                    <button
-                      role="menuitem"
-                      aria-pressed={pageStarred}
-                      onClick={() => {
-                        setMoreMenu(false);
-                        toggleStar();
-                      }}
-                    >
-                      {pageStarred ? "Unstar" : "Star"}
-                    </button>
-                  </li>
-                  {onShowInLibrary && (
                     <li>
                       <button
                         role="menuitem"
                         onClick={() => {
                           setMoreMenu(false);
-                          onShowInLibrary();
+                          openInWindow(doc.id);
                         }}
                       >
-                        Show in library
+                        Open in new window
                       </button>
                     </li>
-                  )}
-                  {canWrite && doc.kind !== "memory" && (
-                    <li>
-                      <button
-                        role="menuitem"
-                        onClick={() => {
-                          setMoreMenu(false);
-                          setLookOpen(true);
-                        }}
-                      >
-                        Cover and icon
-                      </button>
-                    </li>
-                  )}
-                  {canWrite &&
-                    doc.kind !== "agenda" &&
-                    doc.kind !== "memory" && (
+                    {canOpenTabs() && (
                       <li>
                         <button
                           role="menuitem"
                           onClick={() => {
                             setMoreMenu(false);
-                            void toggleArchive();
+                            openInNewTab({
+                              kind: "doc",
+                              id: doc.id,
+                              title: title || "Untitled",
+                            });
                           }}
                         >
-                          {archived ? "Bring back from archive" : "Archive"}
+                          Open in new tab
                         </button>
                       </li>
                     )}
-                  {foldableHeadings(blocks).length > 0 && (
                     <li>
                       <button
                         role="menuitem"
+                        aria-pressed={pageStarred}
                         onClick={() => {
                           setMoreMenu(false);
-                          const all = foldableHeadings(blocks);
-                          const anyOpen = all.some((id) => !folds.has(id));
-                          saveFolds(anyOpen ? new Set(all) : new Set());
+                          toggleStar();
                         }}
                       >
-                        {foldableHeadings(blocks).some((id) => !folds.has(id))
-                          ? "Collapse all headings"
-                          : "Expand all headings"}
+                        {pageStarred ? "Unstar" : "Star"}
                       </button>
                     </li>
-                  )}
-                  {canWrite && doc.kind === "doc" && !suggesting && (
-                    <li>
-                      <button
-                        role="menuitem"
-                        aria-haspopup="dialog"
-                        onClick={() => {
-                          setMoreMenu(false);
-                          void (async () => {
-                            await flush();
-                            if (dirty.current)
-                              throw new Error(
-                                "Save your page edits before scheduling updates.",
-                              );
-                            setMaintaining(true);
-                          })().catch(report);
-                        }}
-                      >
-                        Page updates…
-                      </button>
-                    </li>
-                  )}
-                  {doc.kind !== "agenda" && doc.kind !== "memory" && (
-                    <li>
-                      <button
-                        role="menuitem"
-                        aria-haspopup="dialog"
-                        onClick={() => {
-                          setMoreMenu(false);
-                          setPublishing(true);
-                        }}
-                      >
-                        Publish to web…
-                      </button>
-                    </li>
-                  )}
-                  {doc.kind !== "memory" && (
-                    <li>
-                      <button
-                        role="menuitem"
-                        aria-haspopup="dialog"
-                        onClick={() => {
-                          setMoreMenu(false);
-                          setSavingTemplate(true);
-                        }}
-                      >
-                        Save as template
-                      </button>
-                    </li>
-                  )}
-                  {!reading && doc.kind !== "memory" && (
-                    <li>
-                      <button
-                        role="menuitem"
-                        onClick={() => {
-                          setMoreMenu(false);
-                          void remove();
-                        }}
-                      >
-                        Move to Trash
-                      </button>
-                    </li>
-                  )}
-                  {canWrite && doc.kind === "memory" && (
-                    <li>
-                      <button
-                        role="menuitem"
-                        onClick={() => {
-                          setMoreMenu(false);
-                          void remove();
-                        }}
-                      >
-                        Forget this Memory note…
-                      </button>
-                    </li>
-                  )}
-                  <li>
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreMenu(false);
-                        copyMarkdown();
-                      }}
-                    >
-                      Copy as Markdown
-                    </button>
-                  </li>
-                  <li>
-                    <button
-                      role="menuitem"
-                      onClick={() => {
-                        setMoreMenu(false);
-                        void richCopy(blocks).then((ok) =>
-                          toast({
-                            text: ok
-                              ? "Copied. It pastes with its headings, lists and links."
-                              : "Couldn't copy the page",
-                          }),
-                        );
-                      }}
-                    >
-                      Copy for another app
-                    </button>
-                  </li>
-                  {!reading && structural && (
-                    <>
+                    {onShowInLibrary && (
                       <li>
                         <button
                           role="menuitem"
                           onClick={() => {
                             setMoreMenu(false);
-                            cardsFromHighlights();
+                            onShowInLibrary();
                           }}
                         >
-                          Make cards from highlights
+                          Show in library
                         </button>
                       </li>
+                    )}
+                    {canWrite && doc.kind !== "memory" && (
                       <li>
                         <button
                           role="menuitem"
                           onClick={() => {
                             setMoreMenu(false);
-                            pickFiles(blocks.length - 1, false);
+                            setLookOpen(true);
                           }}
                         >
-                          Add a picture or file
+                          Cover and icon
                         </button>
                       </li>
+                    )}
+                    {canWrite &&
+                      doc.kind !== "agenda" &&
+                      doc.kind !== "memory" && (
+                        <li>
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              setMoreMenu(false);
+                              void toggleArchive();
+                            }}
+                          >
+                            {archived ? "Bring back from archive" : "Archive"}
+                          </button>
+                        </li>
+                      )}
+                    {foldableHeadings(blocks).length > 0 && (
+                      <li>
+                        <button
+                          role="menuitem"
+                          onClick={() => {
+                            setMoreMenu(false);
+                            const all = foldableHeadings(blocks);
+                            const anyOpen = all.some((id) => !folds.has(id));
+                            saveFolds(anyOpen ? new Set(all) : new Set());
+                          }}
+                        >
+                          {foldableHeadings(blocks).some((id) => !folds.has(id))
+                            ? "Collapse all headings"
+                            : "Expand all headings"}
+                        </button>
+                      </li>
+                    )}
+                    {canWrite && doc.kind === "doc" && !suggesting && (
                       <li>
                         <button
                           role="menuitem"
                           aria-haspopup="dialog"
                           onClick={() => {
                             setMoreMenu(false);
-                            setRecording(true);
+                            void (async () => {
+                              await flush();
+                              if (dirty.current)
+                                throw new Error(
+                                  "Save your page edits before scheduling updates.",
+                                );
+                              setMaintaining(true);
+                            })().catch(report);
                           }}
                         >
-                          Record audio
+                          Page updates…
                         </button>
                       </li>
+                    )}
+                    {doc.kind !== "agenda" && doc.kind !== "memory" && (
+                      <li>
+                        <button
+                          role="menuitem"
+                          aria-haspopup="dialog"
+                          onClick={() => {
+                            setMoreMenu(false);
+                            setPublishing(true);
+                          }}
+                        >
+                          Publish to web…
+                        </button>
+                      </li>
+                    )}
+                    {doc.kind !== "memory" && (
+                      <li>
+                        <button
+                          role="menuitem"
+                          aria-haspopup="dialog"
+                          onClick={() => {
+                            setMoreMenu(false);
+                            setSavingTemplate(true);
+                          }}
+                        >
+                          Save as template
+                        </button>
+                      </li>
+                    )}
+                    {!reading && doc.kind !== "memory" && (
                       <li>
                         <button
                           role="menuitem"
                           onClick={() => {
                             setMoreMenu(false);
-                            setMerging(true);
+                            void remove();
                           }}
                         >
-                          Merge into…
+                          Move to Trash
                         </button>
                       </li>
-                    </>
-                  )}
-                </ul>
-              )}
-            </span>
-            {/* The page's facts live in one Info rail (NAV-04). */}
-            <button
-              className={"icon-button" + (showInfo ? " is-on" : "")}
-              onClick={() => {
-                setShowHistory(false);
-                setHistoryView(null);
-                setShowInfo((v) => !v);
-              }}
-              disabled={chat}
-              aria-label="Page info"
-              aria-pressed={showInfo}
-              title="Page info"
-            >
-              <Info size={15} />
-            </button>
-          </span>
-        </div>
-
-        {/* The bar that acts on a selection follows the words themselves, so
-          it reads as belonging to them rather than to the page. Styles and
-          "Make task" change the page, so they are offered only while
-          editing; commenting and asking work in every mode. */}
-        {words && !pending && (
-          <div
-            ref={barRef}
-            className="doc-selection-bar"
-            style={barPlace(
-              words.at,
-              bodyRef.current?.getBoundingClientRect().top ?? 0,
-            )}
-            role="toolbar"
-            aria-label="Selected words"
-          >
-            {linking ? (
-              <form
-                className="doc-link-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  linkWords();
-                }}
-              >
-                <Link size={14} aria-hidden="true" />
-                <input
-                  autoFocus
-                  aria-label="Web address for the link"
-                  placeholder="Paste or type a link"
-                  value={linking.url}
-                  onChange={(e) =>
-                    setLinking({ ...linking, url: e.target.value })
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") {
-                      e.preventDefault();
-                      setLinking(null);
-                    }
-                  }}
-                />
-                <button
-                  type="submit"
-                  className="text-button"
-                  disabled={!linking.url.trim()}
-                >
-                  Link
-                </button>
-              </form>
-            ) : (
-              <>
-                {canFormat && (
-                  <>
-                    {STYLES.map(({ style, label, keys }) => {
-                      const Icon =
-                        style === "bold"
-                          ? Bold
-                          : style === "italic"
-                            ? Italic
-                            : style === "strike"
-                              ? Strikethrough
-                              : Highlighter;
-                      return (
+                    )}
+                    {canWrite && doc.kind === "memory" && (
+                      <li>
                         <button
-                          key={style}
-                          className="icon-button"
-                          aria-label={label}
-                          title={
-                            styleable(style)
-                              ? `${label} (${keys})`
-                              : `${label}: these words already have another style`
-                          }
-                          disabled={!styleable(style)}
-                          onMouseDown={(e) => e.preventDefault()}
-                          onClick={() => styleWords(words, style)}
+                          role="menuitem"
+                          onClick={() => {
+                            setMoreMenu(false);
+                            void remove();
+                          }}
                         >
-                          <Icon size={15} aria-hidden="true" />
+                          Forget this Memory note…
                         </button>
-                      );
-                    })}
-                    {TINTS.map(({ tint, label }) => (
-                      <button
-                        key={tint}
-                        className="icon-button doc-tint-button"
-                        aria-label={label}
-                        title={label}
-                        disabled={!styleable("highlight") && !pickedLine}
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => tintWords(words, tint)}
-                      >
-                        <span className={`doc-tint-swatch is-${tint}`} />
-                      </button>
-                    ))}
-                    <button
-                      className="icon-button"
-                      aria-label="Link"
-                      title="Link (⌘K)"
-                      disabled={
-                        !pickedLine ||
-                        pickedLine.block.type === "divider" ||
-                        !linkRange(
-                          pickedLine.block.text,
-                          words.start,
-                          words.end,
-                          "https://x.x",
-                        )
-                      }
-                      onMouseDown={(e) => e.preventDefault()}
-                      onClick={() => setLinking({ words, url: "" })}
-                    >
-                      <Link size={15} aria-hidden="true" />
-                    </button>
-                    <span className="doc-selection-rule" aria-hidden="true" />
-                  </>
-                )}
-                <button
-                  className="text-button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => commentOnSelection(words)}
-                >
-                  <MessageSquarePlus size={14} aria-hidden="true" /> Comment
-                </button>
-                {/* Asking for words and saying something about them are the
-                  two things anyone wants from a selection, so they sit
-                  together. */}
-                <button
-                  className="text-button"
-                  aria-haspopup="menu"
-                  aria-expanded={askMenu}
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setAskMenu((v) => !v)}
-                >
-                  <Sparkles size={14} aria-hidden="true" /> Ask assistant
-                </button>
-                {canFormat && (
-                  <button
-                    className="text-button"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => taskFromWords(words)}
-                  >
-                    <ListChecks size={14} aria-hidden="true" /> Make task
-                  </button>
-                )}
-                {canFormat && pickedLine && (
-                  <button
-                    className="text-button"
-                    title="This line becomes a page of its own, and a link to it takes its place"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => {
-                      setPicked(null);
-                      window.getSelection()?.removeAllRanges();
-                      void moveToNewPage(pickedLine.index);
-                    }}
-                  >
-                    <FileInput size={14} aria-hidden="true" /> Move to new page
-                  </button>
-                )}
-                {askMenu && (
-                  <ul className="doc-ai-menu" role="menu">
-                    {DOC_AI_ACTIONS.filter((a) => a !== "custom").map(
-                      (action) => (
-                        <li key={action}>
-                          <button
-                            role="menuitem"
-                            onMouseDown={(e) => e.preventDefault()}
-                            onClick={() => void assist(words, action)}
-                          >
-                            {DOC_AI_LABELS[action].name}
-                          </button>
-                        </li>
-                      ),
+                      </li>
                     )}
                     <li>
                       <button
                         role="menuitem"
-                        onMouseDown={(e) => e.preventDefault()}
-                        onClick={() => void assist(words, "custom")}
+                        onClick={() => {
+                          setMoreMenu(false);
+                          copyMarkdown();
+                        }}
                       >
-                        {DOC_AI_LABELS.custom.name}…
+                        Copy as Markdown
                       </button>
                     </li>
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          void richCopy(blocks).then((ok) =>
+                            toast({
+                              text: ok
+                                ? "Copied. It pastes with its headings, lists and links."
+                                : "Couldn't copy the page",
+                            }),
+                          );
+                        }}
+                      >
+                        Copy for another app
+                      </button>
+                    </li>
+                    {!reading && structural && (
+                      <>
+                        <li>
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              setMoreMenu(false);
+                              cardsFromHighlights();
+                            }}
+                          >
+                            Make cards from highlights
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              setMoreMenu(false);
+                              pickFiles(blocks.length - 1, false);
+                            }}
+                          >
+                            Add a picture or file
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            role="menuitem"
+                            aria-haspopup="dialog"
+                            onClick={() => {
+                              setMoreMenu(false);
+                              setRecording(true);
+                            }}
+                          >
+                            Record audio
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            role="menuitem"
+                            onClick={() => {
+                              setMoreMenu(false);
+                              setMerging(true);
+                            }}
+                          >
+                            Merge into…
+                          </button>
+                        </li>
+                      </>
+                    )}
                   </ul>
                 )}
-              </>
-            )}
+              </span>
+              {/* The page's facts live in one Info rail (NAV-04). */}
+              <button
+                className={"icon-button" + (showInfo ? " is-on" : "")}
+                onClick={() => {
+                  setShowHistory(false);
+                  setHistoryView(null);
+                  setShowInfo((v) => !v);
+                }}
+                disabled={chat}
+                aria-label="Page info"
+                aria-pressed={showInfo}
+                title="Page info"
+              >
+                <Info size={15} />
+              </button>
+            </span>
           </div>
-        )}
 
-        {/* Two columns and two children: the page with everything that belongs
+          {/* The bar that acts on a selection follows the words themselves, so
+          it reads as belonging to them rather than to the page. Styles and
+          "Make task" change the page, so they are offered only while
+          editing; commenting and asking work in every mode. */}
+          {words && !pending && (
+            <div
+              ref={barRef}
+              className="doc-selection-bar"
+              style={barPlace(
+                words.at,
+                bodyRef.current?.getBoundingClientRect().top ?? 0,
+              )}
+              role="toolbar"
+              aria-label="Selected words"
+            >
+              {linking ? (
+                <form
+                  className="doc-link-form"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    linkWords();
+                  }}
+                >
+                  <Link size={14} aria-hidden="true" />
+                  <input
+                    autoFocus
+                    aria-label="Web address for the link"
+                    placeholder="Paste or type a link"
+                    value={linking.url}
+                    onChange={(e) =>
+                      setLinking({ ...linking, url: e.target.value })
+                    }
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.preventDefault();
+                        setLinking(null);
+                      }
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    className="text-button"
+                    disabled={!linking.url.trim()}
+                  >
+                    Link
+                  </button>
+                </form>
+              ) : (
+                <>
+                  {canFormat && (
+                    <>
+                      {STYLES.map(({ style, label, keys }) => {
+                        const Icon =
+                          style === "bold"
+                            ? Bold
+                            : style === "italic"
+                              ? Italic
+                              : style === "strike"
+                                ? Strikethrough
+                                : Highlighter;
+                        return (
+                          <button
+                            key={style}
+                            className="icon-button"
+                            aria-label={label}
+                            title={
+                              styleable(style)
+                                ? `${label} (${keys})`
+                                : `${label}: these words already have another style`
+                            }
+                            disabled={!styleable(style)}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => styleWords(words, style)}
+                          >
+                            <Icon size={15} aria-hidden="true" />
+                          </button>
+                        );
+                      })}
+                      {TINTS.map(({ tint, label }) => (
+                        <button
+                          key={tint}
+                          className="icon-button doc-tint-button"
+                          aria-label={label}
+                          title={label}
+                          disabled={!styleable("highlight") && !pickedLine}
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => tintWords(words, tint)}
+                        >
+                          <span className={`doc-tint-swatch is-${tint}`} />
+                        </button>
+                      ))}
+                      <button
+                        className="icon-button"
+                        aria-label="Link"
+                        title="Link (⌘K)"
+                        disabled={
+                          !pickedLine ||
+                          pickedLine.block.type === "divider" ||
+                          !linkRange(
+                            pickedLine.block.text,
+                            words.start,
+                            words.end,
+                            "https://x.x",
+                          )
+                        }
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setLinking({ words, url: "" })}
+                      >
+                        <Link size={15} aria-hidden="true" />
+                      </button>
+                      <span className="doc-selection-rule" aria-hidden="true" />
+                    </>
+                  )}
+                  <button
+                    className="text-button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => commentOnSelection(words)}
+                  >
+                    <MessageSquarePlus size={14} aria-hidden="true" /> Comment
+                  </button>
+                  {/* Asking for words and saying something about them are the
+                  two things anyone wants from a selection, so they sit
+                  together. */}
+                  <button
+                    className="text-button"
+                    aria-haspopup="menu"
+                    aria-expanded={askMenu}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setAskMenu((v) => !v)}
+                  >
+                    <Sparkles size={14} aria-hidden="true" /> Ask assistant
+                  </button>
+                  {canFormat && (
+                    <button
+                      className="text-button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => taskFromWords(words)}
+                    >
+                      <ListChecks size={14} aria-hidden="true" /> Make task
+                    </button>
+                  )}
+                  {canFormat && pickedLine && (
+                    <button
+                      className="text-button"
+                      title="This line becomes a page of its own, and a link to it takes its place"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => {
+                        setPicked(null);
+                        window.getSelection()?.removeAllRanges();
+                        void moveToNewPage(pickedLine.index);
+                      }}
+                    >
+                      <FileInput size={14} aria-hidden="true" /> Move to new
+                      page
+                    </button>
+                  )}
+                  {askMenu && (
+                    <ul className="doc-ai-menu" role="menu">
+                      {DOC_AI_ACTIONS.filter((a) => a !== "custom").map(
+                        (action) => (
+                          <li key={action}>
+                            <button
+                              role="menuitem"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => void assist(words, action)}
+                            >
+                              {DOC_AI_LABELS[action].name}
+                            </button>
+                          </li>
+                        ),
+                      )}
+                      <li>
+                        <button
+                          role="menuitem"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => void assist(words, "custom")}
+                        >
+                          {DOC_AI_LABELS.custom.name}…
+                        </button>
+                      </li>
+                    </ul>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Two columns and two children: the page with everything that belongs
           under it, and the margin. Ask, suggestions and the margin used to be
           three more children of the grid itself, so auto-placement put Ask in
           the margin and pushed the remarks below the page. */}
-        <div
-          ref={layoutRef}
-          className={
-            "doc-layout" +
-            (railLayout.narrow ? " is-narrow" : "") +
-            (showHistory
-              ? " has-history"
-              : showInfo
-                ? " has-info"
-                : focusReading || chat
-                  ? " is-reading"
-                  : " has-comments") +
-            (longPage && !historyView ? " has-outline" : "")
-          }
-        >
-          {longPage && !historyView && (
-            <DocOutline
-              outline={outline}
-              current={readingAt}
-              onJump={jumpTo}
-              onMoveSection={canDropLinks ? moveHeading : undefined}
-            />
-          )}
-          <div className="doc-main">
-            {historyView && (
-              <DocChanges
-                view={historyView}
-                current={blocks}
-                title={title}
-                canRestore={canWrite && structural}
-                onCompare={(compare) =>
-                  setHistoryView({ ...historyView, compare })
-                }
-                onRestoreLine={(source, index) => {
-                  void (async () => {
-                    if (!(await prepareHistoryRestore())) return;
-                    try {
-                      update(restoreLine(live.current.blocks, source, index));
-                      toast({ text: "Line restored" });
-                    } finally {
-                      endHistoryRestore();
-                    }
-                  })().catch(report);
-                }}
-                onClose={() => setHistoryView(null)}
+          <div
+            ref={layoutRef}
+            className={
+              "doc-layout" +
+              (railLayout.narrow ? " is-narrow" : "") +
+              (showHistory
+                ? " has-history"
+                : showInfo
+                  ? " has-info"
+                  : focusReading || chat
+                    ? " is-reading"
+                    : " has-comments") +
+              (longPage && !historyView ? " has-outline" : "")
+            }
+          >
+            {longPage && !historyView && (
+              <DocOutline
+                outline={outline}
+                current={readingAt}
+                onJump={jumpTo}
+                onMoveSection={canDropLinks ? moveHeading : undefined}
               />
             )}
-            <div className="doc-page" ref={pageRef} hidden={!!historyView}>
-              {look.cover_file_id && (
-                <Cover fileId={look.cover_file_id} className="doc-cover" />
-              )}
-              {look.icon && (
-                <div className="doc-look-icon">
-                  <span>
-                    <LookIcon icon={look.icon} size={36} />
-                  </span>
-                </div>
-              )}
-              {lookOpen && (
-                <LookDialog
-                  scope={doc.id}
-                  title={title || "Untitled page"}
-                  look={look}
-                  uploadTo={doc.id}
-                  report={report}
-                  onSave={saveLook}
-                  onClose={() => setLookOpen(false)}
-                />
-              )}
-              {reading ? (
-                <h1 className="doc-title is-reading" dir="auto">
-                  {title || "Untitled"}
-                </h1>
-              ) : (
-                // A textarea so a long title wraps instead of running out of
-                // the page; it is still one line of text, so Enter is ignored.
-                <textarea
-                  id="doc-title"
-                  className="doc-title"
-                  dir="auto"
-                  rows={1}
-                  value={title}
-                  placeholder="Untitled"
-                  maxLength={200}
-                  ref={fitTitle}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") e.preventDefault();
-                  }}
-                  onChange={(e) => {
-                    const next = e.target.value.replace(/\s*\n\s*/g, " ");
-                    fitTitle(e.target);
-                    setTitle(next);
-                    queueSave(next, blocks);
-                  }}
-                />
-              )}
-
-              <LinkPillProvider value={pillActions}>
-                <DocNavigationContext.Provider
-                  value={{
-                    docId: doc.id,
-                    onFragment: goToBlock,
-                    onAppLink: (url) => {
-                      const link = parseAppLink(url);
-                      if (
-                        link?.kind === "doc" &&
-                        link.id === doc.id &&
-                        link.block
-                      )
-                        goToBlock(link.block);
-                      else {
-                        if (linkNavigation.current) return;
-                        linkNavigation.current = true;
-                        const account = authSession.get();
-                        const page = doc.id;
-                        void (async () => {
-                          try {
-                            if (!(await preparePageLeave(pageScope))) return;
-                            if (
-                              !historyMounted.current ||
-                              authSession.get() !== account ||
-                              docNow.current.id !== page
-                            )
-                              return;
-                            window.dispatchEvent(
-                              new CustomEvent(OPEN_LINK_EVENT, { detail: url }),
-                            );
-                          } catch (e) {
-                            if (
-                              historyMounted.current &&
-                              authSession.get() === account
-                            )
-                              report(e);
-                          } finally {
-                            linkNavigation.current = false;
-                          }
-                        })();
+            <div className="doc-main">
+              {historyView && (
+                <DocChanges
+                  view={historyView}
+                  current={blocks}
+                  title={title}
+                  canRestore={canWrite && structural}
+                  onCompare={(compare) =>
+                    setHistoryView({ ...historyView, compare })
+                  }
+                  onRestoreLine={(source, index) => {
+                    void (async () => {
+                      if (!(await prepareHistoryRestore())) return;
+                      try {
+                        update(restoreLine(live.current.blocks, source, index));
+                        toast({ text: "Line restored" });
+                      } finally {
+                        endHistoryRestore();
                       }
-                    },
+                    })().catch(report);
                   }}
-                >
-                  <FootnoteContext.Provider value={footnotes}>
-                    <div
-                      className="doc-body"
-                      ref={bodyRef}
-                      onCopy={(e) => {
-                        // Across lines, a copy carries the page's own HTML and
-                        // Markdown, so another app keeps its shape (EDT-15).
-                        const lines = selectedLines();
-                        if (!lines) return;
-                        e.preventDefault();
-                        copyInto(lines, e.clipboardData);
-                      }}
-                      onDragOver={onLinkDragOver}
-                      onDragLeave={(e) => {
+                  onClose={() => setHistoryView(null)}
+                />
+              )}
+              <div className="doc-page" ref={pageRef} hidden={!!historyView}>
+                {look.cover_file_id && (
+                  <Cover fileId={look.cover_file_id} className="doc-cover" />
+                )}
+                {look.icon && (
+                  <div className="doc-look-icon">
+                    <span>
+                      <LookIcon icon={look.icon} size={36} />
+                    </span>
+                  </div>
+                )}
+                {lookOpen && (
+                  <LookDialog
+                    scope={doc.id}
+                    title={title || "Untitled page"}
+                    look={look}
+                    uploadTo={doc.id}
+                    report={report}
+                    onSave={saveLook}
+                    onClose={() => setLookOpen(false)}
+                  />
+                )}
+                {reading ? (
+                  <h1 className="doc-title is-reading" dir="auto">
+                    {title || "Untitled"}
+                  </h1>
+                ) : (
+                  // A textarea so a long title wraps instead of running out of
+                  // the page; it is still one line of text, so Enter is ignored.
+                  <textarea
+                    id="doc-title"
+                    className="doc-title"
+                    dir="auto"
+                    rows={1}
+                    value={title}
+                    placeholder="Untitled"
+                    maxLength={200}
+                    ref={fitTitle}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.preventDefault();
+                    }}
+                    onChange={(e) => {
+                      const next = e.target.value.replace(/\s*\n\s*/g, " ");
+                      fitTitle(e.target);
+                      setTitle(next);
+                      queueSave(next, blocks);
+                    }}
+                  />
+                )}
+
+                <LinkPillProvider value={pillActions}>
+                  <DocNavigationContext.Provider
+                    value={{
+                      docId: doc.id,
+                      onFragment: goToBlock,
+                      onAppLink: (url) => {
+                        const link = parseAppLink(url);
                         if (
-                          e.currentTarget.contains(
-                            e.relatedTarget as Node | null,
-                          )
+                          link?.kind === "doc" &&
+                          link.id === doc.id &&
+                          link.block
                         )
-                          return;
-                        setLinkDrop(null);
-                      }}
-                      onDrop={(e) => void onLinkDrop(e)}
-                    >
-                      {blocks.map((block, index) =>
-                        focused === index && (!reading || suggesting) ? (
-                          <textarea
-                            dir="auto"
-                            key={`${index}-${block.type}`}
-                            id={`doc-block-${index}`}
-                            ref={areaRef}
-                            className="doc-input"
-                            // A nested line is typed where it reads, stepped in.
-                            data-depth={layout[index].depth || undefined}
-                            style={
-                              layout[index].depth
-                                ? ({
-                                    "--depth": layout[index].depth,
-                                  } as CSSProperties)
-                                : undefined
-                            }
-                            rows={1}
-                            defaultValue={serializeBlock(
-                              block,
-                              layout[index].number,
-                            )}
-                            onPaste={(e) => onPaste(e, index)}
-                            onChange={(e) => {
-                              e.currentTarget.style.height = "auto";
-                              e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
-                              watchSlash(
-                                index,
-                                e.currentTarget.value,
-                                e.currentTarget,
-                              );
-                              watchLink(
-                                index,
-                                e.currentTarget.value,
-                                e.currentTarget,
-                              );
-                              watchMention(
-                                index,
-                                e.currentTarget.value,
-                                e.currentTarget,
-                              );
-                              editBlock(index, e.currentTarget.value);
-                            }}
-                            onKeyDown={(e) => {
-                              // The slash menu, the link picker and the people
-                              // picker own Enter and the arrows while open.
+                          goToBlock(link.block);
+                        else {
+                          if (linkNavigation.current) return;
+                          linkNavigation.current = true;
+                          const account = authSession.get();
+                          const page = doc.id;
+                          void (async () => {
+                            try {
+                              if (!(await preparePageLeave(pageScope))) return;
                               if (
-                                (slash || picking || mention) &&
-                                ["Enter", "ArrowUp", "ArrowDown"].includes(
-                                  e.key,
-                                )
+                                !historyMounted.current ||
+                                authSession.get() !== account ||
+                                docNow.current.id !== page
                               )
                                 return;
-                              if (mention && e.key === "Escape") {
-                                setMention(null);
-                                return;
+                              window.dispatchEvent(
+                                new CustomEvent(OPEN_LINK_EVENT, {
+                                  detail: url,
+                                }),
+                              );
+                            } catch (e) {
+                              if (
+                                historyMounted.current &&
+                                authSession.get() === account
+                              )
+                                report(e);
+                            } finally {
+                              linkNavigation.current = false;
+                            }
+                          })();
+                        }
+                      },
+                    }}
+                  >
+                    <FootnoteContext.Provider value={footnotes}>
+                      <div
+                        className="doc-body"
+                        ref={bodyRef}
+                        onCopy={(e) => {
+                          // Across lines, a copy carries the page's own HTML and
+                          // Markdown, so another app keeps its shape (EDT-15).
+                          const lines = selectedLines();
+                          if (!lines) return;
+                          e.preventDefault();
+                          copyInto(lines, e.clipboardData);
+                        }}
+                        onDragOver={onLinkDragOver}
+                        onDragLeave={(e) => {
+                          if (
+                            e.currentTarget.contains(
+                              e.relatedTarget as Node | null,
+                            )
+                          )
+                            return;
+                          setLinkDrop(null);
+                        }}
+                        onDrop={(e) => void onLinkDrop(e)}
+                      >
+                        {blocks.map((block, index) =>
+                          focused === index && (!reading || suggesting) ? (
+                            <textarea
+                              dir="auto"
+                              key={`${index}-${block.type}`}
+                              id={`doc-block-${index}`}
+                              ref={areaRef}
+                              className="doc-input"
+                              // A nested line is typed where it reads, stepped in.
+                              data-depth={layout[index].depth || undefined}
+                              style={
+                                layout[index].depth
+                                  ? ({
+                                      "--depth": layout[index].depth,
+                                    } as CSSProperties)
+                                  : undefined
                               }
-                              onKey(e, index);
-                            }}
-                            onBlur={() => {
-                              setPicking(null);
-                              if (suggesting) void proposeLine(index);
-                              else settlePendingTask(index);
-                              setFocused((f) => (f === index ? null : f));
-                            }}
-                          />
-                        ) : (
-                          <div
-                            key={index}
-                            hidden={hiddenLines[index]}
-                            data-block-id={block.id ?? undefined}
-                            data-block-source={blockText(block)}
-                            className={
-                              "doc-block-row" +
-                              (WIDE_BLOCKS.has(block.type) ? " is-wide" : "") +
-                              (block.id && block.id === flash
-                                ? " is-flash"
-                                : "") +
-                              (block.type === "heading" &&
-                              block.id &&
-                              folds.has(block.id)
-                                ? " is-folded"
-                                : "") +
-                              (linkDrop === index ? " is-drop-after" : "") +
-                              (linkDrop === -1 && index === 0
-                                ? " is-drop-before"
-                                : "") +
-                              (block.id && commented[block.id]?.length
-                                ? " has-comment"
-                                : "") +
-                              (block.id && block.id === activeComment
-                                ? " is-active"
-                                : "")
-                            }
-                            ref={(el) => {
-                              if (!block.id) return;
-                              if (el) blockEls.current.set(block.id, el);
-                              else blockEls.current.delete(block.id);
-                            }}
-                            onClick={() =>
-                              block.id &&
-                              commented[block.id]?.length &&
-                              setActiveComment(block.id)
-                            }
-                          >
-                            {block.type === "heading" &&
-                              block.id &&
-                              (folds.has(block.id) ||
-                                canFold(blocks, index)) && (
-                                <button
-                                  className="doc-fold"
-                                  aria-label={
-                                    folds.has(block.id)
-                                      ? `Unfold “${blockText(block)}”`
-                                      : `Fold “${blockText(block)}”`
-                                  }
-                                  aria-expanded={!folds.has(block.id)}
-                                  title={
-                                    folds.has(block.id) ? "Unfold" : "Fold"
-                                  }
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleFold(block.id!);
-                                  }}
-                                >
-                                  {folds.has(block.id) ? (
-                                    <ChevronRight
-                                      size={14}
-                                      aria-hidden="true"
-                                    />
-                                  ) : (
-                                    <ChevronDown size={14} aria-hidden="true" />
-                                  )}
-                                </button>
+                              rows={1}
+                              defaultValue={serializeBlock(
+                                block,
+                                layout[index].number,
                               )}
-                            {!reading && (
-                              <button
-                                className="doc-handle"
-                                aria-label="Block options"
-                                aria-haspopup="menu"
-                                onClick={(e) =>
-                                  setMenu({
-                                    index,
-                                    at: e.currentTarget.getBoundingClientRect(),
-                                  })
-                                }
-                              >
-                                <GripVertical size={14} aria-hidden="true" />
-                              </button>
-                            )}
-                            <div
-                              className="doc-block"
-                              role={
-                                reading && !suggesting ? undefined : "button"
-                              }
-                              tabIndex={reading && !suggesting ? undefined : 0}
-                              onClick={() => {
-                                if (reading && !suggesting) return;
-                                // A click that ends a drag is a selection, not a
-                                // request to edit: opening the input here would throw
-                                // the selected words away before they can be used.
-                                if (!window.getSelection()?.isCollapsed) return;
-                                setFocused(index);
+                              onPaste={(e) => onPaste(e, index)}
+                              onChange={(e) => {
+                                e.currentTarget.style.height = "auto";
+                                e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`;
+                                watchSlash(
+                                  index,
+                                  e.currentTarget.value,
+                                  e.currentTarget,
+                                );
+                                watchLink(
+                                  index,
+                                  e.currentTarget.value,
+                                  e.currentTarget,
+                                );
+                                watchMention(
+                                  index,
+                                  e.currentTarget.value,
+                                  e.currentTarget,
+                                );
+                                editBlock(index, e.currentTarget.value);
                               }}
                               onKeyDown={(e) => {
+                                // The slash menu, the link picker and the people
+                                // picker own Enter and the arrows while open.
                                 if (
-                                  (!reading || suggesting) &&
-                                  e.key === "Enter"
-                                ) {
-                                  e.preventDefault();
-                                  setFocused(index);
+                                  (slash || picking || mention) &&
+                                  ["Enter", "ArrowUp", "ArrowDown"].includes(
+                                    e.key,
+                                  )
+                                )
+                                  return;
+                                if (mention && e.key === "Escape") {
+                                  setMention(null);
+                                  return;
                                 }
+                                onKey(e, index);
                               }}
+                              onBlur={() => {
+                                setPicking(null);
+                                if (suggesting) void proposeLine(index);
+                                else settlePendingTask(index);
+                                setFocused((f) => (f === index ? null : f));
+                              }}
+                            />
+                          ) : (
+                            <div
+                              key={index}
+                              hidden={hiddenLines[index]}
+                              data-block-id={block.id ?? undefined}
+                              data-block-source={blockText(block)}
+                              className={
+                                "doc-block-row" +
+                                (WIDE_BLOCKS.has(block.type)
+                                  ? " is-wide"
+                                  : "") +
+                                (block.id && block.id === flash
+                                  ? " is-flash"
+                                  : "") +
+                                (block.type === "heading" &&
+                                block.id &&
+                                folds.has(block.id)
+                                  ? " is-folded"
+                                  : "") +
+                                (linkDrop === index ? " is-drop-after" : "") +
+                                (linkDrop === -1 && index === 0
+                                  ? " is-drop-before"
+                                  : "") +
+                                (block.id && commented[block.id]?.length
+                                  ? " has-comment"
+                                  : "") +
+                                (block.id && block.id === activeComment
+                                  ? " is-active"
+                                  : "")
+                              }
+                              ref={(el) => {
+                                if (!block.id) return;
+                                if (el) blockEls.current.set(block.id, el);
+                                else blockEls.current.delete(block.id);
+                              }}
+                              onClick={() =>
+                                block.id &&
+                                commented[block.id]?.length &&
+                                setActiveComment(block.id)
+                              }
                             >
-                              <BlockView
-                                block={block}
-                                marks={
-                                  block.id
-                                    ? [
-                                        ...(commented[block.id] ?? []),
-                                        ...proposedMarks[block.id],
-                                      ]
-                                    : []
+                              {block.type === "heading" &&
+                                block.id &&
+                                (folds.has(block.id) ||
+                                  canFold(blocks, index)) && (
+                                  <button
+                                    className="doc-fold"
+                                    aria-label={
+                                      folds.has(block.id)
+                                        ? `Unfold “${blockText(block)}”`
+                                        : `Fold “${blockText(block)}”`
+                                    }
+                                    aria-expanded={!folds.has(block.id)}
+                                    title={
+                                      folds.has(block.id) ? "Unfold" : "Fold"
+                                    }
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      toggleFold(block.id!);
+                                    }}
+                                  >
+                                    {folds.has(block.id) ? (
+                                      <ChevronRight
+                                        size={14}
+                                        aria-hidden="true"
+                                      />
+                                    ) : (
+                                      <ChevronDown
+                                        size={14}
+                                        aria-hidden="true"
+                                      />
+                                    )}
+                                  </button>
+                                )}
+                              {!reading && (
+                                <button
+                                  className="doc-handle"
+                                  aria-label="Block options"
+                                  aria-haspopup="menu"
+                                  onClick={(e) =>
+                                    setMenu({
+                                      index,
+                                      at: e.currentTarget.getBoundingClientRect(),
+                                    })
+                                  }
+                                >
+                                  <GripVertical size={14} aria-hidden="true" />
+                                </button>
+                              )}
+                              <div
+                                className="doc-block"
+                                role={
+                                  reading && !suggesting ? undefined : "button"
                                 }
-                                onToggleTodo={
-                                  structural
-                                    ? () => toggleTodo(index)
-                                    : undefined
+                                tabIndex={
+                                  reading && !suggesting ? undefined : 0
                                 }
-                                number={layout[index].number}
-                                depth={layout[index].depth}
-                                isTask={!!block.id && linked.has(block.id)}
-                                projectId={doc.project_id ?? null}
-                                pageBlocks={blocks}
-                                onReplace={
-                                  structural && !reading
-                                    ? (b) => {
-                                        const next = blocks.slice();
-                                        next[index] = b;
-                                        update(next);
-                                      }
-                                    : undefined
-                                }
-                              />
+                                onClick={() => {
+                                  if (reading && !suggesting) return;
+                                  // A click that ends a drag is a selection, not a
+                                  // request to edit: opening the input here would throw
+                                  // the selected words away before they can be used.
+                                  if (!window.getSelection()?.isCollapsed)
+                                    return;
+                                  setFocused(index);
+                                }}
+                                onKeyDown={(e) => {
+                                  if (
+                                    (!reading || suggesting) &&
+                                    e.key === "Enter"
+                                  ) {
+                                    e.preventDefault();
+                                    setFocused(index);
+                                  }
+                                }}
+                              >
+                                <BlockView
+                                  block={block}
+                                  marks={
+                                    block.id
+                                      ? [
+                                          ...(commented[block.id] ?? []),
+                                          ...proposedMarks[block.id],
+                                        ]
+                                      : []
+                                  }
+                                  onToggleTodo={
+                                    structural
+                                      ? () => toggleTodo(index)
+                                      : undefined
+                                  }
+                                  number={layout[index].number}
+                                  depth={layout[index].depth}
+                                  isTask={!!block.id && linked.has(block.id)}
+                                  projectId={doc.project_id ?? null}
+                                  pageBlocks={blocks}
+                                  onReplace={
+                                    structural && !reading
+                                      ? (b) => {
+                                          const next = blocks.slice();
+                                          next[index] = b;
+                                          update(next);
+                                        }
+                                      : undefined
+                                  }
+                                />
+                              </div>
                             </div>
-                          </div>
-                        ),
-                      )}
-                      {!reading && structural && (
-                        <button
-                          className="doc-add"
-                          onClick={() => insertAfter(blocks.length - 1)}
-                        >
-                          <Plus size={14} aria-hidden="true" /> Add a block
-                          <kbd>/</kbd>
-                        </button>
-                      )}
-                      {menu && (
-                        <DocBlockMenu
-                          anchor={menu.at}
-                          block={blocks[menu.index]}
-                          isFirst={menu.index === 0}
-                          isLast={menu.index === blocks.length - 1}
-                          onTurnInto={(kind) => turnInto(menu.index, kind)}
-                          onMove={(by) => moveBlock(menu.index, by)}
-                          onDuplicate={() => duplicate(menu.index)}
-                          onComment={() => commentOn(menu.index)}
-                          onDelete={() => removeAt(menu.index)}
-                          onIndent={(by) => indent(menu.index, by)}
-                          canIndent={
-                            indentBlocks(blocks, menu.index, 1) !== blocks
-                          }
-                          canOutdent={
-                            indentBlocks(blocks, menu.index, -1) !== blocks
-                          }
-                          structural={structural}
-                          onCopyLink={() => void copyLineLink(menu.index)}
-                          onMoveToPage={() => void moveToNewPage(menu.index)}
-                          onClose={() => setMenu(null)}
-                        />
-                      )}
-                      {mention && (
-                        <PeopleMenu
-                          anchor={mention.at}
-                          query={mention.query}
-                          people={people}
-                          onPick={pickPerson}
-                          onClose={() => setMention(null)}
-                        />
-                      )}
-                      {slash && (
-                        <SlashMenu
-                          anchor={slash.at}
-                          query={slash.query}
-                          insertsOnly={slash.insertsOnly}
-                          onPick={pickSlash}
-                          onClose={() => setSlash(null)}
-                        />
-                      )}
-                      {picking && (
-                        <LinkPicker
-                          anchor={picking.at}
-                          query={picking.query}
-                          projectName={doc.project_name}
-                          onPick={pickLink}
-                          onCreate={(kind, title) =>
-                            void createAndLink(kind, title)
-                          }
-                          onClose={() => {
-                            embedNext.current = false;
-                            setPicking(null);
-                          }}
-                          report={report}
-                        />
-                      )}
-                      {inserting && (
-                        <TemplateInsert
-                          anchor={inserting.at}
-                          doc={{ title, project_name: doc.project_name }}
-                          onPick={(lines) => {
-                            const now = live.current.blocks;
-                            const next = now.slice();
-                            const empty =
-                              next[inserting.index]?.type === "paragraph" &&
-                              !blockText(next[inserting.index])
-                                .replace(/^\/\S*$/, "")
-                                .trim();
-                            next.splice(
-                              inserting.index,
-                              empty ? 1 : 0,
-                              ...lines,
-                            );
-                            setFocused(null);
-                            update(next);
-                          }}
-                          onClose={() => setInserting(null)}
-                          report={report}
-                        />
-                      )}
-                    </div>
-                  </FootnoteContext.Provider>
-                </DocNavigationContext.Provider>
-              </LinkPillProvider>
+                          ),
+                        )}
+                        {!reading && structural && (
+                          <button
+                            className="doc-add"
+                            onClick={() => insertAfter(blocks.length - 1)}
+                          >
+                            <Plus size={14} aria-hidden="true" /> Add a block
+                            <kbd>/</kbd>
+                          </button>
+                        )}
+                        {menu && (
+                          <DocBlockMenu
+                            anchor={menu.at}
+                            block={blocks[menu.index]}
+                            isFirst={menu.index === 0}
+                            isLast={menu.index === blocks.length - 1}
+                            onTurnInto={(kind) => turnInto(menu.index, kind)}
+                            onMove={(by) => moveBlock(menu.index, by)}
+                            onDuplicate={() => duplicate(menu.index)}
+                            onComment={() => commentOn(menu.index)}
+                            onDelete={() => removeAt(menu.index)}
+                            onIndent={(by) => indent(menu.index, by)}
+                            canIndent={
+                              indentBlocks(blocks, menu.index, 1) !== blocks
+                            }
+                            canOutdent={
+                              indentBlocks(blocks, menu.index, -1) !== blocks
+                            }
+                            structural={structural}
+                            onCopyLink={() => void copyLineLink(menu.index)}
+                            onMoveToPage={() => void moveToNewPage(menu.index)}
+                            onClose={() => setMenu(null)}
+                          />
+                        )}
+                        {mention && (
+                          <PeopleMenu
+                            anchor={mention.at}
+                            query={mention.query}
+                            people={people}
+                            onPick={pickPerson}
+                            onClose={() => setMention(null)}
+                          />
+                        )}
+                        {slash && (
+                          <SlashMenu
+                            anchor={slash.at}
+                            query={slash.query}
+                            insertsOnly={slash.insertsOnly}
+                            onPick={pickSlash}
+                            onClose={() => setSlash(null)}
+                          />
+                        )}
+                        {picking && (
+                          <LinkPicker
+                            anchor={picking.at}
+                            query={picking.query}
+                            projectName={doc.project_name}
+                            onPick={pickLink}
+                            onCreate={(kind, title) =>
+                              void createAndLink(kind, title)
+                            }
+                            onClose={() => {
+                              embedNext.current = false;
+                              setPicking(null);
+                            }}
+                            report={report}
+                          />
+                        )}
+                        {inserting && (
+                          <TemplateInsert
+                            anchor={inserting.at}
+                            doc={{ title, project_name: doc.project_name }}
+                            onPick={(lines) => {
+                              const now = live.current.blocks;
+                              const next = now.slice();
+                              const empty =
+                                next[inserting.index]?.type === "paragraph" &&
+                                !blockText(next[inserting.index])
+                                  .replace(/^\/\S*$/, "")
+                                  .trim();
+                              next.splice(
+                                inserting.index,
+                                empty ? 1 : 0,
+                                ...lines,
+                              );
+                              setFocused(null);
+                              update(next);
+                            }}
+                            onClose={() => setInserting(null)}
+                            report={report}
+                          />
+                        )}
+                      </div>
+                    </FootnoteContext.Provider>
+                  </DocNavigationContext.Provider>
+                </LinkPillProvider>
 
-              {/* One quiet line at the end of the page. The Markdown help
+                {/* One quiet line at the end of the page. The Markdown help
                 shows only while a line is open, when it is useful. */}
-              {focused !== null && !reading && (
-                <p className="doc-hint">
-                  Type <code>/</code> for blocks. Select words to format them.
-                </p>
-              )}
-              <OriginalLine doc={doc} canWrite={canWrite} report={report} />
-              <p className="doc-footer">
-                {/* The status line (W5): "3 linked here" opens the links,
-                  everything else the page's Info. */}
-                {footerParts.map((part, n) => (
-                  <Fragment key={part.key}>
-                    {n > 0 && " · "}
-                    <button
-                      type="button"
-                      className="doc-footer-button"
-                      aria-label={
-                        part.key === "linked"
-                          ? `${part.text}: show the links`
-                          : `${part.text}: page info`
-                      }
-                      onClick={() => {
-                        if (chat) return;
-                        setShowHistory(false);
-                        setHistoryView(null);
-                        setShowInfo(true);
-                        if (part.key === "linked")
-                          linkedRef.current?.scrollIntoView({
-                            behavior: "smooth",
-                            block: "start",
-                          });
-                      }}
-                    >
-                      {part.text}
-                    </button>
-                  </Fragment>
-                ))}
-                {writtenVia && ` · written ${writtenVia}`}
-                {stale && (
-                  <span className="doc-footer-stale">
-                    {" "}
-                    · Might be out of date
-                  </span>
+                {focused !== null && !reading && (
+                  <p className="doc-hint">
+                    Type <code>/</code> for blocks. Select words to format them.
+                  </p>
                 )}
-              </p>
-              <div ref={linkedRef} />
-              <LinkedHere
-                kind="doc"
-                id={doc.id}
-                onCount={setLinkedCount}
-                report={report}
-                onLinkRelated={
-                  !reading && structural
-                    ? (page: RelatedPage) => {
-                        const now = live.current.blocks;
-                        update([
-                          ...now,
-                          {
-                            type: "paragraph",
-                            id: newBlockId(),
-                            text: `See also ${linkMarkdown({ kind: "doc", id: page.doc_id }, page.title)}`,
-                          },
-                        ]);
-                        toast({
-                          text: `Linked “${page.title}” at the end of the page`,
-                        });
-                      }
-                    : undefined
-                }
-              />
+                <OriginalLine doc={doc} canWrite={canWrite} report={report} />
+                <p className="doc-footer">
+                  {/* The status line (W5): "3 linked here" opens the links,
+                  everything else the page's Info. */}
+                  {footerParts.map((part, n) => (
+                    <Fragment key={part.key}>
+                      {n > 0 && " · "}
+                      <button
+                        type="button"
+                        className="doc-footer-button"
+                        aria-label={
+                          part.key === "linked"
+                            ? `${part.text}: show the links`
+                            : `${part.text}: page info`
+                        }
+                        onClick={() => {
+                          if (chat) return;
+                          setShowHistory(false);
+                          setHistoryView(null);
+                          setShowInfo(true);
+                          if (part.key === "linked")
+                            linkedRef.current?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                        }}
+                      >
+                        {part.text}
+                      </button>
+                    </Fragment>
+                  ))}
+                  {writtenVia && ` · written ${writtenVia}`}
+                  {stale && (
+                    <span className="doc-footer-stale">
+                      {" "}
+                      · Might be out of date
+                    </span>
+                  )}
+                </p>
+                <div ref={linkedRef} />
+                <LinkedHere
+                  kind="doc"
+                  id={doc.id}
+                  onCount={setLinkedCount}
+                  report={report}
+                  onLinkRelated={
+                    !reading && structural
+                      ? (page: RelatedPage) => {
+                          const now = live.current.blocks;
+                          update([
+                            ...now,
+                            {
+                              type: "paragraph",
+                              id: newBlockId(),
+                              text: `See also ${linkMarkdown({ kind: "doc", id: page.doc_id }, page.title)}`,
+                            },
+                          ]);
+                          toast({
+                            text: `Linked “${page.title}” at the end of the page`,
+                          });
+                        }
+                      : undefined
+                  }
+                />
+              </div>
+              {!showHistory && (
+                <DocSuggestions
+                  suggestions={suggestions}
+                  sourceBlockIds={
+                    new Set(
+                      blocks
+                        .filter(
+                          (block) =>
+                            block.type === "code" || block.type === "math",
+                        )
+                        .flatMap((block) => (block.id ? [block.id] : [])),
+                    )
+                  }
+                  canDecide={canWrite}
+                  userId={userId}
+                  busy={deciding || dirty.current || save === "saving"}
+                  onDecide={decide}
+                  onDecideAll={(list, take) =>
+                    void reviewSuggestions(
+                      list.map((suggestion) => ({ suggestion, take })),
+                    )
+                  }
+                  onWithdraw={withdraw}
+                />
+              )}
             </div>
-            {!showHistory && (
-              <DocSuggestions
-                suggestions={suggestions}
-                sourceBlockIds={
-                  new Set(
-                    blocks
-                      .filter(
-                        (block) =>
-                          block.type === "code" || block.type === "math",
-                      )
-                      .flatMap((block) => (block.id ? [block.id] : [])),
-                  )
-                }
-                canDecide={canWrite}
-                userId={userId}
-                busy={deciding || dirty.current || save === "saving"}
-                onDecide={decide}
-                onDecideAll={(list, take) =>
-                  void reviewSuggestions(
-                    list.map((suggestion) => ({ suggestion, take })),
-                  )
-                }
-                onWithdraw={withdraw}
+            <PageInfo
+              hidden={!showInfo || showHistory || focusReading || chat}
+              doc={doc}
+              tags={tags}
+              canWrite={canWrite}
+              reading={reading}
+              outline={outline}
+              current={readingAt}
+              viewers={viewers}
+              facts={
+                footerParts.map((p) => p.text).join(" · ") +
+                (writtenVia ? ` · written ${writtenVia}` : "")
+              }
+              revision={`${savedAt ?? ""}:${fieldsStamp}`}
+              onTags={setTags}
+              onJump={jumpTo}
+              starredHeadings={starredHeadings}
+              onStarHeading={(entry) => void starHeading(entry)}
+              onOpenProject={onOpenProject}
+              onShowHistory={() => {
+                setShowInfo(false);
+                setShowHistory(true);
+              }}
+              onShowLinked={() =>
+                linkedRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                })
+              }
+              onClose={() => setShowInfo(false)}
+              report={report}
+            />
+            <DocComments
+              hidden={showHistory || showInfo || focusReading || chat}
+              beforeAnchorChange={beforeCommentAnchor}
+              docId={doc.id}
+              blocks={blocks}
+              tops={tops}
+              userId={userId}
+              pending={pending}
+              onPendingChange={setPending}
+              active={activeComment}
+              onActiveChange={setActiveComment}
+              onAnchors={setCommented}
+              report={report}
+            />
+            {showHistory && (
+              <DocHistory
+                doc={doc}
+                canWrite={canWrite}
+                beforeRestore={prepareHistoryRestore}
+                onRestoreEnd={endHistoryRestore}
+                onClose={() => {
+                  setShowHistory(false);
+                  setHistoryView(null);
+                }}
+                viewing={historyView}
+                onView={setHistoryView}
+                report={report}
+                onRestored={(restored) => {
+                  // The restored page is the page now: adopt it whole.
+                  version.current = restored.version;
+                  ticksFrom.current = restored.version;
+                  base.current = restored.content;
+                  dirty.current = false;
+                  setTitle(restored.title);
+                  setBlocks(
+                    restored.content.length
+                      ? restored.content
+                      : [{ type: "paragraph", text: "" }],
+                  );
+                  toast({ text: "Restored an earlier version" });
+                  onChanged(restored);
+                }}
               />
             )}
           </div>
-          <PageInfo
-            hidden={!showInfo || showHistory || focusReading || chat}
-            doc={doc}
-            tags={tags}
-            canWrite={canWrite}
-            reading={reading}
-            outline={outline}
-            current={readingAt}
-            viewers={viewers}
-            facts={
-              footerParts.map((p) => p.text).join(" · ") +
-              (writtenVia ? ` · written ${writtenVia}` : "")
-            }
-            revision={`${savedAt ?? ""}:${fieldsStamp}`}
-            onTags={setTags}
-            onJump={jumpTo}
-            starredHeadings={starredHeadings}
-            onStarHeading={(entry) => void starHeading(entry)}
-            onOpenProject={onOpenProject}
-            onShowHistory={() => {
-              setShowInfo(false);
-              setShowHistory(true);
+
+          <input
+            ref={fileInput}
+            type="file"
+            multiple
+            hidden
+            onChange={(e) => {
+              const files = [...(e.target.files ?? [])];
+              const place = filePlace.current;
+              filePlace.current = null;
+              if (files.length && place)
+                void addFiles(files, place.index, place.replace);
             }}
-            onShowLinked={() =>
-              linkedRef.current?.scrollIntoView({
-                behavior: "smooth",
-                block: "start",
-              })
-            }
-            onClose={() => setShowInfo(false)}
-            report={report}
           />
-          <DocComments
-            hidden={showHistory || showInfo || focusReading || chat}
-            beforeAnchorChange={beforeCommentAnchor}
-            docId={doc.id}
-            blocks={blocks}
-            tops={tops}
-            userId={userId}
-            pending={pending}
-            onPendingChange={setPending}
-            active={activeComment}
-            onActiveChange={setActiveComment}
-            onAnchors={setCommented}
-            report={report}
-          />
-          {showHistory && (
-            <DocHistory
-              doc={doc}
-              canWrite={canWrite}
-              beforeRestore={prepareHistoryRestore}
-              onRestoreEnd={endHistoryRestore}
-              onClose={() => {
-                setShowHistory(false);
-                setHistoryView(null);
+          {maintaining && (
+            <PageMaintenanceDialog
+              id={doc.id}
+              onChanged={(updated) => {
+                if (updated.version < version.current) return;
+                setSavedAt(updated.updated_at);
+                setNow(new Date());
+                onChanged(updated);
               }}
-              viewing={historyView}
-              onView={setHistoryView}
-              report={report}
-              onRestored={(restored) => {
-                // The restored page is the page now: adopt it whole.
-                version.current = restored.version;
-                ticksFrom.current = restored.version;
-                base.current = restored.content;
+              onClose={() => setMaintaining(false)}
+            />
+          )}
+          {publishing && (
+            <PublishDialog
+              kind="doc"
+              id={doc.id}
+              name={title || "Untitled"}
+              onClose={() => setPublishing(false)}
+            />
+          )}
+          {merging && (
+            <MergeDialog
+              doc={{ id: doc.id, title, team_id: doc.team_id }}
+              version={async () => {
+                await flush();
+                return version.current;
+              }}
+              onClose={() => setMerging(false)}
+              onMerged={(into, relinked) => {
+                setMerging(false);
                 dirty.current = false;
-                setTitle(restored.title);
-                setBlocks(
-                  restored.content.length
-                    ? restored.content
-                    : [{ type: "paragraph", text: "" }],
-                );
-                toast({ text: "Restored an earlier version" });
-                onChanged(restored);
+                flushOnClose.current = () => {};
+                gone.current = true;
+                onDeleted(doc.id);
+                openObject({ kind: "doc", id: into.id });
+                toast({
+                  text:
+                    relinked > 0
+                      ? `Merged into “${into.title}”. ${relinked} page${relinked === 1 ? "" : "s"} now link there.`
+                      : `Merged into “${into.title}”.`,
+                });
               }}
             />
           )}
+          {savingTemplate && (
+            <SaveTemplateDialog
+              doc={doc}
+              canShare={canWrite}
+              onClose={() => setSavingTemplate(false)}
+              onSaved={(t) =>
+                toast({
+                  text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
+                })
+              }
+            />
+          )}
+
+          {presenting && (
+            <Presenter
+              title={title}
+              blocks={blocks}
+              onClose={() => setPresenting(false)}
+            />
+          )}
+          {recording && (
+            <Recorder
+              onClose={() => setRecording(false)}
+              onDone={(file) => {
+                setRecording(false);
+                void addFiles([file], live.current.blocks.length - 1);
+              }}
+            />
+          )}
+          {summarising && (
+            <RecordingSummaryDialog
+              fileId={summarising.fileId}
+              name={summarising.name}
+              onAddToPage={
+                canWrite && !reading
+                  ? (lines) => addSummary(summarising.fileId, lines)
+                  : undefined
+              }
+              onClose={() => setSummarising(null)}
+            />
+          )}
+          {chat && (
+            <DocChat
+              docId={doc.id}
+              blocks={blocks}
+              canWrite={canWrite || suggesting}
+              onGoToBlock={goToBlock}
+              onNameBlock={nameBlock}
+              onSuggested={(made) => {
+                suggestionRead.current++;
+                setSuggestions((list) => [...list, made]);
+              }}
+              onClose={() => setChat(false)}
+            />
+          )}
         </div>
-
-        <input
-          ref={fileInput}
-          type="file"
-          multiple
-          hidden
-          onChange={(e) => {
-            const files = [...(e.target.files ?? [])];
-            const place = filePlace.current;
-            filePlace.current = null;
-            if (files.length && place)
-              void addFiles(files, place.index, place.replace);
-          }}
-        />
-        {maintaining && (
-          <PageMaintenanceDialog
-            id={doc.id}
-            onChanged={(updated) => {
-              if (updated.version < version.current) return;
-              setSavedAt(updated.updated_at);
-              setNow(new Date());
-              onChanged(updated);
-            }}
-            onClose={() => setMaintaining(false)}
-          />
-        )}
-        {publishing && (
-          <PublishDialog
-            kind="doc"
-            id={doc.id}
-            name={title || "Untitled"}
-            onClose={() => setPublishing(false)}
-          />
-        )}
-        {merging && (
-          <MergeDialog
-            doc={{ id: doc.id, title, team_id: doc.team_id }}
-            version={async () => {
-              await flush();
-              return version.current;
-            }}
-            onClose={() => setMerging(false)}
-            onMerged={(into, relinked) => {
-              setMerging(false);
-              dirty.current = false;
-              flushOnClose.current = () => {};
-              gone.current = true;
-              onDeleted(doc.id);
-              openObject({ kind: "doc", id: into.id });
-              toast({
-                text:
-                  relinked > 0
-                    ? `Merged into “${into.title}”. ${relinked} page${relinked === 1 ? "" : "s"} now link there.`
-                    : `Merged into “${into.title}”.`,
-              });
-            }}
-          />
-        )}
-        {savingTemplate && (
-          <SaveTemplateDialog
-            doc={doc}
-            canShare={canWrite}
-            onClose={() => setSavingTemplate(false)}
-            onSaved={(t) =>
-              toast({
-                text: `Saved “${t.name}” as a template. Start a page from it with From template.`,
-              })
-            }
-          />
-        )}
-
-        {presenting && (
-          <Presenter
-            title={title}
-            blocks={blocks}
-            onClose={() => setPresenting(false)}
-          />
-        )}
-        {recording && (
-          <Recorder
-            onClose={() => setRecording(false)}
-            onDone={(file) => {
-              setRecording(false);
-              void addFiles([file], live.current.blocks.length - 1);
-            }}
-          />
-        )}
-        {summarising && (
-          <RecordingSummaryDialog
-            fileId={summarising.fileId}
-            name={summarising.name}
-            onAddToPage={
-              canWrite && !reading
-                ? (lines) => addSummary(summarising.fileId, lines)
-                : undefined
-            }
-            onClose={() => setSummarising(null)}
-          />
-        )}
-        {chat && (
-          <DocChat
-            docId={doc.id}
-            blocks={blocks}
-            canWrite={canWrite || suggesting}
-            onGoToBlock={goToBlock}
-            onNameBlock={nameBlock}
-            onSuggested={(made) => {
-              suggestionRead.current++;
-              setSuggestions((list) => [...list, made]);
-            }}
-            onClose={() => setChat(false)}
-          />
-        )}
-      </div>
-    </RecordingContext.Provider>
+      </RecordingContext.Provider>
+    </DocLatexPreviewProvider>
   );
 }
 

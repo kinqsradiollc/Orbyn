@@ -176,3 +176,21 @@ narrow-browser behavior. Retain Orbyn's cancellation, permission, provider and
 semantic-theme contracts. Source inspection does not qualify rendered or native
 behavior; the complete-candidate handoff must verify focus, independent drafts,
 search reuse, hidden-pane shortcuts and narrow/paired document tools.
+
+### Document source and common Note preview — 15 October
+
+Note is the rendered document for all three editing choices. Markdown and LaTeX
+open inline beside that Note output; source can be hidden without leaving the
+page. Remove the nested Source/Split/Preview navigation and source modal from the
+normal editing path. Keep Note, Markdown and LaTeX directly discoverable in both
+legacy and structured editors on web and mobile. Opening source from Read enters
+Edit for a writer; Suggest and reader authority remain unchanged.
+
+One document/account owns the compiled PDF across presentation changes. Saved
+LaTeX automatically updates after a 1.2-second debounce, with at least four seconds
+between automatic starts. New edits cancel stale requests. Preserve the last
+valid PDF during changes and failures; show a nearby Retry only on failure.
+The authenticated preview API retains revision and permission rechecks and allows
+20 requests per minute. Readers do not gain compilation authority. Native PDF
+opening remains distinct from the embedded browser preview. Assistant proposals
+continue to require acceptance in every format.

@@ -1,9 +1,11 @@
+import { DocLatexNote } from "./DocLatexPreview";
 import React from "react";
 import { StyleSheet, Text, TextInput, View } from "react-native";
 import { Pressable } from "../../motion";
 import {
   blockText,
   canFold,
+  DOC_LATEX_LANGUAGE,
   EMBED_LANG,
   foldedLines,
   footnoteNumbers,
@@ -514,6 +516,8 @@ export function DocBody({
               </View>,
             );
           case "code":
+            if (block.lang === DOC_LATEX_LANGUAGE)
+              return held(index, <DocLatexNote source={block.text} />);
             // A live list (SRCH-02) is drawn as its rows, not its settings.
             if (block.lang === LIVE_LIST_LANG)
               return line(index, <LiveList text={block.text} />);

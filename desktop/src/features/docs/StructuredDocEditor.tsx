@@ -1,3 +1,5 @@
+import { DocLatexPreviewProvider } from "./DocLatexPreview";
+import { DocEditorModes } from "./DocEditorModes";
 import { ownsEditorKey } from "./editor-input";
 import {
   useCallback,
@@ -83,6 +85,7 @@ function StructuredDocEditorBody({
   report: (error: unknown) => void;
 }) {
   const [latexOpen, setLatexOpen] = useState(false);
+  const sourceLeaveCheck = useRef<(() => boolean) | null>(null);
   const latexOwner = useRef(latexOpen);
   latexOwner.current = latexOpen;
   const [sourceAsk, setSourceAsk] = useState<DocBlock | null>(null);
@@ -805,662 +808,717 @@ function StructuredDocEditorBody({
     },
   });
   return (
-    <div
-      className="structured-doc-editor"
-      inert={historyBusy}
-      aria-busy={historyBusy || undefined}
+    <DocLatexPreviewProvider
+      canCompile={canWrite}
+      blocks={leaves}
+      docId={doc.id}
+      ready={
+        canWrite &&
+        !!session &&
+        !state.busy &&
+        !state.error &&
+        !state.conflict &&
+        state.source === null &&
+        !docEditorSessionDirty(session)
+      }
+      compile={(source, signal) =>
+        client.compileDocLatex(
+          doc.id,
+          {
+            source,
+            version: store.state.session?.saved.version ?? doc.version,
+          },
+          signal,
+        )
+      }
     >
-      {sourceAsk && "text" in sourceAsk && (
-        <DocSourceAsk
-          key={sourceAsk.id}
-          text={sourceAsk.text}
-          onAsk={requestSourceSuggestion}
-          onClose={() => setSourceAsk(null)}
-        />
-      )}
+      <div
+        className="structured-doc-editor"
+        inert={historyBusy}
+        aria-busy={historyBusy || undefined}
+      >
+        {sourceAsk && "text" in sourceAsk && (
+          <DocSourceAsk
+            key={sourceAsk.id}
+            text={sourceAsk.text}
+            onAsk={requestSourceSuggestion}
+            onClose={() => setSourceAsk(null)}
+          />
+        )}
 
-      {latexOpen && document && session && (
-        <DocSourcePreview
-          beforeNavigate={prepareLinkedPage}
-          latexOnly
-          blocks={leaves}
-          docId={doc.id}
-          onClose={() => {
-            latexOwner.current = false;
-            setLatexOpen(false);
-          }}
-          onAssist={
-            canWrite &&
-            !state.busy &&
-            !state.error &&
-            !state.conflict &&
-            state.source === null &&
-            !docEditorSessionDirty(session)
-              ? (block) => {
-                  setLatexOpen(false);
-                  askForBlock(block);
-                }
-              : undefined
+        {latexOpen && document && session && (
+          <DocSourcePreview
+            leaveCheck={sourceLeaveCheck}
+            compileReady={
+              !state.busy &&
+              !state.error &&
+              !state.conflict &&
+              !!session &&
+              !docEditorSessionDirty(session) &&
+              state.source === null
+            }
+            inline
+            beforeNavigate={prepareLinkedPage}
+            latexOnly
+            blocks={leaves}
+            docId={doc.id}
+            onClose={() => {
+              latexOwner.current = false;
+              setLatexOpen(false);
+            }}
+            onAssist={
+              canWrite &&
+              !state.busy &&
+              !state.error &&
+              !state.conflict &&
+              state.source === null &&
+              !docEditorSessionDirty(session)
+                ? (block) => {
+                    setLatexOpen(false);
+                    askForBlock(block);
+                  }
+                : undefined
+            }
+
+            onAppLink={(url) => void openLinkedPage(url)}
+            onCompileLatex={(source, signal) =>
+              client.compileDocLatex(
+                doc.id,
+                {
+                  source,
+                  version:
+                    store.state.session?.saved.version ?? session.saved.version,
+                },
+                signal,
+              )
+            }
+            saveStatus={
+              state.busy
+                ? "Saving…"
+                : docEditorSessionDirty(session)
+                  ? "Unsaved changes"
+                  : "Saved"
+            }
+            onLatexChange={
+              canWrite
+                ? (text, expected) => {
+                    const current = store.state.session;
+                    if (
+                      !current ||
+                      current.document !== document ||
+                      JSON.stringify(expected) !== JSON.stringify(leaves) ||
+                      store.state.sourceInvalid ||
+                      store.state.conflict ||
+                      store.state.error
+                    )
+                      throw new Error(
+                        "The document changed. Restore the current document before editing.",
+                      );
+                    store.changeOperation(
+                      document,
+                      docLatexOperation(document, text),
+                    );
+                    if (store.state.error) throw store.state.error;
+                    const next = store.state.session?.document;
+                    if (!next) throw new Error("The document is unavailable.");
+                    return next.format === 2
+                      ? docContainerBlocks(next.nodes, { projected: true })
+                      : next.blocks;
+                  }
+                : undefined
+            }
+          />
+        )}
+
+        <DocSuggestions
+          suggestions={sourceSuggestions}
+          userId={userId}
+          canDecide={canWrite}
+          busy={
+            sourcePending ||
+            state.busy ||
+            !session ||
+            docEditorSessionDirty(session) ||
+            state.source !== null
           }
-
-          onAppLink={(url) => void openLinkedPage(url)}
-          onCompileLatex={(source, signal) =>
-            client.compileDocLatex(
-              doc.id,
-              {
-                source,
-                version:
-                  store.state.session?.saved.version ?? session.saved.version,
-              },
-              signal,
+          sourceBlockIds={
+            new Set(
+              leaves
+                .filter(
+                  (block) => block.type === "code" || block.type === "math",
+                )
+                .flatMap((block) => (block.id ? [block.id] : [])),
             )
           }
-          saveStatus={
-            state.busy
-              ? "Saving…"
-              : docEditorSessionDirty(session)
-                ? "Unsaved changes"
-                : "Saved"
+          onDecide={(suggestion, take) =>
+            void reviewSourceSuggestions([{ suggestion, take }])
           }
-          onLatexChange={
-            canWrite
-              ? (text, expected) => {
-                  const current = store.state.session;
-                  if (
-                    !current ||
-                    current.document !== document ||
-                    JSON.stringify(expected) !== JSON.stringify(leaves) ||
-                    store.state.sourceInvalid ||
-                    store.state.conflict ||
-                    store.state.error
-                  )
-                    throw new Error(
-                      "The document changed. Restore the current document before editing.",
-                    );
-                  store.changeOperation(
-                    document,
-                    docLatexOperation(document, text),
-                  );
-                  if (store.state.error) throw store.state.error;
-                  const next = store.state.session?.document;
-                  if (!next) throw new Error("The document is unavailable.");
-                  return next.format === 2
-                    ? docContainerBlocks(next.nodes, { projected: true })
-                    : next.blocks;
-                }
-              : undefined
+          onWithdraw={(suggestion) =>
+            void reviewSourceSuggestions([{ suggestion }])
+          }
+          onDecideAll={(list, take) =>
+            void reviewSourceSuggestions(
+              list.map((suggestion) => ({ suggestion, take })),
+            )
           }
         />
-      )}
-
-      <DocSuggestions
-        suggestions={sourceSuggestions}
-        userId={userId}
-        canDecide={canWrite}
-        busy={
-          sourcePending ||
-          state.busy ||
-          !session ||
-          docEditorSessionDirty(session) ||
-          state.source !== null
-        }
-        sourceBlockIds={
-          new Set(
-            leaves
-              .filter((block) => block.type === "code" || block.type === "math")
-              .flatMap((block) => (block.id ? [block.id] : [])),
-          )
-        }
-        onDecide={(suggestion, take) =>
-          void reviewSourceSuggestions([{ suggestion, take }])
-        }
-        onWithdraw={(suggestion) =>
-          void reviewSourceSuggestions([{ suggestion }])
-        }
-        onDecideAll={(list, take) =>
-          void reviewSourceSuggestions(
-            list.map((suggestion) => ({ suggestion, take })),
-          )
-        }
-      />
-      <header className="structured-doc-toolbar">
-        <button
-          type="button"
-          disabled={
-            !session || !!state.source || state.busy || !!state.conflict
-          }
-          onClick={() => setLatexOpen(true)}
-        >
-          LaTeX
-        </button>
-        {onBack && (
-          <button
-            disabled={sourcePending || !!sourceAsk || latexOpen}
-            onClick={() => {
-              if (
-                state.source !== null &&
-                (state.error || !session || !docEditorSessionDirty(session))
-              ) {
-                void ask({
-                  title: "Discard the unsaved source draft?",
-                  confirmLabel: "Discard",
-                  destructive: true,
-                }).then((confirmed) => {
-                  if (confirmed) onBack();
-                });
-              } else if (session && docEditorSessionDirty(session)) {
-                void save().then(() => {
-                  if (
-                    store.state.session &&
-                    !docEditorSessionDirty(store.state.session)
-                  )
-                    onBack();
-                });
-              } else onBack();
-            }}
-          >
-            Back
-          </button>
-        )}
-        <span className="structured-doc-status">
-          {!session
-            ? state.busy
-              ? "Opening…"
-              : "Unavailable"
-            : state.busy
-              ? "Saving…"
-              : state.conflict
-                ? "Review changes"
-                : session && docEditorSessionDirty(session)
-                  ? "Unsaved"
-                  : "Saved"}
-        </span>
-        {canWrite && (
-          <button
-            onClick={() => void save()}
-            disabled={
-              state.busy ||
-              state.conflict ||
-              !!state.error ||
-              !session ||
-              !docEditorSessionDirty(session)
+        <header className="structured-doc-toolbar">
+          <DocEditorModes
+            value={
+              latexOpen
+                ? "latex"
+                : activePane === "preview"
+                  ? "note"
+                  : "markdown"
             }
-          >
-            Save
-          </button>
-        )}
-        <div className="structured-doc-menu" ref={menuRef}>
-          <button
-            type="button"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(!menuOpen)}
-          >
-            More
-          </button>
-          {menuOpen && (
-            <div className="structured-doc-menu-items">
-              <button
-                type="button"
-                disabled={state.busy}
-                onClick={() => {
-                  setMenuOpen(false);
-                  void store.refresh();
-                }}
-              >
-                Refresh
-              </button>
-              <button
-                type="button"
-                disabled={historyBusy}
-                onClick={() => void showHistory()}
-              >
-                History
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenuOpen(false);
-                  if (historyMutation.current) return;
-                  historyRequest.current++;
-                  setHistoryOpen(false);
-                  setCommentsOpen((value) => !value);
-                }}
-              >
-                Comments
-              </button>
-              {EXPORT_FORMATS.map((format) => (
-                <button
-                  type="button"
-                  key={format}
-                  disabled={
-                    !session ||
-                    docEditorSessionDirty(session) ||
-                    state.source !== null
-                  }
-                  onClick={() => void download(format)}
-                >
-                  Export {EXPORT_LABELS[format].name}
-                </button>
-              ))}
-              {canWrite &&
-                (["updates", "publish"] as const).map((action) => (
-                  <button
-                    key={action}
-                    type="button"
-                    disabled={
-                      state.busy ||
-                      !!state.error ||
-                      state.conflict ||
-                      !session ||
-                      docEditorSessionDirty(session) ||
-                      state.source !== null
-                    }
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setPageAction(action);
-                    }}
-                  >
-                    {action === "updates" ? "Page updates" : "Publish to web"}
-                  </button>
-                ))}
-            </div>
-          )}
-        </div>
-      </header>
-      {pageAction === "updates" && (
-        <PageMaintenanceDialog
-          id={doc.id}
-          onChanged={(next) => {
-            store.adopt(next);
-            onChanged(next);
-          }}
-          onClose={() => setPageAction(null)}
-        />
-      )}
-      {pageAction === "publish" && (
-        <PagePublicationDialog
-          id={doc.id}
-          onChanged={(next) => {
-            store.adopt(next);
-            onChanged(next);
-          }}
-          onClose={() => setPageAction(null)}
-        />
-      )}
-      {state.error !== null && (
-        <p className="structured-doc-error" role="alert">
-          {state.error instanceof Error
-            ? state.error.message
-            : "Could not update this page."}
-        </p>
-      )}
-      {navigationError && (
-        <p className="structured-doc-error" role="status">
-          {navigationError}
-        </p>
-      )}
-      {state.conflict && (
-        <p className="structured-doc-error" role="alert">
-          This page changed elsewhere. Your draft is still here for review.
-        </p>
-      )}
-      {(state.conflict || state.error !== null) && session && (
-        <button
-          type="button"
-          onClick={() =>
-            void ask({
-              title: "Discard this draft?",
-              confirmLabel: "Discard",
-              destructive: true,
-            }).then((confirmed) => {
-              if (confirmed) void store.discardLocal();
-            })
-          }
-        >
-          Discard draft
-        </button>
-      )}
-      {!session || !document ? (
-        <div>
-          <p role="status">
-            {state.busy ? "Opening page…" : "Page unavailable."}
-          </p>
-          {!state.busy && (
+            disabled={
+              !session ||
+              state.source !== null ||
+              state.busy ||
+              !!state.conflict ||
+              sourcePending ||
+              !!sourceAsk
+            }
+            onChange={(format) => {
+              if (format === "latex") setLatexOpen(true);
+              else setActivePane(format === "note" ? "preview" : "source");
+            }}
+          />
+          {onBack && (
             <button
-              className="secondary"
-              onClick={() => void store.open(doc.id)}
-            >
-              Retry
-            </button>
-          )}
-        </div>
-      ) : (
-        <>
-          {canWrite ? (
-            <input
-              className="structured-doc-title"
-              aria-label="Page title"
-              value={session.title}
-              onChange={(event) =>
-                store.changeTitle(session.title, event.currentTarget.value)
-              }
-              maxLength={200}
-            />
-          ) : (
-            <h1>{session.title}</h1>
-          )}
-          <div
-            className="structured-doc-pane-switch"
-            aria-label="Document view"
-          >
-            <button
-              type="button"
-              aria-pressed={activePane === "preview"}
-              onClick={() => setActivePane("preview")}
-            >
-              Preview
-            </button>
-            <button
-              type="button"
-              aria-pressed={activePane === "source"}
-              onClick={() => setActivePane("source")}
-            >
-              Source
-            </button>
-            <button
-              type="button"
-              className="structured-doc-split-button"
-              aria-pressed={activePane === "split"}
-              onClick={() => setActivePane("split")}
-            >
-              Split
-            </button>
-          </div>
-          <div className="structured-doc-columns" data-active-pane={activePane}>
-            <section
-              ref={previewRef}
-              aria-label="Page preview"
-              className="structured-doc-preview"
-              onScroll={(event) => {
-                if (event.currentTarget === event.target)
-                  syncSourceFromPreview();
+              disabled={sourcePending || !!sourceAsk || latexOpen}
+              onClick={() => {
+                if (
+                  state.source !== null &&
+                  (state.error || !session || !docEditorSessionDirty(session))
+                ) {
+                  void ask({
+                    title: "Discard the unsaved source draft?",
+                    confirmLabel: "Discard",
+                    destructive: true,
+                  }).then((confirmed) => {
+                    if (confirmed) onBack();
+                  });
+                } else if (session && docEditorSessionDirty(session)) {
+                  void save().then(() => {
+                    if (
+                      store.state.session &&
+                      !docEditorSessionDirty(store.state.session)
+                    )
+                      onBack();
+                  });
+                } else onBack();
               }}
             >
-              {document.format === 2 && (
-                <DocNavigationContext.Provider
-                  value={{
-                    docId: doc.id,
-                    onFragment: goToFragment,
-                    onAppLink: (url) => {
-                      const link = parseAppLink(url);
-                      if (
-                        link?.kind === "doc" &&
-                        link.id === doc.id &&
-                        link.block
-                      )
-                        goToFragment(link.block);
-                      else void openLinkedPage(url);
-                    },
+              Back
+            </button>
+          )}
+          <span className="structured-doc-status">
+            {!session
+              ? state.busy
+                ? "Opening…"
+                : "Unavailable"
+              : state.busy
+                ? "Saving…"
+                : state.conflict
+                  ? "Review changes"
+                  : session && docEditorSessionDirty(session)
+                    ? "Unsaved"
+                    : "Saved"}
+          </span>
+          {canWrite && (
+            <button
+              onClick={() => void save()}
+              disabled={
+                state.busy ||
+                state.conflict ||
+                !!state.error ||
+                !session ||
+                !docEditorSessionDirty(session)
+              }
+            >
+              Save
+            </button>
+          )}
+          <div className="structured-doc-menu" ref={menuRef}>
+            <button
+              type="button"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen(!menuOpen)}
+            >
+              More
+            </button>
+            {menuOpen && (
+              <div className="structured-doc-menu-items">
+                <button
+                  type="button"
+                  disabled={state.busy}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    void store.refresh();
                   }}
                 >
-                  <DocContainerView
-                    nodes={document.nodes}
-                    onOperation={
-                      canWrite
-                        ? (operation, expectedNodes) =>
-                            change(operation, {
-                              format: 2,
-                              nodes: [...expectedNodes],
-                            })
-                        : undefined
-                    }
-                    renderLeaf={(block, index, path) => (
-                      <div
-                        className="structured-doc-leaf"
-                        data-block-id={block.id}
-                        data-leaf-index={index}
-                        data-container-path={path.join("/")}
-                        onClick={(event) => {
-                          if (
-                            !(event.target as HTMLElement).closest(
-                              "a, button, input, textarea",
-                            )
-                          )
-                            sourceAtBlock(path);
-                        }}
-                      >
-                        <BlockView block={block} pageBlocks={leaves} />
-                        {canWrite && "text" in block && (
-                          <>
-                            <button
-                              type="button"
-                              className="structured-doc-edit"
-                              onClick={() =>
-                                setEditing(
-                                  editing === path.join("/")
-                                    ? null
-                                    : path.join("/"),
-                                )
-                              }
-                            >
-                              {editing === path.join("/") ? "Done" : "Edit"}
-                            </button>
-                            <button
-                              type="button"
-                              className="structured-doc-edit"
-                              onClick={() => void commentOn(block, index)}
-                            >
-                              Comment
-                            </button>
-                            {editing === path.join("/") && (
-                              <button
-                                type="button"
-                                className="structured-doc-edit"
-                                disabled={
-                                  sourcePending ||
-                                  !block.id ||
-                                  state.busy ||
-                                  docEditorSessionDirty(session) ||
-                                  state.source !== null
-                                }
-                                onClick={() => askForBlock(block)}
-                              >
-                                Ask assistant
-                              </button>
-                            )}
-                            {editing === path.join("/") && (
-                              <textarea
-                                aria-label={`Edit block ${index + 1}`}
-                                value={block.text}
-                                onChange={(event) =>
-                                  change(
-                                    {
-                                      kind: "replace-leaf",
-                                      path,
-                                      block: {
-                                        ...block,
-                                        text: event.currentTarget.value,
-                                      } as DocBlock,
-                                    },
-                                    document,
-                                  )
-                                }
-                              />
-                            )}
-                          </>
-                        )}
-                      </div>
-                    )}
-                  />
-                </DocNavigationContext.Provider>
-              )}
-            </section>
-            <section
-              aria-label="Markdown source"
-              className="structured-doc-source"
-            >
-              <div className="structured-doc-source-head">
-                <h2>Markdown</h2>
-                {canWrite && (
-                  <button
-                    type="button"
-                    disabled={
-                      sourcePending ||
-                      state.busy ||
-                      !session ||
-                      docEditorSessionDirty(session) ||
-                      state.source !== null
-                    }
-                    onClick={() => {
-                      const range =
-                        sourceMap &&
-                        versionedDocSourceAt(
-                          sourceMap,
-                          sourceRef.current?.selectionStart ?? 0,
-                        );
-                      const block =
-                        range?.blockIndex !== undefined
-                          ? leaves[range.blockIndex]
-                          : undefined;
-                      if (block) askForBlock(block);
-                      else
-                        setNavigationError(
-                          "Place the cursor in text before asking the assistant.",
-                        );
-                    }}
-                  >
-                    Ask assistant
-                  </button>
-                )}
-              </div>
-              {source === null ? (
-                <p>Source view is unavailable for this structure.</p>
-              ) : canWrite ? (
-                <textarea
-                  ref={sourceRef}
-                  aria-label="Markdown source"
-                  value={state.source ?? source}
-                  onSelect={previewAtCaret}
-                  onScroll={syncPreviewFromSource}
-                  onChange={(event) =>
-                    store.changeSource(document, event.currentTarget.value)
-                  }
-                  spellCheck={false}
-                  wrap="off"
-                />
-              ) : (
-                <pre>{source}</pre>
-              )}
-            </section>
-          </div>
-          <aside
-            hidden={!commentsOpen}
-            style={!commentsOpen ? { display: "none" } : undefined}
-            className="structured-doc-comments"
-            aria-label="Page comments"
-          >
-            <div className="structured-doc-history-head">
-              <h2>Comments</h2>
-              <button type="button" onClick={() => setCommentsOpen(false)}>
-                Close
-              </button>
-            </div>
-            <DocComments
-              docId={doc.id}
-              hidden={!commentsOpen}
-              beforeAnchorChange={beforeCommentAnchor}
-              blocks={leaves}
-              tops={commentTops}
-              userId={userId}
-              pending={pendingComment}
-              onPendingChange={setPendingComment}
-              active={activeComment}
-              onActiveChange={setActiveComment}
-              onAnchors={() => {}}
-              report={report}
-            />
-          </aside>
-          {historyOpen && (
-            <aside className="structured-doc-history" aria-label="Page history">
-              <div className="structured-doc-history-head">
-                <h2>History</h2>
+                  Refresh
+                </button>
                 <button
                   type="button"
                   disabled={historyBusy}
+                  onClick={() => void showHistory()}
+                >
+                  History
+                </button>
+                <button
+                  type="button"
                   onClick={() => {
+                    setMenuOpen(false);
+                    if (historyMutation.current) return;
                     historyRequest.current++;
                     setHistoryOpen(false);
+                    setCommentsOpen((value) => !value);
                   }}
                 >
-                  Close
+                  Comments
                 </button>
-              </div>
-              {historyError && (
-                <p role="alert">
-                  {historyError}{" "}
-                  <button
-                    className="text-button"
-                    disabled={historyBusy}
-                    onClick={() => void showHistory()}
-                  >
-                    Retry history
-                  </button>
-                </p>
-              )}
-              {versions === null ? (
-                !historyError && <p role="status">Loading…</p>
-              ) : versions.length === 0 ? (
-                <p>No earlier version.</p>
-              ) : (
-                <ol>
-                  {versions.map((version) => (
-                    <li key={version.version}>
-                      <button
-                        type="button"
-                        disabled={historyBusy}
-                        onClick={() => void selectVersion(version.version)}
-                      >
-                        {new Date(version.created_at).toLocaleString()} ·{" "}
-                        {version.author ?? "Someone"}
-                      </button>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {selected && (
-                <div>
-                  <h3>{selected.title || "Untitled"}</h3>
-                  {selected.document?.format === 2 ? (
-                    <DocContainerView nodes={selected.document.nodes} />
-                  ) : (
-                    <div>
-                      {selected.content?.map((block, index) => (
-                        <BlockView
-                          key={block.id ?? index}
-                          block={block}
-                          pageBlocks={selected.content ?? []}
-                        />
-                      ))}
-                    </div>
-                  )}
+                {EXPORT_FORMATS.map((format) => (
                   <button
                     type="button"
+                    key={format}
                     disabled={
-                      !canWrite ||
-                      historyBusy ||
+                      !session ||
                       docEditorSessionDirty(session) ||
                       state.source !== null
                     }
-                    onClick={() => void restore()}
+                    onClick={() => void download(format)}
                   >
-                    Restore this version
+                    Export {EXPORT_LABELS[format].name}
+                  </button>
+                ))}
+                {canWrite &&
+                  (["updates", "publish"] as const).map((action) => (
+                    <button
+                      key={action}
+                      type="button"
+                      disabled={
+                        state.busy ||
+                        !!state.error ||
+                        state.conflict ||
+                        !session ||
+                        docEditorSessionDirty(session) ||
+                        state.source !== null
+                      }
+                      onClick={() => {
+                        setMenuOpen(false);
+                        setPageAction(action);
+                      }}
+                    >
+                      {action === "updates" ? "Page updates" : "Publish to web"}
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
+        </header>
+        {pageAction === "updates" && (
+          <PageMaintenanceDialog
+            id={doc.id}
+            onChanged={(next) => {
+              store.adopt(next);
+              onChanged(next);
+            }}
+            onClose={() => setPageAction(null)}
+          />
+        )}
+        {pageAction === "publish" && (
+          <PagePublicationDialog
+            id={doc.id}
+            onChanged={(next) => {
+              store.adopt(next);
+              onChanged(next);
+            }}
+            onClose={() => setPageAction(null)}
+          />
+        )}
+        {state.error !== null && (
+          <p className="structured-doc-error" role="alert">
+            {state.error instanceof Error
+              ? state.error.message
+              : "Could not update this page."}
+          </p>
+        )}
+        {navigationError && (
+          <p className="structured-doc-error" role="status">
+            {navigationError}
+          </p>
+        )}
+        {state.conflict && (
+          <p className="structured-doc-error" role="alert">
+            This page changed elsewhere. Your draft is still here for review.
+          </p>
+        )}
+        {(state.conflict || state.error !== null) && session && (
+          <button
+            type="button"
+            onClick={() =>
+              void ask({
+                title: "Discard this draft?",
+                confirmLabel: "Discard",
+                destructive: true,
+              }).then((confirmed) => {
+                if (confirmed) void store.discardLocal();
+              })
+            }
+          >
+            Discard draft
+          </button>
+        )}
+        {!session || !document ? (
+          <div>
+            <p role="status">
+              {state.busy ? "Opening page…" : "Page unavailable."}
+            </p>
+            {!state.busy && (
+              <button
+                className="secondary"
+                onClick={() => void store.open(doc.id)}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+        ) : (
+          <>
+            {canWrite ? (
+              <input
+                className="structured-doc-title"
+                aria-label="Page title"
+                value={session.title}
+                onChange={(event) =>
+                  store.changeTitle(session.title, event.currentTarget.value)
+                }
+                maxLength={200}
+              />
+            ) : (
+              <h1>{session.title}</h1>
+            )}
+            <div
+              className="structured-doc-pane-switch"
+              aria-label="Document view"
+            >
+              <button
+                type="button"
+                aria-pressed={activePane === "preview"}
+                onClick={() => setActivePane("preview")}
+              >
+                Preview
+              </button>
+              <button
+                type="button"
+                aria-pressed={activePane === "source"}
+                onClick={() => setActivePane("source")}
+              >
+                Source
+              </button>
+              <button
+                type="button"
+                className="structured-doc-split-button"
+                aria-pressed={activePane === "split"}
+                onClick={() => setActivePane("split")}
+              >
+                Split
+              </button>
+            </div>
+            <div
+              className="structured-doc-columns"
+              data-active-pane={activePane}
+            >
+              <section
+                ref={previewRef}
+                aria-label="Page preview"
+                className="structured-doc-preview"
+                onScroll={(event) => {
+                  if (event.currentTarget === event.target)
+                    syncSourceFromPreview();
+                }}
+              >
+                {document.format === 2 && (
+                  <DocNavigationContext.Provider
+                    value={{
+                      docId: doc.id,
+                      onFragment: goToFragment,
+                      onAppLink: (url) => {
+                        const link = parseAppLink(url);
+                        if (
+                          link?.kind === "doc" &&
+                          link.id === doc.id &&
+                          link.block
+                        )
+                          goToFragment(link.block);
+                        else void openLinkedPage(url);
+                      },
+                    }}
+                  >
+                    <DocContainerView
+                      nodes={document.nodes}
+                      onOperation={
+                        canWrite
+                          ? (operation, expectedNodes) =>
+                              change(operation, {
+                                format: 2,
+                                nodes: [...expectedNodes],
+                              })
+                          : undefined
+                      }
+                      renderLeaf={(block, index, path) => (
+                        <div
+                          className="structured-doc-leaf"
+                          data-block-id={block.id}
+                          data-leaf-index={index}
+                          data-container-path={path.join("/")}
+                          onClick={(event) => {
+                            if (
+                              !(event.target as HTMLElement).closest(
+                                "a, button, input, textarea",
+                              )
+                            )
+                              sourceAtBlock(path);
+                          }}
+                        >
+                          <BlockView block={block} pageBlocks={leaves} />
+                          {canWrite && "text" in block && (
+                            <>
+                              <button
+                                type="button"
+                                className="structured-doc-edit"
+                                onClick={() =>
+                                  setEditing(
+                                    editing === path.join("/")
+                                      ? null
+                                      : path.join("/"),
+                                  )
+                                }
+                              >
+                                {editing === path.join("/") ? "Done" : "Edit"}
+                              </button>
+                              <button
+                                type="button"
+                                className="structured-doc-edit"
+                                onClick={() => void commentOn(block, index)}
+                              >
+                                Comment
+                              </button>
+                              {editing === path.join("/") && (
+                                <button
+                                  type="button"
+                                  className="structured-doc-edit"
+                                  disabled={
+                                    sourcePending ||
+                                    !block.id ||
+                                    state.busy ||
+                                    docEditorSessionDirty(session) ||
+                                    state.source !== null
+                                  }
+                                  onClick={() => askForBlock(block)}
+                                >
+                                  Ask assistant
+                                </button>
+                              )}
+                              {editing === path.join("/") && (
+                                <textarea
+                                  aria-label={`Edit block ${index + 1}`}
+                                  value={block.text}
+                                  onChange={(event) =>
+                                    change(
+                                      {
+                                        kind: "replace-leaf",
+                                        path,
+                                        block: {
+                                          ...block,
+                                          text: event.currentTarget.value,
+                                        } as DocBlock,
+                                      },
+                                      document,
+                                    )
+                                  }
+                                />
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+                    />
+                  </DocNavigationContext.Provider>
+                )}
+              </section>
+              <section
+                aria-label="Markdown source"
+                className="structured-doc-source"
+              >
+                <div className="structured-doc-source-head">
+                  <h2>Markdown</h2>
+                  {canWrite && (
+                    <button
+                      type="button"
+                      disabled={
+                        sourcePending ||
+                        state.busy ||
+                        !session ||
+                        docEditorSessionDirty(session) ||
+                        state.source !== null
+                      }
+                      onClick={() => {
+                        const range =
+                          sourceMap &&
+                          versionedDocSourceAt(
+                            sourceMap,
+                            sourceRef.current?.selectionStart ?? 0,
+                          );
+                        const block =
+                          range?.blockIndex !== undefined
+                            ? leaves[range.blockIndex]
+                            : undefined;
+                        if (block) askForBlock(block);
+                        else
+                          setNavigationError(
+                            "Place the cursor in text before asking the assistant.",
+                          );
+                      }}
+                    >
+                      Ask assistant
+                    </button>
+                  )}
+                </div>
+                {source === null ? (
+                  <p>Source view is unavailable for this structure.</p>
+                ) : canWrite ? (
+                  <textarea
+                    ref={sourceRef}
+                    aria-label="Markdown source"
+                    value={state.source ?? source}
+                    onSelect={previewAtCaret}
+                    onScroll={syncPreviewFromSource}
+                    onChange={(event) =>
+                      store.changeSource(document, event.currentTarget.value)
+                    }
+                    spellCheck={false}
+                    wrap="off"
+                  />
+                ) : (
+                  <pre>{source}</pre>
+                )}
+              </section>
+            </div>
+            <aside
+              hidden={!commentsOpen}
+              style={!commentsOpen ? { display: "none" } : undefined}
+              className="structured-doc-comments"
+              aria-label="Page comments"
+            >
+              <div className="structured-doc-history-head">
+                <h2>Comments</h2>
+                <button type="button" onClick={() => setCommentsOpen(false)}>
+                  Close
+                </button>
+              </div>
+              <DocComments
+                docId={doc.id}
+                hidden={!commentsOpen}
+                beforeAnchorChange={beforeCommentAnchor}
+                blocks={leaves}
+                tops={commentTops}
+                userId={userId}
+                pending={pendingComment}
+                onPendingChange={setPendingComment}
+                active={activeComment}
+                onActiveChange={setActiveComment}
+                onAnchors={() => {}}
+                report={report}
+              />
+            </aside>
+            {historyOpen && (
+              <aside
+                className="structured-doc-history"
+                aria-label="Page history"
+              >
+                <div className="structured-doc-history-head">
+                  <h2>History</h2>
+                  <button
+                    type="button"
+                    disabled={historyBusy}
+                    onClick={() => {
+                      historyRequest.current++;
+                      setHistoryOpen(false);
+                    }}
+                  >
+                    Close
                   </button>
                 </div>
-              )}
-            </aside>
-          )}
-        </>
-      )}
-    </div>
+                {historyError && (
+                  <p role="alert">
+                    {historyError}{" "}
+                    <button
+                      className="text-button"
+                      disabled={historyBusy}
+                      onClick={() => void showHistory()}
+                    >
+                      Retry history
+                    </button>
+                  </p>
+                )}
+                {versions === null ? (
+                  !historyError && <p role="status">Loading…</p>
+                ) : versions.length === 0 ? (
+                  <p>No earlier version.</p>
+                ) : (
+                  <ol>
+                    {versions.map((version) => (
+                      <li key={version.version}>
+                        <button
+                          type="button"
+                          disabled={historyBusy}
+                          onClick={() => void selectVersion(version.version)}
+                        >
+                          {new Date(version.created_at).toLocaleString()} ·{" "}
+                          {version.author ?? "Someone"}
+                        </button>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {selected && (
+                  <div>
+                    <h3>{selected.title || "Untitled"}</h3>
+                    {selected.document?.format === 2 ? (
+                      <DocContainerView nodes={selected.document.nodes} />
+                    ) : (
+                      <div>
+                        {selected.content?.map((block, index) => (
+                          <BlockView
+                            key={block.id ?? index}
+                            block={block}
+                            pageBlocks={selected.content ?? []}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      disabled={
+                        !canWrite ||
+                        historyBusy ||
+                        docEditorSessionDirty(session) ||
+                        state.source !== null
+                      }
+                      onClick={() => void restore()}
+                    >
+                      Restore this version
+                    </button>
+                  </div>
+                )}
+              </aside>
+            )}
+          </>
+        )}
+      </div>
+    </DocLatexPreviewProvider>
   );
 }

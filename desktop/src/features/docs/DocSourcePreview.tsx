@@ -1,3 +1,4 @@
+import { useDocLatexPreview } from "./DocLatexPreview";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
 import {
@@ -36,6 +37,10 @@ export function DocSourcePreview({
   onAssist,
   onLatexChange,
   latexOnly = false,
+  initialMode = "markdown",
+  inline = false,
+  compileReady = true,
+  leaveCheck,
 }: {
   blocks: DocBlock[];
   docId: string;
@@ -48,6 +53,10 @@ export function DocSourcePreview({
   onAssist?: (block: DocBlock) => void;
   onLatexChange?: (text: string, expected: DocBlock[]) => DocBlock[];
   latexOnly?: boolean;
+  initialMode?: "markdown" | "latex";
+  inline?: boolean;
+  compileReady?: boolean;
+  leaveCheck?: { current: (() => boolean) | null };
 }) {
   const [navigating, setNavigating] = useState(false);
   const [navigationError, setNavigationError] = useState("");
@@ -61,15 +70,25 @@ export function DocSourcePreview({
     };
   }, []);
   const [mode, setMode] = useState<"markdown" | "latex">(
-    latexOnly ? "latex" : "markdown",
+    latexOnly ? "latex" : initialMode,
   );
   const latex = docLatexBlock(blocks);
   const [latexText, setLatexText] = useState(
     latex?.text ?? EMPTY_LATEX_DOCUMENT,
   );
-  const [pdf, setPdf] = useState<{ url: string; source: string } | null>(null);
-  const [compiling, setCompiling] = useState(false);
-  const [compileError, setCompileError] = useState("");
+  const sharedPreview = useDocLatexPreview();
+  const [localPdf, setPdf] = useState<{ url: string; source: string } | null>(
+    null,
+  );
+  const pdf = sharedPreview
+    ? sharedPreview.pdf && sharedPreview.url
+      ? { url: sharedPreview.url, source: sharedPreview.pdf.source }
+      : null
+    : localPdf;
+  const [localCompiling, setCompiling] = useState(false);
+  const compiling = sharedPreview?.busy ?? localCompiling;
+  const [localCompileError, setCompileError] = useState("");
+  const compileError = sharedPreview?.error ?? localCompileError;
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
     if (latex) setLatexText(latex.text);
@@ -82,12 +101,21 @@ export function DocSourcePreview({
   );
   useEffect(
     () => () => {
-      if (pdf) URL.revokeObjectURL(pdf.url);
+      if (localPdf) URL.revokeObjectURL(localPdf.url);
     },
-    [pdf],
+    [localPdf],
   );
   const compilePdf = async () => {
-    if (compile.current || sourceError || !(onSourceChange || onLatexChange))
+    if (sharedPreview) {
+      sharedPreview.retry();
+      return;
+    }
+    if (
+      compile.current ||
+      !compileReady ||
+      sourceError ||
+      !(onSourceChange || onLatexChange)
+    )
       return;
     const controller = new AbortController();
     compile.current = controller;
@@ -112,7 +140,7 @@ export function DocSourcePreview({
     }
   };
   const id = useId();
-  const dialog = useRef<HTMLDialogElement>(null);
+  const dialog = useRef<HTMLElement>(null);
   const source = useRef<HTMLTextAreaElement>(null);
   const preview = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState(0);
@@ -250,6 +278,63 @@ export function DocSourcePreview({
       );
     }
   };
+  const compileLatest = useRef(compilePdf);
+  compileLatest.current = compilePdf;
+  const lastCompile = useRef(0);
+  useEffect(() => {
+    const previous = compile.current;
+    previous?.abort();
+    if (compile.current === previous) compile.current = null;
+    setCompiling(false);
+    if (
+      sharedPreview ||
+      mode !== "latex" ||
+      !compileReady ||
+      sourceError ||
+      !(onSourceChange || onLatexChange)
+    )
+      return;
+    const timer = setTimeout(
+      () => {
+        lastCompile.current = Date.now();
+        void compileLatest.current();
+      },
+      Math.max(1200, 4000 - (Date.now() - lastCompile.current)),
+    );
+    return () => {
+      clearTimeout(timer);
+      compile.current?.abort();
+    };
+  }, [
+    mode,
+    latexText,
+    compileReady,
+    sourceError,
+    docId,
+    !!onSourceChange,
+    !!onLatexChange,
+  ]);
+  useEffect(() => {
+    if (!leaveCheck) return;
+    const ready = () =>
+      !liveSourceError.current &&
+      !mustRestore.current &&
+      !navigationPending.current;
+    leaveCheck.current = ready;
+    return () => {
+      if (leaveCheck.current === ready) leaveCheck.current = null;
+    };
+  }, [leaveCheck]);
+  useEffect(() => {
+    if (
+      sharedPreview &&
+      mode === "latex" &&
+      !docLatexBlock(ownerBlocks.current) &&
+      (onSourceChange || onLatexChange) &&
+      !sourceError
+    )
+      changeLatex(latexText);
+  }, [mode, !!latex, !!sharedPreview]);
   const closeSource = () => {
     if (!sourceError && !navigationPending.current) onClose();
   };
@@ -275,7 +360,8 @@ export function DocSourcePreview({
     [blocks],
   );
   useEffect(() => {
-    const modal = dialog.current;
+    if (inline) return;
+    const modal = dialog.current as HTMLDialogElement | null;
     modal?.showModal();
     return () => {
       modal?.close();
@@ -411,22 +497,23 @@ export function DocSourcePreview({
     }
     setSelected(index);
   };
+  const SourceSurface = inline ? "section" : "dialog";
   return (
-    <dialog
+    <SourceSurface
       ref={(node) => {
         dialog.current = node;
-        focus.ref.current = node;
+        if (!inline) focus.ref.current = node;
       }}
-      data-modal-focus={focus.id}
+      data-modal-focus={inline ? undefined : focus.id}
       tabIndex={-1}
-      className="doc-source-dialog"
+      className={inline ? "doc-source-workspace" : "doc-source-dialog"}
       aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();
         closeSource();
       }}
     >
-      <div className="section-heading">
+      <div className="section-heading" hidden={inline}>
         <h2 id={id}>Source and preview</h2>
         <button
           className="icon-button"
@@ -474,7 +561,7 @@ export function DocSourcePreview({
             LaTeX
           </button>
         </div>
-        <p className="muted">
+        <p className="muted" hidden={inline}>
           {mode === "latex"
             ? "LaTeX is saved with this note."
             : onSourceChange
@@ -497,52 +584,39 @@ export function DocSourcePreview({
             </button>
           </div>
         )}
-        <div
-          className="segmented doc-source-view"
-          role="group"
-          aria-label="Source preview layout"
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => setView(shownView === "preview" ? "split" : "preview")}
         >
-          <button
-            type="button"
-            aria-pressed={shownView === "source"}
-            onClick={() => setView("source")}
-          >
-            Source
-          </button>
-          <button
-            type="button"
-            hidden={compact}
-            aria-pressed={shownView === "split"}
-            onClick={() => setView("split")}
-          >
-            Split
-          </button>
-          <button
-            type="button"
-            aria-pressed={shownView === "preview"}
-            onClick={() => setView("preview")}
-          >
-            Preview
-          </button>
-        </div>
+          {shownView === "preview" ? "Show source" : "Hide source"}
+        </button>
         {mode === "latex" && (
           <div className="doc-source-view">
-            <button
-              type="button"
-              disabled={
-                navigating ||
-                compiling ||
-                !!sourceError ||
-                !(onSourceChange || onLatexChange)
-              }
-              onClick={() => void compilePdf()}
-            >
-              {compiling ? "Compiling…" : "Compile PDF"}
-            </button>
+            <span className="muted" role="status">
+              {compiling ? "Updating preview…" : "Live preview"}
+            </span>
+            {compileError && (
+              <button
+                type="button"
+                className="secondary"
+                disabled={
+                  navigating ||
+                  !compileReady ||
+                  compiling ||
+                  !!sourceError ||
+                  !(onSourceChange || onLatexChange)
+                }
+                onClick={() => void compilePdf()}
+              >
+                Retry preview
+              </button>
+            )}
             {onAssist && latex?.id && (
               <button
                 type="button"
                 disabled={navigating || !!sourceError || !latex.text.trim()}
+                className="secondary"
                 onClick={() => onAssist(latex)}
               >
                 Ask assistant
@@ -550,9 +624,7 @@ export function DocSourcePreview({
             )}
             {compileError && <p role="alert">{compileError}</p>}
             {pdf && pdf.source !== latexText && (
-              <p role="status">
-                PDF shows an earlier draft. Compile to update it.
-              </p>
+              <p role="status">Preview is updating.</p>
             )}
           </div>
         )}
@@ -581,7 +653,7 @@ export function DocSourcePreview({
           ) : (
             <p className="muted">
               {onSourceChange || onLatexChange
-                ? "Compile to preview the PDF."
+                ? "Preparing PDF preview…"
                 : "Editing access is needed to compile."}
             </p>
           )}
@@ -667,6 +739,6 @@ export function DocSourcePreview({
           </DocNavigationContext.Provider>
         </div>
       </div>
-    </dialog>
+    </SourceSurface>
   );
 }

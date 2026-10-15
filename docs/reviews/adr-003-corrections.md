@@ -87,3 +87,25 @@ Reviewer closes R1–R3/E1–E3 within round 1 after receipts. Visual Check then
 one stable whole-candidate shared-web/Expo batch from the candidate map; only
 reproduced failures get affected rechecks. Native builds and production deployment
 are excluded.
+
+## Owner document and toast corrections — 15 October (additional frozen batch)
+
+All four editor parents expose Note/Markdown/LaTeX directly. Source opens inline;
+Note renders ordinary blocks, equations and standalone LaTeX PDF. A shared
+account/document store retains the PDF when source is hidden or Note is selected.
+Read-to-source enters Edit only for a writer. Source/Split/Preview navigation is
+removed in favor of one source visibility toggle. Compilation is automatic on
+saved source, with bounded debounce, cancellation, failure retention and Retry.
+Toast message/dismiss layout stays on one row with wrapping within the message.
+No environment variables were added. The API rate rises from 6 to 20/minute.
+
+Development evidence: 35/35 source/store/provider/mode tests and desktop/mobile
+types passed. The first provider fixture used `language` rather than schema `lang`
+and failed; corrected fixture passes. Three guarded real-API/DB assistant tests
+passed with a local stand-in provider: Note, Markdown equations and standalone TeX
+each remain unchanged before approval, reject without edits and persist after
+acceptance. The fixture restores AI settings and deletes its user/provider.
+These are Builder checks, not rendered acceptance or formal Tester qualification.
+Logs: `/private/tmp/orbyn-adr003-note-preview-dev-2.tap`,
+`/private/tmp/orbyn-adr003-note-types-2.log`,
+`/private/tmp/orbyn-adr003-assist-formats-dev.tap`.

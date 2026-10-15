@@ -3755,15 +3755,21 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 .toast {
   animation: none;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
 }
 .toast-text {
-  flex: 1 1 160px;
+  flex: 1 1 auto;
   overflow-wrap: anywhere;
 }
 .toast-action,
 .toast-close {
   min-height: 44px;
+}
+.toast-action {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 45%;
+  overflow-wrap: anywhere;
 }
 .toast-close {
   width: 44px;
