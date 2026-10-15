@@ -21,17 +21,22 @@ editing experience and opened a focused full document-writing redesign under
 ADR 004; this supersedes only the document presentation, not ADR 003's other
 accepted work.
 
-**ADR 004 is accepted in Reviewer round 1/3 and delivered to `main`.** Accepted
-product freeze: `d44c4cdf`. Tester `94188184` passed **69/69**, desktop/mobile
-types and desktop build. Final Visual report `05590f58` closes actual document
-writing cases DW-V1–V4 together with earlier PDF/source/save checks; the read-only
-Reviewer granted final acceptance. Accepted lineage was fast-forward pushed from
-`b11b1429` to remote `e575c06ed5c452f3bfe55f71144d90f734986a27` (`e575c06e`);
-the remote ref was verified. The writing-first Note redesign preserves earlier
-ADR 003 acceptance outside the document presentation. The nonblocking “Keep
-editing” comment remains documented as a follow-up and does not block acceptance.
-Native applications and external provider/host behavior remain outside scope;
-production deployment is user-owned and is not claimed. See [ADR 004](../adr/004-document-writing-experience.md),
+**ADR 004 is accepted in Reviewer round 2/3 and delivered to `main`.** Final
+product is `94a56717`; Visual report `0faad20f` closes DW-V5 PDF blur, DW-V6
+duplicate editor and DW-V7 source height. The accepted layout keeps source left
+and Note right, retains visible code/PDF while editing, supports mobile source
+scroll at 240px and stacked panes at 320px, and verifies actual PDF controls and
+saved page-2 zoom. Tester `8f2d1bb1` passed **7/7** plus mobile types on the final
+product; preceding exact-source qualification `41fb7890` passed **57/57** plus
+both client types. Desktop build `6673f912` is historical evidence, not a build
+of the final product. Read-only Reviewer granted final acceptance in round 2/3.
+Accepted lineage was fast-forward pushed from `1b19373b` to remote
+`6a46624ebe71a22d8e6863ae4ed01fcb05833cb3` (`6a46624e`); the remote ref was
+verified. The writing-first Note redesign preserves earlier ADR 003 acceptance
+outside document presentation. The nonblocking “Keep editing” comment remains
+documented as a follow-up. Native applications and external provider/host
+behavior remain outside scope; production deployment is user-owned and is not
+claimed. See [ADR 004](../adr/004-document-writing-experience.md),
 [document-writing redesign record](document-writing-redesign.md),
 [Tester report](document-writing-tester.md), and [visual report](document-writing-visual.md).
 
