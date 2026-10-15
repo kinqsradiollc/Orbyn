@@ -70,3 +70,25 @@ No new environment variable is introduced.
 Development test failures remain in the private QA logs: the first batch was
 29/32 and the second 30/32. They exposed stale exact-copy assertions and a stale
 hook-fixture slot; these were corrected without claiming complete screen testing.
+
+### Actual paired navigation and shortcut ownership at a7facf6a
+
+Root used a separate U1 Disposable QA account in IAB (no UI Preview mutation).
+At actual 900×800 CSS pixels, First Home's scroll position of 481.875 survived
+Second Docs→First; the unsent reflection remained and was then cleared. At320px,
+Second→navigation→My tasks changed only Second, and First still showed Home.
+Restoring1440×900 displayed both independent panes. A failed attempt to click the
+narrow-only Second pane selector after widening was a no-match; the wide view
+correctly had both panes visible.
+
+In Second's actual legacy editor, opening Share, pressing Cmd+Shift+R and then
+Escape left Editing unchanged, dismissed only Share, and returned focus to its
+Share button. Focusing First Home's reflection then Cmd+Shift+R also left the
+Second editor unchanged. These are actual parent interaction checks, not a
+claim that every source-mode failure or keyboard shortcut has been executed.
+Screenshots: `/private/tmp/orbyn-adr003-paired-mobile-width.png` and
+`/private/tmp/orbyn-adr003-paired-final.png` (private synthetic QA only).
+
+V10/init scoped source review accepted a7facf6a in round1/3, with no actionable
+findings. It explicitly retained the limits of structural busy-wiring assertions
+and the brittle hook fixture; actual new-image process qualification is pending.
