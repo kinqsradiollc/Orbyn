@@ -782,3 +782,96 @@ This qualification used direct signed calls to the local compiler. It made no
 database, account, provider or browser changes and ran no API suites, native
 build or Security scan. Tester made no product or test-source edits. The review
 counter remains `1/3`.
+
+## V12–V14 Tester qualification at product freeze 509462e6
+
+The qualified product and test-source freeze is
+`509462e63e34bb9a9282678c02d04d63f2605c6b`, parent
+`e911672a2b66fb334e1adce6c0ffd2fd2de649d7`, on branch
+`codex/c6-file-viewer` in `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
+It contains the `3a97163c` expected-revision anchor changes, the `e911672a`
+route variable-shadow correction, and the `509462e6` mobile secondary-LaTeX
+source contrast fix. Later commits `bce93104` and `d07ef1c6` changed review
+documentation only; product and test source remained identical to `509462e6`
+through the final verification. The review counter remains `1/3`.
+
+The initial four-suite run was interrupted by the `e911672a` commit arriving
+while the process was running. It passed 20/20 tests, and that commit changed
+only the backend anchor route, outside those suites' source. I reran the full
+batch after the final `509462e6` product/test freeze, including the new mobile
+LaTeX contrast cases:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/button-fallback.unit.test.ts \
+  backend/tests/doc-assist-target.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/doc-editor-store.unit.test.ts \
+  backend/tests/doc-latex-note.unit.test.ts
+```
+
+Result: exit 0, **24/24 passed**, 0 failed, 0 cancelled, 0 skipped (3.66 s).
+This includes the captured saved-revision refusal, all four web/mobile canonical
+LaTeX-owner cases, and the V14 noncanonical source readability assertions. The
+mode-0600 TAP log is
+[`V12–V14 focused unit tests`](/private/tmp/orbyn-v12-v14-unit-509462e6.tap).
+
+The one named PostgreSQL API regression passed on the exact product source:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  --test-name-pattern='saved-selection anchors reject a shifted identical duplicate at a newer revision' \
+  backend/tests/doc-structured-storage.test.ts
+```
+
+Before launch, `TEST_DATABASE_URL` was checked to resolve to a database ending
+in `_test` with `orbyn.environment='test'`; the guarded setup used that test
+database only. Result: exit 0, **1/1 passed**, 0 failed, 0 cancelled and 0
+skipped. The shifted duplicate at a newer revision returned 409; the unchanged
+saved revision returned 200. This retest covers the intermediate V13 failure
+recorded by Visual Check: request
+`61ec8fb4-2773-4530-b387-c08414dff9a5` returned 500 on `3a97163c` because the
+anchor handler's request `version` binding was in a temporal dead zone. The
+`e911672a` correction aliases it to `expectedVersion`. The mode-0600 TAP log is
+[`saved-selection API regression`](/private/tmp/orbyn-v12-v14-anchor-api-509462e6.tap).
+
+`npm run typecheck` passed, including shared package builds and backend,
+desktop, and mobile TypeScript checks. The run started on `509462e6`; the only
+commit that arrived during it was the docs-only `bce93104`, so the checked
+product/test source is unchanged. The mode-0600 log is
+[`workspace typecheck`](/private/tmp/orbyn-v12-v14-types-509462e6.log).
+
+`npm run build` passed for packages, backend and desktop at the same product
+source. Vite emitted the existing warning about chunks over 500 kB; the build
+completed and generated the PDF preview runtime and homepage. Its mode-0600 log
+is [`root build`](/private/tmp/orbyn-v12-v14-root-build-509462e6.log).
+
+The exact desktop target also built successfully:
+
+```sh
+docker build -f desktop/Dockerfile \
+  --tag orbyn-web:adr003-509462e6-tester \
+  --build-arg GIT_SHA=509462e6 .
+```
+
+`docker image inspect` confirmed image ID
+`sha256:c65a6bdf4496becfba856180fc7ef1bbe95c6bc0660dcb79012d77b4fca4e081`.
+Vite reported its existing large-chunk warning; Docker completed successfully.
+The image was built from the `509462e6` product source and was not run as a
+container. The mode-0600 log is
+[`desktop Docker build`](/private/tmp/orbyn-v12-v14-desktop-docker-509462e6.log).
+
+The earlier `c5ae33faa49afb8b175f2010d369aafc5317fe09` attempt remains
+preserved at
+[`c5 focused unit attempt`](/private/tmp/orbyn-v12-v13-tester-unit-c5ae33fa.tap):
+19/20 passed and the remote duplicate-reordering case failed because it did not
+receive the captured revision. That attempt was not a clean freeze run: the
+regression case was added to the working tree after `c5ae33fa` froze and while
+the batch ran. The later exact `509462e6` 24/24 result is the qualification
+evidence for that behavior.
+
+No broad API suite, provider test, native build, additional browser batch or
+Security scan was run. This report qualifies the named source checks and desktop
+build only; the remaining bounded visual evidence and Reviewer closure are
+separate gates. Tester made no product or test-source edits and changed only
+this report.
