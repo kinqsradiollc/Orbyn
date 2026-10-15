@@ -602,3 +602,55 @@ The local preview endpoints returned HTTP 200 at handback: shared web
 `http://127.0.0.1:8083/`, and API health `http://127.0.0.1:8008/health`.
 These are reachability observations only; Tester performed no visual acceptance
 check.
+
+## V8 mobile correction qualification at 374258c5
+
+The mobile-width correction froze at
+`374258c5f459b87c42167aed61f081152d007d26`, parent
+`2c0b8d00aeb4768f2a4fcc00092bcf653cd37049`, on `codex/c6-file-viewer`. The
+requested checks ran at that exact HEAD. Relative to `e942a1a0`, the product
+source changes are confined to mobile; desktop, backend implementation and
+workspace packages are unchanged. The two changed test files add V8 regression
+assertions.
+
+The finite affected batch passed:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-source-view.unit.test.ts \
+  backend/tests/visual-corrections.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts
+```
+
+Result: exit 0, **37/37 passed**, 0 failed, 0 cancelled and 0 skipped (2.61 s).
+The tests cover the requested doc-source-view (29), visual-corrections (4) and
+document-editor-modes (4) suites. The mode-0600 TAP log is
+[`V8 mobile regression batch`](/private/tmp/orbyn-adr003-v8-mobile-unit-374258c5.tap).
+
+`npm run typecheck -w mobile` passed at the same exact candidate. Its mode-0600
+log is [`V8 mobile typecheck`](/private/tmp/orbyn-adr003-v8-mobile-typecheck-374258c5.log).
+
+The desktop Docker image was rebuilt from the `374258c5` checkout to qualify
+the same desktop source as e942's viewer-lifetime fix:
+
+```sh
+docker build -f desktop/Dockerfile \
+  --tag orbyn-web:adr003-374258c5-tester \
+  --build-arg GIT_SHA=374258c5 .
+```
+
+The build passed and `docker image inspect` confirmed tag
+`orbyn-web:adr003-374258c5-tester`, image ID
+`sha256:aef901a438250884ef08815a4540f667a3f2c59b6495a69d6aff2294affddb76`.
+The Docker build generated the bundled PDF preview runtime and reported the
+existing Vite warning for chunks larger than 500 kB. This closes the desktop
+image provenance gap from the earlier `6044fddf` build. The image contains the
+desktop e942 fix; the Dockerfile does not package the V8 mobile source. No
+container run was performed. The mode-0600 build log is
+[`V8 desktop Docker build`](/private/tmp/orbyn-adr003-v8-desktop-docker-build-374258c5.log).
+
+No additional suites, root build, browser interaction, fixture or database work,
+native build or Security scan was run. The actual Expo and shared-web visual
+cases remain owned by the parent and Visual Check; this Tester receipt verifies
+only the requested unit suites, mobile typecheck and desktop Docker build. The
+review counter remains `1/3`; Tester made no product or test-source edits.
