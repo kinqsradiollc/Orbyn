@@ -215,3 +215,8 @@ Those failures remain in the private TAP. The corrected batch passed65/65 across
 button fallback/sizing, editor modes, redesign controls, workspace layout,
 typography, settings grid, PDF runtime and canonical viewer tests. Actual density,
 size comparison, touch recheck and formal qualification remain required.
+
+V16 source review found that the bare-button fallback did not consume the touch
+height token. It now applies the same minimum at zero specificity, so feature
+overrides and segmented sizing still win. The fallback regression covers this
+contract. This correction remains in round 1/3.

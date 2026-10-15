@@ -14,6 +14,7 @@ test("unclassified buttons get themed defaults while feature classes keep contro
     "utf8",
   );
   const rule = css.match(/:where\(button\)\s*\{[^}]+\}/)![0];
+  assert.match(rule, /min-height: var\(--button-h\)/);
   assert.match(rule, /appearance: none/);
   assert.match(rule, /border-radius: var\(--radius-sm\)/);
   assert.match(rule, /background: var\(--color-surface\)/);
@@ -71,6 +72,7 @@ test("desktop actions share compact sizing and touch controls keep their target"
   assert.match(css, /--button-h: 32px/);
   assert.match(css, /--button-h: 44px/);
   for (const selector of [
+    ":where(button)",
     ".primary,\n.secondary",
     ".text-button",
     ".icon-button",

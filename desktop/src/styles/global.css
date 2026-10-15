@@ -77,6 +77,7 @@ button {
 }
 /* Shared fallback for every action: feature classes can override at any specificity. */
 :where(button) {
+  min-height: var(--button-h);
   appearance: none;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
