@@ -1,6 +1,6 @@
 # ADR implementation tracker
 
-Updated 12 October 2026. Follow the full contract in
+Updated 15 October 2026. Follow the full contract in
 [the implementation review](devday-2026-implementation-review.md) and
 [the top-down execution order](adr-execution-order.md).
 Detailed qualification and historical failures remain in
@@ -14,25 +14,24 @@ reviewed and pushed at `c1aedfb9`; the closing receipt is `c7b3bdb7` on remote
 main. Its deployment and listed follow-ups remain user-owned, deferred or
 unverified, not passes. See [final reconciliation](final-integration-2026-10-12.md).
 
-**Current phase: ADR 003 — Product UI/UX redesign.** The owner set this as a new
-delivery scope on 12 October. Baseline `c7b3bdb7`; phase **implementation**;
-review round **0/3**; no candidate frozen. Track current area state in the
-[redesign delivery ledger](ui-ux-redesign.md), with scope in
-[ADR 003](../adr/003-product-ui-ux-redesign.md) and the human entry point in
-[the ADR index](../adr/README.md). Stage Tracker owns only these summary records;
-do not edit the Builder-owned ADR or implementation ledger while implementation
-proceeds. The owner requires every layout, style, position, copy and interaction
-to be assessed across the full surface inventory. Source changes are uncommitted
-in the active `c6-next` worktree at baseline `c7b3bdb7`. Implemented work so far
-includes the neutral/blue foundation, grouped Settings, actual-pane responsive
-sizing across several panes, compact type, broader foreground contrast and mobile
-web input sizing. The owner flagged the **Your agents** surface as still visually
-large and intimidating on a dark surface; Builder's first UI priority is compact
-list/navigation, restrained character presentation and a clear action hierarchy.
-The full layout/content audit remains unfinished, not accepted. No candidate,
-final Visual Check or merge exists; no production deployment is claimed. The
-sequence is finish all surface families → freeze → Tester → Reviewer → one final
-web and Expo web Visual Check → fix scoped findings → integrate.
+**Current phase: ADR 003 technically accepted in Reviewer round 1/3.** Accepted
+product is `e2813634`; final evidence reconciliation is `22cb6162`. The V16
+formal Tester batch `b349e34c` passed **65/65**, types, root build and compiler
+image qualification. Its bounded Visual Check `3a51aa41` verified desktop density,
+44px touch targets and PDF state. V17 qualification `c8aaef2a` passed **9/9**,
+desktop types and build, and closed actual root-pane ownership, focused search,
+retained drafts/scroll and project Retry behavior. Reviewer closed the agreed ADR
+003 scope with no further tests or visual sweep required. Earlier scoped receipts,
+failures and their boundaries remain preserved; individual inventory files were
+not each independently browser-tested. Native apps, installed desktop behavior,
+external providers/hosts and production remain excluded or user-owned. Integration
+and push of the accepted lineage are pending; production deployment remains
+owner-operated. See the [final review](adr-003-reviewer.md), [Tester receipts](adr-003-tester.md),
+[final Visual Check](adr-003-final-visual.md), [parent checks](adr-003-parent-visual.md),
+[redesign delivery ledger](ui-ux-redesign.md), [ADR 003](../adr/003-product-ui-ux-redesign.md)
+and [ADR index](../adr/README.md). The remaining delivery gate is fast-forward
+integration/push of accepted product `e2813634` and its evidence; no production
+deployment is implied.
 
 ## Previous delivery — historical checkpoint entries
 
