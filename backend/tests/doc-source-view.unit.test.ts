@@ -92,6 +92,24 @@ function fixture(
         React.createElement("pre", null, value),
     },
     "../../components/Sheet": { Sheet: container },
+    "./DocEditorModes": {
+      DocEditorModes: ({ value, onChange }: any) =>
+        React.createElement(
+          "div",
+          null,
+          ...["note", "markdown", "latex"].map((mode) =>
+            React.createElement(
+              "button",
+              {
+                key: mode,
+                onClick: () => onChange(mode),
+                "aria-pressed": value === mode,
+              },
+              mode[0].toUpperCase() + mode.slice(1),
+            ),
+          ),
+        ),
+    },
     "../../components/Button": {
       Button: ({ title }: { title: string }) =>
         React.createElement("button", null, title),

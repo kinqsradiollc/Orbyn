@@ -155,3 +155,22 @@ test("mounted Focus dialog portals outside its scrolled containing pane and pres
     }
   }
 });
+
+test("Docs owns the available editor width and uses shared source mode controls", () => {
+  const sheet = readFileSync(
+    new URL("../../mobile/src/screens/docs/DocsSheet.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(sheet, /open && !navigationOpen \? styles.editorColumn : null/);
+  assert.match(sheet, /editorColumn: \{ maxWidth: "100%" \}/);
+  assert.match(sheet, /sideList: \{\s*flexGrow: 0,\s*flexShrink: 0,/);
+  const source = readFileSync(
+    new URL(
+      "../../mobile/src/screens/docs/DocSourcePreview.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(source, /<DocEditorModes/);
+  assert.doesNotMatch(source, /secondary=\{mode !==/);
+});

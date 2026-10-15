@@ -1453,7 +1453,12 @@ function DocsBody({
             lastY.current = contentOffset.y;
           }}
         >
-          <View style={sheetStyles.column}>
+          <View
+            style={[
+              sheetStyles.column,
+              open && !navigationOpen ? styles.editorColumn : null,
+            ]}
+          >
             <ErrorBanner error={error} onDismiss={() => setError("")} />
             {offlineList && !open && (
               <Text style={styles.offline} accessibilityRole="alert">
@@ -2956,7 +2961,10 @@ const styles = themed(() =>
     bulkRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
     fill: { flex: 1 },
     split: { flex: 1, flexDirection: "row" },
+    editorColumn: { maxWidth: "100%" },
     sideList: {
+      flexGrow: 0,
+      flexShrink: 0,
       width: 300,
       maxWidth: "35%",
       borderRightWidth: StyleSheet.hairlineWidth,

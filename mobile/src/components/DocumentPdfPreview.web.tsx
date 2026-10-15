@@ -85,7 +85,9 @@ export function DocumentPdfPreview({
   }, []);
   return (
     <div style={{ height: "100%", minHeight: 220 }}>
-      {(loadError || readError) && <p role="alert">{loadError || readError}</p>}
+      {!!(loadError || readError) && (
+        <p role="alert">{loadError || readError}</p>
+      )}
       <iframe
         ref={frame}
         title="LaTeX note"
@@ -100,7 +102,20 @@ export function DocumentPdfPreview({
           display: "block",
         }}
       />
-      <a href={url} download="document.pdf">
+      <a
+        href={url}
+        download="document.pdf"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          minHeight: 44,
+          padding: 8,
+          color: colors.accent,
+          fontSize: 14,
+          fontFamily: "inherit",
+          textDecoration: "none",
+        }}
+      >
         Download PDF
       </a>
     </div>

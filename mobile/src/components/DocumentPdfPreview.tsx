@@ -60,7 +60,7 @@ export function DocumentPdfPreview({ pdf, report }: DocumentPdfPreviewProps) {
   }, [colors.surface, colors.text, colors.muted, colors.border]);
   return (
     <View style={{ flex: 1, minHeight: 220 }}>
-      {error && (
+      {!!error && (
         <Text accessibilityRole="alert" style={shared.small}>
           {error}
         </Text>

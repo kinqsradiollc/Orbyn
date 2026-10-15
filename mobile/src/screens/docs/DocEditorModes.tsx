@@ -7,10 +7,12 @@ export type DocumentEditorMode = "note" | "markdown" | "latex";
 export function DocEditorModes({
   value,
   disabled = false,
+  latexOnly = false,
   onChange,
 }: {
   value: DocumentEditorMode;
   disabled?: boolean;
+  latexOnly?: boolean;
   onChange: (mode: DocumentEditorMode) => void;
 }) {
   return (
@@ -21,24 +23,26 @@ export function DocEditorModes({
           ["markdown", "Markdown"],
           ["latex", "LaTeX"],
         ] as const
-      ).map(([mode, label]) => (
-        <Pressable
-          key={mode}
-          accessibilityRole="button"
-          accessibilityState={{ selected: value === mode, disabled }}
-          disabled={disabled}
-          style={[
-            styles.target,
-            value === mode && styles.selected,
-            disabled && styles.disabled,
-          ]}
-          onPress={() => onChange(mode)}
-        >
-          <Text style={[styles.label, value === mode && styles.active]}>
-            {label}
-          </Text>
-        </Pressable>
-      ))}
+      )
+        .filter(([mode]) => !latexOnly || mode !== "markdown")
+        .map(([mode, label]) => (
+          <Pressable
+            key={mode}
+            accessibilityRole="button"
+            accessibilityState={{ selected: value === mode, disabled }}
+            disabled={disabled}
+            style={[
+              styles.target,
+              value === mode && styles.selected,
+              disabled && styles.disabled,
+            ]}
+            onPress={() => onChange(mode)}
+          >
+            <Text style={[styles.label, value === mode && styles.active]}>
+              {label}
+            </Text>
+          </Pressable>
+        ))}
     </View>
   );
 }

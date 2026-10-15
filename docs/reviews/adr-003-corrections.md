@@ -200,3 +200,15 @@ asserts the same actual iframe node on both clients. Builder's affected result
 is 2/2; page 2/zoom persistence remains a final browser case. The initial attempted
 before-fix run did not finish before the source correction and supplies no valid
 before/after comparison. Scoped review found no further V3–V7 source defect.
+
+## V8 — mobile containing width and control consistency
+
+Actual Expo1400px inspection found the editor still capped by DocsSheet's
+shared600px reading column; its measured900px split could never activate.
+Open documents now use the available column width; the library retains its300px
+width without flex growth. Closed library/search lists keep their reading column.
+Source format choices reuse DocEditorModes (including LaTeX-only support), with
+soft selected state. PDF download uses the mobile palette and touch target;
+empty string error guards no longer render text children under native Views.
+Builder37/37 affected checks and mobile types passed. Recheck wide source/Note
+split, library-open narrow fallback, retained PDF state and phone controls.

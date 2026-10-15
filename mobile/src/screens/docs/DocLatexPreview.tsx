@@ -103,7 +103,7 @@ export function DocLatexNote({
           </Text>
         )
       )}
-      {openError && (
+      {!!openError && (
         <Text accessibilityRole="alert" style={shared.small}>
           {openError}
         </Text>

@@ -1,3 +1,4 @@
+import { DocEditorModes } from "./DocEditorModes";
 import { useDocLatexPreview } from "./DocLatexPreview";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -431,43 +432,22 @@ export function DocSourcePreview({
             </Text>
           </View>
         )}
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            gap: 8,
-            display: showModes ? "flex" : "none",
-          }}
-        >
-          <Button
-            title="Note"
-            secondary
+        {showModes && (
+          <DocEditorModes
+            value={mode}
+            latexOnly={latexOnly}
             disabled={navigating || !!sourceError}
-            onPress={closeSource}
-          />
-          {!latexOnly && (
-            <Button
-              title="Markdown"
-              disabled={navigating}
-              secondary={mode !== "markdown"}
-              onPress={() => {
-                if (sourceError) return;
-                setMode("markdown");
-                onModeChange?.("markdown");
-              }}
-            />
-          )}
-          <Button
-            title="LaTeX"
-            disabled={navigating}
-            secondary={mode !== "latex"}
-            onPress={() => {
+            onChange={(next) => {
+              if (next === "note") {
+                closeSource();
+                return;
+              }
               if (sourceError) return;
-              setMode("latex");
-              onModeChange?.("latex");
+              setMode(next);
+              onModeChange?.(next);
             }}
           />
-        </View>
+        )}
         {!inline && (
           <Text style={shared.small}>
             {mode === "latex"

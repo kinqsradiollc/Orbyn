@@ -97,3 +97,35 @@ browser, origin or port was used to work around a restriction.
 The parent will operate its available IAB for the remaining finite cases. Source
 and UI execution remain on hold until Tester hands the fixture back. Earlier
 failures, completed observations and unverified cases above remain preserved.
+
+## Parent-operated mobile continuation — e942a1a0
+
+Child session isolation prevented access to the parent's IAB. Builder therefore
+operated the same supported IAB directly after the final source/types/build
+checks, using a fresh guarded disposable `UI Preview` account. Normal visible
+sign-in succeeded; skipped optional onboarding. Credentials remain only in
+`/private/tmp/orbyn-ui-final-login.json` (0600). No personal account was changed.
+
+At actual CSS390×844, light, legacy `Live preview` opened with direct
+Note/Markdown/LaTeX controls. LaTeX showed source; Note displayed an actual PDF
+page with visible heading, prose and equation, page/zoom controls and download.
+The distinct second TeX block remained its own source. Selected page2 and Zoom
+in, changed source, observed Unsaved→Saved, returned to Note: page2 remained.
+Page text disclosure exposed the correct second-page text. Zoom was operated;
+its exact numeric persistence was not measured and remains a targeted check.
+
+Malformed saved TeX retained the last valid page2 and disclosure, showed
+Preview unavailable in source, and one full error/Retry in Note. Repaired source
+reached Saved/Live preview. Inline screenshots were inspected; no local screenshot
+path is available. This is actual legacy Expo-web evidence, not native evidence.
+Structured/mobile and remaining families remain unrun.
+
+At CSS1000×800 and1400×900, an additional width defect was reproduced: the outer
+Docs sheet kept the editor inside its shared600px column. Measuring the editor
+correctly could therefore never enable a900px split. Library also grew beyond
+its intended300px width. At1400, DOM measurements confirmed editor600px within
+910px remaining pane. This is V8; Builder is correcting the containing width,
+then will recheck actual wide split and narrow fallback. Source mode buttons
+also used a solid selected action unlike the shared soft mode controls, and the
+mobile PDF download inherited a raw browser link style. These are included in
+that same scoped correction. New UI actions stopped during the HMR correction.
