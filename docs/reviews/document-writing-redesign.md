@@ -4,7 +4,7 @@ Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
 Phase: owner refinement qualification. Review counter: 2/3.
-Current product freeze: `8cde9352`.
+Current product freeze: `94a56717`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
 button-size results remain historical evidence; they do not qualify this redesign.
@@ -211,3 +211,18 @@ not relabelled as exact final-source evidence. Read-only Reviewer accepts this
 proportionate boundary and source-closes DW-V6, with no actionable finding.
 Its wiring test is not the actual visual transition. Final same-round acceptance
 awaits the targeted single-source transition and remaining Expo wide/narrow checks.
+
+### Round2 paired mobile field height DW-V7
+
+Visual closes DW-V6 with an actual single-owner web transition. Expo wide
+source/PDF navigation, harmless save with page2 and exact405×572.78125 canvas,
+phone320 stacking/no horizontal overflow, Done, single-pane format Hide source,
+and ordinary prose replacement passed on `8cde9352`. One presentation finding:
+the paired Expo input showed only two lines (52px) beside a much taller PDF.
+Visual handed back; those functional passes remain valid, not repeatedly rerun.
+
+`94a56717` gives only paired code source a bounded240px field with internal
+scrolling; normal prose sizing is unchanged. The RN mounted harness now flattens
+style arrays and asserts the field height. Development7/7 passes. Formal writing
+suite/mobile types and a single targeted height/scroll visual closure remain.
+No desktop/product imports/assets/CSS/configuration changes in this correction.
