@@ -720,3 +720,65 @@ Security scan was run. The actual unanchored page/zoom recheck remains with the
 parent on the final UI candidate; this Tester receipt covers only the requested
 unit suites, package/workspace/root builds and desktop image. The review counter
 remains `1/3`; Tester made no product or test-source edits.
+
+## V10 Tini process-reaping qualification at a7facf6a
+
+The V10 candidate froze at
+`a7facf6a2da24e51a115d1a437fd5918c209c545`, parent
+`18d85f073cba98fdfb7b1e77dc67e4a61d53d587`, on `codex/c6-file-viewer`.
+The requested qualification ran at that exact HEAD. The candidate adds a Tini
+entrypoint to the LaTeX Docker target and retains the wrapper in Kubernetes;
+the desktop source is unchanged since the V9 `43923346` candidate, so its
+existing build evidence remains applicable. The earlier `29/32` and `30/32`
+development runs remain recorded in the parent visual report and are preserved
+as historical failures.
+Since the qualification, commits `57397a0c` and `a50f480b` have added parent
+visual receipts only; no V10 source or test file changed after the freeze.
+
+The four requested unit suites passed:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/connections-sections.unit.test.ts \
+  backend/tests/settings-connection-help.unit.test.ts \
+  backend/tests/interactive-agent-identity.unit.test.ts \
+  backend/tests/redesign-controls.unit.test.ts
+```
+
+Result: exit 0, **32/32 passed**, 0 failed, 0 cancelled and 0 skipped (4.13 s).
+`npm run typecheck -w mobile` also passed at the same freeze.
+
+The changed LaTeX image target built successfully:
+
+```sh
+docker build -f backend/Dockerfile --target latex \
+  -t orbyn-u1-latex-qa:v10-a7facf6a-tester \
+  --build-arg GIT_SHA=a7facf6a .
+```
+
+Image inspection confirmed ID
+`sha256:33e49d97d3d308c336a7a0450d428de14c329cb73d562fe222d860367f3bb67f`,
+revision `a7facf6a`, entrypoint `[/usr/bin/tini, --]`, and command
+`[node, backend/dist/services/latex.js]`. A disposable container used that image
+on loopback port `18002`, with Docker `init` disabled to exercise the image's
+own Tini entrypoint. It retained the existing 64-process, 1 CPU, 768 MiB memory,
+128 MiB `/tmp`, read-only root filesystem, `cap_drop: ALL`,
+`no-new-privileges`, and `deploy/latex/seccomp.json` settings; the container
+was removed after the checks. The already-active `orbyn-u1-latex-fix` container
+was left running unchanged on port `18000` with its existing Docker init.
+
+The private service health check returned HTTP 200. Six sequential signed
+valid requests (five consecutive compilations plus one after the invalid case)
+each returned HTTP 200 and a valid 31,361-byte PDF. An undefined-control-sequence
+source returned the expected HTTP 503; health remained HTTP 200 and the next
+valid request compiled successfully. The container ran Tini as PID 1 with Node
+as its child. Process counts returned to the two-process Tini/Node baseline
+after every completed job and after the final 1.5-second recovery interval;
+no Bubblewrap, `prlimit` or `pdflatex` process remained. The mode-0600 runtime
+receipt is
+[`V10 LaTeX runtime probe`](/private/tmp/orbyn-u1-v10-latex-runtime-a7facf6a.log).
+
+This qualification used direct signed calls to the local compiler. It made no
+database, account, provider or browser changes and ran no API suites, native
+build or Security scan. Tester made no product or test-source edits. The review
+counter remains `1/3`.
