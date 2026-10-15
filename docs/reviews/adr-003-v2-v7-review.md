@@ -40,3 +40,15 @@ Structured parent status ownership and explicit mobile font were accepted.
 No additional actionable source finding; no Reviewer tests/browser/source edits.
 Formal38/38/alltypes/rootbuild/latestDocker receipts are now in the Tester report.
 Whole-ADR acceptance still requires the remaining bounded visual cases.
+
+## Source closures through V14 — product509462e6
+
+Scoped read-only Reviewer accepted the V10/init source at a7facf6a and V12 button
+fallback/classes at c5ae33fa. Its V13 duplicate-reorder finding required a saved
+revision checked under a row lock; source correction3a97163c was accepted. Actual
+execution then exposed a shadowed version variable (500); Reviewer explicitly
+acknowledged missing this and accepted alias correctione911672a while retaining
+the failed request and required API qualification. Mobile secondary TeX fallback
+foreground/font correction509462e6 was accepted in source. Same round1/3.
+Formal qualification and the finite whole-ADR visual residue remain pending;
+none of these source closures proves deployment or full acceptance.
