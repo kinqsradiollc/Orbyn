@@ -7,7 +7,7 @@ are historical and do not qualify this writing redesign.
 Baseline: `b11b142930e3790c515aa2535628db6ba39bfbce`.
 Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Formal review counter: `0/3`.
+Formal review counter: `1/3`; this receipt retests the round-1 P2 correction.
 
 ## Candidate and scope
 
@@ -96,3 +96,58 @@ report does not claim visual acceptance, Reviewer approval, integration or
 delivery. Tester changed no product or test source; only this report is owned
 by this session. The existing Visual-owned edit to
 `docs/reviews/c6-production-visual-2026-10-11.md` was preserved.
+
+## Round 1 P2 correction retest — retained code viewers at c58c91b8
+
+The correction freeze is
+`c58c91b8214a475a46efb24e1e7fa34eac2bebd3`, parent
+`a0ac3ba0fb5bfef8b162419bb36c468979247a59`, on
+`codex/docs-writing-redesign`. This remains review round 1/3.
+
+The read-only Reviewer and Builder's source audit identified a P2: replacing a
+rendered code block with its inline editor could unmount its canonical viewer
+and reset PDF page/zoom. The earlier `33fd1626` Tester receipt did not reproduce
+that reset in a browser; it recorded that limitation. Visual Check paused the
+exclusive fixture before the correction. No browser observation is added here.
+
+The correction keeps code renderers mounted but hidden and noninteractive while
+the inline field is visible; ordinary prose still has only one visible
+representation. The web `DocWritingBlock` and mobile `DocWritingBody` wrappers
+are explicitly bound in their parents. The added mounted-wrapper regression
+checks Edit, actual text input and Done, stable iframe identity and a single
+mount, plus hidden/inert/pointer/accessibility state. This uses a test iframe
+and wrapper fixture, not the live PDF engine or complete mobile parent, so it
+does not prove real viewer page/zoom retention.
+
+The assigned five suites passed on the exact correction freeze:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-writing-experience.unit.test.ts \
+  backend/tests/doc-latex-note.unit.test.ts \
+  backend/tests/doc-editor-store.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/doc-source-view.unit.test.ts
+```
+
+Result: exit 0, **51/51 passed**, 0 failed, 0 cancelled and 0 skipped
+(3.82 seconds). The mode-0600 log is
+[`round-1 P2 focused suites`](/private/tmp/orbyn-doc-writing-round1-p2-c58c91b8.tap).
+
+Both workspace typechecks passed on `c58c91b8`:
+`npm run typecheck -w desktop` and `npm run typecheck -w mobile`. Their
+mode-0600 logs are
+[`desktop types`](/private/tmp/orbyn-doc-writing-round1-p2-desktop-types-c58c91b8.log)
+and
+[`mobile types`](/private/tmp/orbyn-doc-writing-round1-p2-mobile-types-c58c91b8.log).
+`npm run build -w desktop` passed on the same source, including PDF runtime
+asset generation, TypeScript, Vite and homepage prerender. Vite emitted its
+existing warning for chunks over 500 kB; the build completed. Its mode-0600 log
+is [`desktop build`](/private/tmp/orbyn-doc-writing-round1-p2-desktop-build-c58c91b8.log).
+
+No database/API suite, new compiler image, native build, provider test,
+Security scan, Docker build or browser interaction was run. The actual viewer
+page/zoom retention check remains a visual gate; the fixture remains with its
+Visual owner. All host build writes for this correction are complete, so the
+final visual batch can resume. Tester made no product or test-source edits;
+the formal review counter remains 1/3.
