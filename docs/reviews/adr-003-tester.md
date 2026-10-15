@@ -47,14 +47,13 @@ control cases all passed. Qualification remains partial: the final shared-web
 and Expo-web visual batch is still pending, and the mounted document controls
 did not exercise each full editor parent or API persistence.
 
-Latest round-one retest: R4–R6 passed 38/38 affected source/provider/mode/store
-checks, full workspace typecheck and production build at `9b1fb984`. The later
-R7 freeze `3f7cd319` passed 29/29 affected mode/redesign-control checks and
-mobile typecheck. The root build is reused from `9b1fb984` because `3f7cd319`
-changes no package, backend or desktop build inputs. Reviewer commit `06cc6825`
-closed R4–R6 at source level; R7 review and final shared-web/Expo-web visual
-findings remain pending. The final visual batch has been handed to Visual Check.
-Review counter remains `1/3`.
+Latest round-one retests: R4–R6 passed 38/38 affected source/provider/mode/store
+checks, full workspace typecheck and production build at `9b1fb984`; R7 passed
+29/29 affected mode/redesign-control checks and mobile typecheck at `3f7cd319`;
+and V1 passed 2/2 Lucide menu checks, desktop typecheck and root build at
+`239ce769`. Reviewer has closed the R1–R7 source findings and accepted the V1
+source correction. Rendered recovery and final web/Expo evidence remain
+pending with Visual Check. Review counter remains `1/3`.
 
 ## Verification
 
@@ -447,7 +446,8 @@ preservation, measured Expo pane behavior in the running UI, or whole-candidate
 rendered acceptance. R7 still awaits Reviewer assessment. Visual Check now owns
 the final batch defined in
 [`adr-003-final-visual-plan.md`](adr-003-final-visual-plan.md); its findings are
-pending, and review remains round `1/3`.
+pending. Reviewer later closed R7 source at `8b98d878`; review remains round
+`1/3`.
 
 Before visual handoff, the API health endpoint returned HTTP 200, the shared web
 preview `/app` returned HTTP 200, and Expo web `/` returned HTTP 200. Listener
@@ -498,3 +498,8 @@ Visual Check retains ownership of the Expo fixture and rendered/mobile
 verification. The prior 38/38, 29/29, 49/49 and 63/63 receipts remain scoped to
 their recorded commits; they are not relabeled as tests at `239ce769`. Tester
 made no source or test edits.
+
+Reviewer report `adr-003-reviewer.md` accepts the `239ce769` source correction
+and keeps the browser recovery case plus final web/Expo batch pending. Its
+current decision remains evidence pending within round `1/3`; these formal
+checks close only the requested test/type/build portion.
