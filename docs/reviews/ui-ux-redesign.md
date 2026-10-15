@@ -2,8 +2,8 @@
 
 Current decision: [ADR 003](../adr/003-product-ui-ux-redesign.md).
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Baseline: `c7b3bdb7`. Current product/test candidate: `f19566e9`.
-Phase: owner Docs/live-preview corrections in formal qualification, final visual batch pending; see [qualification handoff](adr-003-candidate.md).
+Baseline: `c7b3bdb7`. Current product/test candidate: `3f7cd319`.
+Phase: formal affected qualification passed; all R1–R7 source findings closed; final web/Expo visual batch underway; see [qualification handoff](adr-003-candidate.md).
 Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review rounds: 1/3.
 
 | Area | Current state | Evidence / next gate |
@@ -17,7 +17,7 @@ Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review ro
 | Settings, Admin and Connections | Implemented candidate | Import/runtime and interaction qualification in progress |
 | Auth and public content | Implemented candidate | Final representative rendering pending |
 | Mobile parity | Implemented candidate | Expo final behavior/render qualification pending |
-| Frozen candidate / Tester / Reviewer | Correction qualification | `f19566e9`; Reviewer 1/3 |
+| Frozen candidate / Tester / Reviewer | Correction qualification | `3f7cd319`; Reviewer 1/3 |
 | Final web and Expo Visual Check | Pending | After test/code findings settle |
 | Accepted merge and push | Pending | No acceptance or merge claim |
 
@@ -5132,3 +5132,16 @@ last valid result. Assistant requests return to Note for approval. Toast layout
 keeps message and dismissal together. Formal affected qualification and final
 web/Expo rendering remain pending; earlier `90305ece` evidence is preserved with
 its original scope. No accepted merge/push or deployment claim.
+
+## Stable Note and pane-width qualification
+
+Product freeze `3f7cd319` includes the stable original Note renderer, source-only
+adapters, structured mode/departure corrections, canonical block PDF ownership and
+mobile pane-width adaptation. Reviewer `8b98d878` closes R1–R7 source findings.
+Tester `011e2b5d` records 38/38 affected document checks and full types/build at
+`9b1fb984`, then 29/29 pane-width/mode checks and mobile types at `3f7cd319`.
+The root build is reused for unchanged package/backend/desktop inputs. These
+counts overlap earlier batches and must not be added into a unique-test total.
+Tester handed the fixture to Visual Check in `fe13a8b7`. Final actual-parent,
+PDF rendering and representative whole-redesign browser acceptance is underway;
+whole-ADR acceptance and integration remain pending. Production is user-owned.
