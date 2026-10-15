@@ -4,7 +4,7 @@ Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
 Phase: owner refinement qualification. Review counter: 2/3.
-Current product freeze: `6673f912`.
+Current product freeze: `8cde9352`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
 button-size results remain historical evidence; they do not qualify this redesign.
@@ -185,3 +185,19 @@ PDF iframe focus may report a null relatedTarget; ordinary prose retains its
 previous blur behavior. Development6/6 includes a mounted null-target focusout
 assertion that Finish is not invoked. Formal affected qualification and actual
 preview-control/save/page-state closure remain pending in round2/3.
+
+### Round2 format ownership correction DW-V6
+
+Tester `b365df3c` qualified DW-V5 at `6673f912`; Visual's actual PDF Previous,
+Next and Zoom left source visible, and a harmless saved edit retained page2 and
+exact468×661.8828125 canvas in the same paired layout. That finding is closed.
+The active-inline→LaTeX transition then exposed two simultaneous source fields,
+squeezing the preview. Visual paused without performing the remaining superseded
+Expo checks and handed back; its earlier successful PDF interaction is retained.
+
+Correction `8cde9352` clears inline editor ownership on both clients only after
+the existing format-change save, account, error and dirty-state guards succeed.
+Source does not get discarded when saving fails. Development7/7 passes, including
+both parent bindings after the guards; actual single-editor transition remains
+required. Formal qualification and final targeted visual/Reviewer closure remain
+open in this same round2/3. No unrelated changes or configuration were added.
