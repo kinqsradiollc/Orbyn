@@ -132,3 +132,49 @@ No source edits, provider calls, production writes or native tests. This batch
 covered both themes and wide/narrow representative writing surfaces, not every
 Cartesian combination. Existing valid ordinary web passes were retained. Further
 mutations are held for one correction batch; no full redesign acceptance yet.
+
+
+## Targeted final closure — exact product `d44c4cdf`
+
+Resumed after Tester `94188184` handback:69/69, desktop/mobile types and desktop
+build passed; host writes finished. Only affected findings were rechecked.
+
+- **DW-V1 closed:** at Expo320dark, title is now a multiline field whose complete
+  long value is visible in four lines. Edited `the next discussion` to
+  `our next discussion`; actual Unsaved→Saved appeared and the new title showed
+  in the library and web afterward. This is actual edit/save evidence.
+- **DW-V2 closed:** web Finish editing block1 now restores actual focus to a DIV
+  with aria-label `Block 1` and tabindex0. AX also identifies focused Block1.
+  No content mutation was needed for this focus recheck.
+- **DW-V3 closed:** selected legacy Viewing, then More→Page info. Actual Info
+  panel appeared immediately with location, storage, versions and connections;
+  mode picker stayed Viewing. No switch back to Editing/Suggesting was required.
+- **DW-V4 closed:** at320light, structured toolbar has a cohesive back/status/More
+  row and a format row; no isolated back/More rows remain. Title starts around286
+  (previous330), prose406(previous486). The recovered80px of prose space is a
+  material improvement to the writing task, not simply no overflow. Legacy
+  toolbar likewise groups its back/mode/action controls without orphan rows.
+  Long titles and prose retain clear leading and natural wrapping.
+- **Wide Expo proportion recommendation addressed:** Note title/parent measure
+ 760px at1440. Optional Markdown still uses1108px available split workspace,
+  source546px; Hide source returns the bounded Note. The reading and editing
+  column now has a useful measure instead of stretching across1060+px.
+
+Light web and dark Expo were represented in this focused closure. Existing
+actual PDF/source/save passes above are retained; they were not repeated as a
+new broad sweep. No additional blocking finding arose in the affected recheck.
+The minor closed-comment-panel Keep editing observation remains a nonblocking
+usability note; no unsent synthetic draft remains.
+
+Final proof:
+
+- `/private/tmp/orbyn-adr004-final-note-light-wide.jpg` — clean Note top, complete
+  toolbar/title/prose/equation/visible PDF, no active edit or menu.
+- `/private/tmp/orbyn-adr004-corrected-structured-light-320.jpg`
+- `/private/tmp/orbyn-adr004-corrected-legacy-light-320.jpg`
+- `/private/tmp/orbyn-adr004-corrected-mobile-dark-320.jpg`
+- `/private/tmp/orbyn-adr004-corrected-mobile-dark-wide.jpg`
+
+All temporary device metrics/viewports reset, tabs online and preserved. Fixture
+ownership returned to parent. This closes the assigned bounded visual acceptance
+batch for `d44c4cdf`; delivery/merge/deployment and native coverage are separate.
