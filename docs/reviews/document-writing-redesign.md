@@ -3,7 +3,8 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: round-1 correction qualification. Review counter: 1/3.
+Phase: final bounded visual review. Review counter: 1/3.
+Current product freeze: `c58c91b8`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
 button-size results remain historical evidence; they do not qualify this redesign.
@@ -70,3 +71,14 @@ and desktop/mobile types pass. This wrapper fixture is not the PDF engine or
 actual mobile parent; the affected real viewer page/zoom check remains required.
 Formal correction qualification, complete bounded visual review and Reviewer
 closure remain open in this same1/3 round.
+
+### Correction qualification and source closure — 16 October
+
+Tester `62865551` records51/51 on the exact correction freeze, desktop/mobile
+types and desktop production build, all exit0. Read-only Reviewer closed the P2
+source finding at `c58c91b8`, with no other actionable correction. The whole
+visual review remains pending. The final batch resumed after all host build
+writes ended; it includes the previously unperformed actual inline-code edit
+and PDF page/zoom check. No new provider/API/native/compiler qualification is
+claimed. See [Tester receipt](document-writing-tester.md) and
+[Visual report](document-writing-visual.md).
