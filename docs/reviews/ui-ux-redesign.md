@@ -2,24 +2,24 @@
 
 Current decision: [ADR 003](../adr/003-product-ui-ux-redesign.md).
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Baseline: `c7b3bdb7`. Current product/test candidate: `3f7cd319`.
-Phase: formal affected qualification passed; all R1–R7 source findings closed; final web/Expo visual batch underway; see [qualification handoff](adr-003-candidate.md).
+Baseline: `c7b3bdb7`. Current product/test candidate: `509462e6`.
+Phase: source corrections closed through V14; final affected qualification and the bounded visual interaction handback remain pending. See [actual visual evidence](adr-003-final-visual.md), [parent checks](adr-003-parent-visual.md) and [Tester receipts](adr-003-tester.md).
 Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review rounds: 1/3.
 
 | Area | Current state | Evidence / next gate |
 | --- | --- | --- |
-| Decision archive, skills and documentation | Implemented candidate | Changed-document qualification pending |
-| Shared design foundation | Implemented candidate | Types/build passed; final rendering pending |
-| Shell and overlays | Implemented candidate | Interaction test correction/retest in progress |
-| Home and Assistant | Implemented candidate | Final behavior/render qualification pending |
-| Tasks, Calendar and Focus | Implemented candidate | Activity/runtime and final rendering in progress |
-| Projects, Docs and Browse | Implemented candidate | Default TeX/compiler and editor interaction retests pending |
-| Settings, Admin and Connections | Implemented candidate | Import/runtime and interaction qualification in progress |
-| Auth and public content | Implemented candidate | Final representative rendering pending |
-| Mobile parity | Implemented candidate | Expo final behavior/render qualification pending |
-| Frozen candidate / Tester / Reviewer | Correction qualification | `3f7cd319`; Reviewer 1/3 |
-| Final web and Expo Visual Check | Pending | After test/code findings settle |
-| Accepted merge and push | Pending | No acceptance or merge claim |
+| Decision archive, skills and documentation | Implemented; current ledger reconciled | Final changed-document check pending |
+| Shared design foundation | Button correction implemented | V12 wide-light/narrow-dark actual pass; latest formal qualification pending |
+| Shell and overlays | Paired navigation/scroll and modal ownership pass | Retained-selection formatting/link shortcut and search ownership residue pending |
+| Home and Assistant | Focus, lanes, Activity and project history pass | Active/long response and mobile composer limit pending |
+| Tasks, Calendar and Focus | Task detail/completion and Focus pass | Calendar block edit/cancel residue pending |
+| Projects, Docs and Browse | PDF/source identity, saved/error recovery and proposal decisions partly verified | Final Markdown decisions, structured departure/authority/comment and project recovery pending |
+| Settings, Admin and Connections | Folded mobile Connections, draft retention and long picker pass | One owned Admin form and connection retry pending |
+| Auth and public content | Narrow auth and booking form observed | Synthetic booking validation/confirmation pending |
+| Mobile parity | Representative Expo screens and LaTeX proposal decisions pass | V14 secondary-source dark recheck and residual interactions pending; native excluded |
+| Frozen candidate / Tester / Reviewer | `509462e6`; same round1/3 | Source accepted, latest formal qualification pending |
+| Final web and Expo Visual Check | Bounded continuation | Reuse valid passes; no full repeated sweep |
+| Accepted merge and push | Pending | No acceptance, merge, push or deployment claim |
 
 Initial full workspace typecheck and production build passed on `f7899149`.
 The first focused batch failed; those failures remain in Tester's evidence.

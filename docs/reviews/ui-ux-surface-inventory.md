@@ -894,3 +894,14 @@ particular attention to shell/command destinations, all three editor modes,
 root modal and project callers, Settings transfers and team planning recovery.
 Actual findings remain open until corrected and verified. Acceptance remains
 pending in every family until the final reports provide the required evidence.
+
+## Current evidence reconciliation — 15 October, product509462e6
+
+Earlier per-file pending labels preserve the original source assessment. The
+current acceptance disposition is the table in [delivery](ui-ux-redesign.md),
+with actual outcomes in [Visual Check](adr-003-final-visual.md) and the
+[parent interaction record](adr-003-parent-visual.md). Scoped Reviewer has closed
+source corrections through V14; this does not turn every listed file into a
+rendered pass. The final representative interaction residue remains explicit.
+The shared button inventory covers1,566 elements/217 source files; browser proofs
+cover the affected structured controls and representative action families.
