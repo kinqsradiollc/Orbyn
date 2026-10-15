@@ -409,3 +409,31 @@
     margin-block: 20px;
   }
 }
+
+/* Source stays on the left of the same Note, including direct code editing. */
+.structured-doc-columns[data-active-pane="split"] > .structured-doc-source {
+  grid-column: 1;
+  grid-row: 1;
+}
+.structured-doc-columns[data-active-pane="split"] > .structured-doc-preview {
+  grid-column: 2;
+  grid-row: 1;
+}
+.structured-doc-leaf[data-code-editing] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+.structured-doc-leaf[data-code-editing] > textarea {
+  min-width: 0;
+  font-family: monospace;
+}
+.structured-doc-leaf[data-code-editing] > .doc-writing-rendered {
+  min-width: 0;
+}
+@container (max-width: 760px) {
+  .structured-doc-leaf[data-code-editing] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

@@ -1241,6 +1241,9 @@ function StructuredDocEditorBody({
                                       canWrite && editing === path.join("/")
                                     }
                                     keepRendered={block.type === "code"}
+                                    splitEditing={
+                                      paneWidth / Math.max(1, fontScale) >= 700
+                                    }
                                     onChange={(text) => {
                                       editGeneration.current++;
                                       offlineQueued.current = false;

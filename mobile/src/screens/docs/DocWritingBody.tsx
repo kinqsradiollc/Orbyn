@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { StyleSheet, TextInput, View } from "react-native";
 import { colors, inputFontSize, themed } from "../../theme";
 
-/** A hidden code renderer keeps its PDF/diagram state while source is edited. */
+/** Code source and its live result share the writing surface without remounting. */
 export function DocWritingBody({
   children,
   text,
@@ -10,6 +10,7 @@ export function DocWritingBody({
   keepRendered,
   index,
   onChange,
+  splitEditing = false,
 }: {
   children: ReactNode;
   text: string | null;
@@ -17,15 +18,17 @@ export function DocWritingBody({
   keepRendered: boolean;
   index: number;
   onChange: (text: string) => void;
+  splitEditing?: boolean;
 }) {
   const showEditor = editing && text !== null;
+  const paired = showEditor && keepRendered;
   return (
-    <>
+    <View style={paired && splitEditing ? styles.pair : undefined}>
       {showEditor && (
         <TextInput
           autoFocus
           accessibilityLabel={`Edit block ${index + 1}`}
-          style={styles.input}
+          style={[styles.input, paired && splitEditing && styles.pane]}
           multiline
           value={text}
           onChangeText={onChange}
@@ -33,22 +36,21 @@ export function DocWritingBody({
       )}
       {(!showEditor || keepRendered) && (
         <View
-          style={showEditor ? styles.hidden : undefined}
-          pointerEvents={showEditor ? "none" : "auto"}
-          accessibilityElementsHidden={showEditor}
-          importantForAccessibility={
-            showEditor ? "no-hide-descendants" : "auto"
-          }
+          style={paired && splitEditing ? styles.pane : undefined}
+          pointerEvents="auto"
+          accessibilityElementsHidden={false}
+          importantForAccessibility="auto"
         >
           {children}
         </View>
       )}
-    </>
+    </View>
   );
 }
 const styles = themed(() =>
   StyleSheet.create({
-    hidden: { display: "none" },
+    pair: { flexDirection: "row", alignItems: "flex-start", gap: 16 },
+    pane: { flex: 1, minWidth: 0 },
     input: {
       minHeight: 44,
       maxHeight: 240,

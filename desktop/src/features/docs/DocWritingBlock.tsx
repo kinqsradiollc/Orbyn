@@ -44,6 +44,7 @@ export function DocWritingBlock({
       className="structured-doc-leaf"
       role="group"
       data-editing={editing || undefined}
+      data-code-editing={(writable && editing && keepRendered) || undefined}
       data-block-id={blockId}
       data-leaf-index={index}
       data-container-path={path.join("/")}
@@ -100,8 +101,8 @@ export function DocWritingBlock({
       {(!writable || !editing || keepRendered) && (
         <div
           className="doc-writing-rendered"
-          hidden={writable && editing}
-          inert={writable && editing}
+          hidden={writable && editing && !keepRendered}
+          inert={writable && editing && !keepRendered}
         >
           {children}
         </div>

@@ -237,7 +237,7 @@ test("both structured parents offer direct Note insertion without flattening con
 });
 
 for (const native of [false, true])
-  test(`${native ? "mobile" : "web"} writing wrapper retains a code viewer through edit, source change and Done`, async () => {
+  test(`${native ? "mobile" : "web"} writing wrapper keeps a visible code result through edit, source change and Done`, async () => {
     const { JSDOM } = mobileRequire("jsdom");
     const dom = new JSDOM('<div id="root"></div>');
     const names = [
@@ -358,12 +358,12 @@ for (const native of [false, true])
       assert.equal(document.querySelector("iframe"), viewer);
       const hidden = viewer.parentElement!;
       if (native) {
-        assert.equal(hidden.style.display, "none");
-        assert.equal(hidden.style.pointerEvents, "none");
-        assert.equal(hidden.getAttribute("aria-hidden"), "true");
+        assert.notEqual(hidden.style.display, "none");
+        assert.equal(hidden.style.pointerEvents, "auto");
+        assert.equal(hidden.getAttribute("aria-hidden"), "false");
       } else {
-        assert.ok(hidden.hidden);
-        assert.ok(hidden.hasAttribute("inert"));
+        assert.equal(hidden.hidden, false);
+        assert.equal(hidden.hasAttribute("inert"), false);
       }
       const field = document.querySelector("textarea")!;
       await React.act(() => {
@@ -412,5 +412,27 @@ test("narrow writing corrections retain full titles and Viewing page information
   assert.match(
     legacy,
     /<PageInfo\s+hidden=\{!showInfo \|\| showHistory \|\| chat\}/,
+  );
+});
+
+test("source precedes the common Note in wide structured split editing", () => {
+  const css = readFileSync(
+    new URL(
+      "../../desktop/src/features/docs/structured-doc-editor.css",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(
+    css,
+    /data-active-pane="split"\] > \.structured-doc-source\s*\{\s*grid-column: 1;/,
+  );
+  assert.match(
+    css,
+    /data-active-pane="split"\] > \.structured-doc-preview\s*\{\s*grid-column: 2;/,
+  );
+  assert.match(
+    css,
+    /structured-doc-leaf\[data-code-editing\]\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/,
   );
 });
