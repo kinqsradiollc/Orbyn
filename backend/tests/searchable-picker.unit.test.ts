@@ -29,6 +29,7 @@ function renderer(
     focus: () => focuses++,
     querySelector: () => null,
     closest: () => null,
+    matches: () => false,
     getBoundingClientRect: () =>
       geometry ?? { left: 0, top: 0, bottom: 40, width: 300 },
     offsetHeight: geometry?.height ?? 100,
@@ -47,6 +48,7 @@ function renderer(
       cursor++;
       return "fixture-list";
     },
+    useMemo: (compute: () => unknown) => compute(),
     useState: (initial: any) => {
       const i = cursor++;
       if (!(i in states))
@@ -310,32 +312,43 @@ test("a disabled result never changes the saved model", () => {
   search(tree).props.onKeyDown(key("Enter"));
   assert.equal(changes, 0);
 });
+const mobileModules = {
+  "react-native": {
+    FlatList: "FlatList",
+    Text: "Text",
+    TextInput: "TextInput",
+    View: "View",
+    StyleSheet: { create: (x: any) => x, hairlineWidth: 1 },
+  },
+  "../motion": { Pressable: "Pressable" },
+  "../styles": { shared: { input: {}, body: {}, small: {} } },
+  "../theme": {
+    colors: {
+      text: "text",
+      textSoft: "soft",
+      faint: "faint",
+      accent: "accent",
+      border: "border",
+    },
+    controls: { tap: 44 },
+    fonts: { medium: "medium" },
+    themed: (fn: any) => fn(),
+  },
+  "./Icon": { Icon: "Icon" },
+  "./Sheet": { Sheet: "Sheet" },
+};
 const mobile = () =>
-  renderer("../../mobile/src/components/ProviderPicker.tsx", "ProviderPicker", {
-    "react-native": {
-      FlatList: "FlatList",
-      Text: "Text",
-      TextInput: "TextInput",
-      View: "View",
-      StyleSheet: { create: (x: any) => x, hairlineWidth: 1 },
-    },
-    "../motion": { Pressable: "Pressable" },
-    "../styles": { shared: { input: {}, body: {}, small: {} } },
-    "../theme": {
-      colors: {
-        text: "text",
-        textSoft: "soft",
-        faint: "faint",
-        accent: "accent",
-        border: "border",
-      },
-      controls: { tap: 44 },
-      fonts: { medium: "medium" },
-      themed: (fn: any) => fn(),
-    },
-    "./Icon": { Icon: "Icon" },
-    "./Sheet": { Sheet: "Sheet" },
+  renderer(
+    "../../mobile/src/components/ProviderPicker.tsx",
+    "ProviderPicker",
+    mobileModules,
+  );
+const choices = (session: { token: string }) =>
+  renderer("../../mobile/src/components/ChoicePicker.tsx", "ChoicePicker", {
+    ...mobileModules,
+    "../lib/session": { session },
   });
+
 for (const geometry of [
   {
     left: 78,
@@ -431,4 +444,66 @@ test("mobile picker preserves visibility policy and a saved hidden provider", ()
   tree = r.render({ value: hidden, onChange() {} });
   list = nodes(tree, (x) => x.type === "FlatList")[0];
   assert.ok(list.props.data.some((x: any) => x.value === hidden));
+});
+
+test("actual mobile choice picker virtualizes a full model catalog and searches without changing its value", () => {
+  const session = { token: "qa" };
+  const r = choices(session);
+  const changes: string[] = [];
+  const props = {
+    label: "Default model",
+    value: "model-4999",
+    options: Array.from({ length: 5000 }, (_, index) => ({
+      value: `model-${index}`,
+      label: `model-${index}`,
+    })),
+    onChange: (value: string) => changes.push(value),
+  };
+  let tree = r.render(props);
+  nodes(tree, (node) => node.type === "Pressable")[0].props.onPress();
+  tree = r.render(props);
+  let list = nodes(tree, (node) => node.type === "FlatList")[0];
+  assert.equal(list.props.data.length, 5000);
+  assert.equal(list.props.initialNumToRender, 16);
+  assert.equal(list.props.maxToRenderPerBatch, 20);
+  nodes(tree, (node) => node.type === "TextInput")[0].props.onChangeText(
+    "model-4998",
+  );
+  tree = r.render(props);
+  list = nodes(tree, (node) => node.type === "FlatList")[0];
+  assert.equal(list.props.data.length, 1);
+  assert.equal(changes.length, 0);
+  assert.match(
+    nodes(tree, (node) => node.type === "Pressable")[0].props
+      .accessibilityLabel,
+    /model-4999/,
+  );
+  list.props.renderItem({ item: list.props.data[0] }).props.onPress();
+  assert.deepEqual(changes, ["model-4998"]);
+  assert.equal(
+    nodes(r.render(props), (node) => node.type === "Sheet")[0].props.visible,
+    false,
+  );
+});
+
+test("retained mobile choice callbacks reject disabled or replacement-account selection", () => {
+  for (const condition of ["disabled", "account"] as const) {
+    const session = { token: "qa" };
+    const r = choices(session);
+    let changes = 0;
+    const props = {
+      label: "Device",
+      value: "one",
+      options: [{ value: "one", label: "One" }],
+      onChange: () => changes++,
+    };
+    const tree = r.render(props);
+    const list = nodes(tree, (node) => node.type === "FlatList")[0];
+    const retained = list.props.renderItem({ item: list.props.data[0] }).props
+      .onPress;
+    if (condition === "disabled") r.render({ ...props, disabled: true });
+    else session.token = "replacement";
+    retained();
+    assert.equal(changes, 0);
+  }
 });

@@ -311,6 +311,9 @@ function view(
       if (id.endsWith("/motion")) return { Pressable: "Pressable" };
       if (id.endsWith("/Select")) return { Select: "Select" };
       if (id.endsWith("/SmallAction")) return { SmallAction: "SmallAction" };
+      if (id.endsWith("/ChoicePicker")) return { ChoicePicker: "ChoicePicker" };
+      if (id.endsWith("/InlineDetails"))
+        return { InlineDetails: "InlineDetails" };
       if (id.endsWith("/MoreMenu")) return { MoreMenu: "MoreMenu" };
       if (id.endsWith("/SettingsSection"))
         return { SettingsSection: "SettingsSection" };
@@ -448,28 +451,36 @@ test("web model controls route explicit devices/defaults and preserve a filtered
   assert.equal(f.saved[0], "model-119");
 });
 
-test("native model list is bounded while search reaches models beyond the first page", () => {
+test("mobile model settings delegate the complete catalog and selected value to the searchable picker", () => {
   const f = view("mobile", viewState());
-  let tree = elements(f.render());
-  const radios = () =>
-    tree.filter(
-      (n) => n.type === "Pressable" && n.props.accessibilityRole === "radio",
-    );
-  assert.equal(radios().length, 51, "one device and at most 50 model rows");
-  radios()[0].props.onPress();
+  const tree = elements(f.render());
+  const device = tree.find(
+    (node) =>
+      node.type === "ChoicePicker" && node.props.label === "Connected device",
+  )!;
+  device.props.onChange("device");
   assert.equal((f.selected[0] as any).executor_id, "device");
-  tree.find((n) => n.type === "TextInput").props.onChangeText("model-119");
-  tree = elements(f.render());
-  assert.equal(radios().length, 2);
-  radios()[1].props.onPress();
-  assert.equal(f.saved[0], "model-119");
-  tree
-    .find(
-      (n) =>
-        n.type === "SmallAction" && n.props.label === "Clear default model",
-    )
-    .props.onPress();
-  assert.equal(f.saved[1], null);
+  const model = tree.find(
+    (node) =>
+      node.type === "ChoicePicker" && node.props.label === "Default model",
+  )!;
+  assert.equal(model.props.value, "model-99");
+  assert.equal(
+    model.props.options.length,
+    121,
+    "all models and the explicit no-default option remain available",
+  );
+  assert.ok(
+    model.props.options.some((option: any) => option.value === "model-119"),
+  );
+  assert.equal(
+    f.saved.length,
+    0,
+    "opening settings does not change the preference",
+  );
+  model.props.onChange("model-119");
+  model.props.onChange("");
+  assert.deepEqual(f.saved, ["model-119", null]);
 });
 
 for (const app of ["desktop", "mobile"] as const) {
@@ -484,13 +495,10 @@ for (const app of ["desktop", "mobile"] as const) {
           ? tree.filter(
               (n) => n.type === "Select" && n.props.id.endsWith("-model"),
             )
-          : tree
-              .filter(
-                (n) =>
-                  n.type === "Pressable" &&
-                  n.props.accessibilityRole === "radio",
-              )
-              .slice(1);
+          : tree.filter(
+              (n) =>
+                n.type === "ChoicePicker" && n.props.label === "Default model",
+            );
       assert.ok(modelControls.length);
       assert.ok(modelControls.every((n) => n.props.disabled));
     }

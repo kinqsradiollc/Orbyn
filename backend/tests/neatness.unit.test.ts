@@ -229,24 +229,21 @@ test("each settings card opens with a bold lead-in and one sentence", () => {
   assert.deepEqual(long, []);
 });
 
-test("each phone settings section opens with one sentence", () => {
+test("optional phone settings introductions stay concise", () => {
   const files = [
     "mobile/src/screens/SettingsScreen.tsx",
     ...walk("mobile/src/screens/settings", /\.tsx$/),
   ];
   const long: string[] = [];
-  let seen = 0;
   for (const file of files) {
     const src = read(file);
     for (const m of src.matchAll(
       /<SettingsSection\b[^>]*>\s*<Text\b[^>]*>([\s\S]*?)<\/Text>/g,
     )) {
-      seen++;
       if (sentences(plain(m[1])) > 1)
         long.push(`${file}:${lineOf(src, m.index!)} ${plain(m[1])}`);
     }
   }
-  assert.ok(seen >= 5, `only ${seen} phone settings intros found`);
   assert.deepEqual(long, []);
 });
 

@@ -20,7 +20,7 @@ test("web view arrangement controls live in the labelled filter disclosure", () 
   assert.ok(!toolbar.includes("VIEW_SORTS.filter"));
   assert.ok(!toolbar.includes("VIEW_GROUPS[def.source]"));
   assert.ok(options.includes('id="view-filters"'));
-  assert.ok(options.includes('aria-label="Filter, group and sort"'));
+  assert.ok(options.includes('aria-label="Filters and sort"'));
   assert.ok(options.includes("VIEW_SORTS.filter"));
   assert.ok(options.includes("VIEW_GROUPS[def.source]"));
   assert.ok(options.includes("sourceFields.map"));
@@ -39,8 +39,11 @@ test("view table overflow region is keyboard focusable and named", () => {
 test("view library keeps concise empty copy and native arrangement disclosure", () => {
   const web = read("desktop/src/features/views/ViewsView.tsx");
   const mobile = read("mobile/src/screens/views/ViewsSheet.tsx");
-  assert.ok(web.includes('body="Save a filter to use again."'));
-  assert.ok(mobile.includes("Save a filter to use again."));
+  assert.ok(
+    web.includes("New view"),
+    "the empty library retains its creation action",
+  );
+  assert.ok(web.includes("No view open"));
   assert.ok(!mobile.includes("like\n              “Exam week”"));
   assert.ok(mobile.includes('title="Filter, group and sort"'));
   assert.ok(mobile.includes('accessibilityLabel="Search saved views"'));

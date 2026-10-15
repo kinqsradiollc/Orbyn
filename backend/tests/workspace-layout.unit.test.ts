@@ -39,11 +39,13 @@ test("task-toolbar restructuring preserves all search, layout, filters and saved
     'aria-label="Saved view options"',
     'aria-label="Done this week"',
     'aria-label="Layout"',
-    'aria-controls="task-filters"',
     'setLayout("list")',
     'setLayout("board")',
   ])
     assert.ok(task.includes(action), action);
+  assert.match(task, /const filtersId = useId\(\);/);
+  assert.match(task, /aria-controls=\{filtersId\}/);
+  assert.match(task, /id=\{filtersId\}/);
   assert.ok(task.includes("workspace-task-toolbar"));
 });
 

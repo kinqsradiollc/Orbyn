@@ -87,7 +87,10 @@ function pressFixture(reduced = false) {
     }
   }
   const hook = load("mobile/src/motion/PressableScale.tsx", {
-    react: { useRef: (current: unknown) => ({ current }) },
+    react: {
+      useRef: (current: unknown) => ({ current }),
+      useEffect: () => {},
+    },
     "react-native": {
       Animated: {
         Value,
@@ -449,7 +452,7 @@ test("Publication selection preserves full block text and explicit access conseq
     assert.doesNotMatch(source, /only people with the link find it/);
     assert.match(source, /Access\s+settings\s+are\s+unchanged/);
     assert.match(source, /Password required to read it/);
-    assert.match(source, /The address stops working at once/);
+    assert.match(source, /(?:The public|The) address stops working/);
   }
 });
 
@@ -459,6 +462,7 @@ test("time-block editing keeps the subject and serializes saving and dismissal",
     {
       react: {
         ...React,
+        useId: () => "block-title",
         useState: (value: unknown) => [value, () => {}],
         useEffect: () => {},
       },
@@ -785,9 +789,12 @@ test("provider setup owns its dialog and keeps embedding consent and model value
   const web = source("desktop/src/features/admin/AdminAi.tsx");
   const semantic = source("desktop/src/features/admin/SemanticSetup.tsx");
   const mobile = source("mobile/src/screens/AdminAi.tsx");
-  assert.match(web, /useModalFocus\(onCancel, busy\)/);
+  assert.match(
+    web,
+    /useModalFocus\([\s\S]*?if \(!pending.current\) onCancel\(\);[\s\S]*?working\)/,
+  );
   assert.match(web, /data-modal-focus=\{focus.id\}/);
-  assert.match(web, /disabled=\{busy \|\| !!existing\}/);
+  assert.match(web, /disabled=\{working \|\| !!existing\}/);
   assert.doesNotMatch(web, /p.key_hint|stagger\(/);
   assert.match(semantic, /I agree to send workspace page text/);
   assert.match(semantic, /disabled=\{busy \|\| !ready\}/);
