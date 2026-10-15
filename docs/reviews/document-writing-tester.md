@@ -7,7 +7,7 @@ are historical and do not qualify this writing redesign.
 Baseline: `b11b142930e3790c515aa2535628db6ba39bfbce`.
 Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Formal review counter: `1/3`; this receipt retests the round-1 P2 correction.
+Formal review counter: `2/3`; this receipt qualifies the round-2 source/result refinement.
 
 ## Candidate and scope
 
@@ -204,3 +204,59 @@ All host build writes are complete; the visual batch can resume against this
 freeze. Tester changed no product or test source and changed only this report.
 The unrelated Visual-owned `c6-production-visual-2026-10-11.md` edit remains
 untouched.
+
+## Round 2 paired source and live result qualification — 09d17c2c
+
+The product freeze is
+`09d17c2c12c8c1d5707414de7d4944ffbd0adedd`, parent
+`1b19373b6b96ff56f27e43a7362f4c502d1d0dfa`, on
+`codex/docs-writing-redesign`. The branch later advanced to `bf76762c`; that
+descendant changes only ADR 004 and the document-redesign ledger, so product and
+test sources remain equivalent to `09d17c2c`. The user refinement is in review
+round 2/3.
+
+In wide desktop split editing, the source occupies the left column and the
+common Note/live result stays on the right. Direct code editing keeps that
+result visible and interactive beside the editor; the paired grid stacks at
+narrow widths. Mobile keeps the same code result beside its editor when the
+effective pane width is at least 700px, with a stacked phone layout and a Note
+column capped at 760px. Ordinary prose still uses replacement editing.
+
+The assigned Builder development run passed 6/6 in
+[`paired-source development tests`](/private/tmp/orbyn-doc-paired-dev.tap).
+I ran the focused writing, PDF, source, store, format, input-ownership and
+typography/layout suites on the freeze:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-writing-experience.unit.test.ts \
+  backend/tests/doc-latex-note.unit.test.ts \
+  backend/tests/doc-source-view.unit.test.ts \
+  backend/tests/doc-editor-store.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/editor-input-ownership.unit.test.ts \
+  backend/tests/neatness.unit.test.ts
+```
+
+Result: exit 0, **66/66 passed**, 0 failed, 0 cancelled and 0 skipped
+(5.02 seconds). The mode-0600 log is
+[`09d17c2c focused suites`](/private/tmp/orbyn-doc-paired-source-result-09d17c2c.tap).
+
+`npm run typecheck -w desktop` and `npm run typecheck -w mobile` both passed on
+`09d17c2c`; their mode-0600 logs are
+[`desktop types`](/private/tmp/orbyn-doc-paired-source-desktop-types-09d17c2c.log)
+and
+[`mobile types`](/private/tmp/orbyn-doc-paired-source-mobile-types-09d17c2c.log).
+`npm run build -w desktop` also passed on the same product source, including
+PDF runtime asset generation, TypeScript, Vite and homepage prerender. Vite
+emitted the existing warning for chunks larger than 500 kB; the build
+completed. Its mode-0600 log is
+[`desktop production build`](/private/tmp/orbyn-doc-paired-source-desktop-build-09d17c2c.log).
+
+No API/database suite, native build, provider test or Security scan was run.
+The unit iframe confirms mounted, visible wrapper behavior but is not the live
+PDF renderer or a rendered layout check; actual wide/narrow pairing and page/
+zoom behavior remain with the paused Visual batch. All host build writes are
+complete, so that batch can resume with its owner. Tester changed no product
+or test source and changed only this report. The unrelated Visual-owned C6
+review edit remains untouched; review round 2/3 is still open.
