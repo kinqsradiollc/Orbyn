@@ -3,8 +3,8 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: final bounded visual review. Review counter: 1/3.
-Current product freeze: `c58c91b8`.
+Phase: qualification of the visual correction batch. Review counter: 1/3.
+Current product freeze: `d44c4cdf`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
 button-size results remain historical evidence; they do not qualify this redesign.
@@ -82,3 +82,22 @@ writes ended; it includes the previously unperformed actual inline-code edit
 and PDF page/zoom check. No new provider/API/native/compiler qualification is
 claimed. See [Tester receipt](document-writing-tester.md) and
 [Visual report](document-writing-visual.md).
+
+## Visual correction batch — round 1 continued
+
+Visual report `745ab153` found four actionable issues after the functional flows
+passed: Expo clipped the long structured title, Finish editing lost keyboard
+focus, legacy Page info stayed hidden in Viewing, and narrow web headers used
+orphan rows before the writing surface. Actual edit/Add text/save/reopen and
+canonical TeX edit→Done retained page2 and exact same-layout PDF dimensions on
+both web and Expo. No browser failure is claimed for the earlier source P2.
+
+Correction `d44c4cdf` uses the existing mobile mirrored multiline title pattern,
+returns Finish focus to the stable block, allows explicitly requested Page info
+while retaining Viewing permissions, and groups narrow page controls. Expo Note
+also uses a bounded760 writing column; optional sources still use their available
+pane width. Development5/5 passes, including a mounted real Finish button focus
+regression (Popover is stubbed, not menu interaction proof). The title and Info
+checks assert parent wiring; actual rendered closure remains Visual Check's job.
+Tester qualification, targeted visual closure and final Reviewer acceptance are
+pending. No other product source/fixture writes will occur during that recheck.
