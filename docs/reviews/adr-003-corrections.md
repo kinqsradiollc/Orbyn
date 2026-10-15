@@ -188,3 +188,15 @@ Final Visual Check must recheck V2–V7 and only the previously unrun cases in i
 report. User has now reported allowing Expo navigation again: retry the assigned
 8083 URL through the supported browser once, preserving any actual policy error.
 Do not bypass a persistent browser restriction. Round remains 1/3.
+
+### V2 viewer lifetime correction
+
+Scoped Reviewer identified a desktop-only remount between a new compiled blob
+and its asynchronous download URL. Note now mounts the viewer from the owned
+PDF state and permits a temporarily unavailable download link. The iframe stays
+mounted across a same-block recompile; account/document/canonical-owner changes
+still reset it. The provider regression now changes source, recompiles, and
+asserts the same actual iframe node on both clients. Builder's affected result
+is 2/2; page 2/zoom persistence remains a final browser case. The initial attempted
+before-fix run did not finish before the source correction and supplies no valid
+before/after comparison. Scoped review found no further V3–V7 source defect.

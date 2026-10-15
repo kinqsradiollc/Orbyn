@@ -94,8 +94,8 @@ export function DocLatexNote({
     return <pre aria-label="LaTeX source">{source}</pre>;
   return (
     <section className="doc-latex-note" aria-label="Rendered LaTeX note">
-      {preview.url ? (
-        <DocumentPdfPreview pdf={preview.pdf!.blob} url={preview.url} />
+      {preview.pdf ? (
+        <DocumentPdfPreview pdf={preview.pdf.blob} url={preview.url} />
       ) : (
         !preview.error &&
         !preview.busy && (

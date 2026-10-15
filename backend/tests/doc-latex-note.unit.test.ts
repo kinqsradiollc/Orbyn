@@ -163,6 +163,18 @@ for (const native of [false, true])
       );
       assert.equal(calls, 1);
       assert.deepEqual(revoked, []);
+      blocks[0].text += " changed";
+      await React.act(async () => root.render(show(false)));
+      await React.act(async () => {
+        preview.retry();
+        await new Promise((resolve) => setImmediate(resolve));
+      });
+      assert.equal(calls, 2);
+      assert.equal(
+        dom.window.document.querySelector("iframe"),
+        frame,
+        "a newly compiled PDF updates the mounted viewer without resetting its page or zoom",
+      );
       // A different canonical block must not inherit the preceding block's PDF.
       blocks.reverse();
       await React.act(async () => root.render(show(false)));
@@ -174,7 +186,10 @@ for (const native of [false, true])
       assert.equal(compiled.at(-1), "SECOND DISTINCT TEX SOURCE");
       assert.equal(dom.window.document.querySelectorAll("iframe").length, 1);
       await React.act(async () => root.unmount());
-      assert.deepEqual(revoked, native ? [] : ["blob:note-1", "blob:note-2"]);
+      assert.deepEqual(
+        revoked,
+        native ? [] : ["blob:note-1", "blob:note-2", "blob:note-3"],
+      );
     } finally {
       await React.act(async () => root.unmount());
       dom.window.close();

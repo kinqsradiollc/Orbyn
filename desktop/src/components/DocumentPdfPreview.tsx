@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 
 /** App-owned PDF pages; the isolated local renderer needs no browser PDF plugin. */
-export function DocumentPdfPreview({ pdf, url }: { pdf: Blob; url: string }) {
+export function DocumentPdfPreview({
+  pdf,
+  url,
+}: {
+  pdf: Blob;
+  url: string | null;
+}) {
   const frame = useRef<HTMLIFrameElement>(null),
     latest = useRef<string | null>(null),
     sequence = useRef(0);
@@ -81,9 +87,11 @@ export function DocumentPdfPreview({ pdf, url }: { pdf: Blob; url: string }) {
         srcDoc={html || undefined}
         onLoad={send}
       />
-      <a href={url} download="document.pdf">
-        Download PDF
-      </a>
+      {url && (
+        <a href={url} download="document.pdf">
+          Download PDF
+        </a>
+      )}
     </div>
   );
 }
