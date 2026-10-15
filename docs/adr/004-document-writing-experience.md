@@ -64,7 +64,7 @@ recorded in the delivery ledger.
 ## Owner refinement — source beside the live result (16 October)
 
 The owner rejected the mostly empty PDF presentation and the difference between
-format-source mode and direct code editing. This refinement is in qualification,
+format-source mode and direct code editing. This refinement is accepted in
 review round2/3; earlier acceptance remains historical for its exact source.
 Wide structured source editing places source on the left and the same Note on
 the right. Direct code editing keeps its rendered result visible beside the
@@ -73,3 +73,11 @@ use their existing one-pane format navigation. Normal prose still edits in place
 Do not remove authored PDF content merely because its page is mostly empty.
 The diagnosed synthetic PDF contains only a short sentence; it was rendering,
 not blank due to a compilation or loading failure.
+
+
+Refinement accepted product: `94a56717`, final Visual report `0faad20f`.
+Source remains visible through PDF interaction, and format transitions release
+inline editing after successful save guards. Mobile paired code uses a240px
+internally scrollable source; wide pairing and320px stacking are actually checked.
+Formal qualification is incremental and source-scoped; the delivery ledger retains
+exact test/type/build boundaries and the reproduced DW-V5–V7 corrections.

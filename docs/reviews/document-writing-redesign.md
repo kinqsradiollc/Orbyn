@@ -3,7 +3,7 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: owner refinement qualification. Review counter: 2/3.
+Phase: round2 refinement accepted; integration pending. Review counter: 2/3.
 Current product freeze: `94a56717`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
@@ -226,3 +226,16 @@ scrolling; normal prose sizing is unchanged. The RN mounted harness now flattens
 style arrays and asserts the field height. Development7/7 passes. Formal writing
 suite/mobile types and a single targeted height/scroll visual closure remain.
 No desktop/product imports/assets/CSS/configuration changes in this correction.
+
+## Round2 final acceptance
+
+Read-only Reviewer approved `94a56717` with Visual `0faad20f`, formal `8f2d1bb1`
+and the preceding scoped qualification receipts. DW-V5–V7 are closed: actual
+source/PDF controls remain usable, web/Expo saved edits retained page2 and
+same-layout canvas dimensions, format transitions have one source owner, and
+mobile240px source scrolls internally with320px containment. Builder inspected
+the final returned source-left/Note-right and wide Expo paired captures.
+No new material finding remains; historical failures and the earlier nonblocking
+comment-panel follow-up remain recorded. Round2/3 is complete. No additional
+build or broad sweep was required. Main integration is the next delivery action;
+production/native/provider execution remain outside this receipt.
