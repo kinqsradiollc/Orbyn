@@ -152,3 +152,289 @@ provider cases plus nested operation tests. This case is not a persistence pass.
 Structured toolbar also repeated Saved above the adapter's Saved. The parent
 retains status ownership; the source-only adapter status will be suppressed in
 both structured clients. Actual remaining checks continue on the next freeze.
+
+## Chrome final mobile continuation — product `43923346`
+
+The parent handed back final execution after formal Tester qualification. At
+start, HEAD`18d85f07` differed from product`43923346` only in review reports.
+Chrome was explicitly authorized; the old IAB policy rejection had already been
+lifted and navigation succeeded in the parent. This was a supported browser for
+remaining execution, not an alternate route around an active Block.
+
+### Account and capture boundaries
+
+- Created only temporary own Chrome tabs at local `localhost:5174/app` and exact
+  `127.0.0.1:8083/`. Production Chrome tabs were not opened or changed. The web
+  origin was already signed in as Anh Dang; no account mutation or signout had
+  occurred when this batch paused. The parent later authorized replacing those
+  local sessions, but the web signout still awaited fixture handback.
+- Expo initially showed an unknown cached account's updated-terms gate, then
+  naturally returned to Create account after the stale authentication resolved.
+  No terms were accepted for that account and no signout was performed. Chose
+  Sign in and used the registered disposable **UI Preview** credentials through
+  visible email/password fields. Read the protected JSON into tool memory without
+  printing credentials; no token/storage injection. Authentication succeeded.
+- Measured actual CSS **320×740, DPR1**. Screenshots were captured and inspected
+  inline. No local screenshot paths were exposed. This is Expo web in Chrome,
+  not native phone evidence. Theme changed Light→Dark only for the disposable
+  local QA preview as part of the authorized matrix.
+
+### Actual results
+
+| Case | Observed interaction and outcome | Boundary |
+| --- | --- | --- |
+| Mobile auth and Home | Create-account/sign-in fields, material consent links and buttons fit320px. Normal registered sign-in reaches greeting `Hello, UI.`. Bottom navigation and quick-add fit. Hubs scroll horizontally. | No new account/terms acceptance or recovery reset performed. |
+| Task / Focus | Created synthetic long-title task with45min estimate. Task list and detail wrap the complete title. Focus opens at top with close/title/timer/rhythm reachable. Mark done shows `Task completed`, task status Done and100%; returned without starting timer. | Actual completion feedback verified; no elapsed focus time fabricated. |
+| Calendar | Day heading, date navigation and Day/Week/Month/Agenda controls fit. New task→Event exposes Start/date input. Closed dirty form: in-app Discard changes / Keep editing sheet appeared, then discarded only this unsaved synthetic event. | No native alert. No event saved or unrelated draft discarded. |
+| Chat / Work | Work exposes Choose project in assistant; Chats and more shows New chat, Background and Overnight within the chat drawer, alongside Memory/Agent notes. No chats yet is explicit. | No paid request sent. Populated session rename/pin and active response remain for deterministic fixture. |
+| Projects | Created `Workshop planning`; detail tabs/sections fit narrow screen. Project Chats opens named history with search and explicit empty state; closing returns focus to Chats. | Populated project history pending. |
+| Activity | After synthetic completion, Activity reports1 task completion,0h0m focus,1 active day, highlighted grid day. Daily details show1 on current day,0 on other recorded days,`—` before history start. Full values wrap into stacked rows. | Actual nonzero grid and unavailable-versus-zero presentation verified. |
+| Views | Created `Workshop tasks`, chose Table via searchable layout sheet, changed Status toAny. Horizontal scrolling reaches Estimate. Opened45min cell, entered50, Save→Updating results with disabled completion→50min and50min total. | Actual successful edit/refresh verified; deterministic failed-refresh Retry remains pending. |
+| Teams | Created `Workshop group`. Narrow member identity wraps; week controls and horizontally scrollable capacity grid are reachable. Meeting budget/workload and permission consequences are present. | One-member fixture only; no role/privacy permission changes, week/budget save or injected recovery. |
+| Settings / secondary | Categories and focused Planning destinations work; theme switched locally toDark. Memory empty collection and actions fit. Planning Working hours exposes inline time field and Save action at bottom. | Long populated collection picker pending fixture. Native-looking Expo time input is observed, not proof of a custom long-list picker. |
+| Structured Markdown | Opened existing Structured preview; changed only ordinary Markdown to add display equation`a^2+b^2=c^2`, preserving both TeX blocks. Note mode saved and rendered prose/equation; second distinct TeX block remained source. | Canonical valid PDF unexpectedly showed compile error in this fresh session; see V11. Root's earlier V8/V9 PDF evidence remains separate. |
+
+### Remaining findings
+
+- **V10 — mobile Connections density:** Settings→Connections→Connected apps opens
+  one long sheet containing expanded Agent channels, connected agents, Night
+  shift, reminders, agent identity/profile, context, instructions/rules, API keys,
+  webhooks, feeds, subscriptions and CalDAV. At320px the entire initial viewport
+  is occupied by Slack/Teams status and only the start of connected agents. The
+  accessibility tree also repeats `Agent identity` and `Standing rules` headings.
+  This reproduces the owner's long-settings concern; grouped focused destinations
+  or disclosures are needed. No credentials/permissions were changed.
+- **V11 — structured valid preview error, investigation pending:** preexisting
+  valid canonical source in Structured preview displays `Couldn’t compile LaTeX.
+  Check the source or try again shortly.`; one Retry did not recover during this
+  observation. The canonical source was unchanged. Parent reports compiler
+  health200 and is inspecting the API/runtime. Do not classify this as malformed
+  source or a confirmed renderer defect before that investigation.
+- Browser console repeatedly logged `Unexpected text node: . A text node cannot
+  be a child of a <View>.` while the mobile app remained usable, timestamps
+  2026-10-15T10:37:37Z–10:38:20Z. Source bundle was the assigned Expo8083 origin.
+
+### Fixture handback / hold
+
+At the parent's request, mobile UI mutations stopped before the V10 correction.
+Current mobile tab is back at Docs library. Parent explicitly received **UI
+Preview fixture ownership** for25-project long-picker preparation and a bounded
+loopback-only assistant proposal fixture; this worker will not mutate that
+account until handback. No paid provider, production or native operation ran.
+Remaining successful assistant decisions, populated chat history, long picker,
+structured web, V7 Chrome render and deterministic failure states are unverified;
+this continuation does not mark ADR003 complete.
+
+## Affected and residual final execution — product `a7facf6a`
+
+The parent returned the UI Preview fixture after preparing25 synthetic projects
+and a bounded loopback-only provider at127.0.0.1:18001/v1, model`visual-fixture`.
+No external provider was called. This worker made one project-chat request and
+two source-proposal requests. Chrome temporary tabs used the same assigned local
+origins; no production tab was touched. Normal LOCAL localhost5174 Account→Sign
+out replaced its previous Anh Dang authentication session, as explicitly
+authorized by the parent, then normal visible email/password Sign in reached UI
+Preview. No owner data or settings changed; the parent's separate IAB127web
+session was untouched. No token/storage injection occurred.
+
+### Completed affected and remaining cases
+
+| Case | Actual outcome |
+| --- | --- |
+| V10 Connections,320×740dark | **Pass.** Initial sheet shows all seven named folded groups in one viewport. Connected agents has folded Overnight schedule, Reminders, Agent identity, Agent context, Instructions and Standing rules. Repeated headings removed. Opened API keys, entered an unsent label, folded/reopened: label retained. Cleared it without creating a key. Pending-request folding guard remains formal Tester evidence, not a visually injected pending request. |
+| V11 structured valid PDF | **Recovered after runtime fix.** Fresh structured Note displays actual PDF page1/2 with page/zoom controls and Download, alongside existing prose/display equation. Parent diagnosed old QA compiler without init accumulating zombies against its PID limit, recreated the same isolated service with`--init`, then reported three valid compile200 and stable process count. This worker personally verified the visible recovered PDF; the prior failure remains preserved above. |
+| Mobile long picker,320dark | **Pass.** Work Choose project lists26options. Scrolled visibly to final Workshop planning option, selected it, full selected label displayed. Reopened, searched`project 25`, list reduced to Visual project25. Closed without selection: Workshop planning remained selected. |
+| Populated mobile Work history | **Pass.** Sent a short synthetic project prompt to the local provider, saw completed response with`Orbyn default · visual-fixture · completed`. Opened Chats and more, pinned the new session, renamed it`Workshop planning recap`, then opened project→Chats. The renamed row and Unpin action appeared in that project's populated history. No retention/sweep settings changed. |
+| V7 Chrome render | **Not reproduced in Chrome.** Created synthetic task`Check focus entry from Home`, refreshed saved Home suggestion, scrolled Home to body scrollY821 at measured1440×900DPR1, activated Up next→Start focus. Screenshot shows Focus label, task heading, close, timer/rhythm and actions at the top. Leave focus mode measuredtop16, focusedtrue, visibletrue. Closed without starting timer or completing task. Earlier IAB crop is capture uncertainty, not a confirmed continuing product failure. |
+| Structured web mixed source/Note | Actual1440light view shows common Note with prose, equation, canonical rendered PDF and separate second TeX source, beside Markdown. Source modes are direct and one Hide source remains. Raw action styling fails V12 below. |
+| Anchored web LaTeX assistant decisions | **Actual UI pass.** Opened LaTeX→Ask assistant, entered synthetic instruction, saw Before/After proposed change; Reject removed proposal and left source intact. Repeated request, Accept changed only canonical TeX. Other prose/equation and distinct second source remained; actual refreshed PDF visibly rendered`A clearer preview.` with1/2pages. These were two local-provider requests, not mocked parent callbacks. |
+
+### New source findings before the next hold
+
+- **V12 — unstyled structured web actions:** Back, More, block Edit/Comment and
+  Markdown Ask assistant use raw browser-like rectangular gray controls, visibly
+  inconsistent with shared rounded controls such as Hide source. Screenshot at
+  actual1440light confirms this across toolbar and block rows. The owner also
+  independently reported the same styling; Builder is batching the correction.
+- **V13 — assistant rejects saved unanchored content:** Structured preview,
+  UI Preview document`3e7556af-8a68-492c-9fcc-e9ac898da0b3`, has an unanchored
+  saved first paragraph`Visual note with ordinary prose.` and unanchored math.
+  Toolbar says Saved and Save is disabled. Markdown→Ask assistant immediately
+  shows generic`Something went wrong. Try again.` without an instruction modal.
+  Console gives`Save this text before asking the assistant.` in
+  `StructuredDocEditor.askForBlock`. Canonical anchored TeX
+  `bmv9e0ibqw8yy6b` successfully completed the same assistant flow above. No
+  provider failure was inferred: V13 fails before the request modal.
+
+At Builder's request, document mutations stopped after the anchored LaTeX case.
+Temporary viewport override was reset; both disposable Chrome tabs were marked
+for handoff. Web remains on the saved structured Markdown/Note split after the
+accepted canonical proposal. Mobile remains in project chat history. Normal-note
+and Markdown successful assistant decisions, actual mobile proposal decisions,
+and unperformed injected failure/reader/Suggest states are still explicitly
+unverified. Root's independent paired-pane evidence belongs in its own receipt;
+this worker does not claim it as personal execution.
+
+## V12/V13 affected checks — `c5ae33fa` / `3a97163c`
+
+- **V12 passes wide light and narrow dark.** Structured toolbar Back/More and
+  block Edit/Comment now use the themed action treatment and spacing; no raw
+  browser rectangles remain in the inspected normal-note flow. The narrow
+  disabled/Retry recovery controls also use that treatment during the actual
+  API restart. Supported Chrome screenshot bytes were saved directly as JPEGs:
+  `/private/tmp/orbyn-final-structured-controls-light.jpg` (1440×900 light) and
+  `/private/tmp/orbyn-final-structured-controls-dark-320.jpg` (320×740 dark).
+  These captures show context and contain no populated authentication fields.
+- A transient429 at resumption was allowed to expire; an actual Page unavailable
+  during the planned API restart recovered through Retry to Saved. Neither was
+  silently counted as product success or a permanent defect.
+- Saved unanchored **normal-note Ask** on`c5ae33fa` now opens the instruction
+  dialog, creates a real local-provider Before/After proposal, and **Reject**
+  preserves the paragraph. After the version-contract restart at`3a97163c`,
+  normal-note **Accept** updates the intended paragraph. Existing equation,
+  canonical PDF and second distinct TeX block remain.
+- **Markdown still failed in that runtime:** after saving a distinct first
+  paragraph`Draft workshop note. ^bmv9ftxh0jfvazb`, Saved with Save disabled,
+  Ask triggers POST`/docs/3e7556af-8a68-492c-9fcc-e9ac898da0b3/anchor`500 before
+  instructions. Request`61ec8fb4-2773-4530-b387-c08414dff9a5`, timestamp
+  2026-10-15T11:14:40Z. Parent diagnosed request-version shadowing the transaction's
+  returned version (TDZ), fixed in`e911672a`, and requested a brief API restart
+  hold. The500 receipt is preserved pending actual recovery.
+- Independent **mobile legacy LaTeX proposal** on Live preview opened the actual
+  instruction sheet and Before/After approval card at320dark. **Reject** retained
+  the original canonical source. A second local proposal was requested for Accept
+  immediately before the API restart hold; no acceptance action had run when
+  requests paused. The pending proposal belongs to the disposable UI Preview
+  account; no external provider or production mutation occurred.
+
+Per the parent handoff, this worker will finish this bounded proposal batch after
+the listener confirmation. The parent owns the separately reconciled residual
+failed-save/reader/Suggest/comment, paired-shortcut, long-composer, calendar,
+Admin/connection and public-booking cases; they are not implied by these receipts.
+
+### `e911672a` runtime continuation
+
+After confirmed API restart PID58338/health200, the pending mobile legacy LaTeX
+proposal **Accept** succeeded. Actual390×844dark common Note shows preserved
+ordinary prose, visible PDF`A clearer preview.` with1/2pages, Download and the
+distinct second source. Mobile Reject and Accept paths are now both actual UI
+evidence. Capture saved through supported screenshot API:
+`/private/tmp/orbyn-final-mobile-proposal-accepted-dark.jpg`.
+
+That capture exposed **V14**: the second marked source renders black on the dark
+background. Read-only source confirmation: `mobile/src/screens/docs/DocLatexPreview.tsx`
+noncanonical fallback returns `<Text accessibilityLabel="LaTeX source">` without
+theme/font styling. Builder received the exact path; no source changed by Visual.
+
+Web Markdown Ask now opens instructions after the TDZ fix. Both subsequent
+attempts to submit were interrupted by DOM-resolution timeouts/full app reload
+while formal package builds were ongoing. Parent confirmed those builds can
+trigger Vite HMR even with frozen source and explicitly held this final request
+pair until qualification completes. No duplicate requests were submitted after
+the hold; successful Markdown Reject/Accept is **not yet claimed**. Normal-note
+Accept on the final version contract remains a valid completed observation.
+
+## Stable handback — `509462e6` / `e911672a` runtime
+
+After all package builds finished, a new temporary Chrome tab retained the
+authenticated UI Preview session. **Final Markdown Reject and Accept both pass**:
+Saved first paragraph`Draft workshop note.`→Ask instructions→local-provider
+Before/After; Reject preserved it. A second bounded request→Accept changed only
+that paragraph. Display equation, canonical two-page TeX and second distinct TeX
+source remained. Earlier500 and HMR interruptions are preserved as prior receipts,
+not silently removed. No repeated LaTeX or page/zoom sweep ran.
+
+### V14 recheck
+
+At390×844dark, the second marked source is now visibly light monospace against
+the dark page. Computed text colour`rgb(244,244,245)` and monospace family support
+the inspected screenshot. Actual capture:
+`/private/tmp/orbyn-final-mobile-secondary-source-dark-fixed.jpg`.
+**V14 is closed visually.**
+
+### Remaining finite Docs/composer results
+
+- **Structured valid unsaved mode change passes:** edited Markdown first paragraph
+  to`Mode change save checked.`, observed Unsaved / Save available, selected Note.
+  It saved, showed Saved / disabled Save, and rendered that exact paragraph with
+  the other equation/TeX blocks retained.
+- **Normal-note comment draft passes:** mobile legacy comment accepted16 synthetic
+  lines, fixed clientHeight58 versus scrollHeight688, overflowYauto, resize none.
+  Markdown→Note retained all16 lines. Keyboard move exposed line16 with internal
+  scrollTop630 while the field stayed58px; screenshot inspected. Cleared the
+  unsent draft afterward; no comment was posted.
+- **Mobile long composer and response pass:** at390dark,12-line draft stayed104px
+  high; native pointer scrolling moved internal scrollTop168 with total272px.
+  Cleared draft, sent exact local fixture trigger`visual-long-response`. Observed
+  `Orbyn is thinking…` and disabled Chat/Work controls; completed response contained
+  all20 planning paragraphs and provider/model/completed metadata. Scrolled to
+  paragraph20 and back through the answer while the composer stayed reachable
+  below it. No text overlapped the composer; no external provider call occurred.
+
+### V15 — structured failed-save recovery
+
+Using supported tab-scoped CDP offline controls, edited structured Markdown's
+first paragraph to`Offline draft must stay.` and selected Note. A real failed
+fetch left Markdown / Unsaved with the complete source intact. Calendar departure
+was correctly blocked with`Save this draft before leaving the page.` Every offline
+operation restored connectivity in`finally`; the tab was online afterward.
+
+However, **recovery failed**: Save remained disabled (actual isEnabledfalse), no
+Retry action existed, and clicking Note after restoring connectivity did not save
+or leave. Only Discard draft was offered beside raw`Failed to fetch`. This is
+V15, confirmed by Builder as an intentional store error guard without an explicit
+retry path. The failed draft was preserved without further editing/discarding.
+Builder is adding explicit Retry save on both clients and concise error copy,
+then will qualify it before one affected recovery recheck.
+
+Per Builder's hold, no further structured UI mutation ran during that fix. The
+single Viewing/Suggesting interaction remains unperformed by this worker; the
+current mobile tab is assistant, not already in the legacy editor. Root owns its
+separate residual family checks. These results do not establish whole-ADR
+acceptance until the V15 recovery and the agreed residual evidence are closed.
+
+
+## Final affected handback — `2bc81bd1`
+
+Builder handed back this frozen candidate after Tester report `3b092636`: 23/23
+focused tests, API-client/desktop/mobile types, root build and guarded anchor
+compatibility 2/2. This worker performed browser checks only.
+
+### V15 recovery passes
+
+The host package reload had returned the tab to the saved library baseline; the
+previous failed draft did not survive that development interruption. It was not
+silently treated as the preserved old draft. Reopened Structured preview and
+reproduced one effective offline edit+Save using the current tab's supported CDP
+capability. Preliminary attempts using an obsolete capability did not produce a
+failure and were not counted. The effective attempt retained the full Markdown
+source headed `Final retry save recovery checked.`, displayed Unsaved, an enabled
+**Retry save**, and `Couldn’t save this page. Your draft is still here.` Every
+network emulation was restored online in `finally`.
+
+With connectivity restored, clicked **Retry save without another edit**. The
+actual parent UI changed to Saved, ordinary Save became disabled, and the local
+failed-save copy disappeared. Switched to Note: the new paragraph, display
+equation, rendered PDF page 1/2 and distinct secondary TeX source were all present.
+Calendar navigation then succeeded. V15 is resolved for this actual web recovery
+path; invalid/conflict guard qualification belongs to Tester's separate tests.
+Screenshot: `/private/tmp/orbyn-final-retry-save-recovered.jpg`.
+
+### Remaining legacy Viewing/Suggesting interaction passes
+
+On the disposable Live preview document, selected Viewing. The actual title
+became a heading; editable textareas, block actions and Add a block were absent.
+Clicking the prose did not open an editor. Selected Suggesting, opened the first
+prose block, entered `Suggested workshop prose for review.`, then blurred it.
+The saved prose remained `Visual note with ordinary prose.` and a separate
+**1 proposed change** card showed Before/After and Withdraw/Reject/Accept, with
+`Suggested. It waits for someone to take it.` The proposal was rejected through
+the actual UI: the card disappeared and original prose remained. Returned the
+fixture to Editing. No comment was posted and no pending proposal remains.
+Screenshot: `/private/tmp/orbyn-final-suggesting-review.jpg`.
+
+This closes this worker's assigned finite residual batch. Prior valid passes and
+historical failures remain recorded above. Native app builds, production, live
+providers/hosts and the parent's separately owned residual checks are not claimed
+by this worker. Both QA tabs are online, temporary viewport override reset, and
+preserved for handoff. UI Preview fixture ownership is returned to the parent.
