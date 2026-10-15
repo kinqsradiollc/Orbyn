@@ -3,8 +3,8 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: accepted and delivered to main. Review counter: 1/3.
-Current product freeze: `d44c4cdf`.
+Phase: owner refinement qualification. Review counter: 2/3.
+Current product freeze: `09d17c2c`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
 button-size results remain historical evidence; they do not qualify this redesign.
@@ -152,3 +152,22 @@ confirmed `e575c06ed5c452f3bfe55f71144d90f734986a27`. Subsequent reconciliation
 commits change documentation only. This is delivery to main; production is not
 deployed by this task. The primary checkout and its unrelated work were not
 reset, and the unrelated C6 Visual report edit remains outside this delivery.
+
+## Owner refinement — visible paired editing, round2/3
+
+The owner challenged the blank-looking Note preview and expected a side-by-side
+editor. Capture-only Visual diagnosis showed a real rendered two-page synthetic
+PDF with a short sentence, source to the right of the Note, and direct code Edit
+hiding the PDF. It made no content mutations. The large white page was mostly
+empty authored fixture content, not a compilation failure.
+
+Product `09d17c2c` places wide structured source on the left and Note on the
+right. Direct web/mobile code editing retains the mounted result visibly beside
+the field when width allows, stacking on narrow screens; normal prose remains
+single in-place editing. Mobile uses effective pane width including font scale.
+No document content, compiler, environment or backend contract changes.
+Development6/6 passes, including identical viewer identity through actual input
+and Done with visible/non-inert result plus source/Note column binding assertions.
+Actual rendered pairing, narrow recovery and page/zoom state remain visual gates.
+Tester qualification and Reviewer acceptance are pending; this source is not yet
+integrated to main. Earlier accepted delivery receipts remain historical above.

@@ -60,3 +60,16 @@ provider execution and production deployment remain outside this scoped receipt.
 A nonblocking closed-comment-panel Keep editing observation remains documented
 in the Visual report; the draft guard retains content. Integration status is
 recorded in the delivery ledger.
+
+## Owner refinement — source beside the live result (16 October)
+
+The owner rejected the mostly empty PDF presentation and the difference between
+format-source mode and direct code editing. This refinement is in qualification,
+review round2/3; earlier acceptance remains historical for its exact source.
+Wide structured source editing places source on the left and the same Note on
+the right. Direct code editing keeps its rendered result visible beside the
+field, rather than hiding the PDF until Done. Narrow layouts stack the pair or
+use their existing one-pane format navigation. Normal prose still edits in place.
+Do not remove authored PDF content merely because its page is mostly empty.
+The diagnosed synthetic PDF contains only a short sentence; it was rendering,
+not blank due to a compilation or loading failure.
