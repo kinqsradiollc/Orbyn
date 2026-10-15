@@ -18,3 +18,13 @@ mobile behavior, or full ADR acceptance. Formal Tester results, desktop Docker
 build path, booking API behavior and remaining finite web/Expo checks stay
 required. R1–R7 and V1 retain their previous disposition. Follow-up source
 closure of the mounted-viewer correction is pending; no whole-ADR approval.
+
+## Scoped source closure — e942a1a0
+
+Delegated Reviewer inspected the fix and returned P2 source closure, with no
+additional actionable finding. Mounting now follows preview.pdf; only the pending
+download link waits for its URL, so a blob replacement reaches the existing
+viewer. Both-client same-block regression retains canonical-owner replacement
+and cleanup assertions. Formal Tester and actual browser page/zoom retention
+remain pending. Reviewer executed no checks and changed no files; this parent
+record preserves its returned assessment. Round remains 1/3.
