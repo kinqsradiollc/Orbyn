@@ -654,3 +654,69 @@ native build or Security scan was run. The actual Expo and shared-web visual
 cases remain owned by the parent and Visual Check; this Tester receipt verifies
 only the requested unit suites, mobile typecheck and desktop Docker build. The
 review counter remains `1/3`; Tester made no product or test-source edits.
+
+## V9 structured LaTeX ownership qualification at 43923346
+
+The V9 correction froze at
+`439233468f61bf11cdb9d539f42820cb21d7995d`, parent
+`8f1f8c1f711dfcd958abedae83318d739543d00b`, on `codex/c6-file-viewer`. The
+requested checks ran at that exact HEAD. Source preserves an existing optional
+block ID when replacing LaTeX, generates an ID only for insertions, keeps
+structured save status with the parent, and uses the regular mobile palette font
+for the PDF download. Web and mobile provider tests cover anchored and
+unanchored replacement, same-iframe identity, and deliberate canonical-owner
+reset.
+
+The required workspace package build passed before the tests:
+
+```sh
+npm run build:packages
+```
+
+Its mode-0600 log is
+[`V9 package build`](/private/tmp/orbyn-adr003-v9-build-packages-43923346.log).
+
+The finite affected batch passed:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-latex-note.unit.test.ts \
+  backend/tests/visual-corrections.unit.test.ts \
+  backend/tests/doc-source-view.unit.test.ts
+```
+
+Result: exit 0, **38/38 passed**, 0 failed, 0 cancelled and 0 skipped (9.09 s).
+This is the requested set of 4 LaTeX provider cases, 5 visual-correction cases
+and 29 source-view cases. The mode-0600 TAP log is
+[`V9 affected tests`](/private/tmp/orbyn-adr003-v9-unit-43923346.tap).
+
+The full `npm run typecheck` passed at the exact freeze, including core and
+API-client package builds and backend, desktop and mobile TypeScript checks. Its
+mode-0600 log is
+[`V9 workspace typecheck`](/private/tmp/orbyn-adr003-v9-workspace-typecheck-43923346.log).
+The root `npm run build` also passed, building packages, backend and desktop and
+generating the bundled PDF preview runtime. Vite emitted the existing warning
+for chunks larger than 500 kB; the build completed. Its mode-0600 log is
+[`V9 root build`](/private/tmp/orbyn-adr003-v9-root-build-43923346.log).
+
+The latest desktop Docker image was rebuilt from the `43923346` checkout:
+
+```sh
+docker build -f desktop/Dockerfile \
+  --tag orbyn-web:adr003-43923346-tester \
+  --build-arg GIT_SHA=43923346 .
+```
+
+The build passed and `docker image inspect` confirmed tag
+`orbyn-web:adr003-43923346-tester`, image ID
+`sha256:ca9f7379bd8f26b1b521718dd310331b17982416fc5944a618324115e7345e47`.
+It bundles the desktop/core V9 source together with the existing e942 PDF viewer
+fix. The Dockerfile does not package mobile code, and the image was not run as a
+container. The mode-0600 build log is
+[`V9 desktop Docker build`](/private/tmp/orbyn-adr003-v9-desktop-docker-build-43923346.log).
+
+No API suites, browser interaction, fixture or database work, native build or
+Security scan was run. The actual unanchored page/zoom recheck remains with the
+parent on the final UI candidate; this Tester receipt covers only the requested
+unit suites, package/workspace/root builds and desktop image. The review counter
+remains `1/3`; Tester made no product or test-source edits.
