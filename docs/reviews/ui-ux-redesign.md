@@ -5145,3 +5145,17 @@ counts overlap earlier batches and must not be added into a unique-test total.
 Tester handed the fixture to Visual Check in `fe13a8b7`. Final actual-parent,
 PDF rendering and representative whole-redesign browser acceptance is underway;
 whole-ADR acceptance and integration remain pending. Production is user-owned.
+
+## Final recovery and control-density correction
+
+V15 product2bc81bd1 has formal23/23/types/build and guarded anchor2/2 evidence,
+with actual offline Retry save recovery and Viewing/Suggesting accepted in Visual
+Checke2c278a1. The parent's finite remaining ownership/recovery interactions stay
+separate from that worker's completed batch.
+
+The owner rejected the earlier fallback controls' oversized and inconsistent
+density. V16 f36b8a3b applies shared32px desktop/44px touch sizing across routine
+actions and the owned PDF toolbar. Source review found one missing bare fallback
+minimum, corrected and source-closed at5e3ffc45. Development65/65 is recorded;
+formal qualification and one bounded actual density/PDF-state recheck remain
+pending. No whole-ADR acceptance, merge, push or deployment claim.

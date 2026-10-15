@@ -52,3 +52,20 @@ the failed request and required API qualification. Mobile secondary TeX fallback
 foreground/font correction509462e6 was accepted in source. Same round1/3.
 Formal qualification and the finite whole-ADR visual residue remain pending;
 none of these source closures proves deployment or full acceptance.
+
+## V15 and V16 scoped source closures
+
+Reviewer accepted V15 at2bc81bd1: explicit save retry preserves the invalid-source,
+conflict and busy fences. Tester3b092636 records23/23 affected checks, types and
+root build; e3883a81 records the guarded anchor compatibility2/2. Visual Check
+e2c278a1 records actual offline draft retention, online Retry save without another
+edit, Saved recovery and subsequent departure. Viewing/Suggesting also passed
+its assigned actual-parent check. Earlier failed attempts remain in those reports.
+
+At f36b8a3b, Reviewer found that the shared bare-button fallback did not consume
+the touch height token. Correction5e3ffc45 adds the zero-specificity minimum and
+regression. Reviewer closed that P2 in source with no further actionable V16
+finding. PDF mode messages are bounded, unchanged-document updates preserve
+page/zoom, and parent mode listeners clean up. Formal V16 qualification and actual
+desktop/touch density checks remain pending. Review counter remains1/3; no
+Reviewer tests/builds/browser actions or source writes were performed.
