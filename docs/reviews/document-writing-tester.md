@@ -151,3 +151,56 @@ page/zoom retention check remains a visual gate; the fixture remains with its
 Visual owner. All host build writes for this correction are complete, so the
 final visual batch can resume. Tester made no product or test-source edits;
 the formal review counter remains 1/3.
+
+## Round 1 narrow writing correction qualification — d44c4cdf
+
+The latest product freeze is
+`d44c4cdfbd47dadb0d0fd15e287af82c0d4ebb9c`, parent
+`745ab1531bf8e4acef7534fdd277910391bd6c03`, on
+`codex/docs-writing-redesign`. The later `55a19f46` descendant changes only
+`docs/reviews/document-writing-redesign.md`; product and test sources remain
+equivalent to the freeze. The review counter stays at 1/3.
+
+This correction makes mobile structured titles wrap using the existing
+multiline pattern and bounds its Note column to 760px; returns web Finish
+editing focus to the owning block; keeps legacy Page info reachable while
+Viewing remains read-only; and groups narrow web header controls more compactly.
+
+The affected test batch included writing, store recovery, source/format/input
+ownership, typography/layout and button fallback:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-writing-experience.unit.test.ts \
+  backend/tests/doc-latex-note.unit.test.ts \
+  backend/tests/doc-editor-store.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/doc-source-view.unit.test.ts \
+  backend/tests/editor-input-ownership.unit.test.ts \
+  backend/tests/neatness.unit.test.ts \
+  backend/tests/button-fallback.unit.test.ts
+```
+
+Result: exit 0, **69/69 passed**, 0 failed, 0 cancelled and 0 skipped
+(6.57 seconds). The mode-0600 log is
+[`d44c4cdf focused batch`](/private/tmp/orbyn-doc-writing-narrow-correction-d44c4cdf.tap).
+
+`npm run typecheck -w desktop` and `npm run typecheck -w mobile` both passed on
+`d44c4cdf`; their mode-0600 logs are
+[`desktop types`](/private/tmp/orbyn-doc-writing-narrow-desktop-types-d44c4cdf.log)
+and
+[`mobile types`](/private/tmp/orbyn-doc-writing-narrow-mobile-types-d44c4cdf.log).
+`npm run build -w desktop` passed on the same source, including PDF runtime
+asset generation, TypeScript, Vite and homepage prerender. Vite emitted the
+existing warning for chunks larger than 500 kB; the build completed. The
+mode-0600 log is
+[`desktop build`](/private/tmp/orbyn-doc-writing-narrow-desktop-build-d44c4cdf.log).
+
+No browser interaction, API/database suite, compiler image, Docker/native build,
+provider test or Security scan was run. The final browser confirmation of
+mobile title wrapping, Finish focus, Viewing Page info and compact header
+layout remains with the Visual owner. The exclusive fixture was not accessed.
+All host build writes are complete; the visual batch can resume against this
+freeze. Tester changed no product or test source and changed only this report.
+The unrelated Visual-owned `c6-production-visual-2026-10-11.md` edit remains
+untouched.
