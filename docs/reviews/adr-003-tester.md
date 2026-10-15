@@ -1000,7 +1000,49 @@ The image build completed with the same existing large-chunk warning; it was
 not run as a container. Its log is
 [`V16 desktop Docker build`](/private/tmp/orbyn-v16-successor-desktop-docker-5e3ffc45.log).
 
-No browser interaction, API/database suite, compiler test, provider test,
-native build or Security scan was run for this qualification. Visual recovery
-and Reviewer closure remain separate gates. Tester made no product or test-
-source edits and changed only this report.
+This Tester run added no browser interaction, API/database suite, compiler
+test, provider test, native build or Security scan. Orbyn Visual Check completed
+the bounded V16 density recheck on product `5e3ffc45`; its PASS is recorded in
+[`V16 final visual report`](/Users/anhdang/.codex/worktrees/c6-next/Orbyn/docs/reviews/adr-003-final-visual.md:443),
+report commit `3a51aa41160fc19bc1d87a239f6b8be7eb6b44ed`. It measured routine
+actions at32px for wide fine-pointer and44px for narrow/coarse-pointer layouts,
+and retained selected PDF page2 and zoom through the resize/return check. No new
+density defect was found in that bounded batch. The V16 visual recheck is
+complete; Reviewer closure and broader acceptance remain separate. Tester made
+no product or test-source edits and changed only this report.
+
+## V17 pane-tab shortcut ownership qualification at product freeze e2813634
+
+The frozen product source is
+`e28136344cbf608a4568c070937db3ac9719dece`, parent
+`3a51aa41160fc19bc1d87a239f6b8be7eb6b44ed`, on `codex/c6-file-viewer` in
+`/Users/anhdang/.codex/worktrees/c6-next/Orbyn`. It limits the shared-chrome
+marker to shared navigation/actions so each pane's own tabs participate in
+normal focus and pointer capture; the existing narrow shared host remains
+unchanged. The review counter remains 1/3.
+
+The two assigned focused suites passed:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/editor-input-ownership.unit.test.ts \
+  backend/tests/workspace-layout.unit.test.ts
+```
+
+Result: exit 0, **9/9 passed**, 0 failed, 0 cancelled and 0 skipped
+(1.26 seconds). The three ownership cases verify pane-tab capture, retained
+selection shortcuts, and narrow shared chrome. The mode-0600 log is
+[`V17 focused tests`](/private/tmp/orbyn-v17-focused-e2813634.tap).
+
+`npm run typecheck -w desktop` passed; its log is
+[`V17 desktop types`](/private/tmp/orbyn-v17-desktop-typecheck-e2813634.log).
+`npm run build -w desktop` also passed, including the desktop TypeScript and
+Vite build, PDF runtime generation and homepage prerender. Vite emitted its
+existing warning for chunks larger than 500 kB. The mode-0600 log is
+[`V17 desktop build`](/private/tmp/orbyn-v17-desktop-build-e2813634.log).
+
+No root package/backend build, Docker build, API/database suite, browser
+interaction, native build or Security scan was run for this small input-
+ownership change. The actual retained-selection cross-pane recovery recheck
+and Reviewer closure remain open. Tester made no product or test-source edits
+and changed only this report.
