@@ -21,26 +21,25 @@ editing experience and opened a focused full document-writing redesign under
 ADR 004; this supersedes only the document presentation, not ADR 003's other
 accepted work.
 
-**Current phase: ADR 004 — final bounded visual review in progress**, round 1/3.
-Baseline is `b11b1429` on branch `codex/docs-writing-redesign`; current product
-freeze is `c58c91b8`, and the current documentation head is `944462fb`. The scope
-redesigns legacy and structured Note as a writing surface: inline replacement
-editing, contextual block actions, compact format/mode controls, mobile parity,
-and optional source/Note/PDF transitions while preserving the existing storage,
-permission, proposal and PDF ownership contracts. Tester `33fd1626` qualified the
-initial batch with **66/66** equivalent checks, **4/4** CSS-sensitive checks,
-desktop/mobile types and desktop build. Reviewer found one P2: inline text edits
-unmounted canonical code/PDF viewers. Correction `c58c91b8` retains those viewers
-mounted but hidden during editing; Tester `62865551` passed **51/51**, desktop and
-mobile types, and desktop production build, and Reviewer closed the source finding.
-The final bounded web and Expo visual review is now running against actual writing,
-menus and source/PDF states. ADR 004 is not yet accepted, merged or pushed.
-Production deployment remains user-owned. See [ADR 004](../adr/004-document-writing-experience.md),
+**Current phase: ADR 004 — targeted visual recheck and read-only Reviewer
+assessment in progress**, round 1/3. Baseline is `b11b1429` on branch
+`codex/docs-writing-redesign`; current correction freeze is `d44c4cdf`.
+The writing-first redesign covers legacy and structured Note, inline editing,
+contextual block actions, compact format/mode controls, mobile parity, and
+optional source/Note/PDF transitions while preserving storage, permissions,
+proposals and PDF ownership. Tester report `94188184` passed **69/69**, desktop
+and mobile types, and desktop build on the correction batch. The earlier bounded
+Visual report `745ab153` found four issues: clipped mobile title, Finish focus,
+Viewing page information, and orphaned toolbar rows at narrow widths. They were
+corrected together in the same round; targeted Visual recheck is now underway.
+Prior initial-batch results and the code-viewer mount correction remain in the
+history above. ADR 004 is not yet accepted, merged or pushed. Final acceptance
+depends on the targeted visual recheck and Reviewer closure; main push follows
+acceptance. No production, native-build or provider qualification is claimed.
+See [ADR 004](../adr/004-document-writing-experience.md),
 [document-writing redesign record](document-writing-redesign.md),
 [Tester report](document-writing-tester.md), and [visual report](document-writing-visual.md).
-Reviewer source closure is recorded in the redesign record. Remaining gates are the final
-visual report, any scoped fixes/rechecks it requires, and same-round Reviewer
-closure. Native builds and production checks are outside this scope.
+Production deployment remains user-owned.
 
 ## Previous delivery — historical checkpoint entries
 
