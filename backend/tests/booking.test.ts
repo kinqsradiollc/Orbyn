@@ -15,7 +15,7 @@ const { pool } = await import("../src/db/pool.js");
 const { migrate } = await import("../src/db/migrate.js");
 const { invalidateSettings } = await import("../src/lib/settings.js");
 const { decryptSecret } = await import("../src/lib/secrets.js");
-const { addDays, localDateKey, dayTime } = await import("@orbyn/core");
+const { addDays, localDateKey, dayTime, colors } = await import("@orbyn/core");
 const app = await buildApp();
 
 const TZ = "Australia/Melbourne";
@@ -154,7 +154,9 @@ test("pages set their own hours, date overrides, interval and buffers", async ()
     buffer_before_minutes: 15,
   });
   assert.equal(page.buffer_after_minutes, 0);
-  assert.equal(page.color, "#376c51");
+  assert.equal(page.color, colors.accent);
+  const branded = await newPage(host.token, { color: "#376c51" });
+  assert.equal(branded.color, "#376c51");
   assert.equal(page.event_title, "{page} with {name}");
   assert.deepEqual(await slots(page.slug, 4), [
     local(4, 13),
