@@ -600,6 +600,11 @@ function StructuredDocEditorBody({
       const next = store.state.doc;
       if (next && next.version !== before) onChanged(next);
       if (store.state.error) report(store.state.error);
+      else if (
+        store.state.session &&
+        !docEditorSessionDirty(store.state.session)
+      )
+        setNavigationError(null);
     },
     [store, onChanged, report],
   );

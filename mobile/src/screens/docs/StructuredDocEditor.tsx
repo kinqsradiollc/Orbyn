@@ -527,6 +527,7 @@ function StructuredDocEditorBody({
         }
       } else if (store.state.error) report(store.state.error);
       else {
+        setNavigationError(null);
         offlineQueued.current = false;
         setKeptOffline(false);
       }
@@ -800,7 +801,14 @@ function StructuredDocEditorBody({
               <Pressable
                 accessibilityRole="button"
                 style={styles.actionTarget}
-                accessibilityState={{ disabled: state.busy || state.conflict }}
+                accessibilityState={{
+                  disabled:
+                    state.busy ||
+                    state.conflict ||
+                    state.sourceInvalid ||
+                    !session ||
+                    !docEditorSessionDirty(session),
+                }}
                 disabled={
                   state.busy ||
                   state.conflict ||
