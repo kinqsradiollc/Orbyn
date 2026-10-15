@@ -4,7 +4,7 @@ Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
 Phase: owner refinement qualification. Review counter: 2/3.
-Current product freeze: `09d17c2c`.
+Current product freeze: `6673f912`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
 button-size results remain historical evidence; they do not qualify this redesign.
@@ -171,3 +171,17 @@ and Done with visible/non-inert result plus source/Note column binding assertion
 Actual rendered pairing, narrow recovery and page/zoom state remain visual gates.
 Tester qualification and Reviewer acceptance are pending; this source is not yet
 integrated to main. Earlier accepted delivery receipts remain historical above.
+
+### Round2 visual correction DW-V5
+
+Tester `dbe95cbe` qualified `09d17c2c` with66/66, both client types and desktop
+build. Read-only Reviewer accepted its source, pending visual. Visual then
+verified source-left/Note-right and the initial direct code/PDF pair, but PDF
+Next/Zoom blurred the source and closed the pair. It paused and handed back
+without content mutations; pending save/Expo flows were not counted as passes.
+
+Correction `6673f912` keeps code editing open until explicit Done or Escape.
+PDF iframe focus may report a null relatedTarget; ordinary prose retains its
+previous blur behavior. Development6/6 includes a mounted null-target focusout
+assertion that Finish is not invoked. Formal affected qualification and actual
+preview-control/save/page-state closure remain pending in round2/3.
