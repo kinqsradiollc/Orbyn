@@ -106,3 +106,26 @@ succeeded in Second while First Home remained. Network emulation was reset and
 Network disabled afterward. Recovery screenshot:
 `/private/tmp/orbyn-adr003-failed-save-recovered.png`. This proves the actual legacy
 parent's failed-save guard; structured/native equivalents are not inferred.
+
+## V12 / V13 owner-reported action correction
+
+The owner independently reported native-looking Edit/Comment buttons. A source
+inventory found1,566 web button elements across217 files, including158 without
+an explicit class. Many are styled by their owning menu or toolbar; absence of a
+class alone is not a defect. The shared stylesheet now supplies themed border,
+radius, background, padding, hover and appearance defaults at zero specificity,
+so existing feature controls retain their overrides. Every structured editor
+button also names an app action class; per-block actions share the text-button
+style and spacing. This is source coverage, not1,566 rendered checks.
+
+The same final visual pass reproduced saved unanchored text failing before an
+assistant instruction could open. Web and mobile now name the exact saved block
+on demand through the existing authorized anchor API, refresh its saved identity,
+and then open the request. The helper refuses ambiguous/copied positions, dirty
+or conflicting drafts, and account/page changes; it never guesses among repeated
+passages or overwrites a newer draft. Existing anchored blocks avoid a new write.
+The API remains authoritative for scope and optimistic proposal acceptance.
+
+Development focused tests:19/19 passed. First workspace typecheck exposed a
+mobile-only stale history-ref name in the correction; fixed to its actual page
+owner guard. Final qualification and affected visual recheck remain required.

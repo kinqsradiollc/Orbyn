@@ -33,7 +33,7 @@ import {
 import { DocSourceAsk } from "./DocSourceAsk";
 import { DocSuggestions } from "./DocSuggestions";
 import { DocSourcePreview } from "./DocSourcePreview";
-import { DocEditorStore } from "@orbyn/api-client";
+import { DocEditorStore, prepareDocAssistTarget } from "@orbyn/api-client";
 import { client } from "../../lib/api";
 import { session as authSession } from "../../lib/session";
 import { useConfirm } from "../../components/Confirm";
@@ -238,14 +238,34 @@ function StructuredDocEditorBody({
     }
     return current;
   };
-  const askForBlock = (block: DocBlock) => {
+  const askForBlock = async (block: DocBlock) => {
+    if (sourceMutation.current || historyMutation.current || !canWrite) return;
+    const account = authSession.get();
+    const ticket = {};
+    const owns = () =>
+      sourceAlive.current &&
+      sourceMutation.current === ticket &&
+      authSession.get() === account &&
+      sourceOwner.current.id === doc.id &&
+      sourceOwner.current.userId === userId;
+    sourceMutation.current = ticket;
+    setSourcePending(true);
     try {
-      if (!block.id || !("text" in block) || !block.text.trim())
-        throw new Error("Save this text before asking the assistant.");
-      savedSource(block);
-      setSourceAsk({ ...block });
+      const target = await prepareDocAssistTarget(
+        store,
+        client,
+        doc.id,
+        block,
+        owns,
+      );
+      if (owns()) setSourceAsk(target);
     } catch (error) {
-      report(error);
+      if (owns()) report(error);
+    } finally {
+      if (sourceMutation.current === ticket) {
+        sourceMutation.current = null;
+        if (sourceAlive.current) setSourcePending(false);
+      }
     }
   };
   const requestSourceSuggestion = async (instruction: string) => {
@@ -640,7 +660,7 @@ function StructuredDocEditorBody({
     };
   }, [menuOpen]);
   const showHistory = async () => {
-    if (historyMutation.current) return;
+    if (historyMutation.current || sourceMutation.current || sourceAsk) return;
     const epoch = ++historyRequest.current;
     setMenuOpen(false);
     setCommentsOpen(false);
@@ -659,7 +679,7 @@ function StructuredDocEditorBody({
     }
   };
   const selectVersion = async (version: number) => {
-    if (historyMutation.current) return;
+    if (historyMutation.current || sourceMutation.current || sourceAsk) return;
     historyMutation.current = true;
     const epoch = ++historyRequest.current;
     setHistoryBusy(true);
@@ -681,6 +701,8 @@ function StructuredDocEditorBody({
   const restore = async () => {
     if (
       !canWrite ||
+      sourceMutation.current ||
+      sourceAsk ||
       historyMutation.current ||
       !selected ||
       !session ||
@@ -930,6 +952,7 @@ function StructuredDocEditorBody({
           />
           {onBack && (
             <button
+              className="secondary"
               disabled={sourcePending || !!sourceAsk || latexOpen}
               onClick={() => {
                 if (
@@ -972,6 +995,7 @@ function StructuredDocEditorBody({
           </span>
           {canWrite && (
             <button
+              className="secondary"
               onClick={() => void save()}
               disabled={
                 state.busy ||
@@ -986,6 +1010,7 @@ function StructuredDocEditorBody({
           )}
           <div className="structured-doc-menu" ref={menuRef}>
             <button
+              className="secondary"
               type="button"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen(!menuOpen)}
@@ -995,6 +1020,7 @@ function StructuredDocEditorBody({
             {menuOpen && (
               <div className="structured-doc-menu-items">
                 <button
+                  className="secondary"
                   type="button"
                   disabled={state.busy}
                   onClick={() => {
@@ -1005,6 +1031,7 @@ function StructuredDocEditorBody({
                   Refresh
                 </button>
                 <button
+                  className="secondary"
                   type="button"
                   disabled={historyBusy}
                   onClick={() => void showHistory()}
@@ -1012,10 +1039,16 @@ function StructuredDocEditorBody({
                   History
                 </button>
                 <button
+                  className="secondary"
                   type="button"
                   onClick={() => {
                     setMenuOpen(false);
-                    if (historyMutation.current) return;
+                    if (
+                      historyMutation.current ||
+                      sourceMutation.current ||
+                      sourceAsk
+                    )
+                      return;
                     historyRequest.current++;
                     setHistoryOpen(false);
                     setCommentsOpen((value) => !value);
@@ -1025,6 +1058,7 @@ function StructuredDocEditorBody({
                 </button>
                 {EXPORT_FORMATS.map((format) => (
                   <button
+                    className="secondary"
                     type="button"
                     key={format}
                     disabled={
@@ -1040,6 +1074,7 @@ function StructuredDocEditorBody({
                 {canWrite &&
                   (["updates", "publish"] as const).map((action) => (
                     <button
+                      className="secondary"
                       key={action}
                       type="button"
                       disabled={
@@ -1101,6 +1136,7 @@ function StructuredDocEditorBody({
         )}
         {(state.conflict || state.error !== null) && session && (
           <button
+            className="secondary"
             type="button"
             onClick={() =>
               void ask({
@@ -1214,7 +1250,7 @@ function StructuredDocEditorBody({
                             <>
                               <button
                                 type="button"
-                                className="structured-doc-edit"
+                                className="text-button structured-doc-edit"
                                 onClick={() =>
                                   setEditing(
                                     editing === path.join("/")
@@ -1227,7 +1263,7 @@ function StructuredDocEditorBody({
                               </button>
                               <button
                                 type="button"
-                                className="structured-doc-edit"
+                                className="text-button structured-doc-edit"
                                 onClick={() => void commentOn(block, index)}
                               >
                                 Comment
@@ -1235,10 +1271,9 @@ function StructuredDocEditorBody({
                               {editing === path.join("/") && (
                                 <button
                                   type="button"
-                                  className="structured-doc-edit"
+                                  className="text-button structured-doc-edit"
                                   disabled={
                                     sourcePending ||
-                                    !block.id ||
                                     state.busy ||
                                     docEditorSessionDirty(session) ||
                                     state.source !== null
@@ -1369,6 +1404,7 @@ function StructuredDocEditorBody({
                     <h2>Markdown</h2>
                     {canWrite && (
                       <button
+                        className="secondary"
                         type="button"
                         disabled={
                           sourcePending ||
@@ -1428,7 +1464,11 @@ function StructuredDocEditorBody({
             >
               <div className="structured-doc-history-head">
                 <h2>Comments</h2>
-                <button type="button" onClick={() => setCommentsOpen(false)}>
+                <button
+                  className="secondary"
+                  type="button"
+                  onClick={() => setCommentsOpen(false)}
+                >
                   Close
                 </button>
               </div>
@@ -1455,6 +1495,7 @@ function StructuredDocEditorBody({
                 <div className="structured-doc-history-head">
                   <h2>History</h2>
                   <button
+                    className="secondary"
                     type="button"
                     disabled={historyBusy}
                     onClick={() => {
@@ -1486,6 +1527,7 @@ function StructuredDocEditorBody({
                     {versions.map((version) => (
                       <li key={version.version}>
                         <button
+                          className="secondary"
                           type="button"
                           disabled={historyBusy}
                           onClick={() => void selectVersion(version.version)}
@@ -1514,6 +1556,7 @@ function StructuredDocEditorBody({
                       </div>
                     )}
                     <button
+                      className="secondary"
                       type="button"
                       disabled={
                         !canWrite ||

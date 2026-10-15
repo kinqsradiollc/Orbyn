@@ -68,6 +68,18 @@ button {
     border-color var(--motion-fast) var(--ease-out),
     color var(--motion-fast) var(--ease-out);
 }
+/* Shared fallback for every action: feature classes can override at any specificity. */
+:where(button) {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  padding: 8px 12px;
+  line-height: 1.4;
+}
+:where(button:not(:disabled):hover) {
+  background: var(--color-surfaceMuted);
+}
 /*
  * A field nobody styled still looks like the rest of the app: rounded, the
  * same border and type as inline forms. :where() keeps this at zero

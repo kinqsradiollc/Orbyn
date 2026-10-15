@@ -67,3 +67,5 @@ export * from "./doc-refresh.js";
 export * from "./view-draft-store.js";
 
 export * from "./latex-preview-store.js";
+
+export * from "./doc-assist-target.js";

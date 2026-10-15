@@ -215,3 +215,11 @@ Agent preferences use named nested groups. After first opening, folding retains
 form state; active requests prevent folding or closing their owner. Permission
 and sharing decisions remain visible inside the relevant task. Compiler launchers
 must retain an init process so repeated previews cannot exhaust process capacity.
+
+### Shared action defaults
+
+All web buttons receive a themed fallback with zero selector specificity; named
+primary, secondary, text and icon styles remain the intended component choices.
+Feature styles retain their overrides. Structured document toolbar, block,
+history and source actions explicitly use shared classes. Audit nested actions
+as well as page headers; unclassified actions must not fall back to browser chrome.

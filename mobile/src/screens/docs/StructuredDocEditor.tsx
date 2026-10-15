@@ -32,7 +32,7 @@ import {
 import { DocSourceAsk } from "./DocSourceAsk";
 import { DocSuggestions } from "./DocSuggestions";
 import { DocSourcePreview } from "./DocSourcePreview";
-import { DocEditorStore } from "@orbyn/api-client";
+import { DocEditorStore, prepareDocAssistTarget } from "@orbyn/api-client";
 import { Pressable } from "../../motion";
 import { ActionSheet } from "../../components/MoreMenu";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -293,14 +293,34 @@ function StructuredDocEditorBody({
     }
     return current;
   };
-  const askForBlock = (block: DocBlock) => {
+  const askForBlock = async (block: DocBlock) => {
+    if (sourceMutation.current || !canWrite || !currentPage()) return;
+    const account = authSession.token;
+    const ticket = {};
+    const owns = () =>
+      sourceAlive.current &&
+      sourceMutation.current === ticket &&
+      authSession.token === account &&
+      sourceOwner.current.id === doc.id &&
+      sourceOwner.current.userId === userId;
+    sourceMutation.current = ticket;
+    setSourcePending(true);
     try {
-      if (!block.id || !("text" in block) || !block.text.trim())
-        throw new Error("Save this text before asking the assistant.");
-      savedSource(block);
-      setSourceAsk({ ...block });
+      const target = await prepareDocAssistTarget(
+        store,
+        client,
+        doc.id,
+        block,
+        owns,
+      );
+      if (owns()) setSourceAsk(target);
     } catch (error) {
-      report(error);
+      if (owns()) report(error);
+    } finally {
+      if (sourceMutation.current === ticket) {
+        sourceMutation.current = null;
+        if (sourceAlive.current) setSourcePending(false);
+      }
     }
   };
   const requestSourceSuggestion = async (instruction: string) => {
@@ -1243,7 +1263,6 @@ function StructuredDocEditorBody({
                                       style={styles.actionTarget}
                                       disabled={
                                         sourcePending ||
-                                        !block.id ||
                                         state.busy ||
                                         docEditorSessionDirty(session) ||
                                         state.source !== null

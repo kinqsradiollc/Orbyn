@@ -206,3 +206,12 @@ and must not look like an empty result. Bind results to the current query and
 retain that query when opening a result fails. Validate search length visibly
 rather than searching a silently shortened prefix. Deferred menu actions belong
 to their opening/account and execute at most once; cancel timers on teardown.
+
+### Action styling coverage
+
+Give new actions the appropriate shared primary, secondary, text or icon control
+style. Bare buttons still receive the global themed fallback at zero specificity;
+feature selectors may override it. Audit nested block actions, menu items,
+recovery buttons and source toolbars as well as the main page toolbar. A class
+name or source inventory is not rendered acceptance: inspect the affected actions
+in both themes and at the narrow task width in the agreed visual batch.
