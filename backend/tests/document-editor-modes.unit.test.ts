@@ -10,12 +10,19 @@ for (const native of [false, true]) {
   test(`${native ? "mobile" : "web"} exposes Note, Markdown and LaTeX as primary format choices`, () => {
     const module = { exports: {} as any };
     const tokens = {
-      colors: { accent: "accent", accentSoft: "soft", muted: "muted" },
+      colors: {
+        accent: "accent",
+        accentSoft: "soft",
+        muted: "muted",
+        text: "text",
+        surfaceMuted: "surfaceMuted",
+      },
       fonts: { medium: "medium" },
       radii: { input: 8 },
       themed: (create: () => unknown) => create(),
     };
     const deps: any = {
+      "./doc-editor-modes.css": {},
       react: React,
       "react/jsx-runtime": require("react/jsx-runtime"),
       "react-native": {

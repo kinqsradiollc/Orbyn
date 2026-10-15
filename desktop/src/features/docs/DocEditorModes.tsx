@@ -1,3 +1,5 @@
+import "./doc-editor-modes.css";
+
 export type DocumentEditorMode = "note" | "markdown" | "latex";
 
 /** Editing formats are primary document tools, visible before opening a menu. */
@@ -11,11 +13,7 @@ export function DocEditorModes({
   onChange: (mode: DocumentEditorMode) => void;
 }) {
   return (
-    <div
-      className="segmented doc-editor-modes"
-      role="group"
-      aria-label="Document editor"
-    >
+    <div className="doc-editor-modes" role="group" aria-label="Document editor">
       {(
         [
           ["note", "Note"],

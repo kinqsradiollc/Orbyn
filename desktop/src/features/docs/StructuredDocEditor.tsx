@@ -1,5 +1,7 @@
 import { DocLatexPreviewProvider } from "./DocLatexPreview";
 import { DocEditorModes } from "./DocEditorModes";
+import { DocWritingBlock } from "./DocWritingBlock";
+import { ArrowLeft, MoreHorizontal, Plus } from "lucide-react";
 import { ownsEditorKey } from "./editor-input";
 import {
   useCallback,
@@ -13,6 +15,7 @@ import {
 } from "react";
 import {
   docContainerBlocks,
+  newBlockId,
   docLatexOperation,
   docFragmentIndex,
   docEditorSessionDirty,
@@ -132,6 +135,7 @@ function StructuredDocEditorBody({
   const [navigationError, setNavigationError] = useState<string | null>(null);
   const [commentTops, setCommentTops] = useState<Record<string, number>>({});
   const sourceRef = useRef<HTMLTextAreaElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
   const previewRef = useRef<HTMLElement>(null);
   const ignoredSourceScroll = useRef<number | null>(null);
   const ignoredPreviewScroll = useRef<number | null>(null);
@@ -167,6 +171,24 @@ function StructuredDocEditorBody({
     else store.adopt(doc);
   }, [store, doc]);
   const session = state.session;
+  useLayoutEffect(() => {
+    const input = titleRef.current;
+    if (!input) return;
+    const size = () => {
+      input.style.height = "auto";
+      input.style.height = `${input.scrollHeight}px`;
+    };
+    size();
+    let width = input.getBoundingClientRect().width;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry && entry.contentRect.width !== width) {
+        width = entry.contentRect.width;
+        size();
+      }
+    });
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [session?.title, canWrite]);
   const document = session?.document;
   const source = document ? sourceOf(document) : null;
   useEffect(() => {
@@ -896,6 +918,7 @@ function StructuredDocEditorBody({
     >
       <div
         className="structured-doc-editor"
+        data-source-open={activePane !== "preview" || undefined}
         inert={historyBusy}
         aria-busy={historyBusy || undefined}
       >
@@ -961,7 +984,9 @@ function StructuredDocEditorBody({
           />
           {onBack && (
             <button
-              className="secondary"
+              className="icon-button structured-doc-back"
+              aria-label="All documents"
+              title="All documents"
               disabled={sourcePending || !!sourceAsk || latexOpen}
               onClick={() => {
                 if (
@@ -986,7 +1011,7 @@ function StructuredDocEditorBody({
                 } else onBack();
               }}
             >
-              Back
+              <ArrowLeft size={16} />
             </button>
           )}
           <span className="structured-doc-status">
@@ -1002,7 +1027,7 @@ function StructuredDocEditorBody({
                     ? "Unsaved"
                     : "Saved"}
           </span>
-          {canWrite && (
+          {canWrite && session && docEditorSessionDirty(session) && (
             <button
               className="secondary"
               onClick={() => void save(!!state.error)}
@@ -1021,12 +1046,14 @@ function StructuredDocEditorBody({
           )}
           <div className="structured-doc-menu" ref={menuRef}>
             <button
-              className="secondary"
+              className="icon-button"
               type="button"
+              aria-label="Page actions"
+              title="Page actions"
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen(!menuOpen)}
             >
-              More
+              <MoreHorizontal size={16} />
             </button>
             {menuOpen && (
               <div className="structured-doc-menu-items">
@@ -1181,7 +1208,9 @@ function StructuredDocEditorBody({
         ) : (
           <>
             {canWrite ? (
-              <input
+              <textarea
+                ref={titleRef}
+                rows={1}
                 className="structured-doc-title"
                 aria-label="Page title"
                 value={session.title}
@@ -1244,82 +1273,74 @@ function StructuredDocEditorBody({
                           : undefined
                       }
                       renderLeaf={(block, index, path) => (
-                        <div
-                          className="structured-doc-leaf"
-                          data-block-id={block.id}
-                          data-leaf-index={index}
-                          data-container-path={path.join("/")}
-                          onClick={(event) => {
-                            if (
-                              !(event.target as HTMLElement).closest(
-                                "a, button, input, textarea",
-                              )
+                        <DocWritingBlock
+                          index={index}
+                          path={path}
+                          blockId={block.id}
+                          text={"text" in block ? block.text : null}
+                          canWrite={canWrite}
+                          editing={editing === path.join("/")}
+                          sourceOpen={activePane !== "preview"}
+                          onSourceFocus={() => sourceAtBlock(path)}
+                          onEdit={() => setEditing(path.join("/"))}
+                          onDone={() => setEditing(null)}
+                          onChange={(text) =>
+                            change(
+                              {
+                                kind: "replace-leaf",
+                                path,
+                                block: { ...block, text } as DocBlock,
+                              },
+                              document,
                             )
-                              sourceAtBlock(path);
-                          }}
+                          }
+                          onComment={() => void commentOn(block, index)}
+                          onAssist={() => askForBlock(block)}
+                          assistDisabled={
+                            sourcePending ||
+                            state.busy ||
+                            docEditorSessionDirty(session) ||
+                            state.source !== null
+                          }
                         >
                           <BlockView block={block} pageBlocks={leaves} />
-                          {canWrite && "text" in block && (
-                            <>
-                              <button
-                                type="button"
-                                className="text-button structured-doc-edit"
-                                onClick={() =>
-                                  setEditing(
-                                    editing === path.join("/")
-                                      ? null
-                                      : path.join("/"),
-                                  )
-                                }
-                              >
-                                {editing === path.join("/") ? "Done" : "Edit"}
-                              </button>
-                              <button
-                                type="button"
-                                className="text-button structured-doc-edit"
-                                onClick={() => void commentOn(block, index)}
-                              >
-                                Comment
-                              </button>
-                              {editing === path.join("/") && (
-                                <button
-                                  type="button"
-                                  className="text-button structured-doc-edit"
-                                  disabled={
-                                    sourcePending ||
-                                    state.busy ||
-                                    docEditorSessionDirty(session) ||
-                                    state.source !== null
-                                  }
-                                  onClick={() => askForBlock(block)}
-                                >
-                                  Ask assistant
-                                </button>
-                              )}
-                              {editing === path.join("/") && (
-                                <textarea
-                                  aria-label={`Edit block ${index + 1}`}
-                                  value={block.text}
-                                  onChange={(event) =>
-                                    change(
-                                      {
-                                        kind: "replace-leaf",
-                                        path,
-                                        block: {
-                                          ...block,
-                                          text: event.currentTarget.value,
-                                        } as DocBlock,
-                                      },
-                                      document,
-                                    )
-                                  }
-                                />
-                              )}
-                            </>
-                          )}
-                        </div>
+                        </DocWritingBlock>
                       )}
                     />
+                    {canWrite && activePane === "preview" && (
+                      <button
+                        type="button"
+                        className="text-button doc-add-text"
+                        disabled={
+                          state.sourceInvalid ||
+                          !!state.conflict ||
+                          sourcePending ||
+                          !!sourceAsk
+                        }
+                        onClick={() => {
+                          const index = document.nodes.length;
+                          change(
+                            {
+                              kind: "insert",
+                              owner: [],
+                              index,
+                              node: {
+                                kind: "block",
+                                block: {
+                                  type: "paragraph",
+                                  text: "",
+                                  id: newBlockId(),
+                                },
+                              },
+                            },
+                            document,
+                          );
+                          if (!store.state.error) setEditing(String(index));
+                        }}
+                      >
+                        <Plus size={15} /> Add text
+                      </button>
+                    )}
                   </DocNavigationContext.Provider>
                 )}
               </section>

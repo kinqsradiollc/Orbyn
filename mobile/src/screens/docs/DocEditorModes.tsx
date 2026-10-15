@@ -51,18 +51,17 @@ const styles = themed(() =>
     modes: {
       flexDirection: "row",
       flexWrap: "wrap",
-      gap: 4,
-      marginVertical: 8,
+      gap: 2,
     },
     target: {
       minHeight: 44,
-      paddingHorizontal: 12,
+      paddingHorizontal: 10,
       justifyContent: "center",
       borderRadius: radii.input,
     },
-    selected: { backgroundColor: colors.accentSoft },
+    selected: { backgroundColor: colors.surfaceMuted },
     disabled: { opacity: 0.5 },
-    label: { fontSize: 15, fontFamily: fonts.medium, color: colors.muted },
-    active: { color: colors.accent },
+    label: { fontSize: 13, fontFamily: fonts.medium, color: colors.muted },
+    active: { color: colors.text },
   }),
 );

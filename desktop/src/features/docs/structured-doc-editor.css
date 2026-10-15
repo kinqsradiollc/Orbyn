@@ -1,6 +1,6 @@
 .structured-doc-editor {
   min-width: 0;
-  padding: clamp(12px, 2vw, 20px);
+  padding: 0 clamp(16px, 3vw, 32px) 40px;
   container-type: inline-size;
 }
 .structured-doc-toolbar {
@@ -8,9 +8,15 @@
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  min-height: 56px;
+  padding-block: 8px;
+  border-bottom: 1px solid var(--color-divider);
+}
+.structured-doc-back {
+  order: -1;
 }
 .structured-doc-status {
-  margin-right: auto;
+  margin-left: auto;
   min-width: 0;
   font-size: 13px;
 }
@@ -18,8 +24,27 @@
   display: block;
   width: 100%;
   min-width: 0;
-  margin: 12px 0 16px;
+  max-width: 760px;
+  margin: 32px auto 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-family: inherit;
   font-size: 24px;
+  min-height: 1lh;
+  font-weight: 600;
+  line-height: 1.3;
+  resize: none;
+  field-sizing: content;
+  overflow: hidden;
+}
+.structured-doc-editor[data-source-open] .structured-doc-title {
+  max-width: none;
+}
+.structured-doc-title:focus-visible {
+  outline-offset: 8px;
 }
 .structured-doc-pane-switch {
   display: flex;
@@ -66,6 +91,19 @@
   gap: 16px;
   min-width: 0;
 }
+.structured-doc-columns[data-active-pane="preview"] {
+  max-width: 760px;
+  margin-inline: auto;
+}
+.structured-doc-columns[data-active-pane="preview"] > .structured-doc-preview {
+  height: auto;
+  overflow: visible;
+  padding: 0;
+}
+.structured-doc-editor > h1 {
+  max-width: 760px;
+  margin-inline: auto;
+}
 .structured-doc-columns > section {
   min-width: 0;
 }
@@ -102,22 +140,79 @@
   padding: 12px;
 }
 .structured-doc-leaf {
+  position: relative;
   min-width: 0;
   overflow-wrap: anywhere;
+  padding: 4px 36px 4px 0;
+  line-height: 1.7;
+}
+.structured-doc-leaf[data-editing] {
+  padding-right: 72px;
+}
+.structured-doc-leaf:focus-visible {
+  outline-offset: 3px;
 }
 .structured-doc-leaf textarea {
   width: 100%;
-  min-height: 72px;
+  min-height: 1lh;
   max-height: 240px;
   overflow: auto;
   resize: none;
-  margin: 4px 0 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  field-sizing: content;
+  line-height: inherit;
 }
-.structured-doc-edit {
-  font-size: 13px;
-  margin: 0 8px 8px 0;
-  padding-inline: 8px;
-  border-radius: var(--radius-sm);
+.structured-doc-leaf textarea:focus {
+  outline: none;
+}
+.structured-doc-leaf:has(textarea:focus-visible) {
+  outline: 1px solid var(--color-borderStrong);
+  outline-offset: 6px;
+}
+.doc-block-tools {
+  position: absolute;
+  right: 0;
+  top: 4px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  pointer-events: none;
+}
+.structured-doc-leaf:hover > .doc-block-tools,
+.structured-doc-leaf:focus-within > .doc-block-tools,
+.structured-doc-leaf[data-editing] > .doc-block-tools {
+  opacity: 1;
+  pointer-events: auto;
+}
+.doc-block-menu {
+  display: grid;
+  gap: 2px;
+}
+.doc-block-menu button {
+  text-align: left;
+  justify-content: flex-start;
+}
+.doc-add-text {
+  margin-top: 12px;
+  color: var(--color-textMuted);
+}
+@media (hover: none), (pointer: coarse) {
+  .doc-block-tools {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .structured-doc-leaf {
+    padding-right: 48px;
+  }
+  .structured-doc-leaf[data-editing] {
+    padding-right: 92px;
+  }
 }
 .structured-doc-error {
   color: var(--color-danger);
@@ -142,6 +237,8 @@
   box-shadow: var(--shadow-popover);
 }
 .structured-doc-menu-items button {
+  border: 0;
+  background: transparent;
   justify-content: flex-start;
   text-align: left;
 }
@@ -237,8 +334,7 @@
 .structured-doc-toolbar > button,
 .structured-doc-menu-items button,
 .structured-doc-history-head button,
-.structured-doc-history ol button,
-.structured-doc-edit {
+.structured-doc-history ol button {
   min-height: var(--button-h);
 }
 .structured-doc-history-head {

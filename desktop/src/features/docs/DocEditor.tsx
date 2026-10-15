@@ -28,11 +28,8 @@ import {
   FileInput,
   GripVertical,
   Highlighter,
-  History,
-  Info,
   Italic,
   Link,
-  Link2,
   ListChecks,
   ListPlus,
   Loader2,
@@ -3428,8 +3425,13 @@ function LegacyDocEditor({
           )}
           <div className="doc-bar">
             {onBack && (
-              <button className="text-button" onClick={onBack}>
-                <ArrowLeft size={15} /> All documents
+              <button
+                className="icon-button"
+                aria-label="All documents"
+                title="All documents"
+                onClick={onBack}
+              >
+                <ArrowLeft size={15} />
               </button>
             )}
             <span className="doc-save" role="status">
@@ -3500,28 +3502,6 @@ function LegacyDocEditor({
               >
                 <Sparkles size={15} />
               </button>
-              <button
-                className={"icon-button" + (showHistory ? " is-on" : "")}
-                onClick={() => {
-                  if (showHistory) setHistoryView(null);
-                  setShowInfo(false);
-                  setShowHistory((v) => !v);
-                }}
-                disabled={chat}
-                aria-label="Page history"
-                aria-pressed={showHistory}
-                title="Page history"
-              >
-                <History size={15} />
-              </button>
-              <button
-                className="icon-button"
-                onClick={copyPageLink}
-                aria-label="Copy link"
-                title="Copy link"
-              >
-                <Link2 size={15} />
-              </button>
               {/* On a phone's browser: the system share sheet (SHR-07). */}
               <SharePageButton
                 docId={doc.id}
@@ -3575,6 +3555,45 @@ function LegacyDocEditor({
                 </button>
                 {moreMenu && (
                   <ul className="doc-download-menu" role="menu">
+                    <li>
+                      <button
+                        role="menuitem"
+                        disabled={chat}
+                        onClick={() => {
+                          setMoreMenu(false);
+                          if (showHistory) setHistoryView(null);
+                          setShowInfo(false);
+                          setShowHistory((value) => !value);
+                        }}
+                      >
+                        Page history
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        role="menuitem"
+                        onClick={() => {
+                          setMoreMenu(false);
+                          copyPageLink();
+                        }}
+                      >
+                        Copy link
+                      </button>
+                    </li>
+                    <li>
+                      <button
+                        role="menuitem"
+                        disabled={chat}
+                        onClick={() => {
+                          setMoreMenu(false);
+                          setShowHistory(false);
+                          setHistoryView(null);
+                          setShowInfo((value) => !value);
+                        }}
+                      >
+                        Page info
+                      </button>
+                    </li>
                     <li>
                       <button
                         role="menuitem"
@@ -3839,21 +3858,6 @@ function LegacyDocEditor({
                   </ul>
                 )}
               </span>
-              {/* The page's facts live in one Info rail (NAV-04). */}
-              <button
-                className={"icon-button" + (showInfo ? " is-on" : "")}
-                onClick={() => {
-                  setShowHistory(false);
-                  setHistoryView(null);
-                  setShowInfo((v) => !v);
-                }}
-                disabled={chat}
-                aria-label="Page info"
-                aria-pressed={showInfo}
-                title="Page info"
-              >
-                <Info size={15} />
-              </button>
             </span>
           </div>
 

@@ -16,6 +16,7 @@ import {
 } from "react-native";
 import {
   docContainerBlocks,
+  newBlockId,
   docLatexOperation,
   docFragmentIndex,
   docEditorSessionDirty,
@@ -34,7 +35,7 @@ import { DocSuggestions } from "./DocSuggestions";
 import { DocSourcePreview } from "./DocSourcePreview";
 import { DocEditorStore, prepareDocAssistTarget } from "@orbyn/api-client";
 import { Pressable } from "../../motion";
-import { ActionSheet } from "../../components/MoreMenu";
+import { ActionSheet, MoreMenu } from "../../components/MoreMenu";
 import { BottomSheet } from "../../components/BottomSheet";
 import { Icon } from "../../components/Icon";
 import { colors, fonts, inputFontSize, radii, themed } from "../../theme";
@@ -797,7 +798,22 @@ function StructuredDocEditorBody({
                 <Text style={styles.action}>Ask assistant</Text>
               </Pressable>
             )}
-            {canWrite && (
+            <Text style={styles.status}>
+              {!session
+                ? state.busy
+                  ? "Opening page…"
+                  : "Page unavailable"
+                : state.busy
+                  ? "Saving…"
+                  : state.conflict
+                    ? "Review changes"
+                    : session && docEditorSessionDirty(session)
+                      ? keptOffline
+                        ? "Saved on this phone"
+                        : "Unsaved"
+                      : "Saved"}
+            </Text>
+            {canWrite && session && docEditorSessionDirty(session) && (
               <Pressable
                 accessibilityRole="button"
                 style={styles.actionTarget}
@@ -953,21 +969,7 @@ function StructuredDocEditorBody({
               onClose={() => setPageAction(null)}
             />
           )}
-          <Text style={styles.status}>
-            {!session
-              ? state.busy
-                ? "Opening page…"
-                : "Page unavailable"
-              : state.busy
-                ? "Saving…"
-                : state.conflict
-                  ? "Review changes"
-                  : session && docEditorSessionDirty(session)
-                    ? keptOffline
-                      ? "Saved on this phone"
-                      : "Unsaved"
-                    : "Saved"}
-          </Text>
+
           {state.error !== null && (
             <View>
               <Text accessibilityRole="alert" style={styles.error}>
@@ -1217,87 +1219,12 @@ function StructuredDocEditorBody({
                                   );
                                 }}
                               >
-                                <DocBody
-                                  content={[block]}
-                                  pageContent={leaves}
-                                  pageIndex={index}
-                                />
-                                {!!block.id && (
-                                  <Pressable
-                                    accessibilityRole="button"
-                                    accessibilityLabel={`Comments on block ${index + 1}`}
-                                    onPress={() => {
-                                      void toggleThread(block.id!);
-                                    }}
-                                  >
-                                    <Text style={styles.editAction}>
-                                      {(comments.counts[block.id] ?? 0) > 0
-                                        ? `${comments.counts[block.id]} ${comments.counts[block.id] === 1 ? "comment" : "comments"}`
-                                        : "Comment"}
-                                    </Text>
-                                  </Pressable>
-                                )}
-                                {!!block.id && openThread === block.id && (
-                                  <DocThread
-                                    comments={
-                                      comments.anchored.get(block.id) ?? []
-                                    }
-                                    state={comments}
-                                    userId={userId}
-                                    quote={
-                                      comments.anchored.get(block.id)?.[0]
-                                        ?.quote
-                                    }
-                                    placeholder="Comment on this line…"
-                                    anchor={{
-                                      block_id: block.id,
-                                      quote: String(
-                                        "text" in block ? block.text : "",
-                                      ),
-                                    }}
-                                  />
-                                )}
-                                {canWrite && "text" in block && (
-                                  <Pressable
-                                    accessibilityRole="button"
-                                    onPress={() =>
-                                      setEditing(
-                                        editing === path.join("/")
-                                          ? null
-                                          : path.join("/"),
-                                      )
-                                    }
-                                  >
-                                    <Text style={styles.editAction}>
-                                      {editing === path.join("/")
-                                        ? "Done"
-                                        : "Edit"}
-                                    </Text>
-                                  </Pressable>
-                                )}
-                                {canWrite &&
+                                <View style={styles.leafBody}>
+                                  {canWrite &&
                                   editing === path.join("/") &&
-                                  "text" in block && (
-                                    <Pressable
-                                      accessibilityRole="button"
-                                      style={styles.actionTarget}
-                                      disabled={
-                                        sourcePending ||
-                                        state.busy ||
-                                        docEditorSessionDirty(session) ||
-                                        state.source !== null
-                                      }
-                                      onPress={() => askForBlock(block)}
-                                    >
-                                      <Text style={styles.editAction}>
-                                        Ask assistant
-                                      </Text>
-                                    </Pressable>
-                                  )}
-                                {canWrite &&
-                                  editing === path.join("/") &&
-                                  "text" in block && (
+                                  "text" in block ? (
                                     <TextInput
+                                      autoFocus
                                       accessibilityLabel={`Edit block ${index + 1}`}
                                       style={styles.leafInput}
                                       multiline
@@ -1313,10 +1240,130 @@ function StructuredDocEditorBody({
                                         });
                                       }}
                                     />
+                                  ) : (
+                                    <DocBody
+                                      content={[block]}
+                                      pageContent={leaves}
+                                      pageIndex={index}
+                                      onEditBlock={
+                                        canWrite && "text" in block
+                                          ? () => setEditing(path.join("/"))
+                                          : undefined
+                                      }
+                                    />
                                   )}
+                                  {!!block.id && openThread === block.id && (
+                                    <DocThread
+                                      comments={
+                                        comments.anchored.get(block.id) ?? []
+                                      }
+                                      state={comments}
+                                      userId={userId}
+                                      quote={
+                                        comments.anchored.get(block.id)?.[0]
+                                          ?.quote
+                                      }
+                                      placeholder="Comment on this line…"
+                                      anchor={{
+                                        block_id: block.id,
+                                        quote: String(
+                                          "text" in block ? block.text : "",
+                                        ),
+                                      }}
+                                    />
+                                  )}
+                                </View>
+                                <MoreMenu
+                                  label={`Block ${index + 1} actions`}
+                                  actions={[
+                                    ...(canWrite && "text" in block
+                                      ? [
+                                          {
+                                            label:
+                                              editing === path.join("/")
+                                                ? "Done"
+                                                : "Edit text",
+                                            onPress: () =>
+                                              setEditing(
+                                                editing === path.join("/")
+                                                  ? null
+                                                  : path.join("/"),
+                                              ),
+                                          },
+                                        ]
+                                      : []),
+                                    ...(block.id
+                                      ? [
+                                          {
+                                            label:
+                                              (comments.counts[block.id] ?? 0) >
+                                              0
+                                                ? `Comments (${comments.counts[block.id]})`
+                                                : "Comment",
+                                            onPress: () => {
+                                              void toggleThread(block.id!);
+                                            },
+                                          },
+                                        ]
+                                      : []),
+                                    ...(canWrite && "text" in block
+                                      ? [
+                                          {
+                                            label: "Ask assistant",
+                                            disabled:
+                                              sourcePending ||
+                                              state.busy ||
+                                              docEditorSessionDirty(session) ||
+                                              state.source !== null,
+                                            onPress: () => askForBlock(block),
+                                          },
+                                        ]
+                                      : []),
+                                  ]}
+                                />
                               </View>
                             )}
                           />
+                          {canWrite && !sourceVisible && !split && (
+                            <Pressable
+                              accessibilityRole="button"
+                              style={styles.addText}
+                              disabled={
+                                state.sourceInvalid ||
+                                !!state.conflict ||
+                                sourcePending ||
+                                !!sourceAsk
+                              }
+                              onPress={() => {
+                                const index = document.nodes.length;
+                                editGeneration.current++;
+                                offlineQueued.current = false;
+                                setKeptOffline(false);
+                                store.changeOperation(document, {
+                                  kind: "insert",
+                                  owner: [],
+                                  index,
+                                  node: {
+                                    kind: "block",
+                                    block: {
+                                      type: "paragraph",
+                                      text: "",
+                                      id: newBlockId(),
+                                    },
+                                  },
+                                });
+                                if (!store.state.error)
+                                  setEditing(String(index));
+                              }}
+                            >
+                              <Icon
+                                name="plus"
+                                size={16}
+                                color={colors.muted}
+                              />
+                              <Text style={styles.status}>Add text</Text>
+                            </Pressable>
+                          )}
                         </DocNavigationContext.Provider>
                       )}
                     </View>
@@ -1356,9 +1403,14 @@ const styles = themed(() =>
       minHeight: 44,
       paddingVertical: 12,
     },
-    status: { color: colors.muted, fontSize: 13 },
+    status: { color: colors.muted, fontSize: 13, marginLeft: "auto" },
     error: { color: colors.danger, fontSize: 13 },
-    title: { color: colors.text, fontSize: 24, fontFamily: fonts.semibold },
+    title: {
+      color: colors.text,
+      fontSize: 24,
+      fontFamily: fonts.semibold,
+      paddingVertical: 16,
+    },
     source: {
       flex: 1,
       minHeight: 0,
@@ -1374,20 +1426,29 @@ const styles = themed(() =>
     hiddenPane: { display: "none" },
     preview: { flex: 1, minWidth: 0 },
     previewContent: { paddingBottom: 24 },
-    leaf: { minWidth: 0 },
-    editAction: {
-      color: colors.accent,
-      fontSize: 13,
+    leaf: {
+      minWidth: 0,
+      flexDirection: "row",
+      alignItems: "flex-start",
+      gap: 4,
+      paddingVertical: 4,
+    },
+    leafBody: { flex: 1, minWidth: 0 },
+    addText: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
       minHeight: 44,
-      paddingVertical: 12,
+      alignSelf: "flex-start",
+      paddingHorizontal: 8,
     },
     leafInput: {
       minHeight: 44,
-      borderWidth: 1,
-      borderColor: colors.border,
+      maxHeight: 240,
       color: colors.text,
-      padding: 8,
+      padding: 0,
       fontSize: inputFontSize,
+      lineHeight: 26,
     },
   }),
 );

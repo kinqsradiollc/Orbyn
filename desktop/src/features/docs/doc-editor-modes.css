@@ -1,0 +1,25 @@
+/* Format tools are quiet tabs; the page itself stays the primary surface. */
+.doc-editor-modes {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.doc-editor-modes button {
+  min-height: var(--button-h);
+  padding: 5px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-textMuted);
+  font-size: var(--button-fs);
+}
+.doc-editor-modes button[aria-pressed="true"] {
+  background: var(--color-surfaceMuted);
+  color: var(--color-text);
+  font-weight: 600;
+}
+.doc-editor-modes button:not(:disabled):hover {
+  background: var(--color-hover);
+}

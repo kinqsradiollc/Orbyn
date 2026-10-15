@@ -91,6 +91,12 @@ Use the shared scale by role at normal text settings:
 
 ## Content and actions
 
+- A document editor starts with a writing surface. Do not put repeated Edit,
+  Comment and assistant action rows under every paragraph. Use contextual block
+  tools, replace rendered text in place while editing, and keep source optional.
+  Review the default note's reading rhythm and actual typing flow; consistent
+  button dimensions alone do not qualify a document layout.
+
 - Put the task, current state, and main action first. Use a brief helper only
   where it changes the person's decision; reveal advanced details on demand.
 - Default to a clear label and, only when needed, one short helper sentence.

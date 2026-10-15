@@ -1,4 +1,5 @@
-import { Eye, PencilLine } from "lucide-react";
+import { Eye } from "lucide-react";
+import { Select } from "../../components/Select";
 import { MODE_LABELS, modesFor, type DocMode } from "@orbyn/core";
 
 const MOD =
@@ -6,12 +7,6 @@ const MOD =
   /Mac|iPhone|iPad/.test(navigator.userAgent)
     ? "⌘"
     : "Ctrl+";
-
-const ICONS: Record<DocMode, typeof Eye> = {
-  edit: PencilLine,
-  suggest: PencilLine,
-  read: Eye,
-};
 
 /**
  * How this page is being worked on: changing it, or only reading it.
@@ -42,29 +37,18 @@ export function DocModeSwitch({
       </span>
     );
   return (
-    <span
-      className="doc-mode"
-      role="group"
+    <Select
+      className="doc-mode-picker"
       aria-label="How you're working on this page"
+      title={`Page mode (${MOD}⇧R switches)`}
+      value={mode}
+      onChange={(event) => onChange(event.target.value as DocMode)}
     >
-      {modes.map((m) => {
-        const Icon = ICONS[m];
-        return (
-          <button
-            key={m}
-            aria-pressed={mode === m}
-            className={mode === m ? "is-on" : undefined}
-            title={
-              m === "suggest"
-                ? MODE_LABELS[m].blurb
-                : `${MODE_LABELS[m].blurb} (${MOD}⇧R switches)`
-            }
-            onClick={() => onChange(m)}
-          >
-            <Icon size={13} aria-hidden="true" /> {MODE_LABELS[m].name}
-          </button>
-        );
-      })}
-    </span>
+      {modes.map((value) => (
+        <option key={value} value={value}>
+          {MODE_LABELS[value].name}
+        </option>
+      ))}
+    </Select>
   );
 }
