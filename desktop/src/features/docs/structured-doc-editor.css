@@ -375,3 +375,37 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Keep navigation and page actions together; formats form one deliberate row. */
+@container (max-width: 420px) {
+  .structured-doc-toolbar {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    gap: 0 4px;
+    padding-block: 4px;
+  }
+  .structured-doc-toolbar > .structured-doc-back {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .structured-doc-toolbar > .structured-doc-status {
+    grid-column: 2;
+    grid-row: 1;
+    margin-left: 0;
+  }
+  .structured-doc-toolbar > .structured-doc-menu {
+    grid-column: 3;
+    grid-row: 1;
+  }
+  .structured-doc-toolbar > .doc-editor-modes {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .structured-doc-toolbar > .secondary {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+  .structured-doc-title {
+    margin-block: 20px;
+  }
+}

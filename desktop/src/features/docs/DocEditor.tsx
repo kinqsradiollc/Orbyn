@@ -4633,7 +4633,7 @@ function LegacyDocEditor({
               )}
             </div>
             <PageInfo
-              hidden={!showInfo || showHistory || focusReading || chat}
+              hidden={!showInfo || showHistory || chat}
               doc={doc}
               tags={tags}
               canWrite={canWrite}

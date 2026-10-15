@@ -678,7 +678,7 @@ function StructuredDocEditorBody({
     >
       <View
         ref={pageRef}
-        style={styles.page}
+        style={[styles.page, !sourceVisible && !split && styles.writingPage]}
         onLayout={(event) => {
           pageOffset.current = event.nativeEvent.layout.y;
           setPaneWidth(event.nativeEvent.layout.width);
@@ -1014,19 +1014,32 @@ function StructuredDocEditorBody({
           {session && document && (
             <>
               {canWrite ? (
-                <TextInput
-                  accessibilityLabel="Page title"
-                  style={styles.title}
-                  value={session.title}
-                  onChangeText={(title) => {
-                    editGeneration.current++;
-                    offlineQueued.current = false;
-                    setKeptOffline(false);
-                    store.changeTitle(session.title, title);
-                  }}
-                  maxLength={200}
-                  placeholder="Untitled"
-                />
+                <View style={styles.titleEditor}>
+                  <Text
+                    style={[styles.title, { opacity: 0 }]}
+                    accessible={false}
+                    accessibilityElementsHidden
+                    importantForAccessibility="no-hide-descendants"
+                  >
+                    {(session.title || "Untitled") + "\u200b"}
+                  </Text>
+                  <TextInput
+                    accessibilityLabel="Page title"
+                    style={[styles.title, StyleSheet.absoluteFill]}
+                    multiline
+                    scrollEnabled={false}
+                    textAlignVertical="top"
+                    value={session.title}
+                    onChangeText={(title) => {
+                      editGeneration.current++;
+                      offlineQueued.current = false;
+                      setKeptOffline(false);
+                      store.changeTitle(session.title, title);
+                    }}
+                    maxLength={200}
+                    placeholder="Untitled"
+                  />
+                </View>
               ) : (
                 <Text style={styles.title}>{session.title}</Text>
               )}
@@ -1379,6 +1392,7 @@ function StructuredDocEditorBody({
 const styles = themed(() =>
   StyleSheet.create({
     page: { flex: 1, minWidth: 0, gap: 10 },
+    writingPage: { width: "100%", maxWidth: 760, alignSelf: "center" },
     toolbar: {
       flexDirection: "row",
       flexWrap: "wrap",
@@ -1403,6 +1417,7 @@ const styles = themed(() =>
     },
     status: { color: colors.muted, fontSize: 13, marginLeft: "auto" },
     error: { color: colors.danger, fontSize: 13 },
+    titleEditor: { minHeight: 44 },
     title: {
       color: colors.text,
       fontSize: 24,

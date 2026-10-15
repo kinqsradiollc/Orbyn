@@ -37,6 +37,31 @@ test("writing replaces prose in place and yields to links, selections, source an
   const root = require("react-dom/client").createRoot(
     dom.window.document.querySelector("#root"),
   );
+  const actions = { exports: {} as any };
+  runInNewContext(
+    transformSync(
+      readFileSync(
+        new URL(
+          "../../desktop/src/features/docs/DocBlockActions.tsx",
+          import.meta.url,
+        ),
+        "utf8",
+      ),
+      {
+        loader: "tsx",
+        format: "cjs",
+        jsx: "automatic",
+      },
+    ).code,
+    {
+      module: actions,
+      exports: actions.exports,
+      require: (name: string) =>
+        name === "../../components/Popover"
+          ? { Popover: () => null }
+          : require(name),
+    },
+  );
   const module = { exports: {} as any };
   runInNewContext(
     transformSync(
@@ -58,16 +83,7 @@ test("writing replaces prose in place and yields to links, selections, source an
       exports: module.exports,
       window: dom.window,
       require: (name: string) =>
-        name === "./DocBlockActions"
-          ? {
-              DocBlockActions: () =>
-                React.createElement(
-                  "button",
-                  { "aria-label": "Block actions" },
-                  "…",
-                ),
-            }
-          : require(name),
+        name === "./DocBlockActions" ? actions.exports : require(name),
     },
   );
   let editing = false,
@@ -167,17 +183,32 @@ test("writing replaces prose in place and yields to links, selections, source an
       document.activeElement?.getAttribute("data-block-id"),
       "owned",
     );
+    await React.act(() => document.querySelector("p")!.click());
+    const finish = document.querySelector<HTMLButtonElement>(
+      '[aria-label="Finish editing block 1"]',
+    )!;
+    finish.focus();
+    await React.act(() => finish.click());
+    assert.equal(document.querySelector("textarea"), null);
+    assert.equal(
+      document.activeElement?.getAttribute("data-block-id"),
+      "owned",
+      "Finish must return focus to the stable block when the button disappears",
+    );
     sourceOpen = true;
     await React.act(render);
     await React.act(() => document.querySelector("p")!.click());
     assert.equal(sourceFocus, 1);
-    assert.equal(edits, 1, "a source pane owns source clicks");
+    assert.equal(edits, 2, "a source pane owns source clicks");
     sourceOpen = false;
     canWrite = false;
     await React.act(render);
     await React.act(() => document.querySelector("p")!.click());
-    assert.equal(edits, 1);
-    assert.equal(document.querySelector('[aria-label="Block actions"]'), null);
+    assert.equal(edits, 2);
+    assert.equal(
+      document.querySelector('[aria-label="Block 1 actions"]'),
+      null,
+    );
   } finally {
     await React.act(() => root.unmount());
     for (const [name, descriptor] of saved) {
@@ -359,3 +390,27 @@ for (const native of [false, true])
       dom.window.close();
     }
   });
+
+test("narrow writing corrections retain full titles and Viewing page information", () => {
+  const mobile = readFileSync(
+    new URL(
+      "../../mobile/src/screens/docs/StructuredDocEditor.tsx",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+  assert.match(mobile, /styles.titleEditor/);
+  assert.match(
+    mobile,
+    /styles.title, StyleSheet.absoluteFill[\s\S]*?multiline[\s\S]*?scrollEnabled=\{false\}/,
+  );
+  assert.match(mobile, /session.title \|\| "Untitled"/);
+  const legacy = readFileSync(
+    new URL("../../desktop/src/features/docs/DocEditor.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    legacy,
+    /<PageInfo\s+hidden=\{!showInfo \|\| showHistory \|\| chat\}/,
+  );
+});

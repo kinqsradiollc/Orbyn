@@ -4811,3 +4811,30 @@ dialog.image-viewer {
     padding-right: 46px;
   }
 }
+
+/* A narrow writing header groups formats and secondary actions without orphan rows. */
+@container document-pane (max-width: 420px) {
+  .doc-bar {
+    gap: 0 8px;
+  }
+  .doc-bar-actions {
+    width: 100%;
+    gap: 0;
+    justify-content: space-between;
+  }
+  .doc-bar-actions > .doc-editor-modes {
+    flex-basis: 100%;
+  }
+  .doc-bar-actions > .doc-mode-picker {
+    flex: 1;
+    min-width: 0;
+  }
+  .doc-bar-actions > .doc-mode-picker .select-control {
+    width: 100%;
+    padding-inline: 4px;
+    gap: 2px;
+  }
+  .doc-bar-actions :is(.icon-button, .doc-download) {
+    flex: none;
+  }
+}

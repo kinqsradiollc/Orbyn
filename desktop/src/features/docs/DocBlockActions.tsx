@@ -43,7 +43,13 @@ export function DocBlockActions({
           type="button"
           className="icon-button"
           aria-label={`Finish editing block ${index + 1}`}
-          onClick={onDone}
+          onClick={(event) => {
+            // The Finish control disappears; return focus to its stable block.
+            event.currentTarget
+              .closest<HTMLElement>(".structured-doc-leaf")
+              ?.focus();
+            onDone();
+          }}
         >
           <Check size={15} />
         </button>
