@@ -1,3 +1,4 @@
+import { colors as productColors } from "@orbyn/core";
 import React, { useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Alert } from "../../lib/alert";
@@ -224,7 +225,7 @@ export function PageEditor({
   const [confirmation, setConfirmation] = useState(
     page?.confirmation_message ?? "",
   );
-  const [color, setColor] = useState(page?.color ?? LIST_COLORS[0]);
+  const [color, setColor] = useState(page?.color ?? productColors.accent);
   /** The team the page belongs to, or null for your own. */
   const [teamId, setTeamId] = useState<string | null>(page?.team_id ?? null);
   const [reminders, setReminders] = useState<number[]>(
@@ -379,7 +380,8 @@ export function PageEditor({
     if (question) return ["questions", question];
     if (!eventTitle.trim())
       return ["confirmation", "Give calendar events a title."];
-    if (!HEX.test(color)) return ["colour", "Colours look like #376c51."];
+    if (!HEX.test(color))
+      return ["colour", `Colours look like ${productColors.accent}.`];
     if (hosts.length > MAX_HOSTS)
       return ["cohosts", `Pick up to ${MAX_HOSTS} co-hosts.`];
     // Unchanged co-hosts aren't sent, so a stale one only matters on a change.
@@ -1028,7 +1030,7 @@ export function PageEditor({
               maxLength={7}
               autoCapitalize="none"
               autoCorrect={false}
-              placeholder="#376c51"
+              placeholder={productColors.accent}
               placeholderTextColor={colors.faint}
               accessibilityLabel="Colour as a hex code"
             />

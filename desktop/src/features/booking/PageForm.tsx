@@ -282,7 +282,7 @@ function problem(d: Draft, ownerId?: string): [SectionId, string] | null {
       "details",
       "Choose a question, answer and current host for every routing rule.",
     ];
-  if (!isHex(d.color)) return ["look", "Colours look like #376c51."];
+  if (!isHex(d.color)) return ["look", `Colours look like ${DEFAULT_COLOR}.`];
   if (!d.event_title.trim()) return ["look", "Give the hosts' event a title."];
   return null;
 }
@@ -1576,7 +1576,7 @@ export function PageForm({
                       aria-label="Colour code"
                       maxLength={7}
                       pattern="#[0-9a-fA-F]{6}"
-                      title="Colours look like #376c51"
+                      title={`Colours look like ${DEFAULT_COLOR}`}
                       value={draft.color}
                       onChange={(e) => set("color", e.target.value.trim())}
                     />

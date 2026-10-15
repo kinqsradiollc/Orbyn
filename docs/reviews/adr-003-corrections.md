@@ -162,3 +162,29 @@ The test stubs Popover placement, so visible keyboard/menu recovery remains in t
 existing browser recheck. Logs `/private/tmp/orbyn-adr003-slash-regression-before.tap`,
 `/private/tmp/orbyn-adr003-slash-regression-after.tap`,
 `/private/tmp/orbyn-adr003-slash-types.log`. Preserve the failed receipt.
+
+## Visual corrections V2–V7 — batched candidate
+
+- V2: replace host PDF-plugin rendering with the same bundled offline PDF.js
+  runtime in web and mobile, sandboxed with no network or host DOM access. Keep
+  page/zoom state when source visibility or compiled PDF changes; retain download.
+- V3: anchor source controls together at the top. Show preview failure status and
+  keep the full error/Retry in common Note rather than repeating it in source.
+- V4: remeasure legacy title wrapping when its width changes.
+- V5: suppress the redundant outer Agent notes heading using its actual view ID.
+- V6: shared blue for new/default booking pages; preserve explicitly saved colors.
+  The older green QA fixture is a saved custom value, not a global theme control.
+- V7: portal Focus to the viewport root, preserving underlying pane scroll.
+
+Builder development receipts: 62/62 finite checks passed after the final
+viewer error/theme/resource-bound corrections; desktop/mobile types passed.
+Earlier backend types passed; the affected batch is repeated on the freeze by Tester. Actual PDF
+decode/text extraction/painting is exercised with PDF.js and a real canvas;
+controller tests cover message gates, page/zoom persistence and bundled isolation.
+These are not browser or native acceptance. New source assets, workspace hooks
+and Docker builder dependencies are included; no environment additions are needed.
+
+Final Visual Check must recheck V2–V7 and only the previously unrun cases in its
+report. User has now reported allowing Expo navigation again: retry the assigned
+8083 URL through the supported browser once, preserving any actual policy error.
+Do not bypass a persistent browser restriction. Round remains 1/3.

@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowRight,
@@ -314,7 +315,7 @@ function FocusBody({
   const seconds = session.current + runSeconds();
   const upcoming = nextUp(items, item.id, 4);
 
-  return (
+  return createPortal(
     <section
       ref={modal.ref}
       data-modal-focus={modal.id}
@@ -732,6 +733,7 @@ function FocusBody({
           )}
         </aside>
       </div>
-    </section>
+    </section>,
+    document.body,
   );
 }

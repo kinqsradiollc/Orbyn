@@ -47,7 +47,7 @@ Expo uses its existing navigation and focused sheets rather than desktop panes.
 Documents offer normal note editing, Markdown/equation source beside the rendered
 note, and standalone TeX beside PDF. Source visibility is a presentation preference.
 A named LaTeX block preserves exact source without replacing other note blocks.
-Note is the common rendered output, including the compiled LaTeX PDF. Inline
+Note is the common rendered output, including the compiled LaTeX PDF. The clients use a bundled PDF.js canvas viewer rather than a browser PDF plugin. Its isolated local runtime has no network access, preserves page/zoom across source visibility and PDF updates, and offers page text and download. Generated web/mobile assets share the same runtime and pinned dependency. Inline
 Markdown/LaTeX source can be hidden independently. One account/document/canonical-block preview
 store survives source/Note changes, debounces saved revisions and discards aborted
 or stale results. Source adapters sit beside the same mounted Note renderer;

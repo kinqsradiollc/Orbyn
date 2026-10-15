@@ -94,7 +94,8 @@ export function DocLatexNote({
           }
         />
       ) : (
-        !preview.error && (
+        !preview.error &&
+        !preview.busy && (
           <Text accessibilityLiveRegion="polite" style={shared.small}>
             {preview.canCompile
               ? "Preparing preview…"
@@ -112,8 +113,8 @@ export function DocLatexNote({
           Updating preview…
         </Text>
       )}
-      {preview.pdf && preview.pdf.source !== source && (
-        <Text style={shared.small}>Preview is updating.</Text>
+      {preview.pdf && preview.pdf.source !== source && !preview.busy && (
+        <Text style={shared.small}>Showing the last preview.</Text>
       )}
       {preview.error && (
         <>

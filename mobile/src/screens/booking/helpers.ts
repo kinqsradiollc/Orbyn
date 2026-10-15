@@ -1,3 +1,4 @@
+import { colors as productColors } from "@orbyn/core";
 import type {
   Booking,
   BookingEvent,
@@ -199,7 +200,7 @@ export function dayHeading(key: string) {
 
 // ---- Accent colours (from the web's bookingUi) ----------------------------------
 
-const DEFAULT_ACCENT = "#376c51";
+const DEFAULT_ACCENT = productColors.accent;
 const channels = (hex: string) =>
   [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
 const toHex = (rgb: number[]) =>

@@ -12,6 +12,7 @@ ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
 RUN npm ci --workspace=@orbyn/core --workspace=@orbyn/api-client --workspace=@orbyn/desktop --include-workspace-root=false
 COPY packages packages
 COPY desktop desktop
+COPY scripts/build-pdf-preview.mjs scripts/pdf-preview-runtime.mjs scripts/
 # The web app knows its version, so it can offer a reload after a deploy.
 ARG GIT_SHA=dev
 ENV VITE_APP_VERSION=$GIT_SHA

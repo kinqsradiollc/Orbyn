@@ -1,3 +1,4 @@
+import { colors as productColors } from "@orbyn/core";
 import type { CSSProperties, ReactNode } from "react";
 import { CalendarCheck, CircleCheck } from "lucide-react";
 import type { BookingEvent, BookingStatus } from "@orbyn/core";
@@ -12,7 +13,7 @@ export const bookingLink = (slug: string) =>
     ? `/book/${slug}`
     : `${window.location.origin}/book/${slug}`;
 
-export const DEFAULT_COLOR = "#376c51";
+export const DEFAULT_COLOR = productColors.accent;
 export const isHex = (s: string) => /^#[0-9a-fA-F]{6}$/.test(s);
 
 export const STATUS_LABELS: Record<BookingStatus, string> = {

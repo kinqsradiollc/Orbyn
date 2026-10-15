@@ -519,9 +519,13 @@ export function DocSourcePreview({
         <>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
             <Text accessibilityLiveRegion="polite" style={shared.small}>
-              {compiling ? "Updating preview…" : "Live preview"}
+              {compileError
+                ? "Preview unavailable"
+                : compiling
+                  ? "Updating preview…"
+                  : "Live preview"}
             </Text>
-            {compileError && (
+            {!sourceOnly && compileError && (
               <Button
                 title="Retry preview"
                 secondary
@@ -544,12 +548,12 @@ export function DocSourcePreview({
               />
             )}
           </View>
-          {!!compileError && (
+          {!sourceOnly && !!compileError && (
             <Text accessibilityRole="alert" style={shared.small}>
               {compileError}
             </Text>
           )}
-          {pdf && pdf.source !== latexText && (
+          {!sourceOnly && pdf && pdf.source !== latexText && (
             <Text accessibilityLiveRegion="polite" style={shared.small}>
               Preview is updating.
             </Text>

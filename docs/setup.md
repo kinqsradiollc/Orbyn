@@ -508,3 +508,18 @@ no unsandboxed fallback. See [deployment and isolation](../deploy/latex/README.m
 and the Kubernetes service/profile configuration before enabling that target.
 The deploy script rolls the private compiler before the API. Qualification of
 PDF generation is separate from visible embedded-PDF rendering in the clients.
+
+The clients render compiled pages with the bundled PDF.js canvas viewer, including
+page navigation, zoom and an optional page-text disclosure. It runs in an isolated
+local iframe (Expo web/shared web) or WebView (native implementation, not native
+acceptance). It fetches no CDN, fonts or other document resources. No additional
+environment variable or public compiler route is needed.
+
+`npm run build:pdf-preview` regenerates the matching client assets from the pinned
+PDF.js dependency, runtime and lockfile. Desktop predev/prebuild and mobile's
+existing asset preparation run it automatically; the web Docker build includes
+the builder scripts and workspace dependencies. Regenerate both assets after
+changing the runtime, generator or dependency lock. Viewer input is bounded to
+36 million base64 characters, page dimensions to 8192 CSS pixels, and backing
+canvas allocation to 12 million pixels. Unsupported external PDF resources remain
+unavailable; the original PDF can still be downloaded.

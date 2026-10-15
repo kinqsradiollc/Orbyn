@@ -2685,7 +2685,7 @@ function WorkspaceController({
                     onNewItem={() => newItem()}
                   />
                 ) : (
-                  !["AI assistant", "Docs", "Memory", "Agent notes"].includes(
+                  !["AI assistant", "Docs", "Memory", "Agent"].includes(
                     view,
                   ) && (
                     <PageHeading

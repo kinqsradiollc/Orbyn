@@ -48,10 +48,10 @@ for (const native of [false, true])
           React.createElement("span", null, children),
       },
       "../../components/DocumentPdfPreview": {
-        DocumentPdfPreview: () =>
+        DocumentPdfPreview: ({ url }: any) =>
           React.createElement("iframe", {
-            title: "Mobile PDF",
-            src: "blob:mobile-note",
+            title: "PDF host",
+            src: url ?? "blob:mobile-note",
           }),
       },
       "../../components/Button": {

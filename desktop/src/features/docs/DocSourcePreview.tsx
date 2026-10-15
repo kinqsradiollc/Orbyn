@@ -608,9 +608,13 @@ export function DocSourcePreview({
         {mode === "latex" && (
           <div className="doc-source-view">
             <span className="muted" role="status">
-              {compiling ? "Updating preview…" : "Live preview"}
+              {compileError
+                ? "Preview unavailable"
+                : compiling
+                  ? "Updating preview…"
+                  : "Live preview"}
             </span>
-            {compileError && (
+            {!sourceOnly && compileError && (
               <button
                 type="button"
                 className="secondary"
@@ -636,8 +640,8 @@ export function DocSourcePreview({
                 Ask assistant
               </button>
             )}
-            {compileError && <p role="alert">{compileError}</p>}
-            {pdf && pdf.source !== latexText && (
+            {!sourceOnly && compileError && <p role="alert">{compileError}</p>}
+            {!sourceOnly && pdf && pdf.source !== latexText && (
               <p role="status">Preview is updating.</p>
             )}
           </div>

@@ -10,7 +10,9 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 0.0.0.0",
     "desktop": "electron .",
-    "package": "npm run build && electron-builder --publish never"
+    "package": "npm run build && electron-builder --publish never",
+    "predev": "node ../scripts/build-pdf-preview.mjs",
+    "prebuild": "node ../scripts/build-pdf-preview.mjs"
   },
   "dependencies": {
     "@orbyn/api-client": "1.0.0",
@@ -29,6 +31,8 @@
     "@vitejs/plugin-react": "^5.2.0",
     "electron": "44.3.0",
     "electron-builder": "^26.8.1",
+    "esbuild": "0.28.2",
+    "pdfjs-dist": "6.4.299",
     "typescript": "^5.9.3",
     "vite": "^8.0.0"
   },

@@ -1,3 +1,4 @@
+import { DocumentPdfPreview } from "../../components/DocumentPdfPreview";
 import {
   createContext,
   useContext,
@@ -94,9 +95,10 @@ export function DocLatexNote({
   return (
     <section className="doc-latex-note" aria-label="Rendered LaTeX note">
       {preview.url ? (
-        <iframe title="LaTeX note" src={preview.url} />
+        <DocumentPdfPreview pdf={preview.pdf!.blob} url={preview.url} />
       ) : (
-        !preview.error && (
+        !preview.error &&
+        !preview.busy && (
           <p role="status">
             {preview.canCompile
               ? "Preparing preview…"
@@ -105,9 +107,9 @@ export function DocLatexNote({
         )
       )}
       {preview.busy && <p role="status">Updating preview…</p>}
-      {preview.pdf && preview.pdf.source !== source && (
+      {preview.pdf && preview.pdf.source !== source && !preview.busy && (
         <p className="muted" role="status">
-          Preview is updating.
+          Showing the last preview.
         </p>
       )}
       {preview.error && (

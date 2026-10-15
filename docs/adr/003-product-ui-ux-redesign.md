@@ -194,3 +194,16 @@ The authenticated preview API retains revision and permission rechecks and allow
 20 requests per minute. Readers do not gain compilation authority. Native PDF
 opening remains distinct from the embedded browser preview. Assistant proposals
 continue to require acceptance in every format.
+
+## Final visual corrections — 15 October 2026
+
+Note remains the common rendered output for Markdown and standalone LaTeX. Use
+an app-owned, offline PDF.js viewer with page/zoom controls and readable page text
+so embedded rendering does not depend on the host browser's PDF plugin. Source
+controls stay grouped at the top; preview errors have one visible recovery area
+in Note. Wrapped document titles resize with the available pane.
+
+Focus renders at the viewport root, independently of the scrolled working pane.
+Agent notes has one screen heading. Newly created booking pages use the shared
+blue accent; explicitly saved booking branding is preserved. These corrections
+remain subject to the existing affected Test → Review and final visual gate.

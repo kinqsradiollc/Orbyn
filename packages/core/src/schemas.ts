@@ -1,3 +1,4 @@
+import { colors as productColors } from "./presentation.js";
 import { z } from "zod";
 import { SYSTEM_ROLES, TEAM_ROLES } from "./rbac.js";
 import { AI_PROVIDER_KINDS } from "./aiProviders.js";
@@ -2038,7 +2039,7 @@ export const bookingPageInput = z
     meeting_url: meetingUrl.default(""),
     active: z.boolean().default(true),
     co_hosts: coHosts.default([]),
-    color: color.default("#376c51"),
+    color: color.default(productColors.accent),
     availability: bookingAvailability.default({ mode: "working_hours" }),
     date_overrides: overrides.default([]),
     questions: questions.default([]),

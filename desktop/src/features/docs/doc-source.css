@@ -269,9 +269,28 @@
   gap: 8px;
   min-width: 0;
 }
-.doc-latex-note > iframe {
+.document-pdf-preview > iframe {
   width: 100%;
   height: min(75dvh, 900px);
   min-height: 360px;
   border: 0;
+}
+
+.document-pdf-preview {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.doc-source-workspace {
+  align-content: start;
+  align-self: start;
+}
+.doc-source-workspace .doc-source-tools {
+  align-content: start;
+}
+.doc-source-workspace .doc-source-view {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
 }

@@ -435,6 +435,21 @@ function LegacyDocEditor({
     () => new Set(doc.linked_block_ids ?? []),
     [doc.linked_block_ids],
   );
+  const titleField = useRef<HTMLTextAreaElement | null>(null);
+  useEffect(() => {
+    const node = titleField.current;
+    if (!node) return;
+    let width = -1;
+    const observer = new ResizeObserver(() => {
+      const next = node.clientWidth;
+      if (next !== width) {
+        width = next;
+        fitTitle(node);
+      }
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [mode]);
   const [title, setTitle] = useState(doc.title);
   const [blocks, setBlocks] = useState<DocBlock[]>(
     doc.content.length ? doc.content : [{ type: "paragraph", text: "" }],
@@ -4117,7 +4132,10 @@ function LegacyDocEditor({
                     value={title}
                     placeholder="Untitled"
                     maxLength={200}
-                    ref={fitTitle}
+                    ref={(node) => {
+                      titleField.current = node;
+                      fitTitle(node);
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") e.preventDefault();
                     }}
