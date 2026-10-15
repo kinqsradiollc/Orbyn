@@ -235,3 +235,51 @@ marker; pane tabs reach their normal pointer/focus capture. Narrow chrome remain
 inside its existing shared host. A rendered Topbar regression checks both marker
 boundaries; the affected ownership suite passes3/3 in development. Formal
 qualification and the actual retained-selection recheck remain required.
+
+## Final finite interaction closure — V17
+
+V16 actual density passed in Visual Check report3a51aa41: routine wide actions
+32px/13px, touch44px, segmented groups32/44px overall, PDF32/44px. Light/dark,
+web320 and Expo320 fitted without clipping. PDF page2 and zoom survived resizing.
+New proof includes `/private/tmp/orbyn-v16-docs-dark-wide.jpg` and
+`/private/tmp/orbyn-v16-expo-light-320.jpg`. This is delegated pixel review, not
+a claim that all screen families received a new sweep.
+
+After V17, root selected actual rendered text with pointer input in the second
+document. Clicking the first Home tab retained `A concise paragraph b` while
+workspace ownership became main. Cmd+B left the second prose markup unchanged;
+Cmd+K opened the first pane's search. In its field, Cmd+B and repeated Cmd+K kept
+one search dialog and its query, without creating a document link editor or
+changing prose. The previous failing attempt remains above. Source Reviewer
+accepted e2813634; Tester c8aaef2a records9/9 ownership/layout, desktop types/build.
+
+At actual320px, entered an unsent first-pane reflection and recorded scroll1285.
+Opened second-pane search, entered `fixture page`, repeated Cmd+K: the second
+pane's search retained its query. Returned to First: the exact draft and scroll1285
+remained. Cleared only this disposable unsent draft afterward. Device and browser
+viewport overrides are cleared.
+
+Created one disposable Workshop recovery project through the normal UI. Allowed
+POST and failed its following project-list GET through API-resource-only CDP
+interception; project detail remained available. The client retries a dropped
+read once, so this first failure recovered automatically and was not counted as
+an explicit Retry pass. A subsequent bounded check failed both list-read attempts:
+the visible Projects error offered Retry projects. After clearing interception,
+Retry projects restored exactly one Workshop recovery row and the original
+fixture (2 projects). The local error cleared; the separate global error notice
+was dismissed normally. Screenshot `/private/tmp/orbyn-final-project-recovery.png`.
+The initial interception pattern lacked a resource type and was rejected; corrected
+Fetch-only patterns were used. Unsupported Fetch.disable was replaced with the
+tool-required empty patterns array. No navigation interception remains active.
+
+This closes the parent's finite remaining interaction list. Existing formal,
+runtime and family evidence keeps its recorded scope; native, production and
+external-provider checks are not newly claimed. Final whole-ADR review and
+accepted integration remain required.
+
+QA cleanup restored the protected original ai_settings provider/model snapshot
+under the `_test` database and `orbyn.environment=test` guards, first confirming
+the active provider was still the owned fixture. Removed only the local Visual
+fixture and unused Control preview providers and stopped their loopback18001
+stub. No credentials were printed. Frontend/API/compiler previews remain available;
+disposable documents and project evidence remain for inspection.
