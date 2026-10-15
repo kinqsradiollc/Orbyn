@@ -1,6 +1,7 @@
 # ADR 004 — Document writing experience
 
-Status: implementation in progress. Owner direction: 15 October 2026.
+Status: accepted, agreed web and Expo web scope. Accepted 16 October 2026.
+Owner direction: 15 October 2026.
 
 ## Context
 
@@ -37,7 +38,7 @@ optimistic concurrency, offline behavior, proposals and PDF ownership unchanged.
 
 Implement the complete document batch before formal qualification. Apply the
 existing Builder → Tester → Reviewer workflow; this follow-up has its own
-bounded review counter, starting at 0/3. Retain prior failures and distinguish
+bounded review counter, completed at 1/3. Retain prior failures and distinguish
 new evidence from reused unchanged contracts.
 
 The final bounded visual check covers legacy and structured Note on web and
@@ -47,3 +48,15 @@ recovery and permission state through affected tests; no unrelated screen sweep,
 native build or external provider calls. Review the writing experience itself,
 not only box dimensions. Delivery state belongs in the
 [document redesign record](../reviews/document-writing-redesign.md).
+
+## Acceptance
+
+Accepted product: `d44c4cdf`. Tester `94188184` passed69/69 affected checks,
+desktop/mobile types and desktop production build. Visual `05590f58` closes
+all four writing findings with actual interactions, retaining the earlier
+actual source/PDF/save results. Read-only Reviewer accepted the combined source,
+qualification and writing experience in round1/3. Native builds, external
+provider execution and production deployment remain outside this scoped receipt.
+A nonblocking closed-comment-panel Keep editing observation remains documented
+in the Visual report; the draft guard retains content. Integration status is
+recorded in the delivery ledger.

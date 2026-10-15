@@ -3,7 +3,7 @@
 Decision: [ADR 004](../adr/004-document-writing-experience.md).
 Baseline: `b11b1429`. Branch: `codex/docs-writing-redesign`.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Phase: final acceptance review. Review counter: 1/3.
+Phase: accepted; main integration pending. Review counter: 1/3.
 Current product freeze: `d44c4cdf`.
 
 The owner rejected the delivered document experience. ADR 003's acceptance and
@@ -19,7 +19,7 @@ button-size results remain historical evidence; they do not qualify this redesig
 | Shared format controls | Quiet and consistent across both document formats and clients | Wide/narrow and light/dark layout |
 | Storage and authority | Existing operation/store/permission/approval contracts retained | Affected formal regressions and read-only review |
 
-Formal qualification, final visual review, acceptance and integration remain open.
+Current qualification and acceptance are complete; main integration remains pending.
 No production or native result is claimed. Preserve the unrelated Visual-owned
 `c6-production-visual-2026-10-11.md` edit.
 
@@ -129,3 +129,17 @@ nonblocking comment-panel observation are in the Visual report. That observation
 concerns reopening a closed unsent comment after Keep editing; the draft guard
 retained its state and the owned synthetic draft was explicitly discarded.
 Final read-only acceptance is pending; no production or native result is claimed.
+
+## Final acceptance — 16 October 2026
+
+Read-only Reviewer approved the agreed ADR004 scope in round1/3 on product
+`d44c4cdf`, reconciled with Tester `94188184` and Visual `05590f58`. No actionable
+source or visual finding remains. No further test run or sweep was required.
+The comment-panel observation is a nonblocking follow-up: the draft remains
+protected, but Keep editing does not reopen the already closed input. It is not
+content loss or a permission bypass. Production deployment, native behavior and
+external-provider execution are separate and were not claimed.
+
+No environment/configuration/service/database changes are needed for delivery.
+Existing API/5174web/8083Expo services are preserved for owner inspection.
+Main integration is the remaining delivery step; preserve unrelated working files.
