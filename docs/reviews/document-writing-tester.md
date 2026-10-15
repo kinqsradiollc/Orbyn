@@ -260,3 +260,55 @@ zoom behavior remain with the paused Visual batch. All host build writes are
 complete, so that batch can resume with its owner. Tester changed no product
 or test source and changed only this report. The unrelated Visual-owned C6
 review edit remains untouched; review round 2/3 is still open.
+
+## Round 2 paired PDF focus qualification — 6673f912
+
+The product correction freeze is
+`6673f9129699081b42fdc9b47badf65afd3c93c7`, parent
+`dbe95cbe6ec219ccbe1268f0f28507ee57e00f2b`, on
+`codex/docs-writing-redesign`. The later `5dea0a41` descendant changes only
+`docs/reviews/document-writing-redesign.md`; product and test sources remain
+equivalent to the freeze. This continues round 2/3.
+
+The Visual DW-V5 report found that PDF Next/Zoom could blur code editing with a
+null `relatedTarget` and close the paired source view. The correction keeps
+paired code editing open until explicit Done or Escape, while ordinary prose
+blur behavior stays unchanged. The development `doc-writing-experience` batch
+passed 6/6; its mode-0600 log is
+[`paired focus development tests`](/private/tmp/orbyn-doc-paired-focus-dev.tap).
+
+I ran the six writing tests plus the input-ownership suite on `6673f912`:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/doc-writing-experience.unit.test.ts \
+  backend/tests/editor-input-ownership.unit.test.ts
+```
+
+Result: exit 0, **9/9 passed**, 0 failed, 0 cancelled and 0 skipped
+(1.79 seconds). The focus regression dispatches a `focusout` with null
+`relatedTarget` from the code editor and asserts it does not call Done. The
+mode-0600 log is
+[`6673f912 writing and ownership tests`](/private/tmp/orbyn-doc-paired-focus-6673f912.tap).
+
+`npm run typecheck -w desktop` passed on `6673f912`; its mode-0600 log is
+[`desktop types`](/private/tmp/orbyn-doc-paired-focus-desktop-types-6673f912.log).
+`npm run build -w desktop` passed on the same source, including PDF runtime
+asset generation, TypeScript, Vite and homepage prerender. Vite emitted the
+existing warning for chunks larger than 500 kB; the build completed. Its
+mode-0600 log is
+[`desktop build`](/private/tmp/orbyn-doc-paired-focus-desktop-build-6673f912.log).
+
+The mobile typecheck from `09d17c2c` remains applicable: `dbe95cbe` changed
+only the Tester report, and the correction changes no mobile path. The
+mode-0600 prior log is
+[`mobile types`](/private/tmp/orbyn-doc-paired-source-mobile-types-09d17c2c.log).
+
+No browser interaction, API/database suite, native build, provider test or
+Security scan was run. The null-target focus behavior is covered by the
+mounted-wrapper regression, not an actual PDF viewer interaction; visual
+verification of PDF Next/Zoom while the code editor and source pair remain open
+is still required. All host build writes are complete and the paused Visual
+batch can resume with its owner. Tester changed no product or test source and
+changed only this report; the unrelated C6 and Visual-owned uncommitted edits
+were preserved. Round 2/3 remains open.
