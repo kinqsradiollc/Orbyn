@@ -2,8 +2,8 @@
 
 Current decision: [ADR 003](../adr/003-product-ui-ux-redesign.md).
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Baseline: `c7b3bdb7`. Current product/test candidate: `90305ece`.
-Phase: round-1 corrections in formal qualification, evidence pending; see [qualification handoff](adr-003-candidate.md).
+Baseline: `c7b3bdb7`. Current product/test candidate: `f19566e9`.
+Phase: owner Docs/live-preview corrections in formal qualification, final visual batch pending; see [qualification handoff](adr-003-candidate.md).
 Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review rounds: 1/3.
 
 | Area | Current state | Evidence / next gate |
@@ -17,7 +17,7 @@ Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review ro
 | Settings, Admin and Connections | Implemented candidate | Import/runtime and interaction qualification in progress |
 | Auth and public content | Implemented candidate | Final representative rendering pending |
 | Mobile parity | Implemented candidate | Expo final behavior/render qualification pending |
-| Frozen candidate / Tester / Reviewer | Correction qualification | `90305ece`; Reviewer 1/3 |
+| Frozen candidate / Tester / Reviewer | Correction qualification | `f19566e9`; Reviewer 1/3 |
 | Final web and Expo Visual Check | Pending | After test/code findings settle |
 | Accepted merge and push | Pending | No acceptance or merge claim |
 
@@ -5121,3 +5121,14 @@ failed development attempts and the finite Tester/runtime/Visual plan. Narrow
 paired shared chrome, editor key ownership and resolvable completion export are
 implemented; formal closure and rendered acceptance remain pending. Earlier
 Partial inventory rows are historical source limits, not converted into passes.
+
+## Owner document correction freeze — 15 October
+
+Source `f19566e9` (main implementation `3704ec70`) moves document source editing
+inline and shares the rendered PDF with Note. Direct Note/Markdown/LaTeX controls
+exist across all four editor parents. Saved source renders automatically;
+hide/show and Note changes reuse the PDF, invalid source retains drafts and the
+last valid result. Assistant requests return to Note for approval. Toast layout
+keeps message and dismissal together. Formal affected qualification and final
+web/Expo rendering remain pending; earlier `90305ece` evidence is preserved with
+its original scope. No accepted merge/push or deployment claim.

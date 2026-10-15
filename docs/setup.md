@@ -485,6 +485,13 @@ Do not confuse the separate website identity trial with hosted plan permission.
 
 ## Private standalone LaTeX
 
+Document writers use the visible LaTeX source choice inside Docs. Saved source
+updates its Note preview automatically; hide the source or select Note to keep
+the rendered document visible. The preview API permits 20 requests/minute and
+automatic requests are debounced with four seconds between starts. No extra
+client configuration is needed beyond the private compiler settings below.
+
+
 Compose supplies `DOC_LATEX_URL=http://latex:8000` to the API and starts the
 private `latex` service. Set the existing independent `DOC_PDF_KEY` (32 or more
 characters) in the server environment. For a local API, explicitly point
