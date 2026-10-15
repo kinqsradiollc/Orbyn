@@ -1,8 +1,8 @@
 # ADR 003 technical review — round 1/3
 
-Decision: **changes required**. Whole-ADR acceptance also remains **evidence pending**.
+Current decision: **evidence pending**. R1–R7 source findings are closed; whole-ADR acceptance awaits final qualification and rendered evidence.
 
-**Current disposition:** R1–R3 and the backend-contract evidence gaps were closed on `90305ece`. The latest same-round follow-up closes the R4–R6 source findings on `9b1fb984`; one remaining measured-width defect, R7, needs correction. Formal affected retest and final web/Expo acceptance remain pending. Earlier assessments below are retained as history.
+**Current disposition:** R1–R3 and the backend-contract evidence gaps were closed on `90305ece`, R4–R6 source findings on `9b1fb984`, and R7 source on `3f7cd319`. Formal affected retest and final web/Expo acceptance remain pending. Earlier changes-required assessments below are retained as history, not current open findings.
 
 Reviewed on 15 October 2026 in `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`, branch `codex/c6-file-viewer`. Assigned range: `c7b3bdb7..b0baced59c393d22c4e0124a3cfdc83329d96a2f`, including implementation `15fc3a5a` and fixture correction `b0baced5`. The checkout advanced during inspection to `626c58eed917d0e6bd5221b9b5dc5cb3a7566666`; its bounded typography/fixture diff was inspected as a supplemental correction, not substituted silently for the assigned candidate. Before report completion, docs-only `5b10872e` recorded its focused retest. The three source findings below remain applicable there.
 
@@ -218,3 +218,11 @@ For legacy blocks without IDs, the provider uses current index as a fallback ide
 **Verification:** one focused parent/layout regression with window width 1000 or 1200 and measured editor width 700 must select one surface; increasing actual editor width past the threshold must restore the split without losing draft or viewer identity. Include library-open versus library-hidden in the existing final Expo editor case; no new screenshot sweep or native gate.
 
 **Current decision:** changes required for R7; R4–R6 source corrections accepted. Tester should complete the already assigned affected batch, then retest only R7's changed paths and relevant types after its small correction. Retain unchanged backend/compiler receipts. Final actual-parent interactions, PDF appearance/state, pane routing and the rest of the existing web/Expo batch remain required for whole-ADR approval. All work stays within round **1/3**.
+
+## Same-round closure of R7 — `3f7cd319`
+
+Inspected exact commit `3f7cd319d7a23842d5c78f14159daf17fdaf5667`, its three-file diff, the existing `usePaneWidth` implementation and its measurement regression assertions. **R7 source finding closed.** The legacy editor now measures its outer root View via `onLayout`, applies the existing font-scale-aware 900pt threshold to that measured width, and uses window dimensions only for font scale. The measured node contains both surfaces, so the breakpoint is not calculated from one split half. The hook retains positive measured width through unrelated window changes and ignores invalid/hidden zero measurements.
+
+The added test checks source wiring; existing hook tests execute measurement updates. Together they support the correction's mechanism but do not mount the full editor/library. Builder's reported 29/29 and mobile typecheck remain development receipts until Tester's formal affected result is recorded. The existing final Expo case at a roughly 1000px window with the library open/hidden remains the rendered qualification; no additional gate or sweep is added.
+
+**Latest decision: evidence pending, round 1/3.** No R1–R7 source finding remains open. The candidate can proceed through the already planned affected Tester qualification and final bounded shared-web/Expo batch. Retain actual four-parent transitions, draft/permission/failed-save behavior, unchanged PDF viewer state and the existing whole-scope cases. Source closure is not whole-ADR approval, merge, push or deployment. Reviewer changed only this report and ran no tests/builds, runtime actions, scans or browser checks.
