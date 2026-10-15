@@ -2,8 +2,8 @@
 
 Current decision: [ADR 003](../adr/003-product-ui-ux-redesign.md).
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Baseline: `c7b3bdb7`. Current product/test candidate: `15fc3a5a`.
-Phase: formal Review round 1, evidence pending; see [qualification handoff](adr-003-candidate.md).
+Baseline: `c7b3bdb7`. Current product/test candidate: `90305ece`.
+Phase: round-1 corrections in formal qualification, evidence pending; see [qualification handoff](adr-003-candidate.md).
 Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review rounds: 1/3.
 
 | Area | Current state | Evidence / next gate |
@@ -17,7 +17,7 @@ Full source coverage: [surface inventory](ui-ux-surface-inventory.md). Review ro
 | Settings, Admin and Connections | Implemented candidate | Import/runtime and interaction qualification in progress |
 | Auth and public content | Implemented candidate | Final representative rendering pending |
 | Mobile parity | Implemented candidate | Expo final behavior/render qualification pending |
-| Frozen candidate / Tester / Reviewer | Testing | `15fc3a5a`; Reviewer 1/3 |
+| Frozen candidate / Tester / Reviewer | Correction qualification | `90305ece`; Reviewer 1/3 |
 | Final web and Expo Visual Check | Pending | After test/code findings settle |
 | Accepted merge and push | Pending | No acceptance or merge claim |
 
@@ -5111,3 +5111,13 @@ pass as whole-ADR acceptance. In particular, assistant-activity suites concern
 agent history and cannot alone establish Personal Activity planner counting.
 Unchanged suite evidence missing from the original truncated log also needs
 explicit qualification, with finite retesting rather than speculative expansion.
+
+
+### 15 October — round-1 correction freeze
+
+`90305ece` batches the three Reviewer source findings and focused contract tests.
+See [correction handoff](adr-003-corrections.md) for exact new coverage, retained
+failed development attempts and the finite Tester/runtime/Visual plan. Narrow
+paired shared chrome, editor key ownership and resolvable completion export are
+implemented; formal closure and rendered acceptance remain pending. Earlier
+Partial inventory rows are historical source limits, not converted into passes.

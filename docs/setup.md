@@ -481,3 +481,23 @@ The [official OSS guide](https://developers.openai.com/siwc/token-sharing-open-s
 covers local apps and directs remotely hosted applications to a separate interest
 program. Its loopback callback cannot be replaced by a production website URL.
 Do not confuse the separate website identity trial with hosted plan permission.
+
+
+## Private standalone LaTeX
+
+Compose supplies `DOC_LATEX_URL=http://latex:8000` to the API and starts the
+private `latex` service. Set the existing independent `DOC_PDF_KEY` (32 or more
+characters) in the server environment. For a local API, explicitly point
+`DOC_LATEX_URL` to your owned private compiler. Do not expose it through the
+public gateway or give it database/provider credentials. An unavailable compiler
+returns a recoverable error and preserves the source draft and previous preview.
+
+`backend/Dockerfile --target latex` provisions pdfLaTeX, recommended packages and
+T1 fonts. The service accepts one standalone source at a time: 256 KiB source,
+24 MiB PDF, two bounded passes, with CPU, address-space and wall-time limits.
+Uploaded projects, package downloads, bibliography assets, custom fonts and
+external images are unsupported inputs. Namespace support is required; there is
+no unsandboxed fallback. See [deployment and isolation](../deploy/latex/README.md)
+and the Kubernetes service/profile configuration before enabling that target.
+The deploy script rolls the private compiler before the API. Qualification of
+PDF generation is separate from visible embedded-PDF rendering in the clients.

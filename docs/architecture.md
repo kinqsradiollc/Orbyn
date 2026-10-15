@@ -35,6 +35,52 @@ live on different machines; see [scalability.md](scalability.md).
 `services/http.ts` gives every HTTP service the same setup: CORS, rate limiting, conditional GETs
 with `ETag`, `GET /live` (liveness, no database) and `GET /health` (readiness).
 
+## Workspace and document ownership
+
+The web app keeps one shared planner and independent pane controllers. Each pane
+owns its tabs, selection, drafts and scroll. At narrow widths, one content pane
+is visible; shared navigation/search remain outside either hidden subtree and
+route to the focused pane. Hidden controllers retain work but yield global keys.
+Dialog and text-input ownership take precedence over retained editor selection.
+Expo uses its existing navigation and focused sheets rather than desktop panes.
+
+Documents offer normal note editing, Markdown/equation source beside the rendered
+note, and standalone TeX beside PDF. Source visibility is a presentation preference.
+A named LaTeX block preserves exact source without replacing other note blocks.
+Assistant changes remain proposals requiring a decision. Compilation authorizes
+the writer and document revision before and after work, so a stale or newly
+inaccessible result is discarded.
+
+The private `pdf` (`services/pdf.ts`) and `latex` (`services/latex.ts`) services
+receive signed snapshots rather than database/provider credentials. TeX runs in
+a fresh bounded filesystem/network namespace; installation assets are read-only,
+shell escape is disabled, and job files are deleted. See [compiler setup](setup.md#private-standalone-latex)
+and [isolation details](../deploy/latex/README.md). Generated PDFs and browser
+rendering are separately qualified.
+
+## Personal Activity and import receipts
+
+`GET /me/activity-summary` is private account UI: 30/90/365 local-calendar days,
+account timezone, aggregate values only, and current item visibility. Migration
+267 begins completion coverage; earlier completion values are unknown, not zero.
+`mutate` records non-done → done transitions, including recurring occurrences
+and connected-agent work. Work-session minutes belong to the local start day;
+breaks are excluded. Active days deduplicate completion/focus activity. Item
+snapshot restore retains original completion identities/timestamps.
+
+Version-1 personal exports add optional stable item IDs and `completion_history`.
+Each history entry contains `item_id`, its original `created_at`, and embedded
+`item: {id,title,parent_id}` so duplicate titles and omitted legacy subtasks resolve
+offline. Other accounts and team items are excluded. Older archives without the
+additive fields still import; import does not manufacture historical completions.
+
+`/me/import` and `/imports/pages` bind an idempotency key to exact input and
+credentials. Successful content and replay result commit together. A lost response
+can replay the committed result; changed input cannot reuse the key. Replays
+recheck authentication and current team permission. Client retry identity lasts
+for the mounted import flow, not across remount/restart; users must check imported
+content before starting a new attempt after that boundary.
+
 ## Backend (`backend/src`)
 
 | Path                       | Responsibility                                                                       |
