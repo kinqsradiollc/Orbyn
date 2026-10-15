@@ -1,3 +1,4 @@
+import { SettingsSection } from "./settings/SettingsSection";
 import { PluginAiPermission } from "./PluginAiPermission";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, Switch, Text, TextInput, View } from "react-native";
@@ -778,7 +779,6 @@ export function ConnectedAgentsCard({
   );
   return (
     <>
-      <Text style={[shared.eyebrow, s.eyebrow]}>Connected agents</Text>
       <View style={shared.card}>
         <Text style={[shared.small, s.gap]}>
           Choose what connected agents can access.
@@ -821,7 +821,7 @@ export function ConnectedAgentsCard({
           </View>
         )}
         <ErrorBanner error={readError} />
-        {readError && (
+        {!!readError && (
           <Button
             title="Retry agents"
             secondary
@@ -1090,13 +1090,13 @@ export function ConnectedAgentsCard({
         </View>
       )}
 
-      <Text style={[shared.eyebrow, s.eyebrow]}>Agent identity</Text>
       <AgentWarmStartCards busy={busy} run={run} />
 
       {!!overview?.grants.length && (
         <>
-          <Text style={[shared.eyebrow, s.eyebrow]}>Standing rules</Text>
-          <AgentRulesCard busy={busy} run={run} />
+          <SettingsSection title="Standing rules" disabled={busy}>
+            <AgentRulesCard busy={busy} run={run} showHeading={false} />
+          </SettingsSection>
         </>
       )}
 

@@ -28,7 +28,7 @@ spec:
       containers:
         - name: latex
           image: ghcr.io/your-org/orbyn-latex:TAG
-          command: ["node", "backend/dist/services/latex.js"]
+          command: ["/usr/bin/tini", "--", "node", "backend/dist/services/latex.js"]
           ports: [{ name: http, containerPort: 8000 }]
           # Deliberately omit envFrom: the renderer does not receive the database,
           # mail, provider or file-store credentials in orbyn-secrets.

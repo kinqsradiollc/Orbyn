@@ -48,3 +48,25 @@ Screenshots: /private/tmp/orbyn-adr003-web-live-note.png and
 were inspectedinline only. These are actualparentcases, not delegatedinspection.
 Exactvisualacceptance ofallremainingfamilies remains in final-visual plan/report;
 no wholeADRcompletion,merge,push,productionornativeclaim ismade.
+
+## V10 / V11 correction batch
+
+Mobile Connections now starts with seven named, folded groups. Nested agent
+preferences fold independently; opened groups retain drafts when folded, and
+pending operations disable their group controls. Messaging operation state reaches
+the enclosing sheet through both Slack and Teams components. Essential sharing
+and permission explanations remain inside the relevant task.
+
+The fresh-session LaTeX failure (V11) was reproduced as a QA runtime setup defect:
+the manually launched older image lacked an init process, accumulated 53 orphaned
+sandbox processes and reached its 64-process limit. Production Compose already
+sets `init: true`. Recreating the owned QA container with Docker `--init`, keeping
+its isolation flags, restored three consecutive valid compilations (HTTP 200,
+28,972-byte PDFs) with 13 processes. Image and Kubernetes startup now explicitly
+wrap Node with Tini, including custom launches. New-image qualification remains
+required; the three recovered requests used the existing image with Docker init.
+No new environment variable is introduced.
+
+Development test failures remain in the private QA logs: the first batch was
+29/32 and the second 30/32. They exposed stale exact-copy assertions and a stale
+hook-fixture slot; these were corrected without claiming complete screen testing.

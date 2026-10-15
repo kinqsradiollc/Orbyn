@@ -500,7 +500,8 @@ public gateway or give it database/provider credentials. An unavailable compiler
 returns a recoverable error and preserves the source draft and previous preview.
 
 `backend/Dockerfile --target latex` provisions pdfLaTeX, recommended packages and
-T1 fonts. The service accepts one standalone source at a time: 256 KiB source,
+T1 fonts and Tini for sandbox process cleanup. Keep the init wrapper when
+customizing its command; older manual Docker launches require `--init`. The service accepts one standalone source at a time: 256 KiB source,
 24 MiB PDF, two bounded passes, with CPU, address-space and wall-time limits.
 Uploaded projects, package downloads, bibliography assets, custom fonts and
 external images are unsupported inputs. Namespace support is required; there is

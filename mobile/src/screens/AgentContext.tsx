@@ -1,3 +1,4 @@
+import { SettingsSection } from "./settings/SettingsSection";
 import { Character } from "../components/Character";
 import { CharacterEditor } from "../components/CharacterEditor";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -187,193 +188,200 @@ export function AgentWarmStartCards({
 
   return (
     <>
-      <NightShift busy={busy} run={run} />
-      <ReminderNudges busy={busy} run={run} />
-      <View style={shared.card}>
-        <Text style={shared.label}>Agent identity</Text>
-        <View style={{ gap: 10, marginVertical: 8 }}>
-          <Segmented
-            options={["background", "overnight"] as const}
-            value={lane}
-            labels={{ background: "Background", overnight: "Overnight" }}
-            onChange={setLane}
-            disabled={busy}
-            accessibilityLabel="Agent identity profile"
-          />
+      <SettingsSection title="Overnight schedule" disabled={busy}>
+        <NightShift busy={busy} run={run} />
+      </SettingsSection>
+      <SettingsSection title="Reminders" disabled={busy}>
+        <ReminderNudges busy={busy} run={run} />
+      </SettingsSection>
+      <SettingsSection title="Agent identity" disabled={busy}>
+        <View style={shared.card}>
+          <View style={{ gap: 10, marginVertical: 8 }}>
+            <Segmented
+              options={["background", "overnight"] as const}
+              value={lane}
+              labels={{ background: "Background", overnight: "Overnight" }}
+              onChange={setLane}
+              disabled={busy}
+              accessibilityLabel="Agent identity profile"
+            />
 
-          <SmallAction
-            label="Reload agent profile"
-            disabled={busy}
-            onPress={() => setReload((value) => value + 1)}
-          />
-        </View>
-        <ErrorBanner error={identityError} />
-        {identity === null && !identityError && (
-          <Text style={shared.small}>Loading agent profile…</Text>
-        )}
-        <Text style={[shared.small, s.gap]}>
-          {lane === "background" ? "Background" : "Overnight"} profile.
-        </Text>
-        <Field label="Name">
-          <TextInput
-            editable={!busy && identity?.lane === lane}
-            value={identityName}
-            onChangeText={setIdentityName}
-            maxLength={40}
-            autoCapitalize="words"
-            placeholder="Orbyn"
-            placeholderTextColor={colors.faint}
-            style={shared.input}
-          />
-        </Field>
-        <Field label="Communication style">
-          <TextInput
-            editable={!busy && identity?.lane === lane}
-            value={identityPersona}
-            onChangeText={setIdentityPersona}
-            maxLength={1000}
-            multiline
-            style={[shared.input, s.area]}
-            placeholder="Warm, direct, and concise"
-            placeholderTextColor={colors.faint}
-          />
-        </Field>
-        <InlineDetails title="Suggested styles">
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            {CHARACTER_PERSONAS.map((preset) => (
-              <SmallAction
-                key={preset.label}
-                label={preset.label}
-                disabled={busy || identity?.lane !== lane}
-                onPress={() => setIdentityPersona(preset.persona)}
-              />
-            ))}
+            <SmallAction
+              label="Reload agent profile"
+              disabled={busy}
+              onPress={() => setReload((value) => value + 1)}
+            />
           </View>
-        </InlineDetails>
-        <View
-          style={{
-            flexDirection: "row",
-            flexWrap: "wrap",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <Character appearance={appearance} name={identityName} size={48} />
-          <SmallAction
-            label={
-              editingLook ? "Close character editor" : "Customize character"
-            }
-            disabled={busy || identity?.lane !== lane}
-            onPress={() => setEditingLook((value) => !value)}
-          />
-        </View>
-        {editingLook && (
-          <CharacterEditor
-            value={appearance}
-            onChange={setAppearance}
-            name={identityName}
-            disabled={busy || identity?.lane !== lane}
-          />
-        )}
-        <Button
-          title="Save"
-          onPress={saveIdentity}
-          disabled={
-            busy ||
-            identity === null ||
-            identity.lane !== lane ||
-            !identityName.trim()
-          }
-          style={s.last}
-        />
-      </View>
-      <View style={shared.card}>
-        <Text style={shared.label}>Agent context</Text>
-        <Text style={[shared.small, s.gap]}>
-          Context your connected agents can read.
-        </Text>
-        <Button
-          secondary
-          title={data?.profile ? "Open the page" : "Make the page"}
-          icon="fileText"
-          style={s.last}
-          disabled={busy || data === null || !!contextError}
-          onPress={openProfile}
-        />
-        {!!data?.profile && (
-          <Text style={[shared.small, s.after]}>
-            Changed {timeAgo(data.profile.updated_at)}
+          <ErrorBanner error={identityError} />
+          {identity === null && !identityError && (
+            <Text style={shared.small}>Loading agent profile…</Text>
+          )}
+          <Text style={[shared.small, s.gap]}>
+            {lane === "background" ? "Background" : "Overnight"} profile.
           </Text>
-        )}
-      </View>
-      <View style={shared.card}>
-        <Text style={shared.label}>Instructions</Text>
-        <Text style={[shared.small, s.gap]}>
-          Space-specific rules for agents. Team rules apply to every member’s
-          agents.
-        </Text>
-        <ErrorBanner error={contextError} />
-        {contextError && (
-          <Button
-            title="Retry instructions"
-            secondary
-            disabled={busy}
-            onPress={() => void load()}
-          />
-        )}
-        {data === null ? (
-          <Text style={shared.small}>
-            {contextError
-              ? "Instructions unavailable."
-              : "Loading instructions…"}
-          </Text>
-        ) : (
-          data.instructions.map(row)
-        )}
-        {editing && (
-          <BottomSheet
-            visible
-            title="Agent instructions"
-            closeDisabled={busy}
-            onClose={() => {
-              if (!busy) setEditing(null);
+          <Field label="Name">
+            <TextInput
+              editable={!busy && identity?.lane === lane}
+              value={identityName}
+              onChangeText={setIdentityName}
+              maxLength={40}
+              autoCapitalize="words"
+              placeholder="Orbyn"
+              placeholderTextColor={colors.faint}
+              style={shared.input}
+            />
+          </Field>
+          <Field label="Communication style">
+            <TextInput
+              editable={!busy && identity?.lane === lane}
+              value={identityPersona}
+              onChangeText={setIdentityPersona}
+              maxLength={1000}
+              multiline
+              style={[shared.input, s.area]}
+              placeholder="Warm, direct, and concise"
+              placeholderTextColor={colors.faint}
+            />
+          </Field>
+          <InlineDetails title="Suggested styles">
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {CHARACTER_PERSONAS.map((preset) => (
+                <SmallAction
+                  key={preset.label}
+                  label={preset.label}
+                  disabled={busy || identity?.lane !== lane}
+                  onPress={() => setIdentityPersona(preset.persona)}
+                />
+              ))}
+            </View>
+          </InlineDetails>
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              alignItems: "center",
+              gap: 12,
             }}
           >
-            <Field label={`Instructions for ${editingSpace ?? "this space"}`}>
-              <TextInput
-                style={[shared.input, s.area]}
-                value={editing.text}
-                editable={!busy}
-                onChangeText={(text) => setEditing({ ...editing, text })}
-                maxLength={MAX_AGENT_INSTRUCTIONS}
-                multiline
-                placeholder={
-                  editing.team_id
-                    ? "In this team, cards are cloze and notes cite the slides."
-                    : "Keep answers short. Plan study in the evenings."
-                }
-                placeholderTextColor={colors.faint}
-                accessibilityLabel="Instructions"
-              />
-            </Field>
-            <View style={s.actions}>
-              <Button
-                title="Save"
-                style={s.flexButton}
-                disabled={busy}
-                onPress={save}
-              />
-              <Button
-                secondary
-                title="Cancel"
-                disabled={busy}
-                style={s.flexButton}
-                onPress={() => setEditing(null)}
-              />
-            </View>
-          </BottomSheet>
-        )}
-      </View>
+            <Character appearance={appearance} name={identityName} size={48} />
+            <SmallAction
+              label={
+                editingLook ? "Close character editor" : "Customize character"
+              }
+              disabled={busy || identity?.lane !== lane}
+              onPress={() => setEditingLook((value) => !value)}
+            />
+          </View>
+          {editingLook && (
+            <CharacterEditor
+              value={appearance}
+              onChange={setAppearance}
+              name={identityName}
+              disabled={busy || identity?.lane !== lane}
+            />
+          )}
+          <Button
+            title="Save"
+            onPress={saveIdentity}
+            disabled={
+              busy ||
+              identity === null ||
+              identity.lane !== lane ||
+              !identityName.trim()
+            }
+            style={s.last}
+          />
+        </View>
+      </SettingsSection>
+      <SettingsSection title="Agent context" disabled={busy}>
+        <View style={shared.card}>
+          <Text style={[shared.small, s.gap]}>
+            Context your connected agents can read.
+          </Text>
+          <Button
+            secondary
+            title={data?.profile ? "Open the page" : "Make the page"}
+            icon="fileText"
+            style={s.last}
+            disabled={busy || data === null || !!contextError}
+            onPress={openProfile}
+          />
+          {!!data?.profile && (
+            <Text style={[shared.small, s.after]}>
+              Changed {timeAgo(data.profile.updated_at)}
+            </Text>
+          )}
+        </View>
+      </SettingsSection>
+      <SettingsSection title="Instructions" disabled={busy}>
+        <View style={shared.card}>
+          <Text style={[shared.small, s.gap]}>
+            Space-specific rules for agents. Team rules apply to every member’s
+            agents.
+          </Text>
+          <ErrorBanner error={contextError} />
+          {!!contextError && (
+            <Button
+              title="Retry instructions"
+              secondary
+              disabled={busy}
+              onPress={() => void load()}
+            />
+          )}
+          {data === null ? (
+            <Text style={shared.small}>
+              {contextError
+                ? "Instructions unavailable."
+                : "Loading instructions…"}
+            </Text>
+          ) : (
+            data.instructions.map(row)
+          )}
+          {editing && (
+            <BottomSheet
+              visible
+              title="Agent instructions"
+              closeDisabled={busy}
+              onClose={() => {
+                if (!busy) setEditing(null);
+              }}
+            >
+              <Field label={`Instructions for ${editingSpace ?? "this space"}`}>
+                <TextInput
+                  style={[shared.input, s.area]}
+                  value={editing.text}
+                  editable={!busy}
+                  onChangeText={(text) => setEditing({ ...editing, text })}
+                  maxLength={MAX_AGENT_INSTRUCTIONS}
+                  multiline
+                  placeholder={
+                    editing.team_id
+                      ? "In this team, cards are cloze and notes cite the slides."
+                      : "Keep answers short. Plan study in the evenings."
+                  }
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="Instructions"
+                />
+              </Field>
+              <View style={s.actions}>
+                <Button
+                  title="Save"
+                  style={s.flexButton}
+                  disabled={busy}
+                  onPress={save}
+                />
+                <Button
+                  secondary
+                  title="Cancel"
+                  disabled={busy}
+                  style={s.flexButton}
+                  onPress={() => setEditing(null)}
+                />
+              </View>
+            </BottomSheet>
+          )}
+        </View>
+      </SettingsSection>
     </>
   );
 }

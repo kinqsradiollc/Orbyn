@@ -38,3 +38,12 @@ process-lifetime options are documented in the
 [Debian manual](https://manpages.debian.org/bookworm/bubblewrap/bwrap.1.en.html).
 Container/compiler/runtime qualification remains required; source and type checks
 alone do not establish isolation or successful PDF rendering.
+
+## Process cleanup
+
+The compiler image runs Node under Tini so orphaned sandbox processes are reaped.
+Compose also sets `init: true`; Kubernetes retains the Tini wrapper when overriding
+its command. Preserve this wrapper for custom launchers. Older image launches
+need Docker `--init`. Without a reaper, repeated sandbox jobs can exhaust the
+container's process limit even while its health endpoint still responds. Keep
+the existing process, memory, namespace and filesystem restrictions enabled.

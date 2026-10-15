@@ -118,10 +118,12 @@ export function SettingsSection({
   title,
   children,
   defaultOpen = false,
+  disabled = false,
 }: {
   title: string;
   children: ReactNode;
   defaultOpen?: boolean;
+  disabled?: boolean;
 }) {
   const [open, setOpen] = useState(() => defaultOpen || openSet().has(title));
   const [openedOnce, setOpenedOnce] = useState(open);
@@ -131,6 +133,7 @@ export function SettingsSection({
   });
 
   const toggle = () => {
+    if (disabled) return;
     const next = !open;
     setOpen(next);
     if (next) setOpenedOnce(true);
@@ -148,8 +151,9 @@ export function SettingsSection({
     >
       <Pressable
         onPress={toggle}
+        disabled={disabled}
         accessibilityRole="button"
-        accessibilityState={{ expanded: open }}
+        accessibilityState={{ expanded: open, disabled }}
         style={({ pressed }) => [s.head, pressed && s.headPressed]}
       >
         <Text style={s.title}>{title}</Text>

@@ -80,9 +80,10 @@ CMD ["node", "backend/dist/services/pdf.js"]
 FROM runtime AS latex
 USER root
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    bubblewrap texlive-latex-base texlive-latex-recommended texlive-fonts-recommended cm-super-minimal \
+    tini bubblewrap texlive-latex-base texlive-latex-recommended texlive-fonts-recommended cm-super-minimal \
   && rm -rf /var/lib/apt/lists/*
 USER node
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "backend/dist/services/latex.js"]
 
 # The default API/worker image retains its existing system dependencies.

@@ -207,3 +207,11 @@ Focus renders at the viewport root, independently of the scrolled working pane.
 Agent notes has one screen heading. Newly created booking pages use the shared
 blue accent; explicitly saved booking branding is preserved. These corrections
 remain subject to the existing affected Test → Review and final visual gate.
+
+### Mobile Connections correction
+
+Connections opens with folded service groups rather than a continuous form.
+Agent preferences use named nested groups. After first opening, folding retains
+form state; active requests prevent folding or closing their owner. Permission
+and sharing decisions remain visible inside the relevant task. Compiler launchers
+must retain an init process so repeated previews cannot exhaust process capacity.

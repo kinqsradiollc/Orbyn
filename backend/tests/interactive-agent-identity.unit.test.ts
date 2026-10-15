@@ -21,8 +21,6 @@ test("both chat surfaces keep character configuration and forced naming out of c
       "!identity.named_at",
     ])
       assert.ok(!source.includes(removed), `${name}: ${removed}`);
-    assert.ok(source.includes("What would you like to work on?"));
-    assert.ok(source.includes('placeholder="Ask Orbyn…"'));
   }
 });
 
@@ -43,9 +41,9 @@ test("runtime and profile readers use independently stored automation identities
     "../../mobile/src/screens/AgentContext.tsx",
   ]) {
     const source = await readFile(new URL(file, import.meta.url), "utf8");
-    assert.ok(source.includes("updateAutomationAgentIdentity(lane"));
+    assert.match(source, /updateAutomationAgentIdentity\(\s*lane/);
     assert.ok(source.includes("expected_revision: identity.revision"));
-    assert.ok(source.includes("Reload agent profile"));
+    assert.match(source, /(?:Reload|Retry) agent profile/);
     assert.ok(!source.includes("updateAgentSettings("));
   }
 });

@@ -36,6 +36,7 @@ test("web connection help is optional and keeps the developer route available", 
 });
 
 function mobileHelp(open: boolean) {
+  // ConnectedAgentsCard stores connectionHelpOpen in its ninth useState slot.
   let index = 0;
   let next: boolean | undefined;
   const exports: any = {};
@@ -44,13 +45,22 @@ function mobileHelp(open: boolean) {
     useState(initial: any) {
       const slot = index++;
       return [
-        slot === 1 ? open : initial,
+        slot === 8 ? open : initial,
         (value: boolean) => {
-          if (slot === 1) next = value;
+          if (slot === 8) next = value;
         },
       ];
     },
     useEffect() {},
+    useRef(initial: any) {
+      return { current: initial };
+    },
+    useCallback(fn: any) {
+      return fn;
+    },
+    useMemo(fn: any) {
+      return fn();
+    },
   };
   const component = () => null;
   const stubs = new Proxy(

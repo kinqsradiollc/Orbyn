@@ -267,7 +267,15 @@ const kindText = (k: AgentInboxKind | "" | null) =>
  * Standing rules for every agent, in plain words, for everything or one
  * kind of thing. Agents get them with each item in their inbox.
  */
-export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
+export function AgentRulesCard({
+  busy,
+  run,
+  showHeading = true,
+}: {
+  busy: boolean;
+  run: Run;
+  showHeading?: boolean;
+}) {
   const [rules, setRules] = useState<AgentRule[] | null>(null);
   const [editing, setEditing] = useState<{
     id: string | null;
@@ -331,12 +339,12 @@ export function AgentRulesCard({ busy, run }: { busy: boolean; run: Run }) {
 
   return (
     <View style={shared.card}>
-      <Text style={shared.label}>Standing rules</Text>
+      {showHeading && <Text style={shared.label}>Standing rules</Text>}
       <Text style={[shared.small, s.gap]}>
         Rules agents follow when work arrives.
       </Text>
       <ErrorBanner error={readError} />
-      {readError && (
+      {!!readError && (
         <Button
           title="Retry rules"
           secondary

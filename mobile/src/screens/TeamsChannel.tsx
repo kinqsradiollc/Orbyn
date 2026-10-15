@@ -20,7 +20,9 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { shared } from "../styles";
 import { colors, radii, themed } from "../theme";
 /** Review the same owned Microsoft identity and personal conversation as the web client. */
-export function TeamsChannelSettings() {
+export function TeamsChannelSettings({
+  onBusyChange,
+}: { onBusyChange?: (busy: boolean) => void } = {}) {
   const token = session.token;
   const store = useMemo(
     () =>
@@ -35,6 +37,10 @@ export function TeamsChannelSettings() {
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [openError, setOpenError] = useState("");
+  useEffect(() => {
+    onBusyChange?.(state.busy);
+    return () => onBusyChange?.(false);
+  }, [state.busy, onBusyChange]);
   const live = useRef(true);
   useEffect(() => {
     live.current = true;
@@ -246,7 +252,7 @@ export function TeamsChannelSettings() {
         )}
       </View>
       <ErrorBanner error={openError} onDismiss={() => setOpenError("")} />
-      {state.error && (
+      {!!state.error && (
         <Text
           accessibilityRole="alert"
           style={[shared.small, { color: colors.danger }]}

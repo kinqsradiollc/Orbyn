@@ -22,7 +22,10 @@ import { shared } from "../styles";
 import { colors, radii, themed } from "../theme";
 import { TeamsChannelSettings } from "./TeamsChannel";
 /** Private agent DMs; provider and MCP permissions remain separate settings. */
-export function AgentChannelsCard() {
+export function AgentChannelsCard({
+  onBusyChange,
+}: { onBusyChange?: (busy: boolean) => void } = {}) {
+  const [teamsBusy, setTeamsBusy] = useState(false);
   const token = session.token;
   const store = useMemo(
     () =>
@@ -37,6 +40,10 @@ export function AgentChannelsCard() {
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const [openError, setOpenError] = useState("");
+  useEffect(() => {
+    onBusyChange?.(state.busy || teamsBusy);
+    return () => onBusyChange?.(false);
+  }, [state.busy, teamsBusy, onBusyChange]);
   const live = useRef(true);
   useEffect(() => {
     live.current = true;
@@ -240,9 +247,9 @@ export function AgentChannelsCard() {
           />
         )}
       </View>
-      <TeamsChannelSettings />
+      <TeamsChannelSettings onBusyChange={setTeamsBusy} />
       <ErrorBanner error={openError} onDismiss={() => setOpenError("")} />
-      {state.error && (
+      {!!state.error && (
         <Text
           accessibilityRole="alert"
           style={[shared.small, { color: colors.danger }]}

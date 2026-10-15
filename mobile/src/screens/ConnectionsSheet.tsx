@@ -1,3 +1,4 @@
+import { SettingsSection } from "./settings/SettingsSection";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { Alert } from "../lib/alert";
@@ -101,6 +102,7 @@ function Body({
     },
     [runAction],
   );
+  const [channelsBusy, setChannelsBusy] = useState(false);
   const [feedBusy, setFeedBusy] = useState(false);
   const [subscriptionsBusy, setSubscriptionsBusy] = useState(false);
   const [permissionBusy, setPermissionBusy] = useState<Record<string, boolean>>(
@@ -117,6 +119,7 @@ function Body({
     });
   }, []);
   const childBusy =
+    channelsBusy ||
     feedBusy ||
     subscriptionsBusy ||
     Object.values(permissionBusy).some(Boolean);
@@ -219,355 +222,374 @@ function Body({
             </Text>
           </View>
 
-          <AgentChannelsCard />
-          <ConnectedAgentsCard
-            busy={busy || childBusy}
-            run={run}
-            onPermissionBusyChange={onPermissionBusyChange}
-          />
+          <SettingsSection title="Messaging apps" disabled={busy || childBusy}>
+            <AgentChannelsCard onBusyChange={setChannelsBusy} />
+          </SettingsSection>
+          <SettingsSection
+            title="Connected agents"
+            disabled={busy || childBusy}
+          >
+            <ConnectedAgentsCard
+              busy={busy || childBusy}
+              run={run}
+              onPermissionBusyChange={onPermissionBusyChange}
+            />
+          </SettingsSection>
 
           {/* API keys */}
-          <Text style={[shared.eyebrow, s.eyebrow]}>API keys</Text>
-          <View style={shared.card}>
-            <Text style={[shared.small, s.gap]}>
-              Keys access your tasks, pages and calendars. Keep them secret.
-            </Text>
-            <InlineDetails title="Key permissions">
-              <Text style={shared.small}>
-                Keys cannot manage other keys, account settings or webhooks. For
-                AI agents, use an agent key.
+          <SettingsSection title="API keys" disabled={busy || childBusy}>
+            <View style={shared.card}>
+              <Text style={[shared.small, s.gap]}>
+                Keys access your tasks, pages and calendars. Keep them secret.
               </Text>
-            </InlineDetails>
-            {newKey && (
-              <View style={s.secret}>
-                <Text style={shared.label}>
-                  {newKey.name}: copy it now, it won’t be shown again
-                </Text>
-                <Text selectable style={s.code}>
-                  {newKey.key}
-                </Text>
-                <View style={s.actions}>
-                  <Button
-                    title="Copy or share"
-                    icon="share"
-                    style={s.flex}
-                    onPress={() => void shareText(newKey.key)}
-                  />
-                  <Button
-                    secondary
-                    title="Done"
-                    style={s.flex}
-                    onPress={() => setNewKey(null)}
-                  />
-                </View>
-              </View>
-            )}
-            {keys.map((k) => (
-              <View key={k.id} style={s.row}>
-                <View style={{ flex: 1, minWidth: 120 }}>
-                  <Text style={s.rowTitle}>{k.name}</Text>
-                  <Text style={shared.small}>
-                    {k.prefix}… · Made {timeAgo(k.created_at)} ·{" "}
-                    {k.last_used_at
-                      ? `Used ${timeAgo(k.last_used_at)}`
-                      : "Not used yet"}
-                  </Text>
-                </View>
-                <SmallAction
-                  destructive
-                  label="Delete"
-                  disabled={blocked}
-                  onPress={() =>
-                    Alert.alert(
-                      `Delete ${k.name}?`,
-                      "Anything using this key stops working.",
-                      [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Delete",
-                          style: "destructive",
-                          onPress: () =>
-                            void run(async () => {
-                              await client.deleteApiKey(k.id);
-                              animateLayout();
-                              const next = await client.listApiKeys();
-                              if (current()) setKeys(next);
-                            }),
-                        },
-                      ],
-                    )
-                  }
-                />
-              </View>
-            ))}
-            <Field label="New key" style={s.formTop}>
-              <TextInput
-                style={shared.input}
-                value={keyName}
-                editable={!blocked}
-                onChangeText={setKeyName}
-                maxLength={80}
-                placeholder="What it’s for, like “Shortcuts”"
-                placeholderTextColor={colors.faint}
-                accessibilityLabel="API key name"
-              />
-            </Field>
-            <Button
-              title="Create key"
-              icon="key"
-              style={s.last}
-              disabled={blocked || !keyName.trim()}
-              onPress={() =>
-                void run(async () => {
-                  if (blocked) return;
-                  const made = await client.createApiKey(keyName.trim());
-                  if (!current()) return;
-                  animateLayout();
-                  setNewKey({ name: made.name, key: made.key });
-                  setKeyName("");
-                  const next = await client.listApiKeys();
-                  if (current()) setKeys(next);
-                })
-              }
-            />
-          </View>
-
-          {/* Webhooks */}
-          <Text style={[shared.eyebrow, s.eyebrow]}>Webhooks</Text>
-          <View style={shared.card}>
-            <Text style={[shared.small, s.gap]}>
-              Orbyn sends signed event notices to your URL.
-            </Text>
-            {secret && (
-              <View style={s.secret}>
-                <Text style={shared.label}>
-                  Signing secret: copy it now, it won’t be shown again
-                </Text>
-                <Text selectable style={s.code}>
-                  {secret.secret}
-                </Text>
-                <View style={s.actions}>
-                  <Button
-                    title="Copy or share"
-                    icon="share"
-                    style={s.flex}
-                    onPress={() => void shareText(secret.secret)}
-                  />
-                  <Button
-                    secondary
-                    title="Done"
-                    style={s.flex}
-                    onPress={() => setSecret(null)}
-                  />
-                </View>
-              </View>
-            )}
-            {hooks.map((h) => (
-              <View key={h.id} style={s.hook}>
-                <View style={s.hookTop}>
-                  <Text style={[s.rowTitle, { flex: 1, minWidth: 120 }]}>
-                    {h.url}
-                  </Text>
-                  <Switch
-                    value={h.active}
-                    disabled={blocked}
-                    trackColor={{ true: colors.accent }}
-                    accessibilityLabel={`Send to ${h.url}`}
-                    onValueChange={(active) =>
-                      void run(async () => {
-                        await client.updateWebhook(h.id, { active });
-                        await reloadHooks();
-                      })
-                    }
-                  />
-                </View>
+              <InlineDetails title="Key permissions">
                 <Text style={shared.small}>
-                  {h.events.map((e) => EVENT_LABELS[e]).join(", ")}
+                  Keys cannot manage other keys, account settings or webhooks.
+                  For AI agents, use an agent key.
                 </Text>
-                {h.events.includes("event.starting") && (
-                  <LeadRow
-                    key={`${h.id}-${h.lead_minutes ?? DEFAULT_LEAD}`}
-                    minutes={h.lead_minutes ?? DEFAULT_LEAD}
-                    busy={blocked}
-                    onSave={(lead_minutes) =>
-                      void run(async () => {
-                        await client.updateWebhook(h.id, { lead_minutes });
-                        await reloadHooks();
-                      })
-                    }
-                  />
-                )}
-                <View style={s.status}>
-                  {h.last_status !== null ? (
-                    <Pill
-                      label={`Last delivery ${h.last_status}`}
-                      tone={
-                        h.last_status >= 200 && h.last_status < 300
-                          ? "accent"
-                          : "danger"
-                      }
-                    />
-                  ) : (
-                    <Pill label="No deliveries yet" />
-                  )}
-                  {!!h.last_delivered_at && (
-                    <Text style={shared.small}>
-                      {timeAgo(h.last_delivered_at)}
-                    </Text>
-                  )}
-                </View>
-                {!!h.last_error && (
-                  <Text style={[shared.small, s.error]}>{h.last_error}</Text>
-                )}
-                {!!tests[h.id] && (
-                  <Text
-                    style={[shared.small, s.test]}
-                    accessibilityRole="alert"
-                  >
-                    {tests[h.id]}
+              </InlineDetails>
+              {newKey && (
+                <View style={s.secret}>
+                  <Text style={shared.label}>
+                    {newKey.name}: copy it now, it won’t be shown again
                   </Text>
-                )}
-                <View style={s.actions}>
-                  <SmallAction
-                    label="Send test"
-                    disabled={blocked}
-                    onPress={() =>
-                      void run(async () => {
-                        const r = await client.testWebhook(h.id);
-                        if (!current()) return;
-                        setTests((t) => ({
-                          ...t,
-                          [h.id]: r.ok
-                            ? `Test delivered (${r.status}).`
-                            : `Test failed${r.status ? ` (${r.status})` : ""}${r.error ? `: ${r.error}` : "."}`,
-                        }));
-                        await reloadHooks();
-                      })
-                    }
-                  />
+                  <Text selectable style={s.code}>
+                    {newKey.key}
+                  </Text>
+                  <View style={s.actions}>
+                    <Button
+                      title="Copy or share"
+                      icon="share"
+                      style={s.flex}
+                      onPress={() => void shareText(newKey.key)}
+                    />
+                    <Button
+                      secondary
+                      title="Done"
+                      style={s.flex}
+                      onPress={() => setNewKey(null)}
+                    />
+                  </View>
+                </View>
+              )}
+              {keys.map((k) => (
+                <View key={k.id} style={s.row}>
+                  <View style={{ flex: 1, minWidth: 120 }}>
+                    <Text style={s.rowTitle}>{k.name}</Text>
+                    <Text style={shared.small}>
+                      {k.prefix}… · Made {timeAgo(k.created_at)} ·{" "}
+                      {k.last_used_at
+                        ? `Used ${timeAgo(k.last_used_at)}`
+                        : "Not used yet"}
+                    </Text>
+                  </View>
                   <SmallAction
                     destructive
                     label="Delete"
                     disabled={blocked}
                     onPress={() =>
-                      Alert.alert("Delete this webhook?", h.url, [
-                        { text: "Cancel", style: "cancel" },
-                        {
-                          text: "Delete",
-                          style: "destructive",
-                          onPress: () =>
-                            void run(async () => {
-                              await client.deleteWebhook(h.id);
-                              animateLayout();
-                              await reloadHooks();
-                            }),
-                        },
-                      ])
+                      Alert.alert(
+                        `Delete ${k.name}?`,
+                        "Anything using this key stops working.",
+                        [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: () =>
+                              void run(async () => {
+                                await client.deleteApiKey(k.id);
+                                animateLayout();
+                                const next = await client.listApiKeys();
+                                if (current()) setKeys(next);
+                              }),
+                          },
+                        ],
+                      )
                     }
                   />
                 </View>
-              </View>
-            ))}
-            <Field label="New webhook URL" style={s.formTop}>
-              <TextInput
-                style={shared.input}
-                value={url}
-                editable={!blocked}
-                onChangeText={setUrl}
-                maxLength={500}
-                placeholder="https://example.com/orbyn"
-                placeholderTextColor={colors.faint}
-                keyboardType="url"
-                autoCapitalize="none"
-                autoCorrect={false}
-                accessibilityLabel="Webhook URL"
-              />
-            </Field>
-            <Field label="Send when">
-              <ChipRow label="Webhook events" multi>
-                {WEBHOOK_EVENTS.map((e) => {
-                  const on = events.includes(e);
-                  return (
-                    <Chip
-                      key={e}
-                      multi
-                      label={EVENT_LABELS[e]}
-                      selected={on}
-                      disabled={blocked}
-                      onPress={() =>
-                        setEvents(
-                          on ? events.filter((x) => x !== e) : [...events, e],
-                        )
-                      }
-                    />
-                  );
-                })}
-              </ChipRow>
-            </Field>
-            {wantsLead && (
-              <Field
-                label="Starts … minutes before"
-                hint={`When “${EVENT_LABELS["event.starting"]}” is sent: 0 to ${MAX_LEAD} minutes before each busy event.`}
-              >
-                <NumberInput
-                  value={lead}
+              ))}
+              <Field label="New key" style={s.formTop}>
+                <TextInput
+                  style={shared.input}
+                  value={keyName}
                   editable={!blocked}
-                  onChangeText={setLead}
-                  suffix="minutes before"
-                  accessibilityLabel={`Send event starting this many minutes before, 0 to ${MAX_LEAD}`}
+                  onChangeText={setKeyName}
+                  maxLength={80}
+                  placeholder="What it’s for, like “Shortcuts”"
+                  placeholderTextColor={colors.faint}
+                  accessibilityLabel="API key name"
                 />
               </Field>
-            )}
-            <Button
-              title="Add webhook"
-              icon="plus"
-              style={s.last}
-              disabled={
-                blocked ||
-                !url.trim() ||
-                !events.length ||
-                (wantsLead && newLead === null)
-              }
-              onPress={() =>
-                void run(async () => {
-                  if (blocked) return;
-                  const made = await client.createWebhook({
-                    url: url.trim(),
-                    events,
-                    ...(wantsLead && newLead !== null
-                      ? { lead_minutes: newLead }
-                      : {}),
-                  });
-                  if (!current()) return;
-                  animateLayout();
-                  setSecret({ url: made.url, secret: made.secret });
-                  setUrl("");
-                  await reloadHooks();
-                })
-              }
-            />
-          </View>
+              <Button
+                title="Create key"
+                icon="key"
+                style={s.last}
+                disabled={blocked || !keyName.trim()}
+                onPress={() =>
+                  void run(async () => {
+                    if (blocked) return;
+                    const made = await client.createApiKey(keyName.trim());
+                    if (!current()) return;
+                    animateLayout();
+                    setNewKey({ name: made.name, key: made.key });
+                    setKeyName("");
+                    const next = await client.listApiKeys();
+                    if (current()) setKeys(next);
+                  })
+                }
+              />
+            </View>
+          </SettingsSection>
 
-          <CalendarFeedCard onBusyChange={setFeedBusy} />
-          <SubscriptionsCard onBusyChange={setSubscriptionsBusy} />
+          {/* Webhooks */}
+          <SettingsSection title="Webhooks" disabled={busy || childBusy}>
+            <View style={shared.card}>
+              <Text style={[shared.small, s.gap]}>
+                Orbyn sends signed event notices to your URL.
+              </Text>
+              {secret && (
+                <View style={s.secret}>
+                  <Text style={shared.label}>
+                    Signing secret: copy it now, it won’t be shown again
+                  </Text>
+                  <Text selectable style={s.code}>
+                    {secret.secret}
+                  </Text>
+                  <View style={s.actions}>
+                    <Button
+                      title="Copy or share"
+                      icon="share"
+                      style={s.flex}
+                      onPress={() => void shareText(secret.secret)}
+                    />
+                    <Button
+                      secondary
+                      title="Done"
+                      style={s.flex}
+                      onPress={() => setSecret(null)}
+                    />
+                  </View>
+                </View>
+              )}
+              {hooks.map((h) => (
+                <View key={h.id} style={s.hook}>
+                  <View style={s.hookTop}>
+                    <Text style={[s.rowTitle, { flex: 1, minWidth: 120 }]}>
+                      {h.url}
+                    </Text>
+                    <Switch
+                      value={h.active}
+                      disabled={blocked}
+                      trackColor={{ true: colors.accent }}
+                      accessibilityLabel={`Send to ${h.url}`}
+                      onValueChange={(active) =>
+                        void run(async () => {
+                          await client.updateWebhook(h.id, { active });
+                          await reloadHooks();
+                        })
+                      }
+                    />
+                  </View>
+                  <Text style={shared.small}>
+                    {h.events.map((e) => EVENT_LABELS[e]).join(", ")}
+                  </Text>
+                  {h.events.includes("event.starting") && (
+                    <LeadRow
+                      key={`${h.id}-${h.lead_minutes ?? DEFAULT_LEAD}`}
+                      minutes={h.lead_minutes ?? DEFAULT_LEAD}
+                      busy={blocked}
+                      onSave={(lead_minutes) =>
+                        void run(async () => {
+                          await client.updateWebhook(h.id, { lead_minutes });
+                          await reloadHooks();
+                        })
+                      }
+                    />
+                  )}
+                  <View style={s.status}>
+                    {h.last_status !== null ? (
+                      <Pill
+                        label={`Last delivery ${h.last_status}`}
+                        tone={
+                          h.last_status >= 200 && h.last_status < 300
+                            ? "accent"
+                            : "danger"
+                        }
+                      />
+                    ) : (
+                      <Pill label="No deliveries yet" />
+                    )}
+                    {!!h.last_delivered_at && (
+                      <Text style={shared.small}>
+                        {timeAgo(h.last_delivered_at)}
+                      </Text>
+                    )}
+                  </View>
+                  {!!h.last_error && (
+                    <Text style={[shared.small, s.error]}>{h.last_error}</Text>
+                  )}
+                  {!!tests[h.id] && (
+                    <Text
+                      style={[shared.small, s.test]}
+                      accessibilityRole="alert"
+                    >
+                      {tests[h.id]}
+                    </Text>
+                  )}
+                  <View style={s.actions}>
+                    <SmallAction
+                      label="Send test"
+                      disabled={blocked}
+                      onPress={() =>
+                        void run(async () => {
+                          const r = await client.testWebhook(h.id);
+                          if (!current()) return;
+                          setTests((t) => ({
+                            ...t,
+                            [h.id]: r.ok
+                              ? `Test delivered (${r.status}).`
+                              : `Test failed${r.status ? ` (${r.status})` : ""}${r.error ? `: ${r.error}` : "."}`,
+                          }));
+                          await reloadHooks();
+                        })
+                      }
+                    />
+                    <SmallAction
+                      destructive
+                      label="Delete"
+                      disabled={blocked}
+                      onPress={() =>
+                        Alert.alert("Delete this webhook?", h.url, [
+                          { text: "Cancel", style: "cancel" },
+                          {
+                            text: "Delete",
+                            style: "destructive",
+                            onPress: () =>
+                              void run(async () => {
+                                await client.deleteWebhook(h.id);
+                                animateLayout();
+                                await reloadHooks();
+                              }),
+                          },
+                        ])
+                      }
+                    />
+                  </View>
+                </View>
+              ))}
+              <Field label="New webhook URL" style={s.formTop}>
+                <TextInput
+                  style={shared.input}
+                  value={url}
+                  editable={!blocked}
+                  onChangeText={setUrl}
+                  maxLength={500}
+                  placeholder="https://example.com/orbyn"
+                  placeholderTextColor={colors.faint}
+                  keyboardType="url"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  accessibilityLabel="Webhook URL"
+                />
+              </Field>
+              <Field label="Send when">
+                <ChipRow label="Webhook events" multi>
+                  {WEBHOOK_EVENTS.map((e) => {
+                    const on = events.includes(e);
+                    return (
+                      <Chip
+                        key={e}
+                        multi
+                        label={EVENT_LABELS[e]}
+                        selected={on}
+                        disabled={blocked}
+                        onPress={() =>
+                          setEvents(
+                            on ? events.filter((x) => x !== e) : [...events, e],
+                          )
+                        }
+                      />
+                    );
+                  })}
+                </ChipRow>
+              </Field>
+              {wantsLead && (
+                <Field
+                  label="Starts … minutes before"
+                  hint={`When “${EVENT_LABELS["event.starting"]}” is sent: 0 to ${MAX_LEAD} minutes before each busy event.`}
+                >
+                  <NumberInput
+                    value={lead}
+                    editable={!blocked}
+                    onChangeText={setLead}
+                    suffix="minutes before"
+                    accessibilityLabel={`Send event starting this many minutes before, 0 to ${MAX_LEAD}`}
+                  />
+                </Field>
+              )}
+              <Button
+                title="Add webhook"
+                icon="plus"
+                style={s.last}
+                disabled={
+                  blocked ||
+                  !url.trim() ||
+                  !events.length ||
+                  (wantsLead && newLead === null)
+                }
+                onPress={() =>
+                  void run(async () => {
+                    if (blocked) return;
+                    const made = await client.createWebhook({
+                      url: url.trim(),
+                      events,
+                      ...(wantsLead && newLead !== null
+                        ? { lead_minutes: newLead }
+                        : {}),
+                    });
+                    if (!current()) return;
+                    animateLayout();
+                    setSecret({ url: made.url, secret: made.secret });
+                    setUrl("");
+                    await reloadHooks();
+                  })
+                }
+              />
+            </View>
+          </SettingsSection>
+          <SettingsSection
+            title="Share a calendar"
+            disabled={busy || childBusy}
+          >
+            <CalendarFeedCard onBusyChange={setFeedBusy} />
+          </SettingsSection>
+          <SettingsSection
+            title="Calendar subscriptions"
+            disabled={busy || childBusy}
+          >
+            <SubscriptionsCard onBusyChange={setSubscriptionsBusy} />
+          </SettingsSection>
 
           {/* The CalDAV address: the phone is where you are most likely to
             want it, since the calendar app you would subscribe is on it. */}
-          <Text style={[shared.eyebrow, s.eyebrow]}>Calendar apps</Text>
-          <View style={shared.card}>
-            <Text style={[shared.small, s.gap]}>
-              Read Orbyn events in a CalDAV app. Use your email as username and
-              an API key as password. Sync is read only.
-            </Text>
-            <Text selectable style={s.code}>
-              {`${webOrigin}/dav/`}
-            </Text>
-            <SmallAction
-              label="Copy address"
-              disabled={false}
-              onPress={() => void shareText(`${webOrigin}/dav/`)}
-            />
-          </View>
+          <SettingsSection title="Calendar apps" disabled={busy || childBusy}>
+            <View style={shared.card}>
+              <Text style={[shared.small, s.gap]}>
+                Read Orbyn events in a CalDAV app. Use your email as username
+                and an API key as password. Sync is read only.
+              </Text>
+              <Text selectable style={s.code}>
+                {`${webOrigin}/dav/`}
+              </Text>
+              <SmallAction
+                label="Copy address"
+                disabled={false}
+                onPress={() => void shareText(`${webOrigin}/dav/`)}
+              />
+            </View>
+          </SettingsSection>
         </View>
       </ScrollView>
     </Sheet>
