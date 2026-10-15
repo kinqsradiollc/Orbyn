@@ -438,3 +438,48 @@ historical failures remain recorded above. Native app builds, production, live
 providers/hosts and the parent's separately owned residual checks are not claimed
 by this worker. Both QA tabs are online, temporary viewport override reset, and
 preserved for handoff. UI Preview fixture ownership is returned to the parent.
+
+
+## V16 final density recheck — product `5e3ffc45`
+
+Bounded execution followed the formal handback (65/65, desktop/mobile types and
+root build reported green), HEAD `ff9567f8` documentation only. No broad sweep,
+product edits or provider calls. The existing rate-limit banner delayed one
+library request; it resolved without repeated requests and was dismissed before
+final proof.
+
+- **Wide fine pointer, 1440×900, light and dark:** actual Back/More/Edit/Comment,
+  Hide source and Ask assistant measure 32px high, 13px text. Back is 55.66px wide,
+  More57.19, Edit40.21, Comment77.19, Hide source99.29 and Ask assistant107.23.
+  Segment members28px sit in an outer32px group, vertically aligned with adjacent
+  controls. The PDF iframe's four control buttons measure32×32. Screenshots show
+  consistent typography, compact rows and no overlap.
+- **Narrow web320×740:** Back/More/source/Ask/Edit/Comment measure44px high. The
+  mode members40px sit in an outer44px group (not a40px outer target); group and
+  adjacent controls wrap into clean rows without clipping. The PDF controls
+  measure44×44. The same coarse-pointer emulation at1440 produced44px Back and
+  PDF controls, independently of width; touch emulation was disabled afterward.
+- **PDF viewing state:** selected page2 and zoomed in before resizing. The parent
+  compact-to-touch resize retained2/2. Returning to identical1440 Markdown split
+  restored the exact canvas dimensions485×685.921875px, providing actual retained
+  zoom evidence rather than inferring it from source. No recompilation or source
+  edit was needed.
+- **Expo web app320:** actual mobile Note/Markdown/LaTeX and Edit/Comment measure
+ 44px high. The title and action rows wrap within320px; PDF controls remain
+  visible and do not overlap. This is Expo web evidence, not native app evidence.
+- **Representative Settings:** wide Close settings32×32, category rows40px high;
+  theme controls operate normally. Light/dark changes were confined to disposable
+  QA; desktop theme restored to dark afterward.
+
+New V16 screenshots (older V12 images are historical):
+
+- `/private/tmp/orbyn-v16-docs-light-wide.jpg`
+- `/private/tmp/orbyn-v16-docs-dark-wide.jpg`
+- `/private/tmp/orbyn-v16-docs-dark-320.jpg`
+- `/private/tmp/orbyn-v16-docs-light-320.jpg`
+- `/private/tmp/orbyn-v16-expo-light-320.jpg`
+
+No new density defect was found within this bounded check. Temporary device
+metrics, touch emulation and viewport overrides were cleared; tabs preserved for
+handoff. UI Preview fixture ownership is returned to the parent. This does not
+replace the parent's separate residual evidence or establish native coverage.
