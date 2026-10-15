@@ -160,3 +160,33 @@ the shared foreground and monospace font, remains selectable, and keeps its own
 source rather than duplicating the canonical PDF. The existing four mounted
 provider tests now assert its actual rendered color/font in the mobile fixture;
 4/4 development checks passed. One targeted dark recheck remains required.
+
+## Finite final interactions and V15
+
+At product509462e6, actual sidebar keyboard Home/End exposed200/400px limits;
+double-click reset224. A supported CDP pointer drag changed224→284; Escape and
+release restored224. An owned Admin provider form was cancelled without creating
+its draft, then an unused local Control preview provider was saved through the
+in-app Apply change confirmation. Active Visual fixture remained selected. An
+offline connection test showed a concise error; online Test connection retry
+reported Connected and the stale error cleared. Screenshot:
+`/private/tmp/orbyn-final-admin-provider-recovery.png`.
+
+Scheduled one synthetic45-minute calendar session, opened Change time, entered30
+and cancelled; the original22:45–23:30 block remained. Public booking at320×740
+validated an empty required name, then confirmed a synthetic booking with recipient
+and Australia/Melbourne zone visible before submission. Confirmation had no
+horizontal overflow. Guarded test DB was checked and SMTP was disabled: no real
+email delivery is claimed. Screenshot:
+`/private/tmp/orbyn-final-booking-confirmation-320.png`.
+
+Visual Check completed stable Markdown Reject/Accept, mobile LaTeX decisions,
+V14 dark secondary-source recheck, retained scrolling comment input and bounded
+mobile composer/20-paragraph local response. Its structured offline-save case
+reproduced V15: draft retained but Save disabled and no usable explicit save retry.
+The store now exposes explicit retrySave, preserving source-invalid/conflict/busy
+fences; autosave still stops on errors. Both structured parents expose Retry save
+for a retained valid draft, with concise transport-error copy.23/23 focused
+development tests passed, including failure→retry without a new edit, invalid
+source refusal and conflicting-draft preservation. Formal qualification and an
+actual V15 recovery recheck remain required.

@@ -592,13 +592,17 @@ function StructuredDocEditorBody({
     operation: DocContentOperation,
     expected: VersionedDocContent,
   ) => store.changeOperation(expected, operation);
-  const save = useCallback(async () => {
-    const before = store.state.doc?.version;
-    await store.save();
-    const next = store.state.doc;
-    if (next && next.version !== before) onChanged(next);
-    if (store.state.error) report(store.state.error);
-  }, [store, onChanged, report]);
+  const save = useCallback(
+    async (retry = false) => {
+      const before = store.state.doc?.version;
+      if (retry) await store.retrySave();
+      else await store.save();
+      const next = store.state.doc;
+      if (next && next.version !== before) onChanged(next);
+      if (store.state.error) report(store.state.error);
+    },
+    [store, onChanged, report],
+  );
   const prepareLinkedPage = useCallback(async () => {
     const account = authSession.get();
     const currentPage = () =>
@@ -996,16 +1000,18 @@ function StructuredDocEditorBody({
           {canWrite && (
             <button
               className="secondary"
-              onClick={() => void save()}
+              onClick={() => void save(!!state.error)}
               disabled={
                 state.busy ||
                 state.conflict ||
-                !!state.error ||
+                state.sourceInvalid ||
                 !session ||
                 !docEditorSessionDirty(session)
               }
             >
-              Save
+              {state.error && !state.conflict && !state.sourceInvalid
+                ? "Retry save"
+                : "Save"}
             </button>
           )}
           <div className="structured-doc-menu" ref={menuRef}>
@@ -1119,9 +1125,11 @@ function StructuredDocEditorBody({
         )}
         {state.error !== null && (
           <p className="structured-doc-error" role="alert">
-            {state.error instanceof Error
+            {state.sourceInvalid && state.error instanceof Error
               ? state.error.message
-              : "Could not update this page."}
+              : session
+                ? "Couldn’t save this page. Your draft is still here."
+                : "Couldn’t open this page. Try again."}
           </p>
         )}
         {navigationError && (

@@ -222,6 +222,19 @@ export class DocEditorStore {
     await this.refresh();
   }
 
+  /** Explicit recovery retries the retained valid draft; autosave never loops on errors. */
+  async retrySave(options: { ticksFrom?: number } = {}) {
+    if (
+      this.value.busy ||
+      this.value.conflict ||
+      this.value.sourceInvalid ||
+      !this.value.session
+    )
+      return;
+    this.publish({ error: null });
+    await this.save(options);
+  }
+
   /** A stale save receipt never replaces typing made while the request was in flight. */
   async save(options: { ticksFrom?: number } = {}) {
     const session = this.value.session;

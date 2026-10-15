@@ -463,72 +463,76 @@ function StructuredDocEditorBody({
     pendingInitial.current = null;
     setNavigationError("This heading or line is no longer in the page.");
   }, [doc.id, initialBlockId, document, leaves]);
-  const save = React.useCallback(async () => {
-    if (queueInFlight.current || !currentPage()) return;
-    const account = pageOwner.account;
-    const before = store.state.doc?.version;
-    await store.save();
-    if (!currentPage()) return;
-    const next = store.state.doc;
-    if (next && next.version !== before) onChanged(next);
-    if (!store.state.sourceInvalid && isOfflineError(store.state.error)) {
-      const draft = store.state.session;
-      if (!draft) return;
-      const generation = editGeneration.current;
-      queueInFlight.current = true;
-      const leavesOf = (value: VersionedDocContent) =>
-        value.format === 1
-          ? value.blocks
-          : docContainerBlocks(value.nodes, { projected: true });
-      try {
-        await savePageOffline(
-          {
-            id: doc.id,
+  const save = React.useCallback(
+    async (retry = false) => {
+      if (queueInFlight.current || !currentPage()) return;
+      const account = pageOwner.account;
+      const before = store.state.doc?.version;
+      if (retry) await store.retrySave();
+      else await store.save();
+      if (!currentPage()) return;
+      const next = store.state.doc;
+      if (next && next.version !== before) onChanged(next);
+      if (!store.state.sourceInvalid && isOfflineError(store.state.error)) {
+        const draft = store.state.session;
+        if (!draft) return;
+        const generation = editGeneration.current;
+        queueInFlight.current = true;
+        const leavesOf = (value: VersionedDocContent) =>
+          value.format === 1
+            ? value.blocks
+            : docContainerBlocks(value.nodes, { projected: true });
+        try {
+          await savePageOffline(
+            {
+              id: doc.id,
+              title: draft.title,
+              document: draft.document,
+              content: leavesOf(draft.document),
+              base: {
+                version: draft.saved.version,
+                title: draft.saved.title,
+                document: draft.saved.document,
+                content: leavesOf(draft.saved.document),
+              },
+            },
+            account,
+          );
+          if (!currentPage()) return;
+          const kept = {
+            ...(store.state.doc ?? doc),
             title: draft.title,
             document: draft.document,
             content: leavesOf(draft.document),
-            base: {
-              version: draft.saved.version,
-              title: draft.saved.title,
-              document: draft.saved.document,
-              content: leavesOf(draft.saved.document),
-            },
-          },
-          account,
-        );
-        if (!currentPage()) return;
-        const kept = {
-          ...(store.state.doc ?? doc),
-          title: draft.title,
-          document: draft.document,
-          content: leavesOf(draft.document),
-        };
-        if (
-          !(await rememberPageDurable(kept, account)) ||
-          !currentPage() ||
-          store.state.sourceInvalid
-        )
-          return;
-        if (generation === editGeneration.current) {
-          store.acknowledgeOfflineSave();
-          onChanged(kept);
-          offlineQueued.current = true;
-          setKeptOffline(true);
-        } else {
-          offlineQueued.current = false;
-          setKeptOffline(false);
+          };
+          if (
+            !(await rememberPageDurable(kept, account)) ||
+            !currentPage() ||
+            store.state.sourceInvalid
+          )
+            return;
+          if (generation === editGeneration.current) {
+            store.acknowledgeOfflineSave();
+            onChanged(kept);
+            offlineQueued.current = true;
+            setKeptOffline(true);
+          } else {
+            offlineQueued.current = false;
+            setKeptOffline(false);
+          }
+        } catch (error) {
+          if (currentPage()) report(error);
+        } finally {
+          queueInFlight.current = false;
         }
-      } catch (error) {
-        if (currentPage()) report(error);
-      } finally {
-        queueInFlight.current = false;
+      } else if (store.state.error) report(store.state.error);
+      else {
+        offlineQueued.current = false;
+        setKeptOffline(false);
       }
-    } else if (store.state.error) report(store.state.error);
-    else {
-      offlineQueued.current = false;
-      setKeptOffline(false);
-    }
-  }, [store, doc, onChanged, report]);
+    },
+    [store, doc, onChanged, report],
+  );
   const prepareLinkedPage = React.useCallback(async () => {
     if (commentDrafts && !(await commentDrafts.prepare())) return false;
     if (!currentPage()) return false;
@@ -800,13 +804,17 @@ function StructuredDocEditorBody({
                 disabled={
                   state.busy ||
                   state.conflict ||
-                  !!state.error ||
+                  state.sourceInvalid ||
                   !session ||
                   !docEditorSessionDirty(session)
                 }
-                onPress={() => void save()}
+                onPress={() => void save(!!state.error)}
               >
-                <Text style={styles.action}>Save</Text>
+                <Text style={styles.action}>
+                  {state.error && !state.conflict && !state.sourceInvalid
+                    ? "Retry save"
+                    : "Save"}
+                </Text>
               </Pressable>
             )}
             <Pressable
@@ -955,19 +963,23 @@ function StructuredDocEditorBody({
           {state.error !== null && (
             <View>
               <Text accessibilityRole="alert" style={styles.error}>
-                {state.error instanceof Error
+                {state.sourceInvalid && state.error instanceof Error
                   ? state.error.message
-                  : "Could not update this page."}
+                  : session
+                    ? "Couldn’t save this page. Your draft is still here."
+                    : "Couldn’t open this page. Try again."}
               </Text>
-              {!state.sourceInvalid && !state.conflict && (
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={state.busy}
-                  onPress={refreshPage}
-                >
-                  <Text style={styles.action}>Retry</Text>
-                </Pressable>
-              )}
+              {!state.sourceInvalid &&
+                !state.conflict &&
+                (!session || !docEditorSessionDirty(session)) && (
+                  <Pressable
+                    accessibilityRole="button"
+                    disabled={state.busy}
+                    onPress={refreshPage}
+                  >
+                    <Text style={styles.action}>Retry</Text>
+                  </Pressable>
+                )}
             </View>
           )}
           {navigationError && (

@@ -195,3 +195,66 @@ test("a failed conflict refresh keeps the newer invalid source error", async () 
   assert.equal(store.state.error, validationError);
   assert.equal(canLeaveStructuredDocDraft(store.state, true), false);
 });
+
+test("explicit retry saves a retained failed draft without another edit", async () => {
+  let calls = 0;
+  const store = new DocEditorStore({
+    getDocForEditor: async () => page(),
+    updateDocForEditor: async (_id, input) => {
+      if (++calls === 1) throw new TypeError("Failed to fetch");
+      return { ...page(2, input.document), title: input.title ?? "Page" };
+    },
+  });
+  await store.open(id);
+  store.changeTitle("Page", "Retained draft");
+  await store.save();
+  assert.ok(store.state.error);
+  await store.save();
+  assert.equal(calls, 1, "ordinary autosave does not loop on the failure");
+  await store.retrySave();
+  assert.equal(calls, 2);
+  assert.equal(store.state.error, null);
+  assert.equal(store.state.session?.title, "Retained draft");
+  assert.equal(store.state.session?.saved.version, 2);
+});
+test("explicit retry never sends invalid source", async () => {
+  let calls = 0;
+  const store = new DocEditorStore({
+    getDocForEditor: async () => page(),
+    updateDocForEditor: async () => {
+      calls++;
+      return page(2);
+    },
+  });
+  await store.open(id);
+  store.changeSource(
+    store.state.session!.document,
+    "> - [ ] One ^first\n\nTail ^first",
+  );
+  const error = store.state.error;
+  await store.retrySave();
+  assert.equal(calls, 0);
+  assert.equal(store.state.error, error);
+  assert.equal(store.state.sourceInvalid, true);
+});
+
+test("explicit retry preserves a conflicting draft for review", async () => {
+  let reads = 0,
+    writes = 0;
+  const store = new DocEditorStore({
+    getDocForEditor: async () =>
+      ++reads === 1 ? page() : { ...page(2), title: "Remote title" },
+    updateDocForEditor: async () => {
+      writes++;
+      throw Object.assign(new Error("Conflict"), { statusCode: 409 });
+    },
+  });
+  await store.open(id);
+  store.changeTitle("Page", "Local title");
+  await store.save();
+  assert.equal(store.state.conflict, true);
+  await store.retrySave();
+  assert.equal(writes, 1);
+  assert.equal(store.state.session?.title, "Local title");
+  assert.equal(store.state.conflict, true);
+});
