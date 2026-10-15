@@ -1329,13 +1329,6 @@ function StructuredDocEditorBody({
                         signal,
                       )
                     }
-                    saveStatus={
-                      state.busy
-                        ? "Saving…"
-                        : docEditorSessionDirty(session)
-                          ? "Unsaved changes"
-                          : "Saved"
-                    }
                     onLatexChange={
                       canWrite
                         ? (text, expected) => {

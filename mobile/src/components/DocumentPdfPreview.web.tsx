@@ -1,4 +1,4 @@
-import { colors } from "../theme";
+import { colors, fonts } from "../theme";
 import { useEffect, useRef, useState } from "react";
 
 /** App-owned PDF pages; the isolated local renderer needs no browser PDF plugin. */
@@ -112,7 +112,7 @@ export function DocumentPdfPreview({
           padding: 8,
           color: colors.accent,
           fontSize: 14,
-          fontFamily: "inherit",
+          fontFamily: fonts.regular,
           textDecoration: "none",
         }}
       >

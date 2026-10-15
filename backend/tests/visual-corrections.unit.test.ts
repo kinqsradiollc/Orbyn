@@ -174,3 +174,40 @@ test("Docs owns the available editor width and uses shared source mode controls"
   assert.match(source, /<DocEditorModes/);
   assert.doesNotMatch(source, /secondary=\{mode !==/);
 });
+
+test("LaTeX source replacement preserves anchored or positional ownership, and insertion creates an ID", () => {
+  for (const id of [undefined, "stable-tex"]) {
+    const before: core.DocBlock[] = [
+      { type: "paragraph", text: "Keep surrounding prose" },
+      {
+        type: "code",
+        lang: core.DOC_LATEX_LANGUAGE,
+        text: "Old",
+        ...(id ? { id } : {}),
+      },
+    ];
+    const after = core.withDocLatexSource(before, "New");
+    assert.equal(after[1].id, id);
+    assert.equal(after[0], before[0]);
+    const doc: core.VersionedDocContent = {
+      format: 2,
+      nodes: [
+        {
+          kind: "quote",
+          children: before.map((block) => ({ kind: "block" as const, block })),
+        },
+      ],
+    };
+    const operation = core.docLatexOperation(doc, "New");
+    assert.equal(operation.kind, "replace-leaf");
+    if (operation.kind !== "replace-leaf")
+      throw new Error("Expected replacement");
+    assert.deepEqual(operation.path, [0, 1]);
+    assert.equal(operation.block.id, id);
+  }
+  assert.ok(core.withDocLatexSource([], "New")[0].id);
+  const insertion = core.docLatexOperation({ format: 2, nodes: [] }, "New");
+  assert.equal(insertion.kind, "insert");
+  if (insertion.kind === "insert" && insertion.node.kind === "block")
+    assert.ok(insertion.node.block.id);
+});

@@ -39,7 +39,7 @@ export function withDocLatexSource(
     type: "code" as const,
     lang: DOC_LATEX_LANGUAGE,
     text,
-    id: current?.id ?? newBlockId(),
+    id: current ? current.id : newBlockId(),
   };
   return current
     ? blocks.map((block) => (block === current ? next : block))
@@ -75,7 +75,7 @@ export function docLatexOperation(
     type: "code",
     lang: DOC_LATEX_LANGUAGE,
     text,
-    id: current?.block.id ?? newBlockId(),
+    id: current ? current.block.id : newBlockId(),
   };
   return current
     ? { kind: "replace-leaf", path: current.path, block }

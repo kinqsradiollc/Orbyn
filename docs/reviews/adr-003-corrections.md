@@ -212,3 +212,18 @@ soft selected state. PDF download uses the mobile palette and touch target;
 empty string error guards no longer render text children under native Views.
 Builder37/37 affected checks and mobile types passed. Recheck wide source/Note
 split, library-open narrow fallback, retained PDF state and phone controls.
+
+## V9 — unanchored source ownership
+
+Actual structured Expo source editing assigned a new ID to an existing unanchored
+TeX block and reset its preview owner/page. Both core source helpers now preserve
+the existing optional ID on replacement; insertion still generates an ID.
+Anchored IDs and nested operation paths remain unchanged. Four provider cases
+cover web/mobile × anchored/unanchored source replacement and actual iframe
+identity, followed by deliberate canonical-owner reset. A pure helper regression
+covers ID preservation, insertion and nested path/surrounding content.
+
+Structured parent owns Saved/Unsaved status in both clients; its adapter no longer
+repeats it. Mobile PDF download uses fonts.regular rather than inheriting the
+browser serif face. Builder38/38 finite checks and desktop/mobile types passed;
+formal affected qualification and actual unanchored page/zoom check remain.

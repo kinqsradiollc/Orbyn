@@ -129,3 +129,26 @@ then will recheck actual wide split and narrow fallback. Source mode buttons
 also used a solid selected action unlike the shared soft mode controls, and the
 mobile PDF download inherited a raw browser link style. These are included in
 that same scoped correction. New UI actions stopped during the HMR correction.
+
+### V8 affected recheck and V9 discovery — parent IAB
+
+At actual1400×900 after374258c5, light, the library measured300px and the legacy
+editor showed source beside the original Note/PDF, with one visibility action.
+Both panels and the comments below fit. Structured preview likewise showed its
+mixed prose, canonical PDF and separate second TeX source in the wide split.
+The source choices now match the soft selected mode styling. Download still
+inherited the browser serif font, so Builder is changing it to fonts.regular.
+
+In structured mobile, selected PDF page2 and Zoom in; measured canvas627.5px wide,
+887.46px high. Changed the source and returned through Note, which saved the
+valid structured draft. The preview immediately disappeared while editing, then
+returned on page1: **V9**. The fixture used valid preexisting unanchored blocks.
+Core's source helper assigned an ID on the first replacement, changing the
+preview owner from positional fallback to that ID. Reviewer confirmed preserving
+the existing optional ID is correct; only insertion should generate a new ID.
+Builder is fixing that behavior and adding both-client anchored/unanchored
+provider cases plus nested operation tests. This case is not a persistence pass.
+
+Structured toolbar also repeated Saved above the adapter's Saved. The parent
+retains status ownership; the source-only adapter status will be suppressed in
+both structured clients. Actual remaining checks continue on the next freeze.
