@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useRef } from "react";
 
 /** Each working pane owns its document actions and title notifications. */
 export const PageCommandScope = createContext("main");
+/** Live authority for child document-level event listeners. */
+export const PaneInputOwner = createContext<() => boolean>(() => true);
 
 export type PageCommands = {
   docId: string;

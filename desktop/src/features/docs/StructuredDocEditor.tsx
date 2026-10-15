@@ -1,3 +1,4 @@
+import { ownsEditorKey } from "./editor-input";
 import {
   useCallback,
   useContext,
@@ -43,6 +44,7 @@ import { DocNavigationContext } from "./doc-navigation";
 import { OPEN_LINK_EVENT } from "./DocLinks";
 import {
   PageCommandScope,
+  PaneInputOwner,
   preparePaneDrafts,
   usePageCommands,
 } from "../../app/page-commands";
@@ -114,6 +116,7 @@ function StructuredDocEditorBody({
   const [historyBusy, setHistoryBusy] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(false);
   const pageScope = useContext(PageCommandScope);
+  const ownsPaneInput = useContext(PaneInputOwner);
   const beforeCommentAnchor = useRef<(() => Promise<boolean>) | null>(null);
   const anchorChanging = useRef(false);
   const historyPermission = useRef(canWrite);
@@ -617,7 +620,10 @@ function StructuredDocEditorBody({
       if (!menuRef.current?.contains(event.target as Node)) setMenuOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (
+        event.key === "Escape" &&
+        ownsEditorKey(menuRef.current, event, ownsPaneInput, true)
+      ) {
         event.preventDefault();
         setMenuOpen(false);
         menuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();

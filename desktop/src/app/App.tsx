@@ -1,3 +1,4 @@
+import { SharedNarrowChrome } from "../components/SharedNarrowChrome";
 import { ViewDraftStore } from "@orbyn/api-client";
 import { chatgptStore } from "../lib/chatgpt";
 import "./workspace.css";
@@ -113,6 +114,7 @@ import {
 import { PEEK_EVENT } from "../features/docs/DocLinks";
 import {
   PageCommandScope,
+  PaneInputOwner,
   preparePageLeave,
   openPageCommands,
   watchOpenPage,
@@ -229,6 +231,8 @@ export function App() {
   const [focused, setFocused] = useState("main");
   const focusedRef = useRef("main");
   const primaryPane = useRef<HTMLDivElement>(null);
+  const [sharedChromeHost, setSharedChromeHost] =
+    useState<HTMLDivElement | null>(null);
   const secondaryPane = useRef<HTMLDivElement>(null);
   const [singlePane, setSinglePane] = useState(
     () => window.matchMedia("(max-width: 1279px)").matches,
@@ -316,7 +320,11 @@ export function App() {
   }, [planner.token]);
   return (
     <div
-      className={"workspace-duo" + (paired ? " is-paired" : "")}
+      className={
+        "workspace-duo" +
+        (paired ? " is-paired" : "") +
+        (paired && singlePane ? " has-shared-chrome" : "")
+      }
       data-focused={focused}
     >
       {paired && (
@@ -341,6 +349,13 @@ export function App() {
           </button>
         </nav>
       )}
+      {paired && singlePane && (
+        <div
+          className="workspace-shared-host"
+          ref={setSharedChromeHost}
+          data-shared-chrome=""
+        />
+      )}
       <div
         ref={primaryPane}
         tabIndex={-1}
@@ -359,25 +374,30 @@ export function App() {
         onFocusCapture={(event) => capturePaneFocus("main", event.target)}
       >
         <PageCommandScope.Provider value="main">
-          <WorkspaceController
-            planner={planner}
-            registerChrome={registerChrome}
-            reportChromeLocation={reportChromeLocation}
-            chromeLocation={chromeLocations[focused]}
-            dispatchChrome={dispatchChrome}
-            ownsEvents={() =>
-              paneVisible("main") && focusedRef.current === "main"
-            }
-            onSplit={
-              paired
-                ? undefined
-                : (place) => {
-                    setPaired(place);
-                    focusPane("secondary");
-                    restorePaneFocus("secondary");
-                  }
-            }
-          />
+          <PaneInputOwner.Provider
+            value={() => paneVisible("main") && focusedRef.current === "main"}
+          >
+            <WorkspaceController
+              planner={planner}
+              sharedChromeHost={paired && singlePane ? sharedChromeHost : null}
+              registerChrome={registerChrome}
+              reportChromeLocation={reportChromeLocation}
+              chromeLocation={chromeLocations[focused]}
+              dispatchChrome={dispatchChrome}
+              ownsEvents={() =>
+                paneVisible("main") && focusedRef.current === "main"
+              }
+              onSplit={
+                paired
+                  ? undefined
+                  : (place) => {
+                      setPaired(place);
+                      focusPane("secondary");
+                      restorePaneFocus("secondary");
+                    }
+              }
+            />
+          </PaneInputOwner.Provider>
         </PageCommandScope.Provider>
       </div>
       {paired && (
@@ -396,20 +416,26 @@ export function App() {
           }
         >
           <PageCommandScope.Provider value="secondary">
-            <WorkspaceController
-              planner={planner}
-              registerChrome={registerChrome}
-              reportChromeLocation={reportChromeLocation}
-              initialPlace={paired}
-              ownsEvents={() =>
+            <PaneInputOwner.Provider
+              value={() =>
                 paneVisible("secondary") && focusedRef.current === "secondary"
               }
-              onClosePane={() => {
-                setPaired(null);
-                focusPane("main");
-                restorePaneFocus("main");
-              }}
-            />
+            >
+              <WorkspaceController
+                planner={planner}
+                registerChrome={registerChrome}
+                reportChromeLocation={reportChromeLocation}
+                initialPlace={paired}
+                ownsEvents={() =>
+                  paneVisible("secondary") && focusedRef.current === "secondary"
+                }
+                onClosePane={() => {
+                  setPaired(null);
+                  focusPane("main");
+                  restorePaneFocus("main");
+                }}
+              />
+            </PaneInputOwner.Provider>
           </PageCommandScope.Provider>
         </div>
       )}
@@ -427,10 +453,12 @@ function WorkspaceController({
   reportChromeLocation,
   chromeLocation,
   dispatchChrome,
+  sharedChromeHost = null,
 }: {
   registerChrome: (scope: string, owner: ChromeOwner) => () => void;
   reportChromeLocation: (scope: string, location: ChromeLocation) => void;
   chromeLocation?: ChromeLocation;
+  sharedChromeHost?: HTMLElement | null;
   dispatchChrome?: (action: ChromeAction) => void;
   planner: ReturnType<typeof usePlanner>;
   initialPlace?: TabPlace;
@@ -1606,6 +1634,7 @@ function WorkspaceController({
     reportChromeLocation(commandScope, { view, savedView: shownView });
   }, [commandScope, view, shownView, reportChromeLocation]);
   const chrome = (action: ChromeAction) => {
+    setMobileNav(false);
     if (dispatchChrome) dispatchChrome(action);
     else chromeRun.current(action);
   };
@@ -2519,6 +2548,48 @@ function WorkspaceController({
       </PrefsContext.Provider>
     );
 
+  const sidebar = (
+    <Sidebar
+      open={!!sharedChromeHost || mobileNav}
+      width={sidebarWidth}
+      onResize={sharedChromeHost ? undefined : setSidebarWidth}
+      railed={sharedChromeHost ? false : railed}
+      view={chromeLocation?.view ?? view}
+      user={user}
+      hasUnread={notices.some((n) => !n.read)}
+      reviewPending={reviewPending}
+      onNavigate={(view) => chrome({ kind: "navigate", view })}
+      pinnedViews={pinnedViews}
+      openView={chromeLocation ? chromeLocation.savedView : shownView}
+      onOpenView={(id) => chrome({ kind: "saved-view", id })}
+      starred={starred}
+      onOpenStarred={(item) => chrome({ kind: "starred", item })}
+      onSignOut={() => void planner.logout()}
+      agentName={assistant.agentName}
+    />
+  );
+  const header = (
+    <Topbar
+      sharedChrome={!secondary}
+      showLocation={!tabsLive}
+      tabs={secondary || sharedChromeHost ? undefined : workspaceTabs}
+      view={chromeLocation?.view ?? view}
+      agentName={assistant.agentName}
+      railed={railed}
+      navigationOpen={mobileNav}
+      onToggleRail={sharedChromeHost ? undefined : toggleRail}
+      onToggleMenu={() => {
+        setPeek(null);
+        setMobileNav(!mobileNav);
+      }}
+      onOpenNotifications={() =>
+        chrome({ kind: "navigate", view: "Notifications" })
+      }
+      onOpenCommand={() => chrome({ kind: "search" })}
+      timeZone={accountZone}
+    />
+  );
+
   return (
     <PrefsContext.Provider value={accountPrefs}>
       <PlanningProviders planning={planning} planned={planned}>
@@ -2535,24 +2606,14 @@ function WorkspaceController({
             } as CSSProperties
           }
         >
-          {!secondary && (
-            <Sidebar
+          {!secondary && !sharedChromeHost && sidebar}
+          {!secondary && sharedChromeHost && (
+            <SharedNarrowChrome
+              host={sharedChromeHost}
+              header={header}
+              navigation={sidebar}
               open={mobileNav}
-              width={sidebarWidth}
-              onResize={setSidebarWidth}
-              railed={railed}
-              view={chromeLocation?.view ?? view}
-              user={user}
-              hasUnread={notices.some((n) => !n.read)}
-              reviewPending={reviewPending}
-              onNavigate={(view) => chrome({ kind: "navigate", view })}
-              pinnedViews={pinnedViews}
-              openView={chromeLocation ? chromeLocation.savedView : shownView}
-              onOpenView={(id) => chrome({ kind: "saved-view", id })}
-              starred={starred}
-              onOpenStarred={(item) => chrome({ kind: "starred", item })}
-              onSignOut={() => void planner.logout()}
-              agentName={assistant.agentName}
+              onClose={() => setMobileNav(false)}
             />
           )}
           <div className="shell" ref={shellEl}>
@@ -2586,26 +2647,8 @@ function WorkspaceController({
                 />
               </>
             )}
-            <Topbar
-              sharedChrome={!secondary}
-              showLocation={!tabsLive}
-              tabs={secondary ? undefined : workspaceTabs}
-              view={chromeLocation?.view ?? view}
-              agentName={assistant.agentName}
-              railed={railed}
-              navigationOpen={mobileNav}
-              onToggleRail={toggleRail}
-              onToggleMenu={() => {
-                setPeek(null);
-                setMobileNav(!mobileNav);
-              }}
-              onOpenNotifications={() =>
-                chrome({ kind: "navigate", view: "Notifications" })
-              }
-              onOpenCommand={() => chrome({ kind: "search" })}
-              timeZone={accountZone}
-            />
-            {secondary && workspaceTabs}
+            {!sharedChromeHost && header}
+            {(secondary || sharedChromeHost) && workspaceTabs}
             <main className="content">
               {error && (
                 <div role="alert" className="error">

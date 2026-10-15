@@ -477,3 +477,81 @@
 .app.workspace .topbar .tab-more {
   min-height: 44px;
 }
+
+/* Narrow paired work keeps shared controls outside both retained content panes. */
+@media (max-width: 1279px) {
+  .workspace-duo.is-paired.has-shared-chrome {
+    --shared-chrome-height: 56px;
+    grid-template-rows:
+      var(--pane-switch-height) var(--shared-chrome-height)
+      minmax(0, 1fr);
+  }
+  .workspace-shared-host {
+    min-width: 0;
+    min-height: 0;
+  }
+  .workspace-shared-chrome {
+    --topbar-h: 56px;
+    min-height: 0;
+    height: 100%;
+  }
+  .workspace-shared-chrome .topbar {
+    height: 100%;
+    padding: 0 16px;
+  }
+  .workspace-shared-chrome .mobile-menu {
+    display: flex;
+  }
+  .workspace-navigation-dialog {
+    position: fixed;
+    inset: 0 auto 0 0;
+    margin: 0;
+    width: min(280px, calc(100vw - 48px));
+    height: 100dvh;
+    max-height: 100dvh;
+    padding: 0;
+    border: 0;
+    background: var(--color-sunken);
+    color: var(--color-text);
+  }
+  .workspace-navigation-dialog::backdrop {
+    background: var(--color-backdrop);
+  }
+  .workspace-navigation-dialog .sidebar {
+    position: static;
+    width: 100%;
+    height: 100%;
+    transform: none;
+    visibility: visible;
+    border: 0;
+    box-shadow: none;
+  }
+  .workspace-navigation-dialog .sidebar-head {
+    padding-right: 24px;
+  }
+  .workspace-navigation-close {
+    position: absolute;
+    top: 12px;
+    right: 8px;
+  }
+  .workspace-duo.has-shared-chrome .shell:has(.ai-chat) {
+    height: calc(
+      var(--chat-viewport-height, 100dvh) - var(--pane-switch-height) -
+        var(--shared-chrome-height)
+    );
+  }
+}
+@media (max-width: 1279px) {
+  .workspace-shared-chrome {
+    display: block;
+  }
+  .workspace-duo.has-shared-chrome
+    > :is(.workspace-duo-primary, .workspace-duo-secondary)
+    .app.workspace {
+    min-height: 100%;
+  }
+  .workspace-duo.has-shared-chrome .app.workspace > .shell {
+    min-height: 0;
+    margin-left: 0;
+  }
+}

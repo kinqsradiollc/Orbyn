@@ -3,7 +3,7 @@
 Scope: [ADR 003](../adr/003-product-ui-ux-redesign.md), including all owner refinements.
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
 Branch: `codex/c6-file-viewer`. Baseline: `c7b3bdb7`.
-Candidate product/test source: `15fc3a5a` (initial full implementation `f7899149`; retained corrections in ancestry).
+Candidate source: round-1 correction freeze following `5b10872e` (initial implementation `f7899149`; all corrections retained in ancestry). See [correction scope and exact verification plan](adr-003-corrections.md).
 Phase: formal Review round 1, with evidence still pending. Review counter: 1/3.
 Tester report: [qualification and retained boundaries](adr-003-tester.md).
 
@@ -49,8 +49,8 @@ checks source or mocked calls. No native builds or redundant full-suite reruns.
 Existing QA backend is on 8008 and web preview on 5174, both from this checkout.
 Protected QA env: `/var/folders/j4/_l7jsdmj24j2vdmvyd1f9qk80000gn/T/orbyn-u1-qa-8wlwnjlc/qa-server.env`.
 Read it locally only; never include credentials in output or reports. Do not use
-that runtime DB for tests unless its guard is independently verified. The private
-compiler QA container is `orbyn-u1-latex-qa`; inspect its actual state before use.
+that runtime DB for tests unless its guard is independently verified. The current private
+compiler QA container is `orbyn-u1-latex-fix`; inspect its actual state before use.
 Coordinate fixture ownership and record authoritative source/runtime provenance.
 
 ## Reviewer and visual handoff

@@ -1,3 +1,4 @@
+import { ownsEditorKey } from "./editor-input";
 import { preparePaneDrafts } from "../../app/page-commands";
 import { PageMaintenanceDialog } from "./PageMaintenanceDialog";
 import { DocNavigationContext } from "./doc-navigation";
@@ -133,6 +134,7 @@ import { useConfirm } from "../../components/Confirm";
 import { SharePageButton } from "../../components/ShareButton";
 import {
   PageCommandScope,
+  PaneInputOwner,
   preparePageLeave,
   usePageCommands,
 } from "../../app/page-commands";
@@ -468,6 +470,8 @@ function LegacyDocEditor({
   const [menu, setMenu] = useState<{ index: number; at: DOMRect } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const pageScope = useContext(PageCommandScope);
+  const ownsPaneInput = useContext(PaneInputOwner);
+  const editorRoot = useRef<HTMLDivElement>(null);
   const historyMutation = useRef(false);
   const pageMutation = useRef(false);
   const [pagePending, setPagePending] = useState(false);
@@ -632,7 +636,10 @@ function LegacyDocEditor({
       if (!pageActionsRef.current?.contains(event.target as Node)) dismiss();
     };
     const keyboard = (event: globalThis.KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (
+        event.key === "Escape" &&
+        ownsEditorKey(pageActionsRef.current, event, ownsPaneInput, true)
+      ) {
         event.preventDefault();
         dismiss();
       }
@@ -1640,7 +1647,12 @@ function LegacyDocEditor({
   useEffect(() => {
     if (!picked || reading || suggesting || linking) return;
     const onKey = (e: KeyboardEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      if (
+        !ownsEditorKey(editorRoot.current, e, ownsPaneInput) ||
+        !(e.metaKey || e.ctrlKey) ||
+        e.altKey
+      )
+        return;
       const key = e.key.toLowerCase();
       const style: InlineStyle | null =
         key === "b" && !e.shiftKey
@@ -3275,6 +3287,7 @@ function LegacyDocEditor({
     <RecordingContext.Provider value={recordingActions}>
       <div
         className="doc-editor"
+        ref={editorRoot}
         inert={restoringHistory || pagePending}
         aria-busy={restoringHistory || pagePending || undefined}
       >

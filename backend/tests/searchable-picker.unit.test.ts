@@ -106,6 +106,7 @@ function renderer(
       addEventListener() {},
       removeEventListener() {},
     },
+    HTMLFieldSetElement: class {},
     MutationObserver: class {
       observe() {}
       disconnect() {}

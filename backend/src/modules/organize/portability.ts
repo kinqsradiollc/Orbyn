@@ -18,9 +18,16 @@ export type ExportArchive = {
   tags: { name: string; color: string }[];
   habits: unknown[];
   items: ExportItem[];
-  completion_history?: { item_id: string; created_at: string }[];
+  completion_history?: {
+    item_id: string;
+    created_at: string;
+    /** Embedded identity also resolves completed subtasks omitted from legacy items. */
+    item: { id: string; title: string; parent_id: string | null };
+  }[];
 };
 type ExportItem = {
+  /** Stable source identity; old version-1 archives may omit it. */
+  id?: string;
   title: string;
   notes: string;
   kind: string;
@@ -73,7 +80,7 @@ export async function exportData(
         end_at: Date | null;
       }
     >(
-      `SELECT i.title, i.notes, i.kind, i.status, i.priority, i.due_at, i.end_at,
+      `SELECT i.id, i.title, i.notes, i.kind, i.status, i.priority, i.due_at, i.end_at,
               i.estimate_minutes, i.location, i.rrule,
               (SELECT name FROM lists l WHERE l.id = i.list_id) AS list,
               coalesce((SELECT array_agg(t.name ORDER BY t.name) FROM item_tags it
@@ -90,14 +97,20 @@ export async function exportData(
     end_at: r.end_at ? r.end_at.toISOString() : null,
   }));
   const completions = (
-    await db.query<{ item_id: string; created_at: Date }>(
-      `SELECT c.item_id, c.created_at FROM item_completions c JOIN items i ON i.id=c.item_id
+    await db.query<{
+      item_id: string;
+      created_at: Date;
+      title: string;
+      parent_id: string | null;
+    }>(
+      `SELECT c.item_id, c.created_at, i.title, i.parent_id FROM item_completions c JOIN items i ON i.id=c.item_id
      WHERE c.user_id=$1 AND i.user_id=$1 AND i.team_id IS NULL ORDER BY c.created_at,c.id`,
       [userId],
     )
   ).rows.map((row) => ({
     item_id: row.item_id,
     created_at: row.created_at.toISOString(),
+    item: { id: row.item_id, title: row.title, parent_id: row.parent_id },
   }));
   return {
     version: 1,
