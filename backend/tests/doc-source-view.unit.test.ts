@@ -913,3 +913,39 @@ for (const native of [false, true]) {
     assert.equal(leaveCheck.current, null);
   });
 }
+
+for (const native of [false, true])
+  test(`${native ? "mobile" : "web"} source-only presentation leaves Note rendering to its stable parent`, () => {
+    const render = fixture(native, true, {
+      inline: true,
+      sourceOnly: true,
+      initialMode: "latex",
+    });
+    const tree = render(core.withDocLatexSource([], "Saved LaTeX"));
+    assert.ok(
+      find(
+        tree,
+        (p) =>
+          p["aria-label"] === "LaTeX source" ||
+          p.accessibilityLabel === "LaTeX source",
+      ),
+    );
+    assert.equal(
+      find(
+        tree,
+        (p) =>
+          p.title === "Compiled LaTeX PDF" ||
+          p["aria-label"] === "Rendered preview",
+      ),
+      undefined,
+    );
+    const markdown = fixture(native, true, {
+      inline: true,
+      sourceOnly: true,
+      initialMode: "markdown",
+    })([{ type: "paragraph", text: "Mixed note", id: "p" }]);
+    assert.equal(
+      find(markdown, (p) => p["aria-label"] === "Rendered preview"),
+      undefined,
+    );
+  });

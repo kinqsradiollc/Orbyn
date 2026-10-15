@@ -592,6 +592,38 @@ function StructuredDocEditorBody({
     keptOffline,
     save,
   ]);
+  const chooseFormat = async (format: "note" | "markdown" | "latex") => {
+    if (latexOwner.current && !sourceLeaveCheck.current?.()) return;
+    const current = store.state;
+    if (
+      current.busy ||
+      current.sourceInvalid ||
+      current.error ||
+      current.conflict ||
+      sourceMutation.current ||
+      sourceAsk
+    )
+      return;
+    const account = authSession.token;
+    if (current.session && docEditorSessionDirty(current.session)) await save();
+    const next = store.state;
+    if (
+      !sourceAlive.current ||
+      account !== authSession.token ||
+      !next.session ||
+      next.session.saved.id !== doc.id ||
+      next.busy ||
+      next.error ||
+      next.conflict ||
+      next.sourceInvalid ||
+      docEditorSessionDirty(next.session)
+    )
+      return;
+    setLatexOpen(format === "latex");
+    setSplitRequested(format !== "note");
+    setSourceVisible(format !== "note");
+  };
+
   return (
     <DocLatexPreviewProvider
       canCompile={canWrite}
@@ -633,97 +665,7 @@ function StructuredDocEditorBody({
             onClose={() => setSourceAsk(null)}
           />
         )}
-        {latexOpen && document && session && (
-          <DocSourcePreview
-            leaveCheck={sourceLeaveCheck}
-            compileReady={
-              !state.busy &&
-              !state.error &&
-              !state.conflict &&
-              !!session &&
-              !docEditorSessionDirty(session) &&
-              state.source === null
-            }
-            inline
-            beforeNavigate={prepareLinkedPage}
-            latexOnly
-            blocks={leaves}
-            docId={doc.id}
-            onClose={() => {
-              latexOwner.current = false;
-              setLatexOpen(false);
-            }}
-            onAssist={
-              canWrite &&
-              !state.busy &&
-              !state.error &&
-              !state.conflict &&
-              state.source === null &&
-              !docEditorSessionDirty(session)
-                ? (block) => {
-                    setLatexOpen(false);
-                    askForBlock(block);
-                  }
-                : undefined
-            }
-
-            onAppLink={(url) => {
-              void openLinkedPage(url);
-            }}
-            report={report}
-            onCompileLatex={(source, signal) =>
-              client.compileDocLatex(
-                doc.id,
-                {
-                  source,
-                  version:
-                    store.state.session?.saved.version ?? session.saved.version,
-                },
-                signal,
-              )
-            }
-            saveStatus={
-              state.busy
-                ? "Saving…"
-                : docEditorSessionDirty(session)
-                  ? "Unsaved changes"
-                  : "Saved"
-            }
-            onLatexChange={
-              canWrite
-                ? (text, expected) => {
-                    const current = store.state.session;
-                    if (
-                      !current ||
-                      current.document !== document ||
-                      JSON.stringify(expected) !== JSON.stringify(leaves) ||
-                      store.state.sourceInvalid ||
-                      store.state.conflict ||
-                      store.state.error
-                    )
-                      throw new Error(
-                        "The document changed. Restore the current document before editing.",
-                      );
-                    store.changeOperation(
-                      document,
-                      docLatexOperation(document, text),
-                    );
-                    if (store.state.error) throw store.state.error;
-                    const next = store.state.session?.document;
-                    if (!next) throw new Error("The document is unavailable.");
-                    return next.format === 2
-                      ? docContainerBlocks(next.nodes, { projected: true })
-                      : next.blocks;
-                  }
-                : undefined
-            }
-          />
-        )}
-        <View
-          style={
-            latexOpen ? { display: "none" } : { flex: 1, minHeight: 0, gap: 10 }
-          }
-        >
+        <View style={{ flex: 1, minHeight: 0, gap: 10 }}>
           <ActionSheet
             visible={discardOpen}
             label="Discard page draft"
@@ -773,42 +715,21 @@ function StructuredDocEditorBody({
               }
               disabled={
                 !session ||
-                state.source !== null ||
+                state.sourceInvalid ||
                 state.busy ||
                 !!state.conflict ||
                 sourcePending ||
                 !!sourceAsk
               }
-              onChange={(format) => {
-                if (format === "latex") setLatexOpen(true);
-                else {
-                  setSplitRequested(false);
-                  setSourceVisible(format === "markdown");
-                }
-              }}
+              onChange={(format) => void chooseFormat(format)}
             />
-            <Pressable
-              accessibilityRole="button"
-              style={styles.actionTarget}
-              onPress={() => {
-                setSplitRequested(false);
-                setSourceVisible((value) => !value);
-              }}
-            >
-              <Text style={styles.action}>
-                {sourceVisible ? "Preview" : "Source"}
-              </Text>
-            </Pressable>
-            {paneWidth / Math.max(1, fontScale) >= 900 && (
+            {(sourceVisible || split) && !latexOpen && (
               <Pressable
                 accessibilityRole="button"
-                accessibilityState={{ selected: split }}
                 style={styles.actionTarget}
-                onPress={() => setSplitRequested((value) => !value)}
+                onPress={() => void chooseFormat("note")}
               >
-                <Text style={styles.action}>
-                  {split ? "Hide split" : "Split"}
-                </Text>
+                <Text style={styles.action}>Hide source</Text>
               </Pressable>
             )}
             {canWrite && (sourceVisible || split) && (
@@ -1074,30 +995,132 @@ function StructuredDocEditorBody({
                     !sourceVisible && !split && styles.hiddenPane,
                   ]}
                 >
-                  {source === null ? (
-                    <Text>Source view is unavailable for this structure.</Text>
-                  ) : (
-                    <TextInput
-                      accessibilityLabel="Markdown source"
-                      onSelectionChange={(event) => {
-                        sourceSelection.current =
-                          event.nativeEvent.selection.start;
+                  {latexOpen && document && session && (
+                    <DocSourcePreview
+                      leaveCheck={sourceLeaveCheck}
+                      compileReady={
+                        !state.busy &&
+                        !state.error &&
+                        !state.conflict &&
+                        !!session &&
+                        !docEditorSessionDirty(session) &&
+                        state.source === null
+                      }
+                      inline
+                      sourceOnly
+                      editorHeight={paneHeight}
+                      showModes={false}
+                      beforeNavigate={prepareLinkedPage}
+                      latexOnly
+                      blocks={leaves}
+                      docId={doc.id}
+                      onClose={() => {
+                        latexOwner.current = false;
+                        setLatexOpen(false);
+                        setSourceVisible(false);
+                        setSplitRequested(false);
                       }}
-                      style={[styles.source, { height: paneHeight }]}
-                      multiline
-                      editable={canWrite}
-                      value={state.source ?? source}
-                      onChangeText={(text) => {
-                        editGeneration.current++;
-                        offlineQueued.current = false;
-                        setKeptOffline(false);
-                        store.changeSource(document, text);
+                      onAssist={
+                        canWrite &&
+                        !state.busy &&
+                        !state.error &&
+                        !state.conflict &&
+                        state.source === null &&
+                        !docEditorSessionDirty(session)
+                          ? (block) => {
+                              setLatexOpen(false);
+                              askForBlock(block);
+                            }
+                          : undefined
+                      }
+
+                      onAppLink={(url) => {
+                        void openLinkedPage(url);
                       }}
-                      textAlignVertical="top"
-                      autoCapitalize="none"
-                      autoCorrect={false}
+                      report={report}
+                      onCompileLatex={(source, signal) =>
+                        client.compileDocLatex(
+                          doc.id,
+                          {
+                            source,
+                            version:
+                              store.state.session?.saved.version ??
+                              session.saved.version,
+                          },
+                          signal,
+                        )
+                      }
+                      saveStatus={
+                        state.busy
+                          ? "Saving…"
+                          : docEditorSessionDirty(session)
+                            ? "Unsaved changes"
+                            : "Saved"
+                      }
+                      onLatexChange={
+                        canWrite
+                          ? (text, expected) => {
+                              const current = store.state.session;
+                              if (
+                                !current ||
+                                current.document !== document ||
+                                JSON.stringify(expected) !==
+                                  JSON.stringify(leaves) ||
+                                store.state.sourceInvalid ||
+                                store.state.conflict ||
+                                store.state.error
+                              )
+                                throw new Error(
+                                  "The document changed. Restore the current document before editing.",
+                                );
+                              store.changeOperation(
+                                document,
+                                docLatexOperation(document, text),
+                              );
+                              if (store.state.error) throw store.state.error;
+                              const next = store.state.session?.document;
+                              if (!next)
+                                throw new Error("The document is unavailable.");
+                              return next.format === 2
+                                ? docContainerBlocks(next.nodes, {
+                                    projected: true,
+                                  })
+                                : next.blocks;
+                            }
+                          : undefined
+                      }
                     />
                   )}
+                  <View
+                    style={{ display: latexOpen ? "none" : "flex", flex: 1 }}
+                  >
+                    {source === null ? (
+                      <Text>
+                        Source view is unavailable for this structure.
+                      </Text>
+                    ) : (
+                      <TextInput
+                        accessibilityLabel="Markdown source"
+                        onSelectionChange={(event) => {
+                          sourceSelection.current =
+                            event.nativeEvent.selection.start;
+                        }}
+                        style={[styles.source, { height: paneHeight }]}
+                        multiline
+                        editable={canWrite}
+                        value={state.source ?? source}
+                        onChangeText={(text) => {
+                          editGeneration.current++;
+                          offlineQueued.current = false;
+                          setKeptOffline(false);
+                          store.changeSource(document, text);
+                        }}
+                        textAlignVertical="top"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                      />
+                    )}
+                  </View>
                 </View>
                 <View
                   ref={previewAnchor}

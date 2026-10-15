@@ -18,6 +18,7 @@ import React, {
   useState,
 } from "react";
 import {
+  useWindowDimensions,
   Keyboard,
   Platform,
   ScrollView,
@@ -333,6 +334,9 @@ function LegacyDocEditor({
     words: string;
   } | null>(null);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
+  const { width: documentWidth, fontScale: documentScale } =
+    useWindowDimensions();
+  const sourceBesideNote = documentWidth / Math.max(1, documentScale) >= 900;
   const [sourcePreviewMode, setSourcePreviewMode] = useState<
     "markdown" | "latex"
   >("markdown");
@@ -3122,7 +3126,12 @@ function LegacyDocEditor({
       }
     >
       <RecordingContext.Provider value={recordingActions}>
-        <View style={styles.page}>
+        <View
+          style={[
+            styles.page,
+            sourcePreview && sourceBesideNote ? { flexDirection: "row" } : null,
+          ]}
+        >
           <BottomSheet
             visible={forgetting}
             title="Forget Memory topic?"
@@ -3166,6 +3175,10 @@ function LegacyDocEditor({
               leaveCheck={sourceLeaveCheck}
               compileReady={!dirty.current && !saving && !saveFailure}
               inline
+              sourceOnly
+              showModes={!sourceBesideNote}
+              key={sourcePreviewMode}
+              onModeChange={setSourcePreviewMode}
               initialMode={sourcePreviewMode}
               beforeNavigate={async () => {
                 if (!currentPage()) return false;
@@ -3232,7 +3245,9 @@ function LegacyDocEditor({
           )}
           <View
             style={
-              sourcePreview ? { display: "none" } : { gap: 12, minWidth: 0 }
+              sourcePreview && !sourceBesideNote
+                ? { display: "none" }
+                : { flex: 1, gap: 12, minWidth: 0 }
             }
           >
             {/* The page's header holds only Back, its title, Info and ⋯. */}
@@ -3304,7 +3319,11 @@ function LegacyDocEditor({
                 deciding || deletingPage || archivingPage || !!sourceAsk
               }
               onChange={(format: DocumentEditorMode) => {
-                if (format === "note") return;
+                if (sourcePreview && !sourceLeaveCheck.current?.()) return;
+                if (format === "note") {
+                  setSourcePreview(null);
+                  return;
+                }
                 syncDraft();
                 setFocused(null);
                 if (canWrite && mode === "read") chooseMode("edit");

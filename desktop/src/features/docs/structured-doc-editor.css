@@ -55,7 +55,7 @@
   .structured-doc-split-button {
     display: none;
   }
-  .structured-doc-columns[data-active-pane="split"] > .structured-doc-source {
+  .structured-doc-columns[data-active-pane="split"] > .structured-doc-preview {
     display: none;
   }
 }
@@ -264,5 +264,12 @@
   }
   .structured-doc-pane-switch button {
     min-height: 44px;
+  }
+}
+
+/* Keep one mounted Note beside source; narrow widths reveal one surface. */
+@container (max-width: 760px) {
+  .structured-doc-columns[data-active-pane="split"] {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

@@ -517,7 +517,7 @@ export function DocBody({
             );
           case "code":
             if (block.lang === DOC_LATEX_LANGUAGE)
-              return held(index, <DocLatexNote source={block.text} />);
+              return held(index, <DocLatexNote block={block} />);
             // A live list (SRCH-02) is drawn as its rows, not its settings.
             if (block.lang === LIVE_LIST_LANG)
               return line(index, <LiveList text={block.text} />);

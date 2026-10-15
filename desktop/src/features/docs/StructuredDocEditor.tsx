@@ -789,7 +789,7 @@ function StructuredDocEditorBody({
         historyMutation.current ||
         sourceMutation.current ||
         sourceAsk ||
-        latexOwner.current
+        (latexOwner.current && !sourceLeaveCheck.current?.())
       )
         return false;
       if (current.session && docEditorSessionDirty(current.session))
@@ -807,6 +807,37 @@ function StructuredDocEditorBody({
       return ready;
     },
   });
+  const chooseFormat = async (format: "note" | "markdown" | "latex") => {
+    if (latexOwner.current && !sourceLeaveCheck.current?.()) return;
+    const current = store.state;
+    if (
+      current.busy ||
+      current.sourceInvalid ||
+      current.error ||
+      current.conflict ||
+      sourceMutation.current ||
+      sourceAsk
+    )
+      return;
+    const account = authSession.get();
+    if (current.session && docEditorSessionDirty(current.session)) await save();
+    const next = store.state;
+    if (
+      !sourceAlive.current ||
+      account !== authSession.get() ||
+      !next.session ||
+      next.session.saved.id !== doc.id ||
+      next.busy ||
+      next.error ||
+      next.conflict ||
+      next.sourceInvalid ||
+      docEditorSessionDirty(next.session)
+    )
+      return;
+    setLatexOpen(format === "latex");
+    setActivePane(format === "note" ? "preview" : "split");
+  };
+
   return (
     <DocLatexPreviewProvider
       canCompile={canWrite}
@@ -843,90 +874,6 @@ function StructuredDocEditorBody({
             text={sourceAsk.text}
             onAsk={requestSourceSuggestion}
             onClose={() => setSourceAsk(null)}
-          />
-        )}
-
-        {latexOpen && document && session && (
-          <DocSourcePreview
-            leaveCheck={sourceLeaveCheck}
-            compileReady={
-              !state.busy &&
-              !state.error &&
-              !state.conflict &&
-              !!session &&
-              !docEditorSessionDirty(session) &&
-              state.source === null
-            }
-            inline
-            beforeNavigate={prepareLinkedPage}
-            latexOnly
-            blocks={leaves}
-            docId={doc.id}
-            onClose={() => {
-              latexOwner.current = false;
-              setLatexOpen(false);
-            }}
-            onAssist={
-              canWrite &&
-              !state.busy &&
-              !state.error &&
-              !state.conflict &&
-              state.source === null &&
-              !docEditorSessionDirty(session)
-                ? (block) => {
-                    setLatexOpen(false);
-                    askForBlock(block);
-                  }
-                : undefined
-            }
-
-            onAppLink={(url) => void openLinkedPage(url)}
-            onCompileLatex={(source, signal) =>
-              client.compileDocLatex(
-                doc.id,
-                {
-                  source,
-                  version:
-                    store.state.session?.saved.version ?? session.saved.version,
-                },
-                signal,
-              )
-            }
-            saveStatus={
-              state.busy
-                ? "Saving…"
-                : docEditorSessionDirty(session)
-                  ? "Unsaved changes"
-                  : "Saved"
-            }
-            onLatexChange={
-              canWrite
-                ? (text, expected) => {
-                    const current = store.state.session;
-                    if (
-                      !current ||
-                      current.document !== document ||
-                      JSON.stringify(expected) !== JSON.stringify(leaves) ||
-                      store.state.sourceInvalid ||
-                      store.state.conflict ||
-                      store.state.error
-                    )
-                      throw new Error(
-                        "The document changed. Restore the current document before editing.",
-                      );
-                    store.changeOperation(
-                      document,
-                      docLatexOperation(document, text),
-                    );
-                    if (store.state.error) throw store.state.error;
-                    const next = store.state.session?.document;
-                    if (!next) throw new Error("The document is unavailable.");
-                    return next.format === 2
-                      ? docContainerBlocks(next.nodes, { projected: true })
-                      : next.blocks;
-                  }
-                : undefined
-            }
           />
         )}
 
@@ -973,16 +920,13 @@ function StructuredDocEditorBody({
             }
             disabled={
               !session ||
-              state.source !== null ||
+              state.sourceInvalid ||
               state.busy ||
               !!state.conflict ||
               sourcePending ||
               !!sourceAsk
             }
-            onChange={(format) => {
-              if (format === "latex") setLatexOpen(true);
-              else setActivePane(format === "note" ? "preview" : "source");
-            }}
+            onChange={(format) => void chooseFormat(format)}
           />
           {onBack && (
             <button
@@ -1200,33 +1144,15 @@ function StructuredDocEditorBody({
             ) : (
               <h1>{session.title}</h1>
             )}
-            <div
-              className="structured-doc-pane-switch"
-              aria-label="Document view"
-            >
+            {activePane !== "preview" && !latexOpen && (
               <button
                 type="button"
-                aria-pressed={activePane === "preview"}
-                onClick={() => setActivePane("preview")}
+                className="secondary"
+                onClick={() => void chooseFormat("note")}
               >
-                Preview
+                Hide source
               </button>
-              <button
-                type="button"
-                aria-pressed={activePane === "source"}
-                onClick={() => setActivePane("source")}
-              >
-                Source
-              </button>
-              <button
-                type="button"
-                className="structured-doc-split-button"
-                aria-pressed={activePane === "split"}
-                onClick={() => setActivePane("split")}
-              >
-                Split
-              </button>
-            </div>
+            )}
             <div
               className="structured-doc-columns"
               data-active-pane={activePane}
@@ -1353,58 +1279,152 @@ function StructuredDocEditorBody({
                 aria-label="Markdown source"
                 className="structured-doc-source"
               >
-                <div className="structured-doc-source-head">
-                  <h2>Markdown</h2>
-                  {canWrite && (
-                    <button
-                      type="button"
-                      disabled={
-                        sourcePending ||
-                        state.busy ||
-                        !session ||
-                        docEditorSessionDirty(session) ||
-                        state.source !== null
+                {latexOpen && document && session && (
+                  <DocSourcePreview
+                    leaveCheck={sourceLeaveCheck}
+                    compileReady={
+                      !state.busy &&
+                      !state.error &&
+                      !state.conflict &&
+                      !!session &&
+                      !docEditorSessionDirty(session) &&
+                      state.source === null
+                    }
+                    inline
+                    sourceOnly
+                    showModes={false}
+                    beforeNavigate={prepareLinkedPage}
+                    latexOnly
+                    blocks={leaves}
+                    docId={doc.id}
+                    onClose={() => {
+                      latexOwner.current = false;
+                      setLatexOpen(false);
+                      setActivePane("preview");
+                    }}
+                    onAssist={
+                      canWrite &&
+                      !state.busy &&
+                      !state.error &&
+                      !state.conflict &&
+                      state.source === null &&
+                      !docEditorSessionDirty(session)
+                        ? (block) => {
+                            setLatexOpen(false);
+                            askForBlock(block);
+                          }
+                        : undefined
+                    }
+
+                    onAppLink={(url) => void openLinkedPage(url)}
+                    onCompileLatex={(source, signal) =>
+                      client.compileDocLatex(
+                        doc.id,
+                        {
+                          source,
+                          version:
+                            store.state.session?.saved.version ??
+                            session.saved.version,
+                        },
+                        signal,
+                      )
+                    }
+                    saveStatus={
+                      state.busy
+                        ? "Saving…"
+                        : docEditorSessionDirty(session)
+                          ? "Unsaved changes"
+                          : "Saved"
+                    }
+                    onLatexChange={
+                      canWrite
+                        ? (text, expected) => {
+                            const current = store.state.session;
+                            if (
+                              !current ||
+                              current.document !== document ||
+                              JSON.stringify(expected) !==
+                                JSON.stringify(leaves) ||
+                              store.state.sourceInvalid ||
+                              store.state.conflict ||
+                              store.state.error
+                            )
+                              throw new Error(
+                                "The document changed. Restore the current document before editing.",
+                              );
+                            store.changeOperation(
+                              document,
+                              docLatexOperation(document, text),
+                            );
+                            if (store.state.error) throw store.state.error;
+                            const next = store.state.session?.document;
+                            if (!next)
+                              throw new Error("The document is unavailable.");
+                            return next.format === 2
+                              ? docContainerBlocks(next.nodes, {
+                                  projected: true,
+                                })
+                              : next.blocks;
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+
+                <div hidden={latexOpen}>
+                  <div className="structured-doc-source-head">
+                    <h2>Markdown</h2>
+                    {canWrite && (
+                      <button
+                        type="button"
+                        disabled={
+                          sourcePending ||
+                          state.busy ||
+                          !session ||
+                          docEditorSessionDirty(session) ||
+                          state.source !== null
+                        }
+                        onClick={() => {
+                          const range =
+                            sourceMap &&
+                            versionedDocSourceAt(
+                              sourceMap,
+                              sourceRef.current?.selectionStart ?? 0,
+                            );
+                          const block =
+                            range?.blockIndex !== undefined
+                              ? leaves[range.blockIndex]
+                              : undefined;
+                          if (block) askForBlock(block);
+                          else
+                            setNavigationError(
+                              "Place the cursor in text before asking the assistant.",
+                            );
+                        }}
+                      >
+                        Ask assistant
+                      </button>
+                    )}
+                  </div>
+                  {source === null ? (
+                    <p>Source view is unavailable for this structure.</p>
+                  ) : canWrite ? (
+                    <textarea
+                      ref={sourceRef}
+                      aria-label="Markdown source"
+                      value={state.source ?? source}
+                      onSelect={previewAtCaret}
+                      onScroll={syncPreviewFromSource}
+                      onChange={(event) =>
+                        store.changeSource(document, event.currentTarget.value)
                       }
-                      onClick={() => {
-                        const range =
-                          sourceMap &&
-                          versionedDocSourceAt(
-                            sourceMap,
-                            sourceRef.current?.selectionStart ?? 0,
-                          );
-                        const block =
-                          range?.blockIndex !== undefined
-                            ? leaves[range.blockIndex]
-                            : undefined;
-                        if (block) askForBlock(block);
-                        else
-                          setNavigationError(
-                            "Place the cursor in text before asking the assistant.",
-                          );
-                      }}
-                    >
-                      Ask assistant
-                    </button>
+                      spellCheck={false}
+                      wrap="off"
+                    />
+                  ) : (
+                    <pre>{source}</pre>
                   )}
                 </div>
-                {source === null ? (
-                  <p>Source view is unavailable for this structure.</p>
-                ) : canWrite ? (
-                  <textarea
-                    ref={sourceRef}
-                    aria-label="Markdown source"
-                    value={state.source ?? source}
-                    onSelect={previewAtCaret}
-                    onScroll={syncPreviewFromSource}
-                    onChange={(event) =>
-                      store.changeSource(document, event.currentTarget.value)
-                    }
-                    spellCheck={false}
-                    wrap="off"
-                  />
-                ) : (
-                  <pre>{source}</pre>
-                )}
               </section>
             </div>
             <aside

@@ -3331,6 +3331,9 @@ function LegacyDocEditor({
                 !dirty.current && save !== "saving" && save !== "error"
               }
               inline
+              sourceOnly
+              showModes={false}
+              key={sourcePreviewMode}
               initialMode={sourcePreviewMode}
               beforeNavigate={async () => {
                 const account = authSession.get();
@@ -3437,7 +3440,11 @@ function LegacyDocEditor({
                 value={sourcePreview ? sourcePreviewMode : "note"}
                 disabled={restoringHistory || pagePending}
                 onChange={(format: DocumentEditorMode) => {
-                  if (format === "note") return;
+                  if (sourcePreview && !sourceLeaveCheck.current?.()) return;
+                  if (format === "note") {
+                    setSourcePreview(null);
+                    return;
+                  }
                   setMoreMenu(false);
                   setDownloadMenu(false);
                   setFocused(null);

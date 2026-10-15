@@ -109,3 +109,31 @@ These are Builder checks, not rendered acceptance or formal Tester qualification
 Logs: `/private/tmp/orbyn-adr003-note-preview-dev-2.tap`,
 `/private/tmp/orbyn-adr003-note-types-2.log`,
 `/private/tmp/orbyn-adr003-assist-formats-dev.tap`.
+
+## Batched review corrections R4–R6 — 15 October
+
+- R4: Source-only adapters now sit beside the original Note pane. They do not
+  mount another PDF or Markdown renderer. The Note stays mounted when narrowed,
+  hidden, or switched among Note/Markdown/LaTeX; ordinary surrounding blocks stay
+  in that same rendered tree. Source mode no longer broadly hides all editor
+  children. Legacy and structured parents share this composition on both clients.
+- R5: Structured editors use primary format choices and a single source visibility
+  action, with wide split and narrow single-surface fallback. Valid source mode
+  changes save through the existing store; invalid/pending/conflicted work remains
+  guarded. Web departure consults the inline leave check before the existing save
+  and draft checks, matching mobile. The nested three-way controls are removed.
+- R6: The canonical standalone block owns the preview by stable block ID (legacy
+  id-less blocks use their current index). Switching canonical owners creates a
+  fresh store and discards old results. Other standalone blocks retain their
+  actual source, never another block's PDF. This preserves duplicate/imported
+  content without claiming multiple compiled standalone documents per Note.
+
+Builder checks: 38/38 finite source/store/provider/mode tests and web/mobile types
+passed. Provider tests now cover both clients, canonical reorder and multiple
+TeX blocks, actual unchanged iframe identity with sibling source controls, and
+teardown. Source-only tests verify the adapter leaves rendering to its parent.
+These remain component/store checks: full four-parent transitions, PDF zoom/page
+and real navigation are assigned to the final Visual batch; do not describe the
+component fixture as complete parent integration.
+Logs: `/private/tmp/orbyn-adr003-stable-note-dev-2.tap`,
+`/private/tmp/orbyn-adr003-stable-note-types-6.log`.

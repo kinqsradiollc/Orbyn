@@ -61,3 +61,15 @@ Hide/show source at wide and narrow sizes. On malformed TeX retain draft and las
 valid PDF, expose an inline error/Retry, repair and recover. Exercise assistant
 proposal accept/reject in the visible editor. Check a short “Link copied” toast:
 message and dismiss control share a compact row. Verify actual CSS viewport.
+
+### R4–R6 interaction closure in the existing Docs cases
+
+Check all four actual editor parents (legacy/structured × web/Expo) with mixed
+prose, an equation and one marked TeX block. Changing source visibility and formats
+must keep the same Note content and PDF page/zoom/scroll. On wide screens show
+source beside Note; on narrow screens switch the visible surface while retaining
+Note. Verify exactly one source visibility action. A valid unsaved structured
+source mode change saves and returns; a valid saved inline LaTeX page can navigate
+via tabs/sidebar; invalid/pending changes retain their guard. Add a second distinct
+marked TeX block: its source must stay visible, never duplicate the first PDF.
+The canonical LaTeX source choice edits the first marked standalone block.

@@ -39,6 +39,8 @@ export function DocSourcePreview({
   latexOnly = false,
   initialMode = "markdown",
   inline = false,
+  sourceOnly = false,
+  showModes = true,
   compileReady = true,
   leaveCheck,
 }: {
@@ -55,6 +57,8 @@ export function DocSourcePreview({
   latexOnly?: boolean;
   initialMode?: "markdown" | "latex";
   inline?: boolean;
+  sourceOnly?: boolean;
+  showModes?: boolean;
   compileReady?: boolean;
   leaveCheck?: { current: (() => boolean) | null };
 }) {
@@ -507,6 +511,7 @@ export function DocSourcePreview({
       data-modal-focus={inline ? undefined : focus.id}
       tabIndex={-1}
       className={inline ? "doc-source-workspace" : "doc-source-dialog"}
+      data-source-only={sourceOnly || undefined}
       aria-labelledby={id}
       onCancel={(event) => {
         event.preventDefault();
@@ -535,6 +540,7 @@ export function DocSourcePreview({
           className="segmented doc-source-view"
           role="group"
           aria-label="Document editing mode"
+          hidden={!showModes}
         >
           <button
             type="button"
@@ -587,9 +593,17 @@ export function DocSourcePreview({
         <button
           type="button"
           className="secondary"
-          onClick={() => setView(shownView === "preview" ? "split" : "preview")}
+          onClick={() =>
+            sourceOnly
+              ? closeSource()
+              : setView(shownView === "preview" ? "split" : "preview")
+          }
         >
-          {shownView === "preview" ? "Show source" : "Hide source"}
+          {sourceOnly
+            ? "Hide source"
+            : shownView === "preview"
+              ? "Show source"
+              : "Hide source"}
         </button>
         {mode === "latex" && (
           <div className="doc-source-view">
@@ -636,33 +650,38 @@ export function DocSourcePreview({
       >
         <textarea
           aria-label="LaTeX source"
-          hidden={shownView === "preview"}
+          hidden={!sourceOnly && shownView === "preview"}
           readOnly={navigating || !(onSourceChange || onLatexChange)}
           value={latexText}
           spellCheck={false}
           wrap="off"
           onChange={(event) => changeLatex(event.currentTarget.value)}
         />
-        <div className="doc-source-rendered" hidden={shownView === "source"}>
-          {pdf ? (
-            <iframe
-              className="doc-source-pdf"
-              title="Compiled LaTeX PDF"
-              src={pdf.url}
-            />
-          ) : (
-            <p className="muted">
-              {onSourceChange || onLatexChange
-                ? "Preparing PDF preview…"
-                : "Editing access is needed to compile."}
-            </p>
-          )}
-          {pdf && (
-            <a href={pdf.url} download="document.pdf">
-              Download PDF
-            </a>
-          )}
-        </div>
+        {!sourceOnly && (
+          <div
+            className="doc-source-rendered"
+            hidden={sourceOnly || shownView === "source"}
+          >
+            {pdf ? (
+              <iframe
+                className="doc-source-pdf"
+                title="Compiled LaTeX PDF"
+                src={pdf.url}
+              />
+            ) : (
+              <p className="muted">
+                {onSourceChange || onLatexChange
+                  ? "Preparing PDF preview…"
+                  : "Editing access is needed to compile."}
+              </p>
+            )}
+            {pdf && (
+              <a href={pdf.url} download="document.pdf">
+                Download PDF
+              </a>
+            )}
+          </div>
+        )}
       </div>
       <div
         className="doc-source-columns"
@@ -671,7 +690,7 @@ export function DocSourcePreview({
       >
         <textarea
           ref={source}
-          hidden={shownView === "preview"}
+          hidden={!sourceOnly && shownView === "preview"}
           aria-label="Markdown source"
           readOnly={navigating || !onSourceChange}
           value={onSourceChange ? sourceText : map.source}
@@ -691,53 +710,55 @@ export function DocSourcePreview({
             if (range) select(range.blockIndex, true);
           }}
         />
-        <div
-          ref={preview}
-          hidden={shownView === "source"}
-          className="doc-source-rendered"
-          aria-label="Rendered preview"
-          role="region"
-          tabIndex={0}
-          onScroll={scrollPreview}
-        >
-          <DocNavigationContext.Provider value={navigation}>
-            <FootnoteContext.Provider value={notes}>
-              {blocks.map((block, index) => (
-                <div
-                  key={block.id ?? index}
-                  data-source-index={index}
-                  className={selected === index ? "is-selected" : ""}
-                >
-                  <button
-                    className="text-button doc-source-jump"
-                    onClick={() => select(index)}
+        {!sourceOnly && (
+          <div
+            ref={preview}
+            hidden={sourceOnly || shownView === "source"}
+            className="doc-source-rendered"
+            aria-label="Rendered preview"
+            role="region"
+            tabIndex={0}
+            onScroll={scrollPreview}
+          >
+            <DocNavigationContext.Provider value={navigation}>
+              <FootnoteContext.Provider value={notes}>
+                {blocks.map((block, index) => (
+                  <div
+                    key={block.id ?? index}
+                    data-source-index={index}
+                    className={selected === index ? "is-selected" : ""}
                   >
-                    Source lines {map.ranges[index].startLine}–
-                    {map.ranges[index].endLine}
-                  </button>
-                  {onAssist &&
-                    block.id &&
-                    "text" in block &&
-                    block.text.trim() && (
-                      <button
-                        className="text-button doc-source-jump"
-                        disabled={navigating || !!sourceError}
-                        onClick={() => onAssist(block)}
-                      >
-                        Ask assistant
-                      </button>
-                    )}
-                  <BlockView
-                    block={block}
-                    pageBlocks={blocks}
-                    number={layout[index].number}
-                    depth={layout[index].depth}
-                  />
-                </div>
-              ))}
-            </FootnoteContext.Provider>
-          </DocNavigationContext.Provider>
-        </div>
+                    <button
+                      className="text-button doc-source-jump"
+                      onClick={() => select(index)}
+                    >
+                      Source lines {map.ranges[index].startLine}–
+                      {map.ranges[index].endLine}
+                    </button>
+                    {onAssist &&
+                      block.id &&
+                      "text" in block &&
+                      block.text.trim() && (
+                        <button
+                          className="text-button doc-source-jump"
+                          disabled={navigating || !!sourceError}
+                          onClick={() => onAssist(block)}
+                        >
+                          Ask assistant
+                        </button>
+                      )}
+                    <BlockView
+                      block={block}
+                      pageBlocks={blocks}
+                      number={layout[index].number}
+                      depth={layout[index].depth}
+                    />
+                  </div>
+                ))}
+              </FootnoteContext.Provider>
+            </DocNavigationContext.Provider>
+          </div>
+        )}
       </div>
     </SourceSurface>
   );

@@ -46,6 +46,10 @@ export function DocSourcePreview({
   latexOnly = false,
   initialMode = "markdown",
   inline = false,
+  sourceOnly = false,
+  showModes = true,
+  editorHeight,
+  onModeChange,
   compileReady = true,
   leaveCheck,
 }: {
@@ -63,6 +67,10 @@ export function DocSourcePreview({
   latexOnly?: boolean;
   initialMode?: "markdown" | "latex";
   inline?: boolean;
+  sourceOnly?: boolean;
+  showModes?: boolean;
+  editorHeight?: number;
+  onModeChange?: (mode: "markdown" | "latex") => void;
   compileReady?: boolean;
   leaveCheck?: { current: (() => boolean) | null };
 }) {
@@ -423,7 +431,14 @@ export function DocSourcePreview({
             </Text>
           </View>
         )}
-        <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            gap: 8,
+            display: showModes ? "flex" : "none",
+          }}
+        >
           <Button
             title="Note"
             secondary
@@ -435,23 +450,33 @@ export function DocSourcePreview({
               title="Markdown"
               disabled={navigating}
               secondary={mode !== "markdown"}
-              onPress={() => setMode("markdown")}
+              onPress={() => {
+                if (sourceError) return;
+                setMode("markdown");
+                onModeChange?.("markdown");
+              }}
             />
           )}
           <Button
             title="LaTeX"
             disabled={navigating}
             secondary={mode !== "latex"}
-            onPress={() => setMode("latex")}
+            onPress={() => {
+              if (sourceError) return;
+              setMode("latex");
+              onModeChange?.("latex");
+            }}
           />
         </View>
-        <Text style={shared.small}>
-          {mode === "latex"
-            ? "LaTeX is saved with this note."
-            : onSourceChange
-              ? "Edit Markdown. Keep block anchors to preserve comments and task links."
-              : "Source is read-only."}
-        </Text>
+        {!inline && (
+          <Text style={shared.small}>
+            {mode === "latex"
+              ? "LaTeX is saved with this note."
+              : onSourceChange
+                ? "Edit Markdown. Keep block anchors to preserve comments and task links."
+                : "Source is read-only."}
+          </Text>
+        )}
         {saveStatus && (
           <Text accessibilityLiveRegion="polite" style={shared.small}>
             {saveStatus}
@@ -467,14 +492,20 @@ export function DocSourcePreview({
         )}
         <Button
           title={
-            sourceVisible
-              ? wide
-                ? "Hide source"
-                : "Show preview"
-              : "Show source"
+            sourceOnly
+              ? "Hide source"
+              : sourceVisible
+                ? wide
+                  ? "Hide source"
+                  : "Show preview"
+                : "Show source"
           }
           secondary
           onPress={() => {
+            if (sourceOnly) {
+              closeSource();
+              return;
+            }
             setSourceSelection(
               !sourceVisible && selectedRange
                 ? { start: selectedRange.start, end: selectedRange.start }
@@ -528,14 +559,14 @@ export function DocSourcePreview({
               flex: 1,
               minHeight: 0,
               gap: 12,
-              flexDirection: split ? "row" : "column",
+              flexDirection: !sourceOnly && split ? "row" : "column",
             }}
           >
             <View
               style={{
                 flex: 1,
                 minWidth: 0,
-                display: sourceVisible ? "flex" : "none",
+                display: sourceOnly || sourceVisible ? "flex" : "none",
               }}
             >
               <TextInput
@@ -555,10 +586,11 @@ export function DocSourcePreview({
               style={{
                 flex: 1,
                 minWidth: 0,
-                display: split || !sourceVisible ? "flex" : "none",
+                display:
+                  !sourceOnly && (split || !sourceVisible) ? "flex" : "none",
               }}
             >
-              {pdf ? (
+              {!sourceOnly && pdf ? (
                 <DocumentPdfPreview pdf={pdf.blob} report={report} />
               ) : (
                 <Text style={shared.small}>
@@ -582,7 +614,7 @@ export function DocSourcePreview({
           style={{
             flex: 1,
             minHeight: 0,
-            flexDirection: split ? "row" : "column",
+            flexDirection: !sourceOnly && split ? "row" : "column",
             gap: 12,
           }}
         >
@@ -591,7 +623,7 @@ export function DocSourcePreview({
               flex: 1,
               minWidth: 0,
               minHeight: 0,
-              display: sourceVisible ? "flex" : "none",
+              display: sourceOnly || sourceVisible ? "flex" : "none",
             }}
           >
             <TextInput
@@ -634,46 +666,55 @@ export function DocSourcePreview({
               }}
             />
           </View>
-          <ScrollView
-            ref={scroll}
-            style={{
-              flex: 1,
-              minWidth: 0,
-              display: !sourceVisible || split ? "flex" : "none",
-            }}
-            contentContainerStyle={{ padding: 12 }}
-            scrollEventThrottle={32}
-            onScroll={(event) => {
-              const top = event.nativeEvent.contentOffset.y;
-              let current = 0;
-              for (const [index, y] of positions)
-                if (y <= top + 12 && index > current) current = index;
-              setSelected(current);
-            }}
-          >
-            <DocNavigationContext.Provider value={navigation}>
-              <FootnoteContext.Provider value={notes}>
-                <DocBody
-                  content={blocks}
-                  targetBlockId={blockId}
-                  onLineLayout={(index, y) => positions.set(index, y)}
-                  flash={blockId ?? null}
-                  onTargetLayout={(y) =>
-                    scroll.current?.scrollTo({
-                      y: Math.max(0, y - 12),
-                      animated: false,
-                    })
-                  }
-                />
-              </FootnoteContext.Provider>
-            </DocNavigationContext.Provider>
-          </ScrollView>
+          {!sourceOnly && (
+            <ScrollView
+              ref={scroll}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                display:
+                  !sourceOnly && (!sourceVisible || split) ? "flex" : "none",
+              }}
+              contentContainerStyle={{ padding: 12 }}
+              scrollEventThrottle={32}
+              onScroll={(event) => {
+                const top = event.nativeEvent.contentOffset.y;
+                let current = 0;
+                for (const [index, y] of positions)
+                  if (y <= top + 12 && index > current) current = index;
+                setSelected(current);
+              }}
+            >
+              <DocNavigationContext.Provider value={navigation}>
+                <FootnoteContext.Provider value={notes}>
+                  <DocBody
+                    content={blocks}
+                    targetBlockId={blockId}
+                    onLineLayout={(index, y) => positions.set(index, y)}
+                    flash={blockId ?? null}
+                    onTargetLayout={(y) =>
+                      scroll.current?.scrollTo({
+                        y: Math.max(0, y - 12),
+                        animated: false,
+                      })
+                    }
+                  />
+                </FootnoteContext.Provider>
+              </DocNavigationContext.Provider>
+            </ScrollView>
+          )}
         </View>
       </View>
     </View>
   );
   return inline ? (
-    <View style={{ height: Math.max(400, windowHeight - 180), minHeight: 0 }}>
+    <View
+      style={{
+        flex: sourceOnly ? 1 : undefined,
+        height: editorHeight ?? Math.max(400, windowHeight - 180),
+        minHeight: 0,
+      }}
+    >
       {content}
     </View>
   ) : (

@@ -14,7 +14,11 @@ import { session } from "../../lib/session";
 import { DocumentPdfPreview } from "../../components/DocumentPdfPreview";
 import { Button } from "../../components/Button";
 import { shared } from "../../styles";
-type Preview = LatexPreviewState & { canCompile: boolean; retry: () => void };
+type Preview = LatexPreviewState & {
+  block: DocBlock | null;
+  canCompile: boolean;
+  retry: () => void;
+};
 const Context = createContext<Preview | null>(null);
 export const useDocLatexPreview = () => useContext(Context);
 export function DocLatexPreviewProvider({
@@ -35,10 +39,13 @@ export function DocLatexPreviewProvider({
   const account = session.token,
     latest = useRef(compile);
   latest.current = compile;
+  const canonical = docLatexBlock(blocks) ?? null;
+  const owner =
+    canonical?.id ?? (canonical ? `index:${blocks.indexOf(canonical)}` : null);
   const store = useMemo(
     () =>
       new LatexPreviewStore((source, signal) => latest.current(source, signal)),
-    [docId, account],
+    [docId, account, owner],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot),
     source = docLatexBlock(blocks)?.text ?? null;
@@ -48,15 +55,28 @@ export function DocLatexPreviewProvider({
   }, [store]);
   useEffect(() => store.update(source, ready), [store, source, ready]);
   return (
-    <Context.Provider value={{ ...state, canCompile, retry: store.retry }}>
+    <Context.Provider
+      value={{ ...state, block: canonical, canCompile, retry: store.retry }}
+    >
       {children}
     </Context.Provider>
   );
 }
-export function DocLatexNote({ source }: { source: string }) {
+export function DocLatexNote({
+  block,
+}: {
+  block: Extract<DocBlock, { type: "code" }>;
+}) {
+  const source = block.text;
   const preview = useDocLatexPreview();
   const [openError, setOpenError] = useState("");
-  if (!preview) return <Text>{source}</Text>;
+  const ownsBlock =
+    preview?.block &&
+    (block.id && preview.block.id
+      ? block.id === preview.block.id
+      : block === preview.block);
+  if (!preview || !ownsBlock)
+    return <Text accessibilityLabel="LaTeX source">{source}</Text>;
   return (
     <View
       accessibilityLabel="Rendered LaTeX note"

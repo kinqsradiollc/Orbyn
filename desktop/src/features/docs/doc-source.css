@@ -195,11 +195,48 @@
   gap: 12px;
   min-width: 0;
 }
+.doc-editor:has(> .doc-source-workspace) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
 .doc-editor:has(> .doc-source-workspace)
-  > :not(.doc-source-workspace):not(dialog):not([role="dialog"]),
-.structured-doc-editor:has(> .doc-source-workspace)
-  > :not(.doc-source-workspace):not(dialog):not([role="dialog"]) {
-  display: none;
+  > :not(.doc-source-workspace):not(.doc-layout) {
+  grid-column: 1 / -1;
+}
+.doc-editor:has(> .doc-source-workspace) > .doc-bar {
+  grid-row: 1;
+}
+.doc-editor:has(> .doc-source-workspace) > .doc-source-workspace {
+  grid-column: 1;
+  grid-row: 2;
+}
+.doc-editor:has(> .doc-source-workspace) > .doc-layout {
+  grid-column: 2;
+  grid-row: 2;
+  min-width: 0;
+}
+.doc-source-workspace[data-source-only] .doc-source-columns {
+  grid-template-columns: minmax(0, 1fr);
+}
+.structured-doc-source > .doc-source-workspace {
+  min-height: 0;
+}
+@container (max-width: 760px) {
+  .doc-editor:has(> .doc-source-workspace) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .doc-editor:has(> .doc-source-workspace) > .doc-layout {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .doc-editor:has(> .doc-source-workspace) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .doc-editor:has(> .doc-source-workspace) > .doc-layout {
+    display: none;
+  }
 }
 .doc-source-workspace .doc-source-tools {
   display: flex;

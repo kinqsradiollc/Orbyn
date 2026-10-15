@@ -12,6 +12,7 @@ import { LatexPreviewStore, type LatexPreviewState } from "@orbyn/api-client";
 import { docLatexBlock, type DocBlock } from "@orbyn/core";
 import { session } from "../../lib/session";
 type Preview = LatexPreviewState & {
+  block: DocBlock | null;
   url: string | null;
   canCompile: boolean;
   retry: () => void;
@@ -37,10 +38,13 @@ export function DocLatexPreviewProvider({
   const account = session.get(),
     latest = useRef(compile);
   latest.current = compile;
+  const canonical = docLatexBlock(blocks) ?? null;
+  const owner =
+    canonical?.id ?? (canonical ? `index:${blocks.indexOf(canonical)}` : null);
   const store = useMemo(
     () =>
       new LatexPreviewStore((source, signal) => latest.current(source, signal)),
-    [docId, account],
+    [docId, account, owner],
   );
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot);
   const source = docLatexBlock(blocks)?.text ?? null;
@@ -63,6 +67,7 @@ export function DocLatexPreviewProvider({
     <Context.Provider
       value={{
         ...state,
+        block: canonical,
         canCompile,
         url: shown?.blob === state.pdf?.blob ? (shown?.url ?? null) : null,
         retry: store.retry,
@@ -72,9 +77,20 @@ export function DocLatexPreviewProvider({
     </Context.Provider>
   );
 }
-export function DocLatexNote({ source }: { source: string }) {
+export function DocLatexNote({
+  block,
+}: {
+  block: Extract<DocBlock, { type: "code" }>;
+}) {
+  const source = block.text;
   const preview = useDocLatexPreview();
-  if (!preview) return <pre>{source}</pre>;
+  const ownsBlock =
+    preview?.block &&
+    (block.id && preview.block.id
+      ? block.id === preview.block.id
+      : block === preview.block);
+  if (!preview || !ownsBlock)
+    return <pre aria-label="LaTeX source">{source}</pre>;
   return (
     <section className="doc-latex-note" aria-label="Rendered LaTeX note">
       {preview.url ? (

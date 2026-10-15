@@ -350,7 +350,7 @@ export function BlockView({
       );
     case "code":
       if (block.lang === DOC_LATEX_LANGUAGE)
-        return <DocLatexNote source={block.text} />;
+        return <DocLatexNote block={block} />;
       if (block.lang === LIVE_LIST_LANG)
         return (
           <LiveList
