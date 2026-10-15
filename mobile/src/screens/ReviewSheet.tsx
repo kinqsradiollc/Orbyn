@@ -463,7 +463,7 @@ const s = themed(() =>
     },
     title: {
       fontFamily: fonts.display,
-      fontSize: 16,
+      fontSize: 18,
       color: colors.text,
       marginBottom: 4,
     },

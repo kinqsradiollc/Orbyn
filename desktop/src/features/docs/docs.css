@@ -4558,7 +4558,7 @@ dialog.image-viewer {
 }
 @media (max-width: 420px) {
   .doc-table-wrap.is-editable input {
-    font-size: 16px;
+    font-size: var(--control-fs);
     min-height: 44px;
   }
 }

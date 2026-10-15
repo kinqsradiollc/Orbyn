@@ -147,7 +147,7 @@ const s = themed(() =>
     window: { marginTop: 2, marginBottom: 12 },
     title: {
       fontFamily: fonts.semibold,
-      fontSize: 16,
+      fontSize: 18,
       lineHeight: 21,
       color: colors.text,
     },

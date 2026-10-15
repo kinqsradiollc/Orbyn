@@ -433,7 +433,7 @@ const s = themed(() =>
     dotOn: { backgroundColor: colors.danger },
     time: {
       fontFamily: fonts.display,
-      fontSize: 28,
+      fontSize: 36,
       color: colors.text,
       fontVariant: ["tabular-nums"],
     },

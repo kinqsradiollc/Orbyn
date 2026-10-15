@@ -64,7 +64,7 @@
     gap: 16px;
   }
   .doc-source-columns textarea {
-    font-size: 16px;
+    font-size: var(--control-fs);
     line-height: 22px;
     padding: 12px;
   }

@@ -208,7 +208,7 @@ const s = themed(() =>
     eyebrow: { marginTop: 20 },
     hero: {
       fontFamily: fonts.display,
-      fontSize: 20,
+      fontSize: 24,
       lineHeight: 28,
       color: colors.text,
     },

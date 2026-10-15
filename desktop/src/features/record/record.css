@@ -113,7 +113,7 @@ dialog.recorder {
 }
 .recorder-clock {
   flex-wrap: wrap;
-  font-size: 28px;
+  font-size: 36px;
 }
 .recorder-actions {
   flex-wrap: wrap;
@@ -142,7 +142,7 @@ dialog.recorder {
     padding: 16px;
   }
   .recorder-transcript textarea {
-    font-size: 16px;
+    font-size: var(--control-fs);
   }
 }
 

@@ -106,6 +106,10 @@ function renderer(
       addEventListener() {},
       removeEventListener() {},
     },
+    MutationObserver: class {
+      observe() {}
+      disconnect() {}
+    },
     requestAnimationFrame: () => 0,
     cancelAnimationFrame() {},
     Date,
@@ -331,6 +335,7 @@ const mobileModules = {
       border: "border",
     },
     controls: { tap: 44 },
+    radii: { input: 8 },
     fonts: { medium: "medium" },
     themed: (fn: any) => fn(),
   },

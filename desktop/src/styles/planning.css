@@ -1857,7 +1857,7 @@ kbd {
   display: grid;
   gap: 6px;
   padding: 0 16px 12px;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-textMuted);
 }
 .lists-search input,

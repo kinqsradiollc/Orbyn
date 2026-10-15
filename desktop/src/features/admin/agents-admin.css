@@ -135,6 +135,6 @@
 }
 @media (pointer: coarse) {
   .agents-admin-hosts textarea {
-    font-size: 16px;
+    font-size: var(--control-fs);
   }
 }

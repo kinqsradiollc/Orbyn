@@ -17,11 +17,11 @@
 }
 .activity-totals dd {
   margin: 4px 0 0;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 500;
 }
 .activity-coverage {
-  font-size: 12px;
+  font-size: 13px;
   margin: 12px 0;
   overflow-wrap: anywhere;
 }

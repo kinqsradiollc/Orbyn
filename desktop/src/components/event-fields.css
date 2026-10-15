@@ -149,7 +149,7 @@ dialog.scope-dialog {
   white-space: normal;
 }
 .scope-options small {
-  font-size: 12px;
+  font-size: 13px;
 }
 
 dialog.scope-dialog::backdrop {

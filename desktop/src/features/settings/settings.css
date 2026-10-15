@@ -1161,7 +1161,7 @@ dialog.settings-editor::backdrop {
 }
 .settings-editor .section-heading h2 {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   overflow-wrap: anywhere;
 }
 .settings-editor .section-heading .icon-button {
@@ -1189,7 +1189,7 @@ dialog.settings-editor::backdrop {
   max-width: none;
 }
 .two-factor-secret {
-  font-size: 14px;
+  font-size: 15px;
   letter-spacing: 1px;
   border-color: var(--color-border);
 }

@@ -1840,7 +1840,7 @@ dialog.templates-dialog::backdrop {
   display: none;
 }
 .project-header h2 {
-  font-size: 20px;
+  font-size: 18px;
   overflow-wrap: anywhere;
 }
 .project-header p,

@@ -43,7 +43,7 @@
   overflow-wrap: anywhere;
 }
 .rsvp-card h1 {
-  font-size: clamp(20px, 4vw, 28px);
+  font-size: 24px;
 }
 .rsvp-card .eyebrow {
   text-transform: none;

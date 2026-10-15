@@ -988,7 +988,7 @@
 .field-input-owner > .error {
   margin: 0;
   padding: 4px 0;
-  font-size: 12px;
+  font-size: 13px;
 }
 .settings-editor .new-field {
   padding: 0;
@@ -1020,7 +1020,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .view-cell-recovery .link-button {
   min-height: 44px;

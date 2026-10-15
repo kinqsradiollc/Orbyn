@@ -16,7 +16,7 @@ import { DateField } from "../../components/Field";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { SmallAction } from "../../components/SmallAction";
 import { client } from "../../lib/api";
-import { colors, fonts, radii, themed } from "../../theme";
+import { inputFontSize, colors, fonts, radii, themed } from "../../theme";
 
 const KINDS: { id: WorkRecordKind; label: string }[] = [
   { id: "promise", label: "Promise" },
@@ -631,7 +631,7 @@ const styles = themed(() =>
     },
     input: {
       minHeight: 44,
-      fontSize: 16,
+      fontSize: inputFontSize,
       borderWidth: 1,
       borderColor: colors.border,
       borderRadius: radii.input,

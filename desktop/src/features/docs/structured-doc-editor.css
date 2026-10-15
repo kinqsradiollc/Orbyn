@@ -259,7 +259,7 @@
 @container (max-width: 420px) {
   .structured-doc-source textarea,
   .structured-doc-leaf textarea {
-    font-size: 16px;
+    font-size: var(--control-fs);
     line-height: 24px;
   }
   .structured-doc-pane-switch button {

@@ -3030,7 +3030,7 @@ const styles = themed(() =>
     rowTitle: {
       flex: 1,
       color: colors.text,
-      fontSize: 16,
+      fontSize: 18,
       lineHeight: 22,
       fontFamily: fonts.semibold,
     },

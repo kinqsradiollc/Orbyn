@@ -644,9 +644,7 @@ test("native Settings shows ended-session recovery with Connect and Disconnect a
   f.render();
   await f.flushEffects();
   const tree = elements(f.render());
-  assert.ok(
-    tree.some((n) => String(n.props.children).includes("session has ended")),
-  );
+  assert.ok(tree.some((n) => /Session ended/i.test(String(n.props.children))));
   for (const label of ["Connect ChatGPT", "Disconnect this device"]) {
     const action = tree.find(
       (n) => n.type === "SmallAction" && n.props.label === label,
@@ -711,7 +709,7 @@ test("native saved account picker binds explicit choices and reconnects to the d
   const scroll = nodes.find(
     (n) => n.type === "ScrollView" && n.props.style?.maxHeight === 200,
   );
-  assert.equal(scroll.props.contentContainerStyle.gap, 16);
+  assert.equal(scroll.props.contentContainerStyle.gap, 8);
   assert.equal(scroll.props.contentContainerStyle.paddingVertical, 8);
   const current = nodes.find(
     (n) => n.type === "SmallAction" && n.props.label === "Account 1 · current",

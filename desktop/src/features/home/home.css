@@ -1447,7 +1447,7 @@ html.js .home .reveal {
   flex-wrap: wrap;
 }
 .home-nav .brand {
-  font-size: 28px;
+  font-size: 24px;
 }
 .home-nav nav {
   flex-wrap: wrap;
@@ -1484,11 +1484,11 @@ html.js .home .reveal {
 .home-section-heading h2,
 .home-everywhere h2,
 .home-final h2 {
-  font-size: 28px;
+  font-size: 24px;
   letter-spacing: -0.5px;
 }
 .home-agent-grid h3 {
-  font-size: 20px;
+  font-size: 18px;
 }
 .home-features,
 .home-how {
@@ -1531,12 +1531,12 @@ html.js .home .reveal {
 }
 @media (max-width: 650px) {
   .home-hero h1 {
-    font-size: 30px;
+    font-size: 36px;
   }
   .home-section-heading h2,
   .home-everywhere h2,
   .home-final h2 {
-    font-size: 22px;
+    font-size: 24px;
   }
   .home-features,
   .home-how,

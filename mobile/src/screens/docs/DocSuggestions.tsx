@@ -137,7 +137,7 @@ const s = themed(() =>
     faded: { opacity: 0.7 },
     author: { color: colors.text, fontSize: 13, fontFamily: fonts.semibold },
     via: { color: colors.muted, fontFamily: fonts.regular },
-    change: { fontSize: 14, lineHeight: 20, color: colors.text },
+    change: { fontSize: 15, lineHeight: 20, color: colors.text },
     source: { fontFamily: fonts.mono },
     excerpt: { gap: 4, paddingBottom: 12 },
     was: { color: colors.muted, textDecorationLine: "line-through" },

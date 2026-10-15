@@ -128,7 +128,7 @@ const s = themed(() =>
   StyleSheet.create({
     card: { gap: 10, marginTop: 14 },
     head: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
-    title: { fontFamily: fonts.bold, fontSize: 16, color: colors.text },
+    title: { fontFamily: fonts.bold, fontSize: 18, color: colors.text },
     section: { gap: 2, marginTop: 4 },
     sectionLabel: { marginBottom: 2 },
     line: { paddingVertical: 10, minHeight: 44, borderRadius: radii.input },

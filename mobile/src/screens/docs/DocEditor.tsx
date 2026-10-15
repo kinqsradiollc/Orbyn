@@ -4011,7 +4011,7 @@ const styles = themed(() =>
     footerText: {
       color: colors.muted,
       fontFamily: fonts.regular,
-      fontSize: 12,
+      fontSize: 13,
       lineHeight: 18,
       fontVariant: ["tabular-nums"],
     },

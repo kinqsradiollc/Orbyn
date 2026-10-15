@@ -1295,7 +1295,7 @@ const s = themed(() =>
       borderRadius: radii.pill,
     },
     modeSelected: { backgroundColor: colors.surfaceMuted },
-    modeText: { color: colors.text, fontSize: 14, fontFamily: fonts.medium },
+    modeText: { color: colors.text, fontSize: 15, fontFamily: fonts.medium },
     round: {
       width: controls.tap,
       height: controls.tap,

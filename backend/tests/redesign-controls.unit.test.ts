@@ -800,7 +800,7 @@ test("provider setup owns its dialog and keeps embedding consent and model value
   assert.match(semantic, /disabled=\{busy \|\| !ready\}/);
   assert.match(semantic, /<summary>Index configuration<\/summary>/);
   assert.match(mobile, /editable=\{!busy\}/);
-  assert.match(mobile, /editable=\{!busy && !removeKey\}/);
+  assert.match(mobile, /editable=\{!working && !removeKey\}/);
 });
 
 test("agent configuration keeps unrelated drafts and complete app identities", () => {
