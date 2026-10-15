@@ -887,6 +887,7 @@ function StructuredDocEditorBody({
       docEditorSessionDirty(next.session)
     )
       return;
+    setEditing(null);
     setLatexOpen(format === "latex");
     setActivePane(format === "note" ? "preview" : "split");
   };

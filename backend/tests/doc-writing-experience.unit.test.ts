@@ -454,3 +454,29 @@ test("source precedes the common Note in wide structured split editing", () => {
     /structured-doc-leaf\[data-code-editing\]\s*\{[\s\S]*?grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\)/,
   );
 });
+
+test("format transitions finish inline editing only after draft save guards", () => {
+  for (const client of [
+    "desktop/src/features/docs",
+    "mobile/src/screens/docs",
+  ]) {
+    const source = readFileSync(
+      new URL(`../../${client}/StructuredDocEditor.tsx`, import.meta.url),
+      "utf8",
+    );
+    const choose = source.slice(
+      source.indexOf("const chooseFormat = async"),
+      source.indexOf("const chooseFormat = async") + 1900,
+    );
+    assert.match(choose, /await save\(\)/);
+    assert.match(choose, /docEditorSessionDirty\(next.session\)/);
+    assert.match(
+      choose,
+      /setEditing\(null\);\s*setLatexOpen\(format === "latex"\)/,
+    );
+    assert.ok(
+      choose.indexOf("docEditorSessionDirty(next.session)") <
+        choose.indexOf("setEditing(null)"),
+    );
+  }
+});

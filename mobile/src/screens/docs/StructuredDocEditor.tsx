@@ -646,6 +646,7 @@ function StructuredDocEditorBody({
       docEditorSessionDirty(next.session)
     )
       return;
+    setEditing(null);
     setLatexOpen(format === "latex");
     setSplitRequested(format !== "note");
     setSourceVisible(format !== "note");
