@@ -705,15 +705,6 @@ export function DocSourcePreview({
         </button>
       </div>
       <div className="doc-source-tools">
-        {mode === "latex" && sourceNumber < 0 && (
-          <details className="document-preview-help">
-            <summary>Help</summary>
-            <p>
-              Edit existing text and equations. Keep block markers; use Note or
-              Markdown for structure and rich text.
-            </p>
-          </details>
-        )}
         {mode === "latex" && wholeLatexTooLong && (
           <p role="alert" className="doc-source-error">
             Source exceeds the 20,000-character editing limit. Continue in Note
@@ -952,18 +943,6 @@ export function DocSourcePreview({
                       Source lines {map.ranges[index].startLine}–
                       {map.ranges[index].endLine}
                     </button>
-                    {onAssist &&
-                      block.id &&
-                      "text" in block &&
-                      block.text.trim() && (
-                        <button
-                          className="text-button doc-source-jump"
-                          disabled={navigating || !!sourceError}
-                          onClick={() => onAssist(block)}
-                        >
-                          Ask assistant
-                        </button>
-                      )}
                     <BlockView
                       block={block}
                       pageBlocks={blocks}

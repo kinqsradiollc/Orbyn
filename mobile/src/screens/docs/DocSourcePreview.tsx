@@ -1,4 +1,3 @@
-import { InlineDetails } from "../../components/InlineDetails";
 import { saveFile } from "../../lib/download";
 import { LatexHtmlPreview } from "../../components/LatexHtmlPreview";
 import { DocEditorModes } from "./DocEditorModes";
@@ -667,15 +666,6 @@ export function DocSourcePreview({
             {saveStatus}
           </Text>
         )}
-        {!inline && mode === "markdown" && onAssist && blocks[selected]?.id && (
-          <Button
-            style={{ marginBottom: 0 }}
-            title="Ask assistant"
-            secondary
-            disabled={navigating || !!sourceError}
-            onPress={() => onAssist(blocks[selected])}
-          />
-        )}
         {(!inline || !sourceOnly) && (
           <Button
             style={{ marginBottom: 0 }}
@@ -704,14 +694,6 @@ export function DocSourcePreview({
           />
         )}
       </ScrollView>
-      {mode === "latex" && sourceNumber < 0 && (
-        <InlineDetails title="Help">
-          <Text style={shared.small}>
-            Edit existing text and equations. Keep block markers; use Note or
-            Markdown for structure and rich text.
-          </Text>
-        </InlineDetails>
-      )}
       {mode === "latex" && wholeLatexTooLong && (
         <Text
           accessibilityRole="alert"

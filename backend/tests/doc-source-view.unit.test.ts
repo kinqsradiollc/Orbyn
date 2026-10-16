@@ -1089,7 +1089,7 @@ for (const native of [false, true])
   });
 
 for (const native of [false, true])
-  test(`${native ? "Expo" : "web"} whole-document source has no export action and keeps guidance collapsed`, () => {
+  test(`${native ? "Expo" : "web"} whole-document source has no duplicate export, assistant or Help controls`, () => {
     const render = fixture(native, true, {
       inline: true,
       initialMode: "latex",
@@ -1107,16 +1107,17 @@ for (const native of [false, true])
       ),
       undefined,
     );
-    const help = find(
-      tree,
-      (p) => p.className === "document-preview-help" || p.title === "Help",
-    )!;
-    assert.ok(help);
+    assert.equal(
+      find(
+        tree,
+        (p) => p.className === "document-preview-help" || p.title === "Help",
+      ),
+      undefined,
+    );
     const html = renderToStaticMarkup(tree);
-    assert.match(html, /<details(?:\s[^>]*)?>/);
     assert.doesNotMatch(
       html,
-      /<details[^>]* open|About web preview|Export this document from Note/,
+      /<summary>Help|About web preview|Export this document from Note|Edit existing text and equations/,
     );
   });
 
@@ -1337,4 +1338,27 @@ for (const native of [false, true])
     await pending;
     tree = render(remote);
     assert.doesNotMatch(renderToStaticMarkup(tree), /Stale compiler error/);
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} Markdown source does not duplicate the parent assistant action`, () => {
+    let called = 0;
+    const render = fixture(native, true, {
+      initialMode: "markdown",
+      onAssist: () => {
+        called++;
+      },
+    });
+    const tree = render([
+      { type: "paragraph", text: "Selectable words", id: "line" },
+    ]);
+    assert.equal(
+      find(
+        tree,
+        (p) => p.title === "Ask assistant" || p.children === "Ask assistant",
+      ),
+      undefined,
+    );
+    assert.equal(called, 0);
+    assert.doesNotMatch(renderToStaticMarkup(tree), /Ask assistant/);
   });
