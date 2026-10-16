@@ -99,3 +99,33 @@ Builder ownership: layout research owns App routing, embedded SidePeek and dock
 state; responsive followthrough owns the reusable WorkspaceDock shell and its
 styles/tests. Root owns integration ledger and fixture reconciliation. Same
 ADR006 round1/3; no Visual run until complete code and builds are ready.
+
+### Final qualification checklist
+
+| Contract | Required evidence |
+| --- | --- |
+| One canonical Note / Markdown / LaTeX document | Round trips, saved reload, unsupported draft retained |
+| Minimal source UI and exact red diagnostics | One Download, no Help/duplicate Ask, diagnostic jump |
+| Existing contextual selection menu | Hidden while dragging; single menu after release; excerpt through existing assistant |
+| Library browse/edit consistency | Same edge-to-edge navigation, collapse/reopen, guarded return |
+| Main navigation | Initial icon rail, hover/focus labels, resize out/in, preference preserved |
+| Focused Settings / agent customization | Back/search/draft ownership, normalized Save, category separation |
+| Activity | Consistent dialog width on web and Expo |
+| Right workspace panel | Notifications preserves main page, multiple tabs retain state, close/resize/overlay focus |
+| Alongside workspace | No duplicate Second pane strip; matched tab borders and measured responsive sizing |
+| OAuth recovery | Ownership/revocation/replay guards; production recurrence still a named diagnostic gap |
+
+`d1770d0c` reconciles the checkpoint's stale Settings focus-return fixture and
+adds the account trigger as a visible desktop return target. The actual focused
+modal regressions plus toolbar/sidebar cases pass 19/19 in development; the
+189/190 checkpoint remains recorded rather than overwritten.
+
+Latest owner screenshots exposed geometry during implementation: an extra
+Second pane strip, inherited secondary navigation inset, forced rail expansion
+in shared chrome, and Notifications forcing a split into single-pane fallback.
+Builder corrections are `89697d85`, `b58b24e5`, `1cde9a45`, `dbf02d6b` with dock
+shell corrections `c1ca4536`, `57b7dec2`, `5d122821`. Explicit source/test checks
+pass; these screenshot defects require final rendered closure on the combined
+candidate. The third-panel budget is now 960px for the split plus the dock's
+280px minimum; a wide overlay stays a narrow right sheet, fullscreen only on
+phones. No visible First/Second pane heading is added to full split layout.

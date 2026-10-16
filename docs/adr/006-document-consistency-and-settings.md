@@ -114,3 +114,10 @@ browser/terminal capability is implied by the Codex reference.
 This addition reopens the product freeze after `6e67e82b`. Receipts for that
 checkpoint remain valid only for that exact candidate; final Visual Check waits
 for the combined implementation and preview-affecting builds.
+
+Final owner geometry corrections preserve the preferred navigation rail when
+Alongside/shared chrome opens, remove the secondary pane's inherited navigation
+inset, and align primary/secondary tab rows. The split uses a 960px usable main
+budget, allowing a narrow third Notifications pane at 1440px. Below the combined
+budget the dock becomes a right side sheet; fullscreen is limited to phones.
+Opening/selecting dock tabs does not reset split sizing or main navigation.
