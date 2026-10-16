@@ -583,7 +583,10 @@ export function DocSourcePreview({
         keyboardShouldPersistTaps="handled"
       >
         {!!navigationError && (
-          <Text accessibilityRole="alert" style={shared.small}>
+          <Text
+            accessibilityRole="alert"
+            style={[shared.small, { color: colors.danger }]}
+          >
             {navigationError}
           </Text>
         )}
@@ -710,7 +713,10 @@ export function DocSourcePreview({
         </InlineDetails>
       )}
       {mode === "latex" && wholeLatexTooLong && (
-        <Text accessibilityRole="alert" style={shared.small}>
+        <Text
+          accessibilityRole="alert"
+          style={[shared.small, { color: colors.danger }]}
+        >
           Source exceeds the 20,000-character editing limit. Continue in Note or
           Markdown.
         </Text>

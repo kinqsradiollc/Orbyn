@@ -715,7 +715,7 @@ export function DocSourcePreview({
           </details>
         )}
         {mode === "latex" && wholeLatexTooLong && (
-          <p role="alert">
+          <p role="alert" className="doc-source-error">
             Source exceeds the 20,000-character editing limit. Continue in Note
             or Markdown.
           </p>
@@ -744,7 +744,11 @@ export function DocSourcePreview({
           </Select>
         )}
 
-        {navigationError && <p role="alert">{navigationError}</p>}
+        {navigationError && (
+          <p role="alert" className="doc-source-error">
+            {navigationError}
+          </p>
+        )}
         {navigating && (
           <p className="muted small" role="status">
             Saving before opening…
