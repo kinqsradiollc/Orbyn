@@ -146,7 +146,12 @@ function fixture(
         React.createElement("button", null, title),
     },
     "../../styles": { shared: {} },
-    "../../theme": { colors: {}, radii: {}, fonts: {}, inputFontSize: 16 },
+    "../../theme": {
+      colors: { danger: "danger-token", accent: "accent-token" },
+      radii: {},
+      fonts: {},
+      inputFontSize: 16,
+    },
     "./DocBody": {
       DocBody: ({ content }: { content: core.DocBlock[] }) =>
         React.createElement("pre", null, core.serializeDoc(content)),
@@ -557,6 +562,8 @@ for (const native of [false, true]) {
     const restore = find(
       after,
       (props) =>
+        props.accessibilityLabel === "Restore current document" ||
+        props["aria-label"] === "Restore current document" ||
         props.title === "Restore current document" ||
         React.Children.toArray(props.children).includes(
           "Restore current document",
@@ -637,7 +644,7 @@ for (const native of [false, true]) {
     const conflict = render(remote);
     assert.match(
       renderToStaticMarkup(conflict),
-      /document changed while this source edit was invalid/,
+      /Document changed\. Restore to continue/,
     );
     const conflictInput = find(
       conflict,
@@ -655,6 +662,8 @@ for (const native of [false, true]) {
     const restore = find(
       conflict,
       (props) =>
+        props.accessibilityLabel === "Restore current document" ||
+        props["aria-label"] === "Restore current document" ||
         props.title === "Restore current document" ||
         React.Children.toArray(props.children).includes(
           "Restore current document",
@@ -725,10 +734,10 @@ test("native invalid-source recovery is first in the bounded controls", () => {
   const first = React.Children.toArray(
     controls.children,
   )[0] as React.ReactElement;
-  const firstChild = React.Children.toArray(
-    (first.props as any).children,
-  )[0] as React.ReactElement;
-  assert.equal((firstChild.props as any).title, "Restore current document");
+  assert.ok(
+    find(first, (p) => p.accessibilityLabel === "Restore current document"),
+  );
+  assert.ok(find(first, (p) => p.accessibilityRole === "alert"));
 });
 
 test("web source errors keep the dialog mounted and Escape observes the latest validation state", () => {
@@ -793,8 +802,9 @@ test("web source errors keep the dialog mounted and Escape observes the latest v
     "validation must not focus the page behind the dialog",
   );
   const invalid = render(blocks);
-  find(invalid, (props) =>
-    React.Children.toArray(props.children).includes("Restore current document"),
+  find(
+    invalid,
+    (props) => props["aria-label"] === "Restore current document",
   )!.onClick();
   render(blocks);
   escape();
@@ -1073,7 +1083,7 @@ for (const native of [false, true])
     render(blocks);
     tree = render(blocks);
     assert.equal(field(tree).value, invalid);
-    assert.match(renderToStaticMarkup(tree), /Restore the current document/);
+    assert.match(renderToStaticMarkup(tree), /Restore to continue/);
     input(tree, invalid.replace(String.raw`\unknown{Draft}`, "Repaired"));
     assert.equal(blocks[1].text, "Remote");
   });
@@ -1140,4 +1150,191 @@ for (const native of [false, true])
     assert.equal(render.downloads(), 0);
     await render.requestPdf();
     assert.equal(calls, 1);
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} compact preview reveals source and selects exact conversion error without rewriting the draft`, () => {
+    let blocks: core.DocBlock[] = [
+      { type: "paragraph", text: "Before", id: "line" },
+    ];
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      showModes: false,
+      onLatexChange: (text: string) => {
+        blocks = core.editDocWholeLatex(blocks, text);
+        return blocks;
+      },
+    });
+    const field = (tree: React.ReactNode) =>
+      find(
+        tree,
+        (p) =>
+          p["aria-label"] === "LaTeX source" ||
+          p.accessibilityLabel === "LaTeX source",
+      )!;
+    const original = core.docWholeLatex(blocks),
+      draft = original.replace(
+        "Before",
+        "Emoji 😀 \\& first\nNext \\unknown{draft}",
+      );
+    let tree = render(blocks);
+    let input = field(tree);
+    assert.ok(input.ref, "the actual source input owns diagnostic selection");
+    let focused = 0,
+      selection: { start: number; end: number } | undefined;
+    const element = {
+      clientHeight: 200,
+      scrollTop: 0,
+      focus: () => {
+        focused++;
+      },
+      setSelectionRange: (start: number, end: number) => {
+        selection = { start, end };
+      },
+      setNativeProps: (props: any) => {
+        selection = props.selection;
+      },
+    };
+    input.ref.current = element;
+    if (native) input.onChangeText(draft);
+    else input.onChange({ currentTarget: { value: draft } });
+    tree = render(blocks);
+    const preview = find(tree, (p) =>
+      native ? p.title === "Show preview" : p.children === "Hide source",
+    )!;
+    assert.ok(preview);
+    (native ? preview.onPress : preview.onClick)();
+    tree = render(blocks);
+    const jump = find(tree, (p) =>
+      (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+        "Conversion error. Line",
+      ),
+    )!;
+    assert.ok(jump);
+    assert.match(renderToStaticMarkup(tree), /Unsupported command/);
+    assert.doesNotMatch(
+      renderToStaticMarkup(tree),
+      /cannot be converted without losing|Your draft is retained/,
+    );
+    (native ? jump.onPress : jump.onClick)();
+    tree = render(blocks);
+    for (const run of render.timers.values()) run();
+    render.timers.clear();
+    tree = render(blocks);
+    const start = draft.indexOf("\\unknown"),
+      end = start + "\\unknown".length;
+    assert.deepEqual(JSON.parse(JSON.stringify(selection)), { start, end });
+    assert.equal(focused, 1);
+    assert.equal(field(tree).value, draft);
+    assert.equal(blocks[0].text, "Before");
+    if (native) {
+      assert.deepEqual(JSON.parse(JSON.stringify(field(tree).selection)), {
+        start,
+        end,
+      });
+      assert.ok(
+        find(
+          tree,
+          (p) =>
+            Array.isArray(p.style) &&
+            p.style.some((style: any) => style?.color === "danger-token"),
+        ),
+      );
+    } else {
+      assert.equal(field(tree).wrap, "off");
+      let marker = find(tree, (p) => p.className === "doc-source-line-marker")!;
+      assert.ok(marker);
+      const top = marker.style.top;
+      element.scrollTop += 20;
+      field(tree).onScroll();
+      tree = render(blocks);
+      marker = find(tree, (p) => p.className === "doc-source-line-marker")!;
+      assert.equal(marker.style.top, top - 20);
+    }
+    const oldJump = jump;
+    const repaired = draft.replace("\\unknown{draft}", "Repaired");
+    input = field(tree);
+    if (native) input.onChangeText(repaired);
+    else input.onChange({ currentTarget: { value: repaired } });
+    tree = render(blocks);
+    assert.equal(
+      find(tree, (p) =>
+        (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+          "Conversion error. Line",
+        ),
+      ),
+      undefined,
+    );
+    (native ? oldJump.onPress : oldJump.onClick)();
+    for (const run of render.timers.values()) run();
+    assert.equal(focused, 1, "a stale range cannot select repaired source");
+  });
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} compiler positions are actionable only when explicitly supplied`, async () => {
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      initialSourceNumber: 0,
+      onCompileLatex: async () => {
+        throw Object.assign(new Error("Unknown command"), {
+          line: 2,
+          column: 3,
+        });
+      },
+    });
+    const text = "first\nsecond\nthird",
+      blocks = core.withDocLatexSource([], text);
+    render(blocks);
+    await render.requestPdf();
+    const tree = render(blocks);
+    assert.ok(
+      find(tree, (p) =>
+        (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+          "Compiler error. Line 2, column 3",
+        ),
+      ),
+    );
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} compiler errors without explicit positions stay unlocated and late errors cannot mark a new owner`, async () => {
+    let reject!: (error: Error) => void;
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      initialSourceNumber: 0,
+      onCompileLatex: () =>
+        new Promise<Blob>((_, fail) => {
+          reject = fail;
+        }),
+    });
+    const blocks = core.withDocLatexSource([], "first\nsecond\nthird");
+    render(blocks);
+    let pending = render.requestPdf();
+    reject(new Error("Bad command at line 2"));
+    await pending;
+    let tree = render(blocks);
+    assert.equal(
+      find(tree, (p) =>
+        (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+          "Compiler error. Line",
+        ),
+      ),
+      undefined,
+    );
+    assert.match(
+      renderToStaticMarkup(tree),
+      /Bad command at line 2|Couldn’t export/,
+    );
+    pending = render.requestPdf();
+    const remote = core.withDocLatexSource(blocks, "different\nowner");
+    render(remote);
+    render(remote);
+    reject(
+      Object.assign(new Error("Stale compiler error"), { line: 2, column: 1 }),
+    );
+    await pending;
+    tree = render(remote);
+    assert.doesNotMatch(renderToStaticMarkup(tree), /Stale compiler error/);
   });

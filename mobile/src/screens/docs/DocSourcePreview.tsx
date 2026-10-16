@@ -14,6 +14,8 @@ import {
 } from "react-native";
 import {
   docLatexBlock,
+  docSourceDiagnostic,
+  type DocSourceDiagnostic,
   docWholeLatex,
   withDocLatexSource,
   EMPTY_LATEX_DOCUMENT,
@@ -146,14 +148,43 @@ export function DocSourcePreview({
     setCompiling(true);
     setCompileError("");
     const snapshot = latexText;
+    const compileEpoch = sourceEpoch.current;
+    setCompileProblem(null);
     const account = session.token;
     try {
       const blob = await onCompileLatex(snapshot, controller.signal);
-      if (!controller.signal.aborted && account === session.token) {
+      if (
+        !controller.signal.aborted &&
+        account === session.token &&
+        compileEpoch === sourceEpoch.current &&
+        liveLatexText.current === snapshot
+      ) {
         await saveFile("document.pdf", blob, "application/pdf");
       }
     } catch (error) {
-      if (!controller.signal.aborted && account === session.token)
+      const detail = docSourceDiagnostic(error, snapshot);
+      if (
+        !controller.signal.aborted &&
+        session.token === account &&
+        compileEpoch === sourceEpoch.current &&
+        liveLatexText.current === snapshot
+      )
+        setCompileProblem(
+          detail
+            ? {
+                detail,
+                text: snapshot,
+                epoch: compileEpoch,
+                mode: "latex",
+              }
+            : null,
+        );
+      if (
+        !controller.signal.aborted &&
+        account === session.token &&
+        compileEpoch === sourceEpoch.current &&
+        liveLatexText.current === snapshot
+      )
         setCompileError(
           error instanceof Error
             ? error.message
@@ -196,6 +227,28 @@ export function DocSourcePreview({
   // replace it; echoes of our own parsed source do not move the caret.
   const [sourceText, setSourceText] = useState(canonical.source);
   const [sourceError, setSourceError] = useState("");
+  type LocatedProblem = {
+    detail: DocSourceDiagnostic;
+    text: string;
+    epoch: number;
+    mode: "latex" | "markdown";
+  };
+  const [sourceProblem, setSourceProblem] = useState<LocatedProblem | null>(
+    null,
+  );
+  const [compileProblem, setCompileProblem] = useState<LocatedProblem | null>(
+    null,
+  );
+  const [jumpRequest, setJumpRequest] = useState<LocatedProblem | null>(null);
+  const latexInput = useRef<TextInput>(null);
+  const liveLatexText = useRef(latexText);
+  liveLatexText.current = latexText;
+  const liveMarkdownText = useRef(sourceText);
+  liveMarkdownText.current = sourceText;
+  const [latexSelection, setLatexSelection] = useState<
+    { start: number; end: number } | undefined
+  >();
+
   const liveSourceError = useRef(sourceError);
   liveSourceError.current = sourceError;
   const acceptedSource = useRef(canonical.source);
@@ -208,6 +261,61 @@ export function DocSourcePreview({
   // onto ownership adopted from another editor.
   const sourceEpoch = useRef(0);
   const renderedEpoch = sourceEpoch.current;
+  const activeProblem = (problem: LocatedProblem | null) =>
+    problem &&
+    problem.mode === mode &&
+    problem.epoch === sourceEpoch.current &&
+    problem.text === (mode === "latex" ? latexText : sourceText) &&
+    session.token === navigationOwner
+      ? problem
+      : null;
+  const locatedSource = activeProblem(sourceProblem);
+  const locatedCompile = activeProblem(compileProblem);
+  const located = locatedSource ?? locatedCompile;
+  const locationLabel = (detail: DocSourceDiagnostic) =>
+    `Line ${detail.line}${detail.column === null ? "" : `, column ${detail.column}`}: ${detail.message}`;
+  const jumpToProblem = (problem: LocatedProblem) => {
+    if (!activeProblem(problem)) return;
+    setSourceVisible(true);
+    setJumpRequest(problem);
+  };
+  useEffect(() => {
+    const problem = jumpRequest;
+    if (!problem) return;
+
+    if (
+      !navigationAlive.current ||
+      session.token !== navigationOwner ||
+      sourceEpoch.current !== problem.epoch ||
+      (problem.mode === "latex"
+        ? liveLatexText.current
+        : liveMarkdownText.current) !== problem.text
+    )
+      return;
+    setJumpRequest(null);
+    const input =
+      problem.mode === "latex" ? latexInput.current : sourceInput.current;
+    if (!input) return;
+    input.focus();
+    const selection = {
+      start: problem.detail.start,
+      end: problem.detail.end,
+    };
+    if (problem.mode === "latex") setLatexSelection(selection);
+    else setSourceSelection(selection);
+    input.setNativeProps({
+      selection: { start: problem.detail.start, end: problem.detail.end },
+    });
+  }, [jumpRequest, sourceVisible]);
+  const currentAccount = session.token;
+  useEffect(() => {
+    if (currentAccount === navigationOwner) return;
+    setSourceProblem(null);
+    setCompileProblem(null);
+    setCompileError("");
+    setSourceError("Document changed. Reopen the source.");
+  }, [docId, currentAccount]);
+
   useEffect(() => {
     if (
       acceptedBlocks.current.has(blocks) ||
@@ -215,11 +323,12 @@ export function DocSourcePreview({
     )
       return;
     sourceEpoch.current++;
+    setSourceProblem(null);
+    setCompileProblem(null);
+    setCompileError("");
     if (sourceError) {
       mustRestore.current = true;
-      setSourceError(
-        "The document changed while this source edit was invalid. Restore the current document before continuing.",
-      );
+      setSourceError("Document changed. Restore to continue.");
       return;
     }
     acceptedSource.current = canonical.source;
@@ -227,6 +336,7 @@ export function DocSourcePreview({
     acceptedBlocks.current.add(blocks);
     setSourceText(canonical.source);
     if (sourceNumber < 0) setLatexText(docWholeLatex(blocks));
+    setSourceProblem(null);
     setSourceError("");
   }, [blocks, canonical.source]);
   const map = useMemo(
@@ -237,25 +347,35 @@ export function DocSourcePreview({
     [blocks, canonical, sourceText, sourceError, onSourceChange],
   );
   const changeSource = (text: string) => {
+    setCompileProblem(null);
+    setCompileError("");
+    setSourceProblem(null);
     if (!navigationAlive.current || session.token !== navigationOwner) return;
     if (!onSourceChange || mustRestore.current || navigationPending.current)
       return;
     setSourceSelection(undefined);
+    setJumpRequest(null);
+    liveMarkdownText.current = text;
     setSourceText(text);
     try {
       if (renderedEpoch !== sourceEpoch.current) {
         mustRestore.current = true;
-        throw new Error(
-          "The document changed before this source edit could be applied. Restore the current document before continuing.",
-        );
+        throw new Error("Document changed. Restore to continue.");
       }
       const next = onSourceChange(text, ownerBlocks.current);
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
       acceptedSource.current = docSourceMap(next).source;
       if (sourceNumber < 0) setLatexText(docWholeLatex(next));
+      setSourceProblem(null);
       setSourceError("");
     } catch (error) {
+      const detail = docSourceDiagnostic(error, text);
+      setSourceProblem(
+        detail
+          ? { detail, text, epoch: sourceEpoch.current, mode: mode }
+          : null,
+      );
       setSourceError(
         error instanceof Error
           ? error.message
@@ -271,6 +391,12 @@ export function DocSourcePreview({
     )
       return;
     compile.current?.abort();
+    setJumpRequest(null);
+    liveLatexText.current = text;
+    setSourceProblem(null);
+    setCompileProblem(null);
+    setCompileError("");
+    setLatexSelection(undefined);
     setLatexText(text);
     if (!onLatexChange) {
       if (sourceNumber < 0) {
@@ -286,6 +412,12 @@ export function DocSourcePreview({
           ).source,
         );
       } catch (error) {
+        const detail = docSourceDiagnostic(error, text);
+        setSourceProblem(
+          detail
+            ? { detail, text, epoch: sourceEpoch.current, mode: mode }
+            : null,
+        );
         setSourceError(
           error instanceof Error
             ? error.message
@@ -297,16 +429,21 @@ export function DocSourcePreview({
     if (mustRestore.current) return;
     try {
       if (renderedEpoch !== sourceEpoch.current)
-        throw new Error(
-          "The document changed. Restore the current document before editing.",
-        );
+        throw new Error("Document changed. Restore to continue.");
       const next = onLatexChange(text, ownerBlocks.current, sourceNumber);
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
       acceptedSource.current = docSourceMap(next).source;
       setSourceText(acceptedSource.current);
+      setSourceProblem(null);
       setSourceError("");
     } catch (error) {
+      const detail = docSourceDiagnostic(error, text);
+      setSourceProblem(
+        detail
+          ? { detail, text, epoch: sourceEpoch.current, mode: mode }
+          : null,
+      );
       setSourceError(
         error instanceof Error ? error.message : "Couldn’t apply LaTeX source.",
       );
@@ -332,6 +469,8 @@ export function DocSourcePreview({
     if (!sourceError && !navigationPending.current) onClose();
   };
   const revertSource = () => {
+    setCompileProblem(null);
+    setCompileError("");
     mustRestore.current = false;
     acceptedSource.current = canonical.source;
     ownerBlocks.current = blocks;
@@ -344,6 +483,7 @@ export function DocSourcePreview({
         ? docWholeLatex(blocks)
         : ((restored ?? docLatexBlock(blocks))?.text ?? EMPTY_LATEX_DOCUMENT),
     );
+    setSourceProblem(null);
     setSourceError("");
   };
   const notes = useMemo(
@@ -453,17 +593,45 @@ export function DocSourcePreview({
           </Text>
         )}
         {!!sourceError && (
-          <View style={{ gap: 8 }}>
-            <Button
-              style={{ marginBottom: 0 }}
-              title="Restore current document"
-              disabled={navigating}
-              secondary
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 0 }} accessibilityRole="alert">
+              {locatedSource ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${locatedSource.detail.origin === "conversion" ? "Conversion" : "Compiler"} error. ${locationLabel(locatedSource.detail)}`}
+                  onPress={() => jumpToProblem(locatedSource)}
+                  style={{ minHeight: 44, justifyContent: "center" }}
+                >
+                  <Text style={[shared.small, { color: colors.danger }]}>
+                    ! {locationLabel(locatedSource.detail)}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={[shared.small, { color: colors.danger }]}>
+                  ! {sourceError}
+                </Text>
+              )}
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Restore current document"
               onPress={revertSource}
-            />
-            <Text accessibilityRole="alert" style={shared.small}>
-              {sourceError} This edit has not been saved.
-            </Text>
+              disabled={navigating}
+              style={{
+                minHeight: 44,
+                paddingHorizontal: 8,
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: colors.accent }}>Restore</Text>
+            </Pressable>
           </View>
         )}
         {showModes && (
@@ -593,9 +761,24 @@ export function DocSourcePreview({
             </Text>
           )}
           {!!compileError && (
-            <Text accessibilityRole="alert" style={shared.small}>
-              {compileError}
-            </Text>
+            <View accessibilityRole="alert">
+              {locatedCompile ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Compiler error. ${locationLabel(locatedCompile.detail)}`}
+                  onPress={() => jumpToProblem(locatedCompile)}
+                  style={{ minHeight: 44, justifyContent: "center" }}
+                >
+                  <Text style={[shared.small, { color: colors.danger }]}>
+                    ! {locationLabel(locatedCompile.detail)}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={[shared.small, { color: colors.danger }]}>
+                  ! {compileError}
+                </Text>
+              )}
+            </View>
           )}
           <View
             style={{
@@ -614,6 +797,22 @@ export function DocSourcePreview({
             >
               <TextInput
                 accessibilityLabel="LaTeX source"
+                accessibilityHint={
+                  located
+                    ? `Error on line ${located.detail.line}. Use the error message to select its source.`
+                    : undefined
+                }
+                ref={latexInput}
+                selection={latexSelection}
+                onSelectionChange={(event) => {
+                  const selection = event.nativeEvent.selection;
+                  if (
+                    latexSelection &&
+                    (selection.start !== latexSelection.start ||
+                      selection.end !== latexSelection.end)
+                  )
+                    setLatexSelection(undefined);
+                }}
                 multiline
                 scrollEnabled
                 editable={!navigating && !!(onSourceChange || onLatexChange)}
@@ -631,6 +830,8 @@ export function DocSourcePreview({
                     borderWidth: 0,
                     borderRadius: 0,
                     backgroundColor: colors.surfaceMuted,
+                    borderLeftWidth: located ? 3 : 0,
+                    borderColor: colors.danger,
                   },
                 ]}
                 onChangeText={changeLatex}
