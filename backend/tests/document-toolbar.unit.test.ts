@@ -141,7 +141,7 @@ test("app navigation adapts to width and exposes only the narrow-screen menu", (
   );
   assert.match(
     read("desktop/src/app/App.tsx"),
-    /onResize=\{sharedChromeHost \? undefined : setSidebarWidth\}/,
+    /onResize=\{narrowNavigation \? undefined : setSidebarWidth\}/,
   );
   const header = read("desktop/src/components/Topbar.tsx");
   assert.doesNotMatch(header, /PanelLeft|workspace-rail-toggle|onToggleRail/);
