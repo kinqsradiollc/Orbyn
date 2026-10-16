@@ -357,3 +357,23 @@ test("a split main-area budget overlays the dock before compressing explicit pan
   tree = f.render(p);
   assert.equal(tree.props.role, "complementary");
 });
+
+test("a budget-forced desktop overlay is a right sheet; fullscreen is phone-only", () => {
+  const f = fixture("520"),
+    p = props();
+  f.render(p);
+  f.states[1] = 1440;
+  const tree = f.render({ ...p, minMainWidth: 1280 });
+  assert.equal(tree.props.style["--workspace-dock-preferred-width"], "520px");
+  assert.equal(tree.props.style.width, undefined);
+  const css = readFileSync(
+    new URL("../../desktop/src/components/workspace-dock.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(css, /inset: 0 0 0 auto/);
+  assert.match(
+    css,
+    /width: min\(var\(--workspace-dock-preferred-width, 400px\), calc\(100vw - 48px\)\)/,
+  );
+  assert.match(css, /@media \(max-width: 640px\)[\s\S]*?width: 100%/);
+});

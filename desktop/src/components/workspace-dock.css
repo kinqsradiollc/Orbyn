@@ -12,9 +12,9 @@
 }
 .workspace-dock.is-overlay {
   position: fixed;
-  inset: 0;
+  inset: 0 0 0 auto;
   z-index: 90;
-  width: 100%;
+  width: min(var(--workspace-dock-preferred-width, 400px), calc(100vw - 48px));
   height: 100dvh;
   border: 0;
 }
@@ -110,5 +110,11 @@
   .workspace-dock-tab .workspace-dock-close-tab,
   .workspace-dock-close {
     min-width: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  .workspace-dock.is-overlay {
+    width: 100%;
   }
 }

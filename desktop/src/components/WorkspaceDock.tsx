@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { X } from "lucide-react";
 import { hasHigherDialog } from "../lib/dialogLayers";
 import "./workspace-dock.css";
@@ -186,7 +193,12 @@ export function WorkspaceDock({
       aria-modal={overlay || undefined}
       aria-label="Workspace panel"
       tabIndex={-1}
-      style={{ width: overlay ? undefined : width }}
+      style={
+        {
+          "--workspace-dock-preferred-width": `${preferred}px`,
+          width: overlay ? undefined : width,
+        } as CSSProperties
+      }
     >
       {!overlay && (
         <div
