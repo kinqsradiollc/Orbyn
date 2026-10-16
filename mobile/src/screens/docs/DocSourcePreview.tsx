@@ -25,6 +25,7 @@ import {
   docReferenceLinks,
   footnoteNumbers,
   footnoteTexts,
+  type DocSelection,
   type DocBlock,
 } from "@orbyn/core";
 import { session } from "../../lib/session";
@@ -35,6 +36,18 @@ import { colors, fonts, radii, inputFontSize } from "../../theme";
 import { DocBody } from "./DocBody";
 import { FootnoteContext } from "./footnotes";
 import { DocNavigationContext } from "./doc-navigation";
+
+/** Full source is local context for parent validation, never an API payload. */
+export type DocSourceSelection = {
+  format: "markdown" | "latex";
+  source: string;
+  start: number;
+  end: number;
+  quote: string;
+  explain?: boolean;
+  /** Local-only guard; never serialize this or the full source. */
+  isCurrent?: () => boolean;
+};
 
 /** Source and preview delegate edits to the existing editor and its save path. */
 export function DocSourcePreview({
@@ -48,6 +61,7 @@ export function DocSourcePreview({
   saveStatus,
   onCompileLatex,
   onAssist,
+  selectionHandle,
   onLatexChange,
   latexOnly = false,
   initialMode = "markdown",
@@ -73,6 +87,8 @@ export function DocSourcePreview({
   saveStatus?: string;
   onCompileLatex: (source: string, signal: AbortSignal) => Promise<Blob>;
   onAssist?: (block: DocBlock) => void;
+  onSelectionAssist?: (selection: DocSourceSelection) => void;
+  selectionHandle?: { current: (() => DocSelection | null) | null };
   onLatexChange?: (
     text: string,
     expected: DocBlock[],
@@ -260,6 +276,173 @@ export function DocSourcePreview({
   // onto ownership adopted from another editor.
   const sourceEpoch = useRef(0);
   const renderedEpoch = sourceEpoch.current;
+  type UserSourceSelection = DocSourceSelection & {
+    epoch: number;
+    sourceNumber: number;
+    account: typeof navigationOwner;
+    docId: string;
+  };
+  const [userSourceSelection, setUserSourceSelection] =
+    useState<UserSourceSelection | null>(null);
+  const pendingUserRange = useRef<UserSourceSelection | null>(null);
+  const sourceGestureActive = useRef(false);
+  const sourceInputBlurred = useRef(false);
+  const sourceSelectionTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const sourceSelectionGeneration = useRef(0);
+  const liveSourceIdentity = useRef({ mode, sourceNumber, docId });
+  liveSourceIdentity.current = { mode, sourceNumber, docId };
+  const programmaticSourceRange = useRef<{
+    format: "markdown" | "latex";
+    start: number;
+    end: number;
+  } | null>(null);
+  const clearSourceSelection = () => {
+    pendingUserRange.current = null;
+    if (sourceSelectionTimer.current !== null)
+      clearTimeout(sourceSelectionTimer.current);
+    sourceSelectionTimer.current = null;
+    sourceSelectionGeneration.current++;
+    setUserSourceSelection(null);
+  };
+  const isCurrentSourceSelection = (
+    selected: UserSourceSelection | null,
+  ): selected is UserSourceSelection =>
+    !!selected &&
+    navigationAlive.current &&
+    !navigationPending.current &&
+    session.token === navigationOwner &&
+    selected.account === navigationOwner &&
+    selected.docId === liveSourceIdentity.current.docId &&
+    selected.epoch === sourceEpoch.current &&
+    selected.sourceNumber === liveSourceIdentity.current.sourceNumber &&
+    selected.format === liveSourceIdentity.current.mode &&
+    selected.source ===
+      (selected.format === "latex"
+        ? liveLatexText.current
+        : liveMarkdownText.current) &&
+    Number.isInteger(selected.start) &&
+    Number.isInteger(selected.end) &&
+    selected.start >= 0 &&
+    selected.end > selected.start &&
+    selected.end <= selected.source.length &&
+    selected.quote === selected.source.slice(selected.start, selected.end) &&
+    !!selected.quote.trim();
+  const settleSourceSelection = () => {
+    if (sourceSelectionTimer.current !== null)
+      clearTimeout(sourceSelectionTimer.current);
+    sourceSelectionTimer.current = null;
+    const generation = ++sourceSelectionGeneration.current;
+    if (sourceGestureActive.current || !pendingUserRange.current) return;
+    sourceSelectionTimer.current = setTimeout(() => {
+      sourceSelectionTimer.current = null;
+      if (
+        generation !== sourceSelectionGeneration.current ||
+        sourceGestureActive.current
+      )
+        return;
+      const selected = pendingUserRange.current;
+      if (isCurrentSourceSelection(selected)) setUserSourceSelection(selected);
+    }, 160);
+  };
+  const finishUserSourceSelection = () => {
+    sourceGestureActive.current = false;
+    settleSourceSelection();
+  };
+  const cancelUserSourceSelection = () => {
+    sourceGestureActive.current = false;
+    clearSourceSelection();
+  };
+  const captureSourceSelection = (
+    format: "markdown" | "latex",
+    text: string,
+    start: number,
+    end: number,
+  ) => {
+    if (sourceInputBlurred.current) return;
+    if (
+      !selectionHandle ||
+      format !== mode ||
+      !Number.isInteger(start) ||
+      !Number.isInteger(end) ||
+      start < 0 ||
+      end <= start ||
+      end > text.length
+    ) {
+      clearSourceSelection();
+      return;
+    }
+    const suppressed = programmaticSourceRange.current;
+    if (
+      suppressed &&
+      suppressed.format === format &&
+      suppressed.start === start &&
+      suppressed.end === end
+    ) {
+      clearSourceSelection();
+      return;
+    }
+    const next = {
+      format,
+      source: text,
+      start,
+      end,
+      quote: text.slice(start, end),
+      epoch: sourceEpoch.current,
+      sourceNumber,
+      account: navigationOwner,
+      docId,
+    };
+    if (!isCurrentSourceSelection(next)) {
+      clearSourceSelection();
+      return;
+    }
+    pendingUserRange.current = next;
+    if (
+      !userSourceSelection ||
+      userSourceSelection.source !== next.source ||
+      userSourceSelection.start !== next.start ||
+      userSourceSelection.end !== next.end
+    )
+      setUserSourceSelection(null);
+    settleSourceSelection();
+  };
+  const beginUserSourceSelection = () => {
+    sourceInputBlurred.current = false;
+    clearSourceSelection();
+    sourceGestureActive.current = true;
+    programmaticSourceRange.current = null;
+  };
+  if (selectionHandle)
+    selectionHandle.current = () => {
+      const selected = userSourceSelection;
+      if (sourceGestureActive.current || !isCurrentSourceSelection(selected))
+        return null;
+      return {
+        format: selected.format,
+        source: selected.source,
+        start: selected.start,
+        end: selected.end,
+        quote: selected.quote,
+        isCurrent: () => isCurrentSourceSelection(selected),
+      };
+    };
+  const dismissSourceActions = cancelUserSourceSelection;
+  useEffect(() => {
+    cancelUserSourceSelection();
+    programmaticSourceRange.current = null;
+  }, [mode, sourceNumber, docId]);
+  useEffect(
+    () => () => {
+      if (sourceSelectionTimer.current !== null)
+        clearTimeout(sourceSelectionTimer.current);
+      sourceSelectionGeneration.current++;
+      pendingUserRange.current = null;
+      sourceGestureActive.current = false;
+    },
+    [],
+  );
   const activeProblem = (problem: LocatedProblem | null) =>
     problem &&
     problem.mode === mode &&
@@ -276,6 +459,12 @@ export function DocSourcePreview({
   const jumpToProblem = (problem: LocatedProblem) => {
     if (!activeProblem(problem)) return;
     setSourceVisible(true);
+    clearSourceSelection();
+    programmaticSourceRange.current = {
+      format: problem.mode,
+      start: problem.detail.start,
+      end: problem.detail.end,
+    };
     setJumpRequest(problem);
   };
   useEffect(() => {
@@ -309,6 +498,7 @@ export function DocSourcePreview({
   const currentAccount = session.token;
   useEffect(() => {
     if (currentAccount === navigationOwner) return;
+    clearSourceSelection();
     setSourceProblem(null);
     setCompileProblem(null);
     setCompileError("");
@@ -322,6 +512,7 @@ export function DocSourcePreview({
     )
       return;
     sourceEpoch.current++;
+    clearSourceSelection();
     setSourceProblem(null);
     setCompileProblem(null);
     setCompileError("");
@@ -346,6 +537,7 @@ export function DocSourcePreview({
     [blocks, canonical, sourceText, sourceError, onSourceChange],
   );
   const changeSource = (text: string) => {
+    clearSourceSelection();
     setCompileProblem(null);
     setCompileError("");
     setSourceProblem(null);
@@ -383,6 +575,7 @@ export function DocSourcePreview({
     }
   };
   const changeLatex = (text: string) => {
+    clearSourceSelection();
     if (
       navigationPending.current ||
       !navigationAlive.current ||
@@ -468,6 +661,7 @@ export function DocSourcePreview({
     if (!sourceError && !navigationPending.current) onClose();
   };
   const revertSource = () => {
+    clearSourceSelection();
     setCompileProblem(null);
     setCompileError("");
     mustRestore.current = false;
@@ -785,6 +979,21 @@ export function DocSourcePreview({
             >
               <TextInput
                 accessibilityLabel="LaTeX source"
+                onFocus={() => {
+                  sourceInputBlurred.current = false;
+                }}
+                onBlur={() => {
+                  sourceInputBlurred.current = true;
+                }}
+                onTouchStart={beginUserSourceSelection}
+                onTouchEnd={finishUserSourceSelection}
+                onTouchCancel={cancelUserSourceSelection}
+                onKeyPress={(event) => {
+                  if (event.nativeEvent.key === "Escape")
+                    dismissSourceActions();
+                  else programmaticSourceRange.current = null;
+                }}
+
                 accessibilityHint={
                   located
                     ? `Error on line ${located.detail.line}. Use the error message to select its source.`
@@ -794,6 +1003,12 @@ export function DocSourcePreview({
                 selection={latexSelection}
                 onSelectionChange={(event) => {
                   const selection = event.nativeEvent.selection;
+                  captureSourceSelection(
+                    "latex",
+                    liveLatexText.current,
+                    selection.start,
+                    selection.end,
+                  );
                   if (
                     latexSelection &&
                     (selection.start !== latexSelection.start ||
@@ -823,6 +1038,7 @@ export function DocSourcePreview({
                   },
                 ]}
                 onChangeText={changeLatex}
+                onScroll={clearSourceSelection}
               />
             </View>
             <View
@@ -863,6 +1079,21 @@ export function DocSourcePreview({
           >
             <TextInput
               accessibilityLabel="Markdown source"
+              onFocus={() => {
+                sourceInputBlurred.current = false;
+              }}
+              onBlur={() => {
+                sourceInputBlurred.current = true;
+              }}
+              onTouchStart={beginUserSourceSelection}
+              onTouchEnd={finishUserSourceSelection}
+              onTouchCancel={cancelUserSourceSelection}
+              onKeyPress={(event) => {
+                if (event.nativeEvent.key === "Escape") dismissSourceActions();
+                else programmaticSourceRange.current = null;
+              }}
+
+              onScroll={clearSourceSelection}
               value={onSourceChange ? sourceText : map.source}
               editable={!navigating && !!onSourceChange}
               onChangeText={onSourceChange ? changeSource : undefined}
@@ -894,6 +1125,12 @@ export function DocSourcePreview({
               }}
               onSelectionChange={(event) => {
                 setSourceSelection(undefined);
+                captureSourceSelection(
+                  "markdown",
+                  liveMarkdownText.current,
+                  event.nativeEvent.selection.start,
+                  event.nativeEvent.selection.end,
+                );
                 const range = docSourceBlockAt(
                   map,
                   event.nativeEvent.selection.start,

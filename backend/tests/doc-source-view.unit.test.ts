@@ -342,7 +342,7 @@ test("web source selection highlights the owning preview block", () => {
     anchors: true,
   });
   const tree = render(blocks);
-  find(tree, (props) => typeof props.onSelect === "function")!.onSelect({
+  find(tree, (props) => props["aria-label"] === "Markdown source")!.onSelect({
     currentTarget: {
       selectionStart: core.docSourceMap(blocks).ranges[1].start,
     },
@@ -1361,4 +1361,204 @@ for (const native of [false, true])
     );
     assert.equal(called, 0);
     assert.doesNotMatch(renderToStaticMarkup(tree), /Ask assistant/);
+  });
+
+function flushSourceTimers(render: ReturnType<typeof fixture>) {
+  const tasks = [...render.timers.values()];
+  render.timers.clear();
+  for (const task of tasks) task();
+}
+function selectedSourceField(
+  tree: React.ReactNode,
+  native: boolean,
+  format: "markdown" | "latex",
+) {
+  const label = format === "latex" ? "LaTeX source" : "Markdown source";
+  return find(
+    tree,
+    (p) => (native ? p.accessibilityLabel : p["aria-label"]) === label,
+  )!;
+}
+function setUserRange(
+  field: Record<string, any>,
+  native: boolean,
+  start: number,
+  end: number,
+) {
+  if (native)
+    field.onSelectionChange({ nativeEvent: { selection: { start, end } } });
+  else
+    field.onSelect({
+      currentTarget: {
+        value: field.value,
+        selectionStart: start,
+        selectionEnd: end,
+        clientHeight: 240,
+        scrollTop: 0,
+      },
+    });
+}
+function sourceToolbar(tree: React.ReactNode, native: boolean) {
+  return find(
+    tree,
+    (p) =>
+      (native ? p.accessibilityLabel : p["aria-label"]) ===
+      "Selected source actions",
+  );
+}
+for (const native of [false, true])
+  for (const format of ["markdown", "latex"] as const)
+    test(`${native ? "Expo" : "web"} ${format} source gesture retains exact local excerpt for the sole header action without popup`, () => {
+      const selectionHandle: { current: (() => any) | null } = {
+        current: null,
+      };
+      const render = fixture(native, true, {
+        inline: true,
+        sourceOnly: true,
+        initialMode: format,
+        selectionHandle,
+      });
+      const blocks: core.DocBlock[] = [
+        { type: "paragraph", text: "Alpha 😀 beta", id: "line" },
+        { type: "paragraph", text: "Tail", id: "tail" },
+      ];
+      let tree = render(blocks),
+        field = selectedSourceField(tree, native, format);
+      const raw = field.value,
+        start = raw.indexOf("😀"),
+        end = raw.indexOf("beta") + 4;
+      assert.equal(sourceToolbar(tree, native), undefined);
+      (native ? field.onTouchStart : field.onPointerDown)();
+      setUserRange(field, native, start, start + 2);
+      tree = render(blocks);
+      assert.equal(sourceToolbar(tree, native), undefined);
+      assert.equal(render.timers.size, 0);
+      setUserRange(field, native, start, end);
+      tree = render(blocks);
+      assert.equal(sourceToolbar(tree, native), undefined);
+      assert.equal(render.timers.size, 0, "drag updates stay in refs");
+      assert.equal(selectionHandle.current!(), null);
+      (native ? field.onTouchEnd : field.onPointerUp)();
+      tree = render(blocks);
+      assert.equal(sourceToolbar(tree, native), undefined);
+      flushSourceTimers(render);
+      tree = render(blocks);
+      assert.equal(sourceToolbar(tree, native), undefined);
+      const selected = selectionHandle.current!();
+      assert.equal(selected.quote, "😀 beta");
+      assert.equal(selected.source, raw);
+      assert.equal(selected.format, format);
+      assert.equal(selected.start, start);
+      assert.equal(selected.end, end);
+      assert.equal(selected.isCurrent(), true);
+      field = selectedSourceField(tree, native, format);
+      field.onBlur?.({ relatedTarget: null });
+      setUserRange(field, native, 0, 0);
+      assert.equal(selectionHandle.current!().quote, selected.quote);
+      const changed = raw.replace("beta", "changed");
+      field = selectedSourceField(render(blocks), native, format);
+      if (native) field.onChangeText(changed);
+      else field.onChange({ currentTarget: { value: changed } });
+      assert.equal(
+        selected.isCurrent(),
+        false,
+        "local validator rejects a changed raw draft immediately",
+      );
+    });
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} source selection debounces OS changes and cancels stale gestures without whole-block fallback`, () => {
+    const selectionHandle: { current: (() => any) | null } = { current: null };
+    const render = fixture(native, true, {
+        inline: true,
+        sourceOnly: true,
+        initialMode: "markdown",
+        selectionHandle,
+      }),
+      blocks: core.DocBlock[] = [
+        { type: "paragraph", text: "One two three", id: "line" },
+      ];
+    let tree = render(blocks),
+      field = selectedSourceField(tree, native, "markdown");
+    setUserRange(field, native, 0, 3);
+    const superseded = [...render.timers.values()];
+    setUserRange(field, native, 4, 7);
+    for (const task of superseded) task();
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    flushSourceTimers(render);
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    const stale = selectionHandle.current!();
+    assert.equal(stale.quote, "two");
+    (native
+      ? selectedSourceField(tree, native, "markdown").onScroll
+      : selectedSourceField(tree, native, "markdown").onScroll)();
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    field = selectedSourceField(tree, native, "markdown");
+    (native ? field.onTouchStart : field.onPointerDown)();
+    setUserRange(field, native, 0, 7);
+    (native ? field.onTouchCancel : field.onPointerCancel)();
+    flushSourceTimers(render);
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    setUserRange(field, native, 0, 0);
+    flushSourceTimers(render);
+    assert.equal(sourceToolbar(render(blocks), native), undefined);
+    render.setAccount("other");
+    render(blocks);
+    assert.equal(stale.isCurrent(), false);
+    assert.equal(selectionHandle.current!(), null);
+  });
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} diagnostic selection never opens source Ask controls`, () => {
+    const selectionHandle: { current: (() => any) | null } = { current: null };
+    const render = fixture(native, true, {
+        inline: true,
+        sourceOnly: true,
+        initialMode: "latex",
+        selectionHandle,
+        onLatexChange: (text: string, blocks: core.DocBlock[]) =>
+          core.editDocWholeLatex(blocks, text),
+      }),
+      blocks: core.DocBlock[] = [
+        { type: "paragraph", text: "Safe", id: "line" },
+      ];
+    let tree = render(blocks),
+      field = selectedSourceField(tree, native, "latex");
+    const draft = field.value.replace("Safe", "\\unknown{draft}");
+    const ref = field.ref;
+    ref.current = {
+      clientHeight: 240,
+      scrollTop: 0,
+      focus() {},
+      setSelectionRange() {},
+      setNativeProps() {},
+    };
+    if (native) field.onChangeText(draft);
+    else field.onChange({ currentTarget: { value: draft } });
+    tree = render(blocks);
+    const jump = find(tree, (p) =>
+      (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+        "Conversion error. Line",
+      ),
+    )!;
+    (native ? jump.onPress : jump.onClick)();
+    tree = render(blocks);
+    field = selectedSourceField(tree, native, "latex");
+    const start = draft.indexOf("\\unknown"),
+      end = start + "\\unknown".length;
+    setUserRange(field, native, start, end);
+    flushSourceTimers(render);
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    assert.equal(selectionHandle.current!(), null);
+    (native ? field.onTouchStart : field.onPointerDown)();
+    setUserRange(field, native, start, end);
+    (native ? field.onTouchEnd : field.onPointerUp)();
+    flushSourceTimers(render);
+    assert.ok(
+      (render(blocks), selectionHandle.current!()),
+      "an intentional user gesture may select the same token",
+    );
   });
