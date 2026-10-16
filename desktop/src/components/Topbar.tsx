@@ -1,13 +1,6 @@
 import type { ReactNode } from "react";
 import { useElementWidth } from "../hooks/useElementWidth";
-import {
-  Bell,
-  Menu,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Plus,
-  Search,
-} from "lucide-react";
+import { Bell, Menu, Plus, Search } from "lucide-react";
 import type { User } from "@orbyn/core";
 import {
   SCREENS,
@@ -27,8 +20,6 @@ type TopbarProps = {
   /** The assistant's chosen name, shown for its view. */
   agentName?: string;
   onToggleMenu: () => void;
-  onToggleRail?: () => void;
-  railed?: boolean;
   navigationOpen?: boolean;
   onOpenNotifications: () => void;
   /** Opens the command bar (also ⌘K / Ctrl+K). */
@@ -51,8 +42,6 @@ export function Topbar({
   tabs,
   agentName,
   onToggleMenu,
-  onToggleRail,
-  railed = false,
   navigationOpen = false,
   onOpenNotifications,
   onOpenCommand,
@@ -73,19 +62,6 @@ export function Topbar({
       ref={headerRef}
       className={`topbar${tabs ? " has-tabs" : ""}${compact ? " is-compact" : ""}`}
     >
-      {onToggleRail && (
-        <button
-          className="icon-button workspace-rail-toggle"
-          data-shared-chrome={sharedChrome ? "" : undefined}
-          data-settings-focus-return
-          aria-label={railed ? "Expand navigation" : "Collapse navigation"}
-          aria-expanded={!railed}
-          aria-controls="workspace-navigation"
-          onClick={onToggleRail}
-        >
-          {railed ? <PanelLeftOpen size={18} /> : <PanelLeftClose size={18} />}
-        </button>
-      )}
       <button
         className="icon-button mobile-menu"
         data-shared-chrome={sharedChrome ? "" : undefined}

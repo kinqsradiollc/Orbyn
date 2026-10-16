@@ -67,7 +67,8 @@ function PagePeek({ doc, report }: { doc: Doc; report: (e: unknown) => void }) {
  * The side peek (NAV-05): a page, task or project read beside the one you
  * are in, without leaving it. ⌘-click a link or press ⌘Enter in ⌘K to open
  * one. "Open full" opens it as usual; the pin keeps the peek open while you
- * move around the app. Not tabs: one thing at a time, beside.
+ * move around the app. Embedded mode delegates tabs, focus and dismissal to
+ * the workspace dock shell.
  */
 export function SidePeek({
   target,
@@ -75,7 +76,13 @@ export function SidePeek({
   onPin,
   onClose,
   report,
+  embedded = false,
+  onTitle,
+  onOpenFull,
 }: {
+  embedded?: boolean;
+  onTitle?: (title: string) => void;
+  onOpenFull?: () => void;
   target: ObjectRef;
   pinned: boolean;
   onPin: (pinned: boolean) => void;
@@ -119,10 +126,10 @@ export function SidePeek({
     };
   }, [target.kind, target.id, retry]);
   useEffect(() => {
-    close.current?.focus();
-  }, [target.id]);
+    if (!embedded) close.current?.focus();
+  }, [target.id, embedded]);
   useEffect(() => {
-    if (!overlay) return;
+    if (embedded || !overlay) return;
     const backgrounds = Array.from(
       document.querySelectorAll<HTMLElement>(".shell, .sidebar"),
     ).filter((node) => !node.contains(root.current));
@@ -155,8 +162,9 @@ export function SidePeek({
       document.removeEventListener("focusin", onFocus);
       observer.disconnect();
     };
-  }, [overlay]);
+  }, [overlay, embedded]);
   useEffect(() => {
+    if (embedded) return;
     return () => {
       const node = opener.current;
       if (node?.isConnected && !node.closest("[inert]")) node.focus();
@@ -167,6 +175,7 @@ export function SidePeek({
     };
   }, []);
   useEffect(() => {
+    if (embedded) return;
     const onKey = (e: KeyboardEvent) => {
       // Escape closes the peek unless a dialog above it is open.
       if (
@@ -197,7 +206,7 @@ export function SidePeek({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose, overlay]);
+  }, [onClose, overlay, embedded]);
 
   const title =
     loaded?.kind === "doc"
@@ -207,6 +216,9 @@ export function SidePeek({
         : loaded?.kind === "project"
           ? loaded.project.name
           : "";
+  useEffect(() => {
+    if (title) onTitle?.(title);
+  }, [title, onTitle]);
   const Icon =
     target.kind === "doc"
       ? FileText
@@ -226,7 +238,7 @@ export function SidePeek({
 
   return (
     <>
-      {overlay && (
+      {!embedded && overlay && (
         <button
           className="peek-backdrop"
           tabIndex={-1}
@@ -236,9 +248,9 @@ export function SidePeek({
       )}
       <aside
         ref={root}
-        role={overlay ? "dialog" : "complementary"}
-        aria-modal={overlay || undefined}
-        className="side-peek"
+        role={embedded ? "region" : overlay ? "dialog" : "complementary"}
+        aria-modal={(!embedded && overlay) || undefined}
+        className={embedded ? "side-peek is-embedded" : "side-peek"}
         aria-label={`${noun} beside: ${title}`}
       >
         <header className="peek-head">
@@ -246,38 +258,45 @@ export function SidePeek({
             <Icon size={14} aria-hidden="true" /> {noun}
           </span>
           <span className="peek-actions">
-            <button
-              className="icon-button"
-              aria-pressed={pinned}
-              title={
-                pinned
-                  ? "Unpin: close it when you move on"
-                  : "Pin: keep it open as you move around"
-              }
-              aria-label={pinned ? "Unpin the peek" : "Pin the peek"}
-              onClick={() => onPin(!pinned)}
-            >
-              {pinned ? <PinOff size={16} /> : <Pin size={16} />}
-            </button>
+            {!embedded && (
+              <button
+                className="icon-button"
+                aria-pressed={pinned}
+                title={
+                  pinned
+                    ? "Unpin: close it when you move on"
+                    : "Pin: keep it open as you move around"
+                }
+                aria-label={pinned ? "Unpin the peek" : "Pin the peek"}
+                onClick={() => onPin(!pinned)}
+              >
+                {pinned ? <PinOff size={16} /> : <Pin size={16} />}
+              </button>
+            )}
             <button
               className="icon-button"
               title="Open full"
               aria-label="Open full"
               onClick={() => {
-                openObject(target);
-                if (!pinned) onClose();
+                if (onOpenFull) onOpenFull();
+                else {
+                  openObject(target);
+                  if (!pinned) onClose();
+                }
               }}
             >
               <Maximize2 size={16} />
             </button>
-            <button
-              ref={close}
-              className="icon-button"
-              aria-label="Close the peek"
-              onClick={onClose}
-            >
-              <X size={18} />
-            </button>
+            {!embedded && (
+              <button
+                ref={close}
+                className="icon-button"
+                aria-label="Close the peek"
+                onClick={onClose}
+              >
+                <X size={18} />
+              </button>
+            )}
           </span>
         </header>
         <div className="peek-body">

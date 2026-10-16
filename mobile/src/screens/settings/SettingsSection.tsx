@@ -10,11 +10,44 @@ import { StyleSheet, Text, View } from "react-native";
 import { Pressable } from "../../motion";
 import { sectionKey } from "@orbyn/core";
 import { Icon } from "../../components/Icon";
-import { readLocal, saveLocal } from "../../lib/localPrefs";
 import { colors, fonts, radii, themed } from "../../theme";
 import { shared } from "../../styles";
 
-const REMEMBER = "orbyn-settings-open";
+const DetailContext = createContext<{
+  active: string | null;
+  open: (key: string | null) => void;
+} | null>(null);
+export function SettingsDetailProvider({
+  children,
+  resetKey,
+  reveal,
+}: {
+  children: ReactNode;
+  resetKey?: unknown;
+  reveal?: () => void;
+}) {
+  const [active, setActive] = useState<string | null>(null);
+  const latest = useRef(reveal);
+  latest.current = reveal;
+  const [lastReset, setLastReset] = useState(resetKey);
+  if (!Object.is(lastReset, resetKey)) {
+    setLastReset(resetKey);
+    if (resetKey !== true) setActive(null);
+  }
+  return (
+    <DetailContext.Provider
+      value={{
+        active,
+        open: (key) => {
+          if (key !== null) latest.current?.();
+          setActive(key);
+        },
+      }}
+    >
+      {children}
+    </DetailContext.Provider>
+  );
+}
 
 /**
  * The section Settings' search chose (NAV-10): its heading, compared by
@@ -92,32 +125,11 @@ export function SettingsAnchor({
   );
 }
 
-const openSet = (): Set<string> => {
-  try {
-    const value: unknown = JSON.parse(readLocal(REMEMBER) ?? "[]");
-    return new Set(
-      Array.isArray(value)
-        ? value.filter((entry): entry is string => typeof entry === "string")
-        : [],
-    );
-  } catch {
-    return new Set();
-  }
-};
-
-/**
- * One settings section, folded away until it is wanted.
- *
- * Settings had grown to one screen of nearly a thousand lines, so finding
- * anything meant scrolling past everything else. This is the same fold the
- * desktop uses, so the two read alike: the heading that was a label above
- * the card becomes the thing you press to open it, and what you opened last
- * time is still open when you come back.
- */
+/** A settings row opens a focused detail, retaining its mounted draft on Back. */
 export function SettingsSection({
   title,
   children,
-  defaultOpen = false,
+  defaultOpen: _defaultOpen = false,
   disabled = false,
 }: {
   title: string;
@@ -125,7 +137,12 @@ export function SettingsSection({
   defaultOpen?: boolean;
   disabled?: boolean;
 }) {
-  const [open, setOpen] = useState(() => defaultOpen || openSet().has(title));
+  void _defaultOpen;
+  const navigation = useContext(DetailContext);
+  const [localOpen, setLocalOpen] = useState(false);
+  const open = navigation ? navigation.active === title : localOpen;
+  const setOpen = (value: boolean) =>
+    navigation ? navigation.open(value ? title : null) : setLocalOpen(value);
   const [openedOnce, setOpenedOnce] = useState(open);
   const found = useFound(title, () => {
     setOpen(true);
@@ -137,39 +154,57 @@ export function SettingsSection({
     const next = !open;
     setOpen(next);
     if (next) setOpenedOnce(true);
-    const all = openSet();
-    if (next) all.add(title);
-    else all.delete(title);
-    saveLocal(REMEMBER, JSON.stringify([...all]));
   };
 
   return (
     <View
       ref={found.ref}
-      style={[shared.card, s.section, found.lit && s.lit]}
+      style={[
+        shared.card,
+        s.section,
+        found.lit && s.lit,
+        !!navigation?.active && !open && { display: "none" },
+      ]}
       onLayout={found.onLayout}
     >
-      <Pressable
-        onPress={toggle}
-        disabled={disabled}
-        accessibilityRole="button"
-        accessibilityState={{ expanded: open, disabled }}
-        style={({ pressed }) => [s.head, pressed && s.headPressed]}
-      >
-        <Text style={s.title}>{title}</Text>
-        <Icon
-          name={open ? "chevronUp" : "chevronDown"}
-          size={18}
-          color={colors.muted}
-        />
-      </Pressable>
+      {open ? (
+        <View style={s.detailHeading}>
+          <Pressable
+            onPress={toggle}
+            disabled={disabled}
+            accessibilityRole="button"
+            accessibilityLabel={`Back from ${title}`}
+            accessibilityState={{ disabled }}
+            style={({ pressed }) => [s.back, pressed && s.headPressed]}
+          >
+            <Icon name="chevronLeft" size={18} color={colors.text} />
+            <Text style={s.backText}>Back</Text>
+          </Pressable>
+          <Text style={s.title} accessibilityRole="header">
+            {title}
+          </Text>
+        </View>
+      ) : (
+        <Pressable
+          onPress={toggle}
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityState={{ disabled }}
+          style={({ pressed }) => [s.head, pressed && s.headPressed]}
+        >
+          <Text style={s.title}>{title}</Text>
+          <Icon name="chevronRight" size={18} color={colors.muted} />
+        </Pressable>
+      )}
       {openedOnce && (
         <View
           style={[s.body, !open && { display: "none" }]}
           accessibilityElementsHidden={!open}
           importantForAccessibility={open ? "auto" : "no-hide-descendants"}
         >
-          {children}
+          <SettingsDetailProvider resetKey={open} reveal={() => setOpen(true)}>
+            {children}
+          </SettingsDetailProvider>
         </View>
       )}
     </View>
@@ -200,6 +235,16 @@ const s = themed(() =>
       paddingHorizontal: 12,
       paddingVertical: 8,
     },
+    detailHeading: { gap: 8, paddingHorizontal: 12, paddingBottom: 12 },
+    back: {
+      alignSelf: "flex-start",
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 4,
+      minHeight: 44,
+      paddingRight: 12,
+    },
+    backText: { fontFamily: fonts.medium, fontSize: 15, color: colors.text },
     headPressed: { backgroundColor: colors.surfaceMuted },
     title: {
       flex: 1,
@@ -218,3 +263,37 @@ const s = themed(() =>
     },
   }),
 );
+
+/** Share one detail navigation owner without adding layout wrappers. */
+export function SettingsWorkspace({
+  children,
+  focus,
+  resetKey,
+}: {
+  children: ReactNode;
+  focus: React.ContextType<typeof SettingsFocus>;
+  resetKey: unknown;
+}) {
+  return (
+    <SettingsFocus.Provider value={focus}>
+      <SettingsDetailProvider resetKey={resetKey}>
+        {children}
+      </SettingsDetailProvider>
+    </SettingsFocus.Provider>
+  );
+}
+
+/** Overview-only destinations stay out of a focused settings detail. */
+export function SettingsOverview({ children }: { children: ReactNode }) {
+  const nav = useContext(DetailContext);
+  const hidden = !!nav?.active;
+  return (
+    <View
+      style={hidden ? { display: "none" } : undefined}
+      accessibilityElementsHidden={hidden}
+      importantForAccessibility={hidden ? "no-hide-descendants" : "auto"}
+    >
+      {children}
+    </View>
+  );
+}

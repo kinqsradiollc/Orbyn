@@ -14,7 +14,7 @@ export const EMPTY_LATEX_DOCUMENT = String.raw`\documentclass{article}
 \usepackage[utf8]{inputenc}
 \usepackage{amsmath,amssymb}
 \begin{document}
-\null
+
 \end{document}
 `;
 

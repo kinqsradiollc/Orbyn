@@ -8,34 +8,10 @@ import {
   type CSSProperties,
   type RefObject,
 } from "react";
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import "./document-workspace.css";
 export const DocumentLibraryContext = createContext<{
-  hidden: boolean;
-  toggle: () => void;
-  hide: () => void;
+  setSourceOpen: (open: boolean) => void;
 } | null>(null);
-export function DocumentLibraryButton() {
-  const library = useContext(DocumentLibraryContext);
-  if (!library) return null;
-  return (
-    <button
-      type="button"
-      className="icon-button document-library-toggle"
-      aria-label={
-        library.hidden ? "Show document library" : "Hide document library"
-      }
-      title={library.hidden ? "Show library" : "Hide library"}
-      onClick={library.toggle}
-    >
-      {library.hidden ? (
-        <PanelLeftOpen size={16} />
-      ) : (
-        <PanelLeftClose size={16} />
-      )}
-    </button>
-  );
-}
 export function useDocumentWorkspace(
   root: RefObject<HTMLElement | null>,
   open: boolean,
@@ -56,10 +32,9 @@ export function useDocumentWorkspace(
     }
   });
   useLayoutEffect(() => {
-    if (open) {
-      controls.current?.hide();
-      setView("source");
-    }
+    controls.current?.setSourceOpen(open);
+    if (open) setView("source");
+    return () => controls.current?.setSourceOpen(false);
   }, [open]);
   useLayoutEffect(() => {
     const node = root.current;

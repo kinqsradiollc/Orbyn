@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   docLatexBlock,
+  docWholeLatex,
   EMPTY_LATEX_DOCUMENT,
   type DocBlock,
 } from "@orbyn/core";
@@ -43,19 +44,22 @@ export function DocLatexPreviewProvider({
     sourceNumber: number;
   } | null>(null);
   const setDraftSource = useCallback(
-    (text: string | null, sourceNumber = 0) =>
+    (text: string | null, sourceNumber = -1) =>
       setDraft({ docId, account, text, sourceNumber }),
     [docId, account],
   );
   const currentDraft =
     draft?.docId === docId && draft.account === account && draft.text !== null;
-  const selectedNumber = currentDraft ? draft.sourceNumber : 0;
+  const selectedNumber = currentDraft ? draft.sourceNumber : -1;
   const selected = docLatexBlock(blocks, selectedNumber);
-  const sourceOwner = selected?.id ?? `source-${selectedNumber}`;
+  const sourceOwner =
+    selectedNumber < 0
+      ? "whole-document"
+      : (selected?.id ?? `source-${selectedNumber}`);
   const source =
     draft?.docId === docId && draft.account === account && draft.text !== null
       ? draft.text
-      : (docLatexBlock(blocks)?.text ?? EMPTY_LATEX_DOCUMENT);
+      : docWholeLatex(blocks);
   return (
     <Context.Provider value={{ owner, source, sourceOwner, setDraftSource }}>
       {children}

@@ -1,19 +1,14 @@
 /* The document owns its viewport. Application navigation is outside this workspace. */
-.app.workspace .content:has(.docs-workspace.is-document-open) {
+.app.workspace .content:has(.docs-workspace) {
   max-width: none;
   width: 100%;
   margin: 0;
   padding: 0;
 }
-.docs-workspace.is-document-open {
-  grid-template-columns: 208px minmax(0, 1fr);
-  gap: 0;
-  align-items: stretch;
-}
-.docs-workspace.is-document-open.is-library-hidden {
+.docs-workspace.is-library-hidden {
   grid-template-columns: minmax(0, 1fr);
 }
-.docs-workspace.is-document-open .docs-navigation {
+.docs-workspace .docs-navigation {
   top: 0;
   max-height: calc(100dvh - 56px);
   border: 0;
@@ -473,4 +468,87 @@
 }
 .document-workspace .doc-source-tools > .document-preview-help[open] {
   flex-basis: 100%;
+}
+
+/* Toolbar DOM and visual order agree: library, back, title, then page actions. */
+.document-toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+}
+.document-workspace .document-toolbar-actions .structured-doc-status {
+  margin-left: 0;
+}
+@container (max-width: 600px) {
+  .document-toolbar-actions {
+    flex-basis: 100%;
+  }
+}
+
+/* The same library edge frames browsing and editing. One control owns visibility. */
+.docs-workspace > .docs-workspace-content:not(:has(.document-workspace)) {
+  padding: 24px;
+}
+.docs-workspace > .docs-nav-toggle:not([hidden]) {
+  display: inline-flex;
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin: 8px;
+}
+.docs-workspace > .docs-nav-toggle[hidden] {
+  display: none;
+}
+.docs-workspace .docs-nav-title {
+  align-items: center;
+}
+.docs-workspace .docs-nav-title h2 {
+  margin-bottom: 12px;
+}
+.docs-workspace .docs-library-hide {
+  display: inline-flex;
+}
+.docs-workspace.is-library-hidden > .docs-navigation {
+  display: none;
+}
+.docs-workspace.is-compact .docs-navigation .docs-library-hide {
+  display: inline-flex;
+}
+
+/* A continuous, quiet library surface rather than a card within the page. */
+.docs-workspace .docs-navigation {
+  background: var(--color-surface);
+  min-height: calc(100dvh - 56px);
+  padding: 16px 12px;
+}
+.docs-workspace .docs-navigation :is(button, summary) {
+  min-height: 34px;
+  padding-block: 6px;
+  gap: 10px;
+  border-radius: 8px;
+}
+.docs-workspace .docs-navigation button[aria-current="page"] {
+  background: var(--color-hover);
+  color: var(--color-text);
+  font-weight: 500;
+}
+.docs-workspace .docs-navigation .docs-tree-more {
+  background: transparent;
+}
+.docs-workspace .docs-nav-heading {
+  margin-top: 22px;
+}
+.docs-workspace .docs-nav-title h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.docs-workspace.is-compact .docs-navigation {
+  min-height: 0;
+}
+@media (pointer: coarse) {
+  .docs-workspace .docs-navigation :is(button, summary) {
+    min-height: 44px;
+  }
 }

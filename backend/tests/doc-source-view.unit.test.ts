@@ -73,10 +73,17 @@ function fixture(
   const opened: string[] = [];
   let closed = 0,
     downloads = 0;
+  let account = "qa";
+  const auth = {
+    get: () => account,
+    get token() {
+      return account;
+    },
+  };
   const modules: Record<string, unknown> = {
     react: hooks,
     "@orbyn/core": core,
-    "../../lib/session": { session: { token: "qa", get: () => "qa" } },
+    "../../lib/session": { session: auth },
     "../../components/LatexHtmlPreview": { LatexHtmlPreview: container },
     "../../components/Select": { Select: container },
     "../../lib/download": {
@@ -107,6 +114,15 @@ function fixture(
         React.createElement("pre", null, value),
     },
     "../../components/Sheet": { Sheet: container },
+    "../../components/InlineDetails": {
+      InlineDetails: ({ title, children }: any) =>
+        React.createElement(
+          "details",
+          null,
+          React.createElement("summary", null, title),
+          children,
+        ),
+    },
     "./DocEditorModes": {
       DocEditorModes: ({ value, onChange }: any) =>
         React.createElement(
@@ -130,7 +146,12 @@ function fixture(
         React.createElement("button", null, title),
     },
     "../../styles": { shared: {} },
-    "../../theme": { colors: {}, radii: {}, fonts: {}, inputFontSize: 16 },
+    "../../theme": {
+      colors: { danger: "danger-token", accent: "accent-token" },
+      radii: {},
+      fonts: {},
+      inputFontSize: 16,
+    },
     "./DocBody": {
       DocBody: ({ content }: { content: core.DocBlock[] }) =>
         React.createElement("pre", null, core.serializeDoc(content)),
@@ -199,6 +220,9 @@ function fixture(
       },
     },
   );
+  const exportPdfHandle: { current: (() => Promise<void>) | null } = {
+    current: null,
+  };
   const edits: core.DocBlock[][] = [];
   const ownedBlocks = new WeakSet<core.DocBlock[]>();
   let currentBlocks: core.DocBlock[];
@@ -219,6 +243,7 @@ function fixture(
           }
         : undefined,
       saveStatus: "Unsaved changes",
+      exportPdfHandle,
       onAppLink: (url: string) => opened.push(url),
       report: () => {},
       onClose: () => {
@@ -238,6 +263,11 @@ function fixture(
     opened,
     closed: () => closed,
     downloads: () => downloads,
+    requestPdf: () => exportPdfHandle.current?.() ?? Promise.resolve(),
+    hasSourceExport: () => !!exportPdfHandle.current,
+    setAccount: (next: string) => {
+      account = next;
+    },
   });
 }
 function find(
@@ -274,7 +304,13 @@ for (const native of [false, true]) {
     assert.match(renderToStaticMarkup(tree), /Unsaved words/);
     assert.deepEqual(blocks, before);
     assert.doesNotMatch(
-      renderToStaticMarkup(render(core.parseDoc("Different page"))),
+      renderToStaticMarkup(
+        (() => {
+          const next = core.parseDoc("Different page");
+          render(next);
+          return render(next);
+        })(),
+      ),
       /Unsaved words/,
     );
   });
@@ -306,7 +342,7 @@ test("web source selection highlights the owning preview block", () => {
     anchors: true,
   });
   const tree = render(blocks);
-  find(tree, (props) => typeof props.onSelect === "function")!.onSelect({
+  find(tree, (props) => props["aria-label"] === "Markdown source")!.onSelect({
     currentTarget: {
       selectionStart: core.docSourceMap(blocks).ranges[1].start,
     },
@@ -526,6 +562,8 @@ for (const native of [false, true]) {
     const restore = find(
       after,
       (props) =>
+        props.accessibilityLabel === "Restore current document" ||
+        props["aria-label"] === "Restore current document" ||
         props.title === "Restore current document" ||
         React.Children.toArray(props.children).includes(
           "Restore current document",
@@ -606,7 +644,7 @@ for (const native of [false, true]) {
     const conflict = render(remote);
     assert.match(
       renderToStaticMarkup(conflict),
-      /document changed while this source edit was invalid/,
+      /Document changed\. Restore to continue/,
     );
     const conflictInput = find(
       conflict,
@@ -624,6 +662,8 @@ for (const native of [false, true]) {
     const restore = find(
       conflict,
       (props) =>
+        props.accessibilityLabel === "Restore current document" ||
+        props["aria-label"] === "Restore current document" ||
         props.title === "Restore current document" ||
         React.Children.toArray(props.children).includes(
           "Restore current document",
@@ -694,10 +734,10 @@ test("native invalid-source recovery is first in the bounded controls", () => {
   const first = React.Children.toArray(
     controls.children,
   )[0] as React.ReactElement;
-  const firstChild = React.Children.toArray(
-    (first.props as any).children,
-  )[0] as React.ReactElement;
-  assert.equal((firstChild.props as any).title, "Restore current document");
+  assert.ok(
+    find(first, (p) => p.accessibilityLabel === "Restore current document"),
+  );
+  assert.ok(find(first, (p) => p.accessibilityRole === "alert"));
 });
 
 test("web source errors keep the dialog mounted and Escape observes the latest validation state", () => {
@@ -762,8 +802,9 @@ test("web source errors keep the dialog mounted and Escape observes the latest v
     "validation must not focus the page behind the dialog",
   );
   const invalid = render(blocks);
-  find(invalid, (props) =>
-    React.Children.toArray(props.children).includes("Restore current document"),
+  find(
+    invalid,
+    (props) => props["aria-label"] === "Restore current document",
   )!.onClick();
   render(blocks);
   escape();
@@ -828,11 +869,12 @@ for (const native of [false, true]) {
 }
 
 for (const native of [false, true]) {
-  test(`${native ? "native" : "web"} opens LaTeX inline with no automatic PDF request and explicit export`, async () => {
+  test(`${native ? "native" : "web"} opens embedded LaTeX inline with no automatic PDF request and explicit export`, async () => {
     const calls: string[] = [];
     const render = fixture(native, true, {
       inline: true,
       initialMode: "latex",
+      initialSourceNumber: 0,
       compileReady: true,
       onCompileLatex: async (source: string) => {
         calls.push(source);
@@ -855,12 +897,14 @@ for (const native of [false, true]) {
       ),
       false,
     );
-    const action = find(tree, (p) =>
-      native ? p.title === "Export PDF" : p.children === "Export PDF",
-    )!;
-    assert.ok(action);
-    if (native) action.onPress();
-    else action.onClick();
+    assert.equal(
+      find(tree, (p) =>
+        native ? p.title === "Export PDF" : p.children === "Export PDF",
+      ),
+      undefined,
+    );
+    assert.equal(render.hasSourceExport(), true);
+    await render.requestPdf();
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(calls, ["Saved source"]);
     assert.equal(render.downloads(), 1);
@@ -879,19 +923,17 @@ for (const native of [false, true]) {
       initialMode: "latex",
       compileReady: false,
       onCompileLatex: compile,
+      initialSourceNumber: 0,
     });
-    const locked = find(unsaved(blocks), (p) =>
-      native ? p.title === "Export PDF" : p.children === "Export PDF",
-    )!;
-    assert.equal(locked.disabled, true);
-    if (native) locked.onPress();
-    else locked.onClick();
+    unsaved(blocks);
+    await unsaved.requestPdf();
     assert.equal(signal, undefined);
     const saved = fixture(native, true, {
       inline: true,
       initialMode: "latex",
       compileReady: true,
       onCompileLatex: compile,
+      initialSourceNumber: 0,
     });
     const tree = saved(blocks);
     const cleanup = saved.dialogEffects
@@ -900,15 +942,12 @@ for (const native of [false, true]) {
           e.deps?.length === 0 && e.run.toString().includes("compile.current"),
       )!
       .run();
-    const action = find(tree, (p) =>
-      native ? p.title === "Export PDF" : p.children === "Export PDF",
-    )!;
-    if (native) action.onPress();
-    else action.onClick();
+    const pending = saved.requestPdf();
     assert.ok(signal && !signal.aborted);
     cleanup();
     assert.equal(signal!.aborted, true);
     finish(new Blob(["stale PDF"]));
+    await pending;
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(saved.downloads(), 0);
   });
@@ -974,5 +1013,552 @@ for (const native of [false, true])
     assert.equal(
       find(markdown, (p) => p["aria-label"] === "Rendered preview"),
       undefined,
+    );
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} whole-document source accepts owner edits, retains invalid draft and reconciles external changes`, () => {
+    let blocks: core.DocBlock[] = [
+      { type: "heading", text: "Plan", level: 1, id: "heading" },
+      { type: "paragraph", text: "Before", id: "line" },
+      {
+        type: "code",
+        lang: "latex-document",
+        text: "Embedded",
+        id: "embedded",
+      },
+    ];
+    const leaveCheck: { current: (() => boolean) | null } = { current: null };
+    const render = fixture(native, true, {
+      inline: true,
+      sourceOnly: true,
+      initialMode: "latex",
+      leaveCheck,
+      onLatexChange: (
+        text: string,
+        expected: core.DocBlock[],
+        ordinal: number,
+      ) => {
+        assert.equal(ordinal, -1);
+        assert.deepEqual(expected, blocks);
+        blocks = core.editDocWholeLatex(blocks, text);
+        return blocks;
+      },
+    });
+    const field = (tree: React.ReactNode) =>
+      find(
+        tree,
+        (p) =>
+          p["aria-label"] === "LaTeX source" ||
+          p.accessibilityLabel === "LaTeX source",
+      )!;
+    const input = (tree: React.ReactNode, value: string) => {
+      const p = field(tree);
+      if (native) p.onChangeText(value);
+      else p.onChange({ currentTarget: { value } });
+    };
+    let tree = render(blocks);
+    assert.equal(field(tree).value, core.docWholeLatex(blocks));
+    assert.match(field(tree).value, /Before/);
+    assert.notEqual(field(tree).value, "Embedded");
+    render.dialogEffects.find((e) => e.deps?.[0] === leaveCheck)!.run();
+    input(tree, field(tree).value.replace("Before", "After"));
+    tree = render(blocks);
+    assert.equal(blocks[1].text, "After");
+    assert.equal(blocks.length, 3);
+    assert.equal(blocks[2].text, "Embedded");
+    assert.equal(leaveCheck.current?.(), true);
+    const invalid = field(tree).value.replace(
+      "After",
+      String.raw`\unknown{Draft}`,
+    );
+    input(tree, invalid);
+    tree = render(blocks);
+    assert.equal(field(tree).value, invalid);
+    assert.equal(blocks[1].text, "After");
+    assert.equal(leaveCheck.current?.(), false);
+    blocks = blocks.map((b) =>
+      b.id === "line" ? { ...b, text: "Remote" } : b,
+    );
+    render(blocks);
+    tree = render(blocks);
+    assert.equal(field(tree).value, invalid);
+    assert.match(renderToStaticMarkup(tree), /Restore to continue/);
+    input(tree, invalid.replace(String.raw`\unknown{Draft}`, "Repaired"));
+    assert.equal(blocks[1].text, "Remote");
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} whole-document source has no duplicate export, assistant or Help controls`, () => {
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+    });
+    const tree = render([{ type: "paragraph", text: "**Rich**", id: "rich" }]);
+    assert.equal(render.hasSourceExport(), false);
+    assert.equal(
+      find(
+        tree,
+        (p) =>
+          p.children === "Export PDF" ||
+          p.title === "Export PDF" ||
+          p.title === "Ask assistant" ||
+          p.children === "Ask assistant",
+      ),
+      undefined,
+    );
+    assert.equal(
+      find(
+        tree,
+        (p) => p.className === "document-preview-help" || p.title === "Help",
+      ),
+      undefined,
+    );
+    const html = renderToStaticMarkup(tree);
+    assert.doesNotMatch(
+      html,
+      /<summary>Help|About web preview|Export this document from Note|Edit existing text and equations/,
+    );
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} routed embedded download reads live save readiness and cancels account-changed output`, async () => {
+    let ready = false,
+      calls = 0,
+      finish!: (blob: Blob) => void;
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      initialSourceNumber: 0,
+      compileReady: () => ready,
+      onCompileLatex: () => {
+        calls++;
+        return new Promise<Blob>((resolve) => {
+          finish = resolve;
+        });
+      },
+    });
+    const blocks = core.withDocLatexSource([], "Saved embedded source");
+    render(blocks);
+    await render.requestPdf();
+    assert.equal(calls, 0);
+    ready = true;
+    const pending = render.requestPdf();
+    assert.equal(calls, 1);
+    render.setAccount("different-account");
+    finish(new Blob(["private PDF"]));
+    await pending;
+    assert.equal(render.downloads(), 0);
+    await render.requestPdf();
+    assert.equal(calls, 1);
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} compact preview reveals source and selects exact conversion error without rewriting the draft`, () => {
+    let blocks: core.DocBlock[] = [
+      { type: "paragraph", text: "Before", id: "line" },
+    ];
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      showModes: false,
+      onLatexChange: (text: string) => {
+        blocks = core.editDocWholeLatex(blocks, text);
+        return blocks;
+      },
+    });
+    const field = (tree: React.ReactNode) =>
+      find(
+        tree,
+        (p) =>
+          p["aria-label"] === "LaTeX source" ||
+          p.accessibilityLabel === "LaTeX source",
+      )!;
+    const original = core.docWholeLatex(blocks),
+      draft = original.replace(
+        "Before",
+        "Emoji 😀 \\& first\nNext \\unknown{draft}",
+      );
+    let tree = render(blocks);
+    let input = field(tree);
+    assert.ok(input.ref, "the actual source input owns diagnostic selection");
+    let focused = 0,
+      selection: { start: number; end: number } | undefined;
+    const element = {
+      clientHeight: 200,
+      scrollTop: 0,
+      focus: () => {
+        focused++;
+      },
+      setSelectionRange: (start: number, end: number) => {
+        selection = { start, end };
+      },
+      setNativeProps: (props: any) => {
+        selection = props.selection;
+      },
+    };
+    input.ref.current = element;
+    if (native) input.onChangeText(draft);
+    else input.onChange({ currentTarget: { value: draft } });
+    tree = render(blocks);
+    const preview = find(tree, (p) =>
+      native ? p.title === "Show preview" : p.children === "Hide source",
+    )!;
+    assert.ok(preview);
+    (native ? preview.onPress : preview.onClick)();
+    tree = render(blocks);
+    const jump = find(tree, (p) =>
+      (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+        "Conversion error. Line",
+      ),
+    )!;
+    assert.ok(jump);
+    assert.match(renderToStaticMarkup(tree), /Unsupported command/);
+    assert.doesNotMatch(
+      renderToStaticMarkup(tree),
+      /cannot be converted without losing|Your draft is retained/,
+    );
+    (native ? jump.onPress : jump.onClick)();
+    tree = render(blocks);
+    for (const run of render.timers.values()) run();
+    render.timers.clear();
+    tree = render(blocks);
+    const start = draft.indexOf("\\unknown"),
+      end = start + "\\unknown".length;
+    assert.deepEqual(JSON.parse(JSON.stringify(selection)), { start, end });
+    assert.equal(focused, 1);
+    assert.equal(field(tree).value, draft);
+    assert.equal(blocks[0].text, "Before");
+    if (native) {
+      assert.deepEqual(JSON.parse(JSON.stringify(field(tree).selection)), {
+        start,
+        end,
+      });
+      assert.ok(
+        find(
+          tree,
+          (p) =>
+            Array.isArray(p.style) &&
+            p.style.some((style: any) => style?.color === "danger-token"),
+        ),
+      );
+    } else {
+      assert.equal(field(tree).wrap, "off");
+      let marker = find(tree, (p) => p.className === "doc-source-line-marker")!;
+      assert.ok(marker);
+      const top = marker.style.top;
+      element.scrollTop += 20;
+      field(tree).onScroll();
+      tree = render(blocks);
+      marker = find(tree, (p) => p.className === "doc-source-line-marker")!;
+      assert.equal(marker.style.top, top - 20);
+    }
+    const oldJump = jump;
+    const repaired = draft.replace("\\unknown{draft}", "Repaired");
+    input = field(tree);
+    if (native) input.onChangeText(repaired);
+    else input.onChange({ currentTarget: { value: repaired } });
+    tree = render(blocks);
+    assert.equal(
+      find(tree, (p) =>
+        (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+          "Conversion error. Line",
+        ),
+      ),
+      undefined,
+    );
+    (native ? oldJump.onPress : oldJump.onClick)();
+    for (const run of render.timers.values()) run();
+    assert.equal(focused, 1, "a stale range cannot select repaired source");
+  });
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} compiler positions are actionable only when explicitly supplied`, async () => {
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      initialSourceNumber: 0,
+      onCompileLatex: async () => {
+        throw Object.assign(new Error("Unknown command"), {
+          line: 2,
+          column: 3,
+        });
+      },
+    });
+    const text = "first\nsecond\nthird",
+      blocks = core.withDocLatexSource([], text);
+    render(blocks);
+    await render.requestPdf();
+    const tree = render(blocks);
+    assert.ok(
+      find(tree, (p) =>
+        (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+          "Compiler error. Line 2, column 3",
+        ),
+      ),
+    );
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} compiler errors without explicit positions stay unlocated and late errors cannot mark a new owner`, async () => {
+    let reject!: (error: Error) => void;
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      initialSourceNumber: 0,
+      onCompileLatex: () =>
+        new Promise<Blob>((_, fail) => {
+          reject = fail;
+        }),
+    });
+    const blocks = core.withDocLatexSource([], "first\nsecond\nthird");
+    render(blocks);
+    let pending = render.requestPdf();
+    reject(new Error("Bad command at line 2"));
+    await pending;
+    let tree = render(blocks);
+    assert.equal(
+      find(tree, (p) =>
+        (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+          "Compiler error. Line",
+        ),
+      ),
+      undefined,
+    );
+    assert.match(
+      renderToStaticMarkup(tree),
+      /Bad command at line 2|Couldn’t export/,
+    );
+    pending = render.requestPdf();
+    const remote = core.withDocLatexSource(blocks, "different\nowner");
+    render(remote);
+    render(remote);
+    reject(
+      Object.assign(new Error("Stale compiler error"), { line: 2, column: 1 }),
+    );
+    await pending;
+    tree = render(remote);
+    assert.doesNotMatch(renderToStaticMarkup(tree), /Stale compiler error/);
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} Markdown source does not duplicate the parent assistant action`, () => {
+    let called = 0;
+    const render = fixture(native, true, {
+      initialMode: "markdown",
+      onAssist: () => {
+        called++;
+      },
+    });
+    const tree = render([
+      { type: "paragraph", text: "Selectable words", id: "line" },
+    ]);
+    assert.equal(
+      find(
+        tree,
+        (p) => p.title === "Ask assistant" || p.children === "Ask assistant",
+      ),
+      undefined,
+    );
+    assert.equal(called, 0);
+    assert.doesNotMatch(renderToStaticMarkup(tree), /Ask assistant/);
+  });
+
+function flushSourceTimers(render: ReturnType<typeof fixture>) {
+  const tasks = [...render.timers.values()];
+  render.timers.clear();
+  for (const task of tasks) task();
+}
+function selectedSourceField(
+  tree: React.ReactNode,
+  native: boolean,
+  format: "markdown" | "latex",
+) {
+  const label = format === "latex" ? "LaTeX source" : "Markdown source";
+  return find(
+    tree,
+    (p) => (native ? p.accessibilityLabel : p["aria-label"]) === label,
+  )!;
+}
+function setUserRange(
+  field: Record<string, any>,
+  native: boolean,
+  start: number,
+  end: number,
+) {
+  if (native)
+    field.onSelectionChange({ nativeEvent: { selection: { start, end } } });
+  else
+    field.onSelect({
+      currentTarget: {
+        value: field.value,
+        selectionStart: start,
+        selectionEnd: end,
+        clientHeight: 240,
+        scrollTop: 0,
+      },
+    });
+}
+function sourceToolbar(tree: React.ReactNode, native: boolean) {
+  return find(
+    tree,
+    (p) =>
+      (native ? p.accessibilityLabel : p["aria-label"]) ===
+      "Selected source actions",
+  );
+}
+for (const native of [false, true])
+  for (const format of ["markdown", "latex"] as const)
+    test(`${native ? "Expo" : "web"} ${format} source gesture retains exact local excerpt for the sole header action without popup`, () => {
+      const selectionHandle: { current: (() => any) | null } = {
+        current: null,
+      };
+      const render = fixture(native, true, {
+        inline: true,
+        sourceOnly: true,
+        initialMode: format,
+        selectionHandle,
+      });
+      const blocks: core.DocBlock[] = [
+        { type: "paragraph", text: "Alpha 😀 beta", id: "line" },
+        { type: "paragraph", text: "Tail", id: "tail" },
+      ];
+      let tree = render(blocks),
+        field = selectedSourceField(tree, native, format);
+      const raw = field.value,
+        start = raw.indexOf("😀"),
+        end = raw.indexOf("beta") + 4;
+      assert.equal(sourceToolbar(tree, native), undefined);
+      (native ? field.onTouchStart : field.onPointerDown)();
+      setUserRange(field, native, start, start + 2);
+      tree = render(blocks);
+      assert.equal(sourceToolbar(tree, native), undefined);
+      assert.equal(render.timers.size, 0);
+      setUserRange(field, native, start, end);
+      tree = render(blocks);
+      assert.equal(sourceToolbar(tree, native), undefined);
+      assert.equal(render.timers.size, 0, "drag updates stay in refs");
+      assert.equal(selectionHandle.current!(), null);
+      (native ? field.onTouchEnd : field.onPointerUp)();
+      tree = render(blocks);
+      assert.equal(sourceToolbar(tree, native), undefined);
+      flushSourceTimers(render);
+      tree = render(blocks);
+      assert.equal(sourceToolbar(tree, native), undefined);
+      const selected = selectionHandle.current!();
+      assert.equal(selected.quote, "😀 beta");
+      assert.equal(selected.source, raw);
+      assert.equal(selected.format, format);
+      assert.equal(selected.start, start);
+      assert.equal(selected.end, end);
+      assert.equal(selected.isCurrent(), true);
+      field = selectedSourceField(tree, native, format);
+      field.onBlur?.({ relatedTarget: null });
+      setUserRange(field, native, 0, 0);
+      assert.equal(selectionHandle.current!().quote, selected.quote);
+      const changed = raw.replace("beta", "changed");
+      field = selectedSourceField(render(blocks), native, format);
+      if (native) field.onChangeText(changed);
+      else field.onChange({ currentTarget: { value: changed } });
+      assert.equal(
+        selected.isCurrent(),
+        false,
+        "local validator rejects a changed raw draft immediately",
+      );
+    });
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} source selection debounces OS changes and cancels stale gestures without whole-block fallback`, () => {
+    const selectionHandle: { current: (() => any) | null } = { current: null };
+    const render = fixture(native, true, {
+        inline: true,
+        sourceOnly: true,
+        initialMode: "markdown",
+        selectionHandle,
+      }),
+      blocks: core.DocBlock[] = [
+        { type: "paragraph", text: "One two three", id: "line" },
+      ];
+    let tree = render(blocks),
+      field = selectedSourceField(tree, native, "markdown");
+    setUserRange(field, native, 0, 3);
+    const superseded = [...render.timers.values()];
+    setUserRange(field, native, 4, 7);
+    for (const task of superseded) task();
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    flushSourceTimers(render);
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    const stale = selectionHandle.current!();
+    assert.equal(stale.quote, "two");
+    (native
+      ? selectedSourceField(tree, native, "markdown").onScroll
+      : selectedSourceField(tree, native, "markdown").onScroll)();
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    field = selectedSourceField(tree, native, "markdown");
+    (native ? field.onTouchStart : field.onPointerDown)();
+    setUserRange(field, native, 0, 7);
+    (native ? field.onTouchCancel : field.onPointerCancel)();
+    flushSourceTimers(render);
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    setUserRange(field, native, 0, 0);
+    flushSourceTimers(render);
+    assert.equal(sourceToolbar(render(blocks), native), undefined);
+    render.setAccount("other");
+    render(blocks);
+    assert.equal(stale.isCurrent(), false);
+    assert.equal(selectionHandle.current!(), null);
+  });
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} diagnostic selection never opens source Ask controls`, () => {
+    const selectionHandle: { current: (() => any) | null } = { current: null };
+    const render = fixture(native, true, {
+        inline: true,
+        sourceOnly: true,
+        initialMode: "latex",
+        selectionHandle,
+        onLatexChange: (text: string, blocks: core.DocBlock[]) =>
+          core.editDocWholeLatex(blocks, text),
+      }),
+      blocks: core.DocBlock[] = [
+        { type: "paragraph", text: "Safe", id: "line" },
+      ];
+    let tree = render(blocks),
+      field = selectedSourceField(tree, native, "latex");
+    const draft = field.value.replace("Safe", "\\unknown{draft}");
+    const ref = field.ref;
+    ref.current = {
+      clientHeight: 240,
+      scrollTop: 0,
+      focus() {},
+      setSelectionRange() {},
+      setNativeProps() {},
+    };
+    if (native) field.onChangeText(draft);
+    else field.onChange({ currentTarget: { value: draft } });
+    tree = render(blocks);
+    const jump = find(tree, (p) =>
+      (p["aria-label"] ?? p.accessibilityLabel ?? "").startsWith(
+        "Conversion error. Line",
+      ),
+    )!;
+    (native ? jump.onPress : jump.onClick)();
+    tree = render(blocks);
+    field = selectedSourceField(tree, native, "latex");
+    const start = draft.indexOf("\\unknown"),
+      end = start + "\\unknown".length;
+    setUserRange(field, native, start, end);
+    flushSourceTimers(render);
+    tree = render(blocks);
+    assert.equal(sourceToolbar(tree, native), undefined);
+    assert.equal(selectionHandle.current!(), null);
+    (native ? field.onTouchStart : field.onPointerDown)();
+    setUserRange(field, native, start, end);
+    (native ? field.onTouchEnd : field.onPointerUp)();
+    flushSourceTimers(render);
+    assert.ok(
+      (render(blocks), selectionHandle.current!()),
+      "an intentional user gesture may select the same token",
     );
   });

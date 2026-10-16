@@ -1,8 +1,8 @@
-import {
-  DocumentLibraryButton,
-  DocumentPaneSwitch,
-  useDocumentWorkspace,
-} from "./DocumentWorkspace";
+import { readDocExcerpt } from "./doc-excerpt";
+import { useSettledSelection } from "./useSettledSelection";
+import { useDocExcerpt } from "./useDocExcerpt";
+import { routeDocumentDownload } from "./document-download";
+import { DocumentPaneSwitch, useDocumentWorkspace } from "./DocumentWorkspace";
 import {
   DocLatexPreviewProvider,
   DocLatexDocumentPreview,
@@ -130,6 +130,8 @@ import {
   serializeDoc,
   setTodoSource,
   editDocSource,
+  editDocWholeLatex,
+  withDocLatexSource,
   ticksTakenFrom,
   type Doc,
   type DocBlock,
@@ -508,12 +510,14 @@ function LegacyDocEditor({
     };
   }, []);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
-  const [latexSourceNumber, setLatexSourceNumber] = useState(0);
+  const [latexSourceNumber, setLatexSourceNumber] = useState(-1);
   const [sourcePreviewMode, setSourcePreviewMode] = useState<
     "markdown" | "latex"
   >("markdown");
   const linkNavigation = useRef(false);
   const sourceLeaveCheck = useRef<(() => boolean) | null>(null);
+  const sourcePdfExport = useRef<(() => Promise<void>) | null>(null);
+  const downloadPending = useRef(false);
   const sourcePreviewOwner = useRef(sourcePreview);
   sourcePreviewOwner.current = sourcePreview;
   const [sourceAsk, setSourceAsk] = useState<{
@@ -550,6 +554,34 @@ function LegacyDocEditor({
   /** Whether the list of shapes to download the page in is showing. */
   const [downloadMenu, setDownloadMenu] = useState(false);
   /** Whether the conversation about this page is open. */
+  const sourceSelectionHandle = useRef<
+    (() => Parameters<typeof excerpt.open>[0] | null) | null
+  >(null);
+  const excerpt = useDocExcerpt(
+    () => ({
+      id: doc.id,
+      userId,
+      account: authSession.get(),
+      revision: version.current,
+      format: sourcePreview ? sourcePreviewMode : "note",
+      epoch: JSON.stringify(live.current),
+    }),
+    report,
+  );
+  const openExcerpt = (selection: Parameters<typeof excerpt.open>[0]) => {
+    if (excerpt.open(selection)) setChat(true);
+  };
+  const openPageAssistant = () => {
+    const selected =
+      sourceSelectionHandle.current?.() ??
+      (pageRef.current ? readDocExcerpt(pageRef.current) : null);
+    if (selected) {
+      openExcerpt(selected);
+      return;
+    }
+    excerpt.clear();
+    setChat(true);
+  };
   const [chat, setChat] = useState(false);
   /** Where each named line sits, measured from the top of the page. */
   const [tops, setTops] = useState<Record<string, number>>({});
@@ -1314,16 +1346,11 @@ function LegacyDocEditor({
    * moment the button is pressed, when the page would re-render underneath
    * the selection and lose it.
    */
-  useEffect(() => {
-    const read = () => {
-      const page = pageRef.current;
-      if (!page) return;
-      const found = readSelection(page);
-      setPicked(found);
-    };
-    document.addEventListener("selectionchange", read);
-    return () => document.removeEventListener("selectionchange", read);
-  }, []);
+  useSettledSelection(
+    pageRef,
+    () => (pageRef.current ? readSelection(pageRef.current) : null),
+    setPicked,
+  );
 
   /**
    * Every line a reader can select in needs a name before they select, or the
@@ -2995,22 +3022,50 @@ function LegacyDocEditor({
    * from here are the same file.
    */
   const download = async (format: ExportFormat) => {
+    if (downloadPending.current) return;
+    downloadPending.current = true;
     setDownloadMenu(false);
-    toast({ text: `Making the ${EXPORT_LABELS[format].name} file…` });
+    const account = authSession.get(),
+      page = doc.id;
+    const owns = () =>
+      historyMounted.current &&
+      authSession.get() === account &&
+      docNow.current.id === page;
     try {
+      if (sourcePreview && !sourceLeaveCheck.current?.())
+        throw new Error("Restore the current source draft before downloading.");
       await flush();
-      const { blob, name } = await client.exportDoc(doc.id, format, {
-        version: version.current,
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ text: `Downloaded “${name}”` });
-    } catch (e) {
-      report(e);
+      await routeDocumentDownload(
+        format,
+        !!sourcePreview &&
+          sourcePreviewMode === "latex" &&
+          latexSourceNumber >= 0,
+        sourcePdfExport,
+        () =>
+          owns() &&
+          !dirty.current &&
+          (!sourcePreview || sourceLeaveCheck.current?.() === true),
+        async () => {
+          const { blob, name } = await client.exportDoc(page, format, {
+            version: version.current,
+          });
+          if (!owns()) return;
+          const url = URL.createObjectURL(blob);
+          try {
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = name;
+            a.click();
+          } finally {
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }
+          toast({ text: `Downloaded “${name}”` });
+        },
+      );
+    } catch (error) {
+      if (owns()) report(error);
+    } finally {
+      downloadPending.current = false;
     }
   };
 
@@ -3334,7 +3389,10 @@ function LegacyDocEditor({
           style={workspace.style}
           data-source-open={!!sourcePreview || undefined}
           data-latex-source={
-            (!!sourcePreview && sourcePreviewMode === "latex") || undefined
+            (!!sourcePreview &&
+              sourcePreviewMode === "latex" &&
+              latexSourceNumber >= 0) ||
+            undefined
           }
           data-pane-view={workspace.view}
           data-compact={workspace.compact || undefined}
@@ -3358,9 +3416,8 @@ function LegacyDocEditor({
               key={`${sourcePreviewMode}:${latexSourceNumber}`}
               initialSourceNumber={latexSourceNumber}
               leaveCheck={sourceLeaveCheck}
-              compileReady={
-                !dirty.current && save !== "saving" && save !== "error"
-              }
+              exportPdfHandle={sourcePdfExport}
+              compileReady={() => !dirty.current}
               inline
               sourceOnly
               showModes={false}
@@ -3390,6 +3447,8 @@ function LegacyDocEditor({
                   signal,
                 )
               }
+              selectionHandle={sourceSelectionHandle}
+              onSelectionAssist={openExcerpt}
               onAssist={
                 canWrite && !reading && !suggesting && !dirty.current
                   ? (block) => {
@@ -3401,6 +3460,32 @@ function LegacyDocEditor({
                           quote: block.text,
                         });
                       }
+                    }
+                  : undefined
+              }
+              onLatexChange={
+                canWrite && !reading && !suggesting
+                  ? (text, expected, sourceNumber = -1) => {
+                      if (
+                        live.current.blocks !== expected &&
+                        JSON.stringify(live.current.blocks) !==
+                          JSON.stringify(expected)
+                      )
+                        throw new Error(
+                          "The document changed. Restore the current document before editing.",
+                        );
+                      const next =
+                        sourceNumber < 0
+                          ? editDocWholeLatex(live.current.blocks, text)
+                          : withDocLatexSource(
+                              live.current.blocks,
+                              text,
+                              sourceNumber,
+                            );
+                      if (next !== live.current.blocks) {
+                        update(next);
+                      }
+                      return next;
                     }
                   : undefined
               }
@@ -3441,7 +3526,6 @@ function LegacyDocEditor({
           )}
           {sourcePreview && workspace.divider}
           <div className="doc-bar">
-            <DocumentLibraryButton />
             <span className="document-toolbar-title">
               {title || "Untitled"}
             </span>
@@ -3451,16 +3535,7 @@ function LegacyDocEditor({
                 onChange={workspace.setView}
               />
             )}
-            {onBack && (
-              <button
-                className="icon-button"
-                aria-label="All documents"
-                title="All documents"
-                onClick={onBack}
-              >
-                <ArrowLeft size={15} />
-              </button>
-            )}
+
             <span className="doc-save" role="status">
               {save === "saving" && (
                 <>
@@ -3493,6 +3568,7 @@ function LegacyDocEditor({
                   setDownloadMenu(false);
                   setFocused(null);
                   if (canWrite && mode === "read") changeMode("edit");
+                  setLatexSourceNumber(-1);
                   setSourcePreviewMode(format);
                   setSourcePreview(doc.id);
                 }}
@@ -3520,9 +3596,10 @@ function LegacyDocEditor({
                     setMoreMenu(false);
                     setDownloadMenu(false);
                   }
-                  setChat((v) => !v);
+                  openPageAssistant();
                 }}
                 disabled={chat}
+                onMouseDown={(event) => event.preventDefault()}
                 aria-label="Talk about this page"
                 aria-pressed={chat}
                 title="Talk about this page"
@@ -3892,6 +3969,7 @@ function LegacyDocEditor({
           it reads as belonging to them rather than to the page. Styles and
           "Make task" change the page, so they are offered only while
           editing; commenting and asking work in every mode. */}
+
           {words && !pending && (
             <div
               ref={barRef}
@@ -4012,13 +4090,54 @@ function LegacyDocEditor({
                   two things anyone wants from a selection, so they sit
                   together. */}
                   <button
+                    type="button"
+                    className="text-button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      const block = live.current.blocks.find(
+                        (item) => item.id === words.blockId,
+                      );
+                      if (block && "text" in block)
+                        openExcerpt({
+                          format: "note",
+                          source: block.text,
+                          start: words.start,
+                          end: words.end,
+                          quote: words.quote,
+                        });
+                    }}
+                  >
+                    Ask assistant
+                  </button>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      const block = live.current.blocks.find(
+                        (item) => item.id === words.blockId,
+                      );
+                      if (block && "text" in block)
+                        openExcerpt({
+                          format: "note",
+                          source: block.text,
+                          start: words.start,
+                          end: words.end,
+                          quote: words.quote,
+                          explain: true,
+                        });
+                    }}
+                  >
+                    Explain
+                  </button>
+                  <button
                     className="text-button"
                     aria-haspopup="menu"
                     aria-expanded={askMenu}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => setAskMenu((v) => !v)}
                   >
-                    <Sparkles size={14} aria-hidden="true" /> Ask assistant
+                    <Sparkles size={14} aria-hidden="true" /> Refine
                   </button>
                   {canFormat && (
                     <button
@@ -4096,7 +4215,11 @@ function LegacyDocEditor({
           >
             <div
               className="document-latex-result"
-              hidden={!sourcePreview || sourcePreviewMode !== "latex"}
+              hidden={
+                !sourcePreview ||
+                sourcePreviewMode !== "latex" ||
+                latexSourceNumber < 0
+              }
             >
               <div className="document-pane-title">Preview</div>
               <DocLatexDocumentPreview />
@@ -4886,6 +5009,8 @@ function LegacyDocEditor({
             <DocChat
               docId={doc.id}
               blocks={blocks}
+              excerpt={excerpt.context}
+              isSelectionCurrent={excerpt.current}
               canWrite={canWrite || suggesting}
               onGoToBlock={goToBlock}
               onNameBlock={nameBlock}

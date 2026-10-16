@@ -85,7 +85,8 @@ test("document editing never automatically compiles or mounts a PDF preview", ()
       editor,
       /compileLatest|lastCompile|DocumentPdfPreview|doc-source-pdf/,
     );
-    assert.match(editor, /Export PDF/);
+    assert.match(editor, /exportPdfHandle/);
+    assert.doesNotMatch(editor, />\s*Export PDF\s*<|title="Export PDF"/);
     assert.match(editor, /controller.signal.aborted/);
     assert.match(editor, /onCompileLatex\(snapshot, controller.signal\)/);
     assert.match(editor, /setDraftSource\(latexText, sourceNumber\)/);

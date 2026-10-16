@@ -1,3 +1,4 @@
+import "./doc-chat-selection.css";
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Sparkles, X } from "lucide-react";
 import {
@@ -10,10 +11,12 @@ import {
   serializeBlock,
   type DocAiAction,
   type DocAnswer,
+  type DocAskExcerpt,
   type DocBlock,
   type DocSuggestion,
 } from "@orbyn/core";
 import { client } from "../../lib/api";
+import { session as authSession } from "../../lib/session";
 import { Select } from "../../components/Select";
 import { errorText } from "../../lib/errors";
 
@@ -55,8 +58,12 @@ function DocChatBody({
   onNameBlock,
   onSuggested,
   onClose,
+  excerpt,
+  isSelectionCurrent,
 }: {
   docId: string;
+  excerpt?: DocAskExcerpt | null;
+  isSelectionCurrent?: () => boolean;
   blocks: DocBlock[];
   /** Whether a proposal can be made at all from here. */
   canWrite: boolean;
@@ -71,6 +78,12 @@ function DocChatBody({
   const [busy, setBusy] = useState(false);
   /** Which line the conversation is about; null is the page as a whole. */
   const [target, setTarget] = useState<number | null>(null);
+  const selectionOwner = useRef({ excerpt, isSelectionCurrent });
+  selectionOwner.current = { excerpt, isSelectionCurrent };
+  const explained = useRef<number | null>(null);
+  useEffect(() => {
+    if (excerpt) setTarget(null);
+  }, [excerpt?.requestId]);
   const mutation = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -110,11 +123,25 @@ function DocChatBody({
   /** Ask something of the page, answered from the page alone. */
   const ask = async (question: string) => {
     if (mutation.current) return;
+    const owner = excerpt;
+    const account = authSession.get();
+    const current = () =>
+      mounted.current &&
+      authSession.get() === account &&
+      selectionOwner.current.excerpt?.requestId === owner?.requestId;
     mutation.current = true;
     setBusy(true);
     try {
-      const answer = await client.askDoc(docId, question);
-      if (!mounted.current) return;
+      if (owner && isSelectionCurrent && !isSelectionCurrent())
+        throw new Error(
+          "The selection or page changed. Select the excerpt again.",
+        );
+      const answer = await client.askDoc(docId, question, owner?.selection);
+      if (!current()) return;
+      if (owner && selectionOwner.current.isSelectionCurrent?.() === false)
+        throw new Error(
+          "The selection or page changed. Select the excerpt again.",
+        );
       say({
         role: "orbyn",
         text: answer.answer,
@@ -122,7 +149,10 @@ function DocChatBody({
         provider: answer.provider,
       });
     } catch (e) {
-      if (mounted.current) fail(e);
+      if (current()) {
+        fail(e);
+        setMessage(question);
+      }
     } finally {
       mutation.current = false;
       if (mounted.current) setBusy(false);
@@ -131,7 +161,8 @@ function DocChatBody({
 
   /** Ask for the targeted line to be changed. What comes back is a proposal. */
   const change = async (action: DocAiAction, instruction = "") => {
-    if (target === null || !line || !canWrite || mutation.current) return;
+    if (excerpt || target === null || !line || !canWrite || mutation.current)
+      return;
     mutation.current = true;
     setBusy(true);
     try {
@@ -165,9 +196,24 @@ function DocChatBody({
     if (!said || mutation.current || (target !== null && !canWrite)) return;
     setMessage("");
     say({ role: "you", text: said });
-    if (target === null) void ask(said);
+    if (excerpt || target === null) void ask(said);
     else void change("custom", said);
   };
+
+  useEffect(() => {
+    if (
+      !excerpt?.explain ||
+      explained.current === excerpt.requestId ||
+      mutation.current
+    )
+      return;
+    explained.current = excerpt.requestId;
+    const question = "Explain this selected text.";
+    say({ role: "you", text: question });
+    void ask(question);
+    // One explicit Explain action per retained selection request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excerpt?.requestId, busy]);
 
   return (
     <aside className="doc-chat" aria-label="Page assistant">
@@ -187,33 +233,43 @@ function DocChatBody({
 
       {/* What the conversation is pointed at. The page answers questions;
           a line is something that can be changed. */}
-      <div className="doc-chat-target">
-        <label htmlFor="doc-chat-about">About</label>
-        <Select
-          id="doc-chat-about"
-          disabled={busy}
-          value={target === null ? "" : String(target)}
-          onChange={(e) =>
-            setTarget(e.target.value === "" ? null : Number(e.target.value))
-          }
-        >
-          <option value="">The whole page</option>
-          {canWrite &&
-            lines.map((l) => (
-              <option key={l.index} value={l.index} title={plainText(l.text)}>
-                {plainText(l.text).slice(0, 60)}
-                {plainText(l.text).length > 60 ? "…" : ""}
-              </option>
-            ))}
-        </Select>
-      </div>
+      {excerpt && (
+        <div className="doc-chat-excerpt">
+          <small>Selected text · {excerpt.selection.format}</small>
+          <blockquote>{excerpt.selection.quote}</blockquote>
+        </div>
+      )}
+      {!excerpt && (
+        <div className="doc-chat-target">
+          <label htmlFor="doc-chat-about">About</label>
+          <Select
+            id="doc-chat-about"
+            disabled={busy}
+            value={target === null ? "" : String(target)}
+            onChange={(e) =>
+              setTarget(e.target.value === "" ? null : Number(e.target.value))
+            }
+          >
+            <option value="">The whole page</option>
+            {canWrite &&
+              lines.map((l) => (
+                <option key={l.index} value={l.index} title={plainText(l.text)}>
+                  {plainText(l.text).slice(0, 60)}
+                  {plainText(l.text).length > 60 ? "…" : ""}
+                </option>
+              ))}
+          </Select>
+        </div>
+      )}
 
       <div className="doc-chat-thread" ref={threadRef} aria-live="polite">
         {turns.length === 0 && (
           <p className="doc-chat-empty">
-            {target === null
-              ? "Ask a question. Answers use this page and cite their sources."
-              : "Request a change. Review the proposal before applying it."}
+            {excerpt
+              ? "Ask about the selected text. Your document stays unchanged."
+              : target === null
+                ? "Ask a question. Answers use this page and cite their sources."
+                : "Request a change. Review the proposal before applying it."}
           </p>
         )}
         {turns.map((turn) => (
@@ -252,7 +308,7 @@ function DocChatBody({
       </div>
 
       {/* One tap each, when there is a line to point them at. */}
-      {target !== null && canWrite && (
+      {!excerpt && target !== null && canWrite && (
         <div className="doc-chat-quick">
           {QUICK.map((action) => (
             <button
@@ -281,13 +337,19 @@ function DocChatBody({
           maxLength={1000}
           disabled={busy}
           aria-label={
-            target === null ? "Question about this page" : "Requested change"
+            excerpt
+              ? "Question about selected text"
+              : target === null
+                ? "Question about this page"
+                : "Requested change"
           }
           value={message}
           placeholder={
-            target === null
-              ? "What did we decide about pricing?"
-              : "Say what this line should become…"
+            excerpt
+              ? "Ask about the selected text…"
+              : target === null
+                ? "What did we decide about pricing?"
+                : "Say what this line should become…"
           }
           onChange={(e) => setMessage(e.target.value)}
           onKeyDown={(e) => {

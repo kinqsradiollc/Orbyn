@@ -160,3 +160,6 @@ export * from "./doc-container-append.js";
 export * from "./activity-summary.js";
 
 export * from "./doc-latex.js";
+export * from "./doc-tex.js";
+
+export * from "./doc-selection.js";

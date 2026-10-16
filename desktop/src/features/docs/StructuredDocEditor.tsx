@@ -1,15 +1,15 @@
-import {
-  DocumentLibraryButton,
-  DocumentPaneSwitch,
-  useDocumentWorkspace,
-} from "./DocumentWorkspace";
+import { readDocExcerpt } from "./doc-excerpt";
+import { DocChat } from "./DocChat";
+import { useDocExcerpt } from "./useDocExcerpt";
+import { routeDocumentDownload } from "./document-download";
+import { DocumentPaneSwitch, useDocumentWorkspace } from "./DocumentWorkspace";
 import {
   DocLatexPreviewProvider,
   DocLatexDocumentPreview,
 } from "./DocLatexPreview";
 import { DocEditorModes } from "./DocEditorModes";
 import { DocWritingBlock } from "./DocWritingBlock";
-import { ArrowLeft, MoreHorizontal, Plus } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Plus, Sparkles } from "lucide-react";
 import { ownsEditorKey } from "./editor-input";
 import {
   useCallback,
@@ -25,6 +25,7 @@ import {
   docContainerBlocks,
   newBlockId,
   docLatexOperation,
+  docWholeLatexOperation,
   docFragmentIndex,
   docEditorSessionDirty,
   parseAppLink,
@@ -106,8 +107,50 @@ function StructuredDocEditorBody({
     sourceFormat !== "note",
   );
   const sourceLeaveCheck = useRef<(() => boolean) | null>(null);
+  const sourcePdfExport = useRef<(() => Promise<void>) | null>(null);
+  const downloadPending = useRef(false);
   const latexOwner = useRef(latexOpen);
   latexOwner.current = latexOpen;
+  const [excerptOpen, setExcerptOpen] = useState(false);
+  const sourceSelectionHandle = useRef<
+    (() => Parameters<typeof excerpt.open>[0] | null) | null
+  >(null);
+  const excerpt = useDocExcerpt(
+    () => ({
+      id: doc.id,
+      userId,
+      account: authSession.get(),
+      revision: store.state.session?.saved.version ?? doc.version,
+      blocked:
+        store.state.busy ||
+        !!store.state.conflict ||
+        (!!store.state.error && !store.state.sourceInvalid),
+      format: sourceFormat,
+      epoch: JSON.stringify({
+        document: store.state.session?.document,
+        source: store.state.source,
+        conflict: store.state.conflict,
+      }),
+    }),
+    report,
+  );
+  const openExcerpt = (selection: Parameters<typeof excerpt.open>[0]) => {
+    if (excerpt.open(selection)) setExcerptOpen(true);
+  };
+  const openPageAssistant = () => {
+    const selected =
+      (latexOpen ? sourceSelectionHandle.current?.() : null) ??
+      (sourceRef.current
+        ? readDocExcerpt(sourceRef.current, "markdown")
+        : null) ??
+      (previewRef.current ? readDocExcerpt(previewRef.current, "note") : null);
+    if (selected) {
+      openExcerpt(selected);
+      return;
+    }
+    excerpt.clear();
+    setExcerptOpen(true);
+  };
   const [sourceAsk, setSourceAsk] = useState<DocBlock | null>(null);
   const [sourceSuggestions, setSourceSuggestions] = useState<DocSuggestion[]>(
     [],
@@ -808,23 +851,58 @@ function StructuredDocEditorBody({
     }
   };
   const download = async (format: ExportFormat) => {
+    if (downloadPending.current) return;
+    downloadPending.current = true;
     setMenuOpen(false);
-    if (!session || docEditorSessionDirty(session) || state.source !== null)
-      return;
+    const account = authSession.get(),
+      page = doc.id;
+    const owns = () =>
+      sourceAlive.current &&
+      authSession.get() === account &&
+      sourceOwner.current.id === page &&
+      sourceOwner.current.userId === userId;
     try {
-      const { blob, name } = await client.exportDoc(doc.id, format, {
-        version: session.saved.version,
-      });
-      const url = URL.createObjectURL(blob);
-      const link = globalThis.document.createElement("a");
-      link.href = url;
-      link.download = name;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      await routeDocumentDownload(
+        format,
+        latexOpen && latexSourceNumber >= 0,
+        sourcePdfExport,
+        () => {
+          const current = store.state;
+          return (
+            owns() &&
+            !!current.session &&
+            !current.busy &&
+            !current.error &&
+            !current.conflict &&
+            !current.sourceInvalid &&
+            current.source === null &&
+            !docEditorSessionDirty(current.session) &&
+            (!latexOpen || sourceLeaveCheck.current?.() === true)
+          );
+        },
+        async () => {
+          const { blob, name } = await client.exportDoc(page, format, {
+            version: store.state.session!.saved.version,
+          });
+          if (!owns()) return;
+          const url = URL.createObjectURL(blob);
+          try {
+            const link = globalThis.document.createElement("a");
+            link.href = url;
+            link.download = name;
+            link.click();
+          } finally {
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }
+        },
+      );
     } catch (error) {
-      report(error);
+      if (owns()) report(error);
+    } finally {
+      downloadPending.current = false;
     }
   };
+
   useEffect(() => {
     if (
       !canWrite ||
@@ -879,7 +957,7 @@ function StructuredDocEditorBody({
   });
   const chooseFormat = async (
     format: "note" | "markdown" | "latex",
-    sourceNumber = 0,
+    sourceNumber = -1,
   ) => {
     if (latexOwner.current && !sourceLeaveCheck.current?.()) return;
     const current = store.state;
@@ -969,6 +1047,19 @@ function StructuredDocEditorBody({
         inert={historyBusy}
         aria-busy={historyBusy || undefined}
       >
+        {excerptOpen && (
+          <DocChat
+            docId={doc.id}
+            blocks={leaves}
+            canWrite={false}
+            excerpt={excerpt.context}
+            isSelectionCurrent={excerpt.current}
+            onClose={() => setExcerptOpen(false)}
+            onGoToBlock={() => {}}
+            onNameBlock={() => ""}
+            onSuggested={() => {}}
+          />
+        )}
         {sourceAsk && "text" in sourceAsk && (
           <DocSourceAsk
             key={sourceAsk.id}
@@ -1014,176 +1105,158 @@ function StructuredDocEditorBody({
           <span className="document-toolbar-title">
             {session?.title || "Untitled"}
           </span>
-          <DocumentLibraryButton />
-          <DocEditorModes
-            value={sourceFormat}
-            disabled={
-              !session ||
-              state.sourceInvalid ||
-              state.busy ||
-              !!state.conflict ||
-              sourcePending ||
-              !!sourceAsk
-            }
-            onChange={(format) => void chooseFormat(format)}
-          />
-          {onBack && (
+          <div className="document-toolbar-actions">
             <button
-              className="icon-button structured-doc-back"
-              aria-label="All documents"
-              title="All documents"
-              disabled={sourcePending || !!sourceAsk || latexOpen}
-              onClick={() => {
-                if (
-                  state.source !== null &&
-                  (state.error || !session || !docEditorSessionDirty(session))
-                ) {
-                  void ask({
-                    title: "Discard the unsaved source draft?",
-                    confirmLabel: "Discard",
-                    destructive: true,
-                  }).then((confirmed) => {
-                    if (confirmed) onBack();
-                  });
-                } else if (session && docEditorSessionDirty(session)) {
-                  void save().then(() => {
-                    if (
-                      store.state.session &&
-                      !docEditorSessionDirty(store.state.session)
-                    )
-                      onBack();
-                  });
-                } else onBack();
-              }}
-            >
-              <ArrowLeft size={16} />
-            </button>
-          )}
-          <span className="structured-doc-status">
-            {!session
-              ? state.busy
-                ? "Opening…"
-                : "Unavailable"
-              : state.busy
-                ? "Saving…"
-                : state.conflict
-                  ? "Review changes"
-                  : session && docEditorSessionDirty(session)
-                    ? "Unsaved"
-                    : "Saved"}
-          </span>
-          {canWrite && session && docEditorSessionDirty(session) && (
-            <button
-              className="secondary"
-              onClick={() => void save(!!state.error)}
-              disabled={
-                state.busy ||
-                state.conflict ||
-                state.sourceInvalid ||
-                !session ||
-                !docEditorSessionDirty(session)
-              }
-            >
-              {state.error && !state.conflict && !state.sourceInvalid
-                ? "Retry save"
-                : "Save"}
-            </button>
-          )}
-          {sourceFormat !== "note" && (
-            <DocumentPaneSwitch
-              view={workspace.view}
-              onChange={workspace.setView}
-            />
-          )}
-          <div className="structured-doc-menu" ref={menuRef}>
-            <button
-              className="icon-button"
               type="button"
-              aria-label="Page actions"
-              title="Page actions"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen(!menuOpen)}
+              className="icon-button"
+              onMouseDown={(event) => event.preventDefault()}
+              aria-label="Talk about this page"
+              title="Talk about this page"
+              onClick={openPageAssistant}
             >
-              <MoreHorizontal size={16} />
+              <Sparkles size={18} />
             </button>
-            {menuOpen && (
-              <div className="structured-doc-menu-items">
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={state.busy}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void store.refresh();
-                  }}
-                >
-                  Refresh
-                </button>
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={historyBusy}
-                  onClick={() => void showHistory()}
-                >
-                  History
-                </button>
-                <button
-                  className="secondary"
-                  type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    if (
-                      historyMutation.current ||
-                      sourceMutation.current ||
-                      sourceAsk
-                    )
-                      return;
-                    historyRequest.current++;
-                    setHistoryOpen(false);
-                    setCommentsOpen((value) => !value);
-                  }}
-                >
-                  Comments
-                </button>
-                {EXPORT_FORMATS.map((format) => (
+            <DocEditorModes
+              value={sourceFormat}
+              disabled={
+                !session ||
+                state.sourceInvalid ||
+                state.busy ||
+                !!state.conflict ||
+                sourcePending ||
+                !!sourceAsk
+              }
+              onChange={(format) => void chooseFormat(format)}
+            />
+
+            <span className="structured-doc-status">
+              {!session
+                ? state.busy
+                  ? "Opening…"
+                  : "Unavailable"
+                : state.busy
+                  ? "Saving…"
+                  : state.conflict
+                    ? "Review changes"
+                    : session && docEditorSessionDirty(session)
+                      ? "Unsaved"
+                      : "Saved"}
+            </span>
+            {canWrite && session && docEditorSessionDirty(session) && (
+              <button
+                className="secondary"
+                onClick={() => void save(!!state.error)}
+                disabled={
+                  state.busy ||
+                  state.conflict ||
+                  state.sourceInvalid ||
+                  !session ||
+                  !docEditorSessionDirty(session)
+                }
+              >
+                {state.error && !state.conflict && !state.sourceInvalid
+                  ? "Retry save"
+                  : "Save"}
+              </button>
+            )}
+            {sourceFormat !== "note" && (
+              <DocumentPaneSwitch
+                view={workspace.view}
+                onChange={workspace.setView}
+              />
+            )}
+            <div className="structured-doc-menu" ref={menuRef}>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Page actions"
+                title="Page actions"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(!menuOpen)}
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {menuOpen && (
+                <div className="structured-doc-menu-items">
                   <button
                     className="secondary"
                     type="button"
-                    key={format}
-                    disabled={
-                      !session ||
-                      docEditorSessionDirty(session) ||
-                      state.source !== null
-                    }
-                    onClick={() => void download(format)}
+                    disabled={state.busy}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void store.refresh();
+                    }}
                   >
-                    Export {EXPORT_LABELS[format].name}
+                    Refresh
                   </button>
-                ))}
-                {canWrite &&
-                  (["updates", "publish"] as const).map((action) => (
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={historyBusy}
+                    onClick={() => void showHistory()}
+                  >
+                    History
+                  </button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      if (
+                        historyMutation.current ||
+                        sourceMutation.current ||
+                        sourceAsk
+                      )
+                        return;
+                      historyRequest.current++;
+                      setHistoryOpen(false);
+                      setCommentsOpen((value) => !value);
+                    }}
+                  >
+                    Comments
+                  </button>
+                  {EXPORT_FORMATS.map((format) => (
                     <button
                       className="secondary"
-                      key={action}
                       type="button"
+                      key={format}
                       disabled={
-                        state.busy ||
-                        !!state.error ||
-                        state.conflict ||
                         !session ||
                         docEditorSessionDirty(session) ||
                         state.source !== null
                       }
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setPageAction(action);
-                      }}
+                      onClick={() => void download(format)}
                     >
-                      {action === "updates" ? "Page updates" : "Publish to web"}
+                      Export {EXPORT_LABELS[format].name}
                     </button>
                   ))}
-              </div>
-            )}
+                  {canWrite &&
+                    (["updates", "publish"] as const).map((action) => (
+                      <button
+                        className="secondary"
+                        key={action}
+                        type="button"
+                        disabled={
+                          state.busy ||
+                          !!state.error ||
+                          state.conflict ||
+                          !session ||
+                          docEditorSessionDirty(session) ||
+                          state.source !== null
+                        }
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setPageAction(action);
+                        }}
+                      >
+                        {action === "updates"
+                          ? "Page updates"
+                          : "Publish to web"}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
           </div>
         </header>
         {pageAction === "updates" && (
@@ -1294,10 +1367,16 @@ function StructuredDocEditorBody({
                 >
                   Preview
                 </div>
-                <div className="document-latex-result" hidden={!latexOpen}>
+                <div
+                  className="document-latex-result"
+                  hidden={!latexOpen || latexSourceNumber < 0}
+                >
                   <DocLatexDocumentPreview />
                 </div>
-                <div className="document-note-content" hidden={latexOpen}>
+                <div
+                  className="document-note-content"
+                  hidden={latexOpen && latexSourceNumber >= 0}
+                >
                   {document.format === 2 && (
                     <DocNavigationContext.Provider
                       value={{
@@ -1411,15 +1490,20 @@ function StructuredDocEditorBody({
                 </div>
                 {latexOpen && document && session && (
                   <DocSourcePreview
+                    exportPdfHandle={sourcePdfExport}
                     leaveCheck={sourceLeaveCheck}
-                    compileReady={
-                      !state.busy &&
-                      !state.error &&
-                      !state.conflict &&
-                      !!session &&
-                      !docEditorSessionDirty(session) &&
-                      state.source === null
-                    }
+                    compileReady={() => {
+                      const current = store.state;
+                      return (
+                        !current.busy &&
+                        !current.error &&
+                        !current.conflict &&
+                        !current.sourceInvalid &&
+                        !!current.session &&
+                        !docEditorSessionDirty(current.session) &&
+                        current.source === null
+                      );
+                    }}
                     inline
                     sourceOnly
                     showModes={false}
@@ -1435,6 +1519,8 @@ function StructuredDocEditorBody({
                       setSourceFormat("note");
                       setActivePane("preview");
                     }}
+                    selectionHandle={sourceSelectionHandle}
+                    onSelectionAssist={openExcerpt}
                     onAssist={
                       canWrite &&
                       !state.busy &&
@@ -1479,7 +1565,13 @@ function StructuredDocEditorBody({
                               );
                             store.changeOperation(
                               document,
-                              docLatexOperation(document, text, sourceNumber),
+                              sourceNumber === undefined || sourceNumber < 0
+                                ? docWholeLatexOperation(document, text)
+                                : docLatexOperation(
+                                    document,
+                                    text,
+                                    sourceNumber,
+                                  ),
                             );
                             if (store.state.error) throw store.state.error;
                             const next = store.state.session?.document;
@@ -1499,38 +1591,6 @@ function StructuredDocEditorBody({
                 <div hidden={latexOpen}>
                   <div className="structured-doc-source-head">
                     <h2>Markdown</h2>
-                    {canWrite && (
-                      <button
-                        className="secondary"
-                        type="button"
-                        disabled={
-                          sourcePending ||
-                          state.busy ||
-                          !session ||
-                          docEditorSessionDirty(session) ||
-                          state.source !== null
-                        }
-                        onClick={() => {
-                          const range =
-                            sourceMap &&
-                            versionedDocSourceAt(
-                              sourceMap,
-                              sourceRef.current?.selectionStart ?? 0,
-                            );
-                          const block =
-                            range?.blockIndex !== undefined
-                              ? leaves[range.blockIndex]
-                              : undefined;
-                          if (block) askForBlock(block);
-                          else
-                            setNavigationError(
-                              "Place the cursor in text before asking the assistant.",
-                            );
-                        }}
-                      >
-                        Ask assistant
-                      </button>
-                    )}
                   </div>
                   {source === null ? (
                     <p>Source view is unavailable for this structure.</p>

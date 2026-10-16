@@ -1,7 +1,10 @@
+import { PageCommandScope, preparePageLeave } from "../../app/page-commands";
+import "./document-workspace.css";
 import { DocumentLibraryContext } from "./DocumentWorkspace";
 import { useElementWidth } from "../../hooks/useElementWidth";
 import {
   useCallback,
+  useContext,
   useEffect,
   useRef,
   useId,
@@ -12,15 +15,14 @@ import { onLive } from "../../lib/live";
 import {
   FileText,
   FolderInput,
+  PanelLeftClose,
+  PanelLeftOpen,
   MoreHorizontal,
   Check,
   Folder as FolderIcon,
   FolderPlus,
   Plus,
   Star,
-  PanelLeft,
-  PanelLeftClose,
-  PanelLeftOpen,
   ChevronRight,
   Hourglass,
   CalendarDays,
@@ -125,6 +127,7 @@ function DocsBody({
   incomingFiles,
   fixedKind,
 }: DocsViewProps) {
+  const commandScope = useContext(PageCommandScope);
   const { ref: paneRef, width: paneWidth } = useElementWidth();
   const libraryId = useId();
   const paneElement = useRef<HTMLDivElement | null>(null);
@@ -283,23 +286,16 @@ function DocsBody({
   const [folderName, setFolderName] = useState("");
   const [failed, setFailed] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
-  // On wide screens the library can be tucked away for a full-width page.
-  const [libraryHidden, setLibraryHidden] = useState(() => {
-    try {
-      return localStorage.getItem("orbyn-docs-library") === "hidden";
-    } catch {
-      return false;
-    }
-  });
+  const [libraryCollapsed, setLibraryCollapsed] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
   const compactLibrary = paneWidth > 0 && paneWidth < 900;
+  // The library yields to an open source workspace or a narrow content pane.
+  const libraryHidden =
+    !navigationOpen &&
+    (libraryCollapsed || (!!open && (compactLibrary || sourceOpen)));
   const showLibrary = (show: boolean) => {
     setNavigationOpen(show);
-    setLibraryHidden(!show);
-    try {
-      localStorage.setItem("orbyn-docs-library", show ? "shown" : "hidden");
-    } catch {
-      // Storage can be blocked; the choice lasts this visit.
-    }
+    if (show) setLibraryCollapsed(false);
   };
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("recent");
@@ -807,27 +803,41 @@ function DocsBody({
     trashed = false,
     archived = false,
   ) => {
-    navigation.current++;
-    setTrashOnly(trashed);
-    if (trashed) void loadTrash();
-    setArchivedOnly(archived);
-    if (archived) void loadArchived();
-    setPicked(new Set());
-    setUploadsOnly(uploads);
-    setFolderFilter(folder);
-    setKindFilter(fixedKind ?? kind);
-    setAgendaMonth(month);
-    setFavoritesOnly(favorites);
-    setFadingOnly(false);
-    setQuery("");
-    setTagFilter("");
-    setOpen(null);
-    setNavigationOpen(false);
+    const destination = ++navigation.current;
+    void action.run(async () => {
+      if (
+        !(await preparePageLeave(commandScope)) ||
+        !currentOwner() ||
+        destination !== navigation.current
+      )
+        return;
+      setTrashOnly(trashed);
+      if (trashed) void loadTrash();
+      setArchivedOnly(archived);
+      if (archived) void loadArchived();
+      setPicked(new Set());
+      setUploadsOnly(uploads);
+      setFolderFilter(folder);
+      setKindFilter(fixedKind ?? kind);
+      setAgendaMonth(month);
+      setFavoritesOnly(favorites);
+      setFadingOnly(false);
+      setQuery("");
+      setTagFilter("");
+      setOpen(null);
+      setNavigationOpen(false);
+    });
   };
   const openPage = (id: string) => {
     if (busy) return;
     const destination = ++navigation.current;
     void action.run(async () => {
+      if (
+        !(await preparePageLeave(commandScope)) ||
+        !currentOwner() ||
+        destination !== navigation.current
+      )
+        return;
       const doc = await client.getDocForEditor(id);
       if (!currentOwner() || destination !== navigation.current) return;
       setOpen(doc);
@@ -1109,12 +1119,12 @@ function DocsBody({
       )}
       <button
         className="text-button docs-nav-toggle"
-        hidden={!!editor}
-        aria-expanded={navigationOpen}
+        hidden={!libraryHidden && !compactLibrary}
+        aria-expanded={!libraryHidden && (!compactLibrary || navigationOpen)}
         aria-controls={`${libraryId}-navigation`}
-        onClick={() => setNavigationOpen(!navigationOpen)}
+        onClick={() => showLibrary(!navigationOpen)}
       >
-        <PanelLeft size={18} />{" "}
+        <PanelLeftOpen size={18} />{" "}
         {navigationOpen
           ? `Close ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`
           : `Browse ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`}
@@ -1129,7 +1139,7 @@ function DocsBody({
             showLibrary(false);
             event.currentTarget
               .closest(".docs-workspace")
-              ?.querySelector<HTMLButtonElement>(".document-library-toggle")
+              ?.querySelector<HTMLButtonElement>(".docs-nav-toggle")
               ?.focus();
           }
         }}
@@ -1143,10 +1153,14 @@ function DocsBody({
                 : "Library"}
           </h2>
           <button
+            type="button"
             className="icon-button docs-library-hide"
-            aria-label="Hide library"
-            title="Hide library"
-            onClick={() => showLibrary(false)}
+            aria-label="Collapse library"
+            aria-controls={`${libraryId}-navigation`}
+            onClick={() => {
+              setLibraryCollapsed(true);
+              setNavigationOpen(false);
+            }}
           >
             <PanelLeftClose size={16} />
           </button>
@@ -1415,14 +1429,6 @@ function DocsBody({
         )}
       </nav>
       <section className="docs-workspace-content" aria-label="Documents">
-        {libraryHidden && !editor && (
-          <button
-            className="text-button docs-library-show"
-            onClick={() => showLibrary(true)}
-          >
-            <PanelLeftOpen size={16} /> Show library
-          </button>
-        )}
         {!naming && !filing && !tagging && (
           <OutcomeNote outcome={action.outcome} />
         )}
@@ -1441,10 +1447,7 @@ function DocsBody({
         {editor ? (
           <DocumentLibraryContext.Provider
             value={{
-              hidden: compactLibrary ? !navigationOpen : libraryHidden,
-              toggle: () =>
-                showLibrary(compactLibrary ? !navigationOpen : libraryHidden),
-              hide: () => showLibrary(false),
+              setSourceOpen,
             }}
           >
             {editor}

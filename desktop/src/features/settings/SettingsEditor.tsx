@@ -1,4 +1,5 @@
-import { useEffect, type ReactNode } from "react";
+import "./settings-editor.css";
+import { useEffect, type ReactNode, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useModalFocus } from "../../hooks/useModalFocus";
@@ -10,8 +11,10 @@ export function SettingsEditor({
   closeDisabled = false,
   onClose,
   children,
+  wide = false,
 }: {
   title: string;
+  wide?: boolean;
   pending?: boolean;
   closeDisabled?: boolean;
   onClose: () => void;
@@ -30,6 +33,11 @@ export function SettingsEditor({
         focus.ref.current = node;
       }}
       className="modal settings-editor"
+      style={
+        {
+          "--settings-editor-width": wide ? "1000px" : "560px",
+        } as CSSProperties
+      }
       data-modal-focus={focus.id}
       aria-labelledby={`${focus.id}-title`}
       aria-busy={pending}

@@ -1,4 +1,22 @@
 import { parse, HtmlGenerator } from "latex.js";
+// Only the historical empty template gets preview compatibility. Other source,
+// including literal commands in examples, reaches the parser unchanged.
+function previewSourceFor(source) {
+  const historicalEmptyStarter = String.raw`\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\begin{document}
+\null
+\end{document}`;
+  const compared = source
+    .replace(/\r\n/g, "\n")
+    .replace(/\n[ \t]*\n/g, "\n")
+    .trim();
+  return compared === historicalEmptyStarter
+    ? source.replace(/^\\null[ \t]*\r?$/m, "")
+    : source;
+}
 const output = document.querySelector("main");
 const status = document.querySelector("#status");
 const diagnostics = document.querySelector("#diagnostics"),
@@ -115,7 +133,10 @@ function receive(event) {
         )
           warnings.push(message);
       };
-      const generator = parse(request.source, {
+      // Compatibility for the previously supplied empty starter. Preserve exact
+      // source for editing/export; LaTeX.js has no \null primitive.
+      const previewSource = previewSourceFor(request.source);
+      const generator = parse(previewSource, {
         generator: new HtmlGenerator({ hyphenate: false }),
       });
       const blocked = { count: 0 };

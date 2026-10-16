@@ -1,5 +1,7 @@
+import { useDocExcerpt } from "./useDocExcerpt";
+import { routeDocumentDownload } from "./document-download";
 import { shared } from "../../styles";
-import { DocumentLibraryButton, useDocumentLibrary } from "./DocumentWorkspace";
+import { useDocumentLibrary } from "./DocumentWorkspace";
 import { DocumentDivider } from "../../components/DocumentDivider";
 import { usePaneWidth } from "../../hooks/usePaneWidth";
 import {
@@ -102,6 +104,8 @@ import {
   serializeBlock,
   setTodoSource,
   editDocSource,
+  editDocWholeLatex,
+  withDocLatexSource,
   ticksTakenFrom,
   proposeEdit,
   mentionMarkdown,
@@ -128,7 +132,7 @@ import { readsFirst } from "../../lib/reading";
 import { forgetPage, rememberPage } from "../../lib/pageCache";
 import { savePageOffline } from "../../lib/outbox";
 import { PublishSheet } from "./PublishSheet";
-import { downloadDoc, formatsHere } from "../../lib/download";
+import { saveFile, formatsHere } from "../../lib/download";
 import { copyLink, shareLink, sharePageFile } from "../../lib/share";
 import { currentDoc, setOpenDoc } from "../../lib/live";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -349,7 +353,7 @@ function LegacyDocEditor({
     words: string;
   } | null>(null);
   const [sourcePreview, setSourcePreview] = useState<string | null>(null);
-  const [latexSourceNumber, setLatexSourceNumber] = useState(0);
+  const [latexSourceNumber, setLatexSourceNumber] = useState(-1);
   const [sourcePaneVisible, setSourcePaneVisible] = useState(true);
   const [paneRatio, setPaneRatio] = useState(50);
   useDocumentLibrary(!!sourcePreview);
@@ -362,6 +366,8 @@ function LegacyDocEditor({
     "markdown" | "latex"
   >("markdown");
   const sourceLeaveCheck = useRef<(() => boolean) | null>(null);
+  const sourcePdfExport = useRef<(() => Promise<void>) | null>(null);
+  const downloadPending = useRef(false);
   const sourcePreviewOwner = useRef(sourcePreview);
   sourcePreviewOwner.current = sourcePreview;
   const [sourceAsk, setSourceAsk] = useState<{
@@ -405,6 +411,42 @@ function LegacyDocEditor({
     return () => clearInterval(t);
   }, []);
   /** Whether the conversation about this page is open. */
+  const sourceSelectionHandle = useRef<
+    (() => Parameters<typeof excerpt.open>[0] | null) | null
+  >(null);
+  const excerpt = useDocExcerpt(
+    () => ({
+      id: doc.id,
+      userId,
+      account: authSession.token,
+      revision: version.current,
+      format: sourcePreview ? sourcePreviewMode : "note",
+      epoch: JSON.stringify(live.current) + draft,
+    }),
+    report,
+  );
+  const openExcerpt = (selection: Parameters<typeof excerpt.open>[0]) => {
+    if (excerpt.open(selection)) setTalking(true);
+  };
+  const openPageAssistant = () => {
+    const selected =
+      sourceSelectionHandle.current?.() ??
+      (focused !== null && selection.end > selection.start
+        ? {
+            format: "note" as const,
+            source: draft,
+            start: selection.start,
+            end: selection.end,
+            quote: draft.slice(selection.start, selection.end),
+          }
+        : null);
+    if (selected) {
+      openExcerpt(selected);
+      return;
+    }
+    excerpt.clear();
+    setTalking(true);
+  };
   const [talking, setTalking] = useState(false);
   /**
    * What someone else's edits just did to the page, shown under the title
@@ -3015,7 +3057,7 @@ function LegacyDocEditor({
           },
         ]
       : []),
-    { label: "Ask about this page", onPress: () => setTalking(true) },
+
     { label: "Present", onPress: () => setPresenting(true) },
     {
       label: pageStarred ? "Unstar" : "Star",
@@ -3110,10 +3152,45 @@ function LegacyDocEditor({
       onPress: () => void sharePageFile(doc.id, "pdf").catch(report),
     },
   ];
+  const download = async (format: ExportFormat) => {
+    if (downloadPending.current || !currentPage()) return;
+    downloadPending.current = true;
+    const account = authSession.token,
+      page = doc.id;
+    const owns = () => currentPage() && authSession.token === account;
+    try {
+      if (sourcePreview && !sourceLeaveCheck.current?.())
+        throw new Error("Restore the current source draft before downloading.");
+      syncDraft();
+      await flush();
+      await routeDocumentDownload(
+        format,
+        !!sourcePreview &&
+          sourcePreviewMode === "latex" &&
+          latexSourceNumber >= 0,
+        sourcePdfExport,
+        () =>
+          owns() &&
+          !dirty.current &&
+          (!sourcePreview || sourceLeaveCheck.current?.() === true),
+        async () => {
+          const { blob, name } = await client.exportDoc(page, format, {
+            version: version.current,
+          });
+          if (owns())
+            await saveFile(name, blob, blob.type || EXPORT_LABELS[format].type);
+        },
+      );
+    } catch (error) {
+      if (owns()) report(error);
+    } finally {
+      downloadPending.current = false;
+    }
+  };
   const exportActions: MoreAction[] = formatsHere().map(
     (format: ExportFormat) => ({
       label: EXPORT_LABELS[format].name,
-      onPress: () => void downloadDoc(doc.id, format).catch(report),
+      onPress: () => void download(format),
     }),
   );
   // ---- contents (NAV-03) ----
@@ -3203,7 +3280,6 @@ function LegacyDocEditor({
                 gap: 4,
               }}
             >
-              <DocumentLibraryButton />
               <DocEditorModes
                 value={sourcePreview ? sourcePreviewMode : "note"}
                 disabled={
@@ -3219,6 +3295,7 @@ function LegacyDocEditor({
                   setFocused(null);
                   if (canWrite && mode === "read") chooseMode("edit");
                   setSourcePaneVisible(true);
+                  setLatexSourceNumber(-1);
                   setSourcePreviewMode(format);
                   setSourcePreview(doc.id);
                 }}
@@ -3309,7 +3386,8 @@ function LegacyDocEditor({
                     key={`${sourcePreviewMode}:${latexSourceNumber}`}
                     initialSourceNumber={latexSourceNumber}
                     leaveCheck={sourceLeaveCheck}
-                    compileReady={!dirty.current && !saving && !saveFailure}
+                    exportPdfHandle={sourcePdfExport}
+                    compileReady={() => !dirty.current}
                     inline
                     sourceOnly
                     showModes={false}
@@ -3334,6 +3412,8 @@ function LegacyDocEditor({
                         signal,
                       )
                     }
+                    selectionHandle={sourceSelectionHandle}
+                    onSelectionAssist={openExcerpt}
                     onAssist={
                       canWrite && !reading && !suggesting && !dirty.current
                         ? (block) => {
@@ -3345,6 +3425,35 @@ function LegacyDocEditor({
                                 end: block.text.length,
                               });
                             }
+                          }
+                        : undefined
+                    }
+                    onLatexChange={
+                      canWrite && !reading && !suggesting
+                        ? (text, expected, sourceNumber = -1) => {
+                            if (!currentPage())
+                              throw new Error("The account or page changed.");
+                            if (
+                              live.current.blocks !== expected &&
+                              JSON.stringify(live.current.blocks) !==
+                                JSON.stringify(expected)
+                            )
+                              throw new Error(
+                                "The document changed. Restore the current document before editing.",
+                              );
+                            const next =
+                              sourceNumber < 0
+                                ? editDocWholeLatex(live.current.blocks, text)
+                                : withDocLatexSource(
+                                    live.current.blocks,
+                                    text,
+                                    sourceNumber,
+                                  );
+                            if (next !== live.current.blocks) {
+                              remember("type");
+                              update(next);
+                            }
+                            return next;
                           }
                         : undefined
                     }
@@ -3390,19 +3499,21 @@ function LegacyDocEditor({
                 onChange={setPaneRatio}
               />
             )}
-            {sourcePreview && sourcePreviewMode === "latex" && (
-              <View
-                style={{
-                  flex: sourceBesideNote ? 100 - paneRatio : 1,
-                  minWidth: 0,
-                  minHeight: 0,
-                  display:
-                    !sourceBesideNote && sourcePaneVisible ? "none" : "flex",
-                }}
-              >
-                <DocLatexDocumentPreview />
-              </View>
-            )}
+            {sourcePreview &&
+              sourcePreviewMode === "latex" &&
+              latexSourceNumber >= 0 && (
+                <View
+                  style={{
+                    flex: sourceBesideNote ? 100 - paneRatio : 1,
+                    minWidth: 0,
+                    minHeight: 0,
+                    display:
+                      !sourceBesideNote && sourcePaneVisible ? "none" : "flex",
+                  }}
+                >
+                  <DocLatexDocumentPreview />
+                </View>
+              )}
             <ScrollView
               ref={noteScroll}
               style={{
@@ -3411,7 +3522,7 @@ function LegacyDocEditor({
                 minHeight: 0,
                 display:
                   sourcePreview &&
-                  (sourcePreviewMode === "latex" ||
+                  ((sourcePreviewMode === "latex" && latexSourceNumber >= 0) ||
                     (!sourceBesideNote && sourcePaneVisible))
                     ? "none"
                     : "flex",
@@ -3429,6 +3540,12 @@ function LegacyDocEditor({
               {/* The page's header holds only Back, its title, Info and ⋯. */}
               {headerSlot && (
                 <SlotFill slot={headerSlot}>
+                  <HeaderButton
+                    icon="sparkles"
+                    label="Talk about this page"
+                    on={talking}
+                    onPress={openPageAssistant}
+                  />
                   <HeaderButton
                     icon="info"
                     label="Info"
@@ -3952,6 +4069,8 @@ function LegacyDocEditor({
                 visible={talking}
                 docId={doc.id}
                 blocks={blocks}
+                excerpt={excerpt.context}
+                isSelectionCurrent={excerpt.current}
                 canWrite={canWrite || suggesting}
                 onClose={() => setTalking(false)}
                 onGoToBlock={(blockId) => {

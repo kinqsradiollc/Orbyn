@@ -1,4 +1,7 @@
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
 import { test } from "node:test";
+import { EMPTY_LATEX_DOCUMENT, docWholeLatex } from "@orbyn/core";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -190,4 +193,80 @@ test("a fresh source owner cannot inherit another document's last-good output", 
     first.dom.window.close();
     second.dom.window.close();
   }
+});
+
+test("exact empty starter and historical null starter render without failure", async () => {
+  const { dom, update } = mount();
+  try {
+    for (const source of [
+      EMPTY_LATEX_DOCUMENT,
+      EMPTY_LATEX_DOCUMENT.replace(
+        "\\begin{document}",
+        "\\begin{document}\n\\null",
+      ),
+    ]) {
+      await update(source);
+      assert.doesNotMatch(
+        dom.window.document.querySelector("#status")!.textContent!,
+        /Couldn.t|paused/,
+      );
+      assert.equal(
+        dom.window.document.querySelector("main")!.textContent!.trim(),
+        "",
+      );
+    }
+    await update(
+      docWholeLatex([
+        { type: "heading", level: 1, text: "Plan" },
+        { type: "paragraph", text: "Current note" },
+        { type: "math", text: "x^2" },
+      ]),
+    );
+    assert.match(
+      dom.window.document.querySelector("main")!.textContent!,
+      /Current note/,
+    );
+    assert.ok(dom.window.document.querySelector(".katex"));
+  } finally {
+    dom.window.close();
+  }
+});
+
+test("historical starter preprocessing leaves nonempty commands and verbatim source exact", () => {
+  const script = ts.createSourceFile(
+    "runtime.mjs",
+    readFileSync(
+      new URL("../../scripts/latex-html-runtime.mjs", import.meta.url),
+      "utf8",
+    ),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const helper = script.statements.find(
+    (node): node is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(node) && node.name?.text === "previewSourceFor",
+  );
+  assert.ok(helper);
+  const prepare = runInNewContext(`(${helper.getText(script)})`) as (
+    source: string,
+  ) => string;
+  for (const source of [
+    documentSource(String.raw`A literal command:
+\begin{verbatim}
+\null
+\end{verbatim}
+After the example.`),
+    documentSource("Before\n\\null\nAfter"),
+  ])
+    assert.equal(prepare(source), source);
+  const historical = EMPTY_LATEX_DOCUMENT.replace(
+    "\\begin{document}",
+    "\\begin{document}\n\\null",
+  );
+  assert.equal(prepare(historical).includes("\\null"), false);
+  assert.equal(
+    prepare(historical.replace(/\n/g, "\r\n")).includes("\\null"),
+    false,
+  );
 });

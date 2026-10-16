@@ -1,3 +1,4 @@
+import { SettingsSection } from "./SettingsSection";
 import { Character } from "../../components/Character";
 import { CharacterEditor } from "../../components/CharacterEditor";
 import {
@@ -128,6 +129,20 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
     });
   };
 
+  const identityDirty =
+    !!identity &&
+    (identityName !== identity.name ||
+      identityPersona !== identity.persona ||
+      JSON.stringify(appearance) !==
+        JSON.stringify(characterAppearance(identity.character)));
+  const cancelIdentity = () => {
+    if (!identity) return;
+    setIdentityName(identity.name);
+    setIdentityPersona(identity.persona);
+    setAppearance(characterAppearance(identity.character));
+    setEditingLook(false);
+  };
+
   const saveIdentity = (e: FormEvent) => {
     e.preventDefault();
     if (!identity || identity.lane !== lane) return;
@@ -139,7 +154,12 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
         persona: identityPersona,
         character: appearance,
       });
-      if (mounted.current && token === session.get()) setIdentity(value);
+      if (mounted.current && token === session.get()) {
+        setIdentity(value);
+        setIdentityName(value.name);
+        setIdentityPersona(value.persona);
+        setAppearance(characterAppearance(value.character));
+      }
     });
   };
 
@@ -208,163 +228,199 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
     );
 
   return (
-    <div className="agents-rules">
-      <h3>Agent identity</h3>
-      <div
-        className="button-row start agents-identity-tabs"
-        aria-label="Agent identity profile"
+    <>
+      <SettingsSection
+        className="card settings-card agents-rules"
+        title="Background & overnight"
       >
-        {(["background", "overnight"] as const).map((value) => (
-          <button
-            key={value}
-            type="button"
-            className="secondary"
-            aria-pressed={lane === value}
-            disabled={action.pending}
-            onClick={() => setLane(value)}
-          >
-            {value === "background" ? "Background" : "Overnight"}
-          </button>
-        ))}
-      </div>
-      {identityError && (
-        <button
-          type="button"
-          className="text-button"
-          disabled={action.pending}
-          onClick={() => setReload((value) => value + 1)}
+        <div
+          className="button-row start agents-identity-tabs"
+          aria-label="Agent identity profile"
         >
-          Retry agent profile
-        </button>
-      )}
-      {identity === null && !identityError && (
-        <p role="status">Loading agent profile…</p>
-      )}
-      {identityError && (
-        <p role="alert" className="error">
-          Couldn't load agent profile.
-        </p>
-      )}
-      <form className="agents-identity-form" onSubmit={saveIdentity}>
-        <div className="settings-field">
-          <label htmlFor="agent-identity-name">Name</label>
-          <input
-            id="agent-identity-name"
-            required
-            disabled={action.pending || identity?.lane !== lane}
-            maxLength={40}
-            value={identityName}
-            onChange={(e) => setIdentityName(e.target.value)}
-          />
-        </div>
-        <div className="settings-field">
-          <label htmlFor="agent-identity-persona">Communication style</label>
-          <textarea
-            id="agent-identity-persona"
-            maxLength={1000}
-            disabled={action.pending || identity?.lane !== lane}
-            rows={3}
-            value={identityPersona}
-            onChange={(e) => setIdentityPersona(e.target.value)}
-            placeholder="Warm, direct, and concise"
-          />
-          <small className="field-hint">Optional.</small>
-        </div>
-        <div className="character-personas" aria-label="Communication presets">
-          {CHARACTER_PERSONAS.map((preset) => (
+          {(["background", "overnight"] as const).map((value) => (
             <button
-              key={preset.label}
+              key={value}
               type="button"
               className="secondary"
-              disabled={action.pending || identity?.lane !== lane}
-              onClick={() => setIdentityPersona(preset.persona)}
+              aria-pressed={lane === value}
+              disabled={action.pending || identityDirty}
+              onClick={() => setLane(value)}
             >
-              {preset.label}
+              {value === "background" ? "Background" : "Overnight"}
             </button>
           ))}
         </div>
-        <div className="button-row start">
-          <Character appearance={appearance} name={identityName} size={48} />
-          <button
-            type="button"
-            className="secondary"
-            aria-expanded={editingLook}
-            disabled={action.pending || identity?.lane !== lane}
-            onClick={() => setEditingLook((value) => !value)}
-          >
-            {editingLook ? "Close character editor" : "Customize character"}
-          </button>
-        </div>
-        {editingLook && (
-          <CharacterEditor
-            value={appearance}
-            onChange={setAppearance}
-            name={identityName}
-            disabled={action.pending || identity?.lane !== lane}
-          />
-        )}
-        <div className="button-row start">
-          <button
-            className="primary"
-            disabled={
-              action.pending || identity === null || identity.lane !== lane
-            }
-          >
-            Save
-          </button>
-        </div>
-      </form>
-
-      <NightShift report={report} />
-      <ReminderNudges report={report} />
-      <h3>About me for agents</h3>
-      {contextError && (
-        <div>
-          <p role="alert" className="error">
-            Couldn't load agent context.
+        {identityDirty && (
+          <p className="muted">
+            Save or cancel changes before switching agents.
           </p>
+        )}
+        {identityError && (
+          <button
+            type="button"
+            className="text-button"
+            disabled={action.pending}
+            onClick={() => setReload((value) => value + 1)}
+          >
+            Retry agent profile
+          </button>
+        )}
+        {identity === null && !identityError && (
+          <p role="status">Loading agent profile…</p>
+        )}
+        {identityError && (
+          <p role="alert" className="error">
+            Couldn't load agent profile.
+          </p>
+        )}
+        <form className="agents-identity-form" onSubmit={saveIdentity}>
+          <div className="settings-field">
+            <label htmlFor="agent-identity-name">Name</label>
+            <input
+              id="agent-identity-name"
+              required
+              disabled={action.pending || identity?.lane !== lane}
+              maxLength={40}
+              value={identityName}
+              onChange={(e) => setIdentityName(e.target.value)}
+            />
+          </div>
+          <div className="settings-field">
+            <label htmlFor="agent-identity-persona">Communication style</label>
+            <textarea
+              id="agent-identity-persona"
+              maxLength={1000}
+              disabled={action.pending || identity?.lane !== lane}
+              rows={3}
+              value={identityPersona}
+              onChange={(e) => setIdentityPersona(e.target.value)}
+              placeholder="Warm, direct, and concise"
+            />
+            <small className="field-hint">Optional.</small>
+          </div>
+          <div
+            className="character-personas"
+            aria-label="Communication presets"
+          >
+            {CHARACTER_PERSONAS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                className="secondary"
+                disabled={action.pending || identity?.lane !== lane}
+                onClick={() => setIdentityPersona(preset.persona)}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+          <div className="button-row start">
+            <Character appearance={appearance} name={identityName} size={48} />
+            <button
+              type="button"
+              className="secondary"
+              aria-expanded={editingLook}
+              disabled={action.pending || identity?.lane !== lane}
+              onClick={() => setEditingLook((value) => !value)}
+            >
+              {editingLook ? "Close character editor" : "Customize character"}
+            </button>
+          </div>
+          {editingLook && (
+            <CharacterEditor
+              value={appearance}
+              onChange={setAppearance}
+              name={identityName}
+              disabled={action.pending || identity?.lane !== lane}
+            />
+          )}
+          <div className="button-row start">
+            <button
+              className="primary"
+              disabled={
+                action.pending ||
+                identity === null ||
+                identity.lane !== lane ||
+                !identityDirty ||
+                !identityName.trim()
+              }
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={action.pending || !identityDirty}
+              onClick={cancelIdentity}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+        <OutcomeNote outcome={action.outcome} />
+      </SettingsSection>
+      <SettingsSection
+        className="card settings-card"
+        title="Overnight schedule"
+      >
+        <NightShift report={report} />
+      </SettingsSection>
+      <SettingsSection className="card settings-card" title="Reminders">
+        <ReminderNudges report={report} />
+      </SettingsSection>
+      <SettingsSection
+        className="card settings-card agents-rules"
+        title="Agent context"
+      >
+        <h3>About me</h3>
+        {contextError && (
+          <div>
+            <p role="alert" className="error">
+              Couldn't load agent context.
+            </p>
+            <button
+              type="button"
+              className="secondary"
+              disabled={action.pending || contextLoading}
+              onClick={() => void load()}
+            >
+              Retry context
+            </button>
+          </div>
+        )}
+        <div className="agents-about">
           <button
             type="button"
             className="secondary"
-            disabled={action.pending || contextLoading}
-            onClick={() => void load()}
+            disabled={
+              action.pending || data === null || contextLoading || contextError
+            }
+            onClick={openProfile}
           >
-            Retry context
+            <FileText size={13} />
+            {data?.profile ? "Open context page" : "Create context page"}
           </button>
+          {data?.profile && (
+            <span className="muted">
+              Changed {timeAgo(data.profile.updated_at)}
+            </span>
+          )}
         </div>
-      )}
-      <div className="agents-about">
-        <button
-          type="button"
-          className="secondary"
-          disabled={
-            action.pending || data === null || contextLoading || contextError
-          }
-          onClick={openProfile}
-        >
-          <FileText size={13} />
-          {data?.profile ? "Open context page" : "Create context page"}
-        </button>
-        {data?.profile && (
-          <span className="muted">
-            Changed {timeAgo(data.profile.updated_at)}
-          </span>
-        )}
-      </div>
 
-      <h3>Instructions</h3>
-      <p className="muted">
-        Space-specific rules for agents. Team rules apply to every member’s
-        agents.
-      </p>
-      {data === null && !contextError ? (
-        <p className="muted" role="status">
-          Loading context…
+        <h3>Instructions</h3>
+        <p className="muted">
+          Space-specific rules for agents. Team rules apply to every member’s
+          agents.
         </p>
-      ) : (
-        <ul className="agents-rules-list">{data?.instructions.map(row)}</ul>
-      )}
-      <OutcomeNote outcome={action.outcome} />
-    </div>
+        {data === null && !contextError ? (
+          <p className="muted" role="status">
+            Loading context…
+          </p>
+        ) : (
+          <ul className="agents-rules-list">{data?.instructions.map(row)}</ul>
+        )}
+        <OutcomeNote outcome={action.outcome} />
+      </SettingsSection>
+    </>
   );
 }

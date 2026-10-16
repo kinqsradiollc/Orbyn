@@ -139,6 +139,20 @@ export function AgentWarmStartCards({
     });
   };
 
+  const identityDirty =
+    !!identity &&
+    (identityName !== identity.name ||
+      identityPersona !== identity.persona ||
+      JSON.stringify(appearance) !==
+        JSON.stringify(characterAppearance(identity.character)));
+  const cancelIdentity = () => {
+    if (!identity) return;
+    setIdentityName(identity.name);
+    setIdentityPersona(identity.persona);
+    setAppearance(characterAppearance(identity.character));
+    setEditingLook(false);
+  };
+
   const saveIdentity = () => {
     if (!identity || identity.lane !== lane) return;
     const token = session.token;
@@ -154,8 +168,12 @@ export function AgentWarmStartCards({
         mounted.current &&
         token === session.token &&
         epoch === identityEpoch.current
-      )
+      ) {
         setIdentity(value);
+        setIdentityName(value.name);
+        setIdentityPersona(value.persona);
+        setAppearance(characterAppearance(value.character));
+      }
     });
   };
 
@@ -194,7 +212,7 @@ export function AgentWarmStartCards({
       <SettingsSection title="Reminders" disabled={busy}>
         <ReminderNudges busy={busy} run={run} />
       </SettingsSection>
-      <SettingsSection title="Agent identity" disabled={busy}>
+      <SettingsSection title="Background & overnight" disabled={busy}>
         <View style={shared.card}>
           <View style={{ gap: 10, marginVertical: 8 }}>
             <Segmented
@@ -202,16 +220,21 @@ export function AgentWarmStartCards({
               value={lane}
               labels={{ background: "Background", overnight: "Overnight" }}
               onChange={setLane}
-              disabled={busy}
+              disabled={busy || identityDirty}
               accessibilityLabel="Agent identity profile"
             />
 
             <SmallAction
               label="Reload agent profile"
-              disabled={busy}
+              disabled={busy || identityDirty}
               onPress={() => setReload((value) => value + 1)}
             />
           </View>
+          {identityDirty && (
+            <Text style={shared.small}>
+              Save or cancel changes before switching agents.
+            </Text>
+          )}
           <ErrorBanner error={identityError} />
           {identity === null && !identityError && (
             <Text style={shared.small}>Loading agent profile…</Text>
@@ -287,9 +310,16 @@ export function AgentWarmStartCards({
               busy ||
               identity === null ||
               identity.lane !== lane ||
-              !identityName.trim()
+              !identityName.trim() ||
+              !identityDirty
             }
             style={s.last}
+          />
+          <Button
+            title="Cancel"
+            secondary
+            disabled={busy || !identityDirty}
+            onPress={cancelIdentity}
           />
         </View>
       </SettingsSection>

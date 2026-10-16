@@ -1,3 +1,4 @@
+import { AgentWarmStartCards } from "./AgentContext";
 import * as Crypto from "expo-crypto";
 import { BottomSheet } from "../components/BottomSheet";
 import { EmailToTaskSection } from "./settings/EmailToTaskSection";
@@ -8,7 +9,8 @@ import { AssistantRulesSection } from "./settings/AssistantRulesSection";
 import { AssistantBudgetSection } from "./settings/AssistantBudgetSection";
 import {
   SettingsAnchor,
-  SettingsFocus,
+  SettingsWorkspace,
+  SettingsOverview,
   SettingsSection,
 } from "./settings/SettingsSection";
 import { PrivacySection } from "./settings/PrivacySection";
@@ -540,7 +542,7 @@ function SettingsBody({
       </View>
     ) : null;
   return (
-    <SettingsFocus.Provider value={focusValue}>
+    <SettingsWorkspace focus={focusValue} resetKey={category}>
       <View ref={contentRoot}>
         <View style={[shared.card, s.account]}>
           <View style={s.avatar}>
@@ -633,152 +635,160 @@ function SettingsBody({
           <ActivitySheet onClose={() => setActivityOpen(false)} />
         )}
         <SettingsGroup category="account" selected={category}>
-          {/* Teams, Documents, Booking and the admin console are destinations on
+          <SettingsOverview>
+            {/* Teams, Documents, Booking and the admin console are destinations on
           the desktop's sidebar, not settings; they live on Browse now, where
           the sidebar's other sections are. What is left here is what the
           desktop's Settings page also holds. */}
-          <Text style={[shared.eyebrow, s.section]}>Workspace</Text>
-          <View style={[shared.card, s.rows]}>
-            <LinkRow
-              icon="activity"
-              title="Activity"
-              detail="Completed tasks and focus time"
-              onPress={() => setActivityOpen(true)}
-            />
-            <LinkRow
-              icon="activity"
-              title="Service status"
-              detail={statusHeadline || "Uptime and incidents"}
-              onPress={onOpenStatus}
-            />
-            <LinkRow
-              divider
-              icon="refreshCw"
-              title="Sync & devices"
-              detail="Device status and pending changes"
-              onPress={onOpenSync}
-            />
-            {onOpenWhatsNew && (
-              <SettingsAnchor name="What's new">
-                <LinkRow
-                  divider
-                  icon="sparkles"
-                  title="What's new"
-                  detail="Recent releases"
-                  onPress={onOpenWhatsNew}
-                />
-              </SettingsAnchor>
-            )}
-          </View>
+            <Text style={[shared.eyebrow, s.section]}>Workspace</Text>
+            <View style={[shared.card, s.rows]}>
+              <LinkRow
+                icon="activity"
+                title="Activity"
+                detail="Completed tasks and focus time"
+                onPress={() => setActivityOpen(true)}
+              />
+              <LinkRow
+                icon="activity"
+                title="Service status"
+                detail={statusHeadline || "Uptime and incidents"}
+                onPress={onOpenStatus}
+              />
+              <LinkRow
+                divider
+                icon="refreshCw"
+                title="Sync & devices"
+                detail="Device status and pending changes"
+                onPress={onOpenSync}
+              />
+              {onOpenWhatsNew && (
+                <SettingsAnchor name="What's new">
+                  <LinkRow
+                    divider
+                    icon="sparkles"
+                    title="What's new"
+                    detail="Recent releases"
+                    onPress={onOpenWhatsNew}
+                  />
+                </SettingsAnchor>
+              )}
+            </View>
+          </SettingsOverview>
         </SettingsGroup>
         <SettingsGroup category="planning" selected={category}>
-          <Text style={[shared.eyebrow, s.section]}>Planning</Text>
-          <View style={[shared.card, s.rows]}>
-            <LinkRow
-              icon="clock"
-              title="Planning"
-              detail="Working hours, frames and places"
-              onPress={onOpenPlanning}
-            />
-            <LinkRow
-              divider
-              icon="tag"
-              title="Tags"
-              detail="Yours and your teams’"
-              onPress={onOpenTags}
-            />
-            <LinkRow
-              divider
-              icon="repeat"
-              title="Habits"
-              detail="Scheduled routines"
-              onPress={onOpenHabits}
-            />
-          </View>
+          <SettingsOverview>
+            <Text style={[shared.eyebrow, s.section]}>Planning</Text>
+            <View style={[shared.card, s.rows]}>
+              <LinkRow
+                icon="clock"
+                title="Planning"
+                detail="Working hours, frames and places"
+                onPress={onOpenPlanning}
+              />
+              <LinkRow
+                divider
+                icon="tag"
+                title="Tags"
+                detail="Yours and your teams’"
+                onPress={onOpenTags}
+              />
+              <LinkRow
+                divider
+                icon="repeat"
+                title="Habits"
+                detail="Scheduled routines"
+                onPress={onOpenHabits}
+              />
+            </View>
+          </SettingsOverview>
         </SettingsGroup>
         <SettingsGroup category="account" selected={category}>
           <ChatgptModelsSection userId={user?.id ?? ""} />
         </SettingsGroup>
         <SettingsGroup category="assistants" selected={category}>
+          <AgentWarmStartCards busy={busy} run={act} />
           <AssistantRulesSection userId={user?.id ?? ""} />
           <AssistantBudgetSection userId={user?.id ?? ""} />
         </SettingsGroup>
         <SettingsGroup category="planning" selected={category}>
-          {recovery("analytics", "time summary")}
-          {recovery("planner", "planning preferences")}
-          {analytics && analytics.planned_minutes > 0 && (
-            <SettingsAnchor name="Where your time goes">
-              <Text style={[shared.eyebrow, s.section]}>Time summary</Text>
-              <View style={shared.card}>
-                <Text style={shared.body}>
-                  {durationText(analytics.planned_minutes)} scheduled ·{" "}
-                  {analytics.completed} task
-                  {analytics.completed === 1 ? "" : "s"} finished in the last 30
-                  days.
-                </Text>
-                <InlineDetails title="Time by list">
-                  {analytics.by_list.map((l, i) => (
-                    <View
-                      key={`${l.name}:${i}`}
-                      style={[s.analyticsRow, i > 0 && s.sessionDivider]}
-                    >
-                      <Text style={[shared.body, { flex: 1, minWidth: 0 }]}>
-                        {l.name}
-                      </Text>
-                      <Text style={s.prefTitle}>{durationText(l.minutes)}</Text>
-                    </View>
-                  ))}
-                </InlineDetails>
-              </View>
-            </SettingsAnchor>
-          )}
-
-          {countBlocks !== null && (
-            <>
-              <Text style={[shared.eyebrow, s.section]}>Time tracking</Text>
-              <View style={shared.card}>
-                <View style={s.preference}>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={s.prefTitle}>
-                      Count completed session time
-                    </Text>
-                    <Text style={shared.small}>
-                      Past sessions count once toward time spent.
-                    </Text>
-                  </View>
-                  <Switch
-                    value={countBlocks}
-                    disabled={
-                      busy || !!readErrors.planner || !!readPending.planner
-                    }
-                    trackColor={{ true: colors.accent }}
-                    accessibilityLabel="Count completed session time"
-                    onValueChange={(value) =>
-                      void saveNotices({ count_blocks_as_spent: value })
-                    }
-                  />
+          <SettingsOverview>
+            {recovery("analytics", "time summary")}
+            {recovery("planner", "planning preferences")}
+            {analytics && analytics.planned_minutes > 0 && (
+              <SettingsAnchor name="Where your time goes">
+                <Text style={[shared.eyebrow, s.section]}>Time summary</Text>
+                <View style={shared.card}>
+                  <Text style={shared.body}>
+                    {durationText(analytics.planned_minutes)} scheduled ·{" "}
+                    {analytics.completed} task
+                    {analytics.completed === 1 ? "" : "s"} finished in the last
+                    30 days.
+                  </Text>
+                  <InlineDetails title="Time by list">
+                    {analytics.by_list.map((l, i) => (
+                      <View
+                        key={`${l.name}:${i}`}
+                        style={[s.analyticsRow, i > 0 && s.sessionDivider]}
+                      >
+                        <Text style={[shared.body, { flex: 1, minWidth: 0 }]}>
+                          {l.name}
+                        </Text>
+                        <Text style={s.prefTitle}>
+                          {durationText(l.minutes)}
+                        </Text>
+                      </View>
+                    ))}
+                  </InlineDetails>
                 </View>
-              </View>
-            </>
-          )}
+              </SettingsAnchor>
+            )}
+
+            {countBlocks !== null && (
+              <>
+                <Text style={[shared.eyebrow, s.section]}>Time tracking</Text>
+                <View style={shared.card}>
+                  <View style={s.preference}>
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text style={s.prefTitle}>
+                        Count completed session time
+                      </Text>
+                      <Text style={shared.small}>
+                        Past sessions count once toward time spent.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={countBlocks}
+                      disabled={
+                        busy || !!readErrors.planner || !!readPending.planner
+                      }
+                      trackColor={{ true: colors.accent }}
+                      accessibilityLabel="Count completed session time"
+                      onValueChange={(value) =>
+                        void saveNotices({ count_blocks_as_spent: value })
+                      }
+                    />
+                  </View>
+                </View>
+              </>
+            )}
+          </SettingsOverview>
         </SettingsGroup>
         <SettingsGroup category="account" selected={category}>
-          <SettingsAnchor name="Appearance">
-            <Text style={[shared.eyebrow, s.section]}>Appearance</Text>
-          </SettingsAnchor>
-          <View style={shared.card}>
-            <Text style={s.prefTitle}>Theme</Text>
-            <Text style={[shared.small, s.prefText]}>
-              Automatic follows your device’s light or dark setting.
-            </Text>
-            <Segmented
-              accessibilityLabel="Theme"
-              options={THEME_PREFERENCES}
-              labels={THEME_LABELS}
-              value={theme.preference}
-              onChange={theme.setPreference}
-            />
-          </View>
+          <SettingsSection title="Appearance">
+            <View style={shared.card}>
+              <Text style={s.prefTitle}>Theme</Text>
+              <Text style={[shared.small, s.prefText]}>
+                Automatic follows your device’s light or dark setting.
+              </Text>
+              <Segmented
+                accessibilityLabel="Theme"
+                options={THEME_PREFERENCES}
+                labels={THEME_LABELS}
+                value={theme.preference}
+                onChange={theme.setPreference}
+              />
+            </View>
+          </SettingsSection>
 
           <SettingsSection title="Reading">
             <View style={s.preference}>
@@ -1190,14 +1200,16 @@ function SettingsBody({
           </SettingsSection>
         </SettingsGroup>
         <SettingsGroup category="connections" selected={category}>
-          <View style={[shared.card, s.rows]}>
-            <LinkRow
-              icon="link"
-              title="Connected apps"
-              detail="Agents, API keys and calendar feed"
-              onPress={onOpenConnections}
-            />
-          </View>
+          <SettingsOverview>
+            <View style={[shared.card, s.rows]}>
+              <LinkRow
+                icon="link"
+                title="Connected apps"
+                detail="Agents, API keys and calendar feed"
+                onPress={onOpenConnections}
+              />
+            </View>
+          </SettingsOverview>
           <ChatDeliverySection
             channel={chat}
             kind={chatKind}
@@ -1670,16 +1682,18 @@ function SettingsBody({
           />
         </SettingsGroup>
         <SettingsGroup category="account" selected={category}>
-          <Button
-            destructive
-            title="Sign out"
-            disabled={busy}
-            onPress={onSignOut}
-            style={s.signOut}
-          />
+          <SettingsOverview>
+            <Button
+              destructive
+              title="Sign out"
+              disabled={busy}
+              onPress={onSignOut}
+              style={s.signOut}
+            />
+          </SettingsOverview>
         </SettingsGroup>
       </View>
-    </SettingsFocus.Provider>
+    </SettingsWorkspace>
   );
 }
 

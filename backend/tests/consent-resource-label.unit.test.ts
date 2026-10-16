@@ -1,3 +1,4 @@
+import { durationText } from "@orbyn/core";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -92,4 +93,47 @@ test("older API responses without recipient metadata remain usable", () => {
     false,
   );
   assert.ok(text(root).includes("Fixture"));
+});
+
+test("consent explains access-only lifetime without guessing for renewable or older servers", () => {
+  const component = source.statements.find(
+    (statement) =>
+      ts.isFunctionDeclaration(statement) &&
+      statement.name?.text === "ConnectionLifetime",
+  );
+  assert.ok(component);
+  const scope: any = { ...context, durationText };
+  vm.runInNewContext(
+    ts.transpileModule(
+      component.getText(source) +
+        "\nmodule.exports.ConnectionLifetime = ConnectionLifetime;",
+      {
+        compilerOptions: {
+          module: ts.ModuleKind.CommonJS,
+          jsx: ts.JsxEmit.ReactJSX,
+        },
+      },
+    ).outputText,
+    scope,
+  );
+  const render = scope.module.exports.ConnectionLifetime;
+  const visible = render({
+    check: {
+      requested_offline_access: false,
+      access_token_lifetime_seconds: 3600,
+    },
+  });
+  assert.match(text(visible), /Sign-in lasts up to 1 h/);
+  assert.match(text(visible), /Reconnect from the app/);
+  for (const check of [
+    {},
+    { requested_offline_access: true, access_token_lifetime_seconds: 3600 },
+    { requested_offline_access: false },
+    { requested_offline_access: false, access_token_lifetime_seconds: 0 },
+    {
+      requested_offline_access: false,
+      access_token_lifetime_seconds: Infinity,
+    },
+  ])
+    assert.equal(render({ check }), null);
 });

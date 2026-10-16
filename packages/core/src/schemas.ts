@@ -651,9 +651,33 @@ export const docAssistRequest = z
     message: "A range needs a start before its end",
   });
 
-/** A question about one page, answered from that page alone. */
+/** Explicit user-provided excerpt; offsets are local UTF-16 positions, not server anchors. */
+export const docAskSelection = z
+  .object({
+    format: z.enum(["note", "markdown", "latex"]),
+    quote: z
+      .string()
+      .min(1)
+      .max(4096)
+      .refine((text) => !!text.trim(), "Select some text."),
+    start: z.number().int().min(0).max(1_000_000),
+    end: z.number().int().min(1).max(1_000_000),
+    expected_revision: z.number().int().positive(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.end > value.start && value.end - value.start === value.quote.length,
+    "The selected range does not match its excerpt.",
+  );
+export type DocAskSelection = z.infer<typeof docAskSelection>;
+
+/** A question about one page, or only the explicitly supplied excerpt. */
 export const docAskRequest = z
-  .object({ question: z.string().trim().min(1).max(1000) })
+  .object({
+    question: z.string().trim().min(1).max(1000),
+    selection: docAskSelection.optional(),
+  })
   .strict();
 
 /** What to look for, and how to narrow it. */

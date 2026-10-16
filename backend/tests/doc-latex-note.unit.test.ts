@@ -190,7 +190,7 @@ for (const native of [false, true])
           '[data-workspace="true"]',
         );
         assert.notEqual(next, frame);
-        assert.equal(next!.getAttribute("data-source"), "NEW OWNER SOURCE");
+        assert.match(next!.getAttribute("data-source")!, /NEW OWNER SOURCE/);
         assert.doesNotMatch(
           dom.window.document.body.innerHTML,
           /UNSAVED SECOND SOURCE/,

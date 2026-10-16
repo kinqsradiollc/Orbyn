@@ -10,6 +10,26 @@ Orbyn is a hosted service. Outside AI agents, such as Claude Code, Codex and Cur
 
 Older setups that use the web app's `/api/mcp` reach the same server.
 
+## Connection recovery
+
+Hosts should request `offline_access` when long-lived access is needed, refresh
+once at a time, and store the returned replacement refresh token before making
+another refresh. Refresh tokens rotate; reusing a consumed token revokes its
+family and pauses the connection. A concurrent refresh or lost response can
+therefore require sign-in again. This protection remains enabled.
+
+Settings distinguishes recoverable pauses from lost/expired OAuth credentials.
+`reconnect_required: true` means sign in to Orbyn again from the connected app;
+Restore cannot recreate deleted tokens and returns 409 in that state. Access
+token expiry alone does not mean that consent was revoked when a usable refresh
+token remains. The subscription stream completes after at most 15 minutes or
+credential expiry; the host should reopen it.
+
+For intermittent disconnections, record the app/client, time, HTTP/OAuth error
+and connection activity reason. Never include bearer tokens, refresh tokens or
+.env contents. Refresh/revoke operations serialize on the same grant, and a
+wrong client's request cannot suspend another client's connection.
+
 ## Signing in
 
 - **Agent keys.** Make a key in Settings → Connected agents. Choose what it may do and which spaces it sees (Personal and any of your teams). Keys last 30 days unless you choose otherwise, and never more than 365. Send it as `Authorization: Bearer oak_…`. The key is shown once and stored only as a hash. You can revoke it at any time, and each key has its own activity list.

@@ -16,6 +16,7 @@ import type { DocContentValidationOptions } from "./doc-content-leaves.js";
 export type DocContentOperation =
   | { kind: "insert"; owner: number[]; index: number; node: DocContainerNode }
   | { kind: "replace-leaf"; path: number[]; block: DocBlock }
+  | { kind: "replace-leaves"; blocks: DocBlock[] }
   | { kind: "splice-leaf"; path: number[]; nodes: DocContainerNode[] }
   | { kind: "remove"; path: number[] }
   | { kind: "move"; path: number[]; owner: number[]; index: number }
@@ -92,7 +93,22 @@ export function applyDocContentOperation(
     index(at, nodes.length);
     return { nodes, at, node: nodes[at] };
   };
-  if (operation.kind === "insert") {
+  if (operation.kind === "replace-leaves") {
+    let index = 0;
+    visitDocContainers(roots, (node) => {
+      if (node.kind !== "block") return;
+      const replacement = operation.blocks[index++];
+      if (
+        !replacement ||
+        replacement.id !== node.block.id ||
+        replacement.type !== node.block.type
+      )
+        refuse("A source edit must retain every leaf identity and type.");
+      node.block = replacement;
+    });
+    if (index !== operation.blocks.length)
+      refuse("A source edit must retain every leaf owner.");
+  } else if (operation.kind === "insert") {
     const nodes = children(operation.owner);
     index(operation.index, nodes.length, true);
     nodes.splice(operation.index, 0, operation.node);

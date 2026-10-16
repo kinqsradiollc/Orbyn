@@ -1,4 +1,7 @@
-import { DocumentLibraryButton, useDocumentLibrary } from "./DocumentWorkspace";
+import { DocAsk } from "./DocAsk";
+import { useDocExcerpt } from "./useDocExcerpt";
+import { routeDocumentDownload } from "./document-download";
+import { useDocumentLibrary } from "./DocumentWorkspace";
 import { DocumentDivider } from "../../components/DocumentDivider";
 import {
   DocLatexPreviewProvider,
@@ -23,7 +26,9 @@ import {
 import {
   docContainerBlocks,
   newBlockId,
+  type ExportFormat,
   docLatexOperation,
+  docWholeLatexOperation,
   docFragmentIndex,
   docEditorSessionDirty,
   isOfflineError,
@@ -50,7 +55,7 @@ import { session as authSession } from "../../lib/session";
 import { rememberPageDurable } from "../../lib/pageCache";
 import { canLeaveStructuredDocDraft } from "../../lib/structuredDocDraftGuard";
 import { savePageOffline } from "../../lib/outbox";
-import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
+import { saveFile, downloadLabel, formatsHere } from "../../lib/download";
 import { DocContainerBody } from "./DocContainerBody";
 import { DocBody } from "./DocBody";
 import { PageMaintenanceSheet } from "./PageMaintenanceSheet";
@@ -131,8 +136,50 @@ function StructuredDocEditorBody({
   const [latexSourceNumber, setLatexSourceNumber] = React.useState(0);
   const [latexOpen, setLatexOpen] = React.useState(false);
   const sourceLeaveCheck = React.useRef<(() => boolean) | null>(null);
+  const sourcePdfExport = React.useRef<(() => Promise<void>) | null>(null);
+  const downloadPending = React.useRef(false);
   const latexOwner = React.useRef(latexOpen);
   latexOwner.current = latexOpen;
+  const [selectedExcerpt, setSelectedExcerpt] = React.useState<
+    Parameters<typeof excerpt.open>[0] | null
+  >(null);
+  const [excerptOpen, setExcerptOpen] = React.useState(false);
+  const sourceSelectionHandle = React.useRef<
+    (() => Parameters<typeof excerpt.open>[0] | null) | null
+  >(null);
+  const excerpt = useDocExcerpt(
+    () => ({
+      id: doc.id,
+      userId,
+      account: authSession.token,
+      revision: store.state.session?.saved.version ?? doc.version,
+      blocked:
+        store.state.busy ||
+        !!store.state.conflict ||
+        (!!store.state.error && !store.state.sourceInvalid),
+      format: sourceFormat,
+      epoch: JSON.stringify({
+        document: store.state.session?.document,
+        source: store.state.source,
+        conflict: store.state.conflict,
+      }),
+    }),
+    report,
+  );
+  const openExcerpt = (selection: Parameters<typeof excerpt.open>[0]) => {
+    if (excerpt.open(selection)) setExcerptOpen(true);
+  };
+  const openPageAssistant = () => {
+    const selected =
+      (latexOpen ? sourceSelectionHandle.current?.() : null) ??
+      (selectedExcerpt?.format === sourceFormat ? selectedExcerpt : null);
+    if (selected) {
+      openExcerpt(selected);
+      return;
+    }
+    excerpt.clear();
+    setExcerptOpen(true);
+  };
   const [sourceAsk, setSourceAsk] = React.useState<DocBlock | null>(null);
   const [sourceSuggestions, setSourceSuggestions] = React.useState<
     DocSuggestion[]
@@ -634,7 +681,7 @@ function StructuredDocEditorBody({
   ]);
   const chooseFormat = async (
     format: "note" | "markdown" | "latex",
-    sourceNumber = 0,
+    sourceNumber = -1,
   ) => {
     if (latexOwner.current && !sourceLeaveCheck.current?.()) return;
     const current = store.state;
@@ -689,6 +736,42 @@ function StructuredDocEditorBody({
     } else setEditing(path.join("/"));
   };
 
+  const download = async (format: ExportFormat) => {
+    if (downloadPending.current || !currentPage()) return;
+    downloadPending.current = true;
+    try {
+      await routeDocumentDownload(
+        format,
+        latexOpen && latexSourceNumber >= 0,
+        sourcePdfExport,
+        () => {
+          const current = store.state;
+          return (
+            currentPage() &&
+            !!current.session &&
+            !current.busy &&
+            !current.error &&
+            !current.conflict &&
+            !current.sourceInvalid &&
+            current.source === null &&
+            !docEditorSessionDirty(current.session) &&
+            (!latexOpen || sourceLeaveCheck.current?.() === true)
+          );
+        },
+        async () => {
+          const { blob, name } = await client.exportDoc(doc.id, format, {
+            version: store.state.session!.saved.version,
+          });
+          if (currentPage())
+            await saveFile(name, blob, blob.type || "application/octet-stream");
+        },
+      );
+    } catch (error) {
+      if (currentPage()) report(error);
+    } finally {
+      downloadPending.current = false;
+    }
+  };
   return (
     <DocLatexPreviewProvider
       canCompile={canWrite}
@@ -722,6 +805,18 @@ function StructuredDocEditorBody({
           setPaneWidth(event.nativeEvent.layout.width);
         }}
       >
+        <DocAsk
+          visible={excerptOpen}
+          docId={doc.id}
+          blocks={leaves}
+          canWrite={false}
+          excerpt={excerpt.context}
+          isSelectionCurrent={excerpt.current}
+          onClose={() => setExcerptOpen(false)}
+          onGoToBlock={() => {}}
+          onNameBlock={() => ""}
+          onSuggested={() => {}}
+        />
         {sourceAsk && "text" in sourceAsk && (
           <DocSourceAsk
             key={sourceAsk.id}
@@ -770,7 +865,6 @@ function StructuredDocEditorBody({
             }
           />
           <View style={styles.toolbar}>
-            <DocumentLibraryButton />
             <DocEditorModes
               value={sourceFormat}
               disabled={
@@ -803,46 +897,14 @@ function StructuredDocEditorBody({
                 </Pressable>
               </View>
             )}
-            {canWrite && !latexOpen && (sourceVisible || split) && (
-              <Pressable
-                accessibilityRole="button"
-                style={styles.actionTarget}
-                disabled={
-                  sourcePending ||
-                  state.busy ||
-                  !session ||
-                  docEditorSessionDirty(session) ||
-                  state.source !== null
-                }
-                onPress={() => {
-                  try {
-                    if (!document) return;
-                    const map = versionedDocSourceMap(
-                      document,
-                      source ?? undefined,
-                      { projected: true },
-                    );
-                    const range = versionedDocSourceAt(
-                      map,
-                      sourceSelection.current,
-                    );
-                    const block =
-                      range?.blockIndex !== undefined
-                        ? leaves[range.blockIndex]
-                        : undefined;
-                    if (block) askForBlock(block);
-                    else
-                      setNavigationError(
-                        "Place the cursor in text before asking the assistant.",
-                      );
-                  } catch (error) {
-                    report(error);
-                  }
-                }}
-              >
-                <Text style={styles.action}>Ask assistant</Text>
-              </Pressable>
-            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Talk about this page"
+              style={styles.actionTarget}
+              onPress={openPageAssistant}
+            >
+              <Icon name="sparkles" size={18} color={colors.text} />
+            </Pressable>
             <Text style={styles.status}>
               {!session
                 ? state.busy
@@ -964,14 +1026,7 @@ function StructuredDocEditorBody({
                     state.source !== null
                   }
                   onPress={() => {
-                    closeMenuThen(
-                      () =>
-                        void downloadDoc(
-                          doc.id,
-                          format,
-                          session?.saved.version,
-                        ).catch(report),
-                    );
+                    closeMenuThen(() => void download(format));
                   }}
                 >
                   <Text style={styles.action}>{downloadLabel(format)}</Text>
@@ -1111,15 +1166,20 @@ function StructuredDocEditorBody({
                   </Text>
                   {latexOpen && document && session && (
                     <DocSourcePreview
+                      exportPdfHandle={sourcePdfExport}
                       leaveCheck={sourceLeaveCheck}
-                      compileReady={
-                        !state.busy &&
-                        !state.error &&
-                        !state.conflict &&
-                        !!session &&
-                        !docEditorSessionDirty(session) &&
-                        state.source === null
-                      }
+                      compileReady={() => {
+                        const current = store.state;
+                        return (
+                          !current.busy &&
+                          !current.error &&
+                          !current.conflict &&
+                          !current.sourceInvalid &&
+                          !!current.session &&
+                          !docEditorSessionDirty(current.session) &&
+                          current.source === null
+                        );
+                      }}
                       inline
                       sourceOnly
                       editorHeight={paneHeight}
@@ -1137,6 +1197,8 @@ function StructuredDocEditorBody({
                         setSourceVisible(false);
                         setSplitRequested(false);
                       }}
+                      selectionHandle={sourceSelectionHandle}
+                      onSelectionAssist={openExcerpt}
                       onAssist={
                         canWrite &&
                         !state.busy &&
@@ -1184,7 +1246,13 @@ function StructuredDocEditorBody({
                                 );
                               store.changeOperation(
                                 document,
-                                docLatexOperation(document, text, sourceNumber),
+                                sourceNumber === undefined || sourceNumber < 0
+                                  ? docWholeLatexOperation(document, text)
+                                  : docLatexOperation(
+                                      document,
+                                      text,
+                                      sourceNumber,
+                                    ),
                               );
                               if (store.state.error) throw store.state.error;
                               const next = store.state.session?.document;
@@ -1211,8 +1279,20 @@ function StructuredDocEditorBody({
                       <TextInput
                         accessibilityLabel="Markdown source"
                         onSelectionChange={(event) => {
-                          sourceSelection.current =
-                            event.nativeEvent.selection.start;
+                          const { start, end } = event.nativeEvent.selection;
+                          sourceSelection.current = start;
+                          const raw = state.source ?? source;
+                          setSelectedExcerpt(
+                            end > start
+                              ? {
+                                  format: "markdown",
+                                  source: raw,
+                                  start,
+                                  end,
+                                  quote: raw.slice(start, end),
+                                }
+                              : null,
+                          );
                         }}
                         style={[styles.source, { height: paneHeight }]}
                         multiline
@@ -1252,7 +1332,8 @@ function StructuredDocEditorBody({
                   <View
                     style={[
                       { flex: 1, minHeight: 0 },
-                      !latexOpen && styles.hiddenPane,
+                      (!latexOpen || latexSourceNumber < 0) &&
+                        styles.hiddenPane,
                     ]}
                   >
                     <DocLatexDocumentPreview />
@@ -1260,7 +1341,11 @@ function StructuredDocEditorBody({
                   <ScrollView
                     ref={previewScroll}
                     nestedScrollEnabled
-                    style={latexOpen ? styles.hiddenPane : { flex: 1 }}
+                    style={
+                      latexOpen && latexSourceNumber >= 0
+                        ? styles.hiddenPane
+                        : { flex: 1 }
+                    }
                     contentContainerStyle={styles.noteCanvas}
                   >
                     <View ref={previewContent} style={styles.previewContent}>
@@ -1323,6 +1408,23 @@ function StructuredDocEditorBody({
                                     editing={
                                       canWrite && editing === path.join("/")
                                     }
+                                    onSelection={({ start, end }) => {
+                                      if ("text" in block)
+                                        setSelectedExcerpt(
+                                          end > start
+                                            ? {
+                                                format: "note",
+                                                source: block.text,
+                                                start,
+                                                end,
+                                                quote: block.text.slice(
+                                                  start,
+                                                  end,
+                                                ),
+                                              }
+                                            : null,
+                                        );
+                                    }}
                                     onChange={(text) => {
                                       editGeneration.current++;
                                       offlineQueued.current = false;

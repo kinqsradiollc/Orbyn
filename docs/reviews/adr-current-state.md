@@ -6,6 +6,16 @@ Updated 16 October 2026. Follow the full contract in
 Detailed qualification and historical failures remain in
 [the C1 acceptance ledger](c1-acceptance-ledger.md).
 
+## ADR 006 owner-directed delivery
+
+ADR 006 implementation is complete on `codex/document-sync-settings`. On
+16 October the owner explicitly authorized PR and merge while waiving remaining
+Tester, Visual Check and Reviewer closure. Historical evidence remains in the
+[delivery ledger](document-sync-settings.md); the final outline CSS and rendered
+panel corrections are not represented as fully qualified. Merge delivery receipt
+will be recorded separately. Deployment and the intermittent production MCP
+reauthorization cause remain unverified.
+
 ## Current delivery
 
 The previous owner-revised ADR 001/002 delivery is complete: C1–C6 and its U1

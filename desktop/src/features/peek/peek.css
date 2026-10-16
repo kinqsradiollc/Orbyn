@@ -122,3 +122,14 @@
     padding: 8px 12px;
   }
 }
+
+/* The controlled workspace dock owns geometry and keyboard interaction. */
+.side-peek.is-embedded {
+  position: static;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  z-index: auto;
+  box-shadow: none;
+  border-left: 0;
+}

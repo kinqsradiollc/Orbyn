@@ -1,0 +1,16 @@
+.doc-chat-excerpt {
+  min-width: 0;
+  padding: 12px;
+  background: var(--color-surfaceMuted);
+  border-left: 2px solid var(--color-accent);
+}
+.doc-chat-excerpt small {
+  color: var(--color-muted);
+}
+.doc-chat-excerpt blockquote {
+  max-height: 10rem;
+  overflow: auto;
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

@@ -13,6 +13,9 @@ import {
 } from "react-native";
 import {
   docLatexBlock,
+  docSourceDiagnostic,
+  type DocSourceDiagnostic,
+  docWholeLatex,
   withDocLatexSource,
   EMPTY_LATEX_DOCUMENT,
   docFragmentIndex,
@@ -22,6 +25,7 @@ import {
   docReferenceLinks,
   footnoteNumbers,
   footnoteTexts,
+  type DocSelection,
   type DocBlock,
 } from "@orbyn/core";
 import { session } from "../../lib/session";
@@ -32,6 +36,18 @@ import { colors, fonts, radii, inputFontSize } from "../../theme";
 import { DocBody } from "./DocBody";
 import { FootnoteContext } from "./footnotes";
 import { DocNavigationContext } from "./doc-navigation";
+
+/** Full source is local context for parent validation, never an API payload. */
+export type DocSourceSelection = {
+  format: "markdown" | "latex";
+  source: string;
+  start: number;
+  end: number;
+  quote: string;
+  explain?: boolean;
+  /** Local-only guard; never serialize this or the full source. */
+  isCurrent?: () => boolean;
+};
 
 /** Source and preview delegate edits to the existing editor and its save path. */
 export function DocSourcePreview({
@@ -45,6 +61,7 @@ export function DocSourcePreview({
   saveStatus,
   onCompileLatex,
   onAssist,
+  selectionHandle,
   onLatexChange,
   latexOnly = false,
   initialMode = "markdown",
@@ -55,9 +72,11 @@ export function DocSourcePreview({
   onModeChange,
   compileReady = true,
   leaveCheck,
-  initialSourceNumber = 0,
+  initialSourceNumber = -1,
+  exportPdfHandle,
 }: {
   initialSourceNumber?: number;
+  exportPdfHandle?: { current: (() => Promise<void>) | null };
   blocks: DocBlock[];
   docId: string;
   onAppLink: (url: string) => void;
@@ -68,6 +87,8 @@ export function DocSourcePreview({
   saveStatus?: string;
   onCompileLatex: (source: string, signal: AbortSignal) => Promise<Blob>;
   onAssist?: (block: DocBlock) => void;
+  onSelectionAssist?: (selection: DocSourceSelection) => void;
+  selectionHandle?: { current: (() => DocSelection | null) | null };
   onLatexChange?: (
     text: string,
     expected: DocBlock[],
@@ -80,7 +101,7 @@ export function DocSourcePreview({
   showModes?: boolean;
   editorHeight?: number;
   onModeChange?: (mode: "markdown" | "latex") => void;
-  compileReady?: boolean;
+  compileReady?: boolean | (() => boolean);
   leaveCheck?: { current: (() => boolean) | null };
 }) {
   const [navigating, setNavigating] = useState(false);
@@ -102,24 +123,20 @@ export function DocSourcePreview({
     (block) => block.type === "code" && block.lang === "latex-document",
   );
   const latex = docLatexBlock(blocks, sourceNumber);
+  const wholeLatexTooLong =
+    sourceNumber < 0 && docWholeLatex(blocks).length > 20_000;
   const [latexText, setLatexText] = useState(
-    latex?.text ?? EMPTY_LATEX_DOCUMENT,
+    sourceNumber < 0
+      ? docWholeLatex(blocks)
+      : (latex?.text ?? EMPTY_LATEX_DOCUMENT),
   );
   const sharedPreview = useDocLatexPreview();
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState("");
-  const [pdf, setPdf] = useState<{
-    blob: Blob;
-    source: string;
-    sourceNumber: number;
-    account: typeof session.token;
-  } | null>(null);
-  useEffect(() => {
-    setPdf(null);
-  }, [latexText, sourceNumber]);
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
-    if (latex) setLatexText(latex.text);
+    if (sourceNumber >= 0 && latex && !liveSourceError.current)
+      setLatexText(latex.text);
   }, [latex?.text]);
   useEffect(
     () => () => {
@@ -130,8 +147,14 @@ export function DocSourcePreview({
   const exportPdf = async () => {
     if (
       compile.current ||
-      !compileReady ||
-      sourceError ||
+      !(typeof compileReady === "function" ? compileReady() : compileReady) ||
+      mode !== "latex" ||
+      sourceNumber < 0 ||
+      !latex ||
+      !navigationAlive.current ||
+      navigationPending.current ||
+      session.token !== navigationOwner ||
+      liveSourceError.current ||
       !(onSourceChange || onLatexChange)
     )
       return;
@@ -139,17 +162,44 @@ export function DocSourcePreview({
     compile.current = controller;
     setCompiling(true);
     setCompileError("");
-    setPdf(null);
     const snapshot = latexText;
+    const compileEpoch = sourceEpoch.current;
+    setCompileProblem(null);
     const account = session.token;
     try {
       const blob = await onCompileLatex(snapshot, controller.signal);
-      if (!controller.signal.aborted && account === session.token) {
-        setPdf({ blob, source: snapshot, sourceNumber, account });
+      if (
+        !controller.signal.aborted &&
+        account === session.token &&
+        compileEpoch === sourceEpoch.current &&
+        liveLatexText.current === snapshot
+      ) {
         await saveFile("document.pdf", blob, "application/pdf");
       }
     } catch (error) {
-      if (!controller.signal.aborted && account === session.token)
+      const detail = docSourceDiagnostic(error, snapshot);
+      if (
+        !controller.signal.aborted &&
+        session.token === account &&
+        compileEpoch === sourceEpoch.current &&
+        liveLatexText.current === snapshot
+      )
+        setCompileProblem(
+          detail
+            ? {
+                detail,
+                text: snapshot,
+                epoch: compileEpoch,
+                mode: "latex",
+              }
+            : null,
+        );
+      if (
+        !controller.signal.aborted &&
+        account === session.token &&
+        compileEpoch === sourceEpoch.current &&
+        liveLatexText.current === snapshot
+      )
         setCompileError(
           error instanceof Error
             ? error.message
@@ -162,6 +212,18 @@ export function DocSourcePreview({
       }
     }
   };
+  useEffect(() => {
+    if (!exportPdfHandle) return;
+    exportPdfHandle.current =
+      mode === "latex" && sourceNumber >= 0 ? exportPdf : null;
+    return () => {
+      if (exportPdfHandle.current === exportPdf) exportPdfHandle.current = null;
+    };
+  }, [exportPdfHandle, exportPdf]);
+  useEffect(() => {
+    compile.current?.abort();
+  }, [sourceNumber]);
+
   const [sourceVisible, setSourceVisible] = useState(true);
   const [paneWidth, setPaneWidth] = useState(0);
   const { fontScale, height: windowHeight } = useWindowDimensions();
@@ -180,6 +242,28 @@ export function DocSourcePreview({
   // replace it; echoes of our own parsed source do not move the caret.
   const [sourceText, setSourceText] = useState(canonical.source);
   const [sourceError, setSourceError] = useState("");
+  type LocatedProblem = {
+    detail: DocSourceDiagnostic;
+    text: string;
+    epoch: number;
+    mode: "latex" | "markdown";
+  };
+  const [sourceProblem, setSourceProblem] = useState<LocatedProblem | null>(
+    null,
+  );
+  const [compileProblem, setCompileProblem] = useState<LocatedProblem | null>(
+    null,
+  );
+  const [jumpRequest, setJumpRequest] = useState<LocatedProblem | null>(null);
+  const latexInput = useRef<TextInput>(null);
+  const liveLatexText = useRef(latexText);
+  liveLatexText.current = latexText;
+  const liveMarkdownText = useRef(sourceText);
+  liveMarkdownText.current = sourceText;
+  const [latexSelection, setLatexSelection] = useState<
+    { start: number; end: number } | undefined
+  >();
+
   const liveSourceError = useRef(sourceError);
   liveSourceError.current = sourceError;
   const acceptedSource = useRef(canonical.source);
@@ -192,6 +276,235 @@ export function DocSourcePreview({
   // onto ownership adopted from another editor.
   const sourceEpoch = useRef(0);
   const renderedEpoch = sourceEpoch.current;
+  type UserSourceSelection = DocSourceSelection & {
+    epoch: number;
+    sourceNumber: number;
+    account: typeof navigationOwner;
+    docId: string;
+  };
+  const [userSourceSelection, setUserSourceSelection] =
+    useState<UserSourceSelection | null>(null);
+  const pendingUserRange = useRef<UserSourceSelection | null>(null);
+  const sourceGestureActive = useRef(false);
+  const sourceInputBlurred = useRef(false);
+  const sourceSelectionTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const sourceSelectionGeneration = useRef(0);
+  const liveSourceIdentity = useRef({ mode, sourceNumber, docId });
+  liveSourceIdentity.current = { mode, sourceNumber, docId };
+  const programmaticSourceRange = useRef<{
+    format: "markdown" | "latex";
+    start: number;
+    end: number;
+  } | null>(null);
+  const clearSourceSelection = () => {
+    pendingUserRange.current = null;
+    if (sourceSelectionTimer.current !== null)
+      clearTimeout(sourceSelectionTimer.current);
+    sourceSelectionTimer.current = null;
+    sourceSelectionGeneration.current++;
+    setUserSourceSelection(null);
+  };
+  const isCurrentSourceSelection = (
+    selected: UserSourceSelection | null,
+  ): selected is UserSourceSelection =>
+    !!selected &&
+    navigationAlive.current &&
+    !navigationPending.current &&
+    session.token === navigationOwner &&
+    selected.account === navigationOwner &&
+    selected.docId === liveSourceIdentity.current.docId &&
+    selected.epoch === sourceEpoch.current &&
+    selected.sourceNumber === liveSourceIdentity.current.sourceNumber &&
+    selected.format === liveSourceIdentity.current.mode &&
+    selected.source ===
+      (selected.format === "latex"
+        ? liveLatexText.current
+        : liveMarkdownText.current) &&
+    Number.isInteger(selected.start) &&
+    Number.isInteger(selected.end) &&
+    selected.start >= 0 &&
+    selected.end > selected.start &&
+    selected.end <= selected.source.length &&
+    selected.quote === selected.source.slice(selected.start, selected.end) &&
+    !!selected.quote.trim();
+  const settleSourceSelection = () => {
+    if (sourceSelectionTimer.current !== null)
+      clearTimeout(sourceSelectionTimer.current);
+    sourceSelectionTimer.current = null;
+    const generation = ++sourceSelectionGeneration.current;
+    if (sourceGestureActive.current || !pendingUserRange.current) return;
+    sourceSelectionTimer.current = setTimeout(() => {
+      sourceSelectionTimer.current = null;
+      if (
+        generation !== sourceSelectionGeneration.current ||
+        sourceGestureActive.current
+      )
+        return;
+      const selected = pendingUserRange.current;
+      if (isCurrentSourceSelection(selected)) setUserSourceSelection(selected);
+    }, 160);
+  };
+  const finishUserSourceSelection = () => {
+    sourceGestureActive.current = false;
+    settleSourceSelection();
+  };
+  const cancelUserSourceSelection = () => {
+    sourceGestureActive.current = false;
+    clearSourceSelection();
+  };
+  const captureSourceSelection = (
+    format: "markdown" | "latex",
+    text: string,
+    start: number,
+    end: number,
+  ) => {
+    if (sourceInputBlurred.current) return;
+    if (
+      !selectionHandle ||
+      format !== mode ||
+      !Number.isInteger(start) ||
+      !Number.isInteger(end) ||
+      start < 0 ||
+      end <= start ||
+      end > text.length
+    ) {
+      clearSourceSelection();
+      return;
+    }
+    const suppressed = programmaticSourceRange.current;
+    if (
+      suppressed &&
+      suppressed.format === format &&
+      suppressed.start === start &&
+      suppressed.end === end
+    ) {
+      clearSourceSelection();
+      return;
+    }
+    const next = {
+      format,
+      source: text,
+      start,
+      end,
+      quote: text.slice(start, end),
+      epoch: sourceEpoch.current,
+      sourceNumber,
+      account: navigationOwner,
+      docId,
+    };
+    if (!isCurrentSourceSelection(next)) {
+      clearSourceSelection();
+      return;
+    }
+    pendingUserRange.current = next;
+    if (
+      !userSourceSelection ||
+      userSourceSelection.source !== next.source ||
+      userSourceSelection.start !== next.start ||
+      userSourceSelection.end !== next.end
+    )
+      setUserSourceSelection(null);
+    settleSourceSelection();
+  };
+  const beginUserSourceSelection = () => {
+    sourceInputBlurred.current = false;
+    clearSourceSelection();
+    sourceGestureActive.current = true;
+    programmaticSourceRange.current = null;
+  };
+  if (selectionHandle)
+    selectionHandle.current = () => {
+      const selected = userSourceSelection;
+      if (sourceGestureActive.current || !isCurrentSourceSelection(selected))
+        return null;
+      return {
+        format: selected.format,
+        source: selected.source,
+        start: selected.start,
+        end: selected.end,
+        quote: selected.quote,
+        isCurrent: () => isCurrentSourceSelection(selected),
+      };
+    };
+  const dismissSourceActions = cancelUserSourceSelection;
+  useEffect(() => {
+    cancelUserSourceSelection();
+    programmaticSourceRange.current = null;
+  }, [mode, sourceNumber, docId]);
+  useEffect(
+    () => () => {
+      if (sourceSelectionTimer.current !== null)
+        clearTimeout(sourceSelectionTimer.current);
+      sourceSelectionGeneration.current++;
+      pendingUserRange.current = null;
+      sourceGestureActive.current = false;
+    },
+    [],
+  );
+  const activeProblem = (problem: LocatedProblem | null) =>
+    problem &&
+    problem.mode === mode &&
+    problem.epoch === sourceEpoch.current &&
+    problem.text === (mode === "latex" ? latexText : sourceText) &&
+    session.token === navigationOwner
+      ? problem
+      : null;
+  const locatedSource = activeProblem(sourceProblem);
+  const locatedCompile = activeProblem(compileProblem);
+  const located = locatedSource ?? locatedCompile;
+  const locationLabel = (detail: DocSourceDiagnostic) =>
+    `Line ${detail.line}${detail.column === null ? "" : `, column ${detail.column}`}: ${detail.message}`;
+  const jumpToProblem = (problem: LocatedProblem) => {
+    if (!activeProblem(problem)) return;
+    setSourceVisible(true);
+    clearSourceSelection();
+    programmaticSourceRange.current = {
+      format: problem.mode,
+      start: problem.detail.start,
+      end: problem.detail.end,
+    };
+    setJumpRequest(problem);
+  };
+  useEffect(() => {
+    const problem = jumpRequest;
+    if (!problem) return;
+
+    if (
+      !navigationAlive.current ||
+      session.token !== navigationOwner ||
+      sourceEpoch.current !== problem.epoch ||
+      (problem.mode === "latex"
+        ? liveLatexText.current
+        : liveMarkdownText.current) !== problem.text
+    )
+      return;
+    setJumpRequest(null);
+    const input =
+      problem.mode === "latex" ? latexInput.current : sourceInput.current;
+    if (!input) return;
+    input.focus();
+    const selection = {
+      start: problem.detail.start,
+      end: problem.detail.end,
+    };
+    if (problem.mode === "latex") setLatexSelection(selection);
+    else setSourceSelection(selection);
+    input.setNativeProps({
+      selection: { start: problem.detail.start, end: problem.detail.end },
+    });
+  }, [jumpRequest, sourceVisible]);
+  const currentAccount = session.token;
+  useEffect(() => {
+    if (currentAccount === navigationOwner) return;
+    clearSourceSelection();
+    setSourceProblem(null);
+    setCompileProblem(null);
+    setCompileError("");
+    setSourceError("Document changed. Reopen the source.");
+  }, [docId, currentAccount]);
+
   useEffect(() => {
     if (
       acceptedBlocks.current.has(blocks) ||
@@ -199,17 +512,21 @@ export function DocSourcePreview({
     )
       return;
     sourceEpoch.current++;
+    clearSourceSelection();
+    setSourceProblem(null);
+    setCompileProblem(null);
+    setCompileError("");
     if (sourceError) {
       mustRestore.current = true;
-      setSourceError(
-        "The document changed while this source edit was invalid. Restore the current document before continuing.",
-      );
+      setSourceError("Document changed. Restore to continue.");
       return;
     }
     acceptedSource.current = canonical.source;
     ownerBlocks.current = blocks;
     acceptedBlocks.current.add(blocks);
     setSourceText(canonical.source);
+    if (sourceNumber < 0) setLatexText(docWholeLatex(blocks));
+    setSourceProblem(null);
     setSourceError("");
   }, [blocks, canonical.source]);
   const map = useMemo(
@@ -220,23 +537,36 @@ export function DocSourcePreview({
     [blocks, canonical, sourceText, sourceError, onSourceChange],
   );
   const changeSource = (text: string) => {
+    clearSourceSelection();
+    setCompileProblem(null);
+    setCompileError("");
+    setSourceProblem(null);
+    if (!navigationAlive.current || session.token !== navigationOwner) return;
     if (!onSourceChange || mustRestore.current || navigationPending.current)
       return;
     setSourceSelection(undefined);
+    setJumpRequest(null);
+    liveMarkdownText.current = text;
     setSourceText(text);
     try {
       if (renderedEpoch !== sourceEpoch.current) {
         mustRestore.current = true;
-        throw new Error(
-          "The document changed before this source edit could be applied. Restore the current document before continuing.",
-        );
+        throw new Error("Document changed. Restore to continue.");
       }
       const next = onSourceChange(text, ownerBlocks.current);
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
       acceptedSource.current = docSourceMap(next).source;
+      if (sourceNumber < 0) setLatexText(docWholeLatex(next));
+      setSourceProblem(null);
       setSourceError("");
     } catch (error) {
+      const detail = docSourceDiagnostic(error, text);
+      setSourceProblem(
+        detail
+          ? { detail, text, epoch: sourceEpoch.current, mode: mode }
+          : null,
+      );
       setSourceError(
         error instanceof Error
           ? error.message
@@ -245,10 +575,28 @@ export function DocSourcePreview({
     }
   };
   const changeLatex = (text: string) => {
-    if (navigationPending.current) return;
+    clearSourceSelection();
+    if (
+      navigationPending.current ||
+      !navigationAlive.current ||
+      session.token !== navigationOwner
+    )
+      return;
     compile.current?.abort();
+    setJumpRequest(null);
+    liveLatexText.current = text;
+    setSourceProblem(null);
+    setCompileProblem(null);
+    setCompileError("");
+    setLatexSelection(undefined);
     setLatexText(text);
     if (!onLatexChange) {
+      if (sourceNumber < 0) {
+        setSourceError(
+          "This editor cannot apply whole-document LaTeX changes. Your draft is retained; restore the document to continue in Note or Markdown.",
+        );
+        return;
+      }
       try {
         changeSource(
           docSourceMap(
@@ -256,6 +604,12 @@ export function DocSourcePreview({
           ).source,
         );
       } catch (error) {
+        const detail = docSourceDiagnostic(error, text);
+        setSourceProblem(
+          detail
+            ? { detail, text, epoch: sourceEpoch.current, mode: mode }
+            : null,
+        );
         setSourceError(
           error instanceof Error
             ? error.message
@@ -267,16 +621,21 @@ export function DocSourcePreview({
     if (mustRestore.current) return;
     try {
       if (renderedEpoch !== sourceEpoch.current)
-        throw new Error(
-          "The document changed. Restore the current document before editing.",
-        );
+        throw new Error("Document changed. Restore to continue.");
       const next = onLatexChange(text, ownerBlocks.current, sourceNumber);
       ownerBlocks.current = next;
       acceptedBlocks.current.add(next);
       acceptedSource.current = docSourceMap(next).source;
       setSourceText(acceptedSource.current);
+      setSourceProblem(null);
       setSourceError("");
     } catch (error) {
+      const detail = docSourceDiagnostic(error, text);
+      setSourceProblem(
+        detail
+          ? { detail, text, epoch: sourceEpoch.current, mode: mode }
+          : null,
+      );
       setSourceError(
         error instanceof Error ? error.message : "Couldn’t apply LaTeX source.",
       );
@@ -298,20 +657,13 @@ export function DocSourcePreview({
       if (leaveCheck.current === ready) leaveCheck.current = null;
     };
   }, [leaveCheck]);
-  useEffect(() => {
-    if (
-      sharedPreview &&
-      mode === "latex" &&
-      !docLatexBlock(ownerBlocks.current) &&
-      (onSourceChange || onLatexChange) &&
-      !sourceError
-    )
-      changeLatex(latexText);
-  }, [mode, !!latex, !!sharedPreview]);
   const closeSource = () => {
     if (!sourceError && !navigationPending.current) onClose();
   };
   const revertSource = () => {
+    clearSourceSelection();
+    setCompileProblem(null);
+    setCompileError("");
     mustRestore.current = false;
     acceptedSource.current = canonical.source;
     ownerBlocks.current = blocks;
@@ -320,8 +672,11 @@ export function DocSourcePreview({
     const restored = docLatexBlock(blocks, sourceNumber);
     if (!restored && sourceNumber > 0) setSourceNumber(0);
     setLatexText(
-      (restored ?? docLatexBlock(blocks))?.text ?? EMPTY_LATEX_DOCUMENT,
+      sourceNumber < 0
+        ? docWholeLatex(blocks)
+        : ((restored ?? docLatexBlock(blocks))?.text ?? EMPTY_LATEX_DOCUMENT),
     );
+    setSourceProblem(null);
     setSourceError("");
   };
   const notes = useMemo(
@@ -421,7 +776,10 @@ export function DocSourcePreview({
         keyboardShouldPersistTaps="handled"
       >
         {!!navigationError && (
-          <Text accessibilityRole="alert" style={shared.small}>
+          <Text
+            accessibilityRole="alert"
+            style={[shared.small, { color: colors.danger }]}
+          >
             {navigationError}
           </Text>
         )}
@@ -431,17 +789,45 @@ export function DocSourcePreview({
           </Text>
         )}
         {!!sourceError && (
-          <View style={{ gap: 8 }}>
-            <Button
-              style={{ marginBottom: 0 }}
-              title="Restore current document"
-              disabled={navigating}
-              secondary
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: 8,
+            }}
+          >
+            <View style={{ flex: 1, minWidth: 0 }} accessibilityRole="alert">
+              {locatedSource ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`${locatedSource.detail.origin === "conversion" ? "Conversion" : "Compiler"} error. ${locationLabel(locatedSource.detail)}`}
+                  onPress={() => jumpToProblem(locatedSource)}
+                  style={{ minHeight: 44, justifyContent: "center" }}
+                >
+                  <Text style={[shared.small, { color: colors.danger }]}>
+                    ! {locationLabel(locatedSource.detail)}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={[shared.small, { color: colors.danger }]}>
+                  ! {sourceError}
+                </Text>
+              )}
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Restore current document"
               onPress={revertSource}
-            />
-            <Text accessibilityRole="alert" style={shared.small}>
-              {sourceError} This edit has not been saved.
-            </Text>
+              disabled={navigating}
+              style={{
+                minHeight: 44,
+                paddingHorizontal: 8,
+                justifyContent: "center",
+              }}
+            >
+              <Text style={{ color: colors.accent }}>Restore</Text>
+            </Pressable>
           </View>
         )}
         {showModes && (
@@ -469,19 +855,10 @@ export function DocSourcePreview({
                 : "Source is read-only."}
           </Text>
         )}
-        {saveStatus && !inline && (
+        {saveStatus && (!inline || /couldn|failed|error/i.test(saveStatus)) && (
           <Text accessibilityLiveRegion="polite" style={shared.small}>
             {saveStatus}
           </Text>
-        )}
-        {!inline && mode === "markdown" && onAssist && blocks[selected]?.id && (
-          <Button
-            style={{ marginBottom: 0 }}
-            title="Ask assistant"
-            secondary
-            disabled={navigating || !!sourceError}
-            onPress={() => onAssist(blocks[selected])}
-          />
         )}
         {(!inline || !sourceOnly) && (
           <Button
@@ -511,7 +888,16 @@ export function DocSourcePreview({
           />
         )}
       </ScrollView>
-      {mode === "latex" && sources.length > 1 && (
+      {mode === "latex" && wholeLatexTooLong && (
+        <Text
+          accessibilityRole="alert"
+          style={[shared.small, { color: colors.danger }]}
+        >
+          Source exceeds the 20,000-character editing limit. Continue in Note or
+          Markdown.
+        </Text>
+      )}
+      {mode === "latex" && sourceNumber >= 0 && sources.length > 0 && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
           {sources.map((block, index) => (
             <Pressable
@@ -519,8 +905,8 @@ export function DocSourcePreview({
               accessibilityRole="button"
               accessibilityLabel={
                 index === 0
-                  ? "Main LaTeX document"
-                  : `LaTeX document ${index + 1}`
+                  ? "Embedded LaTeX document 1"
+                  : `Embedded LaTeX document ${index + 1}`
               }
               accessibilityState={{ selected: sourceNumber === index }}
               disabled={!!sourceError || navigating}
@@ -541,7 +927,9 @@ export function DocSourcePreview({
               }}
             >
               <Text style={shared.small}>
-                {index === 0 ? "Main document" : `Document ${index + 1}`}
+                {index === 0
+                  ? "Embedded document 1"
+                  : `Embedded document ${index + 1}`}
               </Text>
             </Pressable>
           ))}
@@ -549,92 +937,30 @@ export function DocSourcePreview({
       )}
       {mode === "latex" && (
         <>
-          <View
-            style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              alignItems: "center",
-              paddingHorizontal: 12,
-              paddingVertical: 4,
-              gap: 8,
-            }}
-          >
-            {(!inline || compiling || compileError) && (
-              <Text accessibilityLiveRegion="polite" style={shared.small}>
-                {compileError
-                  ? "PDF export failed"
-                  : compiling
-                    ? "Exporting PDF…"
-                    : "Web preview"}
-              </Text>
-            )}
-            {(onSourceChange || onLatexChange) && (
-              <Button
-                style={{ marginBottom: 0 }}
-                title="Export PDF"
-                secondary
-                disabled={
-                  navigating ||
-                  !compileReady ||
-                  compiling ||
-                  !!sourceError ||
-                  !(onSourceChange || onLatexChange)
-                }
-                onPress={() => void exportPdf()}
-              />
-            )}
-            {onAssist && latex?.id && (
-              <Button
-                style={{ marginBottom: 0 }}
-                title="Ask assistant"
-                secondary
-                disabled={navigating || !!sourceError || !latex.text.trim()}
-                onPress={() => onAssist(latex)}
-              />
-            )}
-          </View>
-          {pdf &&
-            pdf.source === latexText &&
-            pdf.sourceNumber === sourceNumber &&
-            pdf.account === session.token && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  paddingHorizontal: 12,
-                }}
-              >
-                <Text accessibilityLiveRegion="polite" style={shared.small}>
-                  PDF ready
-                </Text>
-                <Button
-                  title="Save PDF"
-                  secondary
-                  style={{ marginBottom: 0 }}
-                  onPress={() => {
-                    if (pdf.account !== session.token) return;
-                    void saveFile(
-                      "document.pdf",
-                      pdf.blob,
-                      "application/pdf",
-                    ).catch((error) => {
-                      if (pdf.account !== session.token) return;
-                      setCompileError(
-                        error instanceof Error
-                          ? error.message
-                          : "Couldn’t save this PDF. Try again.",
-                      );
-                    });
-                  }}
-                />
-              </View>
-            )}
-          {!!compileError && (
-            <Text accessibilityRole="alert" style={shared.small}>
-              {compileError}
+          {compiling && (
+            <Text accessibilityLiveRegion="polite" style={shared.small}>
+              Exporting PDF…
             </Text>
+          )}
+          {!!compileError && (
+            <View accessibilityRole="alert">
+              {locatedCompile ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Compiler error. ${locationLabel(locatedCompile.detail)}`}
+                  onPress={() => jumpToProblem(locatedCompile)}
+                  style={{ minHeight: 44, justifyContent: "center" }}
+                >
+                  <Text style={[shared.small, { color: colors.danger }]}>
+                    ! {locationLabel(locatedCompile.detail)}
+                  </Text>
+                </Pressable>
+              ) : (
+                <Text style={[shared.small, { color: colors.danger }]}>
+                  ! {compileError}
+                </Text>
+              )}
+            </View>
           )}
           <View
             style={{
@@ -653,6 +979,43 @@ export function DocSourcePreview({
             >
               <TextInput
                 accessibilityLabel="LaTeX source"
+                onFocus={() => {
+                  sourceInputBlurred.current = false;
+                }}
+                onBlur={() => {
+                  sourceInputBlurred.current = true;
+                }}
+                onTouchStart={beginUserSourceSelection}
+                onTouchEnd={finishUserSourceSelection}
+                onTouchCancel={cancelUserSourceSelection}
+                onKeyPress={(event) => {
+                  if (event.nativeEvent.key === "Escape")
+                    dismissSourceActions();
+                  else programmaticSourceRange.current = null;
+                }}
+
+                accessibilityHint={
+                  located
+                    ? `Error on line ${located.detail.line}. Use the error message to select its source.`
+                    : undefined
+                }
+                ref={latexInput}
+                selection={latexSelection}
+                onSelectionChange={(event) => {
+                  const selection = event.nativeEvent.selection;
+                  captureSourceSelection(
+                    "latex",
+                    liveLatexText.current,
+                    selection.start,
+                    selection.end,
+                  );
+                  if (
+                    latexSelection &&
+                    (selection.start !== latexSelection.start ||
+                      selection.end !== latexSelection.end)
+                  )
+                    setLatexSelection(undefined);
+                }}
                 multiline
                 scrollEnabled
                 editable={!navigating && !!(onSourceChange || onLatexChange)}
@@ -670,9 +1033,12 @@ export function DocSourcePreview({
                     borderWidth: 0,
                     borderRadius: 0,
                     backgroundColor: colors.surfaceMuted,
+                    borderLeftWidth: located ? 3 : 0,
+                    borderColor: colors.danger,
                   },
                 ]}
                 onChangeText={changeLatex}
+                onScroll={clearSourceSelection}
               />
             </View>
             <View
@@ -713,6 +1079,21 @@ export function DocSourcePreview({
           >
             <TextInput
               accessibilityLabel="Markdown source"
+              onFocus={() => {
+                sourceInputBlurred.current = false;
+              }}
+              onBlur={() => {
+                sourceInputBlurred.current = true;
+              }}
+              onTouchStart={beginUserSourceSelection}
+              onTouchEnd={finishUserSourceSelection}
+              onTouchCancel={cancelUserSourceSelection}
+              onKeyPress={(event) => {
+                if (event.nativeEvent.key === "Escape") dismissSourceActions();
+                else programmaticSourceRange.current = null;
+              }}
+
+              onScroll={clearSourceSelection}
               value={onSourceChange ? sourceText : map.source}
               editable={!navigating && !!onSourceChange}
               onChangeText={onSourceChange ? changeSource : undefined}
@@ -744,6 +1125,12 @@ export function DocSourcePreview({
               }}
               onSelectionChange={(event) => {
                 setSourceSelection(undefined);
+                captureSourceSelection(
+                  "markdown",
+                  liveMarkdownText.current,
+                  event.nativeEvent.selection.start,
+                  event.nativeEvent.selection.end,
+                );
                 const range = docSourceBlockAt(
                   map,
                   event.nativeEvent.selection.start,

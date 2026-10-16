@@ -55,7 +55,6 @@ import { Pressable } from "../motion";
 import { colors, controls, fonts, radii, themed } from "../theme";
 import { shared } from "../styles";
 import { AgentRulesCard, InboxPanel } from "./AgentInbox";
-import { AgentWarmStartCards } from "./AgentContext";
 
 /** What a connection can do, in a word or two, for its badge. */
 const ACCESS_TAG: Record<AgentAccess, string> = {
@@ -390,6 +389,9 @@ export function ConnectedAgentsCard({
     setActivityOpen(false);
   };
   const [connectionQuery, setConnectionQuery] = useState("");
+  const [connectionGroup, setConnectionGroup] = useState<"external" | "orbyn">(
+    "external",
+  );
   const [connectionPage, setConnectionPage] = useState(0);
   const [connecting, setConnecting] = useState(false);
   const [connectError, setConnectError] = useState("");
@@ -759,7 +761,11 @@ export function ConnectedAgentsCard({
     });
   };
 
-  const grants = overview?.grants ?? [];
+  const grants = (overview?.grants ?? []).filter((grant) =>
+    connectionGroup === "orbyn"
+      ? grant.kind === "assistant"
+      : grant.kind !== "assistant",
+  );
   const listLocked =
     blocked || !!editing || !!trusting || !!hearing || !!activityId;
   const query = connectionQuery.trim().toLocaleLowerCase();
@@ -804,6 +810,26 @@ export function ConnectedAgentsCard({
             permissions when connecting and disconnect at any time.
           </Text>
         )}
+        <View
+          style={[s.actions, s.wrap]}
+          accessibilityLabel="Connection category"
+        >
+          {(["external", "orbyn"] as const).map((group) => (
+            <Button
+              key={group}
+              title={
+                group === "external" ? "Connected apps" : "Orbyn assistant"
+              }
+              secondary={connectionGroup !== group}
+              disabled={listLocked}
+              onPress={() => {
+                setConnectionGroup(group);
+                setConnectionPage(0);
+                setConnectionQuery("");
+              }}
+            />
+          ))}
+        </View>
         {!!grants.length && (
           <View style={s.gap}>
             <Text style={shared.label}>Find a connection</Text>
@@ -885,7 +911,13 @@ export function ConnectedAgentsCard({
                     }
                   />
                 </View>
-                {g.suspended_at && (
+                {g.reconnect_required && (
+                  <Text style={shared.small}>
+                    Sign in to Orbyn again from {g.client_name || g.name} to
+                    reconnect.
+                  </Text>
+                )}
+                {g.suspended_at && !g.reconnect_required && (
                   <Text style={shared.small}>
                     Paused after repeated access or usage failures. Check
                     activity before restoring or revoking it.
@@ -922,7 +954,7 @@ export function ConnectedAgentsCard({
                             },
                           ]
                         : []),
-                      ...(g.suspended_at
+                      ...(g.suspended_at && !g.reconnect_required
                         ? [
                             {
                               label: "Restore agent",
@@ -1089,8 +1121,6 @@ export function ConnectedAgentsCard({
           />
         </View>
       )}
-
-      <AgentWarmStartCards busy={busy} run={run} />
 
       {!!overview?.grants.length && (
         <>

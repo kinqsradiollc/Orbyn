@@ -16,7 +16,8 @@
 }
 .character-editor {
   display: grid;
-  gap: 14px;
+  grid-template-columns: minmax(0, 13rem) minmax(0, 1fr);
+  gap: 20px;
   margin-block: 16px;
   min-width: 0;
   container: character-editor / inline-size;
@@ -24,9 +25,13 @@
 .character-preview {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding-block: 8px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  align-self: start;
+  border-radius: var(--radius-md);
+  background: var(--color-surfaceMuted);
+  text-align: center;
 }
 .character-preview p {
   margin: 4px 0 0;
@@ -65,10 +70,15 @@
   justify-content: center;
   margin: 24px 0 8px;
 }
-@container character-editor (max-width: 28rem) {
+@container character-editor (max-width: 34rem) {
+  .character-workspace {
+    grid-column: 1 / -1;
+  }
   .character-preview {
-    flex-direction: column;
-    align-items: stretch;
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: center;
+    text-align: left;
   }
   .character-preview > .orbyn-character {
     align-self: center;
@@ -93,22 +103,24 @@
 }
 
 .character-preview-caption {
-  flex: 1;
   min-width: 0;
   overflow-wrap: anywhere;
 }
 .character-starters {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 6rem), 1fr));
   gap: 8px;
-  overflow-x: auto;
-  padding-block: 4px;
+  max-height: 18rem;
+  overflow-y: auto;
+  padding: 4px;
 }
 .character-preset {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
-  flex: 0 0 100px;
+  min-width: 0;
+  min-height: 100px;
   padding: 8px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -136,7 +148,7 @@
 .character-tabs button {
   flex: 1;
   min-width: 64px;
-  min-height: var(--button-h);
+  min-height: 44px;
   white-space: normal;
   overflow-wrap: anywhere;
   padding: 8px;
@@ -166,4 +178,27 @@
 .character-paper {
   --character-body: var(--color-surface);
   --character-edge: var(--color-muted);
+}
+
+/* The preview stays separate from one focused set of controls. */
+.character-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+.character-editor-actions {
+  padding-top: 12px;
+  border-top: 1px solid var(--color-divider);
+}
+.character-editor-actions button,
+.character-preview button {
+  min-height: 44px;
+  white-space: normal;
+}
+@container character-editor (max-width: 22rem) {
+  .character-preview {
+    flex-direction: column;
+    text-align: center;
+  }
 }

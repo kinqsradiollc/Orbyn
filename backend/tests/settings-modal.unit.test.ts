@@ -250,15 +250,13 @@ test("a failed opener focus attempts the visible navigation return target", () =
   view.cleanup();
   assert.equal(view.document.activeElement, navigation);
 });
-test("both responsive workspace navigation controls expose a Settings return target", () => {
+test("responsive navigation and account menu expose Settings return targets", () => {
   const source = read("desktop/src/components/Topbar.tsx");
+  assert.doesNotMatch(source, /workspace-rail-toggle/);
+  assert.match(read("desktop/src/components/Sidebar.tsx"), /className="sidebar-account-trigger"[^>]*data-settings-focus-return/);
   assert.match(
     source,
-    /className="icon-button workspace-rail-toggle"\s+data-settings-focus-return/,
-  );
-  assert.match(
-    source,
-    /className="icon-button mobile-menu"\s+data-settings-focus-return/,
+    /className="icon-button mobile-menu"[^>]*data-settings-focus-return/,
   );
 });
 test("closing off-canvas navigation cannot recapture Settings focus before visibility hides", () => {
@@ -293,6 +291,7 @@ test("Tab remains inside Settings and Escape closes only when no nested overlay 
   assert.equal(view.document.activeElement, view.last);
   view.overlays.push({
     layer: 7,
+    matches: () => false,
     contains: () => false,
     closest: () => null,
     getClientRects: () => [{}],
