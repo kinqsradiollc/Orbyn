@@ -1,3 +1,5 @@
+import { DocAsk } from "./DocAsk";
+import { useDocExcerpt } from "./useDocExcerpt";
 import { routeDocumentDownload } from "./document-download";
 import { useDocumentLibrary } from "./DocumentWorkspace";
 import { DocumentDivider } from "../../components/DocumentDivider";
@@ -138,6 +140,46 @@ function StructuredDocEditorBody({
   const downloadPending = React.useRef(false);
   const latexOwner = React.useRef(latexOpen);
   latexOwner.current = latexOpen;
+  const [selectedExcerpt, setSelectedExcerpt] = React.useState<
+    Parameters<typeof excerpt.open>[0] | null
+  >(null);
+  const [excerptOpen, setExcerptOpen] = React.useState(false);
+  const sourceSelectionHandle = React.useRef<
+    (() => Parameters<typeof excerpt.open>[0] | null) | null
+  >(null);
+  const excerpt = useDocExcerpt(
+    () => ({
+      id: doc.id,
+      userId,
+      account: authSession.token,
+      revision: store.state.session?.saved.version ?? doc.version,
+      blocked:
+        store.state.busy ||
+        !!store.state.conflict ||
+        (!!store.state.error && !store.state.sourceInvalid),
+      format: sourceFormat,
+      epoch: JSON.stringify({
+        document: store.state.session?.document,
+        source: store.state.source,
+        conflict: store.state.conflict,
+      }),
+    }),
+    report,
+  );
+  const openExcerpt = (selection: Parameters<typeof excerpt.open>[0]) => {
+    if (excerpt.open(selection)) setExcerptOpen(true);
+  };
+  const openPageAssistant = () => {
+    const selected =
+      (latexOpen ? sourceSelectionHandle.current?.() : null) ??
+      (selectedExcerpt?.format === sourceFormat ? selectedExcerpt : null);
+    if (selected) {
+      openExcerpt(selected);
+      return;
+    }
+    excerpt.clear();
+    setExcerptOpen(true);
+  };
   const [sourceAsk, setSourceAsk] = React.useState<DocBlock | null>(null);
   const [sourceSuggestions, setSourceSuggestions] = React.useState<
     DocSuggestion[]
@@ -763,6 +805,18 @@ function StructuredDocEditorBody({
           setPaneWidth(event.nativeEvent.layout.width);
         }}
       >
+        <DocAsk
+          visible={excerptOpen}
+          docId={doc.id}
+          blocks={leaves}
+          canWrite={false}
+          excerpt={excerpt.context}
+          isSelectionCurrent={excerpt.current}
+          onClose={() => setExcerptOpen(false)}
+          onGoToBlock={() => {}}
+          onNameBlock={() => ""}
+          onSuggested={() => {}}
+        />
         {sourceAsk && "text" in sourceAsk && (
           <DocSourceAsk
             key={sourceAsk.id}
@@ -843,46 +897,14 @@ function StructuredDocEditorBody({
                 </Pressable>
               </View>
             )}
-            {canWrite && !latexOpen && (sourceVisible || split) && (
-              <Pressable
-                accessibilityRole="button"
-                style={styles.actionTarget}
-                disabled={
-                  sourcePending ||
-                  state.busy ||
-                  !session ||
-                  docEditorSessionDirty(session) ||
-                  state.source !== null
-                }
-                onPress={() => {
-                  try {
-                    if (!document) return;
-                    const map = versionedDocSourceMap(
-                      document,
-                      source ?? undefined,
-                      { projected: true },
-                    );
-                    const range = versionedDocSourceAt(
-                      map,
-                      sourceSelection.current,
-                    );
-                    const block =
-                      range?.blockIndex !== undefined
-                        ? leaves[range.blockIndex]
-                        : undefined;
-                    if (block) askForBlock(block);
-                    else
-                      setNavigationError(
-                        "Place the cursor in text before asking the assistant.",
-                      );
-                  } catch (error) {
-                    report(error);
-                  }
-                }}
-              >
-                <Text style={styles.action}>Ask assistant</Text>
-              </Pressable>
-            )}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Talk about this page"
+              style={styles.actionTarget}
+              onPress={openPageAssistant}
+            >
+              <Icon name="sparkles" size={18} color={colors.text} />
+            </Pressable>
             <Text style={styles.status}>
               {!session
                 ? state.busy
@@ -1175,6 +1197,8 @@ function StructuredDocEditorBody({
                         setSourceVisible(false);
                         setSplitRequested(false);
                       }}
+                      selectionHandle={sourceSelectionHandle}
+                      onSelectionAssist={openExcerpt}
                       onAssist={
                         canWrite &&
                         !state.busy &&
@@ -1255,8 +1279,20 @@ function StructuredDocEditorBody({
                       <TextInput
                         accessibilityLabel="Markdown source"
                         onSelectionChange={(event) => {
-                          sourceSelection.current =
-                            event.nativeEvent.selection.start;
+                          const { start, end } = event.nativeEvent.selection;
+                          sourceSelection.current = start;
+                          const raw = state.source ?? source;
+                          setSelectedExcerpt(
+                            end > start
+                              ? {
+                                  format: "markdown",
+                                  source: raw,
+                                  start,
+                                  end,
+                                  quote: raw.slice(start, end),
+                                }
+                              : null,
+                          );
                         }}
                         style={[styles.source, { height: paneHeight }]}
                         multiline
@@ -1372,6 +1408,23 @@ function StructuredDocEditorBody({
                                     editing={
                                       canWrite && editing === path.join("/")
                                     }
+                                    onSelection={({ start, end }) => {
+                                      if ("text" in block)
+                                        setSelectedExcerpt(
+                                          end > start
+                                            ? {
+                                                format: "note",
+                                                source: block.text,
+                                                start,
+                                                end,
+                                                quote: block.text.slice(
+                                                  start,
+                                                  end,
+                                                ),
+                                              }
+                                            : null,
+                                        );
+                                    }}
                                     onChange={(text) => {
                                       editGeneration.current++;
                                       offlineQueued.current = false;

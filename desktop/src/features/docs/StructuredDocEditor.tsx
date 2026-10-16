@@ -1,3 +1,6 @@
+import { readDocExcerpt } from "./doc-excerpt";
+import { DocChat } from "./DocChat";
+import { useDocExcerpt } from "./useDocExcerpt";
 import { routeDocumentDownload } from "./document-download";
 import { DocumentPaneSwitch, useDocumentWorkspace } from "./DocumentWorkspace";
 import {
@@ -6,7 +9,7 @@ import {
 } from "./DocLatexPreview";
 import { DocEditorModes } from "./DocEditorModes";
 import { DocWritingBlock } from "./DocWritingBlock";
-import { ArrowLeft, MoreHorizontal, Plus } from "lucide-react";
+import { ArrowLeft, MoreHorizontal, Plus, Sparkles } from "lucide-react";
 import { ownsEditorKey } from "./editor-input";
 import {
   useCallback,
@@ -108,6 +111,46 @@ function StructuredDocEditorBody({
   const downloadPending = useRef(false);
   const latexOwner = useRef(latexOpen);
   latexOwner.current = latexOpen;
+  const [excerptOpen, setExcerptOpen] = useState(false);
+  const sourceSelectionHandle = useRef<
+    (() => Parameters<typeof excerpt.open>[0] | null) | null
+  >(null);
+  const excerpt = useDocExcerpt(
+    () => ({
+      id: doc.id,
+      userId,
+      account: authSession.get(),
+      revision: store.state.session?.saved.version ?? doc.version,
+      blocked:
+        store.state.busy ||
+        !!store.state.conflict ||
+        (!!store.state.error && !store.state.sourceInvalid),
+      format: sourceFormat,
+      epoch: JSON.stringify({
+        document: store.state.session?.document,
+        source: store.state.source,
+        conflict: store.state.conflict,
+      }),
+    }),
+    report,
+  );
+  const openExcerpt = (selection: Parameters<typeof excerpt.open>[0]) => {
+    if (excerpt.open(selection)) setExcerptOpen(true);
+  };
+  const openPageAssistant = () => {
+    const selected =
+      (latexOpen ? sourceSelectionHandle.current?.() : null) ??
+      (sourceRef.current
+        ? readDocExcerpt(sourceRef.current, "markdown")
+        : null) ??
+      (previewRef.current ? readDocExcerpt(previewRef.current, "note") : null);
+    if (selected) {
+      openExcerpt(selected);
+      return;
+    }
+    excerpt.clear();
+    setExcerptOpen(true);
+  };
   const [sourceAsk, setSourceAsk] = useState<DocBlock | null>(null);
   const [sourceSuggestions, setSourceSuggestions] = useState<DocSuggestion[]>(
     [],
@@ -1004,6 +1047,19 @@ function StructuredDocEditorBody({
         inert={historyBusy}
         aria-busy={historyBusy || undefined}
       >
+        {excerptOpen && (
+          <DocChat
+            docId={doc.id}
+            blocks={leaves}
+            canWrite={false}
+            excerpt={excerpt.context}
+            isSelectionCurrent={excerpt.current}
+            onClose={() => setExcerptOpen(false)}
+            onGoToBlock={() => {}}
+            onNameBlock={() => ""}
+            onSuggested={() => {}}
+          />
+        )}
         {sourceAsk && "text" in sourceAsk && (
           <DocSourceAsk
             key={sourceAsk.id}
@@ -1046,42 +1102,20 @@ function StructuredDocEditorBody({
           }
         />
         <header className="structured-doc-toolbar">
-          {onBack && (
-            <button
-              className="icon-button structured-doc-back"
-              aria-label="All documents"
-              title="All documents"
-              disabled={sourcePending || !!sourceAsk || latexOpen}
-              onClick={() => {
-                if (
-                  state.source !== null &&
-                  (state.error || !session || !docEditorSessionDirty(session))
-                ) {
-                  void ask({
-                    title: "Discard the unsaved source draft?",
-                    confirmLabel: "Discard",
-                    destructive: true,
-                  }).then((confirmed) => {
-                    if (confirmed) onBack();
-                  });
-                } else if (session && docEditorSessionDirty(session)) {
-                  void save().then(() => {
-                    if (
-                      store.state.session &&
-                      !docEditorSessionDirty(store.state.session)
-                    )
-                      onBack();
-                  });
-                } else onBack();
-              }}
-            >
-              <ArrowLeft size={16} />
-            </button>
-          )}
           <span className="document-toolbar-title">
             {session?.title || "Untitled"}
           </span>
           <div className="document-toolbar-actions">
+            <button
+              type="button"
+              className="icon-button"
+              onMouseDown={(event) => event.preventDefault()}
+              aria-label="Talk about this page"
+              title="Talk about this page"
+              onClick={openPageAssistant}
+            >
+              <Sparkles size={18} />
+            </button>
             <DocEditorModes
               value={sourceFormat}
               disabled={
@@ -1485,6 +1519,8 @@ function StructuredDocEditorBody({
                       setSourceFormat("note");
                       setActivePane("preview");
                     }}
+                    selectionHandle={sourceSelectionHandle}
+                    onSelectionAssist={openExcerpt}
                     onAssist={
                       canWrite &&
                       !state.busy &&
@@ -1555,38 +1591,6 @@ function StructuredDocEditorBody({
                 <div hidden={latexOpen}>
                   <div className="structured-doc-source-head">
                     <h2>Markdown</h2>
-                    {canWrite && (
-                      <button
-                        className="secondary"
-                        type="button"
-                        disabled={
-                          sourcePending ||
-                          state.busy ||
-                          !session ||
-                          docEditorSessionDirty(session) ||
-                          state.source !== null
-                        }
-                        onClick={() => {
-                          const range =
-                            sourceMap &&
-                            versionedDocSourceAt(
-                              sourceMap,
-                              sourceRef.current?.selectionStart ?? 0,
-                            );
-                          const block =
-                            range?.blockIndex !== undefined
-                              ? leaves[range.blockIndex]
-                              : undefined;
-                          if (block) askForBlock(block);
-                          else
-                            setNavigationError(
-                              "Place the cursor in text before asking the assistant.",
-                            );
-                        }}
-                      >
-                        Ask assistant
-                      </button>
-                    )}
                   </div>
                   {source === null ? (
                     <p>Source view is unavailable for this structure.</p>

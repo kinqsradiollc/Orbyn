@@ -1,3 +1,4 @@
+import { useDocExcerpt } from "./useDocExcerpt";
 import { routeDocumentDownload } from "./document-download";
 import { shared } from "../../styles";
 import { useDocumentLibrary } from "./DocumentWorkspace";
@@ -410,6 +411,42 @@ function LegacyDocEditor({
     return () => clearInterval(t);
   }, []);
   /** Whether the conversation about this page is open. */
+  const sourceSelectionHandle = useRef<
+    (() => Parameters<typeof excerpt.open>[0] | null) | null
+  >(null);
+  const excerpt = useDocExcerpt(
+    () => ({
+      id: doc.id,
+      userId,
+      account: authSession.token,
+      revision: version.current,
+      format: sourcePreview ? sourcePreviewMode : "note",
+      epoch: JSON.stringify(live.current) + draft,
+    }),
+    report,
+  );
+  const openExcerpt = (selection: Parameters<typeof excerpt.open>[0]) => {
+    if (excerpt.open(selection)) setTalking(true);
+  };
+  const openPageAssistant = () => {
+    const selected =
+      sourceSelectionHandle.current?.() ??
+      (focused !== null && selection.end > selection.start
+        ? {
+            format: "note" as const,
+            source: draft,
+            start: selection.start,
+            end: selection.end,
+            quote: draft.slice(selection.start, selection.end),
+          }
+        : null);
+    if (selected) {
+      openExcerpt(selected);
+      return;
+    }
+    excerpt.clear();
+    setTalking(true);
+  };
   const [talking, setTalking] = useState(false);
   /**
    * What someone else's edits just did to the page, shown under the title
@@ -3020,7 +3057,7 @@ function LegacyDocEditor({
           },
         ]
       : []),
-    { label: "Ask about this page", onPress: () => setTalking(true) },
+
     { label: "Present", onPress: () => setPresenting(true) },
     {
       label: pageStarred ? "Unstar" : "Star",
@@ -3375,6 +3412,8 @@ function LegacyDocEditor({
                         signal,
                       )
                     }
+                    selectionHandle={sourceSelectionHandle}
+                    onSelectionAssist={openExcerpt}
                     onAssist={
                       canWrite && !reading && !suggesting && !dirty.current
                         ? (block) => {
@@ -3501,6 +3540,12 @@ function LegacyDocEditor({
               {/* The page's header holds only Back, its title, Info and ⋯. */}
               {headerSlot && (
                 <SlotFill slot={headerSlot}>
+                  <HeaderButton
+                    icon="sparkles"
+                    label="Talk about this page"
+                    on={talking}
+                    onPress={openPageAssistant}
+                  />
                   <HeaderButton
                     icon="info"
                     label="Info"
@@ -4024,6 +4069,8 @@ function LegacyDocEditor({
                 visible={talking}
                 docId={doc.id}
                 blocks={blocks}
+                excerpt={excerpt.context}
+                isSelectionCurrent={excerpt.current}
                 canWrite={canWrite || suggesting}
                 onClose={() => setTalking(false)}
                 onGoToBlock={(blockId) => {

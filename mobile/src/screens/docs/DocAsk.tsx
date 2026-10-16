@@ -17,6 +17,7 @@ import {
   serializeBlock,
   type DocAiAction,
   type DocAnswer,
+  type DocAskExcerpt,
   type DocBlock,
   type DocSuggestion,
 } from "@orbyn/core";
@@ -24,6 +25,7 @@ import { Chip, ChipRow } from "../../components/Chip";
 import { Icon } from "../../components/Icon";
 import { Sheet } from "../../components/Sheet";
 import { client } from "../../lib/api";
+import { session as authSession } from "../../lib/session";
 import { InlineDetails } from "../../components/InlineDetails";
 import { Pressable } from "../../motion";
 import {
@@ -76,9 +78,13 @@ function DocAskBody({
   onGoToBlock,
   onNameBlock,
   onSuggested,
+  excerpt,
+  isSelectionCurrent,
 }: {
   visible: boolean;
   docId: string;
+  excerpt?: DocAskExcerpt | null;
+  isSelectionCurrent?: () => boolean;
   blocks: DocBlock[];
   /** Whether a proposal can be made at all from here. */
   canWrite: boolean;
@@ -89,6 +95,12 @@ function DocAskBody({
   onNameBlock: (index: number) => string;
   onSuggested: (made: DocSuggestion) => void;
 }) {
+  const selectionOwner = useRef({ excerpt, isSelectionCurrent });
+  selectionOwner.current = { excerpt, isSelectionCurrent };
+  const explained = useRef<number | null>(null);
+  useEffect(() => {
+    if (excerpt) setTarget(null);
+  }, [excerpt?.requestId]);
   const mutation = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -130,10 +142,25 @@ function DocAskBody({
 
   const ask = async (question: string) => {
     if (mutation.current) return;
+    const owner = excerpt;
+    const account = authSession.token;
+    const current = () =>
+      mounted.current &&
+      authSession.token === account &&
+      selectionOwner.current.excerpt?.requestId === owner?.requestId;
     mutation.current = true;
     setBusy(true);
     try {
-      const answer = await client.askDoc(docId, question);
+      if (owner && isSelectionCurrent && !isSelectionCurrent())
+        throw new Error(
+          "The selection or page changed. Select the excerpt again.",
+        );
+      const answer = await client.askDoc(docId, question, owner?.selection);
+      if (!current()) return;
+      if (owner && selectionOwner.current.isSelectionCurrent?.() === false)
+        throw new Error(
+          "The selection or page changed. Select the excerpt again.",
+        );
       say({
         role: "orbyn",
         text: answer.answer,
@@ -141,7 +168,10 @@ function DocAskBody({
         provider: answer.provider,
       });
     } catch (e) {
-      fail(e);
+      if (current()) {
+        fail(e);
+        setMessage(question);
+      }
     } finally {
       mutation.current = false;
       if (mounted.current) setBusy(false);
@@ -149,7 +179,8 @@ function DocAskBody({
   };
 
   const change = async (action: DocAiAction, instruction = "") => {
-    if (mutation.current || !canWrite || target === null || !line) return;
+    if (excerpt || mutation.current || !canWrite || target === null || !line)
+      return;
     mutation.current = true;
     setBusy(true);
     try {
@@ -183,9 +214,25 @@ function DocAskBody({
     if (!canSend) return;
     setMessage("");
     say({ role: "you", text: said });
-    if (target === null) void ask(said);
+    if (excerpt || target === null) void ask(said);
     else void change("custom", said);
   };
+
+  useEffect(() => {
+    if (
+      !excerpt?.explain ||
+      explained.current === excerpt.requestId ||
+      !visible ||
+      mutation.current
+    )
+      return;
+    explained.current = excerpt.requestId;
+    const question = "Explain this selected text.";
+    say({ role: "you", text: question });
+    void ask(question);
+    // One explicit Explain action per retained selection request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [excerpt?.requestId, visible, busy]);
 
   return (
     <Sheet
@@ -198,41 +245,57 @@ function DocAskBody({
       <View style={s.screen}>
         {/* What the conversation is pointed at. The page answers questions;
             a line is something that can be changed. */}
-        <InlineDetails
-          title={
-            target === null ? "Scope: whole page" : `Scope: line ${target + 1}`
-          }
-        >
-          <ScrollView
-            horizontal
-            keyboardShouldPersistTaps="handled"
-            showsHorizontalScrollIndicator={false}
-            style={s.targets}
-            contentContainerStyle={s.targetsInner}
+        {excerpt && (
+          <View style={s.excerpt}>
+            <Text style={s.sourceText}>
+              Selected text · {excerpt.selection.format}
+            </Text>
+            <ScrollView style={{ maxHeight: 120 }}>
+              <Text selectable style={s.orbynText}>
+                {excerpt.selection.quote}
+              </Text>
+            </ScrollView>
+          </View>
+        )}
+        {!excerpt && (
+          <InlineDetails
+            title={
+              target === null
+                ? "Scope: whole page"
+                : `Scope: line ${target + 1}`
+            }
           >
-            <ChipRow label="What this is about">
-              <Chip
-                compact
-                label="Whole page"
-                disabled={busy}
-                selected={target === null}
-                onPress={() => setTarget(null)}
-              />
-              {canWrite &&
-                lines.map((l) => (
-                  <Chip
-                    key={l.index}
-                    compact
-                    label={`Line ${l.index + 1}: ${plainText(l.text).slice(0, 40)}${plainText(l.text).length > 40 ? "…" : ""}`}
-                    accessibilityLabel={`Line ${l.index + 1}: ${plainText(l.text)}`}
-                    disabled={busy}
-                    selected={target === l.index}
-                    onPress={() => setTarget(l.index)}
-                  />
-                ))}
-            </ChipRow>
-          </ScrollView>
-        </InlineDetails>
+            <ScrollView
+              horizontal
+              keyboardShouldPersistTaps="handled"
+              showsHorizontalScrollIndicator={false}
+              style={s.targets}
+              contentContainerStyle={s.targetsInner}
+            >
+              <ChipRow label="What this is about">
+                <Chip
+                  compact
+                  label="Whole page"
+                  disabled={busy}
+                  selected={target === null}
+                  onPress={() => setTarget(null)}
+                />
+                {canWrite &&
+                  lines.map((l) => (
+                    <Chip
+                      key={l.index}
+                      compact
+                      label={`Line ${l.index + 1}: ${plainText(l.text).slice(0, 40)}${plainText(l.text).length > 40 ? "…" : ""}`}
+                      accessibilityLabel={`Line ${l.index + 1}: ${plainText(l.text)}`}
+                      disabled={busy}
+                      selected={target === l.index}
+                      onPress={() => setTarget(l.index)}
+                    />
+                  ))}
+              </ChipRow>
+            </ScrollView>
+          </InlineDetails>
+        )}
 
         <ScrollView
           ref={scroller}
@@ -242,9 +305,11 @@ function DocAskBody({
         >
           {turns.length === 0 && (
             <Text style={s.empty}>
-              {target === null
-                ? "Answers use this page and cite their sources."
-                : "Changes are proposals. Review before applying."}
+              {excerpt
+                ? "Ask about the selected text. Your document stays unchanged."
+                : target === null
+                  ? "Answers use this page and cite their sources."
+                  : "Changes are proposals. Review before applying."}
             </Text>
           )}
 
@@ -290,7 +355,7 @@ function DocAskBody({
 
         <View style={s.footer}>
           {/* One tap each, when there is a line to point them at. */}
-          {target !== null && canWrite && (
+          {!excerpt && target !== null && canWrite && (
             <ScrollView
               horizontal
               keyboardShouldPersistTaps="handled"
@@ -321,12 +386,18 @@ function DocAskBody({
               multiline
               maxLength={1000}
               placeholder={
-                target === null
-                  ? "Ask about this page…"
-                  : "Say what it should become…"
+                excerpt
+                  ? "Ask about the selected text…"
+                  : target === null
+                    ? "Ask about this page…"
+                    : "Say what it should become…"
               }
               placeholderTextColor={colors.faint}
-              accessibilityLabel="Your message about this page"
+              accessibilityLabel={
+                excerpt
+                  ? "Question about selected text"
+                  : "Your message about this page"
+              }
               textAlignVertical="top"
               onChangeText={setMessage}
             />
@@ -359,6 +430,14 @@ function DocAskBody({
 const s = themed(() =>
   StyleSheet.create({
     screen: { flex: 1 },
+    excerpt: {
+      gap: 6,
+      padding: 12,
+      marginHorizontal: spacing.page,
+      borderLeftWidth: 2,
+      borderLeftColor: colors.accent,
+      backgroundColor: colors.surfaceMuted,
+    },
     targets: { flexGrow: 0 },
     targetsInner: {
       paddingHorizontal: spacing.page,

@@ -175,6 +175,8 @@ import {
   type DocComment,
   type DocAiAction,
   type DocAnswer,
+  type DocAskSelection,
+  docAskSelection,
   type DocSuggestion,
   type ExportFormat,
   type Proposed,
@@ -2134,10 +2136,13 @@ export class OrbynClient {
     });
   }
   /** Ask a question about one page, answered from that page alone. */
-  askDoc(docId: string, question: string) {
+  askDoc(docId: string, question: string, selection?: DocAskSelection) {
     return this.request<DocAnswer>(`/docs/${docId}/ask`, {
       method: "POST",
-      body: { question },
+      body: {
+        question,
+        ...(selection ? { selection: docAskSelection.parse(selection) } : {}),
+      },
     });
   }
 

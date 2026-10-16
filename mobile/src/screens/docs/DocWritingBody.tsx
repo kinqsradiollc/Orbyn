@@ -9,12 +9,14 @@ export function DocWritingBody({
   editing,
   index,
   onChange,
+  onSelection,
 }: {
   children: ReactNode;
   text: string | null;
   editing: boolean;
   index: number;
   onChange: (text: string) => void;
+  onSelection?: (range: { start: number; end: number }) => void;
 }) {
   const showEditor = editing && text !== null;
   return (
@@ -27,6 +29,9 @@ export function DocWritingBody({
           multiline
           value={text}
           onChangeText={onChange}
+          onSelectionChange={(event) =>
+            onSelection?.(event.nativeEvent.selection)
+          }
         />
       )}
       {!showEditor && (
