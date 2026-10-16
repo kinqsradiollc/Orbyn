@@ -5,11 +5,6 @@
   margin: 0;
   padding: 0;
 }
-.docs-workspace {
-  grid-template-columns: 208px minmax(0, 1fr);
-  gap: 0;
-  align-items: stretch;
-}
 .docs-workspace.is-library-hidden {
   grid-template-columns: minmax(0, 1fr);
 }

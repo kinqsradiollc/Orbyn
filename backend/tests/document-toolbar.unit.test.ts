@@ -173,3 +173,12 @@ test("Library return and page selection honor editor departure guards", async ()
     }
   }
 });
+
+test("Library and document meet without a source-order-dependent grid gutter", () => {
+  const base = read("desktop/src/features/docs/docs.css");
+  const workspace = base.match(/\.docs-workspace \{([^}]+)\}/)?.[1];
+  assert.ok(workspace);
+  assert.match(workspace, /gap: 0;/);
+  assert.match(workspace, /align-items: stretch;/);
+  assert.match(workspace, /grid-template-columns: 208px minmax\(0, 1fr\)/);
+});
