@@ -271,9 +271,10 @@ export function DocSourcePreview({
     }
   };
   useEffect(() => {
-    if (mode === "latex") sharedPreview?.setDraftSource(latexText);
+    if (mode === "latex")
+      sharedPreview?.setDraftSource(latexText, sourceNumber);
     return () => sharedPreview?.setDraftSource(null);
-  }, [mode, latexText, sharedPreview?.setDraftSource]);
+  }, [mode, latexText, sourceNumber, sharedPreview?.setDraftSource]);
   useEffect(() => {
     if (!leaveCheck) return;
     const ready = () =>
@@ -383,7 +384,20 @@ export function DocSourcePreview({
       }}
     >
       <ScrollView
-        style={{ flexGrow: 0, flexShrink: 1, maxHeight: controlsHeight }}
+        style={{
+          flexGrow: 0,
+          flexShrink: 1,
+          maxHeight: controlsHeight,
+          display:
+            inline &&
+            sourceOnly &&
+            !navigationError &&
+            !navigating &&
+            !sourceError &&
+            !showModes
+              ? "none"
+              : "flex",
+        }}
         contentContainerStyle={{
           flexDirection: "row",
           flexWrap: "wrap",
@@ -448,7 +462,7 @@ export function DocSourcePreview({
             {saveStatus}
           </Text>
         )}
-        {mode === "markdown" && onAssist && blocks[selected]?.id && (
+        {!inline && mode === "markdown" && onAssist && blocks[selected]?.id && (
           <Button
             style={{ marginBottom: 0 }}
             title="Ask assistant"
@@ -457,31 +471,33 @@ export function DocSourcePreview({
             onPress={() => onAssist(blocks[selected])}
           />
         )}
-        <Button
-          style={{ marginBottom: 0 }}
-          title={
-            sourceOnly
-              ? "Hide source"
-              : sourceVisible
-                ? wide
-                  ? "Hide source"
-                  : "Show preview"
-                : "Show source"
-          }
-          secondary
-          onPress={() => {
-            if (sourceOnly) {
-              closeSource();
-              return;
+        {(!inline || !sourceOnly) && (
+          <Button
+            style={{ marginBottom: 0 }}
+            title={
+              sourceOnly
+                ? "Hide source"
+                : sourceVisible
+                  ? wide
+                    ? "Hide source"
+                    : "Show preview"
+                  : "Show source"
             }
-            setSourceSelection(
-              !sourceVisible && selectedRange
-                ? { start: selectedRange.start, end: selectedRange.start }
-                : undefined,
-            );
-            setSourceVisible(!sourceVisible);
-          }}
-        />
+            secondary
+            onPress={() => {
+              if (sourceOnly) {
+                closeSource();
+                return;
+              }
+              setSourceSelection(
+                !sourceVisible && selectedRange
+                  ? { start: selectedRange.start, end: selectedRange.start }
+                  : undefined,
+              );
+              setSourceVisible(!sourceVisible);
+            }}
+          />
+        )}
       </ScrollView>
       {mode === "latex" && sources.length > 1 && (
         <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 4 }}>
@@ -521,14 +537,25 @@ export function DocSourcePreview({
       )}
       {mode === "latex" && (
         <>
-          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-            <Text accessibilityLiveRegion="polite" style={shared.small}>
-              {compileError
-                ? "PDF export failed"
-                : compiling
-                  ? "Exporting PDF…"
-                  : "Web preview"}
-            </Text>
+          <View
+            style={{
+              flexDirection: "row",
+              flexWrap: "wrap",
+              alignItems: "center",
+              paddingHorizontal: 12,
+              paddingVertical: 4,
+              gap: 8,
+            }}
+          >
+            {(!inline || compiling || compileError) && (
+              <Text accessibilityLiveRegion="polite" style={shared.small}>
+                {compileError
+                  ? "PDF export failed"
+                  : compiling
+                    ? "Exporting PDF…"
+                    : "Web preview"}
+              </Text>
+            )}
             {(onSourceChange || onLatexChange) && (
               <Button
                 style={{ marginBottom: 0 }}

@@ -227,6 +227,7 @@ function LegacyDocEditor({
   headerSlot,
   toolbarSlot,
   onShowHistory,
+  onShowComments,
   onShowInLibrary,
   onMoveTo,
   report,
@@ -247,6 +248,7 @@ function LegacyDocEditor({
   toolbarSlot?: SlotHandle;
   /** Open the page's history, below the page. */
   onShowHistory?: () => void;
+  onShowComments?: () => void;
   /** The page's comments, so a line can show its own underneath. */
   comments: DocCommentsState;
   userId?: string;
@@ -3037,6 +3039,7 @@ function LegacyDocEditor({
     { label: "Share…", onPress: () => setMenu("share") },
     { label: "Export…", onPress: () => setMenu("export") },
 
+    { label: "Comments", onPress: () => onShowComments?.() },
     { label: "History", onPress: () => onShowHistory?.() },
     ...(doc.kind !== "memory"
       ? [{ label: "Save as template", onPress: () => setSavingTemplate(true) }]
@@ -4148,6 +4151,7 @@ function DocEditorBody(props: Parameters<typeof LegacyDocEditor>[0]) {
       canWrite={props.canWrite ?? true}
       onChanged={props.onChanged}
       onShowHistory={props.onShowHistory}
+      onShowComments={props.onShowComments}
       onShowInLibrary={props.onShowInLibrary}
       onMoveTo={props.onMoveTo}
       report={props.report}

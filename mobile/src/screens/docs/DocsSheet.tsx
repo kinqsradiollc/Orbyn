@@ -1,3 +1,4 @@
+import { BottomSheet } from "../../components/BottomSheet";
 import { DocumentLibraryContext } from "./DocumentWorkspace";
 import { usePaneWidth } from "../../hooks/usePaneWidth";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -2598,6 +2599,7 @@ function OpenDoc({
 }) {
   // The lines as the editor has them, which runs ahead of the saved copy.
   const [blocks, setBlocks] = useState(doc.content);
+  const [commentsOpen, setCommentsOpen] = useState(false);
   const commentBlocks =
     doc.document?.format === 2
       ? docContainerBlocks(doc.document.nodes, { projected: true })
@@ -2737,6 +2739,7 @@ function OpenDoc({
         headerSlot={headerSlot}
         toolbarSlot={toolbarSlot}
         onShowHistory={onShowHistory}
+        onShowComments={() => setCommentsOpen(true)}
         onShowInLibrary={onShowInLibrary}
         onMoveTo={onMoveTo}
         report={report}
@@ -2757,8 +2760,15 @@ function OpenDoc({
         ]}
         onClose={() => setRewriteAsk(false)}
       />
-      <DocComments state={comments} userId={userId} />
+      <BottomSheet
+        visible={commentsOpen}
+        title="Comments"
+        onClose={() => setCommentsOpen(false)}
+      >
+        <DocComments state={comments} userId={userId} />
+      </BottomSheet>
       <DocHistory
+        showEntry={false}
         doc={doc}
         beforeRestore={prepareHistoryRestore}
         onRestoreEnd={endHistoryRestore}

@@ -5,7 +5,10 @@ const diagnostics = document.querySelector("#diagnostics"),
   diagnosticText = document.querySelector("#diagnostic-text");
 let generation = 0,
   timer,
-  lastSource = null;
+  lastSource = null,
+  lastStatus = "",
+  lastDetails = "",
+  lastDiagnosticHidden = true;
 const notify = (message) => {
   const data = JSON.stringify({ type: "orbyn-latex-status", ...message });
   window.parent?.postMessage(data, "*");
@@ -84,9 +87,15 @@ function receive(event) {
       "--preview-font-scale",
       String(Math.max(0.85, Math.min(3, request.fontScale))),
     );
-  if (request.source === lastSource) return;
   const ticket = ++generation;
   clearTimeout(timer);
+  if (request.source === lastSource) {
+    status.textContent = lastStatus;
+    diagnosticText.textContent = lastDetails;
+    diagnostics.hidden = lastDiagnosticHidden;
+    notify({ state: "ready" });
+    return;
+  }
   timer = setTimeout(() => {
     if (ticket !== generation) return;
     if (request.source.length > 20_000) {
@@ -131,6 +140,9 @@ function receive(event) {
         : warnings.length
           ? "Some packages are unavailable in web preview. PDF export uses the full compiler."
           : "";
+      lastStatus = status.textContent;
+      lastDetails = diagnosticText.textContent;
+      lastDiagnosticHidden = diagnostics.hidden;
       notify({ state: "ready", warnings: warnings.length });
     } catch (error) {
       // Keep the last successful document visible during incomplete typing.

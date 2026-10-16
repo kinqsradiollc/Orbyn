@@ -285,9 +285,10 @@ export function DocSourcePreview({
     }
   };
   useEffect(() => {
-    if (mode === "latex") sharedPreview?.setDraftSource(latexText);
+    if (mode === "latex")
+      sharedPreview?.setDraftSource(latexText, sourceNumber);
     return () => sharedPreview?.setDraftSource(null);
-  }, [mode, latexText, sharedPreview?.setDraftSource]);
+  }, [mode, latexText, sourceNumber, sharedPreview?.setDraftSource]);
   useEffect(() => {
     if (!leaveCheck) return;
     const ready = () =>
@@ -564,30 +565,34 @@ export function DocSourcePreview({
             </button>
           </div>
         )}
-        <button
-          type="button"
-          className="secondary"
-          onClick={() =>
-            sourceOnly
-              ? closeSource()
-              : setView(shownView === "preview" ? "split" : "preview")
-          }
-        >
-          {sourceOnly
-            ? "Hide source"
-            : shownView === "preview"
-              ? "Show source"
-              : "Hide source"}
-        </button>
+        {(!inline || !sourceOnly) && (
+          <button
+            type="button"
+            className="secondary"
+            onClick={() =>
+              sourceOnly
+                ? closeSource()
+                : setView(shownView === "preview" ? "split" : "preview")
+            }
+          >
+            {sourceOnly
+              ? "Hide source"
+              : shownView === "preview"
+                ? "Show source"
+                : "Hide source"}
+          </button>
+        )}
         {mode === "latex" && (
           <div className="doc-source-view">
-            <span className="muted" role="status">
-              {compileError
-                ? "PDF export failed"
-                : compiling
-                  ? "Exporting PDF…"
-                  : "Web preview"}
-            </span>
+            {(!inline || compiling || compileError) && (
+              <span className="muted" role="status">
+                {compileError
+                  ? "PDF export failed"
+                  : compiling
+                    ? "Exporting PDF…"
+                    : "Web preview"}
+              </span>
+            )}
             {(onSourceChange || onLatexChange) && (
               <button
                 type="button"

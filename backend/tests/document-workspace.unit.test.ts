@@ -88,7 +88,7 @@ test("document editing never automatically compiles or mounts a PDF preview", ()
     assert.match(editor, /Export PDF/);
     assert.match(editor, /controller.signal.aborted/);
     assert.match(editor, /onCompileLatex\(snapshot, controller.signal\)/);
-    assert.match(editor, /setDraftSource\(latexText\)/);
+    assert.match(editor, /setDraftSource\(latexText, sourceNumber\)/);
     assert.match(editor, /sourceNumber/);
   }
 });
@@ -102,4 +102,20 @@ test("mobile keeps format ownership independent from Source and Preview selectio
   assert.match(legacy, /DocumentDivider/);
   assert.match(legacy, /setSourcePaneVisible\(false\)/);
   assert.match(legacy, /DocLatexDocumentPreview/);
+});
+
+test("pane captions cannot take body height and Note hides optional source chrome", () => {
+  const css = source("desktop/src/features/docs/document-workspace.css");
+  assert.match(css, /div:not\(\.document-pane-title\):not\(\[hidden\]\)/);
+  assert.match(
+    css,
+    /data-active-pane="preview"\]\s*>\s*\.structured-doc-source\s*\{\s*display: none/,
+  );
+  assert.doesNotMatch(
+    source("desktop/src/features/docs/doc-source.css"),
+    /\.doc-layout\s*\{\s*display: none/,
+  );
+  const mobile = source("mobile/src/screens/docs/DocsSheet.tsx");
+  assert.match(mobile, /<BottomSheet[\s\S]*?title="Comments"/);
+  assert.match(mobile, /showEntry=\{false\}/);
 });

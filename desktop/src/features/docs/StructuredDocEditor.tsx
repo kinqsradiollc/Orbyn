@@ -1273,15 +1273,6 @@ function StructuredDocEditorBody({
             ) : (
               <h1>{session.title}</h1>
             )}
-            {activePane !== "preview" && !latexOpen && (
-              <button
-                type="button"
-                className="secondary"
-                onClick={() => void chooseFormat("note")}
-              >
-                Hide source
-              </button>
-            )}
             <div
               className="structured-doc-columns"
               data-active-pane={activePane}

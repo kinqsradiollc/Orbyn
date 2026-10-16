@@ -2,7 +2,7 @@
 
 Decision: [ADR 005](../adr/005-document-workspace.md).
 Baseline: `9d604df6`. Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
-Branch: `codex/docs-writing-redesign`. Phase: frozen for qualification. Review counter: 0/3.
+Branch: `codex/docs-writing-redesign`. Phase: frozen for qualification. Review counter: 1/3.
 Goal: complete viewport-owned Note/Markdown/LaTeX workspace and direct HTML preview,
 with actual design acceptance on web and Expo after all code is complete.
 
@@ -74,3 +74,33 @@ Desktop and mobile typechecks passed. Desktop production build and both generate
 asset preparations passed. HTML runtime provenance/parity passed. Generated Mermaid
 and PDF runtime metadata changed because the root dependency lock changed; their
 existing renderer content is retained. Formal Tester must qualify the frozen commit.
+
+## Round 1 correction batch
+
+Initial candidate `f39aad8e`; formal Tester receipt `126606f0` passed78/78,
+web/mobile types and host build/provenance. Initial Visual receipt `8739ab94`
+reported real viewport/layout defects; no actual design acceptance was claimed.
+Review counter1/3, changes required. Builder corrected the combined batch:
+
+- W1: cancel/invalidate queued render before same-source optimization; returning
+  to last-good restores its diagnostics without replacing DOM. Real parser
+  regressions cover rapid undo and error→undo.
+- W2: desktop Docker copies HTML build/runtime scripts; both selected client
+  manifests declare exact latex.js dependency. Exact image build awaits Tester.
+- W3: selected block ID/ordinal scopes last-good host. Same source edits retain
+  it; source changes remount. Provider and parser ownership regressions added.
+- W-V1/2/3: pane caption cannot take full body height; flex source body owns
+  remaining space; Note hides source; obsolete block-split/narrow hiding rules
+  removed so the viewport workspace is the sole split owner.
+- W-V4/5: mobile comments open from page actions in a sheet, History uses existing
+  menu rather than permanent footer; duplicate assistant and Hide source chrome
+  removed from inline mode. Source selector and export retain44pt targets.
+- Initial dev correction suite80/80 passed; final added ownership regression
+  suite81/81 passed (`/private/tmp/orbyn-workspace-fix-dev2.tap`). Both client
+  types passed during correction; formal exact-candidate rerun remains required.
+- QA API's disposable private env general limiter was disabled after429; repo
+  environment files/production settings were untouched. Fixture restored by Visual.
+
+Phase: corrected candidate preparation; next owners Tester then Reviewer closure
+and Visual targeted actual-design completion on the full corrected workspace.
+Unperformed cases in the initial Visual report remain required, not passed.

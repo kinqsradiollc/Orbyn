@@ -17,7 +17,8 @@ let nextOwner = 0;
 const Context = createContext<{
   owner: number;
   source: string;
-  setDraftSource: (source: string | null) => void;
+  sourceOwner: string;
+  setDraftSource: (source: string | null, sourceNumber?: number) => void;
 } | null>(null);
 export const useDocLatexPreview = () => useContext(Context);
 /** Draft HTML belongs to this account/document; PDF compilation is explicit export. */
@@ -39,17 +40,24 @@ export function DocLatexPreviewProvider({
     docId: string;
     account: typeof account;
     text: string | null;
+    sourceNumber: number;
   } | null>(null);
   const setDraftSource = useCallback(
-    (text: string | null) => setDraft({ docId, account, text }),
+    (text: string | null, sourceNumber = 0) =>
+      setDraft({ docId, account, text, sourceNumber }),
     [docId, account],
   );
+  const currentDraft =
+    draft?.docId === docId && draft.account === account && draft.text !== null;
+  const selectedNumber = currentDraft ? draft.sourceNumber : 0;
+  const selected = docLatexBlock(blocks, selectedNumber);
+  const sourceOwner = selected?.id ?? `source-${selectedNumber}`;
   const source =
     draft?.docId === docId && draft.account === account && draft.text !== null
       ? draft.text
       : (docLatexBlock(blocks)?.text ?? EMPTY_LATEX_DOCUMENT);
   return (
-    <Context.Provider value={{ owner, source, setDraftSource }}>
+    <Context.Provider value={{ owner, source, sourceOwner, setDraftSource }}>
       {children}
     </Context.Provider>
   );
@@ -58,7 +66,7 @@ export function DocLatexDocumentPreview() {
   const preview = useDocLatexPreview();
   return (
     <LatexHtmlPreview
-      key={preview?.owner}
+      key={`${preview?.owner}:${preview?.sourceOwner}`}
       source={preview?.source ?? EMPTY_LATEX_DOCUMENT}
       fill
     />

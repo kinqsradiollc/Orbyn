@@ -152,6 +152,35 @@ for (const native of [false, true])
           dom.window.document.querySelector('[data-workspace="true"]'),
           frame,
         );
+        const sourceAFrame = dom.window.document.querySelector(
+          '[data-workspace="true"]',
+        );
+        await React.act(() =>
+          context.setDraftSource("\\unknownOrbynCommand{invalid secondary}", 1),
+        );
+        const sourceBFrame = dom.window.document.querySelector(
+          '[data-workspace="true"]',
+        );
+        assert.notEqual(
+          sourceBFrame,
+          sourceAFrame,
+          "a different source cannot inherit another source's last-good DOM",
+        );
+        await React.act(() => context.setDraftSource("SECOND SOURCE VALID", 1));
+        assert.equal(
+          dom.window.document.querySelector('[data-workspace="true"]'),
+          sourceBFrame,
+        );
+        await React.act(() =>
+          context.setDraftSource("SECOND SOURCE INVALID", 1),
+        );
+        assert.equal(
+          dom.window.document.querySelector('[data-workspace="true"]'),
+          sourceBFrame,
+          "same source retains its host through invalid edits",
+        );
+        assert.equal(blocks[0].text, "FIRST SOURCE");
+        assert.equal(blocks[1].text, "SECOND SOURCE");
         assert.equal(calls, 0);
         account = "owner-b";
         docId = "note-b";

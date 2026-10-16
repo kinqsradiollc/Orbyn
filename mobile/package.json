@@ -54,6 +54,7 @@
     "@types/react": "~19.2.4",
     "esbuild": "0.28.2",
     "jsdom": "26.1.0",
+    "latex.js": "0.12.6",
     "pdfjs-dist": "6.4.299",
     "typescript": "~6.0.3"
   }

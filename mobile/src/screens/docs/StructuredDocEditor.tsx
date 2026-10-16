@@ -91,6 +91,7 @@ function StructuredDocEditorBody({
   canWrite,
   onChanged,
   onShowHistory,
+  onShowComments,
   onShowInLibrary,
   onMoveTo,
   report,
@@ -104,6 +105,7 @@ function StructuredDocEditorBody({
   canWrite: boolean;
   onChanged: (doc: Doc) => void;
   onShowHistory?: () => void;
+  onShowComments?: () => void;
   onShowInLibrary?: () => void;
   onMoveTo?: () => void;
   report: (error: unknown) => void;
@@ -801,7 +803,7 @@ function StructuredDocEditorBody({
                 </Pressable>
               </View>
             )}
-            {canWrite && (sourceVisible || split) && (
+            {canWrite && !latexOpen && (sourceVisible || split) && (
               <Pressable
                 accessibilityRole="button"
                 style={styles.actionTarget}
@@ -914,6 +916,14 @@ function StructuredDocEditorBody({
               >
                 <Text style={styles.action}>Refresh</Text>
               </Pressable>
+              {onShowComments && (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => closeMenuThen(onShowComments)}
+                >
+                  <Text style={styles.action}>Comments</Text>
+                </Pressable>
+              )}
               {onShowHistory && (
                 <Pressable
                   accessibilityRole="button"

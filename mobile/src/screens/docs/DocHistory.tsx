@@ -70,6 +70,7 @@ type DocHistoryProps = {
   doc: Doc;
   canWrite?: boolean;
   openKey?: number;
+  showEntry?: boolean;
   onRestored: (doc: Doc) => void;
   beforeRestore: () => Promise<boolean>;
   onRestoreEnd: () => void;
@@ -81,6 +82,7 @@ function DocHistoryBody({
   onRestored,
   canWrite = true,
   openKey = 0,
+  showEntry = true,
   report,
   beforeRestore,
   onRestoreEnd,
@@ -233,17 +235,19 @@ function DocHistoryBody({
       : page.content;
 
   return (
-    <View style={styles.section}>
-      <Pressable
-        disabled={busy}
-        onPress={() => setOpen(true)}
-        accessibilityRole="button"
-        accessibilityState={{ disabled: busy }}
-        style={styles.head}
-      >
-        <Text style={styles.title}>History</Text>
-        <Text style={styles.toggle}>View</Text>
-      </Pressable>
+    <View style={showEntry ? styles.section : undefined}>
+      {showEntry && (
+        <Pressable
+          disabled={busy}
+          onPress={() => setOpen(true)}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: busy }}
+          style={styles.head}
+        >
+          <Text style={styles.title}>History</Text>
+          <Text style={styles.toggle}>View</Text>
+        </Pressable>
+      )}
 
       <BottomSheet
         visible={open && !restoreOpen}
