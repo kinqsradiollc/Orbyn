@@ -123,7 +123,7 @@ test("consent explains access-only lifetime without guessing for renewable or ol
       access_token_lifetime_seconds: 3600,
     },
   });
-  assert.match(text(visible), /Sign-in lasts up to 1h/);
+  assert.match(text(visible), /Sign-in lasts up to 1 h/);
   assert.match(text(visible), /Reconnect from the app/);
   for (const check of [
     {},
