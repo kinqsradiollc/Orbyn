@@ -1,14 +1,14 @@
 # ADR 005 Document Workspace — Tester Qualification
 
 **Initial candidate:** `f39aad8ee2d6a6eea555c8017c92bb5c77c55cab`
-**Latest corrected candidate:** `a844c8b9c595f879e697c086fa2037cca9c80a10`
+**Latest corrected candidate:** `4ff3bb6b780e5ca8df2dee7f0f30095d6df9c6a2`
 **Parent / baseline:** `9d604df6dfe02e66a7c2492f67d9fab9aa3da9a2`
 **Checkout:** `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`
 **Branch:** `codex/docs-writing-redesign`
-**Phase:** corrected command retest complete; Reviewer closure and Visual acceptance pending
+**Phase:** final interaction command retest complete; Reviewer closure and targeted Visual closure pending
 **Review counter:** ADR 005 remains in round 1/3 for same-round correction closure. ADR 004's historical 2/3 decision remains separate and unchanged.
 
-The first-pass checks below qualify `f39aad8e`; the final section records the independent retest on `a844c8b9`. The three source findings from round 1 were corrected and the affected tests plus the exact Docker target now pass. Overall acceptance still awaits the Reviewer's same-round closure and the separate Visual Check gate. Tester made no product or test-source edits.
+The first-pass checks below qualify `f39aad8e`; subsequent sections record independent retests on `a844c8b9` and the final interaction freeze `4ff3bb6b`. The round-1 source findings and interaction corrections have passed their affected tests, host build and exact Docker build. Overall acceptance still awaits the Reviewer's same-round closure and targeted Visual Check closure. Tester made no product or test-source edits.
 
 ## Initial formal test batch — f39aad8e
 
@@ -100,3 +100,77 @@ unperformed Visual cases in [`document-workspace-visual.md`](document-workspace-
 remain with the Visual owner. Native, database-backed, provider, production and
 Security-scan checks remain outside this retest. The unrelated C6 edit and the
 untracked Reviewer report remain untouched.
+
+## Final interaction correction retest — 4ff3bb6b
+
+The latest frozen product source is
+`4ff3bb6b780e5ca8df2dee7f0f30095d6df9c6a2`, parent
+`36eb6e163cb4bd9225da84d14d40aa4593654d46`, on the same checkout and branch.
+This is another retest in ADR 005 review round 1/3, not a new full review round.
+The earlier `f39aad8e` and `a844c8b9` results remain above.
+
+The exact 14-file formal suite adds `document-divider.unit.test.ts` and
+`mobile-download.unit.test.ts` to the preceding 12-file batch:
+
+```sh
+node --import=tsx --test --test-concurrency=1 \
+  backend/tests/document-workspace.unit.test.ts \
+  backend/tests/latex-html-runtime.unit.test.ts \
+  backend/tests/latex-html-host.unit.test.ts \
+  backend/tests/document-export.unit.test.ts \
+  backend/tests/doc-latex-note.unit.test.ts \
+  backend/tests/doc-writing-experience.unit.test.ts \
+  backend/tests/document-editor-modes.unit.test.ts \
+  backend/tests/doc-source-view.unit.test.ts \
+  backend/tests/doc-editor-store.unit.test.ts \
+  backend/tests/editor-input-ownership.unit.test.ts \
+  backend/tests/neatness.unit.test.ts \
+  backend/tests/button-fallback.unit.test.ts \
+  backend/tests/document-divider.unit.test.ts \
+  backend/tests/mobile-download.unit.test.ts
+```
+
+**Result:** exit 0; **97/97 passed**, 0 failed, 0 cancelled and 0 skipped
+(40.87 seconds). Mode-0600 TAP log: [`4ff3bb6b formal test batch`](/private/tmp/orbyn-document-workspace-formal-4ff3bb6b.tap). The new coverage exercises window-tracked divider movement and cleanup, iframe pointer suppression, and mobile download URL timing, alongside the earlier source ownership, preview recovery and workspace layout regressions.
+
+`npm run build:packages`, `npm run typecheck -w desktop` and
+`npm run typecheck -w mobile` passed. Logs: [`package builds`](/private/tmp/orbyn-document-workspace-packages-4ff3bb6b.log), [`desktop typecheck`](/private/tmp/orbyn-document-workspace-desktop-types-4ff3bb6b.log) and [`mobile typecheck`](/private/tmp/orbyn-document-workspace-mobile-types-4ff3bb6b.log).
+
+`npm run build:pdf-renderer`, `npm run build:diagrams -w mobile` and
+`npm run check:diagrams -w mobile` passed; all ten Mermaid fixtures parsed under
+the strict policy. After the host desktop build, `npm run check:latex-html` and
+the PDF/Mermaid source-digest and desktop/mobile HTML parity checks passed again.
+Logs: [`Mermaid renderer build`](/private/tmp/orbyn-document-workspace-mermaid-assets-4ff3bb6b.log), [`mobile asset preparation`](/private/tmp/orbyn-document-workspace-mobile-assets-4ff3bb6b.log), [`Mermaid fixture check`](/private/tmp/orbyn-document-workspace-mermaid-fixtures-4ff3bb6b.log), [`final HTML runtime check`](/private/tmp/orbyn-document-workspace-html-provenance-final-4ff3bb6b.log) and [`final PDF/Mermaid provenance checks`](/private/tmp/orbyn-document-workspace-pdf-mermaid-provenance-final-4ff3bb6b.log).
+
+`npm run build -w desktop` passed its runtime prebuild, TypeScript, Vite and
+homepage prerender. The exact final production Docker target passed:
+
+```sh
+docker build -f desktop/Dockerfile \
+  -t orbyn-adr005-web:4ff3bb6b \
+  --build-arg GIT_SHA=4ff3bb6b .
+```
+
+The build reused the dependency layers, copied the HTML/PDF runtime generators,
+ran them inside the image, built the production bundle, prerendered the homepage
+and exported the nginx image. Result: exit 0; image
+`orbyn-adr005-web:4ff3bb6b`, image ID
+`sha256:dba1ed9ba8680f6eaa2f738b2bc138cb6e424e66bc4f286f3fff8dc6c234899a`
+(`linux/arm64`). Logs: [`desktop production build`](/private/tmp/orbyn-document-workspace-desktop-build-4ff3bb6b.log) and [`production Docker build`](/private/tmp/orbyn-document-workspace-docker-build-4ff3bb6b.log). Both Vite builds completed with the existing warning for chunks larger than 500 kB.
+
+This source batch also implements the tracked divider interaction and iframe
+cleanup, hides the authenticated footer while the workspace is open, gives PDF
+export a source/account-scoped ready/download result with mobile URL cleanup,
+returns Library Close locally, and consolidates source controls. The design and
+interaction assertions pass in the formal suite; actual rendered closure stays
+with the Visual owner. I did not interact with the shared browser fixture or
+claim native behavior, disk-delivery proof, provider execution, database-backed
+coverage, production deployment or a Security scan. The earlier correction
+ledger retains its harness failures and fixes; the first-pass `77/78` and later
+formal results above have not been erased.
+
+After the host and container builds, final Git status showed no generated asset,
+product-source or test-source changes. Only this Tester report changed for this
+receipt; the pre-existing C6 edit and untracked Reviewer report remain
+untouched. Reviewer same-round closure and targeted Visual closure remain
+separate decisions.
