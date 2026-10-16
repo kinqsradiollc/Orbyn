@@ -89,3 +89,9 @@ browse and document views, with one Library collapse/reopen control. This latest
 owner request supersedes the interim removal of every Library collapse control.
 Remove the redundant document Back button; Library's All documents remains the
 return route. These refinements require final affected-scope qualification.
+
+The owner's final navigation refinement makes the main rail the initial desktop
+state, with hover/focus labels and remembered explicit resizing. A versioned
+width preference avoids retaining the previous expanded default. The mobile
+drawer remains labelled. Library remains a continuous full-height surface with
+subtle selected rows and one visibility control.

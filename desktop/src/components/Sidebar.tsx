@@ -1,5 +1,6 @@
 import { SidebarResizer } from "./SidebarResizer";
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { Popover } from "./Popover";
 import { ActivityDialog } from "../features/activity/ActivityDialog";
 import {
@@ -93,12 +94,39 @@ export function Sidebar({
   const isAdmin = hasSystemPermission(user?.role, "admin:access");
   const { prefs } = usePrefs();
   const [activityOpen, setActivityOpen] = useState(false);
+  const [hint, setHint] = useState<{
+    label: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const showHint = (target: EventTarget | null) => {
+    const button =
+      target instanceof Element
+        ? target.closest<HTMLButtonElement>("button[aria-label]")
+        : null;
+    if (!railed || !button) {
+      setHint(null);
+      return;
+    }
+    const rect = button.getBoundingClientRect();
+    setHint({
+      label: button.getAttribute("aria-label")!,
+      x: rect.right + 10,
+      y: rect.top + rect.height / 2,
+    });
+  };
   const [accountAnchor, setAccountAnchor] = useState<DOMRect | null>(null);
   return (
     <aside
       data-shared-chrome=""
       id="workspace-navigation"
       aria-label="Workspace navigation"
+      onMouseOver={(event) => showHint(event.target)}
+      onMouseLeave={() => setHint(null)}
+      onFocus={(event) => showHint(event.target)}
+      onBlur={() => setHint(null)}
+      onPointerDown={() => setHint(null)}
+      onScrollCapture={() => setHint(null)}
       className={"sidebar " + (open ? "open" : "")}
     >
       {onResize && <SidebarResizer width={width} onChange={onResize} />}
@@ -129,7 +157,7 @@ export function Sidebar({
                   className={view === label ? "active" : ""}
                   aria-current={view === label ? "page" : undefined}
                   aria-label={railed ? navName(label, agentName) : undefined}
-                  title={railed ? navName(label, agentName) : undefined}
+
                   {...newTabClick(
                     () => onNavigate(label),
                     () => openInNewTab({ kind: "screen", view: label }),
@@ -268,6 +296,18 @@ export function Sidebar({
       {activityOpen && (
         <ActivityDialog onClose={() => setActivityOpen(false)} />
       )}
+      {railed &&
+        hint &&
+        createPortal(
+          <div
+            className="navigation-hint"
+            role="tooltip"
+            style={{ left: hint.x, top: hint.y }}
+          >
+            {hint.label}
+          </div>,
+          document.body,
+        )}
     </aside>
   );
 }

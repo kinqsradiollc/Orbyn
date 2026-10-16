@@ -521,3 +521,39 @@
 .docs-workspace.is-compact .docs-navigation .docs-library-hide {
   display: inline-flex;
 }
+
+/* A continuous, quiet library surface rather than a card within the page. */
+.docs-workspace .docs-navigation {
+  background: var(--color-surface);
+  min-height: calc(100dvh - 56px);
+  padding: 16px 12px;
+}
+.docs-workspace .docs-navigation :is(button, summary) {
+  min-height: 34px;
+  padding-block: 6px;
+  gap: 10px;
+  border-radius: 8px;
+}
+.docs-workspace .docs-navigation button[aria-current="page"] {
+  background: var(--color-hover);
+  color: var(--color-text);
+  font-weight: 500;
+}
+.docs-workspace .docs-navigation .docs-tree-more {
+  background: transparent;
+}
+.docs-workspace .docs-nav-heading {
+  margin-top: 22px;
+}
+.docs-workspace .docs-nav-title h2 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.docs-workspace.is-compact .docs-navigation {
+  min-height: 0;
+}
+@media (pointer: coarse) {
+  .docs-workspace .docs-navigation :is(button, summary) {
+    min-height: 44px;
+  }
+}

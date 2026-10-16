@@ -29,9 +29,9 @@ test("remembered navigation accepts the icon rail and valid labelled widths", ()
     ["72", 72],
     ["180", 180],
     ["320", 320],
-    [null, 224],
-    ["120", 224],
-    ["900", 224],
+    [null, 72],
+    ["120", 72],
+    ["900", 72],
   ])
     assert.equal(load(saved as string | null).savedSidebarWidth(), expected);
 });
@@ -58,4 +58,13 @@ test("drag widths snap to the same icon rail; resizer remains reachable in rail 
   assert.doesNotMatch(sidebar, /!railed && onResize/);
   assert.match(source, /width === SIDEBAR_RAIL_WIDTH\s*\? SIDEBAR_LABEL_WIDTH/);
   assert.doesNotMatch(source, /latest.current.onChange/);
+});
+
+test("rail starts compact and offers labels on hover and focus", () => {
+  const sidebar = readFileSync(new URL("../../desktop/src/components/Sidebar.tsx", import.meta.url), "utf8");
+  assert.equal(load().savedSidebarWidth(), 72);
+  assert.match(sidebar, /onMouseOver=\{/);
+  assert.match(sidebar, /onFocus=\{/);
+  assert.match(sidebar, /role="tooltip"/);
+  assert.match(sidebar, /createPortal\(/);
 });

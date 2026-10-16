@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 export const DEFAULT_SIDEBAR_WIDTH = 224;
+export const SIDEBAR_WIDTH_KEY = "orbyn-navigation-width-v2";
 export const SIDEBAR_RAIL_WIDTH = 72;
 export const SIDEBAR_LABEL_WIDTH = 180;
 
@@ -21,14 +22,14 @@ export function sidebarLayout(preferred: number, available: number) {
 }
 export function savedSidebarWidth() {
   try {
-    const width = Number(localStorage.getItem("orbyn-sidebar-width"));
+    const width = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
     return Number.isFinite(width) &&
       (width === SIDEBAR_RAIL_WIDTH || width >= SIDEBAR_LABEL_WIDTH) &&
       width <= 400
       ? width
-      : DEFAULT_SIDEBAR_WIDTH;
+      : SIDEBAR_RAIL_WIDTH;
   } catch {
-    return DEFAULT_SIDEBAR_WIDTH;
+    return SIDEBAR_RAIL_WIDTH;
   }
 }
 
@@ -63,7 +64,7 @@ export function SidebarResizer({
     onChange(next);
     if (remember) {
       try {
-        localStorage.setItem("orbyn-sidebar-width", String(next));
+        localStorage.setItem(SIDEBAR_WIDTH_KEY, String(next));
       } catch {
         /* Session choice remains usable. */
       }
