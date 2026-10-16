@@ -217,3 +217,16 @@ both clients returned to Note and full AX snapshots confirmed Saved. No pending
 owned draft/comment/request. Device metrics and viewport overrides cleared,
 both local QA tabs marked for handoff, fixture returned to parent. Existing
 unobserved native/assistant-execution/two-app-pane boundaries remain unchanged.
+
+### Modest browser enlargement boundary
+
+The final source workspace was additionally observed through supported CDP
+pageScaleFactor1.25: visualViewport.scale1.25, visible CSS viewport1382.4×741.6,
+root scrollTop0, source still717px high. Toolbar/source text stayed readable;
+the pinch-style visual viewport crops the far-right result, as expected for
+magnification without layout reflow. Proof:
+`/private/tmp/orbyn-adr005-final-browser-scale-125.jpg`.
+Page scale restored1, returned Note/Saved and tabs preserved. Chrome keyboard
+zoom shortcuts did not change measured width/DPR, so they are not counted as a
+successful browser text/reflow zoom check. This is modest page magnification
+evidence only, not native font scaling or200% text/reflow acceptance.
