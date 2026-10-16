@@ -6,7 +6,6 @@ import { X } from "lucide-react";
 import {
   docLatexBlock,
   docWholeLatex,
-  docWholeLatexCanExport,
   withDocLatexSource,
   EMPTY_LATEX_DOCUMENT,
   docFragmentIndex,
@@ -48,10 +47,10 @@ export function DocSourcePreview({
   compileReady = true,
   leaveCheck,
   initialSourceNumber = -1,
-  wholeDocumentExportable = true,
+  exportPdfHandle,
 }: {
   initialSourceNumber?: number;
-  wholeDocumentExportable?: boolean;
+  exportPdfHandle?: { current: (() => Promise<void>) | null };
   blocks: DocBlock[];
   docId: string;
   onAppLink: (url: string) => void;
@@ -71,7 +70,7 @@ export function DocSourcePreview({
   inline?: boolean;
   sourceOnly?: boolean;
   showModes?: boolean;
-  compileReady?: boolean;
+  compileReady?: boolean | (() => boolean);
   leaveCheck?: { current: (() => boolean) | null };
 }) {
   const [navigating, setNavigating] = useState(false);
@@ -93,9 +92,6 @@ export function DocSourcePreview({
     (block) => block.type === "code" && block.lang === "latex-document",
   );
   const latex = docLatexBlock(blocks, sourceNumber);
-  const pdfSupported =
-    sourceNumber >= 0 ||
-    (wholeDocumentExportable && docWholeLatexCanExport(blocks));
   const wholeLatexTooLong =
     sourceNumber < 0 && docWholeLatex(blocks).length > 20_000;
   const [latexText, setLatexText] = useState(
@@ -106,21 +102,6 @@ export function DocSourcePreview({
   const sharedPreview = useDocLatexPreview();
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState("");
-  const [pdf, setPdf] = useState<{
-    url: string;
-    source: string;
-    sourceNumber: number;
-    account: ReturnType<typeof session.get>;
-  } | null>(null);
-  useEffect(() => {
-    setPdf(null);
-  }, [latexText, sourceNumber]);
-  useEffect(
-    () => () => {
-      if (pdf) URL.revokeObjectURL(pdf.url);
-    },
-    [pdf],
-  );
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
     if (sourceNumber >= 0 && latex && !liveSourceError.current)
@@ -135,9 +116,14 @@ export function DocSourcePreview({
   const exportPdf = async () => {
     if (
       compile.current ||
-      !compileReady ||
-      !pdfSupported ||
-      sourceError ||
+      !(typeof compileReady === "function" ? compileReady() : compileReady) ||
+      mode !== "latex" ||
+      sourceNumber < 0 ||
+      !latex ||
+      !navigationAlive.current ||
+      navigationPending.current ||
+      session.get() !== navigationOwner ||
+      liveSourceError.current ||
       !(onSourceChange || onLatexChange)
     )
       return;
@@ -145,7 +131,6 @@ export function DocSourcePreview({
     compile.current = controller;
     setCompiling(true);
     setCompileError("");
-    setPdf(null);
     const snapshot = latexText;
     const account = session.get();
     try {
@@ -155,12 +140,12 @@ export function DocSourcePreview({
         const link = document.createElement("a");
         link.href = url;
         link.download = "document.pdf";
-        setPdf({ url, source: snapshot, sourceNumber, account });
         document.body.appendChild(link);
         try {
           link.click();
         } finally {
           link.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
       }
     } catch (error) {
@@ -177,6 +162,17 @@ export function DocSourcePreview({
       }
     }
   };
+  useEffect(() => {
+    if (!exportPdfHandle) return;
+    exportPdfHandle.current =
+      mode === "latex" && sourceNumber >= 0 ? exportPdf : null;
+    return () => {
+      if (exportPdfHandle.current === exportPdf) exportPdfHandle.current = null;
+    };
+  }, [exportPdfHandle, exportPdf]);
+  useEffect(() => {
+    compile.current?.abort();
+  }, [sourceNumber]);
   const id = useId();
   const dialog = useRef<HTMLElement>(null);
   const source = useRef<HTMLTextAreaElement>(null);
@@ -546,12 +542,18 @@ export function DocSourcePreview({
       </div>
       <div className="doc-source-tools">
         {mode === "latex" && sourceNumber < 0 && (
-          <p className="muted small">
-            Edit existing text and equations. Keep block markers; use Note or
-            Markdown for structure and rich text.
-            {wholeLatexTooLong
-              ? " This source exceeds the 20,000-character editing limit; continue in Note or Markdown."
-              : !pdfSupported && " Export this document from Note."}
+          <details className="document-preview-help">
+            <summary>Help</summary>
+            <p>
+              Edit existing text and equations. Keep block markers; use Note or
+              Markdown for structure and rich text.
+            </p>
+          </details>
+        )}
+        {mode === "latex" && wholeLatexTooLong && (
+          <p role="alert">
+            Source exceeds the 20,000-character editing limit. Continue in Note
+            or Markdown.
           </p>
         )}
         {mode === "latex" && sourceNumber >= 0 && sources.length > 0 && (
@@ -622,7 +624,7 @@ export function DocSourcePreview({
               ? "Edit Markdown. Keep block anchors to preserve comments and task links."
               : "Source is read-only."}
         </p>
-        {saveStatus && (
+        {saveStatus && (!inline || /couldn|failed|error/i.test(saveStatus)) && (
           <p role="status" className="doc-source-save">
             {saveStatus}
           </p>
@@ -655,71 +657,8 @@ export function DocSourcePreview({
                 : "Hide source"}
           </button>
         )}
-        {mode === "latex" && (
-          <div className="doc-source-view">
-            {(!inline || compiling || compileError) && (
-              <span className="muted" role="status">
-                {compileError
-                  ? "PDF export failed"
-                  : compiling
-                    ? "Exporting PDF…"
-                    : "Web preview"}
-              </span>
-            )}
-            {(onSourceChange || onLatexChange) && (
-              <button
-                type="button"
-                className="secondary"
-                disabled={
-                  navigating ||
-                  !compileReady ||
-                  !pdfSupported ||
-                  compiling ||
-                  !!sourceError ||
-                  !(onSourceChange || onLatexChange)
-                }
-                onClick={() => void exportPdf()}
-              >
-                Export PDF
-              </button>
-            )}
-            {onAssist && latex?.id && (
-              <button
-                type="button"
-                disabled={navigating || !!sourceError || !latex.text.trim()}
-                className="secondary"
-                onClick={() => onAssist(latex)}
-              >
-                Ask assistant
-              </button>
-            )}
-            {pdf &&
-              pdf.source === latexText &&
-              pdf.sourceNumber === sourceNumber &&
-              pdf.account === session.get() && (
-                <span className="doc-pdf-ready">
-                  <span role="status">PDF ready</span>{" "}
-                  <a
-                    className="text-button"
-                    href={pdf.url}
-                    download="document.pdf"
-                  >
-                    Download PDF
-                  </a>
-                </span>
-              )}
-            {compileError && <p role="alert">{compileError}</p>}
-          </div>
-        )}
-        {mode === "latex" && (
-          <details className="document-preview-help">
-            <summary>About web preview</summary>
-            <p>
-              Web preview supports common LaTeX text and maths. Export PDF for
-              package-dependent layout and pagination.
-            </p>
-          </details>
-        )}
+        {mode === "latex" && compiling && <p role="status">Exporting PDF…</p>}
+        {mode === "latex" && compileError && <p role="alert">{compileError}</p>}
       </div>
       <div
         className="doc-source-columns"

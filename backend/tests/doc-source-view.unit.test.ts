@@ -73,10 +73,17 @@ function fixture(
   const opened: string[] = [];
   let closed = 0,
     downloads = 0;
+  let account = "qa";
+  const auth = {
+    get: () => account,
+    get token() {
+      return account;
+    },
+  };
   const modules: Record<string, unknown> = {
     react: hooks,
     "@orbyn/core": core,
-    "../../lib/session": { session: { token: "qa", get: () => "qa" } },
+    "../../lib/session": { session: auth },
     "../../components/LatexHtmlPreview": { LatexHtmlPreview: container },
     "../../components/Select": { Select: container },
     "../../lib/download": {
@@ -107,6 +114,15 @@ function fixture(
         React.createElement("pre", null, value),
     },
     "../../components/Sheet": { Sheet: container },
+    "../../components/InlineDetails": {
+      InlineDetails: ({ title, children }: any) =>
+        React.createElement(
+          "details",
+          null,
+          React.createElement("summary", null, title),
+          children,
+        ),
+    },
     "./DocEditorModes": {
       DocEditorModes: ({ value, onChange }: any) =>
         React.createElement(
@@ -199,6 +215,9 @@ function fixture(
       },
     },
   );
+  const exportPdfHandle: { current: (() => Promise<void>) | null } = {
+    current: null,
+  };
   const edits: core.DocBlock[][] = [];
   const ownedBlocks = new WeakSet<core.DocBlock[]>();
   let currentBlocks: core.DocBlock[];
@@ -219,6 +238,7 @@ function fixture(
           }
         : undefined,
       saveStatus: "Unsaved changes",
+      exportPdfHandle,
       onAppLink: (url: string) => opened.push(url),
       report: () => {},
       onClose: () => {
@@ -238,6 +258,11 @@ function fixture(
     opened,
     closed: () => closed,
     downloads: () => downloads,
+    requestPdf: () => exportPdfHandle.current?.() ?? Promise.resolve(),
+    hasSourceExport: () => !!exportPdfHandle.current,
+    setAccount: (next: string) => {
+      account = next;
+    },
   });
 }
 function find(
@@ -862,12 +887,14 @@ for (const native of [false, true]) {
       ),
       false,
     );
-    const action = find(tree, (p) =>
-      native ? p.title === "Export PDF" : p.children === "Export PDF",
-    )!;
-    assert.ok(action);
-    if (native) action.onPress();
-    else action.onClick();
+    assert.equal(
+      find(tree, (p) =>
+        native ? p.title === "Export PDF" : p.children === "Export PDF",
+      ),
+      undefined,
+    );
+    assert.equal(render.hasSourceExport(), true);
+    await render.requestPdf();
     await new Promise((resolve) => setImmediate(resolve));
     assert.deepEqual(calls, ["Saved source"]);
     assert.equal(render.downloads(), 1);
@@ -888,12 +915,8 @@ for (const native of [false, true]) {
       onCompileLatex: compile,
       initialSourceNumber: 0,
     });
-    const locked = find(unsaved(blocks), (p) =>
-      native ? p.title === "Export PDF" : p.children === "Export PDF",
-    )!;
-    assert.equal(locked.disabled, true);
-    if (native) locked.onPress();
-    else locked.onClick();
+    unsaved(blocks);
+    await unsaved.requestPdf();
     assert.equal(signal, undefined);
     const saved = fixture(native, true, {
       inline: true,
@@ -909,15 +932,12 @@ for (const native of [false, true]) {
           e.deps?.length === 0 && e.run.toString().includes("compile.current"),
       )!
       .run();
-    const action = find(tree, (p) =>
-      native ? p.title === "Export PDF" : p.children === "Export PDF",
-    )!;
-    if (native) action.onPress();
-    else action.onClick();
+    const pending = saved.requestPdf();
     assert.ok(signal && !signal.aborted);
     cleanup();
     assert.equal(signal!.aborted, true);
     finish(new Blob(["stale PDF"]));
+    await pending;
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(saved.downloads(), 0);
   });
@@ -1059,32 +1079,65 @@ for (const native of [false, true])
   });
 
 for (const native of [false, true])
-  test(`${native ? "Expo" : "web"} refuses incomplete whole-document PDF export without a provider call`, () => {
-    let calls = 0;
-    for (const [blocks, wholeDocumentExportable] of [
-      [[{ type: "paragraph", text: "**Rich**", id: "rich" }], true],
-      [[{ type: "paragraph", text: "Nested text", id: "nested" }], false],
-    ] as [core.DocBlock[], boolean][]) {
-      const render = fixture(native, true, {
-        inline: true,
-        initialMode: "latex",
-        wholeDocumentExportable,
-        onCompileLatex: () => {
-          calls++;
-          return Promise.resolve(new Blob());
-        },
-      });
-      const tree = render(blocks);
-      const action = find(tree, (p) =>
-        native ? p.title === "Export PDF" : p.children === "Export PDF",
-      )!;
-      assert.equal(action.disabled, true);
-      if (native) action.onPress();
-      else action.onClick();
-      assert.equal(calls, 0);
-      assert.match(
-        renderToStaticMarkup(tree),
-        /Export this document from Note/,
-      );
-    }
+  test(`${native ? "Expo" : "web"} whole-document source has no export action and keeps guidance collapsed`, () => {
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+    });
+    const tree = render([{ type: "paragraph", text: "**Rich**", id: "rich" }]);
+    assert.equal(render.hasSourceExport(), false);
+    assert.equal(
+      find(
+        tree,
+        (p) =>
+          p.children === "Export PDF" ||
+          p.title === "Export PDF" ||
+          p.title === "Ask assistant" ||
+          p.children === "Ask assistant",
+      ),
+      undefined,
+    );
+    const help = find(
+      tree,
+      (p) => p.className === "document-preview-help" || p.title === "Help",
+    )!;
+    assert.ok(help);
+    const html = renderToStaticMarkup(tree);
+    assert.match(html, /<details(?:\s[^>]*)?>/);
+    assert.doesNotMatch(
+      html,
+      /<details[^>]* open|About web preview|Export this document from Note/,
+    );
+  });
+
+for (const native of [false, true])
+  test(`${native ? "Expo" : "web"} routed embedded download reads live save readiness and cancels account-changed output`, async () => {
+    let ready = false,
+      calls = 0,
+      finish!: (blob: Blob) => void;
+    const render = fixture(native, true, {
+      inline: true,
+      initialMode: "latex",
+      initialSourceNumber: 0,
+      compileReady: () => ready,
+      onCompileLatex: () => {
+        calls++;
+        return new Promise<Blob>((resolve) => {
+          finish = resolve;
+        });
+      },
+    });
+    const blocks = core.withDocLatexSource([], "Saved embedded source");
+    render(blocks);
+    await render.requestPdf();
+    assert.equal(calls, 0);
+    ready = true;
+    const pending = render.requestPdf();
+    assert.equal(calls, 1);
+    render.setAccount("different-account");
+    finish(new Blob(["private PDF"]));
+    await pending;
+    assert.equal(render.downloads(), 0);
+    await render.requestPdf();
+    assert.equal(calls, 1);
   });

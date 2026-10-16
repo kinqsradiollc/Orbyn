@@ -1,3 +1,4 @@
+import { InlineDetails } from "../../components/InlineDetails";
 import { saveFile } from "../../lib/download";
 import { LatexHtmlPreview } from "../../components/LatexHtmlPreview";
 import { DocEditorModes } from "./DocEditorModes";
@@ -14,7 +15,6 @@ import {
 import {
   docLatexBlock,
   docWholeLatex,
-  docWholeLatexCanExport,
   withDocLatexSource,
   EMPTY_LATEX_DOCUMENT,
   docFragmentIndex,
@@ -58,10 +58,10 @@ export function DocSourcePreview({
   compileReady = true,
   leaveCheck,
   initialSourceNumber = -1,
-  wholeDocumentExportable = true,
+  exportPdfHandle,
 }: {
   initialSourceNumber?: number;
-  wholeDocumentExportable?: boolean;
+  exportPdfHandle?: { current: (() => Promise<void>) | null };
   blocks: DocBlock[];
   docId: string;
   onAppLink: (url: string) => void;
@@ -84,7 +84,7 @@ export function DocSourcePreview({
   showModes?: boolean;
   editorHeight?: number;
   onModeChange?: (mode: "markdown" | "latex") => void;
-  compileReady?: boolean;
+  compileReady?: boolean | (() => boolean);
   leaveCheck?: { current: (() => boolean) | null };
 }) {
   const [navigating, setNavigating] = useState(false);
@@ -106,9 +106,6 @@ export function DocSourcePreview({
     (block) => block.type === "code" && block.lang === "latex-document",
   );
   const latex = docLatexBlock(blocks, sourceNumber);
-  const pdfSupported =
-    sourceNumber >= 0 ||
-    (wholeDocumentExportable && docWholeLatexCanExport(blocks));
   const wholeLatexTooLong =
     sourceNumber < 0 && docWholeLatex(blocks).length > 20_000;
   const [latexText, setLatexText] = useState(
@@ -119,15 +116,6 @@ export function DocSourcePreview({
   const sharedPreview = useDocLatexPreview();
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState("");
-  const [pdf, setPdf] = useState<{
-    blob: Blob;
-    source: string;
-    sourceNumber: number;
-    account: typeof session.token;
-  } | null>(null);
-  useEffect(() => {
-    setPdf(null);
-  }, [latexText, sourceNumber]);
   const compile = useRef<AbortController | null>(null);
   useEffect(() => {
     if (sourceNumber >= 0 && latex && !liveSourceError.current)
@@ -142,9 +130,14 @@ export function DocSourcePreview({
   const exportPdf = async () => {
     if (
       compile.current ||
-      !compileReady ||
-      !pdfSupported ||
-      sourceError ||
+      !(typeof compileReady === "function" ? compileReady() : compileReady) ||
+      mode !== "latex" ||
+      sourceNumber < 0 ||
+      !latex ||
+      !navigationAlive.current ||
+      navigationPending.current ||
+      session.token !== navigationOwner ||
+      liveSourceError.current ||
       !(onSourceChange || onLatexChange)
     )
       return;
@@ -152,13 +145,11 @@ export function DocSourcePreview({
     compile.current = controller;
     setCompiling(true);
     setCompileError("");
-    setPdf(null);
     const snapshot = latexText;
     const account = session.token;
     try {
       const blob = await onCompileLatex(snapshot, controller.signal);
       if (!controller.signal.aborted && account === session.token) {
-        setPdf({ blob, source: snapshot, sourceNumber, account });
         await saveFile("document.pdf", blob, "application/pdf");
       }
     } catch (error) {
@@ -175,6 +166,18 @@ export function DocSourcePreview({
       }
     }
   };
+  useEffect(() => {
+    if (!exportPdfHandle) return;
+    exportPdfHandle.current =
+      mode === "latex" && sourceNumber >= 0 ? exportPdf : null;
+    return () => {
+      if (exportPdfHandle.current === exportPdf) exportPdfHandle.current = null;
+    };
+  }, [exportPdfHandle, exportPdf]);
+  useEffect(() => {
+    compile.current?.abort();
+  }, [sourceNumber]);
+
   const [sourceVisible, setSourceVisible] = useState(true);
   const [paneWidth, setPaneWidth] = useState(0);
   const { fontScale, height: windowHeight } = useWindowDimensions();
@@ -488,7 +491,7 @@ export function DocSourcePreview({
                 : "Source is read-only."}
           </Text>
         )}
-        {saveStatus && !inline && (
+        {saveStatus && (!inline || /couldn|failed|error/i.test(saveStatus)) && (
           <Text accessibilityLiveRegion="polite" style={shared.small}>
             {saveStatus}
           </Text>
@@ -531,12 +534,17 @@ export function DocSourcePreview({
         )}
       </ScrollView>
       {mode === "latex" && sourceNumber < 0 && (
-        <Text style={shared.small}>
-          Edit existing text and equations. Keep block markers; use Note or
-          Markdown for structure and rich text.
-          {wholeLatexTooLong
-            ? " This source exceeds the 20,000-character editing limit; continue in Note or Markdown."
-            : !pdfSupported && " Export this document from Note."}
+        <InlineDetails title="Help">
+          <Text style={shared.small}>
+            Edit existing text and equations. Keep block markers; use Note or
+            Markdown for structure and rich text.
+          </Text>
+        </InlineDetails>
+      )}
+      {mode === "latex" && wholeLatexTooLong && (
+        <Text accessibilityRole="alert" style={shared.small}>
+          Source exceeds the 20,000-character editing limit. Continue in Note or
+          Markdown.
         </Text>
       )}
       {mode === "latex" && sourceNumber >= 0 && sources.length > 0 && (
@@ -579,89 +587,11 @@ export function DocSourcePreview({
       )}
       {mode === "latex" && (
         <>
-          <View
-            style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              alignItems: "center",
-              paddingHorizontal: 12,
-              paddingVertical: 4,
-              gap: 8,
-            }}
-          >
-            {(!inline || compiling || compileError) && (
-              <Text accessibilityLiveRegion="polite" style={shared.small}>
-                {compileError
-                  ? "PDF export failed"
-                  : compiling
-                    ? "Exporting PDF…"
-                    : "Web preview"}
-              </Text>
-            )}
-            {(onSourceChange || onLatexChange) && (
-              <Button
-                style={{ marginBottom: 0 }}
-                title="Export PDF"
-                secondary
-                disabled={
-                  navigating ||
-                  !compileReady ||
-                  !pdfSupported ||
-                  compiling ||
-                  !!sourceError ||
-                  !(onSourceChange || onLatexChange)
-                }
-                onPress={() => void exportPdf()}
-              />
-            )}
-            {onAssist && latex?.id && (
-              <Button
-                style={{ marginBottom: 0 }}
-                title="Ask assistant"
-                secondary
-                disabled={navigating || !!sourceError || !latex.text.trim()}
-                onPress={() => onAssist(latex)}
-              />
-            )}
-          </View>
-          {pdf &&
-            pdf.source === latexText &&
-            pdf.sourceNumber === sourceNumber &&
-            pdf.account === session.token && (
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  paddingHorizontal: 12,
-                }}
-              >
-                <Text accessibilityLiveRegion="polite" style={shared.small}>
-                  PDF ready
-                </Text>
-                <Button
-                  title="Save PDF"
-                  secondary
-                  style={{ marginBottom: 0 }}
-                  onPress={() => {
-                    if (pdf.account !== session.token) return;
-                    void saveFile(
-                      "document.pdf",
-                      pdf.blob,
-                      "application/pdf",
-                    ).catch((error) => {
-                      if (pdf.account !== session.token) return;
-                      setCompileError(
-                        error instanceof Error
-                          ? error.message
-                          : "Couldn’t save this PDF. Try again.",
-                      );
-                    });
-                  }}
-                />
-              </View>
-            )}
+          {compiling && (
+            <Text accessibilityLiveRegion="polite" style={shared.small}>
+              Exporting PDF…
+            </Text>
+          )}
           {!!compileError && (
             <Text accessibilityRole="alert" style={shared.small}>
               {compileError}

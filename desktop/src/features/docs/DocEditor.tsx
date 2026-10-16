@@ -1,3 +1,4 @@
+import { routeDocumentDownload } from "./document-download";
 import {
   DocumentLibraryButton,
   DocumentPaneSwitch,
@@ -516,6 +517,8 @@ function LegacyDocEditor({
   >("markdown");
   const linkNavigation = useRef(false);
   const sourceLeaveCheck = useRef<(() => boolean) | null>(null);
+  const sourcePdfExport = useRef<(() => Promise<void>) | null>(null);
+  const downloadPending = useRef(false);
   const sourcePreviewOwner = useRef(sourcePreview);
   sourcePreviewOwner.current = sourcePreview;
   const [sourceAsk, setSourceAsk] = useState<{
@@ -2997,22 +3000,50 @@ function LegacyDocEditor({
    * from here are the same file.
    */
   const download = async (format: ExportFormat) => {
+    if (downloadPending.current) return;
+    downloadPending.current = true;
     setDownloadMenu(false);
-    toast({ text: `Making the ${EXPORT_LABELS[format].name} file…` });
+    const account = authSession.get(),
+      page = doc.id;
+    const owns = () =>
+      historyMounted.current &&
+      authSession.get() === account &&
+      docNow.current.id === page;
     try {
+      if (sourcePreview && !sourceLeaveCheck.current?.())
+        throw new Error("Restore the current source draft before downloading.");
       await flush();
-      const { blob, name } = await client.exportDoc(doc.id, format, {
-        version: version.current,
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(url);
-      toast({ text: `Downloaded “${name}”` });
-    } catch (e) {
-      report(e);
+      await routeDocumentDownload(
+        format,
+        !!sourcePreview &&
+          sourcePreviewMode === "latex" &&
+          latexSourceNumber >= 0,
+        sourcePdfExport,
+        () =>
+          owns() &&
+          !dirty.current &&
+          (!sourcePreview || sourceLeaveCheck.current?.() === true),
+        async () => {
+          const { blob, name } = await client.exportDoc(page, format, {
+            version: version.current,
+          });
+          if (!owns()) return;
+          const url = URL.createObjectURL(blob);
+          try {
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = name;
+            a.click();
+          } finally {
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }
+          toast({ text: `Downloaded “${name}”` });
+        },
+      );
+    } catch (error) {
+      if (owns()) report(error);
+    } finally {
+      downloadPending.current = false;
     }
   };
 
@@ -3363,9 +3394,8 @@ function LegacyDocEditor({
               key={`${sourcePreviewMode}:${latexSourceNumber}`}
               initialSourceNumber={latexSourceNumber}
               leaveCheck={sourceLeaveCheck}
-              compileReady={
-                !dirty.current && save !== "saving" && save !== "error"
-              }
+              exportPdfHandle={sourcePdfExport}
+              compileReady={() => !dirty.current}
               inline
               sourceOnly
               showModes={false}

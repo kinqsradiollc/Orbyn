@@ -1,3 +1,4 @@
+import { routeDocumentDownload } from "./document-download";
 import { shared } from "../../styles";
 import { DocumentLibraryButton, useDocumentLibrary } from "./DocumentWorkspace";
 import { DocumentDivider } from "../../components/DocumentDivider";
@@ -130,7 +131,7 @@ import { readsFirst } from "../../lib/reading";
 import { forgetPage, rememberPage } from "../../lib/pageCache";
 import { savePageOffline } from "../../lib/outbox";
 import { PublishSheet } from "./PublishSheet";
-import { downloadDoc, formatsHere } from "../../lib/download";
+import { saveFile, formatsHere } from "../../lib/download";
 import { copyLink, shareLink, sharePageFile } from "../../lib/share";
 import { currentDoc, setOpenDoc } from "../../lib/live";
 import { BottomSheet } from "../../components/BottomSheet";
@@ -364,6 +365,8 @@ function LegacyDocEditor({
     "markdown" | "latex"
   >("markdown");
   const sourceLeaveCheck = useRef<(() => boolean) | null>(null);
+  const sourcePdfExport = useRef<(() => Promise<void>) | null>(null);
+  const downloadPending = useRef(false);
   const sourcePreviewOwner = useRef(sourcePreview);
   sourcePreviewOwner.current = sourcePreview;
   const [sourceAsk, setSourceAsk] = useState<{
@@ -3112,10 +3115,45 @@ function LegacyDocEditor({
       onPress: () => void sharePageFile(doc.id, "pdf").catch(report),
     },
   ];
+  const download = async (format: ExportFormat) => {
+    if (downloadPending.current || !currentPage()) return;
+    downloadPending.current = true;
+    const account = authSession.token,
+      page = doc.id;
+    const owns = () => currentPage() && authSession.token === account;
+    try {
+      if (sourcePreview && !sourceLeaveCheck.current?.())
+        throw new Error("Restore the current source draft before downloading.");
+      syncDraft();
+      await flush();
+      await routeDocumentDownload(
+        format,
+        !!sourcePreview &&
+          sourcePreviewMode === "latex" &&
+          latexSourceNumber >= 0,
+        sourcePdfExport,
+        () =>
+          owns() &&
+          !dirty.current &&
+          (!sourcePreview || sourceLeaveCheck.current?.() === true),
+        async () => {
+          const { blob, name } = await client.exportDoc(page, format, {
+            version: version.current,
+          });
+          if (owns())
+            await saveFile(name, blob, blob.type || EXPORT_LABELS[format].type);
+        },
+      );
+    } catch (error) {
+      if (owns()) report(error);
+    } finally {
+      downloadPending.current = false;
+    }
+  };
   const exportActions: MoreAction[] = formatsHere().map(
     (format: ExportFormat) => ({
       label: EXPORT_LABELS[format].name,
-      onPress: () => void downloadDoc(doc.id, format).catch(report),
+      onPress: () => void download(format),
     }),
   );
   // ---- contents (NAV-03) ----
@@ -3312,7 +3350,8 @@ function LegacyDocEditor({
                     key={`${sourcePreviewMode}:${latexSourceNumber}`}
                     initialSourceNumber={latexSourceNumber}
                     leaveCheck={sourceLeaveCheck}
-                    compileReady={!dirty.current && !saving && !saveFailure}
+                    exportPdfHandle={sourcePdfExport}
+                    compileReady={() => !dirty.current}
                     inline
                     sourceOnly
                     showModes={false}

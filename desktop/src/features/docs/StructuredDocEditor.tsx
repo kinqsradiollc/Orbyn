@@ -1,3 +1,4 @@
+import { routeDocumentDownload } from "./document-download";
 import {
   DocumentLibraryButton,
   DocumentPaneSwitch,
@@ -107,6 +108,8 @@ function StructuredDocEditorBody({
     sourceFormat !== "note",
   );
   const sourceLeaveCheck = useRef<(() => boolean) | null>(null);
+  const sourcePdfExport = useRef<(() => Promise<void>) | null>(null);
+  const downloadPending = useRef(false);
   const latexOwner = useRef(latexOpen);
   latexOwner.current = latexOpen;
   const [sourceAsk, setSourceAsk] = useState<DocBlock | null>(null);
@@ -809,23 +812,58 @@ function StructuredDocEditorBody({
     }
   };
   const download = async (format: ExportFormat) => {
+    if (downloadPending.current) return;
+    downloadPending.current = true;
     setMenuOpen(false);
-    if (!session || docEditorSessionDirty(session) || state.source !== null)
-      return;
+    const account = authSession.get(),
+      page = doc.id;
+    const owns = () =>
+      sourceAlive.current &&
+      authSession.get() === account &&
+      sourceOwner.current.id === page &&
+      sourceOwner.current.userId === userId;
     try {
-      const { blob, name } = await client.exportDoc(doc.id, format, {
-        version: session.saved.version,
-      });
-      const url = URL.createObjectURL(blob);
-      const link = globalThis.document.createElement("a");
-      link.href = url;
-      link.download = name;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      await routeDocumentDownload(
+        format,
+        latexOpen && latexSourceNumber >= 0,
+        sourcePdfExport,
+        () => {
+          const current = store.state;
+          return (
+            owns() &&
+            !!current.session &&
+            !current.busy &&
+            !current.error &&
+            !current.conflict &&
+            !current.sourceInvalid &&
+            current.source === null &&
+            !docEditorSessionDirty(current.session) &&
+            (!latexOpen || sourceLeaveCheck.current?.() === true)
+          );
+        },
+        async () => {
+          const { blob, name } = await client.exportDoc(page, format, {
+            version: store.state.session!.saved.version,
+          });
+          if (!owns()) return;
+          const url = URL.createObjectURL(blob);
+          try {
+            const link = globalThis.document.createElement("a");
+            link.href = url;
+            link.download = name;
+            link.click();
+          } finally {
+            window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+          }
+        },
+      );
     } catch (error) {
-      report(error);
+      if (owns()) report(error);
+    } finally {
+      downloadPending.current = false;
     }
   };
+
   useEffect(() => {
     if (
       !canWrite ||
@@ -1418,16 +1456,20 @@ function StructuredDocEditorBody({
                 </div>
                 {latexOpen && document && session && (
                   <DocSourcePreview
-                    wholeDocumentExportable={document.format !== 2}
+                    exportPdfHandle={sourcePdfExport}
                     leaveCheck={sourceLeaveCheck}
-                    compileReady={
-                      !state.busy &&
-                      !state.error &&
-                      !state.conflict &&
-                      !!session &&
-                      !docEditorSessionDirty(session) &&
-                      state.source === null
-                    }
+                    compileReady={() => {
+                      const current = store.state;
+                      return (
+                        !current.busy &&
+                        !current.error &&
+                        !current.conflict &&
+                        !current.sourceInvalid &&
+                        !!current.session &&
+                        !docEditorSessionDirty(current.session) &&
+                        current.source === null
+                      );
+                    }}
                     inline
                     sourceOnly
                     showModes={false}

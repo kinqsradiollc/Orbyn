@@ -1,3 +1,4 @@
+import { routeDocumentDownload } from "./document-download";
 import { DocumentLibraryButton, useDocumentLibrary } from "./DocumentWorkspace";
 import { DocumentDivider } from "../../components/DocumentDivider";
 import {
@@ -23,6 +24,7 @@ import {
 import {
   docContainerBlocks,
   newBlockId,
+  type ExportFormat,
   docLatexOperation,
   docWholeLatexOperation,
   docFragmentIndex,
@@ -51,7 +53,7 @@ import { session as authSession } from "../../lib/session";
 import { rememberPageDurable } from "../../lib/pageCache";
 import { canLeaveStructuredDocDraft } from "../../lib/structuredDocDraftGuard";
 import { savePageOffline } from "../../lib/outbox";
-import { downloadDoc, downloadLabel, formatsHere } from "../../lib/download";
+import { saveFile, downloadLabel, formatsHere } from "../../lib/download";
 import { DocContainerBody } from "./DocContainerBody";
 import { DocBody } from "./DocBody";
 import { PageMaintenanceSheet } from "./PageMaintenanceSheet";
@@ -132,6 +134,8 @@ function StructuredDocEditorBody({
   const [latexSourceNumber, setLatexSourceNumber] = React.useState(0);
   const [latexOpen, setLatexOpen] = React.useState(false);
   const sourceLeaveCheck = React.useRef<(() => boolean) | null>(null);
+  const sourcePdfExport = React.useRef<(() => Promise<void>) | null>(null);
+  const downloadPending = React.useRef(false);
   const latexOwner = React.useRef(latexOpen);
   latexOwner.current = latexOpen;
   const [sourceAsk, setSourceAsk] = React.useState<DocBlock | null>(null);
@@ -690,6 +694,42 @@ function StructuredDocEditorBody({
     } else setEditing(path.join("/"));
   };
 
+  const download = async (format: ExportFormat) => {
+    if (downloadPending.current || !currentPage()) return;
+    downloadPending.current = true;
+    try {
+      await routeDocumentDownload(
+        format,
+        latexOpen && latexSourceNumber >= 0,
+        sourcePdfExport,
+        () => {
+          const current = store.state;
+          return (
+            currentPage() &&
+            !!current.session &&
+            !current.busy &&
+            !current.error &&
+            !current.conflict &&
+            !current.sourceInvalid &&
+            current.source === null &&
+            !docEditorSessionDirty(current.session) &&
+            (!latexOpen || sourceLeaveCheck.current?.() === true)
+          );
+        },
+        async () => {
+          const { blob, name } = await client.exportDoc(doc.id, format, {
+            version: store.state.session!.saved.version,
+          });
+          if (currentPage())
+            await saveFile(name, blob, blob.type || "application/octet-stream");
+        },
+      );
+    } catch (error) {
+      if (currentPage()) report(error);
+    } finally {
+      downloadPending.current = false;
+    }
+  };
   return (
     <DocLatexPreviewProvider
       canCompile={canWrite}
@@ -965,14 +1005,7 @@ function StructuredDocEditorBody({
                     state.source !== null
                   }
                   onPress={() => {
-                    closeMenuThen(
-                      () =>
-                        void downloadDoc(
-                          doc.id,
-                          format,
-                          session?.saved.version,
-                        ).catch(report),
-                    );
+                    closeMenuThen(() => void download(format));
                   }}
                 >
                   <Text style={styles.action}>{downloadLabel(format)}</Text>
@@ -1112,16 +1145,20 @@ function StructuredDocEditorBody({
                   </Text>
                   {latexOpen && document && session && (
                     <DocSourcePreview
-                      wholeDocumentExportable={document.format !== 2}
+                      exportPdfHandle={sourcePdfExport}
                       leaveCheck={sourceLeaveCheck}
-                      compileReady={
-                        !state.busy &&
-                        !state.error &&
-                        !state.conflict &&
-                        !!session &&
-                        !docEditorSessionDirty(session) &&
-                        state.source === null
-                      }
+                      compileReady={() => {
+                        const current = store.state;
+                        return (
+                          !current.busy &&
+                          !current.error &&
+                          !current.conflict &&
+                          !current.sourceInvalid &&
+                          !!current.session &&
+                          !docEditorSessionDirty(current.session) &&
+                          current.source === null
+                        );
+                      }}
                       inline
                       sourceOnly
                       editorHeight={paneHeight}
