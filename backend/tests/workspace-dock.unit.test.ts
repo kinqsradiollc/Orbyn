@@ -377,3 +377,16 @@ test("a budget-forced desktop overlay is a right sheet; fullscreen is phone-only
   );
   assert.match(css, /@media \(max-width: 640px\)[\s\S]*?width: 100%/);
 });
+
+test("the App split budget keeps a remembered 420px dock inline at 1440px", () => {
+  const f = fixture("420"),
+    p = props();
+  f.render(p);
+  f.states[1] = 1440;
+  const tree = f.render({ ...p, minMainWidth: 960 });
+  assert.equal(f.exports.dockMaximum(1440, 960), 480);
+  assert.equal(tree.props.role, "complementary");
+  assert.equal(tree.props.style.width, 420);
+  const separator = nodes(tree).find((n) => n.props?.role === "separator");
+  assert.equal(separator.props["aria-valuemax"], 480);
+});
