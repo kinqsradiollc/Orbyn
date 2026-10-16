@@ -166,3 +166,54 @@ or repeated renderer/source tests needed. Native behavior, actual generated
 assistant approval, disk delivery of PDF and simultaneous two-app-pane behavior
 remain outside this worker's observed evidence. No production/provider/security
 operation occurred.
+
+## Final targeted closure — `4ff3bb6b780e5ca8df2dee7f0f30095d6df9c6a2`
+
+Both assigned URLs refreshed. This batch rechecked only the remaining findings;
+the completed rendering/writing/recovery evidence above remains valid. No content
+edits, external providers, native builds or production operations were needed.
+
+| Finding | Actual final observation |
+| --- | --- |
+| W-V3 closed | At1440×900, root scrollTop0/scrollHeight900 and footer display:none. At900×500, root scrollTop0/scrollHeight500. Switching to Preview and clicking its actual HTML main focused the iframe while root remained0; app bar stayed visible. No footer focus jump. |
+| W-V6 closed | Actual CDP pointer press at measured divider x892,y400, move/release at1012,y400 crossed into the preview. Value55→65; source width664.4→785.2 and preview543.6→422.8. After release iframe pointer-events returned auto; clicking its main focused IFRAME. Keyboard ArrowLeft65→60 still works. This is actual pointer movement, not a programmatic value change. |
+| W-V7 observable result closed | Web Export PDF visibly showed Exporting PDF… then PDF ready with a retained Download PDF link. Clicking the manual link succeeded as UI action; the supported download observer timed out15s, so this worker does not infer disk delivery from that click. Expo320 Export PDF reached PDF ready and Save PDF; clicking Save PDF retained the HTML/source workspace and ready action. |
+| W-V8 closed | Expo320 Note→Document library→Close returned the same current Note and original title/content, rather than exiting Docs to Home. |
+| Source-tool density closed | Web wide source starts y202,h690, compared with prior y275,h617. Selector/actions share a wrapping tools row; optional help remains folded. With the ready result shown and a676px-wide remaining workspace at900×500, tools wrap naturally and source retains267px height to y492. Expo320 removes redundant source caption; before ready row the textarea starts272,h528. Essential controls remain readable and distinct. |
+
+### PDF delivery evidence from the owner, separately attributed
+
+Parent received the owner's actual downloaded file
+`/Users/anhdang/Downloads/document (1).pdf` and independently inspected it with
+pypdf and Poppler. Parent reports15,037bytes, two A4 pages, SHA256
+`be66302946bc7f002468c896acbc695ed4c035702b1c5d7bb8a74da601d15109`.
+Page1 contains “A clearer preview.” and page2 “Second page retained.”; both
+rendered without blank/clipped content. The pages are sparse because the synthetic
+source is short. Render proofs are
+`/private/tmp/orbyn-adr005-pdf-review/tmp/pdfs/download-1.png` and `download-2.png`.
+This is owner-supplied delivery evidence verified by parent, not a successful
+automated download capture by this worker.
+
+### Final design assessment and proof
+
+The remaining chrome no longer displaces the workspace or produces an outer
+scrollbar. Source and HTML result occupy the available canvas, pointer resizing
+works across the iframe boundary, and phone source retains a useful continuous
+editing area. Source tools now have a clear hierarchy and export has an observable
+result. Combined with the retained realistic-content evidence above, the bounded
+ADR005 visual batch is accepted; it is not a claim of native or live-provider
+acceptance. The short final screenshot shows deliberately sparse original text,
+not a missing/blank rendering.
+
+- `/private/tmp/orbyn-adr005-final-workspace-wide.jpg` —1440×900 dark source/result,
+  persistent app/document bars, visible PDF ready/manual download.
+- `/private/tmp/orbyn-adr005-final-workspace-short.jpg` —900×500 dark Source mode,
+  compact wrapping tools and no footer/root overflow.
+- `/private/tmp/orbyn-adr005-final-phone-source-320.jpg` —320×800 light Expo source,
+  visible PDF ready/Save PDF and useful editing space.
+
+Exact original Markdown baseline equality confirmed, including original IDs;
+both clients returned to Note and full AX snapshots confirmed Saved. No pending
+owned draft/comment/request. Device metrics and viewport overrides cleared,
+both local QA tabs marked for handoff, fixture returned to parent. Existing
+unobserved native/assistant-execution/two-app-pane boundaries remain unchanged.
