@@ -230,3 +230,14 @@ Page scale restored1, returned Note/Saved and tabs preserved. Chrome keyboard
 zoom shortcuts did not change measured width/DPR, so they are not counted as a
 successful browser text/reflow zoom check. This is modest page magnification
 evidence only, not native font scaling or200% text/reflow acceptance.
+
+One bounded native Chrome-shell follow-up was attempted at parent's request.
+The native app binding selected a personal window; its Window menu listed only
+three personal windows, with no Docs·Orbyn/Orbyn QA window. The Mac runtime does
+not expose `cua.listWindows`, and its app inventory supplies no window IDs for
+Chrome. The separate supported Chrome tab controls still address the correct QA
+tabs, but cannot select Chrome's native View menu specifically for those tabs.
+No personal window zoom was changed; the inspected Window menu was dismissed.
+Actual Chrome text/reflow zoom remains unverified because the available native
+surface cannot safely target this QA tab. No alternate browser/origin or DOM/CSS
+injection was used, and no additional zoom attempts were made.
