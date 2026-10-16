@@ -390,3 +390,12 @@ test("the App split budget keeps a remembered 420px dock inline at 1440px", () =
   const separator = nodes(tree).find((n) => n.props?.role === "separator");
   assert.equal(separator.props["aria-valuemax"], 480);
 });
+
+test("dock and page tab bars share one chrome height", () => {
+  const appCss = readFileSync(new URL("../../desktop/src/app/workspace.css", import.meta.url), "utf8");
+  const dockCss = readFileSync(new URL("../../desktop/src/components/workspace-dock.css", import.meta.url), "utf8");
+  assert.match(appCss, /--workspace-chrome-height: 56px/);
+  assert.match(appCss, /--topbar-h: var\(--workspace-chrome-height, 56px\)/);
+  assert.match(dockCss, /height: var\(--workspace-chrome-height, 56px\)/);
+  assert.match(dockCss, /box-sizing: border-box/);
+});

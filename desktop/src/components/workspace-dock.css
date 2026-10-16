@@ -19,6 +19,10 @@
   border: 0;
 }
 .workspace-dock-header {
+  box-sizing: border-box;
+  height: var(--workspace-chrome-height, 56px);
+  min-height: var(--workspace-chrome-height, 56px);
+  flex: none;
   display: flex;
   align-items: center;
   gap: 4px;
