@@ -1,3 +1,10 @@
+import { WorkspaceDock } from "../components/WorkspaceDock";
+import {
+  dockReducer,
+  initialDock,
+  type DockAction,
+} from "./workspace-dock-state";
+import { createPortal } from "react-dom";
 import { useElementWidth } from "../hooks/useElementWidth";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { SharedNarrowChrome } from "../components/SharedNarrowChrome";
@@ -113,7 +120,7 @@ import {
   RecentChanges,
   RecentChangesDialog,
 } from "../features/changes/RecentChanges";
-import { PEEK_EVENT } from "../features/docs/DocLinks";
+import { PEEK_EVENT, openObject } from "../features/docs/DocLinks";
 import {
   PageCommandScope,
   PaneInputOwner,
@@ -202,6 +209,38 @@ type ChromeOwner = {
 
 export function App() {
   const planner = usePlanner();
+  const [dock, setDock] = useState(() => initialDock(planner.token ?? null));
+  const dockRef = useRef(dock);
+  dockRef.current = dock;
+  const [notificationsHost, setNotificationsHost] =
+    useState<HTMLDivElement | null>(null);
+  const dockOwnsInput = () =>
+    !!document.activeElement?.closest(".workspace-dock:not([hidden])");
+  const actDock = useCallback((action: DockAction) => {
+    const next = dockReducer(dockRef.current, action);
+    dockRef.current = next;
+    setDock(next);
+    return next;
+  }, []);
+  const openDock = useCallback(
+    (target?: ObjectRef) => {
+      const account = planner.token ?? null;
+      if (dockRef.current.account !== account)
+        actDock({ type: "reset", account });
+      const before = dockRef.current;
+      const next = actDock({ type: "open", account, target });
+      if (account && next === before)
+        planner.setError(
+          "Close a panel tab before opening another. Maximum 8 tabs.",
+        );
+    },
+    [planner.token, planner.setError, actDock],
+  );
+  const dockState =
+    dock.account === (planner.token ?? null)
+      ? dock
+      : initialDock(planner.token ?? null);
+
   const [chromeLocations, setChromeLocations] = useState<
     Record<string, ChromeLocation>
   >({});
@@ -236,9 +275,8 @@ export function App() {
   const [sharedChromeHost, setSharedChromeHost] =
     useState<HTMLDivElement | null>(null);
   const secondaryPane = useRef<HTMLDivElement>(null);
-  const [singlePane, setSinglePane] = useState(
-    () => window.matchMedia("(max-width: 1279px)").matches,
-  );
+  const mainLayout = useElementWidth();
+  const singlePane = (mainLayout.width || window.innerWidth) < 1280;
   const paneState = useRef({ paired, singlePane, token: planner.token });
   paneState.current = { paired, singlePane, token: planner.token };
   const lastPaneFocus = useRef(new Map<string, HTMLElement>());
@@ -252,12 +290,7 @@ export function App() {
       : !!paneState.current.paired &&
         (!paneState.current.singlePane || focusedRef.current === "secondary");
   useEffect(() => {
-    const media = window.matchMedia("(max-width: 1279px)");
-    const update = () => setSinglePane(media.matches);
-    update();
-    media.addEventListener("change", update);
     return () => {
-      media.removeEventListener("change", update);
       if (focusFrame.current !== null) cancelAnimationFrame(focusFrame.current);
     };
   }, []);
@@ -315,138 +348,234 @@ export function App() {
   usePresence(planner.token, () => void planner.refresh({ silent: true }));
   useEffect(() => {
     setPaired(null);
+    if (dockRef.current.account !== (planner.token ?? null))
+      actDock({ type: "reset", account: planner.token ?? null });
     setChromeLocations({});
     lastPaneFocus.current.clear();
     restoreRequested.current = null;
     focusPane("main");
   }, [planner.token]);
   return (
-    <div
-      className={
-        "workspace-duo" +
-        (paired ? " is-paired" : "") +
-        (paired && singlePane ? " has-shared-chrome" : "")
-      }
-      data-focused={focused}
-    >
-      {paired && (
-        <nav className="workspace-pane-switch" aria-label="Working panes">
-          <button
-            aria-pressed={focused === "main"}
-            onClick={() => {
-              focusPane("main");
-              restorePaneFocus("main");
-            }}
-          >
-            First pane
-          </button>
-          <button
-            aria-pressed={focused === "secondary"}
-            onClick={() => {
-              focusPane("secondary");
-              restorePaneFocus("secondary");
-            }}
-          >
-            Second pane
-          </button>
-        </nav>
-      )}
-      {paired && singlePane && (
+    <div className="workspace-with-dock">
+      <div className="workspace-main-container" ref={mainLayout.ref}>
         <div
-          className="workspace-shared-host"
-          ref={setSharedChromeHost}
-          data-shared-chrome=""
-        />
-      )}
-      <div
-        ref={primaryPane}
-        tabIndex={-1}
-        role={paired ? "region" : undefined}
-        aria-label={paired ? "First working pane" : undefined}
-        className="workspace-duo-primary"
-        inert={!!paired && singlePane && focused !== "main"}
-        onPointerDownCapture={(event) => {
-          if (
-            event.target instanceof Element &&
-            event.target.closest("[data-shared-chrome]")
-          )
-            return;
-          if (paneVisible("main")) focusPane("main");
-        }}
-        onFocusCapture={(event) => capturePaneFocus("main", event.target)}
-      >
-        <PageCommandScope.Provider value="main">
-          <PaneInputOwner.Provider
-            value={() => paneVisible("main") && focusedRef.current === "main"}
-          >
-            <WorkspaceController
-              planner={planner}
-              sharedChromeHost={paired && singlePane ? sharedChromeHost : null}
-              registerChrome={registerChrome}
-              reportChromeLocation={reportChromeLocation}
-              chromeLocation={chromeLocations[focused]}
-              dispatchChrome={dispatchChrome}
-              ownsEvents={() =>
-                paneVisible("main") && focusedRef.current === "main"
-              }
-              onSplit={
-                paired
-                  ? undefined
-                  : (place) => {
-                      setPaired(place);
-                      focusPane("secondary");
-                      restorePaneFocus("secondary");
-                    }
-              }
-            />
-          </PaneInputOwner.Provider>
-        </PageCommandScope.Provider>
-      </div>
-      {paired && (
-        <div
-          ref={secondaryPane}
-          tabIndex={-1}
-          role="region"
-          aria-label="Second working pane"
-          className="workspace-duo-secondary"
-          inert={singlePane && focused !== "secondary"}
-          onPointerDownCapture={() => {
-            if (paneVisible("secondary")) focusPane("secondary");
-          }}
-          onFocusCapture={(event) =>
-            capturePaneFocus("secondary", event.target)
+          className={
+            "workspace-duo" +
+            (paired ? " is-paired" : "") +
+            (paired && singlePane ? " has-shared-chrome" : "")
           }
+          data-focused={focused}
         >
-          <PageCommandScope.Provider value="secondary">
-            <PaneInputOwner.Provider
-              value={() =>
-                paneVisible("secondary") && focusedRef.current === "secondary"
-              }
-            >
-              <WorkspaceController
-                planner={planner}
-                registerChrome={registerChrome}
-                reportChromeLocation={reportChromeLocation}
-                initialPlace={paired}
-                ownsEvents={() =>
-                  paneVisible("secondary") && focusedRef.current === "secondary"
-                }
-                onClosePane={() => {
-                  setPaired(null);
+          {paired && (
+            <nav className="workspace-pane-switch" aria-label="Working panes">
+              <button
+                aria-pressed={focused === "main"}
+                onClick={() => {
                   focusPane("main");
                   restorePaneFocus("main");
                 }}
-              />
-            </PaneInputOwner.Provider>
-          </PageCommandScope.Provider>
+              >
+                First pane
+              </button>
+              <button
+                aria-pressed={focused === "secondary"}
+                onClick={() => {
+                  focusPane("secondary");
+                  restorePaneFocus("secondary");
+                }}
+              >
+                Second pane
+              </button>
+            </nav>
+          )}
+          {paired && singlePane && (
+            <div
+              className="workspace-shared-host"
+              ref={setSharedChromeHost}
+              data-shared-chrome=""
+            />
+          )}
+          <div
+            ref={primaryPane}
+            tabIndex={-1}
+            role={paired ? "region" : undefined}
+            aria-label={paired ? "First working pane" : undefined}
+            className="workspace-duo-primary"
+            inert={!!paired && singlePane && focused !== "main"}
+            onPointerDownCapture={(event) => {
+              if (
+                event.target instanceof Element &&
+                event.target.closest("[data-shared-chrome]")
+              )
+                return;
+              if (paneVisible("main")) focusPane("main");
+            }}
+            onFocusCapture={(event) => capturePaneFocus("main", event.target)}
+          >
+            <PageCommandScope.Provider value="main">
+              <PaneInputOwner.Provider
+                value={() =>
+                  paneVisible("main") &&
+                  focusedRef.current === "main" &&
+                  !dockOwnsInput()
+                }
+              >
+                <WorkspaceController
+                  planner={planner}
+                  onOpenNotifications={() => openDock()}
+                  onOpenDockObject={openDock}
+                  onDockNavigate={() => {
+                    focusPane("main");
+                    actDock({ type: "hide", account: planner.token ?? null });
+                    primaryPane.current?.focus();
+                  }}
+                  notificationsHost={
+                    dock.account === (planner.token ?? null)
+                      ? notificationsHost
+                      : null
+                  }
+                  sharedChromeHost={
+                    paired && singlePane ? sharedChromeHost : null
+                  }
+                  registerChrome={registerChrome}
+                  reportChromeLocation={reportChromeLocation}
+                  chromeLocation={chromeLocations[focused]}
+                  dispatchChrome={dispatchChrome}
+                  ownsEvents={() =>
+                    paneVisible("main") &&
+                    focusedRef.current === "main" &&
+                    !dockOwnsInput()
+                  }
+                  onSplit={
+                    paired
+                      ? undefined
+                      : (place) => {
+                          setPaired(place);
+                          focusPane("secondary");
+                          restorePaneFocus("secondary");
+                        }
+                  }
+                />
+              </PaneInputOwner.Provider>
+            </PageCommandScope.Provider>
+          </div>
+          {paired && (
+            <div
+              ref={secondaryPane}
+              tabIndex={-1}
+              role="region"
+              aria-label="Second working pane"
+              className="workspace-duo-secondary"
+              inert={singlePane && focused !== "secondary"}
+              onPointerDownCapture={() => {
+                if (paneVisible("secondary")) focusPane("secondary");
+              }}
+              onFocusCapture={(event) =>
+                capturePaneFocus("secondary", event.target)
+              }
+            >
+              <PageCommandScope.Provider value="secondary">
+                <PaneInputOwner.Provider
+                  value={() =>
+                    paneVisible("secondary") &&
+                    focusedRef.current === "secondary" &&
+                    !dockOwnsInput()
+                  }
+                >
+                  <WorkspaceController
+                    planner={planner}
+                    onOpenNotifications={() => openDock()}
+                    onOpenDockObject={openDock}
+                    onDockNavigate={() => {
+                      focusPane("main");
+                      actDock({ type: "hide", account: planner.token ?? null });
+                      primaryPane.current?.focus();
+                    }}
+                    registerChrome={registerChrome}
+                    reportChromeLocation={reportChromeLocation}
+                    initialPlace={paired}
+                    ownsEvents={() =>
+                      paneVisible("secondary") &&
+                      focusedRef.current === "secondary" &&
+                      !dockOwnsInput()
+                    }
+                    onClosePane={() => {
+                      setPaired(null);
+                      focusPane("main");
+                      restorePaneFocus("main");
+                    }}
+                  />
+                </PaneInputOwner.Provider>
+              </PageCommandScope.Provider>
+            </div>
+          )}
         </div>
-      )}
+      </div>
+      <WorkspaceDock
+        key={planner.token ?? "signed-out"}
+        open={dockState.open}
+        activeId={dockState.activeId}
+        tabs={dockState.tabs.map((tab) => ({
+          id: tab.id,
+          title: tab.title,
+          content:
+            tab.kind === "notifications" ? (
+              <div
+                className="workspace-notifications-host"
+                ref={setNotificationsHost}
+              />
+            ) : (
+              <SidePeek
+                embedded
+                target={tab.target}
+                pinned
+                onPin={() => {}}
+                onClose={() => {}}
+                report={planner.report}
+                onTitle={(title) =>
+                  actDock({
+                    type: "title",
+                    account: dockState.account,
+                    id: tab.id,
+                    title,
+                  })
+                }
+                onOpenFull={() => {
+                  focusPane("main");
+                  actDock({ type: "hide", account: dockState.account });
+                  // Main owns the explicit full-open action, after the dock yields focus.
+                  primaryPane.current?.focus();
+                  openObject(tab.target);
+                }}
+              />
+            ),
+        }))}
+        onSelect={(id) =>
+          actDock({ type: "select", account: dockState.account, id })
+        }
+        onCloseTab={(id) => {
+          const next = actDock({
+            type: "close",
+            account: dockState.account,
+            id,
+          });
+          if (!next.tabs.length) restorePaneFocus(focusedRef.current);
+        }}
+        onClose={() => {
+          actDock({ type: "hide", account: dockState.account });
+          restorePaneFocus(focusedRef.current);
+        }}
+      />
     </div>
   );
 }
 
 function WorkspaceController({
   planner,
+  onOpenNotifications,
+  onOpenDockObject,
+  onDockNavigate,
+  notificationsHost = null,
   initialPlace,
   ownsEvents,
   onSplit,
@@ -457,6 +586,10 @@ function WorkspaceController({
   dispatchChrome,
   sharedChromeHost = null,
 }: {
+  onOpenNotifications: () => void;
+  onOpenDockObject: (target: ObjectRef) => void;
+  onDockNavigate: () => void;
+  notificationsHost?: HTMLElement | null;
   registerChrome: (scope: string, owner: ChromeOwner) => () => void;
   reportChromeLocation: (scope: string, location: ChromeLocation) => void;
   chromeLocation?: ChromeLocation;
@@ -557,7 +690,10 @@ function WorkspaceController({
     };
   }, [token]);
   const [view, setViewState] = useState<View>(() => {
-    if (initialPlace) return initialPlace.view as View;
+    if (initialPlace)
+      return initialPlace.view === "Notifications"
+        ? "Overview"
+        : (initialPlace.view as View);
     try {
       return location.pathname === "/app" &&
         localStorage.getItem("orbyn-assistant-view-open") === "true"
@@ -748,11 +884,6 @@ function WorkspaceController({
   /** "What's new" (DSN-03) and Recent changes (SHR-02), over the app. */
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [changesOpen, setChangesOpen] = useState(false);
-  /** The side peek (NAV-05): what is open beside, and whether it stays. */
-  const [peek, setPeek] = useState<{
-    target: ObjectRef;
-    pinned: boolean;
-  } | null>(null);
   /** A setting ⌘K asked for (NAV-10), counted so asking again works. */
   const [settingAsked, setSettingAsked] = useState<{
     id: string;
@@ -923,16 +1054,15 @@ function WorkspaceController({
     window.addEventListener(OPEN_LINK_EVENT, open);
     return () => window.removeEventListener(OPEN_LINK_EVENT, open);
   }, []);
+  const openDockObject = useRef(onOpenDockObject);
+  openDockObject.current = onOpenDockObject;
   // ⌘-click on a link, ⌘Enter in ⌘K: open it beside (NAV-05).
   useEffect(() => {
     const onPeek = (e: Event) => {
       if (!sessionToken.current || !ownsEventsRef.current()) return;
       const target = (e as CustomEvent<ObjectRef>).detail;
-      itemRead.current += 1;
-      navigationRead.current += 1;
-      setOpenTask(null);
       setMobileNav(false);
-      setPeek((was) => ({ target, pinned: was?.pinned ?? false }));
+      openDockObject.current(target);
     };
     window.addEventListener(PEEK_EVENT, onPeek);
     return () => window.removeEventListener(PEEK_EVENT, onPeek);
@@ -945,10 +1075,6 @@ function WorkspaceController({
     if (!seen) markReleaseSeen();
     else if (hasUnseenRelease(seen)) setWhatsNewOpen(true);
   }, [token, user?.id, user?.first_run_done]);
-  // Moving to another screen closes the peek, unless it is pinned.
-  useEffect(() => {
-    setPeek((p) => (p?.pinned ? p : null));
-  }, [view]);
   // What opens at start on this device (NAV-12), unless a link says otherwise.
   const started = useRef(false);
   const ownedSession = useRef(token);
@@ -981,7 +1107,6 @@ function WorkspaceController({
     setCommandAdd(false);
     setSettingsOpen(false);
     setSettingAsked(null);
-    setPeek(null);
     setMobileNav(false);
     setShortcutsOpen(false);
     setWhatsNewOpen(false);
@@ -1523,7 +1648,6 @@ function WorkspaceController({
   const openItem = (i: Item, occurrence?: OccurrenceRef) => {
     itemRead.current += 1;
     navigationRead.current += 1;
-    setPeek(null);
     setMobileNav(false);
     setOpenTask(i);
     setOpenOccurrence(
@@ -1539,7 +1663,6 @@ function WorkspaceController({
   const startFocus = (i: Item) => {
     itemRead.current += 1;
     navigationRead.current += 1;
-    setPeek(null);
     setMobileNav(false);
     setOpenTask(null);
     setFocusTask(i);
@@ -1566,6 +1689,11 @@ function WorkspaceController({
   };
 
   const navigate = (v: View) => {
+    if (v === "Notifications") {
+      onOpenNotifications();
+      setMobileNav(false);
+      return;
+    }
     if (v === "Settings") {
       navigationRead.current += 1;
       setSettingsOpen(true);
@@ -1587,6 +1715,11 @@ function WorkspaceController({
   const chromeMounted = useRef(true);
   const chromeRun = useRef<(action: ChromeAction) => void>(() => {});
   chromeRun.current = (action) => {
+    if (action.kind === "navigate" && action.view === "Notifications") {
+      onOpenNotifications();
+      setMobileNav(false);
+      return;
+    }
     if (action.kind === "search") {
       openCommand();
       return;
@@ -1676,6 +1809,10 @@ function WorkspaceController({
   const showPlace = (place: TabPlace) => {
     const request = ++tabPlaceRead.current;
     const next = place.view as View;
+    if (next === "Notifications") {
+      onOpenNotifications();
+      return;
+    }
     if (next === "Settings") {
       setSettingsOpen(true);
       setMobileNav(false);
@@ -1731,7 +1868,29 @@ function WorkspaceController({
   };
 
   /** Change the tabs as the person asked, and show what came to the front. */
+  useEffect(() => {
+    if (!token) return;
+    const state = tabs.ref.current;
+    const legacy = state.tabs.filter(
+      (tab) => placeOf(tab).view === "Notifications",
+    );
+    if (!legacy.length) return;
+    const activeWasLegacy = legacy.some((tab) => tab.key === state.active);
+    onOpenNotifications();
+    const next = tabs.act({ type: "drop", keys: legacy.map((tab) => tab.key) });
+    if (activeWasLegacy) showPlace(placeOf(activeTab(next)));
+  }, [token]); // one migration per account; no new main notification tabs can be opened
+
   const tabActNow = (action: TabAction) => {
+    if (
+      (action.type === "open" ||
+        action.type === "go" ||
+        action.type === "replace") &&
+      action.place.view === "Notifications"
+    ) {
+      onOpenNotifications();
+      return false;
+    }
     if (!tabsLive) return false;
     if (action.type === "open" && tabs.ref.current.tabs.length >= TAB_LIMIT) {
       planner.setError(
@@ -1774,6 +1933,26 @@ function WorkspaceController({
   };
   const tabNavigation = useRef(0);
   const tabAct = async (action: TabAction) => {
+    if (
+      (action.type === "open" ||
+        action.type === "go" ||
+        action.type === "replace") &&
+      action.place.view === "Notifications"
+    ) {
+      onOpenNotifications();
+      return false;
+    }
+    if (
+      action.type === "select" &&
+      tabs.ref.current.tabs.some(
+        (tab) =>
+          tab.key === action.key && placeOf(tab).view === "Notifications",
+      )
+    ) {
+      onOpenNotifications();
+      tabs.act({ type: "drop", keys: [action.key] });
+      return false;
+    }
     const request = ++tabNavigation.current;
     const before = tabs.ref.current;
     const currentTab = activeTab(before);
@@ -1781,6 +1960,12 @@ function WorkspaceController({
     const projected = tabsReducer(before, action);
     const nextTab = activeTab(projected);
     const nextPlace = placeOf(nextTab);
+    // Old history/closed-tab entries may still name the retired main route.
+    // Forward their intent without adopting that place or leaving a draft.
+    if (nextPlace.view === "Notifications") {
+      onOpenNotifications();
+      return false;
+    }
     const leavesPage =
       nextTab.key !== currentTab.key ||
       nextPlace.view !== currentPlace.view ||
@@ -2212,7 +2397,6 @@ function WorkspaceController({
     const current = () =>
       request === itemRead.current && account === sessionToken.current;
     setOpenOccurrence(null);
-    setPeek(null);
     setMobileNav(false);
     const found = items.find((i) => i.id === id);
     if (found) setOpenTask(found);
@@ -2490,17 +2674,32 @@ function WorkspaceController({
     onOpen: openItem,
   };
 
-  const workspaceTabs = tabsLive ? (
-    <TabStrip
-      onSplit={onSplit}
-      idPrefix={tabPrefix}
-      panelId={panelId}
-      tabs={tabs.state}
-      onAction={tabAct}
-      titleOf={tabTitle}
-      iconOf={tabIcon}
-    />
-  ) : null;
+  const workspaceTabs =
+    tabsLive || secondary ? (
+      <div className="workspace-pane-tabs">
+        {tabsLive && (
+          <TabStrip
+            onSplit={onSplit}
+            idPrefix={tabPrefix}
+            panelId={panelId}
+            tabs={tabs.state}
+            onAction={tabAct}
+            titleOf={tabTitle}
+            iconOf={tabIcon}
+          />
+        )}
+        {secondary && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label="Close second pane"
+            onClick={() => void closePane()}
+          >
+            <X size={16} />
+          </button>
+        )}
+      </div>
+    ) : null;
 
   const settingsDialog =
     settingsOpen && user ? (
@@ -2572,12 +2771,19 @@ function WorkspaceController({
     <Topbar
       sharedChrome={!secondary}
       showLocation={!tabsLive}
-      tabs={secondary || sharedChromeHost ? undefined : workspaceTabs}
+      tabs={
+        secondary
+          ? tabsLive
+            ? undefined
+            : workspaceTabs
+          : sharedChromeHost
+            ? undefined
+            : workspaceTabs
+      }
       view={chromeLocation?.view ?? view}
       agentName={assistant.agentName}
       navigationOpen={mobileNav}
       onToggleMenu={() => {
-        setPeek(null);
         setMobileNav(!mobileNav);
       }}
       onOpenNotifications={() =>
@@ -2596,8 +2802,7 @@ function WorkspaceController({
           className={
             "app workspace" +
             (secondary ? " is-secondary-pane" : "") +
-            (railed ? " is-railed" : "") +
-            (peek ? " has-peek" : "")
+            (railed ? " is-railed" : "")
           }
           style={
             {
@@ -2616,19 +2821,6 @@ function WorkspaceController({
             />
           )}
           <div className="shell" ref={shellEl}>
-            {onClosePane && (
-              <div className="workspace-pane-toolbar">
-                <span>Second pane</span>
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Close second pane"
-                  onClick={() => void closePane()}
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            )}
             {!secondary && (
               <>
                 <AnnouncementBanner />
@@ -2647,7 +2839,7 @@ function WorkspaceController({
               </>
             )}
             {!sharedChromeHost && header}
-            {(secondary || sharedChromeHost) && workspaceTabs}
+            {tabsLive && (secondary || sharedChromeHost) && workspaceTabs}
             <main className="content">
               {error && (
                 <div role="alert" className="error">
@@ -3009,54 +3201,6 @@ function WorkspaceController({
                     onMaintenanceChange={planner.applyMaintenance}
                   />
                 )}
-                {view === "Notifications" && (
-                  <AsksPanel onOpenItem={openItemById} />
-                )}
-                {view === "Notifications" && (
-                  <NotificationsView
-                    onOpenOvernight={(id) => {
-                      navigate("Overnight");
-                      setOvernightId(id);
-                    }}
-                    onOpenChat={(id) => {
-                      navigate("AI assistant");
-                      void assistant.openChat(id).catch(report);
-                    }}
-                    notices={notices}
-                    onRead={planner.markRead}
-                    onReschedule={reschedule}
-                    onRollForward={() => rollForward()}
-                    onPlanIt={planIt}
-                    onOpenItem={openItemById}
-                    onOpenCalendar={() => navigate("Calendar")}
-                    onOpenBooking={openBooking}
-                    onOpenTemplate={(id) => {
-                      setTemplateToOpen(id);
-                      navigate("Projects");
-                    }}
-                    onOpenProject={(id) => {
-                      setProjectToOpen(id);
-                      navigate("Projects");
-                    }}
-                    onOpenSetting={openSetting}
-                    onOpenDoc={(id) => openPage(id)}
-                    onStartSession={async (blockId, itemId) => {
-                      try {
-                        await client.startSession(blockId, "reminder");
-                      } catch {
-                        // Over or moved: focus mode still starts on the task.
-                      }
-                      const task =
-                        items.find((i) => i.id === itemId) ??
-                        (await client.getItem(itemId).catch(() => null));
-                      if (task) startFocus(task);
-                    }}
-                    onOpenReview={(id) => {
-                      setReviewToOpen(id);
-                      navigate("Review");
-                    }}
-                  />
-                )}
                 {view === "Review" && (
                   <ReviewView
                     report={report}
@@ -3301,17 +3445,84 @@ function WorkspaceController({
               report={report}
             />
           )}
+          {!secondary &&
+            notificationsHost &&
+            createPortal(
+              <>
+                <AsksPanel
+                  onOpenItem={(id) => {
+                    onDockNavigate();
+                    openItemById(id);
+                  }}
+                />
+                <NotificationsView
+                  onOpenOvernight={(id) => {
+                    onDockNavigate();
+                    navigate("Overnight");
+                    setOvernightId(id);
+                  }}
+                  onOpenChat={(id) => {
+                    onDockNavigate();
+                    navigate("AI assistant");
+                    void assistant.openChat(id).catch(report);
+                  }}
+                  notices={notices}
+                  onRead={planner.markRead}
+                  onReschedule={reschedule}
+                  onRollForward={() => rollForward()}
+                  onPlanIt={planIt}
+                  onOpenItem={(id) => {
+                    onDockNavigate();
+                    openItemById(id);
+                  }}
+                  onOpenCalendar={() => {
+                    onDockNavigate();
+                    navigate("Calendar");
+                  }}
+                  onOpenBooking={(id) => {
+                    onDockNavigate();
+                    openBooking(id);
+                  }}
+                  onOpenTemplate={(id) => {
+                    onDockNavigate();
+                    setTemplateToOpen(id);
+                    navigate("Projects");
+                  }}
+                  onOpenProject={(id) => {
+                    onDockNavigate();
+                    setProjectToOpen(id);
+                    navigate("Projects");
+                  }}
+                  onOpenSetting={(id) => {
+                    onDockNavigate();
+                    openSetting(id);
+                  }}
+                  onOpenDoc={(id) => {
+                    onDockNavigate();
+                    openPage(id);
+                  }}
+                  onStartSession={async (blockId, itemId) => {
+                    try {
+                      await client.startSession(blockId, "reminder");
+                    } catch {
+                      // Over or moved: focus mode still starts on the task.
+                    }
+                    const task =
+                      items.find((i) => i.id === itemId) ??
+                      (await client.getItem(itemId).catch(() => null));
+                    if (task) startFocus(task);
+                  }}
+                  onOpenReview={(id) => {
+                    onDockNavigate();
+                    setReviewToOpen(id);
+                    navigate("Review");
+                  }}
+                />
+              </>,
+              notificationsHost,
+            )}
           {shortcutsOpen && (
             <ShortcutSheet onClose={() => setShortcutsOpen(false)} />
-          )}
-          {peek && (
-            <SidePeek
-              target={peek.target}
-              pinned={peek.pinned}
-              onPin={(pinned) => setPeek((p) => (p ? { ...p, pinned } : p))}
-              onClose={() => setPeek(null)}
-              report={report}
-            />
           )}
           {whatsNewOpen && (
             <WhatsNew
