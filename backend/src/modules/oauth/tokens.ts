@@ -35,8 +35,8 @@ import {
  *   the MCP address and accepted nowhere else;
  * - refresh tokens (ort_), which rotate on every use: unused for
  *   OAUTH_REFRESH_TTL days (30) they lapse, and a family never outlives 90
- *   days or its connection. Using a spent one again means it was copied:
- *   the whole family is revoked, the connection paused, the person told.
+ *   days or its connection. Reusing a spent one can mean copying
+ *   or a retry; revoke the family, pause the connection and explain recovery.
  */
 
 export const ACCESS_PREFIX = "oat_";
@@ -376,7 +376,7 @@ export async function exchangeCode(
 }
 
 /**
- * Reuse of a spent refresh token: it was copied. Revoke its whole family,
+ * Reuse of a spent refresh token may be replay or retry. Revoke its whole family,
  * pause the connection, audit it and tell the person.
  */
 async function refreshReused(

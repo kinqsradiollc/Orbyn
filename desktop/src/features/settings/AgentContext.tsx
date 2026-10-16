@@ -154,7 +154,12 @@ export function AgentWarmStart({ report }: { report: (e: unknown) => void }) {
         persona: identityPersona,
         character: appearance,
       });
-      if (mounted.current && token === session.get()) setIdentity(value);
+      if (mounted.current && token === session.get()) {
+        setIdentity(value);
+        setIdentityName(value.name);
+        setIdentityPersona(value.persona);
+        setAppearance(characterAppearance(value.character));
+      }
     });
   };
 

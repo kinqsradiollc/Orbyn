@@ -1,7 +1,7 @@
 # ADR 006 — Document consistency, connection recovery and focused Settings
 
 Status: implementation in progress. Owner request: 16 October 2026.
-Baseline: `b5ee4dd0`. This is a new combined correction scope, counter0/3;
+Baseline: `b5ee4dd0`. This is a new combined correction scope, counter: 1/3;
 ADR005's accepted presentation receipts remain historical and do not qualify
 whole-document LaTeX synchronization. Its completion claim omitted that contract.
 
@@ -64,3 +64,12 @@ not the cause or absence of intermittent disconnects. Incident diagnosis still
 needs the relevant non-secret audit reason/timing. No new environment variables,
 service routes, migrations or credentials are introduced; existing env files
 remain valid.
+
+### Owner refinement — 16 October, 15:09
+
+Keep the document header Download as the sole export entry. Remove duplicate
+source-pane export/assistant controls and routine explanatory paragraphs. Help
+is collapsed; errors, recovery and meaningful pending work remain visible.
+Access-only sign-ins receive a short conditional lifetime notice on consent;
+renewable sign-ins do not gain routine extra copy. Refresh capability remains
+explicitly requested by the host, never silently upgraded.

@@ -17,6 +17,7 @@ import {
   AGENT_TOOLSETS,
   AGENT_TOOLSET_LABELS,
   HttpError,
+  durationText,
   type AgentAccess,
   type AgentToolset,
   type OAuthCheck,
@@ -282,6 +283,24 @@ export function OAuthConsentPage({
   );
 }
 
+/** A short-lived authorization is a decision-relevant exception, not routine help. */
+function ConnectionLifetime({ check }: { check: OAuthCheck }) {
+  const seconds = check.access_token_lifetime_seconds;
+  if (
+    check.requested_offline_access !== false ||
+    typeof seconds !== "number" ||
+    !Number.isFinite(seconds) ||
+    seconds <= 0
+  )
+    return null;
+  return (
+    <p className="oauth-hint muted" role="status">
+      Sign-in lasts up to {durationText(Math.ceil(seconds / 60))}. Reconnect
+      from the app when it expires.
+    </p>
+  );
+}
+
 function Consent({
   request,
   check,
@@ -447,6 +466,8 @@ function Consent({
           connection.
         </p>
       )}
+
+      <ConnectionLifetime check={check} />
 
       <fieldset className="oauth-group" disabled={busy}>
         <legend>What it may do</legend>

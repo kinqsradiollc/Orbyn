@@ -168,8 +168,12 @@ export function AgentWarmStartCards({
         mounted.current &&
         token === session.token &&
         epoch === identityEpoch.current
-      )
+      ) {
         setIdentity(value);
+        setIdentityName(value.name);
+        setIdentityPersona(value.persona);
+        setAppearance(characterAppearance(value.character));
+      }
     });
   };
 

@@ -1,3 +1,5 @@
+import { runInNewContext } from "node:vm";
+import ts from "typescript";
 import { test } from "node:test";
 import { EMPTY_LATEX_DOCUMENT, docWholeLatex } from "@orbyn/core";
 import assert from "node:assert/strict";
@@ -228,4 +230,43 @@ test("exact empty starter and historical null starter render without failure", a
   } finally {
     dom.window.close();
   }
+});
+
+test("historical starter preprocessing leaves nonempty commands and verbatim source exact", () => {
+  const script = ts.createSourceFile(
+    "runtime.mjs",
+    readFileSync(
+      new URL("../../scripts/latex-html-runtime.mjs", import.meta.url),
+      "utf8",
+    ),
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.JS,
+  );
+  const helper = script.statements.find(
+    (node): node is ts.FunctionDeclaration =>
+      ts.isFunctionDeclaration(node) && node.name?.text === "previewSourceFor",
+  );
+  assert.ok(helper);
+  const prepare = runInNewContext(`(${helper.getText(script)})`) as (
+    source: string,
+  ) => string;
+  for (const source of [
+    documentSource(String.raw`A literal command:
+\begin{verbatim}
+\null
+\end{verbatim}
+After the example.`),
+    documentSource("Before\n\\null\nAfter"),
+  ])
+    assert.equal(prepare(source), source);
+  const historical = EMPTY_LATEX_DOCUMENT.replace(
+    "\\begin{document}",
+    "\\begin{document}\n\\null",
+  );
+  assert.equal(prepare(historical).includes("\\null"), false);
+  assert.equal(
+    prepare(historical.replace(/\n/g, "\r\n")).includes("\\null"),
+    false,
+  );
 });
