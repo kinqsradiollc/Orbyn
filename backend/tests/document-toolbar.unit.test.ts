@@ -41,7 +41,7 @@ function find(
   assert.ok(found);
   return found;
 }
-test("desktop toolbar DOM order starts with Back and title, with no collapse control", () => {
+test("desktop toolbar starts with title and actions, without duplicate Back or collapse controls", () => {
   for (const [file, className] of [
     [
       "desktop/src/features/docs/StructuredDocEditor.tsx",
@@ -55,14 +55,12 @@ test("desktop toolbar DOM order starts with Back and title, with no collapse con
       (node) => ts.isJsxElement(node) && classOf(node, source) === className,
     ) as ts.JsxElement;
     const children = header.children.filter((node) => !ts.isJsxText(node));
-    assert.ok(ts.isJsxExpression(children[0]));
-    assert.match(children[0].getText(source), /^\{onBack &&/);
-    assert.equal(classOf(children[1], source), "document-toolbar-title");
+    assert.equal(classOf(children[0], source), "document-toolbar-title");
     if (className === "structured-doc-toolbar")
-      assert.equal(classOf(children[2], source), "document-toolbar-actions");
+      assert.equal(classOf(children[1], source), "document-toolbar-actions");
     assert.doesNotMatch(
       header.getText(source),
-      /DocumentLibraryButton|PanelLeft/,
+      /DocumentLibraryButton|PanelLeft|All documents|structured-doc-back/,
     );
   }
   assert.doesNotMatch(
