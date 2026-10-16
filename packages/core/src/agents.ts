@@ -257,6 +257,8 @@ export type AgentToolsetsInput = z.input<typeof agentToolsetsInput>;
 export type AgentGrant = {
   id: string;
   kind: AgentGrantKind;
+  /** OAuth credentials or consent expired/lost; restoring a pause cannot sign the host in. Older servers omit this. */
+  reconnect_required?: boolean;
   /** Present for independently authenticated plugin connections; older grants omit it. */
   resource_kind?: "plugin";
   /** The name given to a key ("MacBook · Codex CLI"), or the app's name. */

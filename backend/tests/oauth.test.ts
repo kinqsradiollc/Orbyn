@@ -668,6 +668,21 @@ test("refresh tokens rotate; reusing a spent one revokes the family and pauses t
   );
   assert.equal((await h.legacy(second.access_token, "ping")).status, 200);
 
+  // A different authenticated client cannot turn a spent credential into a
+  // suspension side effect against its actual owner.
+  const wrongSpent = await refresh(first.refresh_token, GPT);
+  assert.equal(wrongSpent.json().error, "invalid_grant");
+  assert.match(wrongSpent.json().error_description, /another app/);
+  assert.equal((await h.legacy(second.access_token, "ping")).status, 200);
+  assert.equal(
+    (
+      await pool.query("SELECT suspended_at FROM agent_grants WHERE id=$1", [
+        first.grant,
+      ])
+    ).rows[0].suspended_at,
+    null,
+  );
+
   heard.length = 0;
   // The first refresh token again, well after it rotated: someone copied it.
   await pool.query(
@@ -689,6 +704,28 @@ test("refresh tokens rotate; reusing a spent one revokes the family and pauses t
     ])
   ).rows[0];
   assert.ok(g.suspended_at, "the connection is paused");
+  const listed = await h.call(me.token, "GET", "/me/agents");
+  assert.equal(
+    listed
+      .json()
+      .grants.find((grant: { id: string }) => grant.id === first.grant)
+      .reconnect_required,
+    true,
+  );
+  const restore = await h.call(
+    me.token,
+    "POST",
+    `/me/agents/${first.grant}/restore`,
+  );
+  assert.equal(restore.statusCode, 409, restore.body);
+  assert.match(restore.json().message, /Sign in again/);
+  assert.ok(
+    (
+      await pool.query("SELECT suspended_at FROM agent_grants WHERE id=$1", [
+        first.grant,
+      ])
+    ).rows[0].suspended_at,
+  );
   const audits = await pool.query(
     "SELECT 1 FROM audit_log WHERE action = 'agent_grant.refresh_reused' AND target_id = $1",
     [first.grant],
@@ -706,6 +743,90 @@ test("refresh tokens rotate; reusing a spent one revokes the family and pauses t
   const back = await connect(me, { access: "read" });
   assert.equal(back.grant, first.grant);
   assert.equal((await h.legacy(back.access_token, "ping")).status, 200);
+  assert.equal(
+    (await h.call(me.token, "GET", "/me/agents"))
+      .json()
+      .grants.find((grant: { id: string }) => grant.id === back.grant)
+      .reconnect_required,
+    false,
+  );
+});
+
+test("access expiry keeps OAuth restorable while refresh credentials survive", async () => {
+  const who = await h.register("oauth-restorable-expiry");
+  const tokens = await connect(who, { access: "read" });
+  await pool.query(
+    "UPDATE agent_tokens SET expires_at=now()-interval '1 minute' WHERE grant_id=$1 AND kind='access'",
+    [tokens.grant],
+  );
+  await pool.query("UPDATE agent_grants SET suspended_at=now() WHERE id=$1", [
+    tokens.grant,
+  ]);
+  const listed = () => h.call(who.token, "GET", "/me/agents");
+  const own = (response: Awaited<ReturnType<typeof listed>>) =>
+    response
+      .json()
+      .grants.find((grant: { id: string }) => grant.id === tokens.grant);
+  assert.equal(own(await listed()).reconnect_required, false);
+  assert.equal(
+    (await h.call(who.token, "POST", `/me/agents/${tokens.grant}/restore`))
+      .statusCode,
+    204,
+  );
+  assert.equal((await refresh(tokens.refresh_token)).statusCode, 200);
+  await pool.query(
+    "UPDATE agent_tokens SET expires_at=now()-interval '1 minute' WHERE grant_id=$1 AND kind='access'",
+    [tokens.grant],
+  );
+  await pool.query(
+    "UPDATE agent_tokens SET family_expires_at=now()-interval '1 minute' WHERE grant_id=$1 AND kind='refresh'",
+    [tokens.grant],
+  );
+  assert.equal(own(await listed()).reconnect_required, true);
+  assert.equal(
+    (await h.call(who.token, "POST", `/me/agents/${tokens.grant}/restore`))
+      .statusCode,
+    409,
+  );
+});
+
+test("OAuth reconnect state follows consent expiry without claiming revocation", async () => {
+  const who = await h.register("oauth-consent-expiry-recovery");
+  const tokens = await connect(who, { access: "read" });
+  await pool.query(
+    "UPDATE agent_grants SET expires_at=now()-interval '1 minute' WHERE id=$1",
+    [tokens.grant],
+  );
+  const overview = await h.call(who.token, "GET", "/me/agents");
+  assert.equal(
+    overview
+      .json()
+      .grants.find((grant: { id: string }) => grant.id === tokens.grant)
+      .reconnect_required,
+    true,
+  );
+  const restore = await h.call(
+    who.token,
+    "POST",
+    `/me/agents/${tokens.grant}/restore`,
+  );
+  assert.equal(restore.statusCode, 409, restore.body);
+  const state = (
+    await pool.query(
+      "SELECT revoked_at, suspended_at FROM agent_grants WHERE id=$1",
+      [tokens.grant],
+    )
+  ).rows[0];
+  assert.equal(state.revoked_at, null);
+  assert.equal(state.suspended_at, null);
+  assert.equal((await h.legacy(tokens.access_token, "ping")).status, 401);
+  assert.ok(
+    (
+      await pool.query("SELECT 1 FROM agent_tokens WHERE grant_id=$1", [
+        tokens.grant,
+      ])
+    ).rowCount,
+  );
 });
 
 test("a recently consumed refresh token cannot recover successor credentials", async () => {
@@ -2509,6 +2630,73 @@ function queryBarrier(matches: (sql: string) => boolean, pooled = false) {
     },
   };
 }
+
+for (const refreshFirst of [true, false])
+  test(`family revocation serializes with rotation (${refreshFirst ? "refresh" : "revoke"} first)`, async () => {
+    const who = await h.register(`oauth-revoke-race-${refreshFirst}`);
+    const tokens = await connect(who, { access: "read" });
+    const revoke = () =>
+      inject("POST", "/oauth/revoke", {
+        form: { token: tokens.refresh_token, client_id: CLIENT },
+      });
+    const barrier = queryBarrier((sql) =>
+      refreshFirst
+        ? sql.includes("UPDATE agent_tokens SET used_at")
+        : sql.includes("DELETE FROM agent_tokens WHERE family = $1"),
+    );
+    let first: ReturnType<typeof refresh> | undefined;
+    let second: ReturnType<typeof refresh> | undefined;
+    try {
+      first = refreshFirst ? refresh(tokens.refresh_token) : revoke();
+      await barrier.entered();
+      second = refreshFirst ? revoke() : refresh(tokens.refresh_token);
+      const deadline = Date.now() + 3000;
+      let blocked = false;
+      while (!blocked && Date.now() < deadline) {
+        blocked = Boolean(
+          (
+            await pool.query(`SELECT 1 FROM pg_stat_activity
+          WHERE datname=current_database() AND query LIKE '%FOR UPDATE OF g%'
+          AND cardinality(pg_blocking_pids(pid))>0`)
+          ).rowCount,
+        );
+        if (!blocked) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      assert.ok(
+        blocked,
+        "the competing operation waits on the grant authority lock",
+      );
+      barrier.release();
+      const a = await first;
+      const b = await second;
+      assert.equal(a.statusCode, 200, a.body);
+      assert.equal(b.statusCode, refreshFirst ? 200 : 400, b.body);
+      if (refreshFirst)
+        assert.equal(
+          (await h.legacy(a.json().access_token, "ping")).status,
+          401,
+        );
+      else assert.equal(b.json().error, "invalid_grant");
+      assert.equal(
+        (
+          await pool.query("SELECT 1 FROM agent_tokens WHERE grant_id=$1", [
+            tokens.grant,
+          ])
+        ).rowCount,
+        0,
+      );
+      assert.ok(
+        (
+          await pool.query("SELECT revoked_at FROM agent_grants WHERE id=$1", [
+            tokens.grant,
+          ])
+        ).rows[0].revoked_at,
+      );
+    } finally {
+      barrier.restore();
+      await Promise.allSettled([first, second].filter(Boolean));
+    }
+  });
 
 test("consent issuance holds authority lock until its code is committed", async () => {
   const who = await h.register("oauth-atomic-issuance");

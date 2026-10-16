@@ -411,7 +411,7 @@ async function refreshReused(
   await noticeAgentEvent(db, g.user_id, {
     ref: `grant:${g.id}`,
     title: `${g.client_name || g.name} was paused for your safety`,
-    body: "Its sign-in was used twice, which can mean someone copied it. Orbyn signed it out and paused it. If this was you, restore it in Settings → Connected agents; if not, disconnect it.",
+    body: "Its sign-in was used twice, which can mean a retry or someone copied it. Orbyn signed it out and paused it. Sign in again from the connected app to reconnect; if this was unexpected, disconnect it in Settings → Connected agents.",
     email: true,
   });
   await announceAuthChange(db, { grants: [g.id], reason: "refresh_reused" });
@@ -459,6 +459,19 @@ export async function refreshTokens(
     // Legacy unbound refresh tokens are MCP-only. A different stored recipient
     // cannot be silently replaced by the default when resource is omitted.
     const target = checkResource(resource, t.resource ?? env.MCP_PUBLIC_URL);
+    const g = (
+      await db.query<GrantState>(
+        `${GRANT_STATE} WHERE g.id = $1 FOR UPDATE OF g`,
+        [t.grant_id],
+      )
+    ).rows[0];
+    // Validate the authenticated client before any replay side effect. A token
+    // belonging to another app must never let this caller pause that connection.
+    if (g && g.client_id !== client_id)
+      throw new OAuthError(
+        "invalid_grant",
+        "This refresh token was issued to another app.",
+      );
     if (t.used_at) {
       // A bearer replay cannot be distinguished from a lost-response retry.
       // Never mint successors for an already consumed credential.
@@ -470,17 +483,6 @@ export async function refreshTokens(
       throw new OAuthError(
         "invalid_grant",
         "This refresh token has expired. Sign in again.",
-      );
-    const g = (
-      await db.query<GrantState>(
-        `${GRANT_STATE} WHERE g.id = $1 FOR UPDATE OF g`,
-        [t.grant_id],
-      )
-    ).rows[0];
-    if (g && g.client_id !== client_id)
-      throw new OAuthError(
-        "invalid_grant",
-        "This refresh token was issued to another app.",
       );
     const why = unusable(g, s);
     if (why) throw new OAuthError("invalid_grant", why);
@@ -528,6 +530,13 @@ export async function revokeToken(
   if (!token.startsWith(ACCESS_PREFIX) && !token.startsWith(REFRESH_PREFIX))
     return;
   await transaction(async (db) => {
+    // Serialize with refresh and consent before reading token state. Otherwise
+    // a family DELETE can miss a successor minted while it waits on an old row.
+    await db.query(
+      `SELECT g.id FROM agent_grants g JOIN agent_tokens t ON t.grant_id=g.id
+       WHERE t.token_hash=$1 FOR UPDATE OF g`,
+      [digest(token)],
+    );
     const t = (
       await db.query<{
         grant_id: string;

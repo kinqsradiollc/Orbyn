@@ -60,12 +60,24 @@ type GrantRow = {
   last_used_at: Date | null;
   suspended_at: Date | null;
   created_at: Date;
+  reconnect_required?: boolean;
 };
+
+/** Access expiry alone is recoverable while an unused refresh token survives. */
+const RECONNECT_REQUIRED = `g.kind = 'oauth' AND (
+  (g.expires_at IS NOT NULL AND g.expires_at <= now()) OR NOT EXISTS (
+    SELECT 1 FROM agent_tokens credential WHERE credential.grant_id = g.id
+      AND credential.used_at IS NULL
+      AND (credential.expires_at IS NULL OR credential.expires_at > now())
+      AND (credential.kind = 'access' OR (credential.kind = 'refresh'
+        AND credential.offline_allowed
+        AND (credential.family_expires_at IS NULL OR credential.family_expires_at > now())))
+  ))`;
 
 const GRANT_COLUMNS = `g.id, g.kind, g.resource_kind, g.name, g.client_name, g.access, g.trust,
   g.space_trust, g.acts_alone, g.personal,
   g.team_ids, g.toolsets, g.flags, g.expires_at, g.last_used_at, g.suspended_at,
-  g.created_at,
+  g.created_at, (${RECONNECT_REQUIRED}) AS reconnect_required,
   (SELECT c.host FROM oauth_clients c WHERE c.id = g.client_id AND g.kind = 'oauth') AS client_host,
   (SELECT t.prefix FROM agent_tokens t WHERE t.grant_id = g.id AND t.kind = 'key' LIMIT 1) AS prefix`;
 
@@ -88,6 +100,7 @@ async function teamNames(
 const view = (g: GrantRow, names: Map<string, string>): AgentGrant => ({
   id: g.id,
   kind: g.kind,
+  reconnect_required: !!g.reconnect_required,
   ...(g.resource_kind === "plugin" ? { resource_kind: "plugin" as const } : {}),
   name: g.name,
   client_name: g.client_name,
@@ -492,16 +505,36 @@ export async function restoreGrant(
   requestId?: string,
 ): Promise<void> {
   await transaction(async (db) => {
+    // Re-read credentials in a fresh statement after acquiring the shared
+    // authority lock; a refresh/revocation may have completed while waiting.
+    await db.query(
+      `SELECT id FROM agent_grants WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+      [grantId, userId],
+    );
     const row = (
-      await db.query<{ id: string; name: string; was: Date | null }>(
-        `UPDATE agent_grants g SET suspended_at = NULL
-           FROM (SELECT id, suspended_at FROM agent_grants WHERE id = $1 FOR UPDATE) old
-          WHERE g.id = old.id AND g.user_id = $2 AND g.revoked_at IS NULL
-          RETURNING g.id, g.name, old.suspended_at AS was`,
+      await db.query<{
+        id: string;
+        name: string;
+        was: Date | null;
+        reconnect_required: boolean;
+      }>(
+        `SELECT g.id, g.name, g.suspended_at AS was,
+           (${RECONNECT_REQUIRED}) AS reconnect_required
+          FROM agent_grants g
+          WHERE g.id = $1 AND g.user_id = $2 AND g.revoked_at IS NULL`,
         [grantId, userId],
       )
     ).rows[0];
     if (!row) fail(404, "Connection not found");
+    if (row.reconnect_required)
+      fail(
+        409,
+        "Sign in again from the connected app. Restoring cannot renew this connection's credentials.",
+      );
+    await db.query(
+      "UPDATE agent_grants SET suspended_at = NULL WHERE id = $1",
+      [grantId],
+    );
     if (row.was)
       await audit(
         {
