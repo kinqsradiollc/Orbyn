@@ -10,16 +10,17 @@ test("the workspace layout is signed-in scoped and keeps palette values in theme
   assert.ok(css.includes("var(--color-canvas)"));
   assert.ok(css.includes(".content:has(.docs-nav-page)"));
 });
-test("desktop rail and mobile drawer controls reference the same accessible navigation", async () => {
+test("responsive navigation and mobile drawer reference the same accessible navigation", async () => {
   const [app, top, side] = await Promise.all([
     source("app/App.tsx"),
     source("components/Topbar.tsx"),
     source("components/Sidebar.tsx"),
   ]);
   assert.ok(
-    app.includes("onToggleRail={sharedChromeHost ? undefined : toggleRail}"),
+    app.includes("sidebarLayout("),
   );
   assert.ok(app.includes("navigationOpen={mobileNav}"));
+  assert.ok(!top.includes("onToggleRail"));
   assert.ok(top.includes('aria-controls="workspace-navigation"'));
   assert.ok(top.includes("aria-expanded={navigationOpen}"));
   assert.ok(side.includes('id="workspace-navigation"'));

@@ -43,7 +43,6 @@ test("pane tabs claim focus while shared header actions retain the current pane"
       React.createElement(module.exports.Topbar, {
         view: "Home",
         sharedChrome: true,
-        onToggleRail: () => {},
         tabs: React.createElement("button", { role: "tab" }, "Home"),
       }),
     ),
@@ -59,7 +58,6 @@ test("pane tabs claim focus while shared header actions retain the current pane"
       "Search or ask",
       "Notifications",
       "Toggle navigation",
-      "Collapse navigation",
     ])
       assert.ok(
         document

@@ -1,3 +1,4 @@
+import "./document-workspace.css";
 import { DocumentLibraryContext } from "./DocumentWorkspace";
 import { useElementWidth } from "../../hooks/useElementWidth";
 import {
@@ -12,6 +13,8 @@ import { onLive } from "../../lib/live";
 import {
   FileText,
   FolderInput,
+  PanelLeftClose,
+  PanelLeftOpen,
   MoreHorizontal,
   Check,
   Folder as FolderIcon,
@@ -280,12 +283,17 @@ function DocsBody({
   const [folderName, setFolderName] = useState("");
   const [failed, setFailed] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
+  const [libraryCollapsed, setLibraryCollapsed] = useState(false);
   const [sourceOpen, setSourceOpen] = useState(false);
   const compactLibrary = paneWidth > 0 && paneWidth < 900;
   // The library yields to an open source workspace or a narrow content pane.
   const libraryHidden =
-    !!open && !navigationOpen && (compactLibrary || sourceOpen);
-  const showLibrary = (show: boolean) => setNavigationOpen(show);
+    !navigationOpen &&
+    (libraryCollapsed || (!!open && (compactLibrary || sourceOpen)));
+  const showLibrary = (show: boolean) => {
+    setNavigationOpen(show);
+    if (show) setLibraryCollapsed(false);
+  };
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("recent");
   /** Only pages with this tag, by id; "" for every page. */
@@ -1094,12 +1102,12 @@ function DocsBody({
       )}
       <button
         className="text-button docs-nav-toggle"
-        hidden={!!editor}
-        aria-expanded={navigationOpen}
+        hidden={!libraryHidden && !compactLibrary}
+        aria-expanded={!libraryHidden && (!compactLibrary || navigationOpen)}
         aria-controls={`${libraryId}-navigation`}
-        onClick={() => setNavigationOpen(!navigationOpen)}
+        onClick={() => showLibrary(!navigationOpen)}
       >
-        <FolderIcon size={18} />{" "}
+        <PanelLeftOpen size={18} />{" "}
         {navigationOpen
           ? `Close ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`
           : `Browse ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`}
@@ -1115,7 +1123,7 @@ function DocsBody({
             event.currentTarget
               .closest(".docs-workspace")
               ?.querySelector<HTMLButtonElement>(
-                '.structured-doc-back, .doc-bar [aria-label="All documents"], .docs-nav-toggle',
+                '.docs-nav-toggle',
               )
               ?.focus();
           }
@@ -1129,6 +1137,18 @@ function DocsBody({
                 ? "Agent notes"
                 : "Library"}
           </h2>
+          <button
+            type="button"
+            className="icon-button docs-library-hide"
+            aria-label="Collapse library"
+            aria-controls={`${libraryId}-navigation`}
+            onClick={() => {
+              setLibraryCollapsed(true);
+              setNavigationOpen(false);
+            }}
+          >
+            <PanelLeftClose size={16} />
+          </button>
         </div>
         {!fixedKind && (
           <>

@@ -1,19 +1,19 @@
 /* The document owns its viewport. Application navigation is outside this workspace. */
-.app.workspace .content:has(.docs-workspace.is-document-open) {
+.app.workspace .content:has(.docs-workspace) {
   max-width: none;
   width: 100%;
   margin: 0;
   padding: 0;
 }
-.docs-workspace.is-document-open {
+.docs-workspace {
   grid-template-columns: 208px minmax(0, 1fr);
   gap: 0;
   align-items: stretch;
 }
-.docs-workspace.is-document-open.is-library-hidden {
+.docs-workspace.is-library-hidden {
   grid-template-columns: minmax(0, 1fr);
 }
-.docs-workspace.is-document-open .docs-navigation {
+.docs-workspace .docs-navigation {
   top: 0;
   max-height: calc(100dvh - 56px);
   border: 0;
@@ -491,4 +491,33 @@
   .document-toolbar-actions {
     flex-basis: 100%;
   }
+}
+
+/* The same library edge frames browsing and editing. One control owns visibility. */
+.docs-workspace > .docs-workspace-content:not(:has(.document-workspace)) {
+  padding: 24px;
+}
+.docs-workspace > .docs-nav-toggle:not([hidden]) {
+  display: inline-flex;
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin: 8px;
+}
+.docs-workspace > .docs-nav-toggle[hidden] {
+  display: none;
+}
+.docs-workspace .docs-nav-title {
+  align-items: center;
+}
+.docs-workspace .docs-nav-title h2 {
+  margin-bottom: 12px;
+}
+.docs-workspace .docs-library-hide {
+  display: inline-flex;
+}
+.docs-workspace.is-library-hidden > .docs-navigation {
+  display: none;
+}
+.docs-workspace.is-compact .docs-navigation .docs-library-hide {
+  display: inline-flex;
 }

@@ -101,9 +101,7 @@ export function Sidebar({
       aria-label="Workspace navigation"
       className={"sidebar " + (open ? "open" : "")}
     >
-      {!railed && onResize && (
-        <SidebarResizer width={width} onChange={onResize} />
-      )}
+      {onResize && <SidebarResizer width={width} onChange={onResize} />}
       <div className="sidebar-head">
         <div className="brand" aria-label="orbyn">
           <Orbit />

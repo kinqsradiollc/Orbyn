@@ -70,16 +70,16 @@ test("desktop toolbar DOM order starts with Back and title, with no collapse con
     /\.structured-doc-back\s*\{[^}]*order:/,
   );
 });
-test("library visibility is responsive and source-driven instead of a remembered collapse preference", () => {
+test("library shares responsive source fitting with one explicit collapse control", () => {
   const library = read("desktop/src/features/docs/DocsView.tsx");
   assert.match(library, /paneWidth > 0 && paneWidth < 900/);
   assert.match(
     library,
-    /!navigationOpen && \(compactLibrary \|\| sourceOpen\)/,
+    /libraryCollapsed \|\| \(!!open && \(compactLibrary \|\| sourceOpen\)\)/,
   );
   assert.doesNotMatch(
     library,
-    /docs-library-hide|Show library|orbyn-docs-library|PanelLeft/,
+    /orbyn-docs-library/,
   );
   assert.match(library, /setSourceOpen,/);
   const mobile = read("mobile/src/screens/docs/DocsSheet.tsx");
@@ -135,16 +135,8 @@ test("actual workspace effects return library space when source closes or editor
   }
 });
 test("app navigation adapts to width and exposes only the narrow-screen menu", () => {
-  const app = parse("desktop/src/app/App.tsx");
-  const railed = find(
-    app,
-    (node) =>
-      ts.isVariableDeclaration(node) && node.name.getText(app) === "railed",
-  ) as ts.VariableDeclaration;
-  assert.equal(
-    railed.initializer!.getText(app),
-    'useMediaQuery("(min-width: 801px) and (max-width: 1199px)")',
-  );
+  assert.match(read("desktop/src/app/App.tsx"), /sidebarLayout\(/);
+  assert.match(read("desktop/src/app/App.tsx"), /ref=\{workspacePane.ref\}/);
   assert.doesNotMatch(
     read("desktop/src/app/App.tsx"),
     /orbyn-sidebar|onToggleRail/,

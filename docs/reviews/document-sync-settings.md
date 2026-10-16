@@ -74,3 +74,18 @@ while, without a captured error. AS metadata correctly advertises refresh and
 protocol guidance. No unrequested renewable access is granted. Consent
 capability diagnostics distinguish access-only sign-ins from renewable ones;
 they do not prove which path caused the owner's production incident.
+
+## Expanded owner corrections (same round 1)
+
+Red line/column diagnostics, removed Help/export duplication, settled selection,
+one existing contextual menu, responsive draggable navigation and consistent
+collapsible Library are included before the next freeze. Owner rejected the new
+Ask/Explain source popup; it has been removed in favor of the existing assistant
+icon and retained selected excerpt. Owner also removed the document Back button.
+
+Developer navigation regression receipt: 21/21 across toolbar, sidebar-width,
+workspace-layout, editor-input-ownership and visual-corrections tests, recorded in
+`/private/tmp/orbyn-adr006-navigation-dev.tap`. Desktop typecheck passed. This is
+development evidence, not final rendered acceptance. Earlier DocsSheet fixture
+failure was updated to assert the actual flex/min-height editor ownership now
+that DocsSheet is part of this correction scope. Final integrated freeze pending.

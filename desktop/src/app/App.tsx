@@ -1,3 +1,4 @@
+import { useElementWidth } from "../hooks/useElementWidth";
 import { useMediaQuery } from "../hooks/useMediaQuery";
 import { SharedNarrowChrome } from "../components/SharedNarrowChrome";
 import { ViewDraftStore } from "@orbyn/api-client";
@@ -12,7 +13,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { savedSidebarWidth } from "../components/SidebarResizer";
+import { savedSidebarWidth, sidebarLayout } from "../components/SidebarResizer";
 import { Orbit, Settings, X, type LucideIcon } from "lucide-react";
 import {
   dayZone,
@@ -769,7 +770,11 @@ function WorkspaceController({
   const [mobileNav, setMobileNav] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth);
   // Navigation adapts to the window; saved width still applies on wide screens.
-  const railed = useMediaQuery("(min-width: 801px) and (max-width: 1199px)");
+  const workspacePane = useElementWidth();
+  const { width: fittedSidebarWidth, railed } = sidebarLayout(
+    sidebarWidth,
+    workspacePane.width || window.innerWidth,
+  );
   const narrowNavigation = useMediaQuery("(max-width: 800px)");
   const openNavigation = () => {
     if (narrowNavigation) setMobileNav((open) => !open);
@@ -2546,7 +2551,7 @@ function WorkspaceController({
   const sidebar = (
     <Sidebar
       open={!!sharedChromeHost || mobileNav}
-      width={sidebarWidth}
+      width={fittedSidebarWidth}
       onResize={sharedChromeHost ? undefined : setSidebarWidth}
       railed={sharedChromeHost ? false : railed}
       view={chromeLocation?.view ?? view}
@@ -2587,6 +2592,7 @@ function WorkspaceController({
     <PrefsContext.Provider value={accountPrefs}>
       <PlanningProviders planning={planning} planned={planned}>
         <div
+          ref={workspacePane.ref}
           className={
             "app workspace" +
             (secondary ? " is-secondary-pane" : "") +
@@ -2595,7 +2601,7 @@ function WorkspaceController({
           }
           style={
             {
-              "--workspace-sidebar-width": `${sidebarWidth}px`,
+              "--workspace-sidebar-width": `${fittedSidebarWidth}px`,
             } as CSSProperties
           }
         >

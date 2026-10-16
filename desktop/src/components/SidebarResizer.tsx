@@ -1,10 +1,30 @@
 import { useEffect, useRef, useState } from "react";
 
 export const DEFAULT_SIDEBAR_WIDTH = 224;
+export const SIDEBAR_RAIL_WIDTH = 72;
+export const SIDEBAR_LABEL_WIDTH = 180;
+
+export function sidebarMaximum(available: number) {
+  return Math.max(SIDEBAR_RAIL_WIDTH, Math.min(400, available - 880));
+}
+export function boundedSidebarWidth(value: number, maximum = 400) {
+  const next = Math.round(Math.min(maximum, value));
+  return next < SIDEBAR_LABEL_WIDTH ? SIDEBAR_RAIL_WIDTH : next;
+}
+/** Viewport fitting never overwrites the person's preferred width. */
+export function sidebarLayout(preferred: number, available: number) {
+  const width =
+    available <= 800
+      ? DEFAULT_SIDEBAR_WIDTH
+      : boundedSidebarWidth(preferred, sidebarMaximum(available));
+  return { width, railed: available > 800 && width === SIDEBAR_RAIL_WIDTH };
+}
 export function savedSidebarWidth() {
   try {
     const width = Number(localStorage.getItem("orbyn-sidebar-width"));
-    return Number.isFinite(width) && width >= 200 && width <= 400
+    return Number.isFinite(width) &&
+      (width === SIDEBAR_RAIL_WIDTH || width >= SIDEBAR_LABEL_WIDTH) &&
+      width <= 400
       ? width
       : DEFAULT_SIDEBAR_WIDTH;
   } catch {
@@ -25,16 +45,13 @@ export function SidebarResizer({
     null,
   );
   const [maximum, setMaximum] = useState(400);
-  const latest = useRef({ width, onChange });
-  latest.current = { width, onChange };
   useEffect(() => {
     const scope = edge.current?.closest<HTMLElement>(".app.workspace");
     if (!scope) return;
     const measure = () => {
       if (!window.matchMedia("(min-width: 801px)").matches) return;
-      const max = Math.max(200, Math.min(400, scope.clientWidth - 320));
+      const max = boundedSidebarWidth(400, sidebarMaximum(scope.clientWidth));
       setMaximum(max);
-      if (latest.current.width > max) latest.current.onChange(max);
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -42,7 +59,7 @@ export function SidebarResizer({
     return () => observer.disconnect();
   }, []);
   const change = (value: number, remember = false) => {
-    const next = Math.round(Math.max(200, Math.min(maximum, value)));
+    const next = boundedSidebarWidth(value, maximum);
     onChange(next);
     if (remember) {
       try {
@@ -60,10 +77,12 @@ export function SidebarResizer({
       aria-label="Navigation width"
       aria-orientation="vertical"
       tabIndex={0}
-      aria-valuemin={200}
+      aria-valuemin={SIDEBAR_RAIL_WIDTH}
       aria-valuemax={maximum}
       aria-valuenow={width}
-      aria-valuetext={`${width} pixels`}
+      aria-valuetext={
+        width === SIDEBAR_RAIL_WIDTH ? "Icon rail" : `${width} pixels`
+      }
       aria-controls="workspace-navigation"
       onDoubleClick={() => change(DEFAULT_SIDEBAR_WIDTH, true)}
       onPointerDown={(event) => {
@@ -102,8 +121,13 @@ export function SidebarResizer({
         } else if (event.key === "ArrowLeft")
           change(width - (event.shiftKey ? 40 : 10), true);
         else if (event.key === "ArrowRight")
-          change(width + (event.shiftKey ? 40 : 10), true);
-        else if (event.key === "Home") change(200, true);
+          change(
+            width === SIDEBAR_RAIL_WIDTH
+              ? SIDEBAR_LABEL_WIDTH
+              : width + (event.shiftKey ? 40 : 10),
+            true,
+          );
+        else if (event.key === "Home") change(SIDEBAR_RAIL_WIDTH, true);
         else if (event.key === "End") change(maximum, true);
         else return;
         event.preventDefault();

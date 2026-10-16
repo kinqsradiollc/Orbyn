@@ -69,7 +69,23 @@ remain valid.
 
 Keep the document header Download as the sole export entry. Remove duplicate
 source-pane export/assistant controls and routine explanatory paragraphs. Help
-is collapsed; errors, recovery and meaningful pending work remain visible.
+is removed; errors, recovery and meaningful pending work remain visible.
 Access-only sign-ins receive a short conditional lifetime notice on consent;
 renewable sign-ins do not gain routine extra copy. Refresh capability remains
 explicitly requested by the host, never silently upgraded.
+
+### Owner refinements — selection and workspace navigation
+
+Reuse the existing Note selection menu; do not add a second Ask/Explain popup.
+Keep it hidden during selection gestures and reveal only after release/settling.
+Markdown/LaTeX selections feed the existing header assistant action, with an
+explicit quoted excerpt and stale-selection/version guards. Refine and Comment
+retain their existing exact Note anchors; no invented anchors or emoji actions.
+
+The main navigation resizes down to its 72px icon rail and back out, with keyboard
+resizing and automatic fitting that preserves the preferred width. No separate
+main-navigation collapse button. Library uses the same edge-to-edge styling in
+browse and document views, with one Library collapse/reopen control. This latest
+owner request supersedes the interim removal of every Library collapse control.
+Remove the redundant document Back button; Library's All documents remains the
+return route. These refinements require final affected-scope qualification.
