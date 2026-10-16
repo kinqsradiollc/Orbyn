@@ -1,9 +1,5 @@
 import { routeDocumentDownload } from "./document-download";
-import {
-  DocumentLibraryButton,
-  DocumentPaneSwitch,
-  useDocumentWorkspace,
-} from "./DocumentWorkspace";
+import { DocumentPaneSwitch, useDocumentWorkspace } from "./DocumentWorkspace";
 import {
   DocLatexPreviewProvider,
   DocLatexDocumentPreview,
@@ -1050,7 +1046,6 @@ function StructuredDocEditorBody({
           }
         />
         <header className="structured-doc-toolbar">
-          <DocumentLibraryButton />
           {onBack && (
             <button
               className="icon-button structured-doc-back"

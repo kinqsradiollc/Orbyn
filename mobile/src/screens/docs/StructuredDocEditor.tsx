@@ -1,5 +1,5 @@
 import { routeDocumentDownload } from "./document-download";
-import { DocumentLibraryButton, useDocumentLibrary } from "./DocumentWorkspace";
+import { useDocumentLibrary } from "./DocumentWorkspace";
 import { DocumentDivider } from "../../components/DocumentDivider";
 import {
   DocLatexPreviewProvider,
@@ -811,7 +811,6 @@ function StructuredDocEditorBody({
             }
           />
           <View style={styles.toolbar}>
-            <DocumentLibraryButton />
             <DocEditorModes
               value={sourceFormat}
               disabled={

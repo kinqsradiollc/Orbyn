@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInNewContext } from "node:vm";
 import ts from "typescript";
-import * as React from "react";
 
 const read = (path: string) =>
   readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
@@ -42,7 +41,7 @@ function find(
   assert.ok(found);
   return found;
 }
-test("both desktop document toolbar DOM orders start with Library, Back and title", () => {
+test("desktop toolbar DOM order starts with Back and title, with no collapse control", () => {
   for (const [file, className] of [
     [
       "desktop/src/features/docs/StructuredDocEditor.tsx",
@@ -56,18 +55,14 @@ test("both desktop document toolbar DOM orders start with Library, Back and titl
       (node) => ts.isJsxElement(node) && classOf(node, source) === className,
     ) as ts.JsxElement;
     const children = header.children.filter((node) => !ts.isJsxText(node));
-    assert.equal(
-      (children[0] as ts.JsxSelfClosingElement).tagName.getText(source),
-      "DocumentLibraryButton",
-    );
-    assert.ok(ts.isJsxExpression(children[1]));
-    assert.match(children[1].getText(source), /^\{onBack &&/);
-    assert.equal(classOf(children[2], source), "document-toolbar-title");
+    assert.ok(ts.isJsxExpression(children[0]));
+    assert.match(children[0].getText(source), /^\{onBack &&/);
+    assert.equal(classOf(children[1], source), "document-toolbar-title");
     if (className === "structured-doc-toolbar")
-      assert.equal(classOf(children[3], source), "document-toolbar-actions");
-    assert.equal(
-      header.getText(source).split("<DocumentLibraryButton").length - 1,
-      1,
+      assert.equal(classOf(children[2], source), "document-toolbar-actions");
+    assert.doesNotMatch(
+      header.getText(source),
+      /DocumentLibraryButton|PanelLeft/,
     );
   }
   assert.doesNotMatch(
@@ -75,80 +70,91 @@ test("both desktop document toolbar DOM orders start with Library, Back and titl
     /\.structured-doc-back\s*\{[^}]*order:/,
   );
 });
-test("the library panel cannot duplicate the editor toggle or compact Browse control", () => {
-  const source = parse("desktop/src/features/docs/DocsView.tsx");
-  const button = find(
-    source,
-    (node) =>
-      ts.isJsxElement(node) &&
-      classOf(node, source)?.includes("docs-library-hide") === true,
+test("library visibility is responsive and source-driven instead of a remembered collapse preference", () => {
+  const library = read("desktop/src/features/docs/DocsView.tsx");
+  assert.match(library, /paneWidth > 0 && paneWidth < 900/);
+  assert.match(
+    library,
+    /!navigationOpen && \(compactLibrary \|\| sourceOpen\)/,
   );
-  let container = button.parent;
-  while (container && !ts.isJsxExpression(container))
-    container = container.parent;
-  assert.ok(container && ts.isJsxExpression(container));
-  const code = ts.transpileModule(
-    `result = (${container.expression!.getText(source)});`,
-    {
-      compilerOptions: {
-        jsx: ts.JsxEmit.React,
-        module: ts.ModuleKind.CommonJS,
-      },
-    },
-  ).outputText;
-  for (const editor of [null, {}])
-    for (const compactLibrary of [false, true]) {
+  assert.doesNotMatch(
+    library,
+    /docs-library-hide|Show library|orbyn-docs-library|PanelLeft/,
+  );
+  assert.match(library, /setSourceOpen,/);
+  const mobile = read("mobile/src/screens/docs/DocsSheet.tsx");
+  assert.match(mobile, /!sourceOpen &&/);
+  assert.match(mobile, /setSourceOpen,/);
+  for (const file of [
+    "desktop/src/features/docs/DocEditor.tsx",
+    "desktop/src/features/docs/StructuredDocEditor.tsx",
+    "mobile/src/screens/docs/DocEditor.tsx",
+    "mobile/src/screens/docs/StructuredDocEditor.tsx",
+  ])
+    assert.doesNotMatch(read(file), /DocumentLibraryButton/);
+});
+test("actual workspace effects return library space when source closes or editor unmounts", () => {
+  for (const [file, hook, refName] of [
+    [
+      "desktop/src/features/docs/DocumentWorkspace.tsx",
+      "useLayoutEffect",
+      "controls",
+    ],
+    ["mobile/src/screens/docs/DocumentWorkspace.tsx", "useEffect", "latest"],
+  ]) {
+    const source = parse(file);
+    const call = find(
+      source,
+      (node) =>
+        ts.isCallExpression(node) &&
+        node.expression.getText(source) === hook &&
+        !!node.arguments[0]?.getText(source).includes("setSourceOpen(open)"),
+    ) as ts.CallExpression;
+    const code = ts.transpileModule(
+      `result = (${call.arguments[0].getText(source)})();`,
+      { compilerOptions: { target: ts.ScriptTarget.ES2022 } },
+    ).outputText;
+    for (const open of [true, false]) {
+      const changes: boolean[] = [];
+      const views: string[] = [];
       const scope: any = {
-        React,
-        editor,
-        compactLibrary,
-        showLibrary() {},
-        PanelLeftClose: () => null,
+        open,
+        result: null,
+        [refName]: {
+          current: { setSourceOpen: (next: boolean) => changes.push(next) },
+        },
+        setView: (next: string) => views.push(next),
       };
       runInNewContext(code, scope);
-      assert.equal(!!scope.result, !editor && !compactLibrary);
+      assert.deepEqual(changes, [open]);
+      scope.result();
+      assert.deepEqual(changes, [open, false]);
+      if (hook === "useLayoutEffect")
+        assert.deepEqual(views, open ? ["source"] : []);
     }
-});
-test("the shared document toggle exposes its expanded state and keeps its single action", () => {
-  const source = parse("desktop/src/features/docs/DocumentWorkspace.tsx");
-  const component = find(
-    source,
-    (node) =>
-      ts.isFunctionDeclaration(node) &&
-      node.name?.text === "DocumentLibraryButton",
-  );
-  const code = ts.transpileModule(
-    component.getText(source) + "\nresult = DocumentLibraryButton();",
-    {
-      compilerOptions: {
-        jsx: ts.JsxEmit.React,
-        module: ts.ModuleKind.CommonJS,
-      },
-    },
-  ).outputText;
-  for (const hidden of [true, false]) {
-    let toggles = 0;
-    const library = {
-      hidden,
-      controls: "fixture-navigation",
-      toggle() {
-        toggles++;
-      },
-    };
-    const scope: any = {
-      React,
-      exports: {},
-      result: null,
-      useContext: () => library,
-      DocumentLibraryContext: {},
-      PanelLeftOpen: () => null,
-      PanelLeftClose: () => null,
-    };
-    runInNewContext(code, scope);
-    assert.equal(scope.result.type, "button");
-    assert.equal(scope.result.props["aria-expanded"], !hidden);
-    assert.equal(scope.result.props["aria-controls"], "fixture-navigation");
-    scope.result.props.onClick();
-    assert.equal(toggles, 1);
   }
+});
+test("app navigation adapts to width and exposes only the narrow-screen menu", () => {
+  const app = parse("desktop/src/app/App.tsx");
+  const railed = find(
+    app,
+    (node) =>
+      ts.isVariableDeclaration(node) && node.name.getText(app) === "railed",
+  ) as ts.VariableDeclaration;
+  assert.equal(
+    railed.initializer!.getText(app),
+    'useMediaQuery("(min-width: 801px) and (max-width: 1199px)")',
+  );
+  assert.doesNotMatch(
+    read("desktop/src/app/App.tsx"),
+    /orbyn-sidebar|onToggleRail/,
+  );
+  assert.match(
+    read("desktop/src/app/App.tsx"),
+    /onResize=\{sharedChromeHost \? undefined : setSidebarWidth\}/,
+  );
+  const header = read("desktop/src/components/Topbar.tsx");
+  assert.doesNotMatch(header, /PanelLeft|workspace-rail-toggle|onToggleRail/);
+  assert.match(header, /className="icon-button mobile-menu"/);
+  assert.match(header, /aria-expanded=\{navigationOpen\}/);
 });

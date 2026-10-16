@@ -1,9 +1,5 @@
 import { routeDocumentDownload } from "./document-download";
-import {
-  DocumentLibraryButton,
-  DocumentPaneSwitch,
-  useDocumentWorkspace,
-} from "./DocumentWorkspace";
+import { DocumentPaneSwitch, useDocumentWorkspace } from "./DocumentWorkspace";
 import {
   DocLatexPreviewProvider,
   DocLatexDocumentPreview,
@@ -3502,7 +3498,6 @@ function LegacyDocEditor({
           )}
           {sourcePreview && workspace.divider}
           <div className="doc-bar">
-            <DocumentLibraryButton />
             {onBack && (
               <button
                 className="icon-button"

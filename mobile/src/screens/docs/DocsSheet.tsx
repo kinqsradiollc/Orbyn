@@ -224,7 +224,7 @@ function DocsBody({
     if (owns()) setConfirmation({ title, message, label, action });
   };
   const [navigationOpen, setNavigationOpen] = useState(false);
-  const [libraryHidden, setLibraryHidden] = useState(false);
+  const [sourceOpen, setSourceOpen] = useState(false);
   const [expandedFolder, setExpandedFolder] = useState<string | null>(null);
   /** Pages opened in the library's tree to show the pages inside (W5). */
   const [treeOpen, setTreeOpen] = useState<Set<string>>(new Set());
@@ -910,7 +910,7 @@ function DocsBody({
     !!open &&
     !navigationOpen &&
     !agenda &&
-    !libraryHidden &&
+    !sourceOpen &&
     shown.length > 1;
   const location =
     fixedKind === "memory"
@@ -1351,12 +1351,7 @@ function DocsBody({
   return (
     <DocumentLibraryContext.Provider
       value={{
-        hidden: libraryHidden,
-        hide: () => setLibraryHidden(true),
-        toggle: () => {
-          if (wideScreen) setLibraryHidden((value) => !value);
-          else leavePage(() => setNavigationOpen(true));
-        },
+        setSourceOpen,
       }}
     >
       <Sheet

@@ -18,9 +18,6 @@ import {
   FolderPlus,
   Plus,
   Star,
-  PanelLeft,
-  PanelLeftClose,
-  PanelLeftOpen,
   ChevronRight,
   Hourglass,
   CalendarDays,
@@ -283,24 +280,12 @@ function DocsBody({
   const [folderName, setFolderName] = useState("");
   const [failed, setFailed] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
-  // On wide screens the library can be tucked away for a full-width page.
-  const [libraryHidden, setLibraryHidden] = useState(() => {
-    try {
-      return localStorage.getItem("orbyn-docs-library") === "hidden";
-    } catch {
-      return false;
-    }
-  });
+  const [sourceOpen, setSourceOpen] = useState(false);
   const compactLibrary = paneWidth > 0 && paneWidth < 900;
-  const showLibrary = (show: boolean) => {
-    setNavigationOpen(show);
-    setLibraryHidden(!show);
-    try {
-      localStorage.setItem("orbyn-docs-library", show ? "shown" : "hidden");
-    } catch {
-      // Storage can be blocked; the choice lasts this visit.
-    }
-  };
+  // The library yields to an open source workspace or a narrow content pane.
+  const libraryHidden =
+    !!open && !navigationOpen && (compactLibrary || sourceOpen);
+  const showLibrary = (show: boolean) => setNavigationOpen(show);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("recent");
   /** Only pages with this tag, by id; "" for every page. */
@@ -1114,7 +1099,7 @@ function DocsBody({
         aria-controls={`${libraryId}-navigation`}
         onClick={() => setNavigationOpen(!navigationOpen)}
       >
-        <PanelLeft size={18} />{" "}
+        <FolderIcon size={18} />{" "}
         {navigationOpen
           ? `Close ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`
           : `Browse ${fixedKind === "memory" ? "Memory" : fixedKind === "agent" ? "Agent notes" : "library"}`}
@@ -1129,7 +1114,9 @@ function DocsBody({
             showLibrary(false);
             event.currentTarget
               .closest(".docs-workspace")
-              ?.querySelector<HTMLButtonElement>(".document-library-toggle")
+              ?.querySelector<HTMLButtonElement>(
+                '.structured-doc-back, .doc-bar [aria-label="All documents"], .docs-nav-toggle',
+              )
               ?.focus();
           }
         }}
@@ -1142,16 +1129,6 @@ function DocsBody({
                 ? "Agent notes"
                 : "Library"}
           </h2>
-          {!editor && !compactLibrary && (
-            <button
-              className="icon-button docs-library-hide"
-              aria-label="Hide library"
-              title="Hide library"
-              onClick={() => showLibrary(false)}
-            >
-              <PanelLeftClose size={16} />
-            </button>
-          )}
         </div>
         {!fixedKind && (
           <>
@@ -1417,14 +1394,6 @@ function DocsBody({
         )}
       </nav>
       <section className="docs-workspace-content" aria-label="Documents">
-        {libraryHidden && !editor && (
-          <button
-            className="text-button docs-library-show"
-            onClick={() => showLibrary(true)}
-          >
-            <PanelLeftOpen size={16} /> Show library
-          </button>
-        )}
         {!naming && !filing && !tagging && (
           <OutcomeNote outcome={action.outcome} />
         )}
@@ -1443,11 +1412,7 @@ function DocsBody({
         {editor ? (
           <DocumentLibraryContext.Provider
             value={{
-              hidden: compactLibrary ? !navigationOpen : libraryHidden,
-              controls: `${libraryId}-navigation`,
-              toggle: () =>
-                showLibrary(compactLibrary ? !navigationOpen : libraryHidden),
-              hide: () => showLibrary(false),
+              setSourceOpen,
             }}
           >
             {editor}

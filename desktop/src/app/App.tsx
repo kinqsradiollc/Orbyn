@@ -1,3 +1,4 @@
+import { useMediaQuery } from "../hooks/useMediaQuery";
 import { SharedNarrowChrome } from "../components/SharedNarrowChrome";
 import { ViewDraftStore } from "@orbyn/api-client";
 import { chatgptStore } from "../lib/chatgpt";
@@ -767,23 +768,17 @@ function WorkspaceController({
   const [planRequest, setPlanRequest] = useState<PlanRequest | null>(null);
   const [mobileNav, setMobileNav] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(savedSidebarWidth);
-  // A narrow icon rail instead of the full sidebar, remembered per browser.
-  const [railed, setRailed] = useState(() => {
-    try {
-      return localStorage.getItem("orbyn-sidebar") !== "full";
-    } catch {
-      return false;
-    }
-  });
-  const toggleRail = () =>
-    setRailed((was) => {
-      try {
-        localStorage.setItem("orbyn-sidebar", was ? "full" : "rail");
-      } catch {
-        // Private windows can refuse storage; the choice lasts this visit.
-      }
-      return !was;
-    });
+  // Navigation adapts to the window; saved width still applies on wide screens.
+  const railed = useMediaQuery("(min-width: 801px) and (max-width: 1199px)");
+  const narrowNavigation = useMediaQuery("(max-width: 800px)");
+  const openNavigation = () => {
+    if (narrowNavigation) setMobileNav((open) => !open);
+    else
+      document
+        .getElementById("workspace-navigation")
+        ?.querySelector<HTMLButtonElement>("button")
+        ?.focus();
+  };
   /** The booking to open in the bookings inbox (from a notification). */
   const [bookingFocus, setBookingFocus] = useState<BookingFocus | null>(null);
   // Public pages from emailed links: booking pages and invitations.
@@ -1293,7 +1288,7 @@ function WorkspaceController({
         if (settingsOpen && !closeSettings()) return;
         openCommand();
       },
-      "app.sidebar": () => toggleRail(),
+      "app.sidebar": () => openNavigation(),
       "app.shortcuts": () => setShortcutsOpen(true),
       "app.changes": () => setChangesOpen(true),
       "app.whats-new": () => setWhatsNewOpen(true),
@@ -2575,9 +2570,7 @@ function WorkspaceController({
       tabs={secondary || sharedChromeHost ? undefined : workspaceTabs}
       view={chromeLocation?.view ?? view}
       agentName={assistant.agentName}
-      railed={railed}
       navigationOpen={mobileNav}
-      onToggleRail={sharedChromeHost ? undefined : toggleRail}
       onToggleMenu={() => {
         setPeek(null);
         setMobileNav(!mobileNav);
@@ -3274,7 +3267,7 @@ function WorkspaceController({
                   setCalendarMode("day");
                 })
               }
-              onToggleSidebar={toggleRail}
+              onToggleSidebar={openNavigation}
               onOpenSecurity={() =>
                 void leaveFor(() => navigatePath("/security"))
               }

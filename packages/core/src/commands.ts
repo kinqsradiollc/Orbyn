@@ -322,9 +322,9 @@ export const COMMANDS: CommandDef[] = [
   },
   {
     id: "app.sidebar",
-    label: "Show or hide the sidebar",
+    label: "Go to navigation",
     group: "Help",
-    keywords: "rail collapse menu",
+    keywords: "navigation menu sidebar",
     icon: "panel",
     keys: ["mod", "\\"],
     on: "web",

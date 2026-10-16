@@ -1,6 +1,6 @@
 import { routeDocumentDownload } from "./document-download";
 import { shared } from "../../styles";
-import { DocumentLibraryButton, useDocumentLibrary } from "./DocumentWorkspace";
+import { useDocumentLibrary } from "./DocumentWorkspace";
 import { DocumentDivider } from "../../components/DocumentDivider";
 import { usePaneWidth } from "../../hooks/usePaneWidth";
 import {
@@ -3243,7 +3243,6 @@ function LegacyDocEditor({
                 gap: 4,
               }}
             >
-              <DocumentLibraryButton />
               <DocEditorModes
                 value={sourcePreview ? sourcePreviewMode : "note"}
                 disabled={
