@@ -216,7 +216,7 @@ services:
     stop_grace_period: 35s
     deploy:
       resources:
-        limits: { cpus: "1", memory: 768M }
+        limits: { cpus: "1", memory: 768M, pids: 64 }
 
   # Interactive assistant and provider settings. Automation has separate processes.
   ai:
