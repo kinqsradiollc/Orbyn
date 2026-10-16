@@ -1050,22 +1050,7 @@ function StructuredDocEditorBody({
           }
         />
         <header className="structured-doc-toolbar">
-          <span className="document-toolbar-title">
-            {session?.title || "Untitled"}
-          </span>
           <DocumentLibraryButton />
-          <DocEditorModes
-            value={sourceFormat}
-            disabled={
-              !session ||
-              state.sourceInvalid ||
-              state.busy ||
-              !!state.conflict ||
-              sourcePending ||
-              !!sourceAsk
-            }
-            onChange={(format) => void chooseFormat(format)}
-          />
           {onBack && (
             <button
               className="icon-button structured-doc-back"
@@ -1098,131 +1083,151 @@ function StructuredDocEditorBody({
               <ArrowLeft size={16} />
             </button>
           )}
-          <span className="structured-doc-status">
-            {!session
-              ? state.busy
-                ? "Opening…"
-                : "Unavailable"
-              : state.busy
-                ? "Saving…"
-                : state.conflict
-                  ? "Review changes"
-                  : session && docEditorSessionDirty(session)
-                    ? "Unsaved"
-                    : "Saved"}
+          <span className="document-toolbar-title">
+            {session?.title || "Untitled"}
           </span>
-          {canWrite && session && docEditorSessionDirty(session) && (
-            <button
-              className="secondary"
-              onClick={() => void save(!!state.error)}
+          <div className="document-toolbar-actions">
+            <DocEditorModes
+              value={sourceFormat}
               disabled={
-                state.busy ||
-                state.conflict ||
-                state.sourceInvalid ||
                 !session ||
-                !docEditorSessionDirty(session)
+                state.sourceInvalid ||
+                state.busy ||
+                !!state.conflict ||
+                sourcePending ||
+                !!sourceAsk
               }
-            >
-              {state.error && !state.conflict && !state.sourceInvalid
-                ? "Retry save"
-                : "Save"}
-            </button>
-          )}
-          {sourceFormat !== "note" && (
-            <DocumentPaneSwitch
-              view={workspace.view}
-              onChange={workspace.setView}
+              onChange={(format) => void chooseFormat(format)}
             />
-          )}
-          <div className="structured-doc-menu" ref={menuRef}>
-            <button
-              className="icon-button"
-              type="button"
-              aria-label="Page actions"
-              title="Page actions"
-              aria-expanded={menuOpen}
-              onClick={() => setMenuOpen(!menuOpen)}
-            >
-              <MoreHorizontal size={16} />
-            </button>
-            {menuOpen && (
-              <div className="structured-doc-menu-items">
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={state.busy}
-                  onClick={() => {
-                    setMenuOpen(false);
-                    void store.refresh();
-                  }}
-                >
-                  Refresh
-                </button>
-                <button
-                  className="secondary"
-                  type="button"
-                  disabled={historyBusy}
-                  onClick={() => void showHistory()}
-                >
-                  History
-                </button>
-                <button
-                  className="secondary"
-                  type="button"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    if (
-                      historyMutation.current ||
-                      sourceMutation.current ||
-                      sourceAsk
-                    )
-                      return;
-                    historyRequest.current++;
-                    setHistoryOpen(false);
-                    setCommentsOpen((value) => !value);
-                  }}
-                >
-                  Comments
-                </button>
-                {EXPORT_FORMATS.map((format) => (
+
+            <span className="structured-doc-status">
+              {!session
+                ? state.busy
+                  ? "Opening…"
+                  : "Unavailable"
+                : state.busy
+                  ? "Saving…"
+                  : state.conflict
+                    ? "Review changes"
+                    : session && docEditorSessionDirty(session)
+                      ? "Unsaved"
+                      : "Saved"}
+            </span>
+            {canWrite && session && docEditorSessionDirty(session) && (
+              <button
+                className="secondary"
+                onClick={() => void save(!!state.error)}
+                disabled={
+                  state.busy ||
+                  state.conflict ||
+                  state.sourceInvalid ||
+                  !session ||
+                  !docEditorSessionDirty(session)
+                }
+              >
+                {state.error && !state.conflict && !state.sourceInvalid
+                  ? "Retry save"
+                  : "Save"}
+              </button>
+            )}
+            {sourceFormat !== "note" && (
+              <DocumentPaneSwitch
+                view={workspace.view}
+                onChange={workspace.setView}
+              />
+            )}
+            <div className="structured-doc-menu" ref={menuRef}>
+              <button
+                className="icon-button"
+                type="button"
+                aria-label="Page actions"
+                title="Page actions"
+                aria-expanded={menuOpen}
+                onClick={() => setMenuOpen(!menuOpen)}
+              >
+                <MoreHorizontal size={16} />
+              </button>
+              {menuOpen && (
+                <div className="structured-doc-menu-items">
                   <button
                     className="secondary"
                     type="button"
-                    key={format}
-                    disabled={
-                      !session ||
-                      docEditorSessionDirty(session) ||
-                      state.source !== null
-                    }
-                    onClick={() => void download(format)}
+                    disabled={state.busy}
+                    onClick={() => {
+                      setMenuOpen(false);
+                      void store.refresh();
+                    }}
                   >
-                    Export {EXPORT_LABELS[format].name}
+                    Refresh
                   </button>
-                ))}
-                {canWrite &&
-                  (["updates", "publish"] as const).map((action) => (
+                  <button
+                    className="secondary"
+                    type="button"
+                    disabled={historyBusy}
+                    onClick={() => void showHistory()}
+                  >
+                    History
+                  </button>
+                  <button
+                    className="secondary"
+                    type="button"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      if (
+                        historyMutation.current ||
+                        sourceMutation.current ||
+                        sourceAsk
+                      )
+                        return;
+                      historyRequest.current++;
+                      setHistoryOpen(false);
+                      setCommentsOpen((value) => !value);
+                    }}
+                  >
+                    Comments
+                  </button>
+                  {EXPORT_FORMATS.map((format) => (
                     <button
                       className="secondary"
-                      key={action}
                       type="button"
+                      key={format}
                       disabled={
-                        state.busy ||
-                        !!state.error ||
-                        state.conflict ||
                         !session ||
                         docEditorSessionDirty(session) ||
                         state.source !== null
                       }
-                      onClick={() => {
-                        setMenuOpen(false);
-                        setPageAction(action);
-                      }}
+                      onClick={() => void download(format)}
                     >
-                      {action === "updates" ? "Page updates" : "Publish to web"}
+                      Export {EXPORT_LABELS[format].name}
                     </button>
                   ))}
-              </div>
-            )}
+                  {canWrite &&
+                    (["updates", "publish"] as const).map((action) => (
+                      <button
+                        className="secondary"
+                        key={action}
+                        type="button"
+                        disabled={
+                          state.busy ||
+                          !!state.error ||
+                          state.conflict ||
+                          !session ||
+                          docEditorSessionDirty(session) ||
+                          state.source !== null
+                        }
+                        onClick={() => {
+                          setMenuOpen(false);
+                          setPageAction(action);
+                        }}
+                      >
+                        {action === "updates"
+                          ? "Page updates"
+                          : "Publish to web"}
+                      </button>
+                    ))}
+                </div>
+              )}
+            </div>
           </div>
         </header>
         {pageAction === "updates" && (

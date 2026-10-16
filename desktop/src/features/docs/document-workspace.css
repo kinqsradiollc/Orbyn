@@ -474,3 +474,21 @@
 .document-workspace .doc-source-tools > .document-preview-help[open] {
   flex-basis: 100%;
 }
+
+/* Toolbar DOM and visual order agree: library, back, title, then page actions. */
+.document-toolbar-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
+  min-width: 0;
+}
+.document-workspace .document-toolbar-actions .structured-doc-status {
+  margin-left: 0;
+}
+@container (max-width: 600px) {
+  .document-toolbar-actions {
+    flex-basis: 100%;
+  }
+}

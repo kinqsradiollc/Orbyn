@@ -1142,14 +1142,16 @@ function DocsBody({
                 ? "Agent notes"
                 : "Library"}
           </h2>
-          <button
-            className="icon-button docs-library-hide"
-            aria-label="Hide library"
-            title="Hide library"
-            onClick={() => showLibrary(false)}
-          >
-            <PanelLeftClose size={16} />
-          </button>
+          {!editor && !compactLibrary && (
+            <button
+              className="icon-button docs-library-hide"
+              aria-label="Hide library"
+              title="Hide library"
+              onClick={() => showLibrary(false)}
+            >
+              <PanelLeftClose size={16} />
+            </button>
+          )}
         </div>
         {!fixedKind && (
           <>
@@ -1442,6 +1444,7 @@ function DocsBody({
           <DocumentLibraryContext.Provider
             value={{
               hidden: compactLibrary ? !navigationOpen : libraryHidden,
+              controls: `${libraryId}-navigation`,
               toggle: () =>
                 showLibrary(compactLibrary ? !navigationOpen : libraryHidden),
               hide: () => showLibrary(false),

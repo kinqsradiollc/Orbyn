@@ -3503,15 +3503,6 @@ function LegacyDocEditor({
           {sourcePreview && workspace.divider}
           <div className="doc-bar">
             <DocumentLibraryButton />
-            <span className="document-toolbar-title">
-              {title || "Untitled"}
-            </span>
-            {sourcePreview && (
-              <DocumentPaneSwitch
-                view={workspace.view}
-                onChange={workspace.setView}
-              />
-            )}
             {onBack && (
               <button
                 className="icon-button"
@@ -3522,6 +3513,16 @@ function LegacyDocEditor({
                 <ArrowLeft size={15} />
               </button>
             )}
+            <span className="document-toolbar-title">
+              {title || "Untitled"}
+            </span>
+            {sourcePreview && (
+              <DocumentPaneSwitch
+                view={workspace.view}
+                onChange={workspace.setView}
+              />
+            )}
+
             <span className="doc-save" role="status">
               {save === "saving" && (
                 <>

@@ -12,6 +12,7 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import "./document-workspace.css";
 export const DocumentLibraryContext = createContext<{
   hidden: boolean;
+  controls?: string;
   toggle: () => void;
   hide: () => void;
 } | null>(null);
@@ -25,6 +26,8 @@ export function DocumentLibraryButton() {
       aria-label={
         library.hidden ? "Show document library" : "Hide document library"
       }
+      aria-expanded={!library.hidden}
+      aria-controls={library.controls}
       title={library.hidden ? "Show library" : "Hide library"}
       onClick={library.toggle}
     >

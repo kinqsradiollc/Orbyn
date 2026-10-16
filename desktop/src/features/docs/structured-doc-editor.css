@@ -2,9 +2,6 @@
   min-width: 0;
   container-type: inline-size;
 }
-.structured-doc-back {
-  order: -1;
-}
 .structured-doc-status {
   font-size: 13px;
   color: var(--color-muted);
