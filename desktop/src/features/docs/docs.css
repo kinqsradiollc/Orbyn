@@ -3030,8 +3030,8 @@ h6.doc-heading {
   background: var(--color-hover);
   color: var(--color-text);
 }
-.doc-outline li.is-current button,
-.page-info-outline li.is-current button {
+.doc-outline li.is-current > button[aria-current="location"],
+.page-info-outline li.is-current > button[aria-current="location"] {
   border-left-color: var(--color-accent);
   color: var(--color-text);
   font-weight: 600;

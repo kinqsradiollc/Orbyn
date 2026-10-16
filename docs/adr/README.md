@@ -4,7 +4,7 @@
 
 | Decision                                                                            | State                      | Purpose                                                                        |
 | ----------------------------------------------------------------------------------- | -------------------------- | ------------------------------------------------------------------------------ |
-| [006 — Document consistency and Settings](006-document-consistency-and-settings.md) | Implementation in progress | One document in three views, reliable connection recovery and focused Settings |
+| [006 — Document consistency and Settings](006-document-consistency-and-settings.md) | Owner-approved delivery; final checks waived | One document in three views, connection recovery, focused Settings and workspace panels |
 | [005 — Document workspace](005-document-workspace.md)                               | Accepted, round 1/3        | Viewport writing workspace and direct LaTeX preview                            |
 | [003 — Product UI/UX redesign](003-product-ui-ux-redesign.md)                       | Accepted shared scope      | Web and mobile design outside the superseded document presentation             |
 

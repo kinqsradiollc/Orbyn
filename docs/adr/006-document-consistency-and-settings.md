@@ -1,6 +1,8 @@
 # ADR 006 — Document consistency, connection recovery and focused Settings
 
-Status: implementation in progress. Owner request: 16 October 2026.
+Status: implementation complete; owner approved PR and merge on 16 October 2026.
+Final Tester, Visual Check and Reviewer closure waived by explicit owner request.
+The intermittent production MCP incident remains an unconfirmed diagnostic follow-up.
 Baseline: `b5ee4dd0`. This is a new combined correction scope, counter: 1/3;
 ADR005's accepted presentation receipts remain historical and do not qualify
 whole-document LaTeX synchronization. Its completion claim omitted that contract.
@@ -121,3 +123,13 @@ inset, and align primary/secondary tab rows. The split uses a 960px usable main
 budget, allowing a narrow third Notifications pane at 1440px. Below the combined
 budget the dock becomes a right side sheet; fullscreen is limited to phones.
 Opening/selecting dock tabs does not reset split sizing or main navigation.
+
+### Owner delivery decision
+
+After the final outline screenshot, the owner explicitly requested skipping
+Tester, Visual Check and Reviewer and proceeding directly to PR and merge.
+The active-heading bar now applies only to the heading navigation button, not
+its adjacent section menu. No additional qualification is claimed for this last
+CSS change. Prior checkpoint receipts and failures remain historical evidence;
+the unfinished final rendered pass is waived, not passed. Production deployment
+and the intermittent MCP incident are not established by the merge.

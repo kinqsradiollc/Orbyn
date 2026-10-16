@@ -3,19 +3,19 @@
 Decision: [ADR006](../adr/006-document-consistency-and-settings.md).
 Checkout: `/Users/anhdang/.codex/worktrees/c6-next/Orbyn`.
 Branch: `codex/document-sync-settings`. Baseline: `b5ee4dd0`.
-Phase: batched correction after initial qualification. Review counter: 1/3. Builder owns source; delegated Builder specialists have disjoint documented file scopes. Root owns QA fixtures.
+Phase: implementation complete; PR/merge explicitly authorized by owner, final qualification waived. Review counter: 1/3 (not a completed final acceptance). Builder owns source; delegated Builder specialists have disjoint documented file scopes. Root owns QA fixtures.
 
 | Requirement                             | Current state                                                                            | Acceptance evidence                                 |
 | --------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| One document across Note/Markdown/LaTeX | Implemented; correction qualification pending                                            | Round trip edits, identity/containers and actual UI |
-| Starter preview                         | Implemented; correction qualification pending                                            | Actual default input, valid/error/repair            |
+| One document across Note/Markdown/LaTeX | Implemented; final qualification waived by owner                                            | Round trip edits, identity/containers and actual UI |
+| Starter preview                         | Implemented; final qualification waived by owner                                            | Actual default input, valid/error/repair            |
 | MCP reliability                         | Confirmed OAuth race/client/recovery fixes implemented; owner incident cause unconfirmed | Reproduced lifecycle + recovery/revocation          |
-| Activity width                          | Implemented; correction qualification pending                                            | Shared modal sizing and narrow layout               |
-| Settings row/detail navigation          | Implemented; correction qualification pending                                            | Back/search/deep links/guards/drafts                |
-| Agent categories/customization          | Implemented; correction qualification pending                                            | External vs Orbyn grouping, actual editor flow      |
-| Test → Review                           | Initial candidate qualified; correction retest pending                                   | Frozen source, max3 rounds                          |
-| Visual web/Expo                         | Initial batch recorded; bounded closure pending                                          | One bounded changed-flow batch                      |
-| Main delivery                           | Pending acceptance                                                                       | Verified remote ref                                 |
+| Activity width                          | Implemented; final qualification waived by owner                                            | Shared modal sizing and narrow layout               |
+| Settings row/detail navigation          | Implemented; final qualification waived by owner                                            | Back/search/deep links/guards/drafts                |
+| Agent categories/customization          | Implemented; final qualification waived by owner                                            | External vs Orbyn grouping, actual editor flow      |
+| Test → Review                           | Historical checkpoints retained; final closure waived                                   | Frozen source, max3 rounds                          |
+| Visual web/Expo                         | Initial batch recorded; final rendered pass waived                                          | One bounded changed-flow batch                      |
+| Main delivery                           | Owner authorized PR and merge; remote receipt follows                                                                       | Verified remote ref                                 |
 
 Keep unrelated dirty `c6-production-visual-2026-10-11.md` unchanged. Existing owned
 preview processes5174/8083 and guarded local API8008 may be reused. The saved
@@ -129,3 +129,15 @@ pass; these screenshot defects require final rendered closure on the combined
 candidate. The third-panel budget is now 960px for the split plus the dock's
 280px minimum; a wide overlay stays a narrow right sheet, fullscreen only on
 phones. No visible First/Second pane heading is added to full split layout.
+
+
+## Owner-directed delivery boundary
+
+The owner explicitly said to skip Tester, Visual Check and Reviewer and proceed
+to PR and merge main. Root stopped qualification work and retained prior reports.
+Final outline CSS narrows the current-heading indicator to the heading button;
+the adjacent menu no longer receives a second bar. No fresh tests or rendered
+pass ran for that final CSS change. Unfinished qualification is waived, not a
+pass. Reviewer R1-03's source fix remains recorded at `5c7f7b64`; this is not
+final Reviewer acceptance. Production deployment and the intermittent MCP
+reauthorization cause remain unverified.
