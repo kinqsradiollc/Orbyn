@@ -168,7 +168,7 @@ test("actual restored notification place forwards without clearing document/chat
 });
 test("App integration source contract: single primary portal, retained workspace, no secondary heading strip", () => {
   assert.equal((source.match(/<WorkspaceDock\b/g) || []).length, 1);
-  assert.match(source, /minMainWidth=\{paired \? 1280 : 480\}/);
+  assert.match(source, /minMainWidth=\{paired \? 960 : 480\}/);
   assert.match(
     source,
     /!secondary\s*&&\s*notificationsHost\s*&&\s*createPortal/,
@@ -179,13 +179,13 @@ test("App integration source contract: single primary portal, retained workspace
   assert.match(source, /aria-label="Second working pane"/);
   assert.match(
     source,
-    /const singlePane = \(mainLayout.width \|\| window.innerWidth\) < 1280/,
+    /const singlePane = \(mainLayout.width \|\| window.innerWidth\) < 960/,
   );
   const css = readFileSync(
     new URL("../../desktop/src/app/workspace.css", import.meta.url),
     "utf8",
   );
-  assert.match(css, /@container workspace-main \(max-width: 1279px\)/);
+  assert.match(css, /@container workspace-main \(max-width: 959px\)/);
   assert.match(css, /container: workspace-main \/ inline-size/);
   assert.match(
     css,
@@ -245,4 +245,20 @@ test("shared split navigation preserves preferred rail and uses a drawer only at
   assert.match(shared, /phone && \(\s*<dialog/);
   assert.match(shared, /!phone && railed \? " is-railed"/);
   assert.match(shared, /--workspace-sidebar-width/);
+});
+
+test("secondary pane never inherits the primary navigation rail inset", () => {
+  const css = readFileSync(
+    new URL("../../desktop/src/app/workspace.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    css,
+    /\.workspace-duo \.app\.workspace\.is-secondary-pane > \.shell \{\s*margin-left: 0;/,
+  );
+  assert.match(source, /minMainWidth=\{paired \? 960 : 480\}/);
+  assert.match(
+    source,
+    /const singlePane = \(mainLayout.width \|\| window.innerWidth\) < 960/,
+  );
 });

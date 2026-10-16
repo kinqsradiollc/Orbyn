@@ -264,7 +264,7 @@
 .workspace-duo-secondary {
   border-left: 1px solid var(--color-divider);
 }
-.workspace-duo .is-secondary-pane > .shell {
+.workspace-duo .app.workspace.is-secondary-pane > .shell {
   margin-left: 0;
 }
 .workspace-duo .is-secondary-pane > .shell > .topbar,
@@ -282,7 +282,7 @@
 .workspace-duo.is-paired .app.workspace .content:has(.ai-chat) {
   padding: 0;
 }
-@container workspace-main (max-width: 1279px) {
+@container workspace-main (max-width: 959px) {
   .workspace-duo.is-paired {
     grid-template-columns: minmax(0, 1fr);
     --pane-switch-height: 44px;
@@ -457,7 +457,7 @@
 }
 
 /* Narrow paired work keeps shared controls outside both retained content panes. */
-@container workspace-main (max-width: 1279px) {
+@container workspace-main (max-width: 959px) {
   .workspace-duo.is-paired.has-shared-chrome {
     --shared-chrome-height: 56px;
     grid-template-rows:
@@ -519,7 +519,7 @@
     );
   }
 }
-@container workspace-main (max-width: 1279px) {
+@container workspace-main (max-width: 959px) {
   .workspace-shared-chrome {
     display: block;
   }
@@ -597,7 +597,7 @@
   border: 0;
 }
 
-@container workspace-main (max-width: 1279px) {
+@container workspace-main (max-width: 959px) {
   .workspace-duo.has-shared-chrome {
     padding-left: var(--shared-navigation-width, 0px);
     box-sizing: border-box;

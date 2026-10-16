@@ -276,7 +276,7 @@ export function App() {
     useState<HTMLDivElement | null>(null);
   const secondaryPane = useRef<HTMLDivElement>(null);
   const mainLayout = useElementWidth();
-  const singlePane = (mainLayout.width || window.innerWidth) < 1280;
+  const singlePane = (mainLayout.width || window.innerWidth) < 960;
   const paneState = useRef({ paired, singlePane, token: planner.token });
   paneState.current = { paired, singlePane, token: planner.token };
   const lastPaneFocus = useRef(new Map<string, HTMLElement>());
@@ -520,7 +520,7 @@ export function App() {
       <WorkspaceDock
         key={planner.token ?? "signed-out"}
         open={dockState.open}
-        minMainWidth={paired ? 1280 : 480}
+        minMainWidth={paired ? 960 : 480}
         activeId={dockState.activeId}
         tabs={dockState.tabs.map((tab) => ({
           id: tab.id,
