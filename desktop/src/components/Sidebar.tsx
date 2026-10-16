@@ -234,6 +234,7 @@ export function Sidebar({
         <button
           type="button"
           className="sidebar-account-trigger"
+          data-settings-focus-return
           aria-label={`Account: ${user?.name || "Orbyn"}`}
           aria-haspopup="dialog"
           aria-expanded={!!accountAnchor}

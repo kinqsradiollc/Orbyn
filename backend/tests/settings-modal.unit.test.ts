@@ -250,12 +250,10 @@ test("a failed opener focus attempts the visible navigation return target", () =
   view.cleanup();
   assert.equal(view.document.activeElement, navigation);
 });
-test("both responsive workspace navigation controls expose a Settings return target", () => {
+test("responsive navigation and account menu expose Settings return targets", () => {
   const source = read("desktop/src/components/Topbar.tsx");
-  assert.match(
-    source,
-    /className="icon-button workspace-rail-toggle"[^>]*data-settings-focus-return/,
-  );
+  assert.doesNotMatch(source, /workspace-rail-toggle/);
+  assert.match(read("desktop/src/components/Sidebar.tsx"), /className="sidebar-account-trigger"[^>]*data-settings-focus-return/);
   assert.match(
     source,
     /className="icon-button mobile-menu"[^>]*data-settings-focus-return/,
