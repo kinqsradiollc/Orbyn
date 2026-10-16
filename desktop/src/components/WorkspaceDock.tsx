@@ -65,6 +65,21 @@ export function WorkspaceDock({
   const active = tabs.some((tab) => tab.id === activeId)
     ? activeId
     : tabs[0]?.id;
+  const focusedTab = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = focusedTab.current;
+    if (!previous || tabs.some((tab) => tab.id === previous)) return;
+    focusedTab.current = null;
+    const focused = document.activeElement;
+    if (open && active && (!focused?.isConnected || focused === document.body))
+      document
+        .getElementById(`${id}-tab-${encodeURIComponent(active)}`)
+        ?.focus();
+  }, [open, active, tabs.map((tab) => tab.id).join("\u0000"), id]);
+  const blurTab = (next: EventTarget | null) => {
+    // Removal may report no next target; retain ownership until the new tab renders.
+    if (next) focusedTab.current = null;
+  };
   useEffect(() => {
     const scope = root.current?.parentElement;
     if (!scope) return;
@@ -242,6 +257,10 @@ export function WorkspaceDock({
           {tabs.map((tab, index) => (
             <div className="workspace-dock-tab" key={tab.id}>
               <button
+                onFocus={() => {
+                  focusedTab.current = tab.id;
+                }}
+                onBlur={(event) => blurTab(event.relatedTarget)}
                 role="tab"
                 id={`${id}-tab-${encodeURIComponent(tab.id)}`}
                 aria-controls={`${id}-panel-${encodeURIComponent(tab.id)}`}
@@ -270,6 +289,10 @@ export function WorkspaceDock({
                 <span>{tab.title}</span>
               </button>
               <button
+                onFocus={() => {
+                  focusedTab.current = tab.id;
+                }}
+                onBlur={(event) => blurTab(event.relatedTarget)}
                 className="workspace-dock-close-tab"
                 aria-label={`Close ${tab.title}`}
                 onClick={() => onCloseTab(tab.id)}

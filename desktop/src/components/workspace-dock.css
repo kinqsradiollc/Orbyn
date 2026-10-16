@@ -42,25 +42,31 @@
   background: var(--color-surfaceMuted);
 }
 .workspace-dock-tab button {
-  min-height: 44px;
+  min-height: 32px;
   border: 0;
   background: transparent;
   color: inherit;
   font: inherit;
-  padding: 8px;
+  padding: 4px 8px;
   display: flex;
   gap: 6px;
   align-items: center;
 }
 .workspace-dock-tab [role="tab"] {
   max-width: 240px;
-  overflow-wrap: anywhere;
+  min-width: 0;
+  white-space: nowrap;
   text-align: left;
+}
+.workspace-dock-tab [role="tab"] > span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .workspace-dock-tab .workspace-dock-close-tab,
 .workspace-dock-close {
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 32px;
+  min-height: 32px;
   justify-content: center;
 }
 .workspace-dock-panels,
@@ -94,4 +100,15 @@
 
 .workspace-dock[hidden] {
   display: none;
+}
+
+@media (pointer: coarse) {
+  .workspace-dock-tab button,
+  .workspace-dock-close {
+    min-height: 44px;
+  }
+  .workspace-dock-tab .workspace-dock-close-tab,
+  .workspace-dock-close {
+    min-width: 44px;
+  }
 }

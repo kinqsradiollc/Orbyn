@@ -256,7 +256,7 @@ test("overlay cycles focus, closes with Escape and restores its opener", () => {
   f.refs[0].current = panel;
   f.doc.activeElement = opener;
   f.render({ ...p, onClose: () => closed++ });
-  const cleanup = f.effects[1]();
+  const cleanup = f.effects[2]();
   assert.equal(sibling.inert, true);
   assert.equal(f.doc.activeElement, first);
   f.doc.activeElement = last;
@@ -285,4 +285,58 @@ test("overlay cycles focus, closes with Escape and restores its opener", () => {
   assert.equal(sibling.inert, false);
   assert.equal(f.doc.activeElement, opener);
   assert.equal(f.listeners.size, 0);
+});
+
+test("closing the focused tab restores the active neighboring tab without stealing external focus", () => {
+  const f = fixture(),
+    p = props();
+  let tree = f.render(p);
+  nodes(tree)
+    .find((n) => n.props?.["aria-label"] === "Close Object")
+    .props.onFocus();
+  let restored = "";
+  f.doc.activeElement = { isConnected: false };
+  f.doc.getElementById = (id: string) => ({
+    focus() {
+      restored = id;
+    },
+  });
+  tree = f.render({ ...p, tabs: [tabs[0]] });
+  f.effects[0]();
+  assert.equal(restored, "dock-test-tab-notifications");
+  tree = f.render(p);
+  nodes(tree)
+    .find((n) => n.props?.role === "tab")
+    .props.onFocus();
+  f.doc.activeElement = { isConnected: true };
+  restored = "";
+  f.render({ ...p, tabs: [tabs[1]], activeId: tabs[1].id });
+  f.effects[0]();
+  assert.equal(restored, "");
+});
+test("capture loss restores uncommitted resize and compact tabs retain coarse targets", () => {
+  const f = fixture(),
+    p = props(),
+    edge = nodes(f.render(p)).find((n) => n.props?.role === "separator").props;
+  const currentTarget = { focus() {}, setPointerCapture() {} };
+  edge.onPointerDown({
+    button: 0,
+    pointerId: 1,
+    clientX: 500,
+    currentTarget,
+    preventDefault() {},
+  });
+  edge.onPointerMove({ pointerId: 1, clientX: 400 });
+  assert.equal(f.states[0], 500);
+  edge.onLostPointerCapture();
+  assert.equal(f.states[0], 400);
+  assert.equal(f.writes.length, 0);
+  const css = readFileSync(
+    new URL("../../desktop/src/components/workspace-dock.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(css, /min-height: 32px/);
+  assert.match(css, /@media \(pointer: coarse\)/);
+  assert.match(css, /text-overflow: ellipsis/);
+  assert.doesNotMatch(css, /overflow-wrap/);
 });
