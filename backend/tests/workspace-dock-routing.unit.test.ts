@@ -262,3 +262,85 @@ test("secondary pane never inherits the primary navigation rail inset", () => {
     /const singlePane = \(mainLayout.width \|\| window.innerWidth\) < 960/,
   );
 });
+test("dock-origin ordinary and modified links route exactly once; stale account and non-dock focus fail closed", async () => {
+  const { routeDockLink } =
+    await import("../../desktop/src/app/workspace-dock-state");
+  const calls: string[] = [];
+  const actions = {
+    open: (url: string) => calls.push(`open:${url}`),
+    peek: (target: any) => calls.push(`peek:${target.id}`),
+    yieldToMain: () => calls.push("main"),
+  };
+  const owner = {
+    focused: true,
+    account: "a",
+    dockAccount: "a",
+    ownerAccount: "a",
+  };
+  assert.equal(
+    routeDockLink(
+      { ...owner, kind: "open", detail: "orbyn://doc/page#block" },
+      actions,
+    ),
+    true,
+  );
+  assert.deepEqual(calls, ["main", "open:orbyn://doc/page#block"]);
+  calls.length = 0;
+  assert.equal(
+    routeDockLink(
+      { ...owner, kind: "peek", detail: { kind: "doc", id: "next" } },
+      actions,
+    ),
+    true,
+  );
+  assert.deepEqual(calls, ["peek:next"]);
+  calls.length = 0;
+  for (const invalid of [
+    { focused: false },
+    { account: "b" },
+    { dockAccount: "b" },
+    { ownerAccount: "b" },
+    { account: null },
+  ]) {
+    assert.equal(
+      routeDockLink(
+        { ...owner, ...invalid, kind: "open", detail: "orbyn://doc/page" },
+        actions,
+      ),
+      false,
+    );
+    assert.equal(
+      routeDockLink(
+        {
+          ...owner,
+          ...invalid,
+          kind: "peek",
+          detail: { kind: "doc", id: "next" },
+        },
+        actions,
+      ),
+      false,
+    );
+  }
+  assert.equal(
+    routeDockLink(
+      { ...owner, kind: "open", detail: "javascript:alert(1)" },
+      actions,
+    ),
+    false,
+  );
+  assert.equal(
+    routeDockLink(
+      { ...owner, kind: "peek", detail: { kind: "person", id: "next" } },
+      actions,
+    ),
+    false,
+  );
+  assert.deepEqual(calls, []);
+  assert.equal(
+    (source.match(/dockLinkOwner=\{dockLinkOwner\}/g) || []).length,
+    1,
+  );
+  assert.match(source, /if \(handled\) event.stopImmediatePropagation\(\)/);
+  assert.match(source, /!dockOwnsInput\(\)/);
+});

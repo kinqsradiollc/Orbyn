@@ -75,3 +75,48 @@ export function dockReducer(state: DockState, action: DockAction): DockState {
     open: tabs.length > 0 && state.open,
   };
 }
+
+/** Window link events from focused dock content have one explicit owner. */
+export function routeDockLink(
+  input: {
+    kind: "open" | "peek";
+    detail: unknown;
+    focused: boolean;
+    account: string | null;
+    dockAccount: string | null;
+    ownerAccount: string | null;
+  },
+  actions: {
+    open: (url: string) => void;
+    peek: (target: ObjectRef) => void;
+    yieldToMain: () => void;
+  },
+): boolean {
+  if (
+    !input.focused ||
+    !input.account ||
+    input.account !== input.dockAccount ||
+    input.account !== input.ownerAccount
+  )
+    return false;
+  if (input.kind === "open") {
+    if (
+      typeof input.detail !== "string" ||
+      !/^orbyn:\/\/(doc|task|project)\//.test(input.detail)
+    )
+      return false;
+    actions.yieldToMain();
+    actions.open(input.detail);
+  } else {
+    const target = input.detail as Partial<ObjectRef> | null;
+    if (
+      !target ||
+      !["doc", "task", "project"].includes(target.kind ?? "") ||
+      typeof target.id !== "string" ||
+      !target.id
+    )
+      return false;
+    actions.peek(target as ObjectRef);
+  }
+  return true;
+}

@@ -2,6 +2,7 @@ import { WorkspaceDock } from "../components/WorkspaceDock";
 import {
   dockReducer,
   initialDock,
+  routeDockLink,
   type DockAction,
 } from "./workspace-dock-state";
 import { createPortal } from "react-dom";
@@ -212,6 +213,12 @@ export function App() {
   const [dock, setDock] = useState(() => initialDock(planner.token ?? null));
   const dockRef = useRef(dock);
   dockRef.current = dock;
+  const dockLinkOwner = useRef<{
+    account: string | null;
+    open: (url: string) => void;
+  } | null>(null);
+  const dockAccount = useRef(planner.token ?? null);
+  dockAccount.current = planner.token ?? null;
   const [notificationsHost, setNotificationsHost] =
     useState<HTMLDivElement | null>(null);
   const dockOwnsInput = () =>
@@ -240,6 +247,40 @@ export function App() {
     dock.account === (planner.token ?? null)
       ? dock
       : initialDock(planner.token ?? null);
+
+  useEffect(() => {
+    const route = (kind: "open" | "peek") => (event: Event) => {
+      const owner = dockLinkOwner.current;
+      const handled = routeDockLink(
+        {
+          kind,
+          detail: (event as CustomEvent<unknown>).detail,
+          focused: dockOwnsInput(),
+          account: dockAccount.current,
+          dockAccount: dockRef.current.account,
+          ownerAccount: owner?.account ?? null,
+        },
+        {
+          open: (url) => owner?.open(url),
+          peek: (target) => openDock(target),
+          yieldToMain: () => {
+            focusPane("main");
+            actDock({ type: "hide", account: dockAccount.current });
+            primaryPane.current?.focus();
+          },
+        },
+      );
+      if (handled) event.stopImmediatePropagation();
+    };
+    const open = route("open"),
+      peek = route("peek");
+    window.addEventListener(OPEN_LINK_EVENT, open);
+    window.addEventListener(PEEK_EVENT, peek);
+    return () => {
+      window.removeEventListener(OPEN_LINK_EVENT, open);
+      window.removeEventListener(PEEK_EVENT, peek);
+    };
+  }, [openDock, actDock]);
 
   const [chromeLocations, setChromeLocations] = useState<
     Record<string, ChromeLocation>
@@ -432,6 +473,7 @@ export function App() {
                     actDock({ type: "hide", account: planner.token ?? null });
                     primaryPane.current?.focus();
                   }}
+                  dockLinkOwner={dockLinkOwner}
                   notificationsHost={
                     dock.account === (planner.token ?? null)
                       ? notificationsHost
@@ -584,6 +626,7 @@ function WorkspaceController({
   onDockNavigate,
   navigationAvailableWidth,
   notificationsHost = null,
+  dockLinkOwner,
   initialPlace,
   ownsEvents,
   onSplit,
@@ -599,6 +642,9 @@ function WorkspaceController({
   onDockNavigate: () => void;
   navigationAvailableWidth: number;
   notificationsHost?: HTMLElement | null;
+  dockLinkOwner?: {
+    current: { account: string | null; open: (url: string) => void } | null;
+  };
   registerChrome: (scope: string, owner: ChromeOwner) => () => void;
   reportChromeLocation: (scope: string, location: ChromeLocation) => void;
   chromeLocation?: ChromeLocation;
@@ -1046,6 +1092,17 @@ function WorkspaceController({
     if (token) openDeepLink(link);
     else rememberDeepLink(link);
   };
+  useEffect(() => {
+    if (!dockLinkOwner) return;
+    const owner = {
+      account: token ?? null,
+      open: (url: string) => openLinkRef.current(url),
+    };
+    dockLinkOwner.current = owner;
+    return () => {
+      if (dockLinkOwner.current === owner) dockLinkOwner.current = null;
+    };
+  }, [token, dockLinkOwner]);
   useEffect(
     () =>
       window.orbynDesktop?.onOpenLink((url) => {
