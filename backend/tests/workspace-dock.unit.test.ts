@@ -340,3 +340,20 @@ test("capture loss restores uncommitted resize and compact tabs retain coarse ta
   assert.match(css, /text-overflow: ellipsis/);
   assert.doesNotMatch(css, /overflow-wrap/);
 });
+
+test("a split main-area budget overlays the dock before compressing explicit panes", () => {
+  const f = fixture(),
+    p = props();
+  f.render(p);
+  f.states[1] = 1440;
+  let tree = f.render({ ...p, minMainWidth: 1280 });
+  assert.equal(tree.props.role, "dialog");
+  f.states[1] = 1560;
+  tree = f.render({ ...p, minMainWidth: 1280 });
+  assert.equal(tree.props.role, "complementary");
+  assert.equal(tree.props.style.width, 280);
+  assert.equal(f.exports.dockMaximum(1800, 1280), 520);
+  f.states[1] = 1440;
+  tree = f.render(p);
+  assert.equal(tree.props.role, "complementary");
+});

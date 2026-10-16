@@ -5,8 +5,8 @@ import "./workspace-dock.css";
 
 export const WORKSPACE_DOCK_WIDTH_KEY = "orbyn-workspace-dock-width-v1";
 export const DEFAULT_DOCK_WIDTH = 400;
-export function dockMaximum(scopeWidth: number) {
-  return Math.max(280, Math.min(720, scopeWidth - 480));
+export function dockMaximum(scopeWidth: number, minMainWidth = 480) {
+  return Math.max(280, Math.min(720, scopeWidth - minMainWidth));
 }
 export function boundedDockWidth(value: number, maximum = 720) {
   return Math.round(Math.max(280, Math.min(maximum, value)));
@@ -39,6 +39,7 @@ export function WorkspaceDock({
   onCloseTab,
   onClose,
   open = true,
+  minMainWidth = 480,
 }: {
   tabs: WorkspaceDockTab[];
   activeId: string;
@@ -46,6 +47,7 @@ export function WorkspaceDock({
   onCloseTab: (id: string) => void;
   onClose?: () => void;
   open?: boolean;
+  minMainWidth?: number;
 }) {
   const id = useId(),
     root = useRef<HTMLElement>(null);
@@ -59,9 +61,9 @@ export function WorkspaceDock({
   } | null>(null);
   const latestClose = useRef(onClose);
   latestClose.current = onClose ?? (() => onCloseTab(activeId));
-  const maximum = dockMaximum(scopeWidth),
+  const maximum = dockMaximum(scopeWidth, minMainWidth),
     width = boundedDockWidth(preferred, maximum);
-  const overlay = scopeWidth < 900;
+  const overlay = scopeWidth < Math.max(900, minMainWidth + 280);
   const active = tabs.some((tab) => tab.id === activeId)
     ? activeId
     : tabs[0]?.id;
